@@ -30,11 +30,14 @@ logger = logging.getLogger(__name__)
 # different loop". Scope the registry per running loop so each loop has its
 # own queues, workers, and lock. Entries auto-clean when the loop is GC'd.
 class _LoopIngestState:
-    __slots__ = ("group_queues", "group_workers", "workers_lock")
+    __slots__ = ("group_queues", "group_workers", "registrations", "workers_lock")
 
     def __init__(self) -> None:
         self.group_queues: dict[str, asyncio.Queue] = {}
         self.group_workers: dict[str, asyncio.Task] = {}
+        # The in-flight dream-schedule registration of each memory group,
+        # dropped when it finishes; see ``_register_dream_schedules``.
+        self.registrations: dict[str, asyncio.Task] = {}
         self.workers_lock = asyncio.Lock()
 
 
@@ -563,13 +566,12 @@ async def _enqueue_payload(scope: MemoryScope, payload: dict) -> bool:
     ``workers_lock`` with idle retirement. A caller can therefore never put
     work onto a queue after its worker has unregistered it.
 
-    Also fires the registration of the scope's own dream-system crons
-    (community rebuild + nightly batch) the first time this process sees
-    the group — lazy on first memory write, per-cron flag-gated,
-    idempotent; an expert group registers the expert's scope, not the
-    account's. See ``copilot/dream/registry.py:ensure_scope_scheduled``.
-    Fire-and-forget; failures are swallowed inside the helper so
-    ingestion is never affected.
+    Creating a group's queue also registers the scope's own dream-system
+    crons (community rebuild + nightly batch): an expert group registers the
+    expert's scope, not the account's. That happens on the group's first
+    write in this process and again each time its queue comes back after
+    retiring (``_WORKER_IDLE_TIMEOUT`` idle). Fire-and-forget, flag-gated
+    and idempotent; see ``_register_dream_schedules``.
     """
     user_id = scope.owner_user_id
     group_id = scope.group_id
@@ -594,15 +596,34 @@ async def _enqueue_payload(scope: MemoryScope, payload: dict) -> bool:
             return False
 
     if is_new_group_for_this_process:
-        # Fire-and-forget; the scope's registry row provides cross-process
-        # / cross-restart idempotency. Done outside the workers_lock so the
-        # scheduler RPC can't deadlock ingestion.
-        spawn_background_task(
-            ensure_scope_scheduled(scope),
-            name=f"dream-system-register-{scope.scope_key[:12]}",
-        )
+        # Outside the workers_lock so the registry's RPCs can't hold up
+        # ingestion.
+        _register_dream_schedules(state, scope)
 
     return True
+
+
+def _register_dream_schedules(state: _LoopIngestState, scope: MemoryScope) -> None:
+    """Register the scope's dream-system crons in the background, at most
+    one registration in flight per group: a queue that retires and comes
+    back while the last one is still running does not start another. The
+    scope's registry row makes a repeat registration a no-op; every call it
+    makes is bounded (``copilot/dream/deadline.py``)."""
+    group_id = scope.group_id
+    running = state.registrations.get(group_id)
+    if running is not None and not running.done():
+        return
+    task = spawn_background_task(
+        ensure_scope_scheduled(scope),
+        name=f"dream-system-register-{scope.scope_key[:12]}",
+    )
+    state.registrations[group_id] = task
+
+    def _drop(done: asyncio.Task) -> None:
+        if state.registrations.get(group_id) is done:
+            del state.registrations[group_id]
+
+    task.add_done_callback(_drop)
 
 
 async def resolve_user_name(user_id: str) -> str:

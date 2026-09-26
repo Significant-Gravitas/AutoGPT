@@ -14,7 +14,7 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.memory_schedule import LiveExpertScope, MemoryScopeSchedule
 
 from . import registry_backfill
-from .registry_backfill import BackfillReport, backfill_schedules
+from .registry_backfill import BackfillFailure, BackfillReport, backfill_schedules
 
 REGISTERED = {"community_rebuild": {"id": "c"}, "dream_nightly_batch": {"id": "n"}}
 ALREADY = {"community_rebuild": None, "dream_nightly_batch": None}
@@ -25,6 +25,11 @@ FLAGS_OFF = {
 FAILED = {
     "community_rebuild": {"skipped": True, "reason": "registration_failed"},
     "dream_nightly_batch": None,
+}
+# One cron registered, the other did not: the scope failed.
+PARTLY_FAILED = {
+    "community_rebuild": {"skipped": True, "reason": "registration_failed"},
+    "dream_nightly_batch": {"id": "n"},
 }
 
 
@@ -151,6 +156,72 @@ async def test_outcomes_are_counted_per_scope(backfill):
 
 
 @pytest.mark.asyncio
+async def test_one_failed_cron_fails_the_scope_and_is_listed(backfill):
+    """Codex's partial-failure case: the community registration failed and
+    the nightly one succeeded. The scope is failed, not registered, and the
+    report names the scope, the cron and the reason."""
+    backfill.ensure.side_effect = [PARTLY_FAILED, ALREADY]
+    backfill.pause.side_effect = [True, False]
+
+    report = await backfill_schedules()
+
+    assert (report.failed, report.registered, report.already_scheduled) == (2, 0, 2)
+    assert report.failures == [
+        BackfillFailure(
+            scope_key="u-graph",
+            user_id="u-graph",
+            expert_id=None,
+            job="community_rebuild",
+            reason="registration_failed",
+        ),
+        BackfillFailure(
+            scope_key=MemoryScope.for_expert("u-row", "e-archived").scope_key,
+            user_id="u-row",
+            expert_id="e-archived",
+            job="pause",
+            reason="pause_failed",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_record_failure_counts_as_failed(backfill):
+    backfill.resume.return_value = {
+        "community_rebuild": {"skipped": True, "reason": "record_failed"},
+        "dream_nightly_batch": {"skipped": True, "reason": "record_failed"},
+    }
+
+    report = await backfill_schedules()
+
+    assert [(f.expert_id, f.reason) for f in report.failures] == [
+        ("e-live", "record_failed"),
+        ("e-live", "record_failed"),
+    ]
+
+
+def test_the_command_exits_1_when_anything_failed(monkeypatch):
+    failure = BackfillFailure(
+        scope_key="u", user_id="u", expert_id=None, job="pause", reason="pause_failed"
+    )
+    failed = BackfillReport(dry_run=False, failed=1, failures=[failure])
+
+    async def run(*, force: bool, dry_run: bool) -> BackfillReport:
+        return failed
+
+    monkeypatch.setattr(registry_backfill, "_run", run)
+    monkeypatch.setattr("sys.argv", ["memory-schedule-backfill"])
+    with pytest.raises(SystemExit) as exit_info:
+        registry_backfill.main()
+    assert exit_info.value.code == 1
+
+    async def clean(*, force: bool, dry_run: bool) -> BackfillReport:
+        return BackfillReport(dry_run=False, registered=1)
+
+    monkeypatch.setattr(registry_backfill, "_run", clean)
+    registry_backfill.main()  # no exit on success
+
+
+@pytest.mark.asyncio
 async def test_rerunning_is_safe(backfill):
     """A second run makes the same calls; what the registry already holds
     comes back as already scheduled."""
@@ -164,7 +235,8 @@ async def test_rerunning_is_safe(backfill):
     assert backfill.ensure.await_count == 4
 
 
-def test_classify_prefers_registration_then_failure():
+def test_classify_puts_failure_before_any_success():
+    assert registry_backfill._classify(PARTLY_FAILED) == "failed"
     assert registry_backfill._classify(REGISTERED) == "registered"
     assert registry_backfill._classify(FAILED) == "failed"
     assert registry_backfill._classify(ALREADY) == "already_scheduled"

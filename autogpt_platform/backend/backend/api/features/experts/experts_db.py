@@ -94,7 +94,7 @@ from backend.api.features.store import skill_db
 from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
-from backend.copilot.dream.registry import sync_expert_scope
+from backend.copilot.dream.registry import ensure_expert_scheduled, sync_expert_scope
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     SkillNotFoundError,
@@ -1013,11 +1013,12 @@ async def _hire_expert_impl(
 def _schedule_expert_memory(user_id: str, expert_id: str) -> None:
     """Register a new expert's memory crons without holding up its hire.
 
-    Safe to race an archive: the registry never overrides a paused scope and
-    takes down crons it registered for one that was paused meanwhile.
+    Safe to race an archive or a pause: registration never resumes a paused
+    scope, whenever it lands, and takes down crons it registered for one
+    that was paused meanwhile. Only revive and the resume route resume.
     """
     spawn_background_task(
-        sync_expert_scope(user_id, expert_id, active=True),
+        ensure_expert_scheduled(user_id, expert_id),
         name=f"expert-memory-schedule-{expert_id}",
     )
 

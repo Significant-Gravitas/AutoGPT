@@ -403,6 +403,46 @@ class TestDreamScheduleRegistration:
         registered = [c.args[0] for c in stub_dream_registration.call_args_list]
         assert registered == [expert, account]
 
+    @pytest.mark.asyncio
+    async def test_a_returning_queue_registers_again_but_never_twice_at_once(
+        self, monkeypatch
+    ) -> None:
+        """A group's queue retires after idling and comes back on the next
+        write, which registers the scope again; while a registration is
+        still in flight, the returning queue does not start another."""
+        release = asyncio.Event()
+        calls: list[MemoryScope] = []
+
+        async def ensure(scope: MemoryScope) -> dict:
+            calls.append(scope)
+            await release.wait()
+            return {}
+
+        monkeypatch.setattr(ingest, "ensure_scope_scheduled", ensure)
+        scope = MemoryScope.for_user("user-1")
+        state = ingest._get_loop_state()
+
+        async def write_after_retirement() -> None:
+            state.group_queues.pop(scope.group_id, None)
+            state.group_workers.pop(scope.group_id, None)
+            assert await ingest._enqueue_payload(scope, {"group_id": scope.group_id})
+            await asyncio.sleep(0)
+
+        with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
+            await write_after_retirement()
+            in_flight = state.registrations[scope.group_id]
+            await write_after_retirement()
+            assert calls == [scope]
+
+            release.set()
+            await in_flight
+            await asyncio.sleep(0)
+            assert scope.group_id not in state.registrations
+
+            await write_after_retirement()
+            assert calls == [scope, scope]
+            await state.registrations[scope.group_id]
+
 
 class TestQueueFullScenario:
     @pytest.mark.asyncio

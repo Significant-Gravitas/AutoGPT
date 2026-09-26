@@ -436,7 +436,7 @@ async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> b
     """Pause the expert's scheduled/triggered runs (chat is untouched) and
     log the pause. Returns False when already paused (no double events).
     Its memory crons (nightly dream, weekly community rebuild) pause with
-    them; that part fails soft.
+    them; that part is bounded by the registry deadline and fails soft.
 
     Refuses archived experts so a pause can't silently mutate a row the rest
     of the API reports as not-found; the archive flow itself pauses BEFORE
@@ -477,7 +477,8 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     re-hire flow, which clears ``isArchived`` before resuming.
 
     The expert's memory crons resume with the schedules (registered if the
-    expert never had any); that part fails soft."""
+    expert never had any); that part is bounded by the registry deadline
+    and fails soft."""
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,

@@ -745,9 +745,10 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         # time; without an eager re-register they'd keep firing at the old
         # local time. Every memory scope of the user (the account and each
         # scheduled expert) is re-registered. Fire-and-forget so this
-        # profile update returns immediately — the registry's timezone
-        # check on the next memory write in each process is the durable
-        # backstop if this fails.
+        # profile update returns immediately. If it fails, the registry's
+        # timezone check on the scope's next registration (a returning
+        # ingest queue, a lifecycle change, the backfill) is the backstop,
+        # not necessarily the next memory write.
         try:
             from backend.copilot.dream.registry import reregister_user
 

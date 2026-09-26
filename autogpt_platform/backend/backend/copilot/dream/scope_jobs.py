@@ -1,10 +1,11 @@
 """The dream-system crons of one memory scope, against the scheduler and the
-``MemoryScopeSchedule`` row: registering and recording them, removing them,
-and the gate their cron bodies ask before running.
+``MemoryScopeSchedule`` row: registering and recording them, and removing
+them.
 
 ``registry.py`` decides when a scope's crons should exist; this module does
-the work. The cron bodies in ``executor/scheduler.py`` call the last three
-public functions. Everything fails soft: logged, never raised.
+the work, and ``scope_crons.py`` holds what the cron bodies ask of it. Every
+call to a dependency runs under the registry deadline (``deadline.py``).
+Everything fails soft: logged, never raised.
 """
 
 import logging
@@ -14,16 +15,12 @@ from prisma.enums import MemoryScopeScheduleState
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import memory_schedule_db
-from backend.data.memory_schedule import MemoryScopeSchedule, ScopeRunKind
+from backend.data.memory_schedule import MemoryScopeSchedule
 from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import is_feature_enabled
 
-from .scheduling import (
-    DREAM_SYSTEM_JOBS,
-    DreamSystemJob,
-    clear_registration_marker,
-    write_registration_marker,
-)
+from .deadline import within_deadline
+from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, write_registration_marker
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +32,9 @@ async def flag_gate(scope: MemoryScope) -> tuple[dict[str, Any], list[DreamSyste
     enabled: list[DreamSystemJob] = []
     for job in DREAM_SYSTEM_JOBS:
         try:
-            on = await is_feature_enabled(job.flag, scope.owner_user_id)
+            on = await within_deadline(
+                is_feature_enabled(job.flag, scope.owner_user_id)
+            )
         except Exception:
             logger.warning(f"Flag check failed for {job.name}", exc_info=True)
             results[job.job_id_prefix] = skipped("registration_failed")
@@ -58,12 +57,8 @@ async def register_scope_jobs(
     that is missing or was registered in another timezone, and record the
     job ids on the row. One result per enabled cron, keyed by prefix."""
     if row is None:
-        try:
-            row = await memory_schedule_db().claim_scope_schedule(
-                scope.owner_user_id, scope.scope_key, scope.expert_id, user_timezone
-            )
-        except Exception:
-            logger.warning(f"Could not claim {scope_label(scope)}", exc_info=True)
+        row = await _claim(scope, user_timezone)
+        if row is None:
             return skip_all(enabled, "registry_unavailable")
         if row.state != MemoryScopeScheduleState.ACTIVE:
             return skip_all(enabled, state_reason(row))
@@ -74,68 +69,22 @@ async def register_scope_jobs(
             outcomes[job.job_id_prefix] = None
             continue
         outcomes[job.job_id_prefix] = await _register_job(scope, job, user_timezone)
-    await _record(scope, row, user_timezone, outcomes, stale)
-    return outcomes
+    return await _record(scope, row, user_timezone, outcomes, stale)
 
 
-async def remove_scope_jobs(scope: MemoryScope) -> None:
-    """Remove every dream-system cron of the scope from the scheduler."""
+async def remove_scope_jobs(scope: MemoryScope) -> bool:
+    """Remove every dream-system cron of the scope from the scheduler;
+    whether the scheduler confirmed it."""
     try:
-        await get_scheduler_client().remove_scope_memory_jobs(scope=scope)
+        await within_deadline(
+            get_scheduler_client().remove_scope_memory_jobs(scope=scope)
+        )
     except Exception:
         logger.warning(
             f"Could not remove the crons of {scope_label(scope)}", exc_info=True
         )
-
-
-async def scope_schedule_active(scope: MemoryScope) -> bool:
-    """Whether the registry lets the scope's crons fire now.
-
-    An ACTIVE row says yes; PAUSED and WIPED say no. No row on the account
-    means crons from before the registry, which run as they always did. No
-    row on an expert means the expert or its owner was deleted (the row
-    cascades), so its orphaned crons are removed. A failed read says no.
-    """
-    try:
-        row = await memory_schedule_db().get_scope_schedule(
-            scope.owner_user_id, scope.scope_key
-        )
-    except Exception:
-        logger.warning(f"Registry read failed for {scope_label(scope)}", exc_info=True)
         return False
-    if row is not None:
-        return row.state == MemoryScopeScheduleState.ACTIVE
-    if not scope.is_expert:
-        return True
-    logger.warning(f"No registry row for {scope_label(scope)}; removing its crons")
-    await remove_scope_jobs(scope)
-    return False
-
-
-async def record_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> None:
-    """Stamp the time a cron body ran its pass without an error."""
-    try:
-        await memory_schedule_db().record_scope_run(
-            scope.owner_user_id, scope.scope_key, kind
-        )
-    except Exception:
-        logger.warning(
-            f"Could not stamp the {kind} run of {scope_label(scope)}", exc_info=True
-        )
-
-
-async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
-    """After ``job`` was deleted outside the registry, drop its id from the
-    row and its Redis marker so the next ensure registers it again."""
-    await clear_registration_marker(scope, job.registration_key_prefix)
-    try:
-        await memory_schedule_db().forget_scope_job(
-            scope.owner_user_id, scope.scope_key, job.job_id(scope)
-        )
-    except Exception:
-        logger.warning(
-            f"Could not forget {job.name} of {scope_label(scope)}", exc_info=True
-        )
+    return True
 
 
 def skipped(reason: str) -> dict[str, Any]:
@@ -155,11 +104,25 @@ def scope_label(scope: MemoryScope) -> str:
     return f"{owner} expert {scope.expert_id[:12]}" if scope.expert_id else owner
 
 
+async def _claim(scope: MemoryScope, user_timezone: str) -> MemoryScopeSchedule | None:
+    try:
+        return await within_deadline(
+            memory_schedule_db().claim_scope_schedule(
+                scope.owner_user_id, scope.scope_key, scope.expert_id, user_timezone
+            )
+        )
+    except Exception:
+        logger.warning(f"Could not claim {scope_label(scope)}", exc_info=True)
+        return None
+
+
 async def _register_job(
     scope: MemoryScope, job: DreamSystemJob, user_timezone: str
 ) -> dict[str, Any]:
     try:
-        result = await job.register(get_scheduler_client(), scope, user_timezone)
+        result = await within_deadline(
+            job.register(get_scheduler_client(), scope, user_timezone)
+        )
     except Exception:
         logger.warning(
             f"Dream-system: failed to register {job.name} for {scope_label(scope)}",
@@ -188,9 +151,10 @@ async def _record(
     user_timezone: str,
     outcomes: dict[str, Any],
     stale: bool,
-) -> None:
-    """Write the job ids this pass settled on; take the new jobs down again
-    if the scope stopped being ACTIVE meanwhile."""
+) -> dict[str, Any]:
+    """Write the job ids this pass settled on and return the outcomes as
+    they stand afterwards: a registration the row could not record is a
+    failure, and one the scope left ACTIVE under is taken down again."""
     ids = {
         job.row_field: _next_job_id(row, job, outcomes.get(job.job_id_prefix), stale)
         for job in DREAM_SYSTEM_JOBS
@@ -198,23 +162,40 @@ async def _record(
     if not stale and all(
         ids[job.row_field] == _recorded_job_id(row, job) for job in DREAM_SYSTEM_JOBS
     ):
-        return
+        return outcomes
     try:
-        recorded = await memory_schedule_db().record_scope_jobs(
-            scope.owner_user_id,
-            scope.scope_key,
-            user_timezone=user_timezone,
-            community_job_id=ids["community_job_id"],
-            nightly_job_id=ids["nightly_job_id"],
+        recorded = await within_deadline(
+            memory_schedule_db().record_scope_jobs(
+                scope.owner_user_id,
+                scope.scope_key,
+                user_timezone=user_timezone,
+                community_job_id=ids["community_job_id"],
+                nightly_job_id=ids["nightly_job_id"],
+            )
         )
     except Exception:
         logger.warning(
             f"Could not record the jobs of {scope_label(scope)}", exc_info=True
         )
-        return
-    if not recorded:
-        logger.info(f"{scope_label(scope)} left ACTIVE while registering; removing")
-        await remove_scope_jobs(scope)
+        return _replace_registered(outcomes, "record_failed")
+    if recorded:
+        return outcomes
+    logger.info(f"{scope_label(scope)} left ACTIVE while registering; removing")
+    await remove_scope_jobs(scope)
+    return _replace_registered(outcomes, "scope_changed")
+
+
+def _replace_registered(outcomes: dict[str, Any], reason: str) -> dict[str, Any]:
+    """The outcomes with every registration made this pass turned into a
+    skip with ``reason``."""
+    return {
+        prefix: skipped(reason) if _registered(outcome) else outcome
+        for prefix, outcome in outcomes.items()
+    }
+
+
+def _registered(outcome: Any) -> bool:
+    return bool(outcome) and not outcome.get("skipped") and bool(outcome.get("id"))
 
 
 def _next_job_id(
@@ -222,7 +203,7 @@ def _next_job_id(
 ) -> str | None:
     """A new registration's id; otherwise the recorded id, unless that job
     was registered in a timezone that no longer holds."""
-    if outcome and not outcome.get("skipped") and outcome.get("id"):
+    if _registered(outcome):
         return outcome["id"]
     return None if stale else _recorded_job_id(row, job)
 

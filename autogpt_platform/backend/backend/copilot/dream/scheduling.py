@@ -3,8 +3,10 @@
 Two APScheduler cron jobs serve every memory scope (the account, or one
 hired expert):
 
-  * ``community_rebuild_{scope_key}``    — Sun 04:00 owner-local (P-1.7),
-    direct LLM (not batch), activity-gated inside the function.
+  * ``community_rebuild_{scope_key}``    — weekly, owner-local 04:00 on
+    Mondays (P-1.7): its crontab ``0 4 * * 0`` means Monday to APScheduler,
+    whose weekdays start at 0 = Monday. Direct LLM (not batch),
+    activity-gated inside the function.
   * ``dream_nightly_batch_{scope_key}``  — daily 03:00 owner-local,
     submits all nightly-batch-family work (dream pass, ratification
     supersession sweep, plus future P2 / P3 / P4 / P11 stages).
@@ -25,9 +27,10 @@ Three layers of flag gating, all on the scope owner's flags:
      still fires but short-circuits before the work runs.
 
 **Redis markers.** ``{prefix}:{scope_key}`` holds the timezone a cron was
-last registered in, for seven days. The registry used to decide on them;
-it now reads the ``MemoryScopeSchedule`` table instead and only keeps the
-markers written (and cleared on an in-band delete) as a cache.
+last registered in, for seven days. The registry used to decide on them; it
+now reads the ``MemoryScopeSchedule`` table instead, and nothing reads the
+markers any more. They are still written on registration (and cleared on an
+in-band delete) as a diagnostic, bounded so Redis can never hold up a caller.
 """
 
 from __future__ import annotations
@@ -44,12 +47,14 @@ from backend.data.db_accessors import user_db
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.util.feature_flag import Flag
 
+from .deadline import within_deadline
+
 logger = logging.getLogger(__name__)
 
 
 # Matches the longest cron cadence in the table (weekly community rebuild).
 REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
-# A marker is a cache: never wait longer than this on Redis for one.
+# A marker is diagnostic: never wait longer than this on Redis for one.
 MARKER_TIMEOUT_SECONDS = 5
 
 # Redis marker prefixes, one per cron. Must stay in sync with the table rows
@@ -165,11 +170,12 @@ async def resolve_user_timezone(user_id: str) -> str | None:
     Routes through the ``user_db()`` accessor, NOT ``User.prisma()``: this
     runs in the copilot-executor and scheduler processes, which never connect
     a local Prisma client, and the accessor falls back to the DatabaseManager
-    RPC there.
+    RPC there. The lookup runs under the registry deadline; a timeout is a
+    failed lookup.
     """
     try:
         try:
-            user = await user_db().get_user_by_id(user_id)
+            user = await within_deadline(user_db().get_user_by_id(user_id))
         except ValueError:
             # Authoritative: the user row doesn't exist.
             return "UTC"

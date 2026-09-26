@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import prisma.models
 import pytest
 from prisma.enums import MemoryScopeScheduleState, ResourceVisibility
+from prisma.errors import UniqueViolationError
 
 from backend.data import memory_schedule
 from backend.util.exceptions import NotAuthorizedError
@@ -38,8 +39,9 @@ def _row(**overrides) -> SimpleNamespace:
 def table(mocker) -> MagicMock:
     client = MagicMock()
     client.find_first = AsyncMock(return_value=None)
+    client.find_unique = AsyncMock(return_value=None)
     client.find_many = AsyncMock(return_value=[])
-    client.upsert = AsyncMock(return_value=_row())
+    client.create = AsyncMock(return_value=_row())
     client.update_many = AsyncMock(return_value=1)
     mocker.patch.object(
         prisma.models.MemoryScopeSchedule, "prisma", return_value=client
@@ -63,27 +65,75 @@ async def test_get_matches_on_scope_and_owner(table):
     )
 
 
+def _unique_violation() -> UniqueViolationError:
+    return UniqueViolationError(
+        {"user_facing_error": {"message": "Unique constraint failed: scopeKey"}}
+    )
+
+
 @pytest.mark.asyncio
-async def test_claim_creates_in_the_given_state_and_never_overwrites(table):
+async def test_claim_creates_in_the_given_state(table):
     await memory_schedule.claim_scope_schedule(
         "user-1", "expert_abc", "expert-1", "Asia/Tokyo", PAUSED
     )
 
-    data = table.upsert.await_args.kwargs["data"]
-    assert data["create"] == {
-        "scopeKey": "expert_abc",
-        "userId": "user-1",
-        "expertId": "expert-1",
-        "timezone": "Asia/Tokyo",
-        "state": PAUSED,
-    }
-    # An existing row is returned as it is: its creator set its state.
-    assert data["update"] == {}
+    table.create.assert_awaited_once_with(
+        data={
+            "scopeKey": "expert_abc",
+            "userId": "user-1",
+            "expertId": "expert-1",
+            "timezone": "Asia/Tokyo",
+            "state": PAUSED,
+        }
+    )
+    table.find_unique.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_claim_refuses_another_users_scope(table):
-    table.upsert.return_value = _row(userId="someone-else")
+async def test_a_claim_that_loses_the_race_returns_the_winner_unchanged(table):
+    """Concurrent first claims: the create hits the unique key, and the row
+    the other claim created comes back as it is, never overwritten."""
+    table.create.side_effect = _unique_violation()
+    table.find_unique.return_value = _row(state=PAUSED)
+
+    row = await memory_schedule.claim_scope_schedule("user-1", "user-1", None, "UTC")
+
+    assert row.state == PAUSED
+    table.find_unique.assert_awaited_once_with(where={"scopeKey": "user-1"})
+
+
+@pytest.mark.asyncio
+async def test_a_winner_deleted_before_the_re_read_is_claimed_again(table):
+    table.create.side_effect = [_unique_violation(), _row()]
+    table.find_unique.return_value = None
+
+    row = await memory_schedule.claim_scope_schedule("user-1", "user-1", None, "UTC")
+
+    assert row.scope_key == "user-1"
+    assert table.create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_claim_gives_up_after_two_tries(table):
+    """A violation with no row to read back (the winner deleted twice, or a
+    clash on the expert's own unique key) propagates on the second try."""
+    table.create.side_effect = _unique_violation()
+    table.find_unique.return_value = None
+
+    with pytest.raises(UniqueViolationError):
+        await memory_schedule.claim_scope_schedule("user-1", "user-1", None, "UTC")
+    assert table.create.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raced", [False, True])
+async def test_claim_refuses_another_users_scope(table, raced: bool):
+    theirs = _row(userId="someone-else")
+    if raced:
+        table.create.side_effect = _unique_violation()
+        table.find_unique.return_value = theirs
+    else:
+        table.create.return_value = theirs
 
     with pytest.raises(NotAuthorizedError):
         await memory_schedule.claim_scope_schedule("user-1", "user-1", None, "UTC")
@@ -121,6 +171,22 @@ async def test_resuming_leaves_the_job_ids_to_the_next_registration(table):
     await memory_schedule.set_scope_state("user-1", "user-1", ACTIVE)
 
     assert table.update_many.await_args.kwargs["data"] == {"state": ACTIVE}
+
+
+@pytest.mark.asyncio
+async def test_a_guarded_state_change_only_moves_that_state(table):
+    table.update_many.return_value = 0
+
+    moved = await memory_schedule.set_scope_state(
+        "user-1", "user-1", ACTIVE, only_from=PAUSED
+    )
+
+    assert moved is False
+    assert table.update_many.await_args.kwargs["where"] == {
+        "scopeKey": "user-1",
+        "userId": "user-1",
+        "state": PAUSED,
+    }
 
 
 @pytest.mark.asyncio

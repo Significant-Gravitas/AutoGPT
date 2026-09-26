@@ -28,7 +28,8 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.util.feature_flag import Flag
 
-from . import scheduling
+from . import deadline, scheduling
+from .registry_fakes_test import Hang
 from .scheduling import (
     DREAM_SYSTEM_JOBS,
     REGISTRATION_TTL_SECONDS,
@@ -174,6 +175,19 @@ async def test_resolve_user_timezone_returns_none_when_db_lookup_fails():
     accessor = _user_db(side_effect=ConnectionError("db down"))
     with patch(_PATH_USER_DB, return_value=accessor):
         assert await resolve_user_timezone(USER) is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_user_timezone_gives_up_at_the_deadline(monkeypatch):
+    """A hanging lookup is a failed lookup ("unknown", not "UTC"), and the
+    hanging call is cancelled."""
+    monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", 0.05)
+    hang = Hang()
+    accessor = MagicMock()
+    accessor.get_user_by_id = hang.forever
+    with patch(_PATH_USER_DB, return_value=accessor):
+        assert await resolve_user_timezone(USER) is None
+    assert hang.started == hang.cancelled == 1
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from typing import Literal
 import prisma.models
 import prisma.types
 from prisma.enums import MemoryScopeScheduleState, ResourceVisibility
+from prisma.errors import UniqueViolationError
 from pydantic import BaseModel
 
 from backend.util.exceptions import NotAuthorizedError
@@ -86,24 +87,35 @@ async def claim_scope_schedule(
     """Create the scope's row in ``state`` unless one exists, and return it.
 
     An existing row comes back unchanged: whoever created it set its state.
-    Raises ``NotAuthorizedError`` when the key is another user's.
+    Concurrent first claims all return the one row that won: the create is
+    tried, and on the unique violation the winner is read back. Raises
+    ``NotAuthorizedError`` when the key is another user's.
     """
-    row = await prisma.models.MemoryScopeSchedule.prisma().upsert(
-        where={"scopeKey": scope_key},
-        data={
-            "create": {
-                "scopeKey": scope_key,
-                "userId": user_id,
-                "expertId": expert_id,
-                "timezone": user_timezone,
-                "state": state,
-            },
-            "update": {},
-        },
-    )
+    data: prisma.types.MemoryScopeScheduleCreateInput = {
+        "scopeKey": scope_key,
+        "userId": user_id,
+        "expertId": expert_id,
+        "timezone": user_timezone,
+        "state": state,
+    }
+    try:
+        row = await prisma.models.MemoryScopeSchedule.prisma().create(data=data)
+    except UniqueViolationError:
+        row = await _claim_winner(data)
     if row.userId != user_id:
         raise NotAuthorizedError(f"Memory scope {scope_key[:12]} is another user's")
     return MemoryScopeSchedule.from_db(row)
+
+
+async def _claim_winner(
+    data: prisma.types.MemoryScopeScheduleCreateInput,
+) -> prisma.models.MemoryScopeSchedule:
+    """The row a concurrent claim created. If it was deleted before this
+    read, the create is tried once more, and a second violation (or one on
+    another key, such as a second row for the same expert) propagates."""
+    table = prisma.models.MemoryScopeSchedule.prisma()
+    row = await table.find_unique(where={"scopeKey": data["scopeKey"]})
+    return row if row is not None else await table.create(data=data)
 
 
 async def record_scope_jobs(
@@ -135,19 +147,30 @@ async def record_scope_jobs(
 
 
 async def set_scope_state(
-    user_id: str, scope_key: str, state: MemoryScopeScheduleState
+    user_id: str,
+    scope_key: str,
+    state: MemoryScopeScheduleState,
+    *,
+    only_from: MemoryScopeScheduleState | None = None,
 ) -> bool:
-    """Move the scope to ``state``; False when it has no row.
+    """Move the scope to ``state``; False when it has no row, or, with
+    ``only_from``, when the row is in any other state.
 
     Leaving ACTIVE forgets the job ids too: the registry removes the jobs
     together with the state change.
     """
+    where: prisma.types.MemoryScopeScheduleWhereInput = {
+        "scopeKey": scope_key,
+        "userId": user_id,
+    }
+    if only_from is not None:
+        where["state"] = only_from
     data: prisma.types.MemoryScopeScheduleUpdateManyMutationInput = {"state": state}
     if state != MemoryScopeScheduleState.ACTIVE:
         data["communityJobId"] = None
         data["nightlyJobId"] = None
     updated = await prisma.models.MemoryScopeSchedule.prisma().update_many(
-        where={"scopeKey": scope_key, "userId": user_id}, data=data
+        where=where, data=data
     )
     return updated > 0
 
