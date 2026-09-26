@@ -1,4 +1,6 @@
-from typing import Any, Awaitable, Callable
+import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -13,10 +15,8 @@ from backend.sdk import (
 )
 from backend.util.exceptions import BlockExecutionError
 
-from ._api import ConductorClient
+from ._api import PAGE_SIZE, ConductorClient
 from ._config import conductor
-
-PAGE_SIZE = 100
 
 
 async def paginate(
@@ -96,11 +96,17 @@ class ConductorGetAccountBlock(Block):
         self, credentials: APIKeyCredentials, limit: int
     ) -> dict[str, Any]:
         client = ConductorClient(credentials)
+        user, projects, sections, routines = await asyncio.gather(
+            client.get_me(),
+            paginate(client.list_projects, limit),
+            paginate(client.list_sections, limit),
+            paginate(client.list_routines, limit),
+        )
         return {
-            "user": await client.get_me(),
-            "projects": await paginate(client.list_projects, limit),
-            "sections": await paginate(client.list_sections, limit),
-            "routines": await paginate(client.list_routines, limit),
+            "user": user,
+            "projects": projects,
+            "sections": sections,
+            "routines": routines,
         }
 
     async def run(

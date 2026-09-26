@@ -70,7 +70,9 @@ class ConductorListWorkspacesBlock(Block):
         super().__init__(
             id="2410943a-0e63-47d9-a205-9f0dc8fc9b9b",
             description="List Conductor workspaces, optionally filtered by project, "
-            "state, name, repository, creator or activity date.",
+            "state, name, repository, creator or activity date. When filtering "
+            "within a project, a page can be empty while has_more is true; "
+            "continue with next_offset until has_more is false.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             effect=BlockEffect.READ,
             input_schema=self.Input,

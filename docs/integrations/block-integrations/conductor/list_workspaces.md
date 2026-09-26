@@ -6,7 +6,7 @@ Lists Conductor workspaces with optional project, state, name, repository, creat
 ## Conductor List Workspaces
 
 ### What it is
-List Conductor workspaces, optionally filtered by project, state, name, repository, creator or activity date.
+List Conductor workspaces, optionally filtered by project, state, name, repository, creator or activity date. When filtering within a project, a page can be empty while has_more is true; continue with next_offset until has_more is false.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
