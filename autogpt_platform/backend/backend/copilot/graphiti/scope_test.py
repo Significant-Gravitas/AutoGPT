@@ -105,10 +105,18 @@ class TestRedisKeys:
         "prefix",
         [COMMUNITY_REBUILD_REGISTRATION_PREFIX, NIGHTLY_BATCH_REGISTRATION_PREFIX],
     )
-    def test_registration_keys_on_owner_user(
+    def test_registration_keys_on_scope_key(
         self, expert_id: str | None, prefix: str
     ) -> None:
+        """The crons are registered per scope, so each scope has its own
+        marker; the account's is the legacy per-user key."""
         scope = MemoryScope.build(USER_ID, expert_id)
+        expected = f"{prefix}:{derive_memory_scope_key(USER_ID, expert_id)}"
+        assert scope.redis_key("registration", registration_prefix=prefix) == expected
+
+    def test_account_registration_key_is_unchanged(self) -> None:
+        scope = MemoryScope.for_user(USER_ID)
+        prefix = NIGHTLY_BATCH_REGISTRATION_PREFIX
         legacy = f"{prefix}:{USER_ID}"
         assert scope.redis_key("registration", registration_prefix=prefix) == legacy
 

@@ -21,6 +21,10 @@ Runtime prompt instructions live in `prompting.py:get_graphiti_supplement()`.
 - Be careful about memory pollution from assistant/tool phrasing; extraction quality matters as much as ingestion success.
 - Keep warm-context and tool-driven recall resilient: failures should degrade gracefully rather than break chat execution.
 
+## Dream Schedules
+
+Every memory scope (the account, or one hired expert) has one `MemoryScopeSchedule` row and, while that row is ACTIVE, two crons: `dream_nightly_batch_{scope_key}` (03:00 owner-local) and `community_rebuild_{scope_key}` (Sunday 04:00); the account's scope key is its user id, so its job ids predate the table. `copilot/dream/registry.py` keeps the crons in step with the scope — the first memory write per group in a process, a hire or raise, and a resume register it; an archive or a schedule pause pauses it; a timezone change re-registers every scope of the user — and the table, not the Redis markers, decides whether a scope is scheduled. Existing deployments fill the table once with `poetry run memory-schedule-backfill` (`--dry-run` only counts; `--force` re-registers every cron, e.g. after jobs were lost from the scheduler): it schedules every account with a `user_*` FalkorDB graph and every hired expert, pauses paused and archived experts, prints a JSON report and is safe to re-run. Run it where the backend services' environment is set, since it needs Postgres, Redis, FalkorDB, the scheduler service and the flag backend; crons are only registered for owners with `dream-pass-enabled` or `graphiti-communities-enabled` on.
+
 ## Query Cookbook
 
 Run everything from `autogpt_platform/backend` and use `poetry run ...`.

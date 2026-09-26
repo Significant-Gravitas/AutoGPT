@@ -8,7 +8,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Callable, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import (
@@ -30,12 +30,21 @@ from sqlalchemy import MetaData, create_engine
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.dream.scheduling import (
-    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
-    NIGHTLY_BATCH_REGISTRATION_PREFIX,
-    clear_registration_marker,
+    COMMUNITY_REBUILD_JOB_PREFIX,
+    DREAM_SYSTEM_JOBS,
+    NIGHTLY_BATCH_JOB_PREFIX,
+    DreamSystemJob,
+    dream_system_job,
+)
+from backend.copilot.dream.scope_jobs import (
+    forget_registration,
+    record_scope_run,
+    scope_label,
+    scope_schedule_active,
 )
 from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
@@ -84,6 +93,9 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import AppEnvironment, Config
+
+if TYPE_CHECKING:
+    from backend.copilot.dream.nightly_batch import NightlyBatchResult
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -887,45 +899,80 @@ def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
 
 
-def execute_community_rebuild(user_id: str):
-    """Per-user Graphiti community rebuild (P-1.7).
+def execute_community_rebuild(user_id: str, expert_id: str | None = None):
+    """Weekly community-rebuild cron body of one memory scope (P-1.7).
+
+    The job is ``community_rebuild_{scope_key}``. The account's jobs pass
+    only ``user_id``, as they did when the crons were per user. Runs only
+    while ``_memory_scope_may_fire`` lets it, and stamps
+    ``lastCommunityRunAt`` when the rebuild finishes without an error.
+    """
+    scope = MemoryScope.build(user_id, expert_id)
+    if not run_async(_memory_scope_may_fire(scope)):
+        return
+    result = _rebuild_scope_communities(scope)
+    if result is not None and not result.get("error"):
+        run_async(record_scope_run(scope, "community"))
+
+
+def _rebuild_scope_communities(scope: MemoryScope) -> dict | None:
+    """Flag-gated community rebuild of one scope, with its outcome logged.
 
     Sync wrapper around the async ``rebuild_communities_for_user`` so it
     can run on the APScheduler thread pool. Failures are caught inside
     the coroutine; this wrapper logs the outcome.
 
     Runtime flag gate: if ``GRAPHITI_COMMUNITIES_ENABLED`` flipped from
-    on→off after the schedule was registered, this body short-circuits
-    instead of running. Registration-time gating is in
-    ``add_community_rebuild_schedule``; this is the third layer of
+    on→off after the schedule was registered, this returns None instead
+    of running. Registration-time gating is in
+    ``add_scope_community_rebuild_schedule``; this is the third layer of
     defense (see ``copilot/dream/scheduling.py`` module docstring).
     """
     from backend.copilot.graphiti.config import is_communities_enabled_for_user
 
-    if not run_async(is_communities_enabled_for_user(user_id)):
+    if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
         logger.info(
-            "Community rebuild skipped for user %s — flag flipped off post-registration",
-            user_id[:12],
+            "Community rebuild skipped for %s — flag flipped off post-registration",
+            scope_label(scope),
         )
-        return
+        return None
 
     result = run_async(
-        rebuild_communities_for_user(user_id),
+        rebuild_communities_for_user(scope.owner_user_id, expert_id=scope.expert_id),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
     if result.get("error"):
         logger.warning(
-            "Community rebuild errored for user %s: %s",
-            user_id[:12],
-            result["error"],
+            "Community rebuild errored for %s: %s", scope_label(scope), result["error"]
         )
     else:
         logger.info(
-            "Community rebuild completed for user %s in %.1fs: %s",
-            user_id[:12],
+            "Community rebuild completed for %s in %.1fs: %s",
+            scope_label(scope),
             result.get("elapsed_seconds") or 0.0,
             result.get("communities_built"),
         )
+    return result
+
+
+async def _memory_scope_may_fire(scope: MemoryScope) -> bool:
+    """Whether a dream-system cron of ``scope`` may run now.
+
+    The registry must let it (``scope_schedule_active``: an ACTIVE row, or
+    an account's crons from before the registry), and an expert scope's
+    expert must be active. An archived, paused or unavailable expert is
+    only skipped: its crons belong to the lifecycle hooks, not to this gate.
+    """
+    if not await scope_schedule_active(scope):
+        return False
+    if scope.expert_id is None:
+        return True
+    status = await _expert_scope_status(scope.owner_user_id, scope.expert_id)
+    if status != "active":
+        logger.info(
+            "Memory cron skipped for %s — the expert is %s", scope_label(scope), status
+        )
+    return status == "active"
 
 
 def _morning_briefing_crontab(user_id: str) -> str:
@@ -994,8 +1041,30 @@ async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
         )
 
 
-def execute_nightly_batch_sync(user_id: str):
-    """Per-user nightly batch-family fan-out cron body.
+def execute_nightly_batch_sync(
+    user_id: str, expert_id: str | None = None
+) -> "NightlyBatchResult | None":
+    """Nightly batch-family cron body of one memory scope.
+
+    The job is ``dream_nightly_batch_{scope_key}``. The account's jobs pass
+    only ``user_id``, as they did when the crons were per user. Runs only
+    while ``_memory_scope_may_fire`` lets it, and stamps ``lastNightlyRunAt``
+    when the fan-out reports no error. Returns the ``NightlyBatchResult``,
+    or ``None`` when a gate short-circuits.
+    """
+    scope = MemoryScope.build(user_id, expert_id)
+    if not run_async(_memory_scope_may_fire(scope)):
+        return None
+    result = _submit_nightly_batch(user_id, expert_id)
+    if result is not None and not _nightly_error_parts(result):
+        run_async(record_scope_run(scope, "nightly"))
+    return result
+
+
+def _submit_nightly_batch(
+    user_id: str, expert_id: str | None = None
+) -> "NightlyBatchResult | None":
+    """Flag-gated nightly batch-family fan-out of one scope, outcome logged.
 
     Sync wrapper for APScheduler. The body inside
     ``run_nightly_batch_submit`` sequentially invokes each enabled
@@ -1008,9 +1077,8 @@ def execute_nightly_batch_sync(user_id: str):
 
     Runtime flag gate (layer 3 of the 3-layer design): if
     ``DREAM_PASS_ENABLED`` flipped off after the cron was registered,
-    this body short-circuits before any submitter runs. The
-    consolidation removes the separate dream / ratification crons —
-    both are now submitters inside this single nightly cron.
+    this short-circuits before any submitter runs. The budget check
+    inside the fan-out stays on the owner, whichever scope runs.
 
     Returns the typed ``NightlyBatchResult`` so the admin
     ``*_with_status`` wrapper can persist it on the JobStatus row.
@@ -1023,28 +1091,34 @@ def execute_nightly_batch_sync(user_id: str):
     )
     from backend.util.feature_flag import Flag, is_feature_enabled
 
+    scope = MemoryScope.build(user_id, expert_id)
     if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
         logger.info(
-            "Nightly batch skipped for user %s — DREAM_PASS_ENABLED flipped off",
-            user_id[:12],
+            "Nightly batch skipped for %s — DREAM_PASS_ENABLED flipped off",
+            scope_label(scope),
         )
         return None
 
     result: NightlyBatchResult = run_async(
-        run_nightly_batch_submit(user_id),
+        run_nightly_batch_submit(user_id, expert_id=expert_id),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
+    _log_nightly_outcome(scope, result)
+    return result
+
+
+def _log_nightly_outcome(scope: MemoryScope, result: "NightlyBatchResult") -> None:
     if result.error:
         logger.warning(
-            "Nightly batch errored for user %s (nightly %s): %s",
-            user_id[:12],
+            "Nightly batch errored for %s (nightly %s): %s",
+            scope_label(scope),
             result.nightly_id,
             result.error,
         )
     elif result.skipped:
         logger.info(
-            "Nightly batch skipped for user %s (nightly %s): %s",
-            user_id[:12],
+            "Nightly batch skipped for %s (nightly %s): %s",
+            scope_label(scope),
             result.nightly_id,
             result.skip_reason,
         )
@@ -1056,9 +1130,9 @@ def execute_nightly_batch_sync(user_id: str):
             result.ratification.superseded_count if result.ratification else 0
         )
         logger.info(
-            "Nightly batch completed for user %s in %.1fs (nightly %s): "
+            "Nightly batch completed for %s in %.1fs (nightly %s): "
             "dream_writes=%d dream_proposals=%d ratified=%d superseded=%d",
-            user_id[:12],
+            scope_label(scope),
             result.elapsed_seconds or 0.0,
             result.nightly_id,
             dream_writes,
@@ -1066,7 +1140,34 @@ def execute_nightly_batch_sync(user_id: str):
             rat_ratified,
             rat_superseded,
         )
-    return result
+
+
+def _nightly_error_parts(result: "NightlyBatchResult") -> list[str]:
+    """Every error a nightly result carries.
+
+    ``run_nightly_batch_submit`` never raises — a submitter CRASH is
+    captured in ``NightlyBatchResult.error``, while a submitter that ran
+    but reported its own failure carries it on its sub-result
+    (``dream.error`` / ``ratification.error``) with the top-level error
+    left unset. A run is clean only when all of these are empty.
+    """
+    return [
+        part
+        for part in (
+            result.error,
+            (
+                f"dream: {result.dream.error}"
+                if result.dream is not None and result.dream.error
+                else None
+            ),
+            (
+                f"ratification: {result.ratification.error}"
+                if result.ratification is not None and result.ratification.error
+                else None
+            ),
+        )
+        if part
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1120,7 +1221,9 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         )
 
     try:
-        result = execute_nightly_batch_sync(user_id)
+        # The admin trigger bypasses the registry gate of the cron body:
+        # it runs the account's pass whatever state its scope row is in.
+        result = _submit_nightly_batch(user_id)
     except Exception as exc:
         logger.exception(
             "Admin-triggered nightly batch crashed for user %s job %s",
@@ -1158,31 +1261,11 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
             skip_reason="dream_pass_disabled_runtime",
         )
 
-    # ``run_nightly_batch_submit`` never raises — a submitter CRASH is
-    # captured in ``NightlyBatchResult.error``, while a submitter that
-    # ran but reported its own failure carries it on its sub-result
-    # (``dream.error`` / ``ratification.error``) with the top-level
-    # error left unset. The admin row must read errored for all of
-    # these — otherwise the Memory Visualizer renders a failed dream
-    # as a successful nightly run (same contract as the dream-pass
-    # wrapper below).
-    error_parts = [
-        part
-        for part in (
-            result.error,
-            (
-                f"dream: {result.dream.error}"
-                if result.dream is not None and result.dream.error
-                else None
-            ),
-            (
-                f"ratification: {result.ratification.error}"
-                if result.ratification is not None and result.ratification.error
-                else None
-            ),
-        )
-        if part
-    ]
+    # The admin row must read errored for every error the result carries
+    # (see ``_nightly_error_parts``) — otherwise the Memory Visualizer
+    # renders a failed dream as a successful nightly run (same contract as
+    # the dream-pass wrapper below).
+    error_parts = _nightly_error_parts(result)
     if error_parts:
         try:
             run_async(
@@ -1417,22 +1500,51 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         )
 
 
-def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
-    """Bridge ``clear_registration_marker`` onto the scheduler's event loop.
+def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
+    """Bridge ``forget_registration`` onto the scheduler's event loop.
 
-    Best-effort: a failed clear only delays lazy re-registration until
-    the marker's 7-day TTL expires, so it must never break the delete
-    RPC that called it.
+    Clears the removed cron's id on the scope's registry row (and its Redis
+    marker) so the next ``ensure_scope_scheduled`` registers it again.
+    Best-effort: it must never break the delete RPC that called it.
     """
     try:
-        run_async(clear_registration_marker(user_id, key_prefix), timeout=10)
+        run_async(forget_registration(scope, job), timeout=10)
     except Exception:
         logger.warning(
-            "Failed to clear registration marker %s for user %s",
-            key_prefix,
-            user_id[:12],
-            exc_info=True,
+            "Failed to forget %s of %s", job.name, scope_label(scope), exc_info=True
         )
+
+
+def _memory_job_kwargs(scope: MemoryScope) -> dict[str, str]:
+    """Job kwargs of a dream-system cron. The account's keep the
+    ``{"user_id": ...}`` they had when the crons were per user, so an
+    existing job, a re-registered one and a rolled-back scheduler all call
+    the body the same way."""
+    if scope.expert_id is None:
+        return {"user_id": scope.owner_user_id}
+    return {"user_id": scope.owner_user_id, "expert_id": scope.expert_id}
+
+
+def _memory_job_result(job: JobObj, scope: MemoryScope, user_timezone: str) -> dict:
+    return {
+        "id": job.id,
+        "user_id": scope.owner_user_id,
+        "scope_key": scope.scope_key,
+        "user_timezone": user_timezone,
+        "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+    }
+
+
+def _memory_job_skipped(scope: MemoryScope, user_timezone: str, reason: str) -> dict:
+    return {
+        "id": None,
+        "user_id": scope.owner_user_id,
+        "scope_key": scope.scope_key,
+        "user_timezone": user_timezone,
+        "next_run_time": None,
+        "skipped": True,
+        "reason": reason,
+    }
 
 
 def cleanup_oauth_tokens():
@@ -2707,68 +2819,113 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register a weekly community rebuild for one user.
+        """The account's weekly community rebuild: the scope-keyed method
+        for ``MemoryScope.for_user(user_id)``, whose job id is unchanged."""
+        return self.add_scope_community_rebuild_schedule(
+            MemoryScope.for_user(user_id), user_timezone
+        )
 
-        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` per-user. When the
-        flag is off the call is a no-op — returns a structured "skipped"
-        dict so callers see the same shape as a successful registration.
+    @expose
+    def add_scope_community_rebuild_schedule(
+        self,
+        scope: MemoryScope,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the weekly community rebuild of one memory scope.
+
+        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` for the scope's
+        owner. When the flag is off the call is a no-op — returns a
+        structured "skipped" dict so callers see the same shape as a
+        successful registration. Only adds the job: the registry row that
+        lets it fire is ``copilot/dream/registry.py``'s to write.
         """
         from backend.copilot.graphiti.config import is_communities_enabled_for_user
 
-        if not run_async(is_communities_enabled_for_user(user_id)):
+        user_timezone = user_timezone or "UTC"
+        if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
             logger.info(
-                "Community rebuild registration skipped for user %s — "
+                "Community rebuild registration skipped for %s — "
                 "GRAPHITI_COMMUNITIES_ENABLED flag is off.",
-                user_id[:12],
+                scope_label(scope),
             )
-            return {
-                "id": None,
-                "user_id": user_id,
-                "user_timezone": user_timezone,
-                "next_run_time": None,
-                "skipped": True,
-                "reason": "graphiti_communities_disabled",
-            }
-
-        if not user_timezone:
-            user_timezone = "UTC"
-
-        job_id = f"community_rebuild_{user_id}"
-        job = self.scheduler.add_job(
+            return _memory_job_skipped(
+                scope, user_timezone, "graphiti_communities_disabled"
+            )
+        job = self._add_memory_job(
             execute_community_rebuild,
-            kwargs={"user_id": user_id},
-            trigger=CronTrigger.from_crontab("0 4 * * 0", timezone=user_timezone),
-            id=job_id,
-            name=f"Graphiti community rebuild for {user_id[:12]}",
+            "0 4 * * 0",
+            dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX),
+            scope,
+            user_timezone,
+        )
+        return _memory_job_result(job, scope, user_timezone)
+
+    @expose
+    def delete_community_rebuild_schedule(self, user_id: str) -> bool:
+        """Remove the account's weekly community rebuild."""
+        return self._delete_account_memory_job(
+            user_id, dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX)
+        )
+
+    @expose
+    def remove_scope_memory_jobs(self, scope: MemoryScope) -> list[str]:
+        """Remove every dream-system cron of one memory scope; returns the
+        job ids removed. The ids derive from the scope, so a caller can only
+        ever reach that scope's crons. The registry calls this when it
+        pauses or wipes a scope."""
+        jobs = [
+            self.scheduler.get_job(
+                job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+            )
+            for job in DREAM_SYSTEM_JOBS
+        ]
+        present = [job for job in jobs if job is not None]
+        for job in present:
+            job.remove()
+        if present:
+            logger.info("Removed the memory crons of %s", scope_label(scope))
+        return [job.id for job in present]
+
+    def _add_memory_job(
+        self,
+        func: Callable[..., object],
+        crontab: str,
+        job: DreamSystemJob,
+        scope: MemoryScope,
+        user_timezone: str,
+    ) -> JobObj:
+        """Add, or replace, one dream-system cron of ``scope``."""
+        added = self.scheduler.add_job(
+            func,
+            kwargs=_memory_job_kwargs(scope),
+            trigger=CronTrigger.from_crontab(crontab, timezone=user_timezone),
+            id=job.job_id(scope),
+            name=f"{job.name} for {scope_label(scope)}",
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
             max_instances=1,
         )
         logger.info(
-            "Registered community rebuild job %s for user %s in tz %s",
-            job.id,
-            user_id[:12],
+            "Registered %s job %s for %s in tz %s",
+            job.name,
+            added.id,
+            scope_label(scope),
             user_timezone,
         )
-        return {
-            "id": job.id,
-            "user_id": user_id,
-            "user_timezone": user_timezone,
-            "next_run_time": (
-                job.next_run_time.isoformat() if job.next_run_time else None
-            ),
-        }
+        return added
 
-    @expose
-    def delete_community_rebuild_schedule(self, user_id: str) -> bool:
-        """Remove the weekly community rebuild for one user."""
-        job_id = f"community_rebuild_{user_id}"
-        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
-        if not job:
+    def _delete_account_memory_job(self, user_id: str, job: DreamSystemJob) -> bool:
+        """Remove one of the account's crons and forget it in the registry,
+        so the next ``ensure_scope_scheduled`` registers it again."""
+        scope = MemoryScope.for_user(user_id)
+        existing = self.scheduler.get_job(
+            job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+        )
+        if not existing:
             return False
-        job.remove()
-        _clear_dream_registration_marker(user_id, COMMUNITY_REBUILD_REGISTRATION_PREFIX)
-        logger.info("Removed community rebuild job for user %s", user_id[:12])
+        existing.remove()
+        _forget_dream_registration(scope, job)
+        logger.info("Removed %s job for user %s", job.name, user_id[:12])
         return True
 
     @expose
@@ -2896,72 +3053,55 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register the nightly batch-family fan-out cron for one user.
+        """The account's nightly batch cron: the scope-keyed method for
+        ``MemoryScope.for_user(user_id)``, whose job id is unchanged."""
+        return self.add_scope_nightly_batch_schedule(
+            MemoryScope.for_user(user_id), user_timezone
+        )
 
-        Gated by ``Flag.DREAM_PASS_ENABLED`` per-user. When the flag
-        is off the call is a no-op — returns a structured "skipped"
-        dict matching the shape of a successful registration.
-        Defense-in-depth: the auto-registration helper in
-        ``copilot/dream/scheduling.py`` already gates this, but direct
-        callers (admin endpoint, ad-hoc scripts) bypass that helper.
+    @expose
+    def add_scope_nightly_batch_schedule(
+        self,
+        scope: MemoryScope,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the nightly batch-family fan-out cron of one memory scope.
+
+        Gated by ``Flag.DREAM_PASS_ENABLED`` for the scope's owner. When
+        the flag is off the call is a no-op — returns a structured
+        "skipped" dict matching the shape of a successful registration.
+        Defense-in-depth: the registry in ``copilot/dream/registry.py``
+        already gates this, but direct callers (admin endpoint, ad-hoc
+        scripts) bypass it. Only adds the job: the registry row that lets
+        it fire is the registry's to write.
         """
         from backend.util.feature_flag import Flag, is_feature_enabled
 
-        if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+        user_timezone = user_timezone or "UTC"
+        if not run_async(
+            is_feature_enabled(Flag.DREAM_PASS_ENABLED, scope.owner_user_id)
+        ):
             logger.info(
-                "Nightly batch registration skipped for user %s — "
+                "Nightly batch registration skipped for %s — "
                 "DREAM_PASS_ENABLED flag is off.",
-                user_id[:12],
+                scope_label(scope),
             )
-            return {
-                "id": None,
-                "user_id": user_id,
-                "user_timezone": user_timezone,
-                "next_run_time": None,
-                "skipped": True,
-                "reason": "dream_pass_disabled",
-            }
-
-        if not user_timezone:
-            user_timezone = "UTC"
-
-        job_id = f"dream_nightly_batch_{user_id}"
-        job = self.scheduler.add_job(
+            return _memory_job_skipped(scope, user_timezone, "dream_pass_disabled")
+        job = self._add_memory_job(
             execute_nightly_batch_sync,
-            kwargs={"user_id": user_id},
-            trigger=CronTrigger.from_crontab("0 3 * * *", timezone=user_timezone),
-            id=job_id,
-            name=f"Dream nightly batch for {user_id[:12]}",
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
-            max_instances=1,
-        )
-        logger.info(
-            "Registered nightly batch job %s for user %s in tz %s",
-            job.id,
-            user_id[:12],
+            "0 3 * * *",
+            dream_system_job(NIGHTLY_BATCH_JOB_PREFIX),
+            scope,
             user_timezone,
         )
-        return {
-            "id": job.id,
-            "user_id": user_id,
-            "user_timezone": user_timezone,
-            "next_run_time": (
-                job.next_run_time.isoformat() if job.next_run_time else None
-            ),
-        }
+        return _memory_job_result(job, scope, user_timezone)
 
     @expose
     def delete_nightly_batch_schedule(self, user_id: str) -> bool:
-        """Remove the nightly batch cron for one user."""
-        job_id = f"dream_nightly_batch_{user_id}"
-        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
-        if not job:
-            return False
-        job.remove()
-        _clear_dream_registration_marker(user_id, NIGHTLY_BATCH_REGISTRATION_PREFIX)
-        logger.info("Removed nightly batch job for user %s", user_id[:12])
-        return True
+        """Remove the account's nightly batch cron."""
+        return self._delete_account_memory_job(
+            user_id, dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
+        )
 
     # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
     #
@@ -3085,9 +3225,13 @@ class SchedulerClient(AppServiceClient):
     add_community_rebuild_schedule = endpoint_to_async(
         Scheduler.add_community_rebuild_schedule
     )
+    add_scope_community_rebuild_schedule = endpoint_to_async(
+        Scheduler.add_scope_community_rebuild_schedule
+    )
     delete_community_rebuild_schedule = endpoint_to_async(
         Scheduler.delete_community_rebuild_schedule
     )
+    remove_scope_memory_jobs = endpoint_to_async(Scheduler.remove_scope_memory_jobs)
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
     )
@@ -3100,6 +3244,9 @@ class SchedulerClient(AppServiceClient):
     )
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)
+    add_scope_nightly_batch_schedule = endpoint_to_async(
+        Scheduler.add_scope_nightly_batch_schedule
+    )
     delete_nightly_batch_schedule = endpoint_to_async(
         Scheduler.delete_nightly_batch_schedule
     )

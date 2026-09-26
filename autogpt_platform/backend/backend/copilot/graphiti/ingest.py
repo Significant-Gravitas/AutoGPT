@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 
 from graphiti_core.nodes import EpisodeType
 
+from backend.copilot.dream.registry import ensure_scope_scheduled
+from backend.util.background import spawn_background_task
+
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .scope import MemoryScope
@@ -386,10 +389,11 @@ async def enqueue_conversation_turn(
         return
 
     try:
-        group_id = MemoryScope.build(user_id, expert_id).group_id
+        scope = MemoryScope.build(user_id, expert_id)
     except ValueError:
         logger.warning("Invalid memory scope for ingestion: %s", user_id[:12])
         return
+    group_id = scope.group_id
 
     user_display_name = await resolve_user_name(user_id)
 
@@ -403,8 +407,7 @@ async def enqueue_conversation_turn(
     source_description = f"User message in session {session_id}"
 
     queued = await _enqueue_payload(
-        user_id,
-        group_id,
+        scope,
         {
             "name": episode_name,
             "episode_body": episode_body_for_graphiti,
@@ -437,8 +440,7 @@ async def enqueue_conversation_turn(
                 provenance=f"session:{session_id}",
             )
             await _enqueue_payload(
-                user_id,
-                group_id,
+                scope,
                 {
                     "name": f"finding_{session_id}",
                     "episode_body": envelope.model_dump_json(),
@@ -504,8 +506,7 @@ async def enqueue_episode(
     source = EpisodeType.json if is_json else EpisodeType.text
 
     queued = await _enqueue_payload(
-        user_id,
-        group_id,
+        scope,
         {
             "name": name,
             "episode_body": episode_body,
@@ -555,21 +556,23 @@ async def wait_for_ingestion(
     return await completion.wait(timeout_seconds)
 
 
-async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
+async def _enqueue_payload(scope: MemoryScope, payload: dict) -> bool:
     """Atomically select a group worker and enqueue one payload.
 
     Queue selection, worker creation, and ``put_nowait`` share
     ``workers_lock`` with idle retirement. A caller can therefore never put
     work onto a queue after its worker has unregistered it.
 
-    Also fires the auto-registration of the user's dream-system
-    schedules (community rebuild + dream pass + ratification pass) the
-    first time we see them in this process — lazy on first memory write,
-    per-job flag-gated, per-job idempotent. See
-    ``copilot/dream/scheduling.py:ensure_dream_system_scheduled``.
+    Also fires the registration of the scope's own dream-system crons
+    (community rebuild + nightly batch) the first time this process sees
+    the group — lazy on first memory write, per-cron flag-gated,
+    idempotent; an expert group registers the expert's scope, not the
+    account's. See ``copilot/dream/registry.py:ensure_scope_scheduled``.
     Fire-and-forget; failures are swallowed inside the helper so
     ingestion is never affected.
     """
+    user_id = scope.owner_user_id
+    group_id = scope.group_id
     state = _get_loop_state()
     is_new_group_for_this_process = False
     async with state.workers_lock:
@@ -591,15 +594,12 @@ async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
             return False
 
     if is_new_group_for_this_process:
-        # Fire-and-forget; per-job Redis SETNX inside the helper
-        # provides cross-process / cross-restart idempotency. Done
-        # outside the workers_lock so the scheduler RPC can't
-        # deadlock ingestion.
-        from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
-
-        asyncio.create_task(
-            ensure_dream_system_scheduled(user_id),
-            name=f"dream-system-register-{user_id[:12]}",
+        # Fire-and-forget; the scope's registry row provides cross-process
+        # / cross-restart idempotency. Done outside the workers_lock so the
+        # scheduler RPC can't deadlock ingestion.
+        spawn_background_task(
+            ensure_scope_scheduled(scope),
+            name=f"dream-system-register-{scope.scope_key[:12]}",
         )
 
     return True

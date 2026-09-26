@@ -94,6 +94,7 @@ from backend.api.features.store import skill_db
 from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
+from backend.copilot.dream.registry import sync_expert_scope
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     SkillNotFoundError,
@@ -985,7 +986,10 @@ async def _hire_expert_impl(
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
 
     if state == "revived":
+        # Resuming the revived expert's schedules resumes its memory crons.
         expert = await _resume_revived_hire(expert)
+    elif state == "created":
+        _schedule_expert_memory(user_id, expert.id)
     # A hire that runs setup is counted by its job, once its preloads are
     # known; an idempotent re-hire of an already-active expert is not a hire.
     if state == "created" or await _claim_setup(expert.id):
@@ -1004,6 +1008,18 @@ async def _hire_expert_impl(
             {"template_id": template.id, "failed_preloads_count": 0},
         )
     return HireResult(expert=_to_model(expert))
+
+
+def _schedule_expert_memory(user_id: str, expert_id: str) -> None:
+    """Register a new expert's memory crons without holding up its hire.
+
+    Safe to race an archive: the registry never overrides a paused scope and
+    takes down crons it registered for one that was paused meanwhile.
+    """
+    spawn_background_task(
+        sync_expert_scope(user_id, expert_id, active=True),
+        name=f"expert-memory-schedule-{expert_id}",
+    )
 
 
 async def _reload_expert(row: prisma.models.Expert) -> prisma.models.Expert:
@@ -1313,6 +1329,7 @@ async def create_raised_expert(
         weekly_budget=weekly_budget,
         skills=resolved.skill_names,
     )
+    _schedule_expert_memory(user_id, expert.id)
     failed_skill_installs = await raise_attachments.install_marketplace_skills(
         user_id, expert.id, resolved.skills
     )
@@ -2246,8 +2263,9 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
     # Pause BEFORE flipping isArchived: pause_expert_schedules refuses
     # archived rows, and pausing first still records the pause event + stamp
     # for the archive. A nonexistent/foreign expert makes the pause a no-op
-    # and the archive update below raises the 404.
-    await scheduling.pause_expert_schedules(
+    # and the archive update below raises the 404. The pause also pauses the
+    # expert's memory crons.
+    paused = await scheduling.pause_expert_schedules(
         user_id, expert_id, reason="Expert archived"
     )
     updated = await prisma.models.Expert.prisma().update_many(
@@ -2273,6 +2291,10 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
             raise ExpertNotFoundError(expert_id)
         # Re-archiving is an idempotent no-op; the funnel counts each firing once.
         return
+    if not paused:
+        # Already paused before the archive (a budget breach), so the pause
+        # above did nothing: make sure the memory crons stop too.
+        await sync_expert_scope(user_id, expert_id, active=False)
     emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
     try:
         await scheduling.detach_expert_triggers(user_id, expert_id)

@@ -158,6 +158,7 @@ model User {
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
   ExpertRoutines       ExpertRoutine[]
+  MemoryScopeSchedules MemoryScopeSchedule[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -1204,6 +1205,7 @@ model Expert {
   PauseEvents     ExpertPauseEvent[]
   BundledSkills   ExpertSkillListing[]
   Routines        ExpertRoutine[]
+  MemorySchedule  MemoryScopeSchedule?
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1443,6 +1445,53 @@ model ExpertPod {
 
   // Doubles as the userId lookup index for list_pods.
   @@unique([userId, name])
+}
+
+// One row per memory scope (the account, or one hired expert) that the
+// nightly dream and weekly community-rebuild crons serve. It is the source of
+// truth for "is this scope scheduled" (copilot/dream/registry.py): whether its
+// crons may run, the timezone they were registered in, and their APScheduler
+// job ids. The Redis registration markers are only a cache of it.
+model MemoryScopeSchedule {
+  // MemoryScope.scope_key: the raw user id for the account, expert_<sha256>
+  // for an expert. Also the suffix of both job ids.
+  scopeKey String @id
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Null for the account scope, whose scopeKey equals userId (a CHECK in the
+  // migration holds that).
+  expertId String? @unique
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // The IANA timezone the recorded jobs were registered in.
+  timezone String
+  state    MemoryScopeScheduleState @default(ACTIVE)
+
+  // Null while that cron is not registered: its flag is off, registration
+  // failed, or the scope is paused or wiped.
+  communityJobId String?
+  nightlyJobId   String?
+
+  // When each job body last ran its pass without an error.
+  lastNightlyRunAt   DateTime?
+  lastCommunityRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([userId])
+  @@index([state])
+}
+
+// ACTIVE: the crons are registered and run. PAUSED: the expert is archived or
+// its schedules are paused; the crons are removed until it resumes. WIPED: the
+// scope's memory was erased; the crons are removed until it is resumed.
+enum MemoryScopeScheduleState {
+  ACTIVE
+  PAUSED
+  WIPED
 }
 
 ////////////////////////////////////////////////////////////

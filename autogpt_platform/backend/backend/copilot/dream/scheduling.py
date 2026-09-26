@@ -1,198 +1,173 @@
-"""Lazy auto-registration of per-user dream-system schedules.
+"""The dream-system cron table, the owner-timezone lookup and the Redis markers.
 
-Two per-user APScheduler cron jobs cover the whole dream system through
-P12 (the cross-scope insight cron for P8 will add a third row when it
-builds):
+Two APScheduler cron jobs serve every memory scope (the account, or one
+hired expert):
 
-  * ``community_rebuild_{user_id}``    — Sun 04:00 user-local (P-1.7),
+  * ``community_rebuild_{scope_key}``    — Sun 04:00 owner-local (P-1.7),
     direct LLM (not batch), activity-gated inside the function.
-  * ``dream_nightly_batch_{user_id}``  — daily 03:00 user-local,
+  * ``dream_nightly_batch_{scope_key}``  — daily 03:00 owner-local,
     submits all nightly-batch-family work (dream pass, ratification
     supersession sweep, plus future P2 / P3 / P4 / P11 stages).
 
-Both crons share the same registration helper. Adding a future cron
-(P8 cross-scope insight, P9 lucid dream queue if it grows beyond
-nightly batch, etc.) is a single row in :data:`DREAM_SYSTEM_JOBS`.
+The account's scope key is its user id, so its job ids are unchanged from
+when the crons were keyed per user. Registering, pausing and resuming them
+is ``registry.py``'s job; this module only says what the crons are. Adding a
+future cron (P8 cross-scope insight, ...) is a row in
+:data:`DREAM_SYSTEM_JOBS` plus a job-id column on ``MemoryScopeSchedule``.
 
-Three layers of flag gating:
+Three layers of flag gating, all on the scope owner's flags:
 
-  1. **Registration helper (this file)** — cheapest gate; LD flag
-     check runs before the Redis CAS-style dedup so a flag-off user
-     never burns an RPC or a Redis key.
-  2. **Scheduler ``@expose`` body** — defense-in-depth for direct
-     callers (admin endpoint, ad-hoc scripts) that bypass this helper.
-  3. **Execution wrapper (``execute_*_sync``)** — runtime gate; if the
-     flag flips off after registration, the scheduled job still fires
-     but short-circuits before the body runs.
+  1. **Registry** — the cheapest gate; runs before any database read, so
+     a flag-off user costs neither a query nor a scheduler RPC.
+  2. **Scheduler ``@expose`` method** — defense-in-depth for direct
+     callers (admin endpoint, ad-hoc scripts) that bypass the registry.
+  3. **Job body** — if the flag flips off after registration, the job
+     still fires but short-circuits before the work runs.
 
-**Timezone drift handling.** APScheduler binds the cron trigger to
-the timezone at job-creation time — a later ``User.timezone`` change
-silently leaves the cron firing at the old local time. To detect and
-recover from drift, the Redis dedup key stores the timezone the cron
-was registered with (not the literal ``"1"`` it stored historically).
-Every call to :func:`ensure_dream_system_scheduled` compares the
-stored value to the user's current timezone; on mismatch, re-registers
-via ``replace_existing=True``. The eager path (``force_refresh=True``)
-is invoked from the ``User.timezone`` update endpoint; the lazy path
-catches direct-DB / webhook / SSO writes that bypass the API.
-
-Per-job idempotency: each cron has its OWN Redis dedup key. Flipping
-a single flag from off→on after the other cron already registered
-must let the newly-enabled cron in.
-
-Per-job failure isolation: a scheduler RPC failure for one cron
-surfaces in this call's return dict but never blocks the other crons.
-
-Failures are logged at WARN and swallowed; the caller (the graphiti
-ingestion path) must never break because dream-system registration
-failed.
+**Redis markers.** ``{prefix}:{scope_key}`` holds the timezone a cron was
+last registered in, for seven days. The registry used to decide on them;
+it now reads the ``MemoryScopeSchedule`` table instead and only keeps the
+markers written (and cleared on an in-band delete) as a cache.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
 from pydantic.dataclasses import dataclass
 
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.data import redis_client
+from backend.data.db_accessors import user_db
+from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.util.feature_flag import Flag
 
 logger = logging.getLogger(__name__)
 
 
-# Matches the longest cron cadence in the registry (weekly community
-# rebuild) so the lazy drift-detection path re-checks at least once
-# per cron-tick. Going longer leaves a window where Redis says
-# "registered with tz X" but the cron was deleted out-of-band; going
-# shorter wastes scheduler RPC calls when nothing changed.
+# Matches the longest cron cadence in the table (weekly community rebuild).
 REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
+# A marker is a cache: never wait longer than this on Redis for one.
+MARKER_TIMEOUT_SECONDS = 5
 
-# Redis dedup key prefixes, exported so the scheduler's delete_*
-# @expose methods can clear the matching marker when a cron is removed
-# in-band (see :func:`clear_registration_marker`). Must stay in sync
-# with the registry rows below — pinned by a test.
+# Redis marker prefixes, one per cron. Must stay in sync with the table rows
+# below — pinned by a test.
 COMMUNITY_REBUILD_REGISTRATION_PREFIX = "community_rebuild_registered"
 NIGHTLY_BATCH_REGISTRATION_PREFIX = "dream_nightly_batch_registered"
 
+# Job-id prefixes, shared with the scheduler's ``@expose`` methods so the two
+# can never disagree on a job id.
+COMMUNITY_REBUILD_JOB_PREFIX = "community_rebuild"
+NIGHTLY_BATCH_JOB_PREFIX = "dream_nightly_batch"
 
-# A SchedulerClient is the caller's handle to the scheduler service.
-# We don't import the concrete type here to avoid a circular import
-# during the executor's own bootstrap; the helper just calls the
-# named coroutine on whatever the caller hands in.
+
+# A SchedulerClient is the caller's handle to the scheduler service. The
+# concrete type is not imported here to avoid a circular import during the
+# executor's own bootstrap; the table just calls the named coroutine on
+# whatever the caller hands in.
 SchedulerLike = Any
 
 
 @dataclass(frozen=True)
 class DreamSystemJob:
-    """One row of the dream-system schedule registry.
-
-    The registry is the single source of truth for "what background
-    crons does the dream system run per user". Adding a new cron
-    (e.g. weekly cross-scope insight for P8) means appending a row
-    here; the helper picks it up automatically, the scheduler call
-    gets the right job_id, and the Redis dedup key falls out naturally.
-    """
+    """One row of the dream-system cron table."""
 
     name: str
     """Human-readable, used only for log messages."""
 
     job_id_prefix: str
-    """Job-id naming convention: ``f"{job_id_prefix}_{user_id}"``.
-    Must match the scheduler ``@expose`` method's own job_id format."""
+    """Job ids are ``f"{job_id_prefix}_{scope_key}"``."""
 
     registration_key_prefix: str
-    """Redis dedup key prefix. Each cron has its OWN key so flipping
-    a single flag mid-life lets only that cron re-enter the helper —
-    a shared key would block recovery on flag drift."""
+    """Redis marker prefix. Each cron has its own marker."""
 
     flag: Flag
-    """LD feature flag gate. Evaluated per-user before any other work."""
+    """LD feature flag gate, evaluated for the scope's owner."""
 
     skip_reason: str
-    """The ``reason`` string returned in a flag-off skip result. Keyed
-    on the flag value so the helper's return dict is grep-able for
-    "why did this user not get a schedule"."""
+    """The ``reason`` recorded when the flag is off, so "why does this scope
+    have no schedule" is grep-able."""
 
-    register: Callable[[SchedulerLike, str, str], Awaitable[dict]]
-    """``(client, user_id, user_timezone) -> awaitable[result dict]``.
-    The actual SchedulerClient method that creates the cron job."""
+    row_field: Literal["community_job_id", "nightly_job_id"]
+    """The ``MemoryScopeSchedule`` field holding this cron's job id."""
+
+    register: Callable[[SchedulerLike, MemoryScope, str], Awaitable[dict]]
+    """``(client, scope, owner_timezone) -> awaitable[result dict]``: the
+    SchedulerClient method that creates the cron job."""
+
+    def job_id(self, scope: MemoryScope) -> str:
+        """This cron's APScheduler job id for ``scope``."""
+        return f"{self.job_id_prefix}_{scope.scope_key}"
 
 
 def _register_community_rebuild(
-    client: SchedulerLike, user_id: str, user_timezone: str
+    client: SchedulerLike, scope: MemoryScope, user_timezone: str
 ) -> Awaitable[dict]:
-    return client.add_community_rebuild_schedule(
-        user_id=user_id, user_timezone=user_timezone
+    return client.add_scope_community_rebuild_schedule(
+        scope=scope, user_timezone=user_timezone
     )
 
 
 def _register_nightly_batch(
-    client: SchedulerLike, user_id: str, user_timezone: str
+    client: SchedulerLike, scope: MemoryScope, user_timezone: str
 ) -> Awaitable[dict]:
-    return client.add_nightly_batch_schedule(
-        user_id=user_id, user_timezone=user_timezone
+    return client.add_scope_nightly_batch_schedule(
+        scope=scope, user_timezone=user_timezone
     )
 
 
-# The registry. Listed in cron-frequency order (rarest first) so the
-# log trail when a new user lands reads "weekly → daily" — the
-# narrative matches how the schedules build up over time. The future
-# P8 cross-scope cron (weekly, batch) will land between these two.
+# Listed in cron-frequency order (rarest first) so a new scope's log trail
+# reads "weekly → daily". The future P8 cross-scope cron (weekly, batch)
+# lands between these two.
 DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
     DreamSystemJob(
         name="Community rebuild",
-        job_id_prefix="community_rebuild",
+        job_id_prefix=COMMUNITY_REBUILD_JOB_PREFIX,
         registration_key_prefix=COMMUNITY_REBUILD_REGISTRATION_PREFIX,
         flag=Flag.GRAPHITI_COMMUNITIES_ENABLED,
         skip_reason="graphiti_communities_disabled",
+        row_field="community_job_id",
         register=_register_community_rebuild,
     ),
     DreamSystemJob(
         name="Dream nightly batch",
-        job_id_prefix="dream_nightly_batch",
-        # NOT shared with the now-removed individual dream/ratification
-        # crons — those keys (``dream_pass_registered``,
-        # ``ratification_pass_registered``) are orphaned by the
-        # consolidation and naturally expire via their 7-day TTL.
+        job_id_prefix=NIGHTLY_BATCH_JOB_PREFIX,
         registration_key_prefix=NIGHTLY_BATCH_REGISTRATION_PREFIX,
-        # The nightly batch cron carries dream pass + ratification
-        # supersession + future P2/P3/P4/P11 work. All ride the same
-        # master gate; finer-grained flags inside individual submitters
-        # control whether each stage actually runs within the cron.
+        # One master gate for the dream pass, the ratification sweep and
+        # the future P2/P3/P4/P11 stages; finer flags inside individual
+        # submitters decide whether each stage runs within the cron.
         flag=Flag.DREAM_PASS_ENABLED,
         skip_reason="dream_pass_disabled",
+        row_field="nightly_job_id",
         register=_register_nightly_batch,
     ),
 ]
 
 
-async def _resolve_user_timezone(user_id: str) -> str | None:
-    """Look up the user's IANA timezone from Postgres.
+def dream_system_job(job_id_prefix: str) -> DreamSystemJob:
+    """The table row for ``job_id_prefix``; raises ``KeyError`` if unknown."""
+    for job in DREAM_SYSTEM_JOBS:
+        if job.job_id_prefix == job_id_prefix:
+            return job
+    raise KeyError(job_id_prefix)
 
-    Returns ``"UTC"`` only when the answer is authoritative (user
-    missing or timezone genuinely unset) and ``None`` when the lookup
-    itself failed — a transient DB blip is "unknown", not "UTC", and
-    must never silently re-register the user's local-time crons onto
-    UTC.
 
-    Single DB call — cached at the helper level for the duration of
-    one ``ensure_dream_system_scheduled`` invocation so registering
-    multiple crons doesn't take multiple round-trips.
+async def resolve_user_timezone(user_id: str) -> str | None:
+    """The owner's IANA timezone, which every scope of theirs is scheduled in.
 
-    Routes through the ``user_db()`` accessor, NOT ``User.prisma()``:
-    this runs in the copilot-executor and scheduler processes, which
-    never connect a local Prisma client. A direct Prisma call raises
-    ``ClientNotConnectedError`` on every invocation there — a
-    *permanent* failure the keep-existing-schedules fallback was never
-    designed for, which silently prevented dream crons from ever being
-    registered. The accessor falls back to the DatabaseManager RPC in
-    Prisma-less processes (same pattern as ``dream/apply.py``).
+    Returns ``"UTC"`` only when the answer is authoritative (user missing or
+    timezone genuinely unset) and ``None`` when the lookup itself failed — a
+    transient DB blip is "unknown", not "UTC", and must never silently
+    re-register the owner's local-time crons onto UTC.
+
+    Routes through the ``user_db()`` accessor, NOT ``User.prisma()``: this
+    runs in the copilot-executor and scheduler processes, which never connect
+    a local Prisma client, and the accessor falls back to the DatabaseManager
+    RPC there.
     """
     try:
-        from backend.data.db_accessors import user_db
-        from backend.data.model import USER_TIMEZONE_NOT_SET
-
         try:
             user = await user_db().get_user_by_id(user_id)
         except ValueError:
@@ -212,235 +187,49 @@ async def _resolve_user_timezone(user_id: str) -> str | None:
         return None
 
 
-def _registration_key(user_id: str, key_prefix: str) -> str:
-    # Keyed on the owning user whichever memory scope triggered the write:
-    # the dream-system crons are registered per user.
-    return MemoryScope.for_user(user_id).redis_key(
-        "registration", registration_prefix=key_prefix
-    )
-
-
-async def _read_registration_tz(user_id: str, key_prefix: str) -> str | None:
-    """Read the timezone the cron was last registered with.
-
-    Returns:
-      * The stored timezone string when the key exists.
-      * ``None`` when the key is missing OR Redis is unavailable. The
-        caller treats both as "needs registration" — scheduler-side
-        ``replace_existing=True`` makes a redundant call a cheap no-op.
-    """
-    try:
-        from backend.data.redis_client import get_redis_async
-
-        redis = await get_redis_async()
-        key = _registration_key(user_id, key_prefix)
-        stored = await redis.get(key)
-        if stored is None:
-            return None
-        if isinstance(stored, bytes):
-            return stored.decode("utf-8", errors="replace")
-        return str(stored)
-    except Exception:
-        logger.debug(
-            "Redis read failed for %s:%s; treating as not-registered",
-            key_prefix,
-            user_id[:12],
-            exc_info=True,
-        )
-        return None
-
-
-async def _write_registration_tz(
-    user_id: str, key_prefix: str, current_tz: str
+async def write_registration_marker(
+    scope: MemoryScope, key_prefix: str, user_timezone: str
 ) -> None:
-    """Persist the timezone we just registered the cron with.
-
-    Best-effort — a Redis write failure means the next call will see
-    the key as missing and force a redundant re-register (cheap via
-    ``replace_existing=True``).
-    """
+    """Cache the timezone a cron was just registered in. Best-effort, and
+    bounded: a hire must not wait on the Redis client's connect retries."""
     try:
-        from backend.data.redis_client import get_redis_async
-
-        redis = await get_redis_async()
-        key = _registration_key(user_id, key_prefix)
-        await redis.set(key, current_tz, ex=REGISTRATION_TTL_SECONDS)
-    except Exception:
-        logger.debug(
-            "Redis write failed for %s:%s; lazy path will re-detect later",
-            key_prefix,
-            user_id[:12],
-            exc_info=True,
+        await asyncio.wait_for(
+            _set_marker(_registration_key(scope, key_prefix), user_timezone),
+            timeout=MARKER_TIMEOUT_SECONDS,
         )
+    except Exception:
+        logger.debug("Redis write failed for %s:%s", key_prefix, scope.scope_key[:12])
 
 
-async def clear_registration_marker(user_id: str, key_prefix: str) -> None:
-    """Delete the Redis registration marker for one dream-system cron.
+async def clear_registration_marker(scope: MemoryScope, key_prefix: str) -> None:
+    """Delete one cron's Redis marker after the cron was removed in-band.
 
-    Called from the scheduler's ``delete_*_schedule`` @expose methods so
-    an in-band cron removal immediately re-opens lazy registration
-    instead of leaving the marker to block it for the remainder of its
-    7-day TTL. Single-key DEL so it routes on Redis Cluster.
-
-    Best-effort — on Redis failure the marker simply expires via TTL,
-    which is the pre-existing out-of-band-deletion recovery window.
+    Single-key DEL so it routes on Redis Cluster. Best-effort and bounded —
+    on Redis failure the marker simply expires via its TTL.
     """
     try:
-        from backend.data.redis_client import get_redis_async
-
-        redis = await get_redis_async()
-        await redis.delete(_registration_key(user_id, key_prefix))
+        await asyncio.wait_for(
+            _delete_marker(_registration_key(scope, key_prefix)),
+            timeout=MARKER_TIMEOUT_SECONDS,
+        )
     except Exception:
         logger.warning(
             "Redis delete failed for %s:%s; marker will expire via TTL",
             key_prefix,
-            user_id[:12],
+            scope.scope_key[:12],
             exc_info=True,
         )
 
 
-async def ensure_dream_system_scheduled(
-    user_id: str, *, force_refresh: bool = False
-) -> dict[str, Any]:
-    """Idempotently register every flag-enabled dream-system cron for a user.
+def _registration_key(scope: MemoryScope, key_prefix: str) -> str:
+    return scope.redis_key("registration", registration_prefix=key_prefix)
 
-    Fire-and-forget callable from two trigger points:
 
-    * **Lazy path** — called from the graphiti ingestion's
-      ``_ensure_worker`` the first time we see a memory write for a
-      user in this process. Drift-detects timezone changes via the
-      Redis stored value and re-registers when the user's current
-      timezone differs from the stored one.
-    * **Eager path** — called with ``force_refresh=True`` from the
-      ``User.timezone`` update endpoint so a profile change takes
-      effect within a single APScheduler tick instead of waiting for
-      the dedup key's 7-day TTL to expire.
+async def _set_marker(key: str, value: str) -> None:
+    redis = await redis_client.get_redis_async()
+    await redis.set(key, value, ex=REGISTRATION_TTL_SECONDS)
 
-    Walks :data:`DREAM_SYSTEM_JOBS`, gating each entry on its LD flag,
-    then on per-job drift detection, then the actual scheduler RPC.
-    Each step's failure is isolated; a single bad cron never blocks
-    the others.
 
-    Returns a dict keyed by ``job_id_prefix`` so callers can audit
-    "what happened for this user this call":
-
-      * ``None`` — already registered with the current timezone; no
-        RPC made. (Lazy path's happy case.)
-      * ``{"skipped": True, "reason": "<flag>_disabled"}`` — flag off.
-      * ``{"skipped": True, "reason": "timezone_lookup_failed"}`` —
-        timezone resolution failed; the existing cron and stored tz
-        are left untouched until a later call succeeds.
-      * ``{"skipped": True, "reason": "registration_failed"}`` — RPC
-        raised; logged.
-      * Anything else — the scheduler's own result dict (job id,
-        next_run_time, etc.).
-
-    Empty ``user_id`` → ``{}`` (no work, no error).
-    """
-    if not user_id:
-        return {}
-
-    results: dict[str, Any] = {}
-    tz_cached: str | None = None
-    tz_lookup_failed = False
-    client_cached: SchedulerLike | None = None
-
-    for job in DREAM_SYSTEM_JOBS:
-        try:
-            # Layer 1 of gating: the LD flag check. Cheapest of the
-            # three; always run it first.
-            if not await is_feature_enabled(job.flag, user_id):
-                results[job.job_id_prefix] = {
-                    "skipped": True,
-                    "reason": job.skip_reason,
-                }
-                continue
-
-            # Resolve current timezone once per invocation (single DB
-            # call shared across enabled crons).
-            if tz_cached is None and not tz_lookup_failed:
-                tz_cached = await _resolve_user_timezone(user_id)
-                tz_lookup_failed = tz_cached is None
-
-            if tz_cached is None:
-                # Lookup failed — "unknown" is not "UTC". Re-registering
-                # would silently rebind the user's 03:00-local crons to
-                # UTC; keep the existing cron and stored tz untouched
-                # until a later call resolves the real timezone.
-                results[job.job_id_prefix] = {
-                    "skipped": True,
-                    "reason": "timezone_lookup_failed",
-                }
-                continue
-
-            # Drift detection (unless caller explicitly forced refresh).
-            if not force_refresh:
-                stored_tz = await _read_registration_tz(
-                    user_id, job.registration_key_prefix
-                )
-                if stored_tz == tz_cached:
-                    # Same tz, still within TTL → no work.
-                    results[job.job_id_prefix] = None
-                    continue
-                if stored_tz is not None and stored_tz != tz_cached:
-                    logger.info(
-                        "Dream-system: timezone drift for user %s job %s "
-                        "(stored=%s, current=%s) — re-registering",
-                        user_id[:12],
-                        job.name,
-                        stored_tz,
-                        tz_cached,
-                    )
-                # else: stored_tz is None → first registration OR
-                # Redis was unavailable. Either way, register.
-
-            # Lazy client handle so a fully-flag-off user never even
-            # constructs the scheduler client.
-            if client_cached is None:
-                from backend.util.clients import get_scheduler_client
-
-                client_cached = get_scheduler_client()
-
-            result = await job.register(client_cached, user_id, tz_cached)
-            if result.get("skipped"):
-                # The scheduler's own layer-2 gate refused without
-                # creating the job — layer 1 already said ON, so this
-                # is always a disagreement (LD cold start in the
-                # scheduler pod, transient LD error, targeting-context
-                # divergence). Writing the marker here would leave
-                # Redis claiming "registered" with no APScheduler job
-                # behind it for the full 7-day TTL. Surface it and let
-                # the next cycle retry.
-                logger.warning(
-                    "Dream-system: scheduler skipped %s for user %s "
-                    "(reason=%s) despite the local flag check passing — "
-                    "not marking registered; next cycle retries",
-                    job.name,
-                    user_id[:12],
-                    result.get("reason"),
-                )
-                results[job.job_id_prefix] = result
-                continue
-            await _write_registration_tz(
-                user_id, job.registration_key_prefix, tz_cached
-            )
-            logger.info(
-                "Dream-system: registered %s for user %s (tz=%s)",
-                job.name,
-                user_id[:12],
-                tz_cached,
-            )
-            results[job.job_id_prefix] = result
-        except Exception:
-            logger.warning(
-                "Dream-system: failed to register %s for user %s",
-                job.name,
-                user_id[:12],
-                exc_info=True,
-            )
-            results[job.job_id_prefix] = {
-                "skipped": True,
-                "reason": "registration_failed",
-            }
-
-    return results
+async def _delete_marker(key: str) -> None:
+    redis = await redis_client.get_redis_async()
+    await redis.delete(key)
