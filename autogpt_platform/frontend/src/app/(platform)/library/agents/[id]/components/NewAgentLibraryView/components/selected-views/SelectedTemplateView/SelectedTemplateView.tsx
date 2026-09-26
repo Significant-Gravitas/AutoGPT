@@ -8,6 +8,7 @@ import { CredentialsInput } from "../../../../../../../../../../components/conte
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
+  getTriggerConfigFields,
 } from "../../modals/AgentInputsReadOnly/helpers";
 import { RunAgentInputs } from "../../modals/RunAgentInputs/RunAgentInputs";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
@@ -45,6 +46,9 @@ export function SelectedTemplateView({
     setDescription,
     inputs,
     setInputValue,
+    triggerConfig,
+    setTriggerConfigValue,
+    hasTriggerConfig,
     credentials,
     setCredentialValue,
     handleSaveChanges,
@@ -61,6 +65,9 @@ export function SelectedTemplateView({
   const agentCredentialsFields = getAgentCredentialsFields(agent);
   const inputFields = Object.entries(agentInputFields);
   const credentialFields = Object.entries(agentCredentialsFields);
+  const triggerConfigFields = hasTriggerConfig
+    ? Object.entries(getTriggerConfigFields(agent))
+    : [];
 
   if (error) {
     return (
@@ -135,6 +142,22 @@ export function SelectedTemplateView({
               </div>
             </RunDetailCard>
 
+            {triggerConfigFields.length > 0 && (
+              <RunDetailCard title="Trigger Configuration">
+                <div className="flex flex-col gap-4">
+                  {triggerConfigFields.map(([key, inputSubSchema]) => (
+                    <RunAgentInputs
+                      key={key}
+                      schema={inputSubSchema}
+                      value={triggerConfig[key] ?? inputSubSchema.default}
+                      placeholder={inputSubSchema.description}
+                      onChange={(value) => setTriggerConfigValue(key, value)}
+                    />
+                  ))}
+                </div>
+              </RunDetailCard>
+            )}
+
             {inputFields.length > 0 && (
               <RunDetailCard title="Your Input">
                 <div className="flex flex-col gap-4">
@@ -166,7 +189,7 @@ export function SelectedTemplateView({
                       onSelectCredentials={(value) =>
                         setCredentialValue(key, value!)
                       }
-                      siblingInputs={inputs}
+                      siblingInputs={{ ...inputs, ...triggerConfig }}
                     />
                   ))}
                 </div>

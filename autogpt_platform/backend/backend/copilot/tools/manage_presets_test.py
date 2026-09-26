@@ -248,15 +248,26 @@ async def test_update_pause(session):
     assert tdb.update_triggered_preset.await_args.kwargs["is_active"] is False
 
 
-@pytest.mark.asyncio
-async def test_update_reconfigure_merges_and_reuses_credentials(session):
+def _triggered_preset_db(inputs):
+    """A preset whose trigger config is nested under a mask key, plus the two
+    db handles UpdatePresetTool reaches through."""
     current = _preset()
-    current.inputs = {"repo": "owner/repo", "events": ["push"]}
+    current.inputs = inputs
     current.credentials = {"github": MagicMock()}
     ldb = MagicMock()
     ldb.get_preset = AsyncMock(return_value=current)
     tdb = MagicMock()
     tdb.update_triggered_preset = AsyncMock(return_value=_preset())
+    return current, ldb, tdb
+
+
+@pytest.mark.asyncio
+async def test_update_trigger_config_merges_into_trigger_mask(session):
+    """`trigger_config` is merged into the nested `_node_input_mask_` sub-dict,
+    not at the top level, so the reconfiguration reaches the trigger."""
+    current, ldb, tdb = _triggered_preset_db(
+        {"_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]}}
+    )
     with (
         patch(f"{_PATH}.library_db", return_value=ldb),
         patch(f"{_PATH}.triggers_db", return_value=tdb),
@@ -265,14 +276,121 @@ async def test_update_reconfigure_merges_and_reuses_credentials(session):
             user_id=_USER,
             session=session,
             preset_id="preset-1",
-            inputs={"events": ["push", "pull_request"]},
+            trigger_config={"events": ["push", "pull_request"]},
         )
     kwargs = tdb.update_triggered_preset.await_args.kwargs
     assert kwargs["inputs"] == {
-        "repo": "owner/repo",
-        "events": ["push", "pull_request"],
+        "_node_input_mask_abc": {
+            "repo": "owner/repo",
+            "events": ["push", "pull_request"],
+        },
     }
     assert kwargs["credentials"] == current.credentials
+
+
+@pytest.mark.asyncio
+async def test_update_graph_inputs_stay_out_of_the_trigger_mask(session):
+    """A triggered preset's own graph inputs are editable, and must land beside
+    the mask rather than inside it — inside, the graph input never changes and
+    the key pollutes the trigger config."""
+    _, ldb, tdb = _triggered_preset_db(
+        {"topic": "weather", "_node_input_mask_abc": {"repo": "owner/repo"}}
+    )
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            inputs={"topic": "sports"},
+        )
+    assert tdb.update_triggered_preset.await_args.kwargs["inputs"] == {
+        "topic": "sports",
+        "_node_input_mask_abc": {"repo": "owner/repo"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_graph_inputs_and_trigger_config_in_one_call(session):
+    """Both arguments in one call take different paths through the same merge;
+    folding either into the other would leave the tests above green."""
+    _, ldb, tdb = _triggered_preset_db(
+        {"topic": "weather", "_node_input_mask_abc": {"repo": "owner/repo"}}
+    )
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            inputs={"topic": "sports"},
+            trigger_config={"events": ["push"]},
+        )
+    assert tdb.update_triggered_preset.await_args.kwargs["inputs"] == {
+        "topic": "sports",
+        "_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]},
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_trigger_config_on_a_flat_preset_is_stored_nested(session):
+    """A flat triggered preset the boot backfill has not converted yet takes a
+    trigger_config edit, through the real update_triggered_preset, and is saved
+    with its config under the mask as delivery would read it."""
+    from backend.api.features.library import triggers
+
+    current, ldb, _ = _triggered_preset_db({"repo": "owner/repo"})
+    trigger_node = MagicMock(id="abc-123")
+    graph = MagicMock(webhook_input_node=trigger_node, organization_id="o", team_id="t")
+    tdb = MagicMock(update_triggered_preset=triggers.update_triggered_preset)
+    update = AsyncMock(return_value=_preset())
+    tp = "backend.api.features.library.triggers"
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+        patch(f"{tp}.db.get_preset", new=AsyncMock(return_value=current)),
+        patch(f"{tp}.get_graph", new=AsyncMock(return_value=graph)),
+        patch(f"{tp}.make_node_credentials_input_map", return_value={}),
+        patch(f"{tp}.validate_and_construct_node_execution_input", new=AsyncMock()),
+        patch(
+            f"{tp}.setup_webhook_for_block",
+            new=AsyncMock(return_value=(MagicMock(id="wh-1"), None)),
+        ),
+        patch(f"{tp}.db.update_preset", new=update),
+        patch(f"{tp}.db.set_preset_webhook", new=AsyncMock(return_value=_preset())),
+    ):
+        result = await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            trigger_config={"events": ["push"]},
+        )
+    assert isinstance(result, PresetUpdatedResponse)
+    assert update.await_args.kwargs["inputs"] == {
+        "_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]}
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_trigger_config_without_a_trigger_is_rejected(session):
+    current, ldb, tdb = _triggered_preset_db({"topic": "weather"})
+    current.webhook_id = None
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        result = await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            trigger_config={"repo": "owner/repo"},
+        )
+    assert isinstance(result, ErrorResponse)
+    tdb.update_triggered_preset.assert_not_awaited()
 
 
 @pytest.mark.asyncio

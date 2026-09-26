@@ -19,6 +19,40 @@ if TYPE_CHECKING:
     from backend.data.integrations import Webhook
 
 
+NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
+
+
+def node_input_mask_key(node_id: str) -> str:
+    """Per-node key under which a triggered preset stores that node's input mask
+    (the trigger config), nested alongside the regular graph inputs.
+
+    Shared by preset setup/update (``triggers.py``), webhook execution
+    (``_execute_webhook_preset_trigger``), and version migration
+    (``migrate_webhook_presets_to_new_version``) so all sites agree on the
+    format; the data migration mirrors it in SQL. Lives here (not in
+    ``triggers.py``) so ``db.py`` can use it without an import cycle.
+
+    Keyed on the node id's first UUID segment, which is collision-free only
+    because a graph has at most one trigger node.
+    """
+    return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
+
+
+def split_trigger_inputs(
+    inputs: GraphInput, trigger_node_id: str
+) -> tuple[GraphInput, Any]:
+    """Split a triggered preset's inputs into ``(graph_inputs, trigger_config)``.
+
+    A legacy flat preset the boot backfill has not converted yet has no mask
+    key: all of its inputs are trigger config, as they were before the mask.
+    """
+    graph_inputs = dict(inputs)
+    mask_key = node_input_mask_key(trigger_node_id)
+    if mask_key not in graph_inputs:
+        return {}, graph_inputs
+    return graph_inputs, graph_inputs.pop(mask_key)
+
+
 class LibraryAgentStatus(str, Enum):
     COMPLETED = "COMPLETED"
     HEALTHY = "HEALTHY"
@@ -522,6 +556,9 @@ class TriggeredPresetSetupRequest(pydantic.BaseModel):
     graph_version: int
 
     trigger_config: dict[str, Any]
+    constant_inputs: dict[str, Any] = pydantic.Field(
+        default_factory=dict, description="Regular graph input values"
+    )
     agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
         default_factory=dict
     )

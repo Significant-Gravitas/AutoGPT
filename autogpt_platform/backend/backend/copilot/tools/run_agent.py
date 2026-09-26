@@ -426,10 +426,12 @@ class RunAgentTool(BaseTool):
                     message=(
                         f"Agent '{graph.name}' runs on a webhook trigger, so it "
                         "can't be run or scheduled directly. Set it up with "
-                        "tool:setup_agent_webhook_trigger using the trigger block's "
-                        "config (see trigger_info.config_schema). For provider "
-                        "webhooks (e.g. GitHub), ask the user which connected "
-                        "account to register the webhook under — never auto-pick."
+                        "tool:setup_agent_webhook_trigger using the trigger "
+                        "block's config (see trigger_info.config_schema), plus "
+                        "constant_inputs for any graph inputs it has (see "
+                        "agent.inputs). For provider webhooks (e.g. GitHub), ask "
+                        "the user which connected account to register the "
+                        "webhook under — never auto-pick."
                     ),
                     session_id=session_id,
                     agent=self._build_agent_details(graph, credentials),

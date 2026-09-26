@@ -32,6 +32,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -101,17 +102,20 @@ function renderWithInitialParams(
     defaultOptions: { queries: { retry: false } },
   }),
 ) {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <NuqsTestingAdapter searchParams={searchParams}>
-        <BackendAPIProvider>
-          <OnboardingProvider>
-            <TooltipProvider>{ui}</TooltipProvider>
-          </OnboardingProvider>
-        </BackendAPIProvider>
-      </NuqsTestingAdapter>
-    </QueryClientProvider>,
-  );
+  function Providers({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <NuqsTestingAdapter searchParams={searchParams}>
+          <BackendAPIProvider>
+            <OnboardingProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+            </OnboardingProvider>
+          </BackendAPIProvider>
+        </NuqsTestingAdapter>
+      </QueryClientProvider>
+    );
+  }
+  return render(ui, { wrapper: Providers });
 }
 
 function baseHandlers(
@@ -1073,5 +1077,72 @@ describe("Library agent view — trigger agents", () => {
     expect(screen.queryByText("Hidden Watcher")).toBeNull();
     // And the GET .../triggers request never fires.
     expect(triggerAgentsCallCount).toBe(0);
+  });
+
+  // The sidebar's run modal is seeded from the active template, which
+  // NewAgentLibraryView splits in render. Unmemoised, every parent re-render
+  // (the runs list's execution polling, a tab count update) hands the modal
+  // fresh objects and its seed effect wipes what the user is typing.
+  test("a parent re-render keeps what the user typed into the run modal", async () => {
+    const template = makeWebhookPreset({
+      webhook_id: null,
+      inputs: { topic: "weather", _node_input_mask_abc: { events: "push" } },
+    });
+
+    server.use(
+      ...baseHandlers({
+        has_external_trigger: true,
+        credentials_input_schema: { properties: {}, required: [] },
+        trigger_setup_info: {
+          provider: "github",
+          credentials_input_name: null,
+          config_schema: {
+            type: "object",
+            properties: { events: { type: "string", title: "Events" } },
+            required: [],
+          },
+        },
+        input_schema: {
+          type: "object",
+          properties: { topic: { type: "string", title: "Topic" } },
+          required: ["topic"],
+        },
+      }),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2GetASpecificPresetMockHandler(
+        getGetV2GetASpecificPresetResponseMock(template),
+      ),
+    );
+
+    const user = userEvent.setup();
+    const { rerender } = renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=templates&activeItem=preset-1",
+    );
+
+    const openButton = await screen.findByRole("button", {
+      name: /new agent task/i,
+    });
+    await waitFor(() =>
+      expect((openButton as HTMLButtonElement).disabled).toBe(false),
+    );
+    await user.click(openButton);
+
+    // Scoped to the dialog: the Templates detail view behind it shows the same
+    // stored values.
+    const dialog = await screen.findByRole("dialog");
+    const topic = await within(dialog).findByDisplayValue("weather");
+    await user.clear(topic);
+    await user.type(topic, "sports");
+    expect(within(dialog).getByDisplayValue("sports")).toBeTruthy();
+
+    rerender(<NewAgentLibraryView />);
+
+    expect(within(dialog).getByDisplayValue("sports")).toBeTruthy();
+    expect(within(dialog).queryByDisplayValue("weather")).toBeNull();
+    // The trigger config half of the split is seeded the same way.
+    expect(within(dialog).getByDisplayValue("push")).toBeTruthy();
   });
 });

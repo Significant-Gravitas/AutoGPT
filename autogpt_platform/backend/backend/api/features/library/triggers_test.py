@@ -18,6 +18,17 @@ _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
 
 
+@pytest.fixture(autouse=True)
+def _mock_validate_execution_input():
+    """setup_triggered_preset validates inputs via the execution-input builder,
+    which hits the DB. Default it to a no-op; the validation-failure test
+    overrides it to raise."""
+    with patch(
+        f"{_PATH}.validate_and_construct_node_execution_input", new=AsyncMock()
+    ) as m:
+        yield m
+
+
 def _graph():
     node = MagicMock()
     node.id = "trigger-node"
@@ -74,6 +85,44 @@ async def test_creates_preset_on_success():
         result = await _setup()
     assert result is preset
     create_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_wraps_trigger_config_alongside_constant_inputs():
+    """The created preset stores regular inputs plus the trigger config nested
+    under a per-node ``_node_input_mask_{node_id}`` key (node id ``trigger-node``
+    -> ``trigger``)."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
+        await setup_triggered_preset(
+            user_id=_USER,
+            graph_id="graph-1",
+            graph_version=1,
+            name="My Trigger",
+            description="",
+            trigger_config={"repo": "owner/repo"},
+            agent_credentials={},
+            constant_inputs={"some_input": "value"},
+        )
+    created_inputs = create_mock.await_args.kwargs["preset"].inputs
+    assert created_inputs == {
+        "some_input": "value",
+        "_node_input_mask_trigger": {"repo": "owner/repo"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_validation_mask_includes_payload_placeholder(
+    _mock_validate_execution_input,
+):
+    """The validation call passes a placeholder `payload` in the trigger mask so
+    the webhook trigger node passes execution-input construction (which requires
+    a payload for WEBHOOK/WEBHOOK_MANUAL starting nodes)."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_webhook, p_expert, p_create:
+        await _setup()
+    masks = _mock_validate_execution_input.await_args.kwargs["nodes_input_masks"]
+    assert "payload" in masks["trigger-node"]
 
 
 @pytest.mark.asyncio
@@ -268,6 +317,37 @@ async def test_webhook_setup_rejected_raises():
     create_mock.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_invalid_inputs_rejected_before_webhook_setup():
+    """Inputs the execution-input validator rejects fail the setup before any
+    webhook is registered or preset created."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.validate_and_construct_node_execution_input",
+            new=AsyncMock(side_effect=ValueError("count is not a number")),
+        ),
+    ):
+        with pytest.raises(InvalidInputError, match="Invalid preset inputs"):
+            await setup_triggered_preset(
+                user_id=_USER,
+                graph_id="graph-1",
+                graph_version=1,
+                name="My Trigger",
+                description="",
+                trigger_config={"repo": "owner/repo"},
+                agent_credentials={},
+                constant_inputs={"count": "not-a-number"},
+            )
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
 # ---- update_triggered_preset ----
 
 
@@ -286,6 +366,7 @@ def _preset(
     preset.expert_id = expert_id
     preset.organization_id = organization_id
     preset.team_id = team_id
+    preset.inputs = {}
     return preset
 
 
@@ -336,7 +417,7 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
         await update_triggered_preset(
             user_id=_USER,
             preset_id="preset-1",
-            inputs={"repo": "owner/repo"},
+            inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
             credentials={},
         )
     m["setup"].assert_awaited_once()
@@ -362,7 +443,7 @@ async def test_update_expert_trigger_keeps_personal_scope():
         await update_triggered_preset(
             user_id=_USER,
             preset_id="preset-1",
-            inputs={"repo": "owner/repo"},
+            inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
             credentials={},
         )
 
@@ -383,7 +464,7 @@ async def test_update_legacy_expert_trigger_rehomes_through_new_webhook():
         await update_triggered_preset(
             user_id=_USER,
             preset_id="preset-1",
-            inputs={"repo": "owner/repo"},
+            inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
             credentials={},
         )
 
@@ -408,7 +489,7 @@ async def test_update_expert_trigger_maps_missing_personal_tenancy_to_unavailabl
             await update_triggered_preset(
                 user_id=_USER,
                 preset_id="preset-1",
-                inputs={"repo": "owner/repo"},
+                inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
                 credentials={},
             )
 
@@ -423,9 +504,148 @@ async def test_update_reconfigure_webhook_rejected_raises():
             await update_triggered_preset(
                 user_id=_USER,
                 preset_id="preset-1",
-                inputs={"repo": "x"},
+                inputs={"_node_input_mask_trigger": {"repo": "x"}},
                 credentials={},
             )
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_validates_inputs_before_registering(
+    _mock_validate_execution_input,
+):
+    """Regular graph inputs are editable on a triggered preset, so the update
+    path must reject an invalid set before the webhook is re-registered —
+    otherwise every later delivery dies inside the executor's catch-all."""
+    _mock_validate_execution_input.side_effect = ValueError("field required: topic")
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="Invalid preset inputs"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"_node_input_mask_trigger": {"repo": "x"}, "topic": None},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_validates_mask_apart_from_graph_inputs(
+    _mock_validate_execution_input,
+):
+    """The trigger config goes to the node mask, everything else to graph
+    inputs — the same split the executor makes at delivery time."""
+    with _update_patches(current=_preset(webhook_id="wh-old")):
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={
+                "_node_input_mask_trigger": {"repo": "owner/repo"},
+                "topic": "weather",
+            },
+            credentials={},
+        )
+    kwargs = _mock_validate_execution_input.await_args.kwargs
+    assert kwargs["graph_inputs"] == {"topic": "weather"}
+    assert kwargs["nodes_input_masks"] == {
+        "trigger-node": {"repo": "owner/repo", "payload": {}}
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_stores_new_credentials_in_mask():
+    """The stored mask wins over preset.credentials at execution, so replaced
+    credentials the caller echoed back in the mask must not survive the update."""
+    old_creds = {"id": "cred-old", "provider": "github", "type": "api_key"}
+    new_creds = {"id": "cred-new", "provider": "github", "type": "api_key"}
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        m["creds_map"].return_value = {"trigger-node": {"credentials": new_creds}}
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={
+                "_node_input_mask_trigger": {
+                    "repo": "owner/repo",
+                    "credentials": old_creds,
+                },
+                "topic": "weather",
+            },
+            credentials={"credentials": MagicMock()},
+        )
+    assert m["update"].await_args.kwargs["inputs"] == {
+        "_node_input_mask_trigger": {"repo": "owner/repo", "credentials": new_creds},
+        "topic": "weather",
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_run_template_on_trigger_graph_skips_webhook():
+    """A graph can hold input nodes beside its trigger node, so a run-template
+    preset on it carries no mask and no webhook; its edit is a plain update."""
+    with _update_patches(current=_preset()) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"topic": "weather"},
+            credentials={},
+        )
+    m["setup"].assert_not_awaited()
+    m["set_webhook"].assert_not_awaited()
+    assert m["update"].await_args.kwargs["inputs"] == {"topic": "weather"}
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_missing_input_mask_raises():
+    """Reconfiguring a nested triggered preset without the
+    ``_node_input_mask_{node_id}`` key is rejected before any webhook work."""
+    current = _preset(webhook_id="wh-old")
+    current.inputs = {"_node_input_mask_trigger": {"repo": "owner/repo"}}
+    with _update_patches(current=current) as m:
+        with pytest.raises(InvalidInputError, match="Missing trigger configuration"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"some_input": "value"},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_flat_preset_is_stored_nested():
+    """A flat preset the boot backfill has not converted yet is read as delivery
+    reads it — all inputs are trigger config — and saved in the nested shape."""
+    current = _preset(webhook_id="wh-old")
+    current.inputs = {"repo": "owner/old"}
+    with _update_patches(current=current) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/new"},
+            credentials={},
+        )
+    assert m["setup"].await_args.kwargs["trigger_config"] == {"repo": "owner/new"}
+    assert m["update"].await_args.kwargs["inputs"] == {
+        "_node_input_mask_trigger": {"repo": "owner/new"}
+    }
+    m["set_webhook"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_non_dict_trigger_config_raises():
+    """A non-dict value under the trigger mask key is rejected with a clean
+    InvalidInputError rather than a TypeError from `**trigger_config`."""
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="must be an object"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"_node_input_mask_trigger": "not-a-dict"},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()
 
 
