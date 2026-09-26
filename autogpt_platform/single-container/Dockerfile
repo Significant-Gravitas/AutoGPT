@@ -4,7 +4,7 @@
 # be copied into the Debian appliance image. Browser-facing service URLs are
 # intentionally same-origin paths; the in-container reverse proxy decides
 # where they land at runtime.
-FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS frontend
+FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS frontend
 
 WORKDIR /app
 RUN corepack enable
@@ -33,7 +33,7 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
-FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-runtime
+FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS node-runtime
 
 ARG NPM_VERSION=12.0.2
 RUN npm install --global "npm@${NPM_VERSION}" \
@@ -41,11 +41,11 @@ RUN npm install --global "npm@${NPM_VERSION}" \
 
 # RabbitMQ's official image ships a self-contained Erlang/OpenSSL runtime.
 # Pin the current supported 4.1.x patch by its multi-platform manifest.
-FROM rabbitmq:4.1.8@sha256:b921426eabfb39e201c60f0623f6b45a3160cf97b2dc3af2f5340365f65b5be3 AS rabbitmq
+FROM rabbitmq:4.3.5@sha256:078107e036374f4d9bbeab8766799abe474bf252aedb4617ddd2edfa8e2c2c05 AS rabbitmq
 
 # FalkorDB provides the Graphiti memory store. Copy only the server and module;
 # its browser UI is not part of the appliance image.
-FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
+FROM falkordb/falkordb-server:v4.20.6@sha256:b97408d48ab698be5725cd73153a76aeb96cd50d7073bad01a66b95c976e9283 AS falkordb
 
 # autogpt-backend is supplied by Docker Bake from the existing backend
 # Dockerfile's server target. This keeps the backend image contract independent
