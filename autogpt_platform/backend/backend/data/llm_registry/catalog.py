@@ -699,11 +699,14 @@ def _build_catalog() -> CatalogPayload:
                 supports_json_output=True,
                 supports_reasoning=True,
                 supports_parallel_tool_calls=True,
+                # Live OpenRouter rate as of 2026-09-25: $0.021/$0.0616 per
+                # 1M, cache read $0.0042/1M (dropped from $0.06/$0.18,
+                # verified via check_openrouter_prices.py).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=9.0,
-                    output_credits_per_1m=27.0,
-                    cache_read_credits_per_1m=1.8,
+                    input_credits_per_1m=3.15,
+                    output_credits_per_1m=9.24,
+                    cache_read_credits_per_1m=0.63,
                 ),
             ),
             CatalogModel(
