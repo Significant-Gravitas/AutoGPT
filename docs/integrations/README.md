@@ -253,6 +253,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Text Generator](block-integrations/llm.md#ai-text-generator) | A block that produces text responses using a Large Language Model (LLM) based on customizable prompts and system instructions |
 | [AI Text Summarizer](block-integrations/llm.md#ai-text-summarizer) | A block that summarizes long texts using a Large Language Model (LLM), with configurable focus topics and summary styles |
 | [AI Video Generator](block-integrations/fal/ai_video_generator.md#ai-video-generator) | Generate videos using FAL AI models |
+| [Ask Google Developer Docs](block-integrations/google/developer_docs.md#ask-google-developer-docs) | Answer a question about Google developer products with an answer Google writes from its official documentation, plus the passages it used |
 | [Bannerbear Text Overlay](block-integrations/bannerbear/text_overlay.md#bannerbear-text-overlay) | Add text overlay to images using Bannerbear templates |
 | [Claude Code](block-integrations/llm.md#claude-code) | Execute tasks using Claude Code in an E2B sandbox |
 | [Code Generation](block-integrations/llm.md#code-generation) | Generate or refactor code using an OpenAI API key or a connected ChatGPT plan through Codex App Server |
@@ -260,6 +261,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results |
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
+| [Get Google Maps Platform Coding Instructions](block-integrations/google/maps_platform_docs.md#get-google-maps-platform-coding-instructions) | Get Google's system prompt for AI assistants that write Google Maps Platform code |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
 | [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
 | [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
@@ -541,6 +543,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
+| [Get Google Developer Docs](block-integrations/google/developer_docs.md#get-google-developer-docs) | Get whole pages of Google's developer documentation as Markdown, up to 20 at a time |
 | [Github Add Label](block-integrations/github/issues.md#github-add-label) | A block that adds a label to a GitHub issue or pull request for categorization and organization |
 | [Github Assign Issue](block-integrations/github/issues.md#github-assign-issue) | A block that assigns a GitHub user to an issue for task ownership and tracking |
 | [Github Assign PR Reviewer](block-integrations/github/pull_requests.md#github-assign-pr-reviewer) | This block assigns a reviewer to a specified GitHub pull request |
@@ -602,6 +605,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Update File](block-integrations/github/repo_files.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
+| [Search Google Developer Docs](block-integrations/google/developer_docs.md#search-google-developer-docs) | Search Google's developer documentation and return the best-matching passages with links to their pages |
+| [Search Google Maps Platform Docs](block-integrations/google/maps_platform_docs.md#search-google-maps-platform-docs) | Search Google Maps Platform documentation and code samples and return the best-matching passages with their source links |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
 ## Media Generation
