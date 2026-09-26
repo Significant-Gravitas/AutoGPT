@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -6,6 +7,8 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import chat_rules, held
+from backend.data import redis_client
+from backend.util.testing import is_tcp_port_reachable
 
 
 class _Redis:
@@ -17,6 +20,9 @@ class _Redis:
 
     async def get(self, key: str) -> str | None:
         return self.data.get(key)
+
+    async def mget_nonatomic(self, keys: list[str]) -> list[str | None]:
+        return [self.data.get(key) for key in keys]
 
 
 @pytest.fixture
@@ -104,6 +110,49 @@ async def test_a_rejection_revokes_every_wider_rule_that_would_have_run_it(redis
 async def test_a_rejection_writes_no_wider_rule_where_there_was_none(redis):
     await chat_rules.set_ask("s", "mcp:h/t", "u", "frankie")
     assert await _rule("other-chat", "mcp:h/t", "frankie") is None
+
+
+async def test_every_level_is_read_in_one_call(redis):
+    """The lookup sits on every gated call, so it must not pay a round trip per level."""
+    await _set("team", "allow")
+    reads = AsyncMock(side_effect=redis.mget_nonatomic)
+    with (
+        patch.object(redis, "mget_nonatomic", reads),
+        patch.object(redis, "get", AsyncMock(side_effect=AssertionError)),
+    ):
+        assert await _rule("s", "mcp:h/t", "frankie") == "allow"
+    reads.assert_awaited_once()
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="local redis cluster not reachable",
+)
+async def test_the_narrowest_rule_decides_on_a_real_cluster():
+    """The three keys hash to different slots, which only a real cluster refuses
+    to read together."""
+    user, chat, key = (f"u-{uuid.uuid4()}", f"s-{uuid.uuid4()}", "mcp:h/t")
+    keys = [
+        chat_rules._key(chat, key),
+        chat_rules._scoped_key("expert", user, "frankie", key),
+        chat_rules._scoped_key("team", user, None, key),
+    ]
+    try:
+        await chat_rules.set_scoped_rule("team", user, None, key, "judge")
+        hit = await chat_rules.rule_for(chat, key, user, "frankie")
+        assert hit is not None and (hit.rule, hit.scope) == ("judge", "team")
+
+        await chat_rules.set_scoped_rule("expert", user, "frankie", key, "allow")
+        hit = await chat_rules.rule_for(chat, key, user, "frankie")
+        assert hit is not None and (hit.rule, hit.scope) == ("allow", "expert")
+
+        await chat_rules.set_rule(chat, key, "ask")
+        hit = await chat_rules.rule_for(chat, key, user, "frankie")
+        assert hit is not None and (hit.rule, hit.scope) == ("ask", "chat")
+    finally:
+        redis = await redis_client.get_redis_async()
+        for k in keys:
+            await redis.delete(k)
 
 
 @pytest.mark.parametrize(
