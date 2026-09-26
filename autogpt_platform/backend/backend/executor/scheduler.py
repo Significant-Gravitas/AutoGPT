@@ -207,20 +207,36 @@ def get_event_loop():
     return _event_loop
 
 
-def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+def run_async(
+    coro,
+    timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+    *,
+    cancel_on_timeout: bool = False,
+):
     """Run a coroutine in the shared event loop and wait for completion.
 
-    On timeout the coroutine is cancelled before the ``TimeoutError`` is
-    raised: left running, it would keep working (or hanging) on the shared
-    loop with nobody waiting for it.
+    A ``TimeoutError`` does not prove the operation had no effect: it may
+    have finished just as the wait ended, or be past a write it cannot take
+    back. By default the coroutine is left running after a timeout.
+    ``cancel_on_timeout`` requests its cancellation (requested, not awaited:
+    it stops at its next await, possibly after this returns); only callers
+    whose coroutine is safe to stop anywhere pass it, today the memory
+    registry bridges. Graph dispatch is not: ``_add_graph_execution``
+    creates the execution row before its remaining lookups, and cancelled
+    there it leaves that row INCOMPLETE, never published or failed. Making
+    it cancellation-safe is the follow-up that would let the default flip.
     """
     loop = get_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     try:
         return future.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
-        future.cancel()
-        logger.warning(f"Async operation timed out after {timeout}s; cancelled")
+        if cancel_on_timeout:
+            future.cancel()
+        logger.warning(
+            f"Async operation timed out after {timeout}s; "
+            + ("cancellation requested" if cancel_on_timeout else "not cancelled")
+        )
         raise
     except Exception as e:
         logger.warning(f"Async operation failed: {type(e).__name__}: {e}")
@@ -966,11 +982,12 @@ def _rebuild_scope_communities(scope: MemoryScope) -> dict | None:
 def _memory_scope_may_fire(scope: MemoryScope) -> bool:
     """The registry gate of a dream-system cron (``memory_scope_may_fire``),
     run on the scheduler loop. The gate bounds itself; if the bridge still
-    gives up, the gate is cancelled and the run skipped."""
+    gives up, the gate's cancellation is requested and the run skipped."""
     try:
         return run_async(
             memory_scope_may_fire(scope, _expert_scope_status),
             timeout=bridge_timeout(),
+            cancel_on_timeout=True,
         )
     except TimeoutError:
         logger.warning(f"Memory cron of {scope_label(scope)} skipped: gate timed out")
@@ -980,7 +997,11 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
 def _stamp_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> None:
     """Record a clean run on the scope's registry row; best-effort."""
     try:
-        run_async(record_scope_run(scope, kind), timeout=bridge_timeout())
+        run_async(
+            record_scope_run(scope, kind),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
     except TimeoutError:
         logger.warning(f"Could not stamp the {kind} run of {scope_label(scope)}")
 
@@ -1455,7 +1476,11 @@ def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
     Best-effort: it must never break the delete RPC that called it.
     """
     try:
-        run_async(forget_registration(scope, job), timeout=bridge_timeout())
+        run_async(
+            forget_registration(scope, job),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
     except Exception:
         logger.warning(
             "Failed to forget %s of %s", job.name, scope_label(scope), exc_info=True

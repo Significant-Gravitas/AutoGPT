@@ -7,7 +7,6 @@ backend test job (and counted by codecov), not just the integration suite.
 
 import asyncio
 import logging
-import threading
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -43,7 +42,6 @@ from backend.executor.scheduler import (
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
     reconcile_stripe_tiers,
-    run_async,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -2243,29 +2241,3 @@ def test_graph_schedule_rejects_blank_names_before_validation_or_persistence(nam
         )
     run.assert_not_called()
     persist.assert_not_called()
-
-
-def test_run_async_cancels_the_coroutine_it_gives_up_on():
-    """A timed-out bridge call must not leave its coroutine running on the
-    shared loop with nobody waiting for it."""
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
-    cancelled = threading.Event()
-
-    async def hang() -> None:
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            cancelled.set()
-            raise
-
-    try:
-        with patch(f"{_SCHEDULER_PATH}._event_loop", loop):
-            with pytest.raises(TimeoutError):
-                run_async(hang(), timeout=0.05)
-        assert cancelled.wait(timeout=2)
-    finally:
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=2)
-        loop.close()

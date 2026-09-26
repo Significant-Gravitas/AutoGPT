@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any, Awaitable, Callable
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -21,10 +22,11 @@ from backend.data.db_manager import DatabaseManagerAsyncClient
 from backend.executor.scheduler import SchedulerClient
 from backend.util.service import get_service_client
 
-from . import deadline, registry, scope_crons, scope_jobs
+from . import deadline, registry, scheduling, scope_crons, scope_jobs
 from .registry_fakes_test import (
     ACCOUNT,
     EXPERT,
+    PARIS,
     USER,
     Hang,
     HangingTransport,
@@ -195,3 +197,72 @@ async def test_a_timezone_change_is_bounded_when_the_listing_hangs(env, monkeypa
     assert time.monotonic() - started < PROMPT
     assert hang.started == hang.cancelled == 1
     assert list(results) == [USER]  # the account still goes through
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("marker", ["write", "clear"])
+async def test_a_marker_finishing_at_a_deadline_does_not_swallow_it(
+    monkeypatch, marker
+):
+    """On Python 3.11 a nested ``wait_for`` that completes just as the
+    enclosing deadline expires swallows the cancellation, and its caller
+    runs on as if there were no deadline."""
+
+    async def stall(*args: Any) -> None:
+        await asyncio.sleep(0.02)
+        time.sleep(0.05)  # the enclosing deadline passes while it finishes
+
+    monkeypatch.setattr(scheduling, "_set_marker", stall)
+    monkeypatch.setattr(scheduling, "_delete_marker", stall)
+    started = time.monotonic()
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.04):
+            if marker == "write":
+                await scheduling.write_registration_marker(ACCOUNT, "probe", PARIS)
+            else:
+                await scheduling.clear_registration_marker(ACCOUNT, "probe")
+            await asyncio.sleep(1)  # the next await must see the deadline
+
+    assert time.monotonic() - started < 0.5
+
+
+@pytest.mark.asyncio
+async def test_a_marker_at_the_deadline_does_not_extend_a_lifecycle_change(
+    env, monkeypatch
+):
+    """Codex's round-2 reproduction, scaled down: the community cron is
+    registered just inside the deadline, its Redis marker completes right
+    at it after a short loop stall, and the nightly registration would then
+    hang. The change must end at the deadline; it used to register the
+    nightly on a fresh deadline and record it, taking twice as long."""
+    budget = 0.3
+    monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", budget)
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    add_community = env.scheduler.add_scope_community_rebuild_schedule
+
+    async def community(**kwargs: Any) -> Any:
+        await asyncio.sleep(started + budget - 0.1 - loop.time())
+        return await add_community(**kwargs)
+
+    async def marker(*args: Any) -> None:
+        await asyncio.sleep(started + budget - 0.02 - loop.time())
+        time.sleep(0.06)  # a short loop stall carries it past the deadline
+
+    hang = Hang()
+    record = AsyncMock(side_effect=env.db.record_scope_jobs)
+    monkeypatch.setattr(
+        env.scheduler, "add_scope_community_rebuild_schedule", community
+    )
+    monkeypatch.setattr(env.scheduler, "add_scope_nightly_batch_schedule", hang.forever)
+    monkeypatch.setattr(scheduling, "_set_marker", marker)
+    monkeypatch.setattr(env.db, "record_scope_jobs", record)
+
+    await registry.sync_expert_scope(USER, "expert-1", active=True)
+
+    # Nothing ran on after the deadline: no nightly on a fresh deadline (that
+    # took twice the budget) and no recording of what it registered.
+    assert loop.time() - started < budget + 0.25
+    assert hang.cancelled == hang.started
+    record.assert_not_awaited()

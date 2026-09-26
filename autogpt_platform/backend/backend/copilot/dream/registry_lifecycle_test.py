@@ -174,6 +174,42 @@ async def test_a_revive_of_a_wiped_expert_leaves_it_wiped(env):
 
 
 @pytest.mark.asyncio
+async def test_a_wiped_scope_stays_wiped_through_a_pause_and_a_resume(env):
+    """Codex's round-2 reproduction: a pause (or archive) of a wiped expert
+    used to write PAUSED over WIPED, which the next resume (or revive) then
+    turned back into ACTIVE with both crons. The pause now leaves WIPED and
+    only clears any cron that straggled."""
+    await registry.ensure_scope_scheduled(EXPERT)
+    assert await registry.mark_wiped(EXPERT)
+    env.scheduler.jobs = {job_id: PARIS for job_id in job_ids(EXPERT)}
+
+    await registry.sync_expert_scope(USER, "expert-1", active=False)
+
+    assert env.db.rows[EXPERT.scope_key].state == WIPED
+    assert env.scheduler.jobs == {}
+    await registry.sync_expert_scope(USER, "expert-1", active=True)
+    assert env.db.rows[EXPERT.scope_key].state == WIPED
+    assert env.scheduler.jobs == {}
+
+
+@pytest.mark.asyncio
+async def test_a_pause_that_loses_its_claim_to_a_wipe_keeps_it_wiped(env, monkeypatch):
+    """The pause finds no row, and before its claim lands a wipe creates
+    the row WIPED: the pause's fallback write must not demote it either."""
+    claim = env.db.claim_scope_schedule
+
+    async def wiped_first(user_id, scope_key, expert_id, tz, state):
+        await claim(user_id, scope_key, expert_id, tz, WIPED)
+        return await claim(user_id, scope_key, expert_id, tz, state)
+
+    monkeypatch.setattr(env.db, "claim_scope_schedule", wiped_first)
+
+    assert await registry.pause_scope(EXPERT)
+
+    assert env.db.rows[EXPERT.scope_key].state == WIPED
+
+
+@pytest.mark.asyncio
 async def test_wiping_an_account_without_a_row_removes_its_legacy_crons(env):
     env.scheduler.jobs = {job_id: PARIS for job_id in job_ids(ACCOUNT)}
 

@@ -5,7 +5,10 @@ archive, a resume route or a cron gate must not hang on them. The
 DatabaseManager client retries for minutes and the scheduler client waits up
 to 300 s per request, so every registry call runs under this one deadline.
 On timeout the call is cancelled and ``TimeoutError`` raised, which each
-caller's fail-soft handler treats like any other failure.
+caller's fail-soft handler treats like any other failure. A timeout does not
+prove the call had no effect: a request the server already received may
+still land. Anything awaited inside a deadline that bounds itself must do so
+with ``asyncio.timeout`` too (see :func:`within_deadline`).
 """
 
 import asyncio

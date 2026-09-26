@@ -196,13 +196,18 @@ async def resolve_user_timezone(user_id: str) -> str | None:
 async def write_registration_marker(
     scope: MemoryScope, key_prefix: str, user_timezone: str
 ) -> None:
-    """Cache the timezone a cron was just registered in. Best-effort, and
-    bounded: a hire must not wait on the Redis client's connect retries."""
+    """Record the timezone a cron was just registered in, for diagnostics
+    only: nothing reads it back. Best-effort, and bounded: a hire must not
+    wait on the Redis client's connect retries.
+
+    ``asyncio.timeout``, not ``wait_for``: this runs inside the registry
+    deadline, and on Python 3.11 a ``wait_for`` that completes just as that
+    deadline expires swallows its cancellation, so the change it bounds
+    would run on past it.
+    """
     try:
-        await asyncio.wait_for(
-            _set_marker(_registration_key(scope, key_prefix), user_timezone),
-            timeout=MARKER_TIMEOUT_SECONDS,
-        )
+        async with asyncio.timeout(MARKER_TIMEOUT_SECONDS):
+            await _set_marker(_registration_key(scope, key_prefix), user_timezone)
     except Exception:
         logger.debug("Redis write failed for %s:%s", key_prefix, scope.scope_key[:12])
 
@@ -210,14 +215,13 @@ async def write_registration_marker(
 async def clear_registration_marker(scope: MemoryScope, key_prefix: str) -> None:
     """Delete one cron's Redis marker after the cron was removed in-band.
 
-    Single-key DEL so it routes on Redis Cluster. Best-effort and bounded —
-    on Redis failure the marker simply expires via its TTL.
+    Single-key DEL so it routes on Redis Cluster. Best-effort and bounded
+    (by ``asyncio.timeout``, as in :func:`write_registration_marker`) — on
+    Redis failure the marker simply expires via its TTL.
     """
     try:
-        await asyncio.wait_for(
-            _delete_marker(_registration_key(scope, key_prefix)),
-            timeout=MARKER_TIMEOUT_SECONDS,
-        )
+        async with asyncio.timeout(MARKER_TIMEOUT_SECONDS):
+            await _delete_marker(_registration_key(scope, key_prefix))
     except Exception:
         logger.warning(
             "Redis delete failed for %s:%s; marker will expire via TTL",

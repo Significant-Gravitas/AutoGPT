@@ -9,6 +9,7 @@ answers, recording whether the caller cancelled it.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock
@@ -117,10 +118,10 @@ class FakeRegistryDB:
         scope_key: str,
         state: MemoryScopeScheduleState,
         *,
-        only_from: MemoryScopeScheduleState | None = None,
+        only_from: Sequence[MemoryScopeScheduleState] | None = None,
     ) -> bool:
         row = await self.get_scope_schedule(user_id, scope_key)
-        if row is None or (only_from is not None and row.state != only_from):
+        if row is None or (only_from is not None and row.state not in only_from):
             return False
         fields: dict[str, Any] = {"state": state}
         if state != ACTIVE:

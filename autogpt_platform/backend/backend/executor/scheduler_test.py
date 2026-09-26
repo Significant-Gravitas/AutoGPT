@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.model import CreateGraph
 from backend.copilot.dream import deadline, scope_crons
+from backend.copilot.dream.scheduling import DREAM_SYSTEM_JOBS
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data import db
 from backend.executor import scheduler as scheduler_module
@@ -475,7 +476,7 @@ class TestDeleteNightlyBatchSchedule:
 # ---------------------------------------------------------------------------
 
 
-def _run_coroutine(coro, timeout=None):
+def _run_coroutine(coro, timeout=None, *, cancel_on_timeout=False):
     """``run_async`` stand-in: run the (mocked) coroutine to completion on a
     private loop, leaving the test session's loop alone."""
     loop = asyncio.new_event_loop()
@@ -673,6 +674,24 @@ class TestMemoryScopeGateBridge:
 
         assert fires is False
         assert elapsed < 1.0
+
+    @pytest.mark.parametrize("bridge", ["stamp", "forget"])
+    def test_the_other_memory_bridges_cancel_what_they_give_up_on(
+        self, monkeypatch, bridge
+    ) -> None:
+        """Like the gate, the run stamp and the in-band delete's bookkeeping
+        are safe to stop anywhere, so they ask ``run_async`` to cancel."""
+        _short_deadline(monkeypatch)
+        hang = _HangRecorder()
+        monkeypatch.setattr(scheduler_module, "record_scope_run", hang.forever)
+        monkeypatch.setattr(scheduler_module, "forget_registration", hang.forever)
+        scope = MemoryScope.for_user("abc")
+        with _SchedulerLoop():
+            if bridge == "stamp":
+                scheduler_module._stamp_scope_run(scope, "nightly")
+            else:
+                scheduler_module._forget_dream_registration(scope, DREAM_SYSTEM_JOBS[0])
+            assert hang.cancelled.wait(timeout=2)
 
     @pytest.mark.parametrize(
         "body",

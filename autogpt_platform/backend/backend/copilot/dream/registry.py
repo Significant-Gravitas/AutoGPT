@@ -20,11 +20,14 @@ Who calls what:
     calls it yet, and it does not erase the graph itself.
 
 State only changes through pause, resume and wipe. Ensure never overrides a
-PAUSED or WIPED scope, and resume only reactivates a PAUSED one, so neither
-a stray memory write nor a late hire can bring back the crons of an archived
-expert. Every dependency call runs under the registry deadline
-(``deadline.py``), and everything here fails soft (logged, never raised),
-because none of its callers may break or hang over scheduling.
+PAUSED or WIPED scope, resume only reactivates a PAUSED one, and pause
+leaves a WIPED one WIPED (each of those writes checks the state it moves
+from in the same statement), so neither a stray memory write nor a late
+hire can bring back the crons of an archived expert, and no registry
+operation takes a scope out of WIPED. Every dependency call runs under the
+registry deadline (``deadline.py``), and everything here fails soft (logged,
+never raised), because none of its callers may break or hang over
+scheduling.
 """
 
 import logging
@@ -48,6 +51,10 @@ from .scope_jobs import (
 )
 
 logger = logging.getLogger(__name__)
+
+_WIPED = MemoryScopeScheduleState.WIPED
+# The states a pause moves from: never WIPED, which is stopped for good.
+_PAUSABLE = (MemoryScopeScheduleState.ACTIVE, MemoryScopeScheduleState.PAUSED)
 
 
 async def ensure_scope_scheduled(
@@ -121,9 +128,12 @@ async def sync_expert_scope(user_id: str, expert_id: str, *, active: bool) -> No
 
     ``active=True`` (schedules resumed, expert revived) resumes a PAUSED
     scope or registers one with no row; ``active=False`` (archived, schedules
-    paused) pauses it. Called from API requests and the run-budget gate, so
-    the whole change runs under the registry deadline; a change it cuts off
-    is settled by the next registration and, meanwhile, by the cron gate.
+    paused) pauses it; a WIPED scope stays WIPED either way. Called from API
+    requests and the run-budget gate, so the whole change runs under the
+    registry deadline. A change it cuts off is not retried here: the cron
+    gate still keeps an archived or paused expert's crons from running, and
+    a later lifecycle change or the backfill settles the row. An ordinary
+    registration does not look at the expert's lifecycle, so it will not.
     """
     try:
         scope = MemoryScope.for_expert(user_id, expert_id)
@@ -141,16 +151,18 @@ async def pause_scope(scope: MemoryScope) -> bool:
     """Stop the scope's crons until :func:`resume_scope`.
 
     The row goes PAUSED (created that way if the scope had none, so a later
-    registration cannot activate it) and the jobs are removed. True only if
-    both happened.
+    registration cannot activate it) and the jobs are removed. A WIPED row
+    stays WIPED, and its jobs are removed again in case any straggled. True
+    only if both happened.
     """
     return await _leave_active(scope, MemoryScopeScheduleState.PAUSED)
 
 
 async def mark_wiped(scope: MemoryScope) -> bool:
-    """Stop the crons of a scope whose memory was erased. :func:`resume_scope`
-    does not bring a wiped scope back; the wipe work decides what does.
-    Erasing the graph is the caller's job."""
+    """Stop the crons of a scope whose memory was erased. No registry
+    operation brings a wiped scope back (pause keeps it WIPED, resume and
+    ensure skip it); the wipe work decides what does. Erasing the graph is
+    the caller's job."""
     return await _leave_active(scope, MemoryScopeScheduleState.WIPED)
 
 
@@ -165,7 +177,7 @@ async def resume_scope(
                 scope.owner_user_id,
                 scope.scope_key,
                 MemoryScopeScheduleState.ACTIVE,
-                only_from=MemoryScopeScheduleState.PAUSED,
+                only_from=(MemoryScopeScheduleState.PAUSED,),
             )
         )
     except Exception:
@@ -179,9 +191,10 @@ async def reregister_user(user_id: str) -> dict[str, dict[str, Any]]:
 
     The account always goes through, row or not: its crons may predate the
     registry and still run in the old timezone. Each expert with a row
-    follows; paused and wiped ones are skipped and take the new timezone
-    when they resume. An owner with every dream flag off costs no database
-    call, as with :func:`ensure_scope_scheduled`. Keyed by scope key.
+    follows: paused ones are skipped and take the new timezone when they
+    resume, wiped ones are skipped for good. An owner with every dream flag
+    off costs no database call, as with :func:`ensure_scope_scheduled`.
+    Keyed by scope key.
     """
     try:
         account = MemoryScope.for_user(user_id)
@@ -198,42 +211,52 @@ async def reregister_user(user_id: str) -> dict[str, dict[str, Any]]:
 
 
 async def _leave_active(scope: MemoryScope, state: MemoryScopeScheduleState) -> bool:
-    """Make the row say ``state``, then remove the crons; True only if both
-    happened. When the state write fails the crons stay: removing them under
-    a row that still says ACTIVE would hide them from the next ensure, and
-    their bodies check the expert's lifecycle themselves."""
-    if not await _establish_state(scope, state):
+    """Make the row say ``state`` (a pause leaves a WIPED row WIPED), then
+    remove the crons; True only if both happened. When the state write fails
+    the crons stay: removing them under a row that still says ACTIVE would
+    hide them from the next ensure, and their bodies check the expert's
+    lifecycle themselves."""
+    reached = await _establish_state(scope, state)
+    if reached is None or not await remove_scope_jobs(scope):
         return False
-    if not await remove_scope_jobs(scope):
-        return False
-    logger.info(f"Dream-system: {scope_label(scope)} is now {state.value}")
+    logger.info(f"Dream-system: {scope_label(scope)} is now {reached.value}")
     return True
 
 
-async def _establish_state(scope: MemoryScope, state: MemoryScopeScheduleState) -> bool:
-    """Set the row to ``state``, creating it in that state if it has none.
+async def _establish_state(
+    scope: MemoryScope, state: MemoryScopeScheduleState
+) -> MemoryScopeScheduleState | None:
+    """Move the row to ``state``, creating it in that state if it has none;
+    the state the row ends in, or None when that failed. A pause never
+    touches a WIPED row, which is stopped already.
 
     A registration can claim the row ACTIVE between the first write and the
-    claim, so whatever the claim returns short of ``state``, the state is
-    then set explicitly.
+    claim, and a claim can fail after the row was created, so unless the
+    claim shows the row already there (or WIPED), the write is made again.
     """
-    db = memory_schedule_db()
     try:
-        if await within_deadline(
-            db.set_scope_state(scope.owner_user_id, scope.scope_key, state)
-        ):
-            return True
+        if await _move_state(scope, state):
+            return state
         claimed = await _claim_in_state(scope, state)
-        if claimed is not None and claimed.state == state:
-            return True
-        return await within_deadline(
-            db.set_scope_state(scope.owner_user_id, scope.scope_key, state)
-        )
+        if claimed is not None and claimed.state in (state, _WIPED):
+            return claimed.state
+        return state if await _move_state(scope, state) else None
     except Exception:
         logger.warning(
             f"Could not mark {scope_label(scope)} {state.value}", exc_info=True
         )
-        return False
+        return None
+
+
+async def _move_state(scope: MemoryScope, state: MemoryScopeScheduleState) -> bool:
+    """One conditional write of ``state``: any row can become WIPED, but
+    only an ACTIVE or PAUSED one becomes PAUSED."""
+    only_from = None if state == _WIPED else _PAUSABLE
+    return await within_deadline(
+        memory_schedule_db().set_scope_state(
+            scope.owner_user_id, scope.scope_key, state, only_from=only_from
+        )
+    )
 
 
 async def _claim_in_state(

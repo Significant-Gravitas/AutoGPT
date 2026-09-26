@@ -13,6 +13,7 @@ The two backfill listings at the bottom are unscoped on purpose and are not
 exposed over the DatabaseManager RPC.
 """
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -151,10 +152,12 @@ async def set_scope_state(
     scope_key: str,
     state: MemoryScopeScheduleState,
     *,
-    only_from: MemoryScopeScheduleState | None = None,
+    only_from: Sequence[MemoryScopeScheduleState] | None = None,
 ) -> bool:
     """Move the scope to ``state``; False when it has no row, or, with
-    ``only_from``, when the row is in any other state.
+    ``only_from``, when the row is in none of those states. The check and
+    the write are one statement, so a concurrent change cannot slip between
+    them.
 
     Leaving ACTIVE forgets the job ids too: the registry removes the jobs
     together with the state change.
@@ -164,7 +167,7 @@ async def set_scope_state(
         "userId": user_id,
     }
     if only_from is not None:
-        where["state"] = only_from
+        where["state"] = {"in": list(only_from)}
     data: prisma.types.MemoryScopeScheduleUpdateManyMutationInput = {"state": state}
     if state != MemoryScopeScheduleState.ACTIVE:
         data["communityJobId"] = None

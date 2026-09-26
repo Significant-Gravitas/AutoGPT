@@ -174,18 +174,20 @@ async def test_resuming_leaves_the_job_ids_to_the_next_registration(table):
 
 
 @pytest.mark.asyncio
-async def test_a_guarded_state_change_only_moves_that_state(table):
+async def test_a_guarded_state_change_only_moves_those_states(table):
+    """A pause moves only an ACTIVE or PAUSED row, never a WIPED one, and
+    the check is part of the UPDATE itself rather than a read before it."""
     table.update_many.return_value = 0
 
     moved = await memory_schedule.set_scope_state(
-        "user-1", "user-1", ACTIVE, only_from=PAUSED
+        "user-1", "user-1", PAUSED, only_from=(ACTIVE, PAUSED)
     )
 
     assert moved is False
     assert table.update_many.await_args.kwargs["where"] == {
         "scopeKey": "user-1",
         "userId": "user-1",
-        "state": PAUSED,
+        "state": {"in": [ACTIVE, PAUSED]},
     }
 
 
