@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-Add cache configuration to a resolved docker-compose file for all services
-that have a build key, and ensure image names match what docker compose expects.
+Add registry cache configuration to a resolved docker-compose file for all
+services that have a build key, and ensure image names match what docker
+compose expects.
+
+Each build target gets its own tag in one registry cache image, e.g.
+ghcr.io/org/buildcache:backend-server. Every run reads it; only runs given
+--write-cache write it. Cache export errors are ignored, so a missing package
+or permission costs a cold build, never a failed one.
 """
 
 import argparse
@@ -9,13 +15,13 @@ import argparse
 import yaml
 
 
-DEFAULT_BRANCH = "dev"
 CACHE_BUILDS_FOR_COMPONENTS = ["backend", "frontend"]
+CACHE_TO_OPTIONS = "mode=max,oci-mediatypes=true,image-manifest=false,ignore-error=true"
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Add cache config to a resolved compose file"
+        description="Add registry cache config to a resolved compose file"
     )
     parser.add_argument(
         "--source",
@@ -23,39 +29,16 @@ def main():
         help="Source compose file to read (should be output of `docker compose config`)",
     )
     parser.add_argument(
-        "--cache-from",
-        default="type=gha",
-        help="Cache source configuration",
+        "--cache-image",
+        required=True,
+        help="Registry image that holds the build cache, one tag per build target",
     )
     parser.add_argument(
-        "--cache-to",
-        default="type=gha,mode=max",
-        help="Cache destination configuration; pass an empty value to disable export",
-    )
-    parser.add_argument(
-        "--cache-to-components",
-        nargs="*",
-        choices=CACHE_BUILDS_FOR_COMPONENTS,
-        default=CACHE_BUILDS_FOR_COMPONENTS,
-        help="Components that export cache (default: all)",
-    )
-    for component in CACHE_BUILDS_FOR_COMPONENTS:
-        parser.add_argument(
-            f"--{component}-hash",
-            default="",
-            help=f"Hash for {component} cache scope (e.g., from hashFiles())",
-        )
-    parser.add_argument(
-        "--git-ref",
-        default="",
-        help="Git ref for branch-based cache scope (e.g., refs/heads/master)",
+        "--write-cache",
+        action="store_true",
+        help="Also export the build cache to the registry (mode=max)",
     )
     args = parser.parse_args()
-
-    # Normalize git ref to a safe scope name (e.g., refs/heads/master -> master)
-    git_ref_scope = ""
-    if args.git_ref:
-        git_ref_scope = args.git_ref.replace("refs/heads/", "").replace("/", "-")
 
     with open(args.source, "r") as f:
         compose = yaml.safe_load(f)
@@ -125,58 +108,16 @@ def main():
             del service_config["build"]
             continue
 
-        # This service will do the actual build - add cache config
-        cache_from_list = []
-        cache_to_list = []
-
         component = get_component(dockerfile)
         if not component:
             # Skip services that don't clearly match frontend/backend
             continue
 
-        # Get the hash for this component
-        component_hash = getattr(args, f"{component}_hash")
-
-        # Scope format: platform-{component}-{target}-{hash|ref}
-        # Example: platform-backend-server-abc123
-
-        if "type=gha" in args.cache_from:
-            # 1. Primary: exact hash match (most specific)
-            if component_hash:
-                hash_scope = f"platform-{component}-{target}-{component_hash}"
-                cache_from_list.append(f"{args.cache_from},scope={hash_scope}")
-
-            # 2. Fallback: branch-based cache
-            if git_ref_scope:
-                ref_scope = f"platform-{component}-{target}-{git_ref_scope}"
-                cache_from_list.append(f"{args.cache_from},scope={ref_scope}")
-
-            # 3. Fallback: dev branch cache (for PRs/feature branches)
-            if git_ref_scope and git_ref_scope != DEFAULT_BRANCH:
-                master_scope = f"platform-{component}-{target}-{DEFAULT_BRANCH}"
-                cache_from_list.append(f"{args.cache_from},scope={master_scope}")
-
-        cache_to = args.cache_to if component in args.cache_to_components else ""
-
-        if cache_to and "type=gha" in cache_to:
-            # Write to both hash-based and branch-based scopes
-            if component_hash:
-                hash_scope = f"platform-{component}-{target}-{component_hash}"
-                cache_to_list.append(f"{cache_to},scope={hash_scope}")
-
-            if git_ref_scope:
-                ref_scope = f"platform-{component}-{target}-{git_ref_scope}"
-                cache_to_list.append(f"{cache_to},scope={ref_scope}")
-
-        # Ensure we have at least one cache source/target
-        if not cache_from_list:
-            cache_from_list.append(args.cache_from)
-        if cache_to and not cache_to_list:
-            cache_to_list.append(cache_to)
-
-        build_config["cache_from"] = cache_from_list
-        if cache_to_list:
-            build_config["cache_to"] = cache_to_list
+        # Example: ghcr.io/significant-gravitas/autogpt-platform-e2e-buildcache:backend-server
+        cache_ref = f"type=registry,ref={args.cache_image}:{component}-{target}"
+        build_config["cache_from"] = [cache_ref]
+        if args.write_cache:
+            build_config["cache_to"] = [f"{cache_ref},{CACHE_TO_OPTIONS}"]
         else:
             build_config.pop("cache_to", None)
         modified_services.append(service_name)
