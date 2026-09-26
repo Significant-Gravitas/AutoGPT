@@ -9,6 +9,7 @@ from backend.copilot.tools.browser_checkout_support import (
     checkout_response,
     failure,
     link_credentials,
+    log_failure,
     principal_for,
 )
 from backend.copilot.tools.models import ToolResponseBase
@@ -70,7 +71,8 @@ class BrowserLinkPaymentStatusTool(BaseTool):
                     )
                 )
             return checkout_response(view, session)
-        except Exception:
+        except Exception as error:
+            log_failure("status", error)
             return failure(
                 session,
                 "Link status is unavailable. Do not submit again while the payment "
@@ -115,7 +117,8 @@ class BrowserResetAfterPaymentTool(BaseTool):
                 )
             )
             return checkout_response(view, session)
-        except Exception:
+        except Exception as error:
+            log_failure("reset", error)
             return failure(
                 session,
                 "The payment browser cannot be reset yet. Check the Link status "

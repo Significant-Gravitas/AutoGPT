@@ -17,7 +17,12 @@ from pydantic import SecretStr
 
 from backend.util.link_checkout import cdp, network, worker
 from backend.util.link_checkout.models import Card, WorkerJob
-from backend.util.link_checkout.refusals import NOT_CARD_FIELDS, CheckoutRefused
+from backend.util.link_checkout.refusals import (
+    FRAME_NOT_FOUND,
+    INVALID_SELECTOR,
+    NOT_CARD_FIELDS,
+    CheckoutRefused,
+)
 from backend.util.link_checkout.synthetic_link import synthetic_spend
 
 CHECKOUT_URL = "https://shop.example/checkout"
@@ -105,7 +110,10 @@ class ScriptedBrowser:
     def _call(self, params: dict) -> dict:
         code = params["functionDeclaration"]
         if "querySelectorAll" in code:
-            return {"objectId": f"node:{params['arguments'][0]['value']}"}
+            selector = params["arguments"][0]["value"]
+            if ":visible" in selector:
+                return {"type": "string", "value": "invalid_selector"}
+            return {"objectId": f"node:{selector}"}
         if "getBoundingClientRect" in code:
             return {"value": self._check(params)}
         if "set.call(el, value)" in code:
@@ -319,3 +327,25 @@ async def test_an_iframe_elsewhere_that_cannot_be_attached_is_skipped(
 
     assert receipt.status == "submitted"
     assert browser.clicks == 1
+
+
+@pytest.mark.asyncio
+async def test_a_selector_the_page_cannot_parse_is_refused_by_name(browser, intent):
+    with pytest.raises(CheckoutRefused) as refused:
+        await cdp.prepare_browser(
+            "ws://127.0.0.1:9222/x",
+            intent.plan.model_copy(update={"number": "#number:visible"}),
+        )
+    assert str(refused.value) == INVALID_SELECTOR
+
+
+@pytest.mark.asyncio
+async def test_a_frame_url_missing_its_query_is_refused_by_name(browser, intent):
+    """The frame's address is compared whole: a URL without the query string
+    it was loaded with names no frame."""
+    plan = intent.plan.model_copy(
+        update={"frame_urls": {"number": "https://shop.example/pay"}}
+    )
+    with pytest.raises(CheckoutRefused) as refused:
+        await cdp.prepare_browser("ws://127.0.0.1:9222/x", plan)
+    assert str(refused.value) == FRAME_NOT_FOUND

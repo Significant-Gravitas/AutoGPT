@@ -17,6 +17,8 @@ from backend.util.link_checkout.models import BoundField, BrowserBinding, Checko
 from backend.util.link_checkout.network import NetworkDrain
 from backend.util.link_checkout.refusals import (
     FIELDS_NOT_READY,
+    FRAME_NOT_FOUND,
+    INVALID_SELECTOR,
     NOT_CARD_FIELDS,
     CheckoutRefused,
 )
@@ -38,6 +40,14 @@ CARD_AUTOCOMPLETE = {
     "exp_year": ["cc-exp-year"],
 }
 
+# The one element a selector matches. A selector the page cannot parse (an
+# agent's Playwright-only :visible, say) is reported rather than thrown, so the
+# agent is told what to fix instead of getting a generic failure.
+_FIND_ONE = (
+    "function(selector) { let nodes; try { nodes = document.querySelectorAll(selector); }"
+    " catch (error) { return 'invalid_selector'; }"
+    " return nodes.length === 1 ? nodes[0] : null; }"
+)
 _CHECK_CONTROL = r"""function(names) {
     const box = this.getBoundingClientRect();
     const style = getComputedStyle(this);
@@ -171,6 +181,8 @@ class CDP:
                 for f in frames
                 if f.frame.url == (target.frame_url or plan.checkout_url)
             ]
+            if not matches and target.frame_url:
+                raise CheckoutRefused(FRAME_NOT_FOUND)
             if len(matches) != 1 or not matches[0].frame.loaderId:
                 raise CheckoutRefused(FIELDS_NOT_READY)
             context = matches[0]
@@ -202,12 +214,14 @@ class CDP:
         element = await self.call(
             "Runtime.callFunctionOn",
             {
-                "functionDeclaration": "function(selector) { const nodes = document.querySelectorAll(selector); return nodes.length === 1 ? nodes[0] : null; }",
+                "functionDeclaration": _FIND_ONE,
                 "arguments": [{"value": selector}],
                 "executionContextId": world.executionContextId,
             },
             context.session,
         )
+        if element.result is not None and element.result.value == "invalid_selector":
+            raise CheckoutRefused(INVALID_SELECTOR)
         if element.result is None or not element.result.objectId:
             raise CheckoutRefused(FIELDS_NOT_READY)
         node = (

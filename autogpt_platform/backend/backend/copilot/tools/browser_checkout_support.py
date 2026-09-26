@@ -1,6 +1,8 @@
 """What the Link checkout tools share: availability, the caller, the Link
 credential, and the chat card they return."""
 
+import logging
+import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -105,6 +107,7 @@ CHECKOUT_ID_PARAMETERS: dict[str, Any] = {
 
 _credentials = IntegrationCredentialsManager()
 _settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 class CheckoutResponse(ToolResponseBase):
@@ -259,6 +262,22 @@ def invalid_plan(error: ValidationError) -> str:
         for detail in error.errors(include_url=False, include_input=False)[:6]
     )
     return f"Invalid checkout plan. {problems}"[:900]
+
+
+def log_failure(step: str, error: BaseException) -> None:
+    """Record where a checkout step failed for the operator. Only the error's
+    type and the line of ours that raised it: its message could carry page
+    content, or after approval part of a card, so it is never logged."""
+    ours = [
+        frame
+        for frame in traceback.extract_tb(error.__traceback__)
+        if "site-packages" not in frame.filename
+    ]
+    where = "unknown"
+    if ours:
+        path = ours[-1].filename.replace("\\", "/").rsplit("/backend/", 1)[-1]
+        where = f"{path}:{ours[-1].lineno}"
+    logger.warning(f"Link checkout {step} failed: {type(error).__name__} at {where}")
 
 
 def failure(session: ChatSession, message: str) -> ErrorResponse:

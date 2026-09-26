@@ -16,6 +16,14 @@ FIELDS_NOT_READY = (
     "The payment fields must be visible, enabled and empty, each selector must "
     "match exactly one element, and each frame URL one loaded frame."
 )
+FRAME_NOT_FOUND = (
+    "No loaded frame has that frame URL. A frame URL must be the frame's exact "
+    "address, including its query string."
+)
+INVALID_SELECTOR = (
+    "Each selector must be plain CSS that document.querySelectorAll accepts; "
+    "extensions such as :visible, :has-text() or :text-is() are not supported."
+)
 LIVE_PAYMENTS_DISABLED = (
     "Live Link payments are disabled by the operator; test mode is available."
 )
@@ -42,6 +50,8 @@ MESSAGES = frozenset(
     {
         NOT_CARD_FIELDS,
         FIELDS_NOT_READY,
+        FRAME_NOT_FOUND,
+        INVALID_SELECTOR,
         LIVE_PAYMENTS_DISABLED,
         DUPLICATE_REQUEST,
         ATTEMPT_UNRECONCILED,

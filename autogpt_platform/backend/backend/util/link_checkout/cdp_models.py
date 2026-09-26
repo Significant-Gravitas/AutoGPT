@@ -29,7 +29,7 @@ ControlVerdict = Literal["ok", "not_ready", "not_card_field"]
 
 
 class RemoteValue(BaseModel):
-    value: bool | ControlVerdict | None = None
+    value: bool | ControlVerdict | Literal["invalid_selector"] | None = None
     objectId: str = ""
 
 

@@ -1,6 +1,7 @@
 """The four copilot checkout tools, end to end over the in-process broker."""
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -192,7 +193,7 @@ async def test_wrong_user_never_reaches_the_broker(tools, plan):
 
 @pytest.mark.asyncio
 async def test_worker_failure_text_never_reaches_the_tool_output(
-    tools, plan, monkeypatch
+    tools, plan, monkeypatch, caplog
 ):
     created = parsed(await run("browser_request_link_payment", **plan.model_dump()))
 
@@ -200,9 +201,15 @@ async def test_worker_failure_text_never_reaches_the_tool_output(
         raise RuntimeError("canary-secret-4242424242424242")
 
     monkeypatch.setattr(broker_link, "run_worker", exploding_worker)
-    result = await run("browser_complete_link_payment", checkout_id=created.checkout_id)
+    with caplog.at_level(logging.WARNING):
+        result = await run(
+            "browser_complete_link_payment", checkout_id=created.checkout_id
+        )
     assert "canary-secret" not in result.output
     assert "4242424242424242" not in result.output
+    # The operator learns what failed and where, never what it held.
+    assert "Link checkout payment failed: RuntimeError at " in caplog.text
+    assert "canary-secret" not in caplog.text
 
 
 @pytest.mark.asyncio

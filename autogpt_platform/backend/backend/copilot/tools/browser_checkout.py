@@ -21,6 +21,7 @@ from backend.copilot.tools.browser_checkout_support import (
     failure,
     invalid_plan,
     link_credentials,
+    log_failure,
     principal_for,
 )
 from backend.copilot.tools.models import ToolResponseBase
@@ -91,7 +92,8 @@ class BrowserRequestLinkPaymentTool(BaseTool):
             return failure(session, str(refused))
         except ValidationError as invalid:
             return failure(session, invalid_plan(invalid))
-        except Exception:
+        except Exception as error:
+            log_failure("credential lookup", error)
             return failure(
                 session,
                 "Could not read the Stripe Link connection. Try again shortly.",
@@ -129,7 +131,8 @@ class BrowserRequestLinkPaymentTool(BaseTool):
             )
         except CheckoutRefused as refused:
             return failure(session, str(refused))
-        except Exception:
+        except Exception as error:
+            log_failure("preparation", error)
             return failure(
                 session,
                 "Checkout preparation failed and no card was filled. Check the "
@@ -197,7 +200,8 @@ class BrowserCompleteLinkPaymentTool(BaseTool):
             return checkout_response(view, session, approval)
         except CheckoutRefused as refused:
             return failure(session, str(refused))
-        except Exception:
+        except Exception as error:
+            log_failure("payment", error)
             return failure(
                 session,
                 "Checkout unavailable, expired or already attempted. Check Link "
