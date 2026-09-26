@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.sdk import (
@@ -11,7 +12,7 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
-from backend.util.exceptions import BlockExecutionError
+from backend.util.exceptions import BlockExecutionError, BlockInputError
 
 from ._api import ConductorClient, WorkspaceState
 from ._config import conductor
@@ -41,7 +42,8 @@ class ConductorListWorkspacesBlock(Block):
         repo: str = SchemaField(description="Filter by repository URL", default="")
         creator: str = SchemaField(description="Filter by creator user ID", default="")
         since: str = SchemaField(
-            description="Only workspaces active since this ISO-8601 timestamp",
+            description="Only workspaces whose last activity is on or after this "
+            "ISO-8601 date or timestamp",
             default="",
         )
         include_archived: bool = SchemaField(
@@ -59,7 +61,10 @@ class ConductorListWorkspacesBlock(Block):
         )
         workspace: dict = SchemaField(description="Each workspace, one at a time")
         has_more: bool = SchemaField(description="Whether more pages exist")
-        next_offset: int = SchemaField(description="Offset to request the next page")
+        next_offset: int = SchemaField(
+            description="Offset to request the next page; with project_id a page "
+            "can be filtered down to nothing while has_more is still true"
+        )
 
     def __init__(self):
         super().__init__(
@@ -104,10 +109,10 @@ class ConductorListWorkspacesBlock(Block):
     ) -> dict[str, Any]:
         client = ConductorClient(credentials)
         if input_data.project_id:
+            # The per-project route accepts no filters; see run().
             params: dict[str, Any] = {
                 "limit": input_data.limit,
                 "offset": input_data.offset,
-                "includeArchived": input_data.include_archived,
             }
         else:
             params = {
@@ -125,6 +130,13 @@ class ConductorListWorkspacesBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        since = _parse_timestamp(input_data.since)
+        if input_data.since and since is None:
+            raise BlockInputError(
+                message="since must be an ISO-8601 date or timestamp",
+                block_name=self.name,
+                block_id=self.id,
+            )
         try:
             listing = await self._fetch(credentials, input_data)
         except Exception as e:
@@ -136,18 +148,51 @@ class ConductorListWorkspacesBlock(Block):
 
         workspaces = list(listing.get("data") or [])
         if input_data.project_id:
-            # The per-project route only paginates; apply the other filters here.
-            wanted = {s.value for s in input_data.state}
-            needle = input_data.name.lower()
-            workspaces = [
-                w
-                for w in workspaces
-                if (not wanted or w.get("state") in wanted)
-                and (not needle or needle in str(w.get("name", "")).lower())
-            ]
+            # The per-project route only paginates, so every filter the
+            # cross-project route would apply is applied to the page here.
+            workspaces = [w for w in workspaces if _matches(w, input_data, since)]
 
         yield "workspaces", workspaces
         for workspace in workspaces:
             yield "workspace", workspace
         yield "has_more", bool(listing.get("hasMore", False))
         yield "next_offset", input_data.offset + len(listing.get("data") or [])
+
+
+def _matches(
+    workspace: dict[str, Any],
+    input_data: ConductorListWorkspacesBlock.Input,
+    since: datetime | None,
+) -> bool:
+    """Mirror the cross-project route's filters: exact state and creator,
+    case-insensitive name and repository substrings, activity since a date,
+    and archived workspaces hidden unless asked for explicitly."""
+    state = str(workspace.get("state") or "")
+    wanted = {s.value for s in input_data.state}
+    if wanted and state not in wanted:
+        return False
+    if not wanted and not input_data.include_archived and state == "archived":
+        return False
+    if input_data.creator and workspace.get("creatorId") != input_data.creator:
+        return False
+    name = str(workspace.get("name") or "").lower()
+    if input_data.name and input_data.name.lower() not in name:
+        return False
+    repo = str(workspace.get("repoUrl") or "").lower()
+    if input_data.repo and input_data.repo.lower() not in repo:
+        return False
+    if since is None:
+        return True
+    last_activity = _parse_timestamp(str(workspace.get("lastActivityAt") or ""))
+    return last_activity is not None and last_activity >= since
+
+
+def _parse_timestamp(value: str) -> datetime | None:
+    """Parse an ISO-8601 date or timestamp; naive values are taken as UTC."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)

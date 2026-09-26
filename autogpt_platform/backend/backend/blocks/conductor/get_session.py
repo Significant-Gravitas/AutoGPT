@@ -15,8 +15,9 @@ from backend.util.exceptions import BlockExecutionError
 
 from ._api import ConductorClient
 from ._config import conductor
-from ._mocks import WAIT_MOCK_REPLY
-from ._transcript import is_agent_message, message_text
+from ._mocks import MOCK_PROMPT_MESSAGE, MOCK_REPLY_MESSAGE
+from ._paging import fetch_after, fetch_tail
+from ._transcript import latest_reply
 
 CREDENTIALS_DESCRIPTION = "Conductor API key from app.conductor.build/users/api-keys"
 
@@ -28,7 +29,8 @@ class ConductorGetSessionBlock(Block):
         )
         session_id: str = SchemaField(description="Session ID")
         message_limit: int = SchemaField(
-            description="How many transcript messages to return; 0 skips the "
+            description="How many transcript messages to return: the most recent "
+            "ones, or the ones following `after` when it is set; 0 skips the "
             "transcript",
             default=20,
             ge=0,
@@ -36,7 +38,10 @@ class ConductorGetSessionBlock(Block):
             advanced=False,
         )
         after: str = SchemaField(
-            description="Only messages after this message ID", default=""
+            description="Read forward from this transcript message ID (exclusive) "
+            "instead of returning the most recent messages; use next_after from "
+            "a previous call to poll incrementally",
+            default="",
         )
         message_id: str = SchemaField(
             description="Also fetch this single message by ID", default=""
@@ -50,12 +55,20 @@ class ConductorGetSessionBlock(Block):
         status: str = SchemaField(description="idle, working or error")
         error_message: str = SchemaField(description="Last session error, if any")
         messages: list[dict] = SchemaField(
-            description="Transcript messages: id, sessionIndex, type, content, "
-            "receivedAt"
+            description="Transcript messages, oldest first: id, sessionIndex, "
+            "type, content, receivedAt"
         )
         latest_reply: str = SchemaField(
-            description="Text of the most recent agent message in the returned "
-            "transcript slice"
+            description="Text of the newest agent message with visible text in "
+            "the returned transcript slice"
+        )
+        has_more: bool = SchemaField(
+            description="True when the transcript has messages beyond the returned "
+            "slice: older ones by default, newer ones when after is set"
+        )
+        next_after: str = SchemaField(
+            description="ID of the last returned message; pass it as after to read "
+            "what follows"
         )
         message: dict = SchemaField(
             description="The single message requested by message_id"
@@ -82,6 +95,8 @@ class ConductorGetSessionBlock(Block):
                 ("error_message", ""),
                 ("messages", lambda m: len(m) == 2),
                 ("latest_reply", "All tests pass now."),
+                ("has_more", False),
+                ("next_after", "row_2"),
                 ("deep_link", "conductor://s/1"),
             ],
             test_mock={
@@ -94,11 +109,7 @@ class ConductorGetSessionBlock(Block):
                         "updatedAt": "2026-09-26T00:00:00Z",
                     },
                     "messages": {
-                        "data": [
-                            {"id": "msg_1", "type": "user", "content": "Run tests"},
-                            WAIT_MOCK_REPLY["messages"][0],
-                        ],
-                        "offset": 0,
+                        "data": [MOCK_PROMPT_MESSAGE, MOCK_REPLY_MESSAGE],
                         "hasMore": False,
                     },
                 }
@@ -114,11 +125,18 @@ class ConductorGetSessionBlock(Block):
             "status": await client.session_status(input_data.session_id),
         }
         if input_data.message_limit > 0:
-            result["messages"] = await client.list_messages(
-                input_data.session_id,
-                after=input_data.after,
-                limit=input_data.message_limit,
-            )
+            if input_data.after:
+                rows, has_more = await fetch_after(
+                    client,
+                    input_data.session_id,
+                    input_data.after,
+                    input_data.message_limit,
+                )
+            else:
+                rows, has_more = await fetch_tail(
+                    client, input_data.session_id, input_data.message_limit
+                )
+            result["messages"] = {"data": rows, "hasMore": has_more}
         if input_data.message_id:
             result["message"] = await client.get_message(input_data.message_id)
         return result
@@ -137,15 +155,17 @@ class ConductorGetSessionBlock(Block):
 
         session = data.get("session") or {}
         status = data.get("status") or {}
-        messages = list((data.get("messages") or {}).get("data") or [])
-        agent_messages = [m for m in messages if is_agent_message(m)]
+        listing = data.get("messages") or {}
+        messages = list(listing.get("data") or [])
         yield "session", session
         yield "status", str(status.get("status") or "")
         yield "error_message", str(
             status.get("errorMessage") or status.get("lastError") or ""
         )
         yield "messages", messages
-        yield "latest_reply", message_text(agent_messages[-1]) if agent_messages else ""
+        yield "latest_reply", latest_reply(messages)
+        yield "has_more", bool(listing.get("hasMore", False))
+        yield "next_after", str(messages[-1].get("id") or "") if messages else ""
         if data.get("message"):
             yield "message", data["message"]
         yield "deep_link", str(session.get("deepLink") or "")

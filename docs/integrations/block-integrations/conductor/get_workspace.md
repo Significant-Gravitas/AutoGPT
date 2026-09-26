@@ -10,7 +10,7 @@ Get everything about one Conductor workspace: details, current status, shared pr
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block calls `GET /v0/workspaces/{id}` and `GET /v0/workspaces/{id}/status`, then best-effort `GET /v0/workspaces/{id}/preview` and `GET /v0/workspaces/{id}/sessions` (a workspace that is still initializing may not serve those yet, in which case `preview_url` is empty and `sessions` is empty). `status` is one of initializing, ready, sleeping, archived, deleted, updating or unstarted; `lifecycle_step` and `error_message` explain an initializing or failed workspace.
+The block calls `GET /v0/workspaces/{id}` and `GET /v0/workspaces/{id}/status`, then best-effort `GET /v0/workspaces/{id}/preview` and `GET /v0/workspaces/{id}/sessions` (a workspace that is still initializing may not serve those yet, in which case `preview_url` is empty and `sessions` is empty). The session listing is paged in requests of up to 100 rows until `session_limit` sessions have been collected starting at `session_offset`; `sessions_has_more` and `next_session_offset` let a graph read the following page. `status` is one of initializing, ready, sleeping, archived, deleted, updating or unstarted; `lifecycle_step` and `error_message` explain an initializing or failed workspace.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -19,6 +19,8 @@ The block calls `GET /v0/workspaces/{id}` and `GET /v0/workspaces/{id}/status`, 
 |-------|-------------|------|----------|
 | workspace_id | Workspace ID | str | Yes |
 | include_archived_sessions | Include archived sessions in the session list | bool | No |
+| session_limit | Maximum number of sessions to return | int | No |
+| session_offset | Number of sessions to skip; use next_session_offset to read the following page | int | No |
 
 ### Outputs
 
@@ -32,6 +34,8 @@ The block calls `GET /v0/workspaces/{id}` and `GET /v0/workspaces/{id}/status`, 
 | preview_url | Public preview URL when a port is shared, else empty | str |
 | preview_port | Port being shared at the preview URL, 0 when none | int |
 | sessions | Agent sessions in the workspace: id, name, model, effort, deepLink | List[Dict[str, Any]] |
+| sessions_has_more | True when the workspace has more sessions than returned | bool |
+| next_session_offset | session_offset to request the next page of sessions | int |
 | deep_link | Link that opens the workspace | str |
 
 ### Possible use case

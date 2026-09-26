@@ -10,7 +10,7 @@ List Conductor workspaces, optionally filtered by project, state, name, reposito
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Without `project_id` the block calls `GET /v0/workspaces` and passes every filter as query parameters (`state` may repeat). With `project_id` it calls `GET /v0/projects/{id}/workspaces`, which only paginates, so `state` and `name` are applied client-side to the returned page. Each workspace is also emitted one at a time on `workspace` for fan-out. `next_offset` is the offset to request for the following page while `has_more` is true.
+Without `project_id` the block calls `GET /v0/workspaces` and passes every filter as query parameters (`state` may repeat). With `project_id` it calls `GET /v0/projects/{id}/workspaces`, which only paginates, so the block applies the same filters itself to each returned page: exact `state` and `creator`, case-insensitive `name` and `repo` substrings, `since` against `lastActivityAt`, and archived workspaces hidden unless `include_archived` is set or `archived` is among the requested states. A filtered page can therefore be empty while `has_more` is still true; keep paging with `next_offset`, which always advances by the raw page size. `since` must be an ISO-8601 date or timestamp and is validated before any request. Each workspace is also emitted one at a time on `workspace` for fan-out.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -22,7 +22,7 @@ Without `project_id` the block calls `GET /v0/workspaces` and passes every filte
 | name | Filter by workspace name | str | No |
 | repo | Filter by repository URL | str | No |
 | creator | Filter by creator user ID | str | No |
-| since | Only workspaces active since this ISO-8601 timestamp | str | No |
+| since | Only workspaces whose last activity is on or after this ISO-8601 date or timestamp | str | No |
 | include_archived | Include archived workspaces | bool | No |
 | limit | Maximum number of workspaces | int | No |
 | offset | Pagination offset | int | No |
@@ -35,7 +35,7 @@ Without `project_id` the block calls `GET /v0/workspaces` and passes every filte
 | workspaces | Workspaces: id, projectId, name, state, repoUrl, deepLink, creatorName, lastActivityAt | List[Dict[str, Any]] |
 | workspace | Each workspace, one at a time | Dict[str, Any] |
 | has_more | Whether more pages exist | bool |
-| next_offset | Offset to request the next page | int |
+| next_offset | Offset to request the next page; with project_id a page can be filtered down to nothing while has_more is still true | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
