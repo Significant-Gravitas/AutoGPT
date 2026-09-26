@@ -52,6 +52,12 @@ def convert_openai_tool_fmt_to_anthropic(
 ) -> Iterable[ToolParam] | anthropic.NotGiven:
     """Convert OpenAI tool definitions into Anthropic ``ToolParam`` shape.
 
+    The tool's JSON Schema goes over whole (bar OpenAI's ``strict`` flag),
+    so its root ``description``, ``additionalProperties: false`` (a response
+    model with ``extra="forbid"``) and the ``$defs`` its ``$ref``s point
+    into all survive. ``type`` is always ``object`` (Anthropic requires an
+    object schema), and ``properties`` / ``required`` default to empty.
+
     Returns ``anthropic.NOT_GIVEN`` when the caller passed no tools so
     the SDK omits the field from the serialized request (Anthropic
     rejects an empty tools array with HTTP 400).
@@ -61,20 +67,30 @@ def convert_openai_tool_fmt_to_anthropic(
 
     anthropic_tools: list[ToolParam] = []
     for tool in openai_tools:
-        # Accept both forms: {"type":"function","function":{...}} (OpenAI
-        # canonical) and {"name":..., "parameters":...} (raw function def).
+        # Accept three forms: {"type":"function","function":{...}} (OpenAI
+        # canonical), {"name":..., "parameters":...} (raw function def) and
+        # {"name":..., "input_schema":...} (already Anthropic-shaped, as
+        # ``tool_use.pydantic_to_anthropic_tool`` builds it).
         if "function" in tool:
             function_data = tool["function"]
         else:
             function_data = tool
+        schema: dict[str, Any] = dict(
+            function_data.get("input_schema") or function_data.get("parameters") or {}
+        )
+        # OpenAI's ``strict`` flag sometimes rides inside ``parameters`` (the
+        # orchestrator block puts it there). It is not JSON Schema, and
+        # Anthropic's own ``strict`` is a tool-level field, so it stays behind.
+        schema.pop("strict", None)
 
         anthropic_tool: ToolParam = {
             "name": function_data["name"],
             "description": function_data.get("description", ""),
             "input_schema": {
+                **schema,
                 "type": "object",
-                "properties": function_data.get("parameters", {}).get("properties", {}),
-                "required": function_data.get("parameters", {}).get("required", []),
+                "properties": schema.get("properties", {}),
+                "required": schema.get("required", []),
             },
         }
         anthropic_tools.append(anthropic_tool)

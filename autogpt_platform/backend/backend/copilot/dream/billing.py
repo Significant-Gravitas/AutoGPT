@@ -9,6 +9,9 @@ shared billing primitives:
   Redis lock is acquired, before phase 1 runs. Refuses the pass when
   the user is paywalled (``NO_TIER`` + ``ENABLE_PLATFORM_PAYMENT``) or
   has already exhausted their daily/weekly cap.
+* :func:`priced_phase_usage` — prices a phase the provider did not
+  price (native Anthropic, sync or batch) from the catalog price card
+  (``backend/copilot/price_card.py``) at the path's batch discount.
 * :func:`record_phase_cost` — per-phase charge. Called after each of
   consolidate / recombine / sanitize completes, charging the real LLM
   spend against the user's window and writing a ``PlatformCostLog``
@@ -31,6 +34,7 @@ import logging
 from typing import Literal
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.price_card import compute_cost_usd, price_for
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -41,7 +45,7 @@ from backend.copilot.rate_limit import (
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 
-from .routing import ExecutionPath
+from .routing import ExecutionPath, batch_discount
 from .schemas import PhaseUsage
 
 logger = logging.getLogger(__name__)
@@ -143,6 +147,28 @@ async def check_dream_budget(
     return True, None
 
 
+def priced_phase_usage(usage: PhaseUsage, execution_path: ExecutionPath) -> PhaseUsage:
+    """*usage* with its cost read off the model's catalog price card.
+
+    Each token bucket at the model's list rate, less the batch discount of
+    *execution_path*. The cost stays ``None`` when the model has no catalog
+    price (``price_for`` logs that); the phase then logs its tokens without
+    a charge.
+    """
+    price = price_for(usage.model)
+    if price is None:
+        return usage
+    cost = compute_cost_usd(
+        price=price,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        cache_creation_tokens=usage.cache_creation_tokens,
+        discount=batch_discount(execution_path),
+    )
+    return usage.model_copy(update={"cost_usd": cost})
+
+
 async def record_phase_cost(
     *,
     user_id: str,
@@ -163,9 +189,10 @@ async def record_phase_cost(
     back to its parent dream pass — the same join key the future P9
     inline ``dream.operations`` SSE event will reference.
 
-    No-ops when the phase has no cost (skipped phase / unknown rate
-    card). Matches ``persist_and_record_usage``'s contract: tokens
-    without cost still log but don't charge the rate-limit counter.
+    No-ops when the phase has neither tokens nor a cost (a skipped
+    phase). Matches ``persist_and_record_usage``'s contract: tokens
+    without a cost (a model with no catalog price) still log but don't
+    charge the rate-limit counter.
     """
     if (
         phase_usage.cost_usd is None
@@ -199,6 +226,7 @@ async def record_phase_cost(
             "dream_pass_id": pass_id,
             "dream_phase": phase_usage.phase,
             "execution_path": execution_path,
+            "discount_applied": batch_discount(execution_path),
         },
         # Dream is background work — it rolls up under the user's
         # weekly cap but must not eat the interactive daily budget.

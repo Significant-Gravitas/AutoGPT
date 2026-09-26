@@ -94,9 +94,9 @@ def _entry(
         "job_id": job_id,
         "phase": phase,
         "phase_models": {
-            "consolidate": "claude-sonnet-4-6",
-            "recombine": "claude-opus-4-7",
-            "sanitize": "claude-sonnet-4-6",
+            "consolidate": "claude-sonnet-5",
+            "recombine": "claude-opus-5-5",
+            "sanitize": "claude-sonnet-5",
         },
         "custom_ids": [custom_id],
         "phase_for_custom_id": {custom_id: phase},
@@ -393,7 +393,7 @@ class TestPhaseChaining:
         self, fake_redis
     ):
         """Phase 3 is terminal: apply runs, all three phases logged at
-        anthropic_batch path (50% discount in the rate card), JobStatus
+        anthropic_batch path (half the catalog list price), JobStatus
         flips to complete."""
         from backend.copilot.dream.batch_callbacks import _write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
@@ -481,9 +481,20 @@ class TestPhaseChaining:
             call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].model
             for call in record_cost.await_args_list
         }
-        assert models_by_phase["consolidate"] == "claude-sonnet-4-6"
-        assert models_by_phase["recombine"] == "claude-opus-4-7"
-        assert models_by_phase["sanitize"] == "claude-sonnet-4-6"
+        assert models_by_phase["consolidate"] == "claude-sonnet-5"
+        assert models_by_phase["recombine"] == "claude-opus-5-5"
+        assert models_by_phase["sanitize"] == "claude-sonnet-5"
+        # ...and priced from that model's catalog card at half the list
+        # price: each ``_row`` carries 10 input + 20 output tokens.
+        costs_by_phase = {
+            call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].cost_usd
+            for call in record_cost.await_args_list
+        }
+        sonnet_5_cost = (10 * 2.0 + 20 * 10.0) / 1_000_000 / 2
+        opus_5_5_cost = (10 * 4.0 + 20 * 20.0) / 1_000_000 / 2
+        assert costs_by_phase["consolidate"] == pytest.approx(sonnet_5_cost)
+        assert costs_by_phase["recombine"] == pytest.approx(opus_5_5_cost)
+        assert costs_by_phase["sanitize"] == pytest.approx(sonnet_5_cost)
 
     @pytest.mark.asyncio
     async def test_expert_terminal_result_applies_and_releases_in_expert_scope(
@@ -815,6 +826,39 @@ class TestErrorPaths:
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
         assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+
+    @pytest.mark.asyncio
+    async def test_text_answer_around_the_json_still_chains(self, fake_redis):
+        """A model the output tool can't be forced on (``auto``) may answer
+        in text. The JSON in it, fenced behind a line of prose, is the
+        phase result, and the next phase reads the JSON alone."""
+        await _persist_autopilot_bundle()
+        submit_phase = AsyncMock(
+            return_value=MagicMock(provider_batch_id="msgbatch_recombine")
+        )
+        mark_errored = AsyncMock()
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.job_status.update_status_phase", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+            return_value="sk-ant-test",
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="consolidate"),
+                [
+                    _row(
+                        custom_id="p1:consolidate",
+                        content='Here are the facts:\n```json\n{"facts": []}\n```',
+                    )
+                ],
+            )
+        mark_errored.assert_not_awaited()
+        submit_phase.assert_awaited_once()
+        assert submit_phase.call_args.kwargs["consolidated_json"] == (
+            _CONSOLIDATE_CONTENT
+        )
 
     @pytest.mark.asyncio
     async def test_apply_crash_marks_errored_still_records_usage(self, fake_redis):

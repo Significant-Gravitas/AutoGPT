@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
+import pytest
 from pydantic import BaseModel, Field
 
 from backend.util.llm.tool_use import (
     _inline_refs,
+    auto_tool_choice,
     force_tool_choice,
+    is_forced_tool_choice,
     pydantic_to_anthropic_tool,
+    structured_tool_choice,
 )
 
 
@@ -23,6 +28,17 @@ class _Operations(BaseModel):
     writes: list[str] = Field(default_factory=list)
     demotions: list[_Demotion] = Field(default_factory=list)
     summary_for_user: str = ""
+
+
+class _Kind(str, Enum):
+    """Kinds of memory."""
+
+    FACT = "fact"
+    RULE = "rule"
+
+
+class _Finding(BaseModel):
+    kind: _Kind = Field(default=_Kind.FACT, description="What the finding is.")
 
 
 class TestPydanticToAnthropicTool:
@@ -81,6 +97,48 @@ class TestForceToolChoice:
         assert choice["disable_parallel_tool_use"] is True
 
 
+class TestStructuredToolChoice:
+    """Opus 5.5 answers a forced ``tool_choice`` with a 400, so its output
+    tool goes out under ``auto``; models that accept forcing keep it."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5-5",
+            "anthropic/claude-opus-5.5",
+            "anthropic/claude-opus-5-5",
+            "claude-opus-5-5-20261015",
+            "claude-fable-5-1",
+        ],
+    )
+    def test_models_that_reject_forcing_get_auto(self, model: str):
+        assert structured_tool_choice(model, "emit_x") == auto_tool_choice()
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5",
+            "anthropic/claude-sonnet-5",
+            "claude-opus-5",
+            "claude-haiku-4-5-20251001",
+        ],
+    )
+    def test_models_that_accept_forcing_keep_it(self, model: str):
+        assert structured_tool_choice(model, "emit_x") == force_tool_choice("emit_x")
+
+    def test_auto_still_allows_at_most_one_call(self):
+        assert auto_tool_choice() == {
+            "type": "auto",
+            "disable_parallel_tool_use": True,
+        }
+
+    def test_only_tool_and_any_count_as_forced(self):
+        assert is_forced_tool_choice(force_tool_choice("emit_x"))
+        assert is_forced_tool_choice({"type": "any"})
+        assert not is_forced_tool_choice(auto_tool_choice())
+        assert not is_forced_tool_choice(None)
+
+
 class TestInlineRefs:
     def test_passes_through_schema_without_refs(self):
         schema = {"type": "object", "properties": {"a": {"type": "string"}}}
@@ -111,6 +169,44 @@ class TestInlineRefs:
             result["properties"]["items"]["items"]["properties"]["x"]["type"]
             == "integer"
         )
+
+    def test_keys_beside_a_ref_survive_and_win(self):
+        """A field's ``default`` and ``description`` sit beside its ``$ref``;
+        inlining keeps them, over the definition's own description."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "$ref": "#/$defs/Kind",
+                    "default": "fact",
+                    "description": "What the finding is.",
+                }
+            },
+            "$defs": {
+                "Kind": {
+                    "type": "string",
+                    "enum": ["fact", "rule"],
+                    "description": "Kinds of memory.",
+                }
+            },
+        }
+        result = _inline_refs(schema)
+        assert result["properties"]["kind"] == {
+            "type": "string",
+            "enum": ["fact", "rule"],
+            "default": "fact",
+            "description": "What the finding is.",
+        }
+
+    def test_pydantic_ref_field_keeps_its_default_and_description(self):
+        """An enum field with a default and a description, as pydantic
+        emits it: the tool schema keeps both next to the inlined enum."""
+        tool = pydantic_to_anthropic_tool(_Finding, tool_name="x", description="x")
+        kind = tool["input_schema"]["properties"]["kind"]
+        assert kind["enum"] == ["fact", "rule"]
+        assert kind["default"] == "fact"
+        assert kind["description"] == "What the finding is."
+        assert "$ref" not in kind
 
     def test_leaves_unknown_ref_form_alone(self):
         """A ref to an external schema (not #/$defs/...) shouldn't crash;

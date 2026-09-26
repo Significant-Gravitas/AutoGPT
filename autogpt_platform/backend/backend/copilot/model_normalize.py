@@ -52,14 +52,31 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
     # must never have them rewritten — both pass through unchanged.
     if config.effective_transport in ("openrouter", "local"):
         return raw_model
+    return normalize_model_for_anthropic(
+        raw_model, caller=f"{config.effective_transport!r} transport"
+    )
+
+
+def normalize_model_for_anthropic(
+    raw_model: str, *, caller: str = "The native Anthropic API"
+) -> str:
+    """The native Anthropic API's spelling of *raw_model*, whatever the
+    chat transport: the ``anthropic/`` prefix stripped and dots turned into
+    hyphens (``anthropic/claude-opus-4.6`` → ``claude-opus-4-6``).
+
+    The Anthropic branch of :func:`normalize_model_for_transport`, and the
+    whole rule for calls that always reach Anthropic directly — the dream
+    batch submit, which runs under the OpenRouter chat transport too, and
+    the dream sync path on the ``anthropic`` provider. *caller* names the
+    path in the error raised for a non-Anthropic model.
+    """
     model = raw_model
     if "/" in model:
         vendor, model = model.split("/", 1)
         if vendor != "anthropic":
             raise ValueError(
-                f"{config.effective_transport!r} transport requires an "
-                f"Anthropic model, got vendor={vendor!r} from "
-                f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
+                f"{caller} requires an Anthropic model, got vendor={vendor!r} "
+                f"from model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
                 f"CHAT_THINKING_ADVANCED_MODEL/CHAT_FAST_STANDARD_MODEL/"
                 f"CHAT_FAST_ADVANCED_MODEL to an anthropic/* slug, or "
                 f"enable OpenRouter."
@@ -72,8 +89,8 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
         # ``gemini-pro``, ...) would fail with an opaque
         # ``model_not_found`` at request time — surface it here.
         raise ValueError(
-            f"{config.effective_transport!r} transport requires an "
-            f"Anthropic model slug, got model={raw_model!r}. Use an "
-            f"``anthropic/*`` or ``claude-*`` slug, or enable OpenRouter."
+            f"{caller} requires an Anthropic model slug, got "
+            f"model={raw_model!r}. Use an ``anthropic/*`` or ``claude-*`` "
+            f"slug, or enable OpenRouter."
         )
     return model.replace(".", "-")

@@ -174,8 +174,10 @@ def test_deepseek_chat_display_rate_tracks_openrouter():
 
 
 def test_claude_sonnet_5_bills_at_authored_rates():
-    """Sonnet 5 (sticker $3/$15; intro pricing ends 2026-08-31) — flat tier
-    and per-1M projections must match the authored catalog entry."""
+    """Sonnet 5 bills credits set against a $3/$15 sticker (Anthropic's
+    list price stayed $2/$10 when the rise was cancelled; credits are the
+    platform's rate) — flat tier and per-1M projections must match the
+    authored catalog entry."""
     s5 = LLMModel("claude-sonnet-5")
     assert MODEL_COST[s5] == 9
     assert TOKEN_COST[s5].model_dump() == {

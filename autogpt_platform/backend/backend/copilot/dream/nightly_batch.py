@@ -11,17 +11,20 @@ submitter:
   * Future P2 dedup / P3 self-model refresh / P4 scenario pre-warm /
     P11 threat rehearsal land as additional submitters here
 
-Each submitter is fast to ENQUEUE (seconds) but may take up to ~1h to
-COMPLETE when running against the Anthropic batch API. The submitters fire in sequence at cron time; their
-batch results land asynchronously via the separate
-``copilot_batch_executor`` poller service that dispatches by
-``custom_id`` to per-stage apply handlers.
+Each submitter is fast to ENQUEUE (seconds). A dream pass routed to
+Anthropic's Message Batches API (``anthropic_batch``: the
+``dream-pass-batch-enabled`` flag plus a direct Anthropic key) submits
+its first phase and returns; the separate ``copilot_batch_executor``
+poller service collects each finished batch and dispatches it by
+``custom_id`` to ``batch_callbacks``, which submits the next phase and,
+after the last one, applies. Every phase batch gets its own 24-hour
+window (Anthropic's batch SLA, ``MAX_BATCH_LIFETIME_SECONDS``). There
+is no OpenAI batch path: ``call_provider`` refuses
+``execution_mode="batch"`` for OpenAI.
 
-Until the real batch providers land (currently scaffolded with
-``NotImplementedError`` stubs in ``dream/batch/``), the dream pass
-runs end-to-end via ``execute_dream_pass`` (sync_baseline path —
-30s LLM thinking + seconds-long apply). The function shape is the
-same either way.
+Otherwise the dream pass runs end-to-end via ``execute_dream_pass`` on
+the sync_baseline path (30s LLM thinking + seconds-long apply). The
+function shape is the same either way.
 
 Concurrency model (per ``dream/p0-spec.md`` §5 and the architecture
 plan): LLM-thinking phases stay concurrent with user writes (they're
