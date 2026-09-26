@@ -181,7 +181,9 @@ class ConductorClient:
         return await self._call("POST", f"{API_V0}/routines", json_body=payload)
 
     async def rotate_routine_secret(self, routine_id: str) -> dict[str, Any]:
-        return await self._call("POST", f"{API_V0}/routines/{routine_id}/rotate-secret")
+        return await self._call(
+            "POST", f"{API_V0}/routines/{routine_id}/rotate-secret", json_body={}
+        )
 
     # --- workspaces --------------------------------------------------------
 
@@ -230,7 +232,9 @@ class ConductorClient:
 
     async def workspace_lifecycle(self, workspace_id: str, verb: str) -> dict[str, Any]:
         """verb is one of archive, unarchive, sleep."""
-        return await self._call("POST", f"{API_V0}/workspaces/{workspace_id}/{verb}")
+        return await self._call(
+            "POST", f"{API_V0}/workspaces/{workspace_id}/{verb}", json_body={}
+        )
 
     async def get_preview(self, workspace_id: str) -> dict[str, Any]:
         return await self._call("GET", f"{API_V0}/workspaces/{workspace_id}/preview")
@@ -271,10 +275,14 @@ class ConductorClient:
         )
 
     async def cancel_session(self, session_id: str) -> dict[str, Any]:
-        return await self._call("POST", f"{API_V0}/sessions/{session_id}/cancel")
+        return await self._call(
+            "POST", f"{API_V0}/sessions/{session_id}/cancel", json_body={}
+        )
 
     async def archive_session(self, session_id: str) -> dict[str, Any]:
-        return await self._call("POST", f"{API_V0}/sessions/{session_id}/archive")
+        return await self._call(
+            "POST", f"{API_V0}/sessions/{session_id}/archive", json_body={}
+        )
 
     async def send_message(self, session_id: str, message: str) -> dict[str, Any]:
         return await self._call(
@@ -303,11 +311,6 @@ class ConductorClient:
 
     async def get_message(self, message_id: str) -> dict[str, Any]:
         return await self._call("GET", f"{API_V0}/messages/{message_id}")
-
-    # --- transcripts -------------------------------------------------------
-
-    async def sql(self, query: str) -> dict[str, Any]:
-        return await self._call("POST", f"{API_V0}/sql", json_body={"query": query})
 
 
 def _query_value(value: Any) -> Any:

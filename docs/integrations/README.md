@@ -548,7 +548,6 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Conductor Manage Section](block-integrations/conductor/sections.md#conductor-manage-section) | Create or delete a Conductor cloud section |
 | [Conductor Manage Session](block-integrations/conductor/manage_session.md#conductor-manage-session) | Rename, cancel or archive a Conductor agent session |
 | [Conductor Manage Workspace](block-integrations/conductor/manage_workspace.md#conductor-manage-workspace) | Change a Conductor workspace: rename it, archive, unarchive or sleep it, share or stop sharing a port at its public preview URL, or move it into a section |
-| [Conductor Search Transcripts](block-integrations/conductor/search.md#conductor-search-transcripts) | Search Conductor session transcripts with a read-only SQL query |
 | [Conductor Send Message](block-integrations/conductor/send_message.md#conductor-send-message) | Send a prompt to a Conductor agent session and, by default, wait for the agent to finish and return its reply |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |

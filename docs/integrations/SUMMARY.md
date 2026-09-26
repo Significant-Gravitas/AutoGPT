@@ -57,7 +57,6 @@
 * [Conductor Manage Session](block-integrations/conductor/manage_session.md)
 * [Conductor Manage Workspace](block-integrations/conductor/manage_workspace.md)
 * [Conductor Routines](block-integrations/conductor/routines.md)
-* [Conductor Search](block-integrations/conductor/search.md)
 * [Conductor Sections](block-integrations/conductor/sections.md)
 * [Conductor Send Message](block-integrations/conductor/send_message.md)
 * [Data](block-integrations/data.md)

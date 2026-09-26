@@ -10,7 +10,7 @@ Rename, cancel or archive a Conductor agent session. Cancel stops the running tu
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-One `action` per run: `rename` posts `{name}` to `/rename`; `cancel` posts to `/cancel`, stopping the current turn and dropping queued prompts; `archive` posts to `/archive`. Cancel and archive report `canceled_queued_messages`, and `status` reflects the session state afterwards when Conductor returns it.
+One `action` per run: `rename` posts `{name}` to `/rename`; `cancel` posts `{}` to `/cancel`, stopping the current turn and dropping queued prompts; `archive` posts `{}` to `/archive`. Cancel and archive report `canceled_queued_messages`. The `status` output is Conductor's immediate response: cancellation can still report `working` while the agent stops. Use Get Session to confirm that it reaches `idle`.
 <!-- END MANUAL -->
 
 ### Inputs

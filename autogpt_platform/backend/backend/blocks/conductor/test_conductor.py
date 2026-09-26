@@ -20,7 +20,6 @@ from backend.blocks.conductor._api import (
 )
 from backend.blocks.conductor.create_workspace import ConductorCreateWorkspaceBlock
 from backend.blocks.conductor.manage_workspace import ConductorManageWorkspaceBlock
-from backend.blocks.conductor.search import ConductorSearchTranscriptsBlock
 from backend.blocks.conductor.send_message import ConductorSendMessageBlock
 from backend.blocks.conductor.test_fixtures import (
     TEST_CREDENTIALS,
@@ -74,7 +73,7 @@ async def test_api_error_surfaces_user_message():
         FakeResponse(401, {"userMessage": "requests require an authenticated user"})
     )
     with pytest.raises(ValueError, match=r"HTTP 401.*authenticated user"):
-        await client.sql("SELECT 1")
+        await client.get_me()
 
 
 @pytest.mark.asyncio
@@ -103,20 +102,6 @@ def test_clean_drops_blank_values_and_unwraps_enums():
             "effort": ConductorEffort.DEFAULT,
         }
     ) == {"projectId": "p1", "agent": "codex"}
-
-
-# --- search (R1-08) -----------------------------------------------------------
-
-
-def test_search_schema_documents_the_transcript_view():
-    description = ConductorSearchTranscriptsBlock.Input.model_fields[
-        "query"
-    ].description
-    assert description is not None
-    assert "session_transcripts_view" in description
-    assert "transcript" in description
-    assert "FROM messages" not in description
-    assert "LIMIT" in description
 
 
 # --- blocks ------------------------------------------------------------------
