@@ -1,0 +1,276 @@
+"""
+Joy Trust verification blocks.
+
+Verify agent trust scores before delegating tasks. Joy Trust Network provides
+cross-platform reputation scoring for AI agents based on vouches, verification,
+and behavioral signals.
+
+**Use Cases:**
+
+- **Safety Checkpoint:** Verify an agent meets trust threshold before delegation
+- **Trust Auditing:** Log trust scores for compliance and monitoring
+- **Capability Discovery:** Find trusted agents with specific capabilities
+
+**How It Works:**
+
+1. Call the Joy API with an agent ID
+2. Receive trust score (0-5 scale) and verification status
+3. Compare against your minimum threshold
+4. Proceed with delegation only if threshold is met
+"""
+
+from typing import Any
+
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+    CredentialsMetaInput,
+    SchemaField,
+)
+
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._config import get_agent as _get_agent
+from ._config import joy_trust
+
+
+class JoyVerifyTrustBlock(Block):
+    """
+    Verify if an agent meets a minimum trust threshold before delegation.
+
+    Use this block as a safety gate in your workflow - only proceed with
+    delegation if the target agent has sufficient trust score. Returns
+    a boolean indicating whether the threshold is met.
+
+    Recommended thresholds:
+    - 1.0: Permissive (low-risk tasks)
+    - 1.5: Standard (general use, recommended default)
+    - 2.0: Moderate (established agents only)
+    - 2.5: Strict (high security)
+    """
+
+    class Input(BlockSchemaInput):
+        """Input schema for JoyVerifyTrustBlock."""
+
+        credentials: CredentialsMetaInput = joy_trust.credentials_field(
+            description="Joy API key (optional, increases rate limits)"
+        )
+        agent_id: str = SchemaField(
+            description="The Joy agent ID to verify (e.g. 'ag_abc123')",
+            advanced=False,
+        )
+        min_trust_score: float = SchemaField(
+            description="Minimum trust score required (0-5 scale). Default 1.5 is recommended for general use.",
+            default=1.5,
+            ge=0.0,
+            le=5.0,
+            advanced=False,
+        )
+
+    class Output(BlockSchemaOutput):
+        """Output schema for JoyVerifyTrustBlock."""
+
+        meets_threshold: bool = SchemaField(
+            description="True if agent's trust score meets or exceeds the minimum threshold"
+        )
+        trust_score: float = SchemaField(
+            description="The agent's current trust score (0-5 scale)"
+        )
+        agent_name: str = SchemaField(description="Name of the verified agent")
+        verified: bool = SchemaField(
+            description="Whether the agent has endpoint verification"
+        )
+        error: str = SchemaField(description="Error message if verification failed")
+
+    def __init__(self) -> None:
+        """Initialize JoyVerifyTrustBlock with test configuration."""
+        super().__init__(
+            id="b7f2418c-1e01-4352-a799-bd244d7fab67",
+            description="Verify if an agent meets minimum trust threshold before delegating tasks. Use as a safety gate in multi-agent workflows.",
+            categories={BlockCategory.SAFETY},
+            input_schema=self.Input,
+            output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "agent_id": "mock_agent",
+                "min_trust_score": 1.5,
+            },
+            test_output=[
+                ("meets_threshold", True),
+                ("trust_score", 2.0),
+                ("agent_name", "Mock Agent"),
+                ("verified", True),
+            ],
+            test_mock={
+                "get_agent": lambda agent_id, credentials: {
+                    "agent_id": agent_id,
+                    "name": "Mock Agent",
+                    "trust_score": 2.0,
+                    "verified": True,
+                },
+            },
+        )
+
+    async def get_agent(
+        self, agent_id: str, credentials: APIKeyCredentials | None
+    ) -> dict[str, Any]:
+        """Mockable wrapper for Joy API get_agent."""
+        return await _get_agent(agent_id, credentials)
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
+    ) -> BlockOutput:
+        """Execute trust verification and yield results."""
+        try:
+            agent = await self.get_agent(input_data.agent_id, credentials)
+            raw_score = agent.get("trust_score")
+            trust_score = 0.0 if raw_score is None else float(raw_score)
+            meets_threshold = trust_score >= input_data.min_trust_score
+
+            yield "meets_threshold", meets_threshold
+            yield "trust_score", trust_score
+            yield "agent_name", agent.get("name", "Unknown")
+            yield "verified", agent.get("verified", False)
+        except Exception as e:
+            yield "error", str(e)
+            yield "meets_threshold", False
+            yield "trust_score", 0.0
+            yield "agent_name", ""
+            yield "verified", False
+
+
+class JoyGetTrustScoreBlock(Block):
+    """
+    Get detailed trust information for an agent.
+
+    Returns the full trust profile including score, verification status,
+    vouch count, capabilities, and badges. Use this for detailed trust
+    auditing or to display agent information.
+
+    **How It Works:**
+
+    1. Query the Joy API with an agent ID
+    2. Receive full agent profile with trust metrics
+    3. Use the data for auditing, display, or decision-making
+    """
+
+    class Input(BlockSchemaInput):
+        """Input schema for JoyGetTrustScoreBlock."""
+
+        credentials: CredentialsMetaInput = joy_trust.credentials_field(
+            description="Joy API key (optional, increases rate limits)"
+        )
+        agent_id: str = SchemaField(
+            description="The Joy agent ID to look up (e.g. 'ag_abc123')",
+            advanced=False,
+        )
+
+    class Output(BlockSchemaOutput):
+        """Output schema for JoyGetTrustScoreBlock."""
+
+        agent_id: str = SchemaField(description="The agent's unique identifier")
+        name: str = SchemaField(description="The agent's display name")
+        trust_score: float = SchemaField(description="Trust score (0-5 scale)")
+        verified: bool = SchemaField(description="Whether endpoint is verified")
+        vouch_count: int = SchemaField(description="Number of vouches received")
+        capabilities: list[str] = SchemaField(
+            description="List of agent capabilities"
+        )
+        badges: list[str] = SchemaField(
+            description="Earned badges (verified, responsive, etc.)"
+        )
+        result: dict[str, Any] = SchemaField(description="Complete agent profile")
+        error: str = SchemaField(description="Error message if lookup failed")
+
+    def __init__(self) -> None:
+        """Initialize JoyGetTrustScoreBlock with test configuration."""
+        super().__init__(
+            id="47ab7137-d6ae-4edf-ab00-c61d710c025f",
+            description="Get detailed trust profile for an agent including score, verification status, and capabilities.",
+            categories={BlockCategory.SAFETY},
+            input_schema=self.Input,
+            output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "agent_id": "mock_agent",
+            },
+            test_output=[
+                ("agent_id", "mock_agent"),
+                ("name", "Mock Agent"),
+                ("trust_score", 2.0),
+                ("verified", True),
+                ("vouch_count", 3),
+                ("capabilities", ["mock-capability"]),
+                ("badges", ["mock-badge"]),
+                (
+                    "result",
+                    {
+                        "agent_id": "mock_agent",
+                        "name": "Mock Agent",
+                        "trust_score": 2.0,
+                        "verified": True,
+                        "vouch_count": 3,
+                        "capabilities": ["mock-capability"],
+                        "badges": ["mock-badge"],
+                    },
+                ),
+            ],
+            test_mock={
+                "get_agent": lambda agent_id, credentials: {
+                    "agent_id": agent_id,
+                    "name": "Mock Agent",
+                    "trust_score": 2.0,
+                    "verified": True,
+                    "vouch_count": 3,
+                    "capabilities": ["mock-capability"],
+                    "badges": ["mock-badge"],
+                },
+            },
+        )
+
+    async def get_agent(
+        self, agent_id: str, credentials: APIKeyCredentials | None
+    ) -> dict[str, Any]:
+        """Mockable wrapper for Joy API get_agent."""
+        return await _get_agent(agent_id, credentials)
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
+    ) -> BlockOutput:
+        """Execute trust score lookup and yield full agent profile."""
+        try:
+            agent = await self.get_agent(input_data.agent_id, credentials)
+            raw_score = agent.get("trust_score")
+            trust_score = 0.0 if raw_score is None else float(raw_score)
+
+            yield "agent_id", agent.get("agent_id", input_data.agent_id)
+            yield "name", agent.get("name", "Unknown")
+            yield "trust_score", trust_score
+            yield "verified", agent.get("verified", False)
+            yield "vouch_count", agent.get("vouch_count", 0)
+            yield "capabilities", agent.get("capabilities", [])
+            yield "badges", agent.get("badges", [])
+            yield "result", agent
+        except Exception as e:
+            yield "error", str(e)
+            yield "agent_id", input_data.agent_id
+            yield "name", ""
+            yield "trust_score", 0.0
+            yield "verified", False
+            yield "vouch_count", 0
+            yield "capabilities", []
+            yield "badges", []
+            yield "result", {}
