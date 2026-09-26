@@ -1,6 +1,8 @@
 import asyncio
 import base64
+import hashlib
 import io
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -8,44 +10,80 @@ from openai import AsyncOpenAI
 from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
-from backend.api.features.experts.avatar_catalog import (
-    COLORS,
-    PRESETS,
-    AvatarCategory,
-    AvatarColor,
-)
+from backend.api.features.experts.avatar_catalog import PALETTE
 from backend.api.features.experts.avatar_design import (
-    ACCENT_PLACEMENTS,
     BASES,
+    EXPRESSIONS,
     INLAYS,
     SHAPES,
     TILTS,
+    AvatarInlay,
     AvatarShape,
 )
 from backend.util.settings import Settings
 
+# A candidate may belong to a work category or, with none chosen, to the
+# warm-stone General family. Otto's lavender is never available.
+GenerationCategory = Literal[
+    "marketing",
+    "sales",
+    "finance",
+    "support",
+    "operations",
+    "research",
+    "content",
+    "development",
+    "general",
+]
+
 
 class ExpertAvatarRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    category: AvatarCategory = "content"
-    color: AvatarColor | None = None
+    category: GenerationCategory = "general"
     shape: AvatarShape = "pebble"
     base: Literal["compact", "wide", "tall"] = "compact"
     tilt: Literal["level", "left", "right"] = "level"
-    inlay: Literal["sweep", "pool", "curl", "patch", "cap", "teardrop"] = "sweep"
-    accent_placement: Literal["body", "head", "both"] = "body"
-    accent_count: Literal["one", "two", "three"] = "one"
-    shade: Literal["standard", "light", "dark"] | None = None
+    inlay: AvatarInlay = "sweep"
     expression: Literal["friendly", "curious", "focused", "pleased"] = "friendly"
 
 
-EXPRESSIONS = {
-    "friendly": "open oval eyes, relaxed curved brows, tiny closed smile",
-    "curious": "open oval eyes, one raised brow, tiny round mouth",
-    "focused": "compact oval eyes, low gently angled brows, short diagonal mouth; not angry",
-    "pleased": "small upward-curved closed eyes, relaxed brows, small closed smile",
-}
 REFERENCE_FOLDER = Path(__file__).parent / "avatar_references"
+# Reference order follows the generation standard: Maria fixes finish, light,
+# face and the cream material; Mina fixes the silhouette range and where cream
+# sits; an accepted peer of the requested family is the color reference.
+FINISH_REFERENCE = "expert-maria"
+SILHOUETTE_REFERENCE = "expert-mina"
+COLOR_REFERENCES: dict[GenerationCategory, str | None] = {
+    "marketing": "expert-maria",
+    "sales": "expert-max",
+    "finance": "expert-mina",
+    "support": "expert-riley",
+    "operations": "expert-harper",
+    "research": "expert-nadia",
+    "development": "expert-devon",
+    "general": "expert-general-01",
+    # Content has no accepted identity yet; the hex anchor carries the color.
+    "content": None,
+}
+
+
+def reference_ids(category: GenerationCategory) -> list[str]:
+    ids = [FINISH_REFERENCE, SILHOUETTE_REFERENCE]
+    peer = COLOR_REFERENCES[category]
+    if peer and peer not in ids:
+        ids.append(peer)
+    return ids
+
+
+def reference_images(category: GenerationCategory) -> list[tuple[str, bytes, str]]:
+    manifest = json.loads((REFERENCE_FOLDER / "manifest.json").read_text())
+    images = []
+    for asset_id in reference_ids(category):
+        content = (REFERENCE_FOLDER / f"{asset_id}.png").read_bytes()
+        if hashlib.sha256(content).hexdigest() != manifest[asset_id]["sha256"]:
+            raise ValueError(f"Reference {asset_id} does not match its recorded hash")
+        images.append((f"{asset_id}.png", content, "image/png"))
+    return images
 
 
 async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
@@ -55,15 +93,11 @@ async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
     ) as client:
         result = await client.images.edit(
             model=settings.config.expert_avatar_model,
-            image=(
-                "reference.png",
-                (REFERENCE_FOLDER / f"{request.shape}.png").read_bytes(),
-                "image/png",
-            ),
+            image=reference_images(request.category),
             prompt=avatar_prompt(request),
             size="1024x1024",
-            quality="medium",
-            background="transparent",
+            quality="high",
+            background="opaque",
             output_format="png",
             n=1,
         )
@@ -74,43 +108,51 @@ async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
 
 
 def avatar_prompt(request: ExpertAvatarRequest) -> str:
-    color = COLORS[request.color or PRESETS[request.category].color_id]
-    hue = color.hex
-    if request.shade is not None:
-        color = COLORS[PRESETS[request.category].color_id]
-        hue = category_shade(color.hex, request.shade)
-    return (
-        "Create ONE new AutoGPT Clay & Rock specialist avatar. Use the attached image "
-        "as a material, lighting and head outline reference. Render only ONE figure. "
-        "Replace its color, base, tilt and inlay with the choices below. "
-        f"Main mineral hue: {color.label} {hue} across head and base. "
-        f"Head outline: {SHAPES[request.shape]}. Base: {BASES[request.base]}. "
-        f"Tilt: {TILTS[request.tilt]}. Accent shape: {INLAYS[request.inlay]}. "
-        f"Accent placement: {ACCENT_PLACEMENTS[request.accent_placement]}. "
-        f"Use {request.accent_count} separate cream accents on each selected part. "
-        f"Face: {EXPRESSIONS[request.expression]}. "
-        "Exactly two irregular masses: head 55–65% of total height, touching one "
-        "stable base. Smooth matte clay, very fine grain, rounded corners. "
-        "Cream #EAE2D5 accents occupy 8–25% of the visible figure in total, "
-        "with rounded boundaries and a narrow recessed material groove. "
-        "Replace the reference markings with the specified shape, count and placement. "
-        "Keep the face clear and the main mineral hue dominant. No sharp wedges, thin piping, "
-        "black collar, open gap, limbs, neck, octopus anatomy, purple, lavender, props, "
-        "clothes, accessories, logos or text. Small charcoal eyes, brows and mouth only. "
-        "No teeth, blush, highlights or theatrical reactions. Soft upper-left studio light, "
-        "front or slight three-quarter view. Square transparent PNG, full figure centered "
-        "at 80% of canvas height, safe margins, quiet contact shadow. No backdrop or pedestal."
+    palette = PALETTE[request.category]
+    peer = COLOR_REFERENCES[request.category]
+    color_reference = (
+        f"The third attached image is an accepted {request.category} peer: match its "
+        "color under the same light; do not copy its identity."
+        if peer and peer not in (FINISH_REFERENCE, SILHOUETTE_REFERENCE)
+        else "No color peer is attached; take the color from the hex anchor."
     )
-
-
-def category_shade(hex_color: str, shade: str) -> str:
-    amount = {"standard": 0, "light": 0.16, "dark": -0.16}[shade]
-    channels = [int(hex_color[index : index + 2], 16) for index in (1, 3, 5)]
-    values = [
-        round(value + (255 - value) * amount if amount >= 0 else value * (1 + amount))
-        for value in channels
-    ]
-    return "#" + "".join(f"{value:02X}" for value in values)
+    return (
+        "Create ONE new AutoGPT Clay & Rock specialist Expert as a new identity in "
+        "the attached family. The first attached image (Maria) fixes the material, "
+        "finish, studio light, face construction and the cream material. The second "
+        "(Mina) fixes the permitted silhouette range and where the cream sits. "
+        f"{color_reference} Render only one figure, no text, props, accessories, "
+        "clothing, logos or extra stones.\n"
+        f"Material: one mineral color over both masses, {palette.label} {palette.hex} "
+        "as the material anchor, matched to the references under the same light. "
+        "Smooth clay/rock with a soft, low-sheen finish, broad gentle highlights, "
+        "slow tonal transitions and fine subdued mineral texture. No per-figure hue, "
+        "saturation or gloss changes; no glossy plastic, wet glare, hard rims or "
+        "coarse rubble.\n"
+        "Construction: exactly two touching irregular primary masses, a head above a "
+        "compact limbless base, no neck, arms, feet, ears or costume. "
+        f"Head: {SHAPES[request.shape]}; a rounded sculptural volume with depth, "
+        "broad convex surfaces, gently receding sides and generous transitions; no "
+        "sharp faceting, spikes, fragile tips, horns or deep clefts. "
+        f"Base: {BASES[request.base]}. {TILTS[request.tilt].capitalize()}. "
+        "Narrow soft contact shadow between the masses; no black collar, gap or "
+        "floating head. Avoid any elongated, bulbous, cleft or anatomical reading of "
+        "the head, the base or the two together; keep a broad grounded mass with a "
+        "stable footprint.\n"
+        f"Cream: {INLAYS[request.inlay]}, cream #EAE2D5, entirely on the lower form "
+        "below the head/body join, small and broad, with a gently curving boundary, "
+        "generous radii and a narrow recessed material groove. No cream on the head, "
+        "no patches, tips, sharp wedges, straight bands, thin piping or second "
+        "accents; the underside stays the main color.\n"
+        f"Face: {EXPRESSIONS[request.expression]}, drawn in charcoal only, placed "
+        "optically on the usable front surface of the head, eyes and mouth on one "
+        "local centerline with balanced clear space, gaze toward the viewer. No "
+        "teeth, blush, eye sparkle or theatrical reaction.\n"
+        "Scene: warm off-white studio sweep, large soft light from the upper left, "
+        "quiet contact shadow to the right, near-frontal camera, the complete figure "
+        "centered with comfortable margins at about 70 percent of the frame height. "
+        "Opaque square PNG. No purple, lavender or plum, and no octopus anatomy."
+    )
 
 
 def validate_png(content: bytes) -> io.BytesIO:
@@ -120,6 +162,12 @@ def validate_png(content: bytes) -> io.BytesIO:
         if image.format != "PNG" or image.size != (1024, 1024):
             raise ValueError("Expected a square 1024px PNG")
         image.load()
-        if image.mode != "RGBA" or image.getchannel("A").getextrema() != (0, 255):
-            raise ValueError("Expected a transparent PNG with visible artwork")
+        if image.mode not in ("RGB", "RGBA"):
+            raise ValueError("Expected an opaque color PNG")
+        if image.mode == "RGBA" and image.getchannel("A").getextrema() != (255, 255):
+            raise ValueError("Expected an opaque studio tile, not a cut-out")
+        # getcolors() gives up (None) past its limit; a short list means a
+        # flat or near-flat tile with no rendered figure on it.
+        if image.convert("RGB").getcolors(256) is not None:
+            raise ValueError("Expected visible artwork")
     return io.BytesIO(content)

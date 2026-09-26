@@ -16,8 +16,9 @@ sides changed: an update never removes something the user wrote.
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
 from difflib import SequenceMatcher
+
+from pydantic import BaseModel, ConfigDict
 
 SKILL_MD = "SKILL.md"
 
@@ -45,9 +46,10 @@ def package_tree_sha256(files: Iterable[tuple[str, str, bool]]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-@dataclass(frozen=True)
-class PackageFile:
+class PackageFile(BaseModel):
     """One file of a package by its path relative to the skill folder."""
+
+    model_config = ConfigDict(frozen=True)
 
     content: bytes
     executable: bool = False
@@ -66,8 +68,9 @@ def package_hash(package: Package) -> str:
     )
 
 
-@dataclass(frozen=True)
-class MergedText:
+class MergedText(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     text: str
     # True when a hunk changed on both sides and the user's version was kept.
     conflicted: bool
@@ -84,11 +87,11 @@ def merge_text(base: str, ours: str, theirs: str) -> MergedText:
     which they can always fetch again from the marketplace.
     """
     if ours == theirs:
-        return MergedText(ours, False)
+        return MergedText(text=ours, conflicted=False)
     if base == ours:
-        return MergedText(theirs, False)
+        return MergedText(text=theirs, conflicted=False)
     if base == theirs:
-        return MergedText(ours, False)
+        return MergedText(text=ours, conflicted=False)
     # Split on the newline itself rather than with splitlines(): a trailing
     # newline then shows up as a final empty element, so whether a file ends
     # in one merges like any other line instead of making "b" and "b" plus a
@@ -109,11 +112,12 @@ def merge_text(base: str, ours: str, theirs: str) -> MergedText:
         else:
             conflicted = True
             out.extend(chunk.ours)
-    return MergedText(_NEWLINE.join(out), conflicted)
+    return MergedText(text=_NEWLINE.join(out), conflicted=conflicted)
 
 
-@dataclass(frozen=True)
-class _Chunk:
+class _Chunk(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     stable: bool
     base: list[str]
     ours: list[str]
@@ -147,13 +151,22 @@ def _diff3_chunks(base: list[str], ours: list[str], theirs: list[str]) -> list[_
             j += 1
         o_start, t_start = ours_at[i], theirs_at[i]
         if (i, o_start, t_start) != (b, o, t):
-            chunks.append(_Chunk(False, base[b:i], ours[o:o_start], theirs[t:t_start]))
+            chunks.append(
+                _Chunk(
+                    stable=False,
+                    base=base[b:i],
+                    ours=ours[o:o_start],
+                    theirs=theirs[t:t_start],
+                )
+            )
         run = base[i : j + 1]
-        chunks.append(_Chunk(True, run, run, run))
+        chunks.append(_Chunk(stable=True, base=run, ours=run, theirs=run))
         b, o, t = j + 1, ours_at[j] + 1, theirs_at[j] + 1
         i = j + 1
     if (b, o, t) != (len(base), len(ours), len(theirs)):
-        chunks.append(_Chunk(False, base[b:], ours[o:], theirs[t:]))
+        chunks.append(
+            _Chunk(stable=False, base=base[b:], ours=ours[o:], theirs=theirs[t:])
+        )
     return chunks
 
 
@@ -167,11 +180,10 @@ def _match_index(base: list[str], other: list[str]) -> list[int]:
     return matched
 
 
-@dataclass
-class MergedPackage:
-    files: dict[str, PackageFile] = field(default_factory=dict)
+class MergedPackage(BaseModel):
+    files: dict[str, PackageFile] = {}
     # Paths where both sides changed and the user's side was kept.
-    conflicts: list[str] = field(default_factory=list)
+    conflicts: list[str] = []
 
     @property
     def conflicted(self) -> bool:
@@ -249,15 +261,15 @@ def _merge_file(
         their_text = theirs.content.decode("utf-8")
     except UnicodeDecodeError:
         conflicts.append(path)
-        return PackageFile(ours.content, executable)
+        return PackageFile(content=ours.content, executable=executable)
     if base is None:
         # Added on both sides with different content: nothing to merge against.
         conflicts.append(path)
-        return PackageFile(ours.content, executable)
+        return PackageFile(content=ours.content, executable=executable)
     result = merge_text(base_text, our_text, their_text)
     if result.conflicted:
         conflicts.append(path)
-    return PackageFile(result.text.encode("utf-8"), executable)
+    return PackageFile(content=result.text.encode("utf-8"), executable=executable)
 
 
 def _merge_flag(base: bool | None, ours: bool, theirs: bool) -> bool:

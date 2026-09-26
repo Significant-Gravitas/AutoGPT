@@ -123,7 +123,7 @@ describe("Marketplace category filter over experts", () => {
     );
   });
 
-  test("category dots and multi-category cards use the selected category", async () => {
+  test("category dots take the palette and a multi-category card keeps its own identity under every filter", async () => {
     const expert = template("Quinn", ["research", "finance"]);
     expert.avatar_url = "/experts/clay/v3/quinn.png";
     server.use(
@@ -140,20 +140,20 @@ describe("Marketplace category filter over experts", () => {
     expect(
       finance.querySelector('[aria-hidden="true"]')?.getAttribute("style"),
     ).toContain("#A5B09A");
-    await userEvent.click(finance);
     const card = await screen.findByRole("link", { name: /Quinn/ });
-    await waitFor(() =>
-      expect(card.querySelector("img")?.getAttribute("src")).toContain(
-        "quinn-finance.png",
-      ),
-    );
+    const quinn = "/autogpt-characters/v2.1/expert-quinn/neutral/96.webp";
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(quinn);
+    await userEvent.click(finance);
     expect(finance.getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() =>
+      expect(within(card).getByText("Finance")).toBeDefined(),
+    );
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(quinn);
     await userEvent.click(await findCategoryChip("All"));
     await waitFor(() =>
-      expect(card.querySelector("img")?.getAttribute("src")).toContain(
-        "/v3/quinn.png",
-      ),
+      expect(within(card).getByText("Research")).toBeDefined(),
     );
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(quinn);
   });
 
   test("the chip row sits above the experts shelf it narrows", async () => {

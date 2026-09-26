@@ -84,11 +84,14 @@ class GateReviewPayload(BaseModel):
     # Only a card naming a subject can set a rule on it.
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
     headline: Headline
+    # A money card's estimate, spend so far and ceiling.
+    spend: dict[str, int] | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
 # card's turn normally runs it within seconds.
 APPROVAL_TTL = timedelta(hours=1)
+_SPEND = "spend"
 
 
 def node_id_for(tool_name: str) -> str:
@@ -117,6 +120,7 @@ def review_payload(
     tool_name: str,
     args: dict[str, Any],
     subject: "GateSubject | None" = None,
+    spend: dict[str, int] | None = None,
     *,
     reason: str = "",
     reason_kind: ReasonKind = "mode",
@@ -154,13 +158,22 @@ def review_payload(
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
         decided_by=decided_by,
-        chat_rules_allowed=["allow", "judge"] if subject is not None else [],
+        # A money card rules on nothing: reads never consult a chat rule.
+        chat_rules_allowed=(
+            ["allow", "judge"] if subject is not None and spend is None else []
+        ),
         headline=(
             Headline(ask="Run", object=subject.name)
             if subject is not None
             else headline_for(tool_name, args, references)
         ),
+        spend=spend,
     ).model_dump()
+
+
+def is_spend_card(review: PendingHumanReviewModel) -> bool:
+    """The card asked because the turn was over its spend ceiling."""
+    return isinstance(review.payload, dict) and review.payload.get(_SPEND) is not None
 
 
 async def find_decision(
@@ -223,6 +236,7 @@ async def open_review(
     args: dict[str, Any],
     reason: str,
     subject: "GateSubject | None" = None,
+    spend: dict[str, int] | None = None,
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
     decided_by: DecidedBy | None = None,
@@ -235,6 +249,7 @@ async def open_review(
             tool_name,
             args,
             subject,
+            spend,
             reason=reason,
             reason_kind=reason_kind,
             decided_by=decided_by,

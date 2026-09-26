@@ -97,9 +97,11 @@ async def test_rescope_retry_uses_recorded_defaults_and_preserves_owner_edits():
 
 
 @pytest.mark.parametrize("name", ["Maria", "Max"])
-async def test_recorded_rescopes_resume_after_template_has_advanced(name):
+async def test_recorded_rescopes_resume_after_template_has_advanced(
+    name, roster_by_name
+):
     rescope = next(item for item in seed.RESCOPED_TEMPLATES if item["name"] == name)
-    entry = next(item for item in seed.ROSTER if item["name"] == name)
+    entry = roster_by_name[name]
     template = SimpleNamespace(
         id="template",
         name=name,

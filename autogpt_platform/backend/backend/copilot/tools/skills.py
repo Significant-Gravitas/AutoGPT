@@ -1698,16 +1698,20 @@ async def _read_working_package(
 ) -> dict[str, PackageFile]:
     """The copy's files with their bytes, for a merge or a stamp."""
     root = await manager.read_file(f"{folder}/{slug}/{SKILL_MD}")
-    package = {SKILL_MD: PackageFile(root)}
+    package = {SKILL_MD: PackageFile(content=root)}
     for entry in await _read_package_files(manager, folder, slug):
-        package[entry.relative_path] = PackageFile(entry.content, entry.is_executable)
+        package[entry.relative_path] = PackageFile(
+            content=entry.content, executable=entry.is_executable
+        )
     return package
 
 
 def _as_package(version: "SkillVersionPackage") -> dict[str, PackageFile]:
-    package = {SKILL_MD: PackageFile(version.skill_markdown.encode("utf-8"))}
+    package = {SKILL_MD: PackageFile(content=version.skill_markdown.encode("utf-8"))}
     for entry in version.files:
-        package[entry.relative_path] = PackageFile(entry.content, entry.is_executable)
+        package[entry.relative_path] = PackageFile(
+            content=entry.content, executable=entry.is_executable
+        )
     return package
 
 

@@ -21933,47 +21933,11 @@
               "operations",
               "research",
               "content",
-              "development"
+              "development",
+              "general"
             ],
             "title": "Category",
-            "default": "content"
-          },
-          "color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "terracotta",
-                  "ochre",
-                  "sage",
-                  "coral",
-                  "slate",
-                  "olive",
-                  "stone",
-                  "charcoal",
-                  "rust",
-                  "rose",
-                  "seaglass",
-                  "pine",
-                  "denim",
-                  "sand",
-                  "bluegray",
-                  "redclay",
-                  "apricot",
-                  "moss",
-                  "chalk",
-                  "copper",
-                  "mist",
-                  "ink",
-                  "umber",
-                  "lagoon",
-                  "limestone",
-                  "fern"
-                ]
-              },
-              { "type": "null" }
-            ],
-            "title": "Color"
+            "default": "general"
           },
           "shape": {
             "type": "string",
@@ -22008,28 +21972,17 @@
           },
           "inlay": {
             "type": "string",
-            "enum": ["sweep", "pool", "curl", "patch", "cap", "teardrop"],
+            "enum": [
+              "sweep",
+              "field",
+              "cloud",
+              "bank",
+              "pool",
+              "inlet",
+              "wrap"
+            ],
             "title": "Inlay",
             "default": "sweep"
-          },
-          "accent_placement": {
-            "type": "string",
-            "enum": ["body", "head", "both"],
-            "title": "Accent Placement",
-            "default": "body"
-          },
-          "accent_count": {
-            "type": "string",
-            "enum": ["one", "two", "three"],
-            "title": "Accent Count",
-            "default": "one"
-          },
-          "shade": {
-            "anyOf": [
-              { "type": "string", "enum": ["standard", "light", "dark"] },
-              { "type": "null" }
-            ],
-            "title": "Shade"
           },
           "expression": {
             "type": "string",

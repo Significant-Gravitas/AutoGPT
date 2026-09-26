@@ -183,6 +183,8 @@ ig*
 # at files git never tracked. Expert artwork is named after the expert, so
 # re-include the whole tree rather than one name at a time.
 !autogpt_platform/frontend/public/experts/**
+!autogpt_platform/frontend/public/autogpt-characters/**
+!autogpt_platform/backend/backend/api/features/experts/avatar_references/**
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py

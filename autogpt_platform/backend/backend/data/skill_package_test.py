@@ -24,10 +24,10 @@ def test_tree_hash_matches_the_catalog_formula():
 
 def test_package_hash_covers_every_file_including_skill_md():
     package = {
-        "SKILL.md": PackageFile(b"---\nname: demo\n---\n"),
-        "references/a.md": PackageFile(b"# a\n"),
+        "SKILL.md": PackageFile(content=b"---\nname: demo\n---\n"),
+        "references/a.md": PackageFile(content=b"# a\n"),
     }
-    changed = {**package, "SKILL.md": PackageFile(b"---\nname: demo\n---\nx\n")}
+    changed = {**package, "SKILL.md": PackageFile(content=b"---\nname: demo\n---\nx\n")}
     assert package_hash(package) != package_hash(changed)
     assert package_hash(package) == package_hash(dict(reversed(package.items())))
 
@@ -80,40 +80,45 @@ def test_merge_text_without_trailing_newline():
 
 def test_merge_packages_fast_forwards_untouched_files_and_keeps_user_edits():
     base = {
-        "SKILL.md": PackageFile(b"one\ntwo\n"),
-        "references/a.md": PackageFile(b"a\n"),
-        "references/gone.md": PackageFile(b"gone\n"),
+        "SKILL.md": PackageFile(content=b"one\ntwo\n"),
+        "references/a.md": PackageFile(content=b"a\n"),
+        "references/gone.md": PackageFile(content=b"gone\n"),
     }
     ours = {
-        "SKILL.md": PackageFile(b"one\ntwo\nmine\n"),
-        "references/a.md": PackageFile(b"a\n"),
-        "references/gone.md": PackageFile(b"gone\n"),
-        "notes.md": PackageFile(b"user notes\n"),
+        "SKILL.md": PackageFile(content=b"one\ntwo\nmine\n"),
+        "references/a.md": PackageFile(content=b"a\n"),
+        "references/gone.md": PackageFile(content=b"gone\n"),
+        "notes.md": PackageFile(content=b"user notes\n"),
     }
     theirs = {
-        "SKILL.md": PackageFile(b"ONE\ntwo\n"),
-        "references/a.md": PackageFile(b"a v2\n"),
-        "scripts/run.py": PackageFile(b"print(1)\n", executable=True),
+        "SKILL.md": PackageFile(content=b"ONE\ntwo\n"),
+        "references/a.md": PackageFile(content=b"a v2\n"),
+        "scripts/run.py": PackageFile(content=b"print(1)\n", executable=True),
     }
     merged = merge_packages(base, ours, theirs)
     assert merged.files["SKILL.md"].content == b"ONE\ntwo\nmine\n"
     assert merged.files["references/a.md"].content == b"a v2\n"
     assert "references/gone.md" not in merged.files
     assert merged.files["notes.md"].content == b"user notes\n"
-    assert merged.files["scripts/run.py"] == PackageFile(b"print(1)\n", True)
+    assert merged.files["scripts/run.py"] == PackageFile(
+        content=b"print(1)\n", executable=True
+    )
     assert not merged.conflicted
 
 
 def test_merge_packages_conflicts_resolve_to_the_user():
     base = {
-        "a.md": PackageFile(b"x\n"),
-        "b.md": PackageFile(b"y\n"),
-        "c.md": PackageFile(b"z\n"),
+        "a.md": PackageFile(content=b"x\n"),
+        "b.md": PackageFile(content=b"y\n"),
+        "c.md": PackageFile(content=b"z\n"),
     }
-    ours = {"a.md": PackageFile(b"x mine\n"), "c.md": PackageFile(b"z mine\n")}
+    ours = {
+        "a.md": PackageFile(content=b"x mine\n"),
+        "c.md": PackageFile(content=b"z mine\n"),
+    }
     theirs = {
-        "a.md": PackageFile(b"x theirs\n"),
-        "b.md": PackageFile(b"y theirs\n"),
+        "a.md": PackageFile(content=b"x theirs\n"),
+        "b.md": PackageFile(content=b"y theirs\n"),
     }
     merged = merge_packages(base, ours, theirs)
     assert merged.files["a.md"].content == b"x mine\n"
@@ -125,16 +130,16 @@ def test_merge_packages_conflicts_resolve_to_the_user():
 
 
 def test_merge_packages_binary_conflict_keeps_ours():
-    base = {"img.bin": PackageFile(b"\xff\x00")}
-    ours = {"img.bin": PackageFile(b"\xff\x01")}
-    theirs = {"img.bin": PackageFile(b"\xff\x02")}
+    base = {"img.bin": PackageFile(content=b"\xff\x00")}
+    ours = {"img.bin": PackageFile(content=b"\xff\x01")}
+    theirs = {"img.bin": PackageFile(content=b"\xff\x02")}
     merged = merge_packages(base, ours, theirs)
     assert merged.files["img.bin"].content == b"\xff\x01"
     assert merged.conflicts == ["img.bin"]
 
 
 def test_merge_packages_executable_bit_follows_the_changed_side():
-    base = {"s.py": PackageFile(b"x\n", False)}
-    ours = {"s.py": PackageFile(b"x\n", False)}
-    theirs = {"s.py": PackageFile(b"x\n", True)}
+    base = {"s.py": PackageFile(content=b"x\n", executable=False)}
+    ours = {"s.py": PackageFile(content=b"x\n", executable=False)}
+    theirs = {"s.py": PackageFile(content=b"x\n", executable=True)}
     assert merge_packages(base, ours, theirs).files["s.py"].executable is True
