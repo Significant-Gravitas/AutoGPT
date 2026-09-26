@@ -2,7 +2,7 @@
 
 AutoPilot can pay at an ordinary card checkout with the user's [Link Agent Wallet](https://docs.stripe.com/agentic-commerce/link-agent-wallet), in the same browser tab where it signed in and built the cart. The single-use card never reaches the agent. The agent identifies the payment fields, the user approves the purchase, and a separate worker fills the card and submits once.
 
-The feature is off unless an operator turns it on. It is built to the pattern Meta [describes for Muse](https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse): a browser broker outside the agent's reach, agent access paused while credentials are filled, and single-use cards bound to one merchant and amount.
+The feature is off unless an operator turns it on. Its three pillars: a browser broker outside the agent's reach, agent access paused while credentials are filled, and single-use cards bound to one merchant and amount.
 
 Stores that take Link Pay Tokens or shared payment tokens don't need any of this; the Stripe Link blocks already pay them without a card form.
 
@@ -172,7 +172,7 @@ Code can't settle these:
 1. **The registered Link client.** Stripe issues it ([application form](https://docs.stripe.com/agentic-commerce/link-agent-wallet/oauth)). Test the whole lifecycle in test mode against it: approval in Link and in the chat, decline, expiry, `requires_action`, `submitted`, `succeeded`, `failed`, cancellation.
 2. **Delegated approval for the client.** Confirm with Stripe that `create_delegated` is enabled for AutoGPT's client, and how users set the approval policy.
 3. **Per-user broker provisioning** in the hosted infrastructure: routes, certificates, networks, ledgers, patched images, and swap, dump and snapshot exclusions on the hosts.
-4. **A PCI scoping decision** from a qualified assessor. Card data does pass through the worker, the broker's browser and its host. AutoGPT doesn't inherit Stripe's or Meta's assessment ([PCI SSC FAQ 1312](https://www.pcisecuritystandards.org/faqs/1312/)). Short-lived, in-memory handling still has to meet [FAQ 1042](https://www.pcisecuritystandards.org/faqs/1042/). The controls above are engineering evidence, not certification. Treat the worker, broker, browser, host and the systems that manage them as in scope until an assessor says otherwise.
+4. **A PCI scoping decision** from a qualified assessor. Card data does pass through the worker, the broker's browser and its host. AutoGPT doesn't inherit Stripe's assessment ([PCI SSC FAQ 1312](https://www.pcisecuritystandards.org/faqs/1312/)). Short-lived, in-memory handling still has to meet [FAQ 1042](https://www.pcisecuritystandards.org/faqs/1042/). The controls above are engineering evidence, not certification. Treat the worker, broker, browser, host and the systems that manage them as in scope until an assessor says otherwise.
 
 ## Code map
 
