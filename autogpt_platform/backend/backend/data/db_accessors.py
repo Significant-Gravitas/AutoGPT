@@ -282,3 +282,19 @@ def bot_installs_db():
         bot_installs_db = get_database_manager_async_client()
 
     return bot_installs_db
+
+
+def dream_db():
+    if db.is_connected():
+        from backend.data import dream_pass as _dream_db
+
+        dream_db = _dream_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # The dream record is written under a short deadline that already
+        # covers retrying (copilot/dream/store.py); a retrying client would
+        # only keep going on a request the deadline has given up on.
+        dream_db = get_database_manager_async_client(should_retry=False)
+
+    return dream_db

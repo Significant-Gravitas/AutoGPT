@@ -32,9 +32,10 @@ read-only against the user's graph); only the apply / writeback step
 of each submitter briefly acquires the per-user lock and queues user
 writes for the seconds it holds.
 
-One pre-flight billing check runs at the top so a single
-``nightly_id`` correlates all per-submitter cost log rows for this
-pass.
+One pre-flight billing check runs at the top, so a paywalled or
+over-budget user costs one check for the night rather than one per
+submitter. ``nightly_id`` names the fan-out in its logs and result;
+cost rows carry each submitter's own id (the dream pass's pass id).
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .billing import check_dream_budget
+from .pass_record import DreamTrigger
 from .ratification import RatificationResult, run_ratification_pass
 from .schemas import DreamPassResult
 
@@ -63,9 +65,9 @@ class NightlyBatchResult(BaseModel):
     user_id: str
     nightly_id: str = Field(
         description=(
-            "UUID correlating every per-submitter cost-log row for "
-            "this pass. The dream pass and ratification supersession "
-            "sweep all share this id."
+            "UUID naming this fan-out in its logs and result. Cost "
+            "rows carry each submitter's own id instead: the dream "
+            "pass logs under dream.pass_id."
         )
     )
     started_at: datetime
@@ -94,7 +96,9 @@ class NightlyBatchResult(BaseModel):
     error: str | None = None
 
 
-async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
+async def run_nightly_batch_submit(
+    user_id: str, *, trigger: DreamTrigger = "cron"
+) -> NightlyBatchResult:
     """Fan out per-user nightly batch-family submissions, in order.
 
     Today the order is dream-pass → ratification-supersession-sweep.
@@ -110,55 +114,72 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     Never raises — top-level failures are captured in
     ``NightlyBatchResult.error`` so the scheduler wrapper can log
     without retry-storming the cron.
+
+    ``trigger`` is recorded on the dream pass: ``cron`` from the nightly
+    job, ``admin`` when an admin ran the fan-out on demand.
     """
     nightly_id = str(uuidlib.uuid4())
     started_at = datetime.now(timezone.utc)
 
-    # One pre-flight billing check for the whole pass. Per-submitter
-    # cost logs (written by each submitter's own `record_phase_cost`
-    # calls) all reference the same ``nightly_id`` via the
-    # ``dream_pass_id`` field on PlatformCostLog rows. This means a
-    # paywalled / over-budget user costs us one LD lookup + one
-    # Redis read for the night, not one per submitter.
+    # One pre-flight billing check for the whole fan-out: a paywalled /
+    # over-budget user costs us one LD lookup + one Redis read for the
+    # night, not one per submitter.
     budget_ok, budget_skip = await check_dream_budget(user_id)
     if not budget_ok:
-        completed_at = datetime.now(timezone.utc)
-        elapsed = (completed_at - started_at).total_seconds()
-        if budget_skip == "rate_limit_unavailable":
-            return NightlyBatchResult(
-                user_id=user_id,
-                nightly_id=nightly_id,
-                started_at=started_at,
-                completed_at=completed_at,
-                elapsed_seconds=elapsed,
-                error=f"billing: {budget_skip}",
-            )
+        return _budget_stopped(user_id, nightly_id, started_at, budget_skip)
+
+    result = NightlyBatchResult(
+        user_id=user_id, nightly_id=nightly_id, started_at=started_at
+    )
+    await _submit_dream(result, trigger)
+    await _submit_ratification(result)
+    return _finished(result)
+
+
+def _budget_stopped(
+    user_id: str,
+    nightly_id: str,
+    started_at: datetime,
+    budget_skip: str | None,
+) -> NightlyBatchResult:
+    """The fan-out the pre-flight billing check stopped: errored when the
+    budget could not be read, else skipped."""
+    completed_at = datetime.now(timezone.utc)
+    elapsed = (completed_at - started_at).total_seconds()
+    if budget_skip == "rate_limit_unavailable":
         return NightlyBatchResult(
             user_id=user_id,
             nightly_id=nightly_id,
             started_at=started_at,
             completed_at=completed_at,
             elapsed_seconds=elapsed,
-            skipped=True,
-            skip_reason=budget_skip or "insufficient_credits",
+            error=f"billing: {budget_skip}",
         )
-
-    result = NightlyBatchResult(
-        user_id=user_id, nightly_id=nightly_id, started_at=started_at
+    return NightlyBatchResult(
+        user_id=user_id,
+        nightly_id=nightly_id,
+        started_at=started_at,
+        completed_at=completed_at,
+        elapsed_seconds=elapsed,
+        skipped=True,
+        skip_reason=budget_skip or "insufficient_credits",
     )
 
-    # Dream pass submitter. Per-submitter failure stays isolated —
-    # a crashed dream pass doesn't block the ratification sweep
-    # (ratification operates on already-written tentatives from
-    # previous passes, not tonight's failed one).
+
+async def _submit_dream(result: NightlyBatchResult, trigger: DreamTrigger) -> None:
+    """Dream pass submitter. Per-submitter failure stays isolated — a
+    crashed dream pass doesn't block the ratification sweep (ratification
+    operates on already-written tentatives from previous passes, not
+    tonight's failed one)."""
+    user_id = result.user_id
     try:
         from .orchestrator import execute_dream_pass
 
-        result.dream = await execute_dream_pass(user_id)
+        result.dream = await execute_dream_pass(user_id, trigger=trigger)
         if result.dream.error:
             logger.warning(
                 "Nightly batch %s: dream submitter errored for user %s: %s",
-                nightly_id,
+                result.nightly_id,
                 user_id[:12],
                 result.dream.error,
             )
@@ -169,31 +190,33 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     except Exception as exc:
         logger.exception(
             "Nightly batch %s: dream submitter crashed for user %s",
-            nightly_id,
+            result.nightly_id,
             user_id[:12],
         )
         # Capture but continue to the next submitter — sweep is
         # independent.
         result.error = f"dream: {exc}"
 
-    # Ratification supersession sweep. With the sync hit-hook landed
-    # (see ``ratification_hits.try_ratify_on_hit``), the nightly
-    # sweep primarily handles supersession of unratified tentatives
-    # past their grace period — promotions happen inline at
-    # retrieval-hit time.
+
+async def _submit_ratification(result: NightlyBatchResult) -> None:
+    """Ratification supersession sweep. With the sync hit-hook landed
+    (see ``ratification_hits.try_ratify_on_hit``), the nightly sweep
+    primarily handles supersession of unratified tentatives past their
+    grace period — promotions happen inline at retrieval-hit time."""
+    user_id = result.user_id
     try:
         result.ratification = await run_ratification_pass(user_id)
         if result.ratification.error:
             logger.warning(
                 "Nightly batch %s: ratification sweep errored for user %s: %s",
-                nightly_id,
+                result.nightly_id,
                 user_id[:12],
                 result.ratification.error,
             )
     except Exception as exc:
         logger.exception(
             "Nightly batch %s: ratification sweep crashed for user %s",
-            nightly_id,
+            result.nightly_id,
             user_id[:12],
         )
         # Append rather than overwrite so a dream failure plus a
@@ -201,13 +224,15 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
         prev = result.error or ""
         result.error = (prev + " | " if prev else "") + f"ratification: {exc}"
 
+
+def _finished(result: NightlyBatchResult) -> NightlyBatchResult:
     completed_at = datetime.now(timezone.utc)
     result.completed_at = completed_at
-    result.elapsed_seconds = (completed_at - started_at).total_seconds()
+    result.elapsed_seconds = (completed_at - result.started_at).total_seconds()
     logger.info(
         "Nightly batch %s done for user %s in %.1fs: dream=%s ratification=%s",
-        nightly_id,
-        user_id[:12],
+        result.nightly_id,
+        result.user_id[:12],
         result.elapsed_seconds,
         _summary(result.dream),
         _summary(result.ratification),

@@ -994,7 +994,9 @@ async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
         )
 
 
-def execute_nightly_batch_sync(user_id: str):
+def execute_nightly_batch_sync(
+    user_id: str, trigger: Literal["cron", "admin"] = "cron"
+):
     """Per-user nightly batch-family fan-out cron body.
 
     Sync wrapper for APScheduler. The body inside
@@ -1015,7 +1017,8 @@ def execute_nightly_batch_sync(user_id: str):
     Returns the typed ``NightlyBatchResult`` so the admin
     ``*_with_status`` wrapper can persist it on the JobStatus row.
     Returns ``None`` only when the runtime flag gate short-circuits
-    before the submitter runs.
+    before the submitter runs. ``trigger`` is what the dream pass's
+    record says started it: the cron, or the admin wrapper.
     """
     from backend.copilot.dream.nightly_batch import (
         NightlyBatchResult,
@@ -1031,7 +1034,7 @@ def execute_nightly_batch_sync(user_id: str):
         return None
 
     result: NightlyBatchResult = run_async(
-        run_nightly_batch_submit(user_id),
+        run_nightly_batch_submit(user_id, trigger=trigger),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
     if result.error:
@@ -1120,7 +1123,7 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         )
 
     try:
-        result = execute_nightly_batch_sync(user_id)
+        result = execute_nightly_batch_sync(user_id, trigger="admin")
     except Exception as exc:
         logger.exception(
             "Admin-triggered nightly batch crashed for user %s job %s",
@@ -1247,7 +1250,7 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
 
     try:
         result = run_async(
-            execute_dream_pass(user_id, status_id=job_id),
+            execute_dream_pass(user_id, status_id=job_id, trigger="admin"),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
     except Exception as exc:

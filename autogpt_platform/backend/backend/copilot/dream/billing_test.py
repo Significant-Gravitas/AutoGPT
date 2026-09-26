@@ -260,6 +260,27 @@ async def test_record_phase_cost_prices_an_unpriced_phase_from_the_catalog(route
 
 
 @pytest.mark.asyncio
+async def test_a_charge_that_fails_raises_with_the_phases_usage_priced():
+    """The provider billed the phase before charging it failed: the error
+    carries the usage priced as its row would have been, with the charge's
+    error as its cause, and the charge is not retried."""
+    down = ConnectionError("trial cost database unavailable")
+    persist = AsyncMock(side_effect=down)
+    with patch(_PERSIST, new=persist), pytest.raises(
+        billing_mod.PhaseChargeError
+    ) as raised:
+        await billing_mod.record_phase_cost(
+            _ctx(route=_sync_route("anthropic")),
+            _usage("claude-sonnet-5", **_SONNET_5_TOKENS),
+        )
+    assert str(raised.value) == "trial cost database unavailable"
+    assert raised.value.__cause__ is down
+    assert raised.value.usage.cost_usd == pytest.approx(_SONNET_5_LIST_COST)
+    assert raised.value.usage.cost_source == "catalog"
+    persist.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_record_phase_cost_leaves_an_unpriced_model_unknown():
     """No catalog price means an unknown cost, never a zero one: the row
     logs tokens and charges nothing."""

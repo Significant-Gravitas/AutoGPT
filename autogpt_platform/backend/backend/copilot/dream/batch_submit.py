@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
@@ -46,6 +45,7 @@ from backend.util.llm.tool_use import (
 )
 
 from .fetch import DreamInput
+from .input_bundle import input_bundle_from_dict, input_bundle_to_dict
 from .locks import read_dream_lock_token
 from .prompts import (
     build_consolidate_prompt,
@@ -368,7 +368,7 @@ async def persist_input_bundle(
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    payload = _input_bundle_to_dict(input_bundle)
+    payload = input_bundle_to_dict(input_bundle)
     if lock_token is None:
         lock_token = await read_dream_lock_token(
             MemoryScope.build(input_bundle.user_id, input_bundle.expert_id)
@@ -442,7 +442,7 @@ async def read_input_bundle(pass_id: str) -> DreamInput | None:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     try:
-        return _dict_to_input_bundle(json.loads(raw))
+        return input_bundle_from_dict(json.loads(raw))
     except Exception:
         logger.exception("Corrupted DreamInput in Redis for pass=%s — bailing", pass_id)
         return None
@@ -453,78 +453,3 @@ async def delete_input_bundle(pass_id: str) -> None:
 
     redis = await get_redis_async()
     await redis.delete(input_bundle_key(pass_id))
-
-
-def _input_bundle_to_dict(input_bundle: DreamInput) -> dict:
-    return {
-        "user_id": input_bundle.user_id,
-        "expert_id": input_bundle.expert_id,
-        "group_id": input_bundle.group_id,
-        "window_start": input_bundle.window_start.isoformat(),
-        "window_end": input_bundle.window_end.isoformat(),
-        "episodes": [
-            {
-                "uuid": e.uuid,
-                "name": e.name,
-                "content": e.content,
-                "source_description": e.source_description,
-                "valid_at": e.valid_at,
-                "created_at": e.created_at,
-            }
-            for e in input_bundle.episodes
-        ],
-        "facts": [
-            {
-                "uuid": f.uuid,
-                "source": f.source,
-                "target": f.target,
-                "name": f.name,
-                "fact": f.fact,
-                "scope": f.scope,
-                "confidence": f.confidence,
-                "status": f.status,
-                "created_at": f.created_at,
-            }
-            for f in input_bundle.facts
-        ],
-        "recent_sessions": [
-            {
-                "session_id": s.session_id,
-                "title": s.title,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-                "body": s.body,
-            }
-            for s in input_bundle.recent_sessions
-        ],
-        "known_fact_uuids": list(input_bundle.known_fact_uuids),
-        "known_episode_uuids": list(input_bundle.known_episode_uuids),
-    }
-
-
-def _dict_to_input_bundle(data: dict) -> DreamInput:
-    from .fetch import EpisodeRow, FactRow, SessionRow
-
-    return DreamInput(
-        user_id=data["user_id"],
-        expert_id=data.get("expert_id"),
-        group_id=data["group_id"],
-        window_start=datetime.fromisoformat(data["window_start"]),
-        window_end=datetime.fromisoformat(data["window_end"]),
-        episodes=[EpisodeRow(**e) for e in data.get("episodes") or []],
-        facts=[FactRow(**f) for f in data.get("facts") or []],
-        recent_sessions=[
-            SessionRow(
-                session_id=s["session_id"],
-                title=s.get("title"),
-                created_at=(
-                    datetime.fromisoformat(s["created_at"])
-                    if s.get("created_at")
-                    else None
-                ),
-                body=s.get("body") or "",
-            )
-            for s in data.get("recent_sessions") or []
-        ],
-        known_fact_uuids=set(data.get("known_fact_uuids") or []),
-        known_episode_uuids=set(data.get("known_episode_uuids") or []),
-    )

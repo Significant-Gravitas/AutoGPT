@@ -158,6 +158,7 @@ model User {
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
   ExpertRoutines       ExpertRoutine[]
+  DreamPasses          DreamPass[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -470,6 +471,105 @@ model ActivityEvent {
   @@index([userId, category, createdAt])
   @@index([sessionId])
   @@index([expertId, createdAt])
+}
+
+// The route a dream pass took: the chat transport's sync path, or Anthropic's
+// Message Batches API.
+enum DreamPassRoute {
+  SYNC
+  ANTHROPIC_BATCH
+}
+
+enum DreamPassTrigger {
+  CRON
+  ADMIN
+  EVAL
+}
+
+// The step a dream pass is at: gathering its input, running (or waiting on
+// the batch of) one of its three phases, applying what the last one returned,
+// or done. Declared in that order, and the order is load-bearing: an update
+// only moves a row's phase to a later value (data/dream_pass_update.py).
+enum DreamPassPhase {
+  GATHER
+  CONSOLIDATE
+  RECOMBINE
+  SANITIZE
+  APPLY
+  DONE
+}
+
+// Open statuses first, in the order a pass moves through them, then the
+// terminal ones. An update only moves a row's status to a later value.
+enum DreamPassStatus {
+  QUEUED
+  RUNNING
+  SUBMITTED
+  APPLYING
+  COMPLETE
+  ERRORED
+  CANCELLED
+  EXPIRED
+  SKIPPED
+}
+
+// One dream pass over one memory scope (the account's or an expert's), from
+// gather to apply, on either route. The sync orchestrator writes it as each
+// step runs; the batch path at submit and in each result callback. Redis still
+// holds the lock, the batch state and the admin job status: this row is the
+// durable record beside them, and a failed write never fails the pass.
+model DreamPass {
+  // The pass id the orchestrator mints, which every phase's cost row carries.
+  id String @id
+
+  userId   String
+  User     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  // MemoryScope.scope_key: what the scope's dream lock and markers key on.
+  scopeKey String
+
+  route            DreamPassRoute
+  trigger          DreamPassTrigger
+  phase            DreamPassPhase   @default(GATHER)
+  status           DreamPassStatus  @default(QUEUED)
+  skipReason       String?
+  // Bumped by a cancel, so a step that started under an older generation
+  // knows to stop. Nothing cancels yet.
+  cancelGeneration Int              @default(0)
+
+  // The provider batch of the phase in flight (batch route only).
+  providerBatchId String?
+  // The dream lock's ownership token, and when the lock lapses unless renewed.
+  leaseToken      String?
+  leaseExpiresAt  DateTime?
+
+  // The pass's DreamInput, in the format the batch path already persists to
+  // Redis (batch route only).
+  inputBundle  Json?
+  // Each phase's validated output, keyed by phase.
+  phaseOutputs Json?
+  // The clamped operations apply was handed, and what apply reported.
+  operations   Json?
+  // DreamPassUsage: tokens and cost, per phase and in total.
+  usage        Json?
+
+  // The episode window the pass gathered.
+  windowStart DateTime?
+  windowEnd   DateTime?
+  error       String?
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  submittedAt DateTime?
+  appliedAt   DateTime?
+  completedAt DateTime?
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([scopeKey, status])
+  @@index([userId, createdAt])
+  // Deleting an expert cascades here; without it that scans every pass.
+  @@index([expertId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1204,6 +1304,7 @@ model Expert {
   PauseEvents     ExpertPauseEvent[]
   BundledSkills   ExpertSkillListing[]
   Routines        ExpertRoutine[]
+  DreamPasses     DreamPass[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?

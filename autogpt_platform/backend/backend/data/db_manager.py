@@ -57,6 +57,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import dream_pass as dream_pass_db
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -620,6 +621,17 @@ class DatabaseManager(AppService):
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
+    # ============ Dream Passes ============ #
+    # The scheduler (sync passes) and the batch executor (batch callbacks)
+    # keep no Prisma connection; the dream store writes each pass's record
+    # through these via db_accessors.dream_db().
+    create_dream_pass = _(dream_pass_db.create_dream_pass)
+    update_dream_pass = _(dream_pass_db.update_dream_pass)
+    get_dream_pass = _(dream_pass_db.get_dream_pass)
+    get_dream_pass_for_user = _(dream_pass_db.get_dream_pass_for_user)
+    list_open_dream_passes = _(dream_pass_db.list_open_dream_passes)
+    list_dream_passes = _(dream_pass_db.list_dream_passes)
+
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
     # post a briefing via db_accessors / the DatabaseManager RPC.
@@ -1028,3 +1040,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message
+
+    # ============ Dream Passes ============ #
+    create_dream_pass = d.create_dream_pass
+    update_dream_pass = d.update_dream_pass
+    get_dream_pass = d.get_dream_pass
+    get_dream_pass_for_user = d.get_dream_pass_for_user
+    list_open_dream_passes = d.list_open_dream_passes
+    list_dream_passes = d.list_dream_passes
