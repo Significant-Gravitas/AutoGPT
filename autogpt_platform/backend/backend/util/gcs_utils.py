@@ -40,6 +40,16 @@ def parse_gcs_path(path: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+def is_not_found_error(error: Exception) -> bool:
+    """True only for a real GCS 404.
+
+    Matching "404" in the message is not enough: the message carries the object
+    URL, and file ids are UUIDs, so a 503 or 401 for a blob whose id happens to
+    contain "404" would be misreported as a missing file.
+    """
+    return isinstance(error, aiohttp.ClientResponseError) and error.status == 404
+
+
 async def download_with_fresh_session(bucket: str, blob: str) -> bytes:
     """
     Download file content using a fresh session.
@@ -66,8 +76,8 @@ async def download_with_fresh_session(bucket: str, blob: str) -> bytes:
         content = await client.download(bucket, blob)
         return content
     except Exception as e:
-        if "404" in str(e) or "Not Found" in str(e):
-            raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}")
+        if is_not_found_error(e):
+            raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}") from e
         raise
     finally:
         if client:
@@ -112,8 +122,8 @@ async def download_range(bucket: str, blob: str, max_bytes: int) -> bytes:
             content = await client.download(bucket, blob)
         return content[:max_bytes]
     except Exception as e:
-        if "404" in str(e) or "Not Found" in str(e):
-            raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}")
+        if is_not_found_error(e):
+            raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}") from e
         raise
     finally:
         if client:
