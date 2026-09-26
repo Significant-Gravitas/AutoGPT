@@ -1487,6 +1487,15 @@ def _retry_target_tokens(
     )
 
 
+def _tail_budget_tokens(target_tokens: int | None) -> int | None:
+    """Recent history kept verbatim when the copilot compresses: a quarter of
+    the budget, never under 2K.  Sized in tokens, not messages, so eight 20K
+    tool results can neither crowd out the summary nor be cut blind."""
+    if target_tokens is None:
+        return None
+    return max(2_000, target_tokens // 4)
+
+
 def _seed_target_tokens(
     model: str | None,
     *,
@@ -3125,6 +3134,10 @@ async def _compress_messages(
             _compression_model(),
             "[SDK]",
             target_tokens=target_tokens,
+            keep_recent_tokens=_tail_budget_tokens(target_tokens),
+            # History is rendered as text (see _format_conversation_context),
+            # so a middle-out cut of a tool call's arguments is safe here.
+            truncate_tool_arguments=True,
         )
     except Exception as exc:
         # Both the LLM summarize path AND the truncation fallback inside
@@ -3266,11 +3279,15 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
-            # Omit tool_calls — any text representation gets mimicked
-            # by the model. Tool results below provide the context.
+            for call in msg.tool_calls or []:
+                function = call.get("function", {}) if isinstance(call, dict) else {}
+                name = function.get("name") or "tool"
+                lines.append(f"You called {name}: {function.get('arguments') or ''}")
         elif msg.role == "tool":
-            content = msg.content or ""
-            lines.append(f"Tool output: {content[:500]}")
+            # Rendered as the compressor left it.  Cutting every tool result
+            # to 500 characters here made the compression budget a fiction,
+            # and dropping tool calls entirely hid what the agent had done.
+            lines.append(f"Tool output: {msg.content or ''}")
 
     if not lines:
         return None

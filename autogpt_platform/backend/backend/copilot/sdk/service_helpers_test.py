@@ -2553,7 +2553,7 @@ class TestCompressionModelIsShared:
 
         captured: dict[str, str] = {}
 
-        async def _fake_run(messages, model, log_prefix, target_tokens=None):
+        async def _fake_run(messages, model, log_prefix, target_tokens=None, **_):
             captured["model"] = model
             return CompressResult(
                 messages=list(messages),

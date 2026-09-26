@@ -26,7 +26,14 @@ from uuid import uuid4
 from backend.data.db_accessors import chat_db
 from backend.util import json
 from backend.util.clients import get_openai_client
-from backend.util.prompt import CompressResult, compress_context
+from backend.util.prompt import (
+    DEFAULT_COMPRESSION_RESERVE,
+    CompressResult,
+    compress_context,
+    get_compression_target,
+    token_len,
+    truncate_middle,
+)
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
 from .model import ChatMessage
@@ -1373,7 +1380,7 @@ def _messages_to_transcript(messages: list[dict]) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
-_COMPACTION_TIMEOUT_SECONDS = 60
+_COMPACTION_TIMEOUT_SECONDS = 90
 _TRUNCATION_TIMEOUT_SECONDS = 30
 
 
@@ -1382,6 +1389,9 @@ async def _run_compression(
     model: str,
     log_prefix: str,
     target_tokens: int | None = None,
+    *,
+    keep_recent_tokens: int | None = None,
+    truncate_tool_arguments: bool = False,
 ) -> CompressResult:
     """Run LLM-based compression with truncation fallback.
 
@@ -1406,7 +1416,12 @@ async def _run_compression(
         logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
         return await asyncio.wait_for(
             compress_context(
-                messages=messages, model=model, client=None, target_tokens=target_tokens
+                messages=messages,
+                model=model,
+                client=None,
+                target_tokens=target_tokens,
+                keep_recent_tokens=keep_recent_tokens,
+                truncate_tool_arguments=truncate_tool_arguments,
             ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
@@ -1417,6 +1432,8 @@ async def _run_compression(
                 model=model,
                 client=client,
                 target_tokens=target_tokens,
+                keep_recent_tokens=keep_recent_tokens,
+                truncate_tool_arguments=truncate_tool_arguments,
             ),
             timeout=_COMPACTION_TIMEOUT_SECONDS,
         )
@@ -1424,7 +1441,12 @@ async def _run_compression(
         logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
         return await asyncio.wait_for(
             compress_context(
-                messages=messages, model=model, client=None, target_tokens=target_tokens
+                messages=messages,
+                model=model,
+                client=None,
+                target_tokens=target_tokens,
+                keep_recent_tokens=keep_recent_tokens,
+                truncate_tool_arguments=truncate_tool_arguments,
             ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
@@ -1538,30 +1560,72 @@ async def compact_transcript(
         return None
     try:
         result = await _run_compression(
-            messages, model, log_prefix, target_tokens=target_tokens
+            messages,
+            model,
+            log_prefix,
+            target_tokens=target_tokens,
+            keep_recent_tokens=_tail_budget_tokens(target_tokens, model),
         )
-        if not result.was_compacted:
+        if result.was_compacted and not result.messages:
+            logger.warning("%s Compressor returned empty messages", log_prefix)
+            return None
+        budget = (
+            target_tokens
+            if target_tokens is not None
+            else get_compression_target(model)
+        ) - DEFAULT_COMPRESSION_RESERVE
+        prefix_tokens = (
+            result.token_count if result.was_compacted else result.original_token_count
+        )
+        tail_tokens = _tail_token_count(tail_lines, model)
+        if prefix_tokens + tail_tokens > budget:
+            # The preserved final turn is what does not fit.  Its thinking
+            # blocks are untouchable (the API checks their signatures), but
+            # its text, tool_use inputs and tool_result strings are not.
+            # Before this, a final turn over budget made the whole compaction
+            # return None and the caller threw the transcript away.
+            trimmed = _truncate_tail_lines(
+                tail_lines, max(1_000, budget - prefix_tokens), model
+            )
+            if trimmed is None:
+                if not result.was_compacted:
+                    logger.warning(
+                        "%s Final turn exceeds the budget with nothing trimmable "
+                        "— signalling failure",
+                        log_prefix,
+                    )
+                    return None
+            else:
+                logger.info(
+                    "%s Trimmed the preserved final turn: %d -> %d tokens",
+                    log_prefix,
+                    tail_tokens,
+                    _tail_token_count(trimmed, model),
+                )
+                tail_lines = trimmed
+        elif not result.was_compacted:
             logger.warning(
                 "%s Compressor reports within budget but SDK rejected — "
                 "signalling failure",
                 log_prefix,
             )
             return None
-        if not result.messages:
-            logger.warning("%s Compressor returned empty messages", log_prefix)
-            return None
-        logger.info(
-            "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped)",
-            log_prefix,
-            result.original_token_count,
-            result.token_count,
-            result.messages_summarized,
-            result.messages_dropped,
-        )
-        compressed_part = _messages_to_transcript(result.messages)
-
-        # Re-append the preserved tail (last assistant + trailing entries)
-        # with parentUuid patched to chain onto the compressed prefix.
+        if result.was_compacted:
+            logger.info(
+                "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped, "
+                "summary coverage %.0f%%)",
+                log_prefix,
+                result.original_token_count,
+                result.token_count,
+                result.messages_summarized,
+                result.messages_dropped,
+                result.summary_coverage * 100,
+            )
+            compressed_part = _messages_to_transcript(result.messages)
+        else:
+            # Only the final turn was trimmed; keep the prefix verbatim so its
+            # uuid chain and structured blocks survive untouched.
+            compressed_part = prefix_content
         tail_part = _rechain_tail(compressed_part, tail_lines)
         compacted = compressed_part + tail_part
 
@@ -1590,6 +1654,100 @@ async def compact_transcript(
             "%s Transcript compaction failed: %s", log_prefix, e, exc_info=True
         )
         return None
+
+
+def _tail_budget_tokens(target_tokens: int | None, model: str) -> int:
+    """Recent history kept verbatim beside the summary: a quarter of the
+    budget, never under 2K.  Sized in tokens, not messages, so a run of
+    large tool results can neither crowd out the summary nor be cut blind."""
+    budget = (
+        target_tokens if target_tokens is not None else get_compression_target(model)
+    )
+    return max(2_000, budget // 4)
+
+
+def _tail_token_count(tail_lines: list[str], model: str) -> int:
+    total = 0
+    for line in tail_lines:
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
+            continue
+        content = (entry.get("message") or {}).get("content")
+        text = (
+            content
+            if isinstance(content, str)
+            else json.dumps(content, separators=(",", ":"))
+        )
+        total += token_len(text, model)
+    return total
+
+
+def _truncate_tail_lines(
+    tail_lines: list[str], max_tokens: int, model: str
+) -> list[str] | None:
+    """Shrink the preserved final turn to about *max_tokens*.
+
+    Text blocks, ``tool_use`` inputs and ``tool_result`` strings are
+    middle-out truncated in proportion to their size; ``thinking`` and
+    ``redacted_thinking`` blocks are never touched, since the API requires
+    them value-identical to the original.  A truncated ``tool_use`` input
+    becomes ``{"_truncated": "<head … tail>"}`` so it stays a JSON object.
+    Returns None when nothing in the turn can be trimmed enough to matter.
+    """
+    entries = [json.loads(line, fallback=None) for line in tail_lines]
+    parts: list[tuple[dict, str]] = []
+    untouched = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        message = entry.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str):
+            parts.append((message, "content"))
+            continue
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            kind = block.get("type")
+            if kind == "text" and isinstance(block.get("text"), str):
+                parts.append((block, "text"))
+            elif kind == "tool_use":
+                parts.append((block, "input"))
+            elif kind == "tool_result" and isinstance(block.get("content"), str):
+                parts.append((block, "content"))
+            else:
+                untouched += token_len(json.dumps(block, separators=(",", ":")), model)
+    if not parts:
+        return None
+
+    def current(ref: dict, key: str) -> str:
+        value = ref.get(key)
+        return (
+            value
+            if isinstance(value, str)
+            else json.dumps(value, separators=(",", ":"))
+        )
+
+    sizes = [token_len(current(ref, key), model) for ref, key in parts]
+    available = max_tokens - untouched
+    cut_total = sum(sizes)
+    if available <= 0 or cut_total <= available:
+        return None
+    for (ref, key), size in zip(parts, sizes):
+        share = max(32, int(available * size / cut_total))
+        if size <= share:
+            continue
+        text = truncate_middle(current(ref, key), model, share)
+        if key == "input":
+            ref["input"] = {"_truncated": text}
+        else:
+            ref[key] = text
+    return [
+        json.dumps(entry, separators=(",", ":")) if isinstance(entry, dict) else line
+        for entry, line in zip(entries, tail_lines)
+    ]
 
 
 def _rechain_tail(compressed_prefix: str, tail_lines: list[str]) -> str:
