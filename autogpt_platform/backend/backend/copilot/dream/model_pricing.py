@@ -57,6 +57,22 @@ _RATES: dict[str, ModelRate] = {
         cache_read_per_mtok=1.5,
         cache_write_per_mtok=18.75,
     ),
+    # Claude Opus 4.8 — same generation/list price as 4.7, never priced
+    # separately (see catalog.py's claude-opus-4-8 entry). Without this,
+    # compute_cost_usd() returns None for dream-pass calls on this model
+    # and the cost silently goes untracked instead of failing loud.
+    "claude-opus-4-8": ModelRate(
+        input_per_mtok=15.0,
+        output_per_mtok=75.0,
+        cache_read_per_mtok=1.5,
+        cache_write_per_mtok=18.75,
+    ),
+    "anthropic/claude-opus-4.8": ModelRate(
+        input_per_mtok=15.0,
+        output_per_mtok=75.0,
+        cache_read_per_mtok=1.5,
+        cache_write_per_mtok=18.75,
+    ),
     # Claude Sonnet 4.6
     "claude-sonnet-4-6": ModelRate(
         input_per_mtok=3.0,
