@@ -888,6 +888,7 @@ async def mark_session_completed(
     error_message: str | None = None,
     *,
     skip_error_publish: bool = False,
+    turn_id: str = "",
 ) -> bool:
     """Mark a session as completed, then publish StreamFinish.
 
@@ -908,6 +909,8 @@ async def mark_session_completed(
             cancel, which the frontend would otherwise render as "the assistant
             encountered an error", and when the error has already been
             published to the stream (e.g. via stream_and_publish).
+        turn_id: The finishing turn. When given, a session whose meta already
+            belongs to a later turn is left alone.
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
@@ -918,11 +921,14 @@ async def mark_session_completed(
 
     # Resolve turn_id for publishing to the correct stream
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
-    turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
+    guard = ("turn_id", turn_id) if turn_id else None
+    if not turn_id:
+        turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
-    # Atomic compare-and-swap: only update if status is "running"
+    # Atomic compare-and-swap: only update if status is "running". A turn's end
+    # can wake the next one, so its late safety-net call must not close that.
     swapped = await hash_compare_and_set(
-        redis, meta_key, "status", expected="running", new=status
+        redis, meta_key, "status", expected="running", new=status, guard=guard
     )
 
     # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
@@ -1164,6 +1170,7 @@ async def get_active_session(
                 await mark_session_completed(
                     session_id,
                     error_message=f"Session timed out after {age_seconds:.0f}s",
+                    turn_id=meta.get("turn_id", ""),
                 )
                 return None, "0-0"
         except (ValueError, TypeError) as e:

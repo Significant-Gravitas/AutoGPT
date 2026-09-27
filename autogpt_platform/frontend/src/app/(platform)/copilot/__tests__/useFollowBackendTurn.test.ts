@@ -1,10 +1,19 @@
 import { act, renderHook } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { useFollowBackendTurn } from "../useFollowBackendTurn";
 
-function setup(status: string) {
+const idle = { data: { status: 200, data: { active_stream: null } } };
+const running = {
+  data: { status: 200, data: { active_stream: { turn_id: "t" } } },
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+function setup(status: string, results: { data?: unknown }[] = [running]) {
   const hasResumedRef = { current: true };
-  const refetchSession = vi.fn(async () => ({}));
+  const refetchSession = vi.fn(async () => results.shift() ?? idle);
   const hook = renderHook(
     ({ status }) =>
       useFollowBackendTurn({ status, refetchSession, hasResumedRef }),
@@ -13,24 +22,44 @@ function setup(status: string) {
   return { hook, hasResumedRef, refetchSession };
 }
 
-test("an idle chat re-arms the resume and refetches at once", () => {
+test("an idle chat re-arms the resume and refetches at once", async () => {
   const { hook, hasResumedRef, refetchSession } = setup("ready");
 
-  act(() => hook.result.current.followBackendTurn());
+  await act(async () => hook.result.current.followBackendTurn());
 
   expect(hasResumedRef.current).toBe(false);
   expect(refetchSession).toHaveBeenCalledTimes(1);
 });
 
-test("a running turn is followed only once it ends", () => {
+test("a running turn is followed only once it ends", async () => {
   const { hook, hasResumedRef, refetchSession } = setup("streaming");
 
-  act(() => hook.result.current.followBackendTurn());
+  await act(async () => hook.result.current.followBackendTurn());
   expect(refetchSession).not.toHaveBeenCalled();
   expect(hasResumedRef.current).toBe(true);
 
-  hook.rerender({ status: "ready" });
+  await act(async () => hook.rerender({ status: "ready" }));
 
   expect(refetchSession).toHaveBeenCalledTimes(1);
   expect(hasResumedRef.current).toBe(false);
+});
+
+test("a turn that ended while the answer was posting is still followed", async () => {
+  const { hook, refetchSession } = setup("streaming");
+  const clickedWhileStreaming = hook.result.current.followBackendTurn;
+
+  await act(async () => hook.rerender({ status: "ready" }));
+  await act(async () => clickedWhileStreaming());
+
+  expect(refetchSession).toHaveBeenCalledTimes(1);
+});
+
+test("the probe retries until the answer's turn has a stream", async () => {
+  vi.useFakeTimers();
+  const { hook, refetchSession } = setup("ready", [idle, idle, running]);
+
+  await act(async () => hook.result.current.followBackendTurn());
+  await act(async () => vi.advanceTimersByTimeAsync(5_000));
+
+  expect(refetchSession).toHaveBeenCalledTimes(3);
 });
