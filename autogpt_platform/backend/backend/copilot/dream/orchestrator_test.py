@@ -157,9 +157,24 @@ def _build_input(*, episodes=1, facts=1) -> DreamInput:
     )
 
 
+class _HeldLock:
+    """A dream lock handle whose lock is still held whenever a pass looks."""
+
+    token = "tok"
+
+    async def held(self) -> bool:
+        return True
+
+    async def extend(self, ttl_seconds: int) -> bool:
+        return True
+
+    def disown(self) -> None:
+        return None
+
+
 @asynccontextmanager
 async def _noop_lock(*args, **kwargs):
-    yield
+    yield _HeldLock()
 
 
 @pytest.fixture(autouse=True)
@@ -390,7 +405,7 @@ async def test_held_dream_lock_handle_is_threaded_into_apply(mocker):
     """apply renews the dream lock before the drain + demotions, which it can
     only do with the handle the orchestrator holds. Dropping that kwarg would
     silently reinstate the lock-expiry-during-drain window, so pin it."""
-    sentinel_handle = object()
+    sentinel_handle = _HeldLock()
 
     @asynccontextmanager
     async def _handle_lock(*args, **kwargs):
@@ -2612,7 +2627,7 @@ async def test_a_late_submit_write_keeps_the_first_callbacks_progress(
         AsyncMock(return_value=MagicMock(provider_batch_id="batch-recombine")),
     )
     mocker.patch(
-        "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+        "backend.copilot.dream.batch_callbacks.anthropic_api_key",
         return_value="sk-ant-test",
     )
     entered, release = asyncio.Event(), asyncio.Event()
@@ -2655,8 +2670,11 @@ async def test_a_stalled_record_store_costs_each_write_only_its_deadline(
 
     assert result.error is None and result.dream_session_id == "s"
     apply_mock.assert_awaited_once()
-    # The insert and six updates, each abandoned at the deadline.
-    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (7, 7)
+    # The insert, the guard's read of the scope's open passes, six updates
+    # and the four stop checks (three phases, apply), each abandoned at the
+    # deadline; neither the guard nor a check held the pass on a store that
+    # did not answer.
+    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (12, 12)
 
 
 @pytest.mark.asyncio

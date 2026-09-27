@@ -13,10 +13,15 @@ statement against the row as it stands when the statement runs:
     earlier phase never replaces a later phase's batch;
   * ``phaseOutputs`` and ``operations`` merge key by key with jsonb ``||``, so
     two callbacks writing different phases both land;
+  * ``cancelGeneration`` goes up by one when the update stops the pass from
+    outside, in the same statement that closes the row, so of two stops
+    racing for one open row exactly one lands and bumps it;
   * every other column takes the new value when the update gives one.
 
-Nothing is written to a row that has reached a terminal status. The statement
-text is constant; every value is a bound parameter.
+Nothing is written to a row that has reached a terminal status, nor to one
+that fails the update's own conditions: another user's row when it names the
+owner, a row written since the instant it names. The statement text is
+constant; every value is a bound parameter.
 """
 
 from typing import Any
@@ -54,8 +59,13 @@ UPDATE {schema_prefix}"DreamPass" SET
         ELSE COALESCE("phaseOutputs", '{{}}'::jsonb) || $16::jsonb END,
     "operations" = CASE WHEN $17::jsonb IS NULL THEN "operations"
         ELSE COALESCE("operations", '{{}}'::jsonb) || $17::jsonb END,
+    "cancelGeneration" = "cancelGeneration"
+        + CASE WHEN $19::boolean THEN 1 ELSE 0 END,
     "updatedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
 WHERE "id" = $1 AND "status"::text = ANY($18::text[])
+    AND ($20::text IS NULL OR "userId" = $20::text)
+    AND ($21::timestamptz IS NULL
+        OR "updatedAt" <= $21::timestamptz AT TIME ZONE 'UTC')
 """
 
 
@@ -86,6 +96,9 @@ def transition_args(pass_id: str, update: DreamPassUpdate) -> list[Any]:
         _merge_part(update.phase_outputs),
         _merge_part(update.operations),
         [status.value for status in OPEN_STATUSES],
+        update.bump_cancel_generation,
+        update.owner_user_id,
+        update.not_updated_since,
     ]
 
 

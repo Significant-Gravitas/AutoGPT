@@ -16,7 +16,9 @@ Every pass, on either route, gets a durable ``DreamPass`` row
 (``store.py``): inserted at the start, advanced after each step, and
 closed with how the pass ended, a write attempted before the pass releases
 its lock. Like every record write it is best-effort: one that fails or
-times out leaves the row open behind a free lock until a reaper closes it.
+times out leaves the row open behind a free lock until a later pass's guard
+or a reaper closes it. A pass holding the lock runs ``guard.py`` first, and
+``cancel.py``'s checks before each phase, before its batch submit and apply.
 
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set and, on the sync route, the usage
@@ -27,7 +29,7 @@ so the admin trigger always gets a structured response back.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import TypeVar
 
@@ -48,6 +50,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
+from .cancel import stop_before_apply, stop_if_stopped
 from .clamp import clamp_operations
 from .fetch import (
     DreamInput,
@@ -56,9 +59,10 @@ from .fetch import (
     is_dream_authored_episode,
     parse_episode_timestamp,
 )
+from .guard import guard_dream_pass
 from .locks import DEFAULT_LOCK_TTL_SECONDS, DreamLockHandle, DreamLockHeld, dream_lock
 from .pass_record import DreamTrigger
-from .pass_run import DreamPassRun
+from .pass_run import DreamPassRun, PassEnded
 from .phase_jobs import phase_job
 from .prompts import (
     build_consolidate_prompt,
@@ -280,16 +284,6 @@ async def _record_failed_attempt(ctx: InferenceContext, exc: InferenceError) -> 
         exc.usage = await record_phase_cost(ctx, exc.usage)
 
 
-def _billed_phases(
-    completed: list[PhaseUsage], phase: DreamPhase, exc: InferenceError
-) -> list[PhaseUsage]:
-    """The phases a failed pass was billed for: the completed ones, and the
-    failed one when its answer came back (``_run_phase`` recorded it)."""
-    if exc.usage is None:
-        return completed
-    return [*completed, phase_usage(phase, exc.usage)]
-
-
 async def _read_last_completed_marker(scope: MemoryScope) -> datetime | None:
     """When the user's last dream pass completed, or ``None``.
 
@@ -384,6 +378,7 @@ async def execute_dream_pass(
     status_id: str | None = None,
     expert_id: str | None = None,
     trigger: DreamTrigger = "cron",
+    force: bool = False,
 ) -> DreamPassResult:
     """Public async entry point used by the scheduler + admin trigger.
 
@@ -397,10 +392,10 @@ async def execute_dream_pass(
 
     ``trigger`` is what started the pass, as its ``DreamPass`` row records
     it: ``cron`` for the nightly job, ``admin`` for the admin triggers,
-    ``eval`` for an eval run.
+    ``eval`` for an eval run. ``force`` is the admin trigger's, see ``guard.py``.
     """
     return await _execute_dream_pass_async(
-        user_id, status_id=status_id, expert_id=expert_id, trigger=trigger
+        user_id, status_id=status_id, expert_id=expert_id, trigger=trigger, force=force
     )
 
 
@@ -411,9 +406,10 @@ async def _execute_dream_pass_async(
     config: ChatConfig | None = None,
     status_id: str | None = None,
     trigger: DreamTrigger = "cron",
+    force: bool = False,
 ) -> DreamPassResult:
     config = config or ChatConfig()
-    run = DreamPassRun.begin(user_id, await _route_for(user_id, config))
+    run = DreamPassRun.begin(user_id, await _route_for(user_id, config), force=force)
     try:
         scope = MemoryScope.build(user_id, expert_id)
         await start_pass(
@@ -497,10 +493,11 @@ async def _dream(
     config: ChatConfig,
     status_id: str | None,
 ) -> DreamPassResult:
-    """Gather, then hand the pass to the batch route or run its three phases
-    and apply them. A pass that ends early (a skip, a billing or phase
-    failure) comes back as the result it ended with."""
+    """Guard, gather, then hand the pass to the batch route or run its three
+    phases and apply them. A pass that ends early (a skip, a stop, a billing
+    or phase failure) comes back as the result it ended with."""
     try:
+        await guard_dream_pass(run, scope)
         input_bundle = await _gather(run, scope, config=config, status_id=status_id)
         if run.execution_path == "anthropic_batch":
             # Phase 1 goes to Anthropic's Messages Batches API with the
@@ -522,9 +519,9 @@ async def _dream(
             config=config,
         )
         sanitized = await _run_phases(run, inference, input_bundle)
-    except _PassEnded as ended:
+        return await _apply(run, scope, lock_handle, sanitized, input_bundle)
+    except PassEnded as ended:
         return ended.result
-    return await _apply(run, scope, lock_handle, sanitized, input_bundle)
 
 
 async def _gather(
@@ -538,20 +535,20 @@ async def _gather(
 
     The billing check runs inside the lock so a paywalled user doesn't burn
     the slot for an eligible concurrent pass on a shared FalkorDB. Raises
-    ``_PassEnded`` with the skip or failure that ends the pass early.
+    ``PassEnded`` with the skip or failure that ends the pass early.
     """
     budget_ok, budget_skip = await check_dream_budget(run.user_id, config=config)
     if not budget_ok:
         if budget_skip == "rate_limit_unavailable":
-            raise _PassEnded(run.failure(f"billing: {budget_skip}"))
-        raise _PassEnded(run.skipped(budget_skip or "insufficient_credits"))
+            raise PassEnded(run.failure(f"billing: {budget_skip}"))
+        raise PassEnded(run.skipped(budget_skip or "insufficient_credits"))
     input_bundle = await gather_dream_input(scope)
     if not input_bundle.episodes and not input_bundle.facts:
         # Nothing to consolidate — skipped so the admin UI can render
         # "nothing to dream about yet".
-        raise _PassEnded(run.skipped("no_input"))
+        raise PassEnded(run.skipped("no_input"))
     if await _nothing_new_since_last_pass(run, scope, input_bundle, status_id):
-        raise _PassEnded(run.skipped("no_new_activity"))
+        raise PassEnded(run.skipped("no_new_activity"))
     await record_gathered(run.pass_id, input_bundle)
     return input_bundle
 
@@ -596,33 +593,34 @@ async def _run_phases(
     """Consolidate, recombine and sanitize in turn, recording each phase's
     usage on the run and its output on the record as it lands."""
     consolidated = await _phase(
-        run, "consolidate", _run_consolidate(inference, input_bundle)
+        run, "consolidate", lambda: _run_consolidate(inference, input_bundle)
     )
     recombined = await _phase(
-        run, "recombine", _run_recombine(inference, input_bundle, consolidated)
+        run, "recombine", lambda: _run_recombine(inference, input_bundle, consolidated)
     )
     return await _phase(
         run,
         "sanitize",
-        _run_sanitize(inference, input_bundle, consolidated, recombined),
+        lambda: _run_sanitize(inference, input_bundle, consolidated, recombined),
     )
 
 
 async def _phase(
     run: DreamPassRun,
     phase: DreamPhase,
-    call: Awaitable[tuple[_Output, PhaseUsage]],
+    call: Callable[[], Awaitable[tuple[_Output, PhaseUsage]]],
 ) -> _Output:
-    """One phase's output. A phase with no usable answer ends the pass
-    (``_PassEnded``) with the usage billed so far, the failed attempt's
-    included when its answer came back. A phase whose charge failed
-    (``PhaseChargeError``) joins that usage too, then its error ends the
-    pass as a crash does."""
+    """One phase's output, once the pass's row shows no stop. A phase with no
+    usable answer ends the pass (``PassEnded``) with the usage billed so far,
+    the failed attempt's included when its answer came back. A phase whose
+    charge failed (``PhaseChargeError``) joins that usage too, then its error
+    ends the pass as a crash does."""
+    await stop_if_stopped(run)
     try:
-        output, usage = await call
+        output, usage = await call()
     except InferenceError as exc:
-        run.phases = _billed_phases(run.phases, phase, exc)
-        raise _PassEnded(run.failure(f"{phase}: {exc}")) from exc
+        run.bill_failed_phase(phase, exc)
+        raise PassEnded(run.failure(f"{phase}: {exc}")) from exc
     except PhaseChargeError as exc:
         run.phases.append(phase_usage(phase, exc.usage))
         raise
@@ -638,13 +636,14 @@ async def _apply(
     sanitized: DreamOperations,
     input_bundle: DreamInput,
 ) -> DreamPassResult:
-    """Clamp the sanitized operations, apply them and stamp the marker."""
+    """Clamp the operations, make the last checks, apply and stamp the marker."""
     ops = clamp_operations(
         sanitized,
         len(input_bundle.facts),
         known_fact_uuids=input_bundle.known_fact_uuids,
     )
     await record_applying(run.pass_id, ops)
+    await stop_before_apply(run, lock_handle)
     apply_stats = await apply_operations(
         scope,
         run.pass_id,
@@ -697,11 +696,3 @@ def _applied_result(
         ),
         usage=run.usage(),
     )
-
-
-class _PassEnded(Exception):
-    """A pass that ends before apply, carrying the result it ends with."""
-
-    def __init__(self, result: DreamPassResult) -> None:
-        super().__init__(result.error or result.skip_reason)
-        self.result = result

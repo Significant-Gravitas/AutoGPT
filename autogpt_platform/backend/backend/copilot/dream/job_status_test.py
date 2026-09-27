@@ -17,6 +17,7 @@ from backend.copilot.dream.job_status import (
     update_status_phase,
     write_initial_status,
 )
+from backend.copilot.dream.schemas import DreamPassResult, DreamPassUsage
 
 
 @pytest.fixture
@@ -204,6 +205,27 @@ class TestMarkErrored:
         assert result is not None
         assert result.state == "complete"
         assert result.result == {"n": 1}
+
+    @pytest.mark.asyncio
+    async def test_keeps_the_result_a_failed_work_body_returned(self, fake_redis):
+        """A stopped dream pass returns its failure with the usage of the
+        phases it was billed for; the errored job keeps that result."""
+        await write_initial_status(kind="dream_pass", job_id="j1", user_id="u")
+        failure = DreamPassResult(
+            user_id="u",
+            pass_id="p1",
+            error="cancelled: testing",
+            usage=DreamPassUsage(total_input_tokens=100),
+        )
+
+        await mark_errored(
+            kind="dream_pass", job_id="j1", error=failure.error or "", result=failure
+        )
+
+        status = await read_status(kind="dream_pass", job_id="j1")
+        assert status is not None and status.state == "errored"
+        assert status.result is not None
+        assert DreamPassResult.model_validate(status.result) == failure
 
 
 class TestReadStatus:

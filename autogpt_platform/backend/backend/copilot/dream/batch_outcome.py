@@ -4,7 +4,9 @@ to its durable DreamPass record, and the lock it gives back.
 A batch pass ends in a callback, in another process, long after it started:
 ``fail_pass`` for every failure, ``record_completion`` once apply has run.
 Either way the record gets the usage of every phase that landed, read off the
-pass's Redis state and priced in ``batch_costs.py``.
+pass's Redis state and priced in ``batch_costs.py``, unless a stop closed the
+record first: a closed record refuses the write, and that usage lives on only
+in the cost log.
 """
 
 from __future__ import annotations
@@ -61,15 +63,16 @@ class BatchPass(BaseModel):
         )
 
 
-async def fail_pass(bp: BatchPass, error: str) -> None:
+async def fail_pass(bp: BatchPass, error: str, *, holds_lock: bool = True) -> None:
     """Close the pass errored: its admin job and its record first, then
-    charge the phases that landed, release the lock and clean up per-pass
+    charge the phases that landed, release the lock (unless the pass lost it,
+    *holds_lock* false: it is then another pass's) and clean up per-pass
     state. Each step is best-effort on its own, so one that fails never
     stops the ones after it.
 
     The record carries the usage of the phases that landed, read off the
-    pass's state; a state that cannot be read leaves that usage unknown
-    rather than the record open.
+    pass's state, unless a stop already closed it; a state that cannot be
+    read leaves that usage unknown rather than the record open.
 
     We incurred the provider tokens for completed phases regardless of
     whether the whole pass landed, so they're recorded against the
@@ -85,8 +88,8 @@ async def fail_pass(bp: BatchPass, error: str) -> None:
     )
     if state:
         await _charge_landed_phases(bp, state)
-    # Release the dream lock the batch path disowned to this callback.
-    await release_lock(bp)
+    if holds_lock:
+        await release_lock(bp)
     await best_effort_cleanup(bp.pass_id)
 
 

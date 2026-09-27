@@ -19,10 +19,11 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import ResponseError
 
 from backend.api.features.experts import experts_db
+from backend.copilot.dream.cancel import cancel_dream_pass
 from backend.copilot.dream.job_status import (
     JobKind,
     JobState,
@@ -1009,6 +1010,19 @@ class DreamPassRecordResponse(BaseModel):
     result: DreamPassResult
 
 
+# What a cancelled pass's record says when the admin gave no reason.
+ADMIN_CANCEL_REASON = "cancelled by an admin"
+
+
+class DreamPassCancelRequest(BaseModel):
+    """Why an admin cancels a dream pass, kept as the pass's error."""
+
+    # Stripped before the length check, so a blank reason is refused.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+
+
 @router.post(
     "/{user_id}/dream",
     response_model=JobTriggerResponse,
@@ -1019,12 +1033,24 @@ async def trigger_dream_pass(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    force: Annotated[
+        bool,
+        Query(
+            description=(
+                "Expire a fresh open dream pass of the account first instead "
+                "of skipping behind it"
+            )
+        ),
+    ] = False,
 ) -> JSONResponse:
     """Fire a dream pass and return 202 + job_id immediately.
 
     Frontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``
     for progress. Runs ONLY the dream pass submitter — for the full
-    nightly fan-out use ``POST /{user_id}/nightly``.
+    nightly fan-out use ``POST /{user_id}/nightly``. The pass goes through
+    the same guard as the nightly one: it skips behind a fresh open pass of
+    the account unless ``force`` expires that pass first. ``force`` does not
+    take a lock another pass holds.
     """
     target = _resolve_user_id(user_id, caller_id)
     await _resolve_and_audit_memory_scope(
@@ -1042,7 +1068,7 @@ async def trigger_dream_pass(
 
     try:
         await get_scheduler_client().schedule_immediate_dream_pass(
-            user_id=target, job_id=job_id
+            user_id=target, job_id=job_id, force=force
         )
     except Exception as exc:
         logger.warning(
@@ -1109,8 +1135,9 @@ async def get_dream_pass_record(
 
     The job status above is a Redis row that lapses after six hours and, for
     a batch pass, carries no usage; the record outlives the pass and holds
-    what its phases used. 404 for a pass that does not exist or belongs to
-    another user, alike.
+    what its phases used, unless a cancel or a newer pass closed it first
+    (the cost log still has that usage). 404 for a pass that does not exist
+    or belongs to another user, alike.
     """
     target = _resolve_user_id(user_id, caller_id)
     _audit_cross_user_access(
@@ -1124,6 +1151,46 @@ async def get_dream_pass_record(
         raise HTTPException(status_code=404, detail="dream pass not found")
     return DreamPassRecordResponse(
         record=record, result=dream_pass_result_from_row(record)
+    )
+
+
+@router.post(
+    "/{user_id}/dream/{pass_id}/cancel",
+    response_model=DreamPassRecordResponse,
+)
+async def cancel_dream_pass_run(
+    request: Request,
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    pass_id: Annotated[str, Path(description="The dream pass id")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict[str, Any], Security(get_jwt_payload)],
+    body: DreamPassCancelRequest | None = None,
+) -> DreamPassRecordResponse:
+    """Cancel an open dream pass and return its record, now CANCELLED.
+
+    The row closes at once; the pass itself stops at its next check (a phase
+    boundary, its batch submit, or just before apply, on either route)
+    without applying. A batch pass waiting on its provider stops when that
+    batch lands. A pass already past its last check still applies, once, and
+    whatever a pass applied stays. 404 for a pass that does not exist or
+    belongs to another user, alike; 409 once the pass has ended.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
+    reason = (body.reason if body else None) or ADMIN_CANCEL_REASON
+    cancel = await cancel_dream_pass(pass_id, user_id=target, reason=reason)
+    if cancel.record is None:
+        raise HTTPException(status_code=404, detail="dream pass not found")
+    if not cancel.cancelled:
+        ended = cancel.record.status.value.lower()
+        raise HTTPException(status_code=409, detail=f"dream pass already {ended}")
+    return DreamPassRecordResponse(
+        record=cancel.record, result=dream_pass_result_from_row(cancel.record)
     )
 
 
