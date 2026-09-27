@@ -38,13 +38,19 @@ from backend.data.redis_client import AsyncRedisClient, RedisClient
 #   ARGV[1]  hash field
 #   ARGV[2]  expected current value
 #   ARGV[3]  new value
+#   ARGV[4]  optional guard field which, when set and non-empty, must equal ARGV[5]
 _HASH_CAS_LUA = """
-local current = redis.call('HGET', KEYS[1], ARGV[1])
-if current == ARGV[2] then
-    redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
-    return 1
+if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
+    return 0
 end
-return 0
+if #ARGV > 3 then
+    local guard = redis.call('HGET', KEYS[1], ARGV[4])
+    if guard and guard ~= '' and guard ~= ARGV[5] then
+        return 0
+    end
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+return 1
 """
 
 # Push to a capped list only when a hash field currently matches the expected
@@ -409,8 +415,10 @@ async def hash_compare_and_set(
     *,
     expected: str,
     new: str,
+    guard: tuple[str, str] | None = None,
 ) -> bool:
-    """Atomically set ``HSET key field new`` iff current value == *expected*.
+    """Atomically set ``HSET key field new`` iff current value == *expected*
+    (and, with ``guard=(field, value)``, that field is unset, empty or value).
 
     Returns ``True`` if the swap happened, ``False`` otherwise.
 
@@ -422,6 +430,6 @@ async def hash_compare_and_set(
     """
     result = await cast(
         "Any",
-        redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new),
+        redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
     )
     return int(result) == 1
