@@ -13,7 +13,7 @@ from pydantic import (
 )
 
 from backend.data.expert_run_output import OutputType
-from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
 ExpertRunStatus = Literal[
     "incomplete",
@@ -447,7 +447,11 @@ class ExpertSkillsUpdate(BaseModel):
 
     @model_validator(mode="after")
     def reject_names_both_kept_and_removed(self) -> "ExpertSkillsUpdate":
-        both = {n.lower() for n in self.skills} & {n.lower() for n in self.remove}
+        # The same key update_skills removes by, so a name cannot pass this
+        # check as "different" and then match a removal on spelling alone.
+        both = {skill_name_key(n) for n in self.skills} & {
+            skill_name_key(n) for n in self.remove
+        }
         if both:
             raise ValueError(
                 f"Skills cannot be both added and removed: {', '.join(sorted(both))}"

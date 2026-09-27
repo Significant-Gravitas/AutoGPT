@@ -49,6 +49,7 @@ from backend.data.skill_capacity import SKILL_ORIGIN_USER
 from backend.data.skill_capacity import SKILL_ORIGINS as _SKILL_ORIGINS
 from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
+from backend.data.skill_capacity import skill_name_key
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -1302,12 +1303,6 @@ async def _copy_assigned_skills_not_yet_owned(
     # After the copies, so a copy's own cache invalidation cannot drop it.
     await _set_heal_backoff(user_id, expert_id, unresolved)
     return copied
-
-
-def skill_name_key(name: str) -> str:
-    """Compare key for skill names: the row may carry a display name ("Deep
-    Research") for the skill whose folder is ``deep-research``."""
-    return re.sub(r"[\s_-]+", "-", name.strip().lower())
 
 
 def _heal_backoff_key(user_id: str, expert_id: str) -> str:

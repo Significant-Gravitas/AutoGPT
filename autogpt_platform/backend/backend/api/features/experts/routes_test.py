@@ -1108,6 +1108,26 @@ def test_update_expert_skills_rejects_a_name_both_added_and_removed(
     mock_update.assert_not_awaited()
 
 
+def test_update_expert_skills_rejects_a_contradiction_spelled_two_ways(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The removal loop matches names by skill_name_key (case, spaces,
+    underscores and hyphens folded), so the contradiction check must too, or
+    "Deep Research" + remove "deep_research" would pass and then be removed."""
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills",
+        json={"skills": ["Deep Research"], "remove": ["deep_research"]},
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
+
+
 def test_update_expert_skills_unknown_skill_returns_404(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
