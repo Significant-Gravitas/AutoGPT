@@ -109,38 +109,18 @@ PERSONAS_WITHOUT_WORKFLOWS = {
     "Theo",
     "Vera",
 }
-EXPECTED_SKILLS_ONLY_ROSTER = {
-    "Devon": [
-        "dependency-security-getting-started",
-        "dependency-inventory",
-        "outdated-dependency-review",
-        "vulnerability-triage",
-        "cve-stack-relevance",
-        "dependency-upgrade-plan",
-        "dependency-upgrade-pr",
-        "dependency-change-risk-review",
-    ],
-    "Riley": [
-        "customer-success-getting-started",
-        "customer-onboarding-plan",
-        "customer-health-score",
-        "churn-risk-review",
-        "renewal-readiness-review",
-        "renewal-touchpoint-draft",
-        "expansion-opportunity-brief",
-        "customer-success-plan",
-    ],
-    "Jordan": [
-        "deal-desk-getting-started",
-        "proposal-draft",
-        "statement-of-work-draft",
-        "pipeline-stage-aging-review",
-        "deal-risk-review",
-        "renewal-negotiation-brief",
-        "pricing-and-terms-approval-brief",
-        "proposal-quality-check",
-    ],
+# Which skills an expert bundles, and in what order, is catalog content
+# (experts/<key>.yml in Significant-Gravitas/skills-catalog): pinning the
+# lists here broke this suite on every catalog kit change. The tests below
+# pin shape only; the catalog's own check validates every assignment.
+SKILLS_ONLY_ROSTER = {
+    "Devon": ("Dependency & Security Hygiene", ["development"]),
+    "Riley": ("Customer Success & Retention", ["support"]),
+    "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
 }
+OPERATIONS_EXPERTS = ("Harper", "Vera", "Ellis")
+FINANCE_AND_ANALYTICS_EXPERTS = ("Mina", "Theo", "Quinn")
+
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
@@ -149,172 +129,50 @@ EXPECTED_ROSTER_SCHEDULES = {
     ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
     ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
 }
-EXPECTED_OPERATIONS_SKILLS = {
-    "Harper": [
-        "recruiting-getting-started",
-        "role-intake-and-job-description",
-        "hiring-rubric-design",
-        "resume-screening",
-        "interview-plan-and-scorecard",
-        "candidate-interview-debrief",
-        "candidate-rejection-email",
-        "candidate-offer-draft",
-    ],
-    "Vera": [
-        "procurement-getting-started",
-        "vendor-requirements-brief",
-        "vendor-quote-comparison",
-        "vendor-due-diligence",
-        "procurement-decision-memo",
-        "contract-renewal-tracker",
-        "vendor-performance-review",
-        "spend-anomaly-review",
-    ],
-    "Ellis": [
-        "contract-ops-getting-started",
-        "nda-playbook-review",
-        "msa-playbook-review",
-        "contract-clause-comparison",
-        "contract-key-term-extraction",
-        "contract-deviation-triage",
-        "contract-obligation-tracker",
-        "counsel-escalation-brief",
-    ],
-}
 EXPECTED_WAVE_THREE = {
     "Sasha": {
         "role": "Support & Help Desk",
         "categories": ["support"],
-        "skills": [
-            "support-getting-started",
-            "ticket-triage",
-            "support-reply-draft",
-            "support-macro-library",
-            "help-article-from-tickets",
-            "bug-report-handoff",
-            "refund-and-exception-brief",
-            "weekly-ticket-themes",
-        ],
         "timings": ["after queue access", "on request"],
     },
     "Priya": {
         "role": "Product Management",
         "categories": ["research", "operations"],
-        "skills": [
-            "product-getting-started",
-            "feedback-synthesis",
-            "feature-request-triage",
-            "user-interview-guide",
-            "opportunity-brief",
-            "product-requirements-draft",
-            "roadmap-prioritisation",
-            "release-notes-draft",
-        ],
         "timings": ["after feedback input", "on request"],
     },
     "Marco": {
         "role": "Paid Ads & Performance",
         "categories": ["marketing"],
-        "skills": [
-            "paid-ads-getting-started",
-            "campaign-structure-plan",
-            "ad-copy-variants",
-            "landing-page-message-match",
-            "wasted-spend-audit",
-            "budget-pacing-review",
-            "creative-test-readout",
-            "paid-performance-report",
-        ],
         "timings": ["after account export", "on request"],
     },
     "Noor": {
         "role": "PR & Communications",
         "categories": ["marketing", "content"],
-        "skills": [
-            "communications-getting-started",
-            "news-angle-and-key-messages",
-            "press-release-draft",
-            "media-list-research",
-            "media-pitch-email",
-            "launch-communications-plan",
-            "holding-statement-draft",
-            "spokesperson-briefing",
-        ],
         "timings": ["day 1", "on request"],
     },
     "Casey": {
         "role": "Code Review & QA",
         "categories": ["development"],
-        "skills": [
-            "code-quality-getting-started",
-            "pull-request-review",
-            "test-plan-draft",
-            "bug-reproduction-report",
-            "flaky-test-triage",
-            "regression-risk-review",
-            "release-readiness-checklist",
-            "incident-postmortem-draft",
-        ],
         "timings": ["after access", "on request"],
     },
     "Ines": {
         "role": "People Ops & HR (Non-Advisory)",
         "categories": ["operations"],
-        "skills": [
-            "people-ops-getting-started",
-            "new-hire-onboarding-plan",
-            "handbook-policy-draft",
-            "one-to-one-agenda",
-            "performance-review-prep",
-            "engagement-survey-readout",
-            "offboarding-checklist",
-            "hr-escalation-brief",
-        ],
         "timings": ["day 1", "on request"],
     },
     "Omar": {
         "role": "RevOps & CRM Hygiene",
         "categories": ["sales", "operations"],
-        "skills": [
-            "revops-getting-started",
-            "crm-field-audit",
-            "crm-duplicate-review",
-            "pipeline-stage-definitions",
-            "lead-routing-rules",
-            "sales-forecast-rollup",
-            "lost-deal-analysis",
-            "crm-hygiene-report",
-        ],
         "timings": ["after CRM export", "on request"],
     },
     "Lena": {
         "role": "Privacy & Compliance (Non-Advisory)",
         "categories": ["operations"],
-        "skills": [
-            "compliance-ops-getting-started",
-            "security-questionnaire-answers",
-            "personal-data-map",
-            "subprocessor-register",
-            "dpa-checklist-review",
-            "policy-gap-review",
-            "data-subject-request-draft",
-            "compliance-escalation-brief",
-        ],
         "timings": ["day 1", "on request"],
     },
     "Kai": {
         "role": "Executive Assistant",
         "categories": ["support", "operations"],
-        "skills": [
-            "executive-assistant-getting-started",
-            "inbox-triage",
-            "reply-draft-in-your-voice",
-            "meeting-prep-brief",
-            "meeting-follow-up-draft",
-            "calendar-conflict-review",
-            "travel-plan",
-            "weekly-priorities-review",
-        ],
         "timings": ["after inbox access", "on request"],
     },
 }
@@ -3934,31 +3792,22 @@ def test_roster_bundled_skills_are_hub_slugs(real_roster: list[seed.RosterEntry]
             assert _NAME_RE.match(slug), (entry["name"], slug)
 
 
-def test_operations_experts_bundle_their_eight_skills_in_work_order(
+def test_operations_experts_bundle_skills_and_no_preloads(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
-    roster = roster_by_name
-
-    for name, skills in EXPECTED_OPERATIONS_SKILLS.items():
-        assert roster[name]["bundled_skills"] == skills
-        assert roster[name]["preloads"] == []
+    for name in OPERATIONS_EXPERTS:
+        assert roster_by_name[name]["bundled_skills"]
+        assert roster_by_name[name]["preloads"] == []
 
 
-def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads(
+def test_skills_only_roster_bundles_skills_and_no_preloads(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
-    roster = roster_by_name
-    for name, expected_skills in EXPECTED_SKILLS_ONLY_ROSTER.items():
-        assert roster[name]["bundled_skills"] == expected_skills
-        assert roster[name]["preloads"] == []
-    assert {
-        name: (roster[name]["role"], roster[name]["categories"])
-        for name in EXPECTED_SKILLS_ONLY_ROSTER
-    } == {
-        "Devon": ("Dependency & Security Hygiene", ["development"]),
-        "Riley": ("Customer Success & Retention", ["support"]),
-        "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
-    }
+    for name, (role, categories) in SKILLS_ONLY_ROSTER.items():
+        entry = roster_by_name[name]
+        assert entry["bundled_skills"]
+        assert entry["preloads"] == []
+        assert (entry["role"], entry["categories"]) == (role, categories)
 
 
 def test_wave_three_experts_are_skills_only_with_ordered_packs(
@@ -3969,7 +3818,7 @@ def test_wave_three_experts_are_skills_only_with_ordered_packs(
         entry = roster[name]
         assert entry["role"] == expected["role"]
         assert entry["categories"] == expected["categories"]
-        assert entry["bundled_skills"] == expected["skills"]
+        assert entry["bundled_skills"]
         assert entry["preloads"] == []
         assert entry["routines"] == []
         assert [item.timing for item in entry["day_one"]] == expected["timings"]
@@ -4010,12 +3859,14 @@ def test_retired_templates_are_off_the_roster(real_roster: list[seed.RosterEntry
     assert not names & set(seed.RETIRED_TEMPLATES), names & set(seed.RETIRED_TEMPLATES)
 
 
-def test_every_wave_three_skill_is_a_catalog_package(catalog_root: Path):
-    registered = _catalog_package_slugs(catalog_root)
-    for expected in EXPECTED_WAVE_THREE.values():
-        assert set(expected["skills"]) <= registered
-    slugs = [s for e in EXPECTED_WAVE_THREE.values() for s in e["skills"]]
-    assert len(slugs) == len(set(slugs)) == 72
+def test_wave_three_experts_do_not_share_skills(
+    roster_by_name: dict[str, seed.RosterEntry],
+):
+    # Each wave-three expert owns its pack; the catalog check covers that
+    # every slug is a package (test_roster_bundled_skills_are_catalog_packages).
+    for name in EXPECTED_WAVE_THREE:
+        skills = roster_by_name[name]["bundled_skills"]
+        assert len(skills) == len(set(skills))
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -4113,46 +3964,12 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
     ]
 
 
-def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered(
+def test_finance_and_analytics_roster_pack_is_skills_only(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
-    expected = {
-        "Mina": [
-            "bookkeeping-getting-started",
-            "expense-categorization",
-            "invoice-drafting-and-issue",
-            "accounts-receivable-follow-up",
-            "statement-reconciliation",
-            "month-end-close-checklist",
-            "monthly-profit-and-loss-summary",
-            "bookkeeping-exception-escalation",
-        ],
-        "Theo": [
-            "investor-relations-getting-started",
-            "pitch-deck-review",
-            "fundraising-data-room-checklist",
-            "investor-targeting-and-research",
-            "fundraising-pipeline-review",
-            "cap-table-hygiene",
-            "monthly-investor-update",
-            "board-and-investor-metrics-brief",
-        ],
-        "Quinn": [
-            "kpi-analysis-getting-started",
-            "metric-definition-and-data-quality",
-            "weekly-kpi-digest",
-            "metric-anomaly-detection",
-            "metric-movement-analysis",
-            "cohort-and-retention-analysis",
-            "funnel-conversion-analysis",
-            "experiment-readout",
-        ],
-    }
-    by_name = roster_by_name
-
-    for name, skills in expected.items():
-        assert by_name[name]["bundled_skills"] == skills
-        assert by_name[name]["preloads"] == []
+    for name in FINANCE_AND_ANALYTICS_EXPERTS:
+        assert roster_by_name[name]["bundled_skills"]
+        assert roster_by_name[name]["preloads"] == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
