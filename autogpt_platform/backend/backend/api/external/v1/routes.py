@@ -13,10 +13,7 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
-from backend.api.external.rate_limit import (
-    EXECUTION_LIMIT,
-    READ_LIMIT,
-)
+from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -42,10 +39,12 @@ logger = logging.getLogger(__name__)
 
 v1_router = APIRouter()
 
-# The integrations router owns several routes, so the read tier is attached at
-# the include site rather than per route: a router-level dependency applies to
-# every route it brings in, and cannot be forgotten on a newly added one.
-v1_router.include_router(integrations_router, dependencies=[READ_LIMIT])
+# Each integrations route declares its own tier in ``integrations.py``: the
+# reads take READ_LIMIT, while credential writes and the two OAuth hops (which
+# call out to a provider) take EXECUTION_LIMIT. A router-level dependency
+# cannot express that split — FastAPI would AND it with every route's own
+# dependency, so a write would be counted against both budgets.
+v1_router.include_router(integrations_router)
 v1_router.include_router(tools_router)
 
 

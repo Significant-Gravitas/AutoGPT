@@ -49,7 +49,9 @@ class FakeRedis:
 
     def _sweep(self) -> None:
         """Drop keys whose expiry has passed, as Redis would."""
-        for key in [k for k, deadline in self.expires_at.items() if deadline <= self._now]:
+        for key in [
+            k for k, deadline in self.expires_at.items() if deadline <= self._now
+        ]:
             del self.counters[key]
             del self.expires_at[key]
 
@@ -154,7 +156,9 @@ async def test_first_hit_sets_ttl_and_headers(fake_redis):
     assert int(response.headers["X-RateLimit-Reset"]) == (
         window_start + rate_limit.READ_WINDOW_SECONDS
     )
-    assert fake_redis.expires_at[key] - fake_redis._now == rate_limit.READ_WINDOW_SECONDS
+    assert (
+        fake_redis.expires_at[key] - fake_redis._now == rate_limit.READ_WINDOW_SECONDS
+    )
 
 
 @pytest.mark.asyncio
