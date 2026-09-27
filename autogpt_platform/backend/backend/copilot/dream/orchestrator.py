@@ -956,6 +956,7 @@ async def _execute_dream_pass_async(
                 pass_id,
                 ops,
                 known_fact_uuids=input_bundle.known_fact_uuids,
+                known_episode_uuids=input_bundle.known_episode_uuids,
                 lock_handle=dream_lock_handle,
             )
             # Apply succeeded (even as a no-op) — stamp the marker so the
@@ -989,6 +990,7 @@ async def _execute_dream_pass_async(
                 proposal_count=_as_int("proposal_count"),
                 demotion_count=_as_int("demotion_count"),
                 entity_invalidation_count=_as_int("entity_invalidation_count"),
+                dropped_forgotten=_as_int("dropped_forgotten"),
                 summary_for_user=ops.summary_for_user,
                 ingestion_drain_status=ingestion_drain_status,
                 # ``None`` (key absent) on an empty pass — apply skipped the

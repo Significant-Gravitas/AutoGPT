@@ -36,6 +36,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryStatus,
     SourceKind,
 )
+from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.tools.graphiti_forget import (
     invalidate_entity_direct_neighbors,
@@ -158,6 +159,26 @@ def _edge_metadata(envelope: MemoryEnvelope) -> dict:
     }
 
 
+def _citations(
+    statement: str,
+    fact_uuids: list[str],
+    episode_uuids: list[str],
+    read: Citations | None,
+) -> Citations:
+    """What a dream write rests on, which the ingestion worker checks against
+    forgets right before writing it (``graphiti/recall_citations.py``): what
+    it cites or, citing nothing, everything its pass read (``read``) and its
+    own statement, since an uncited claim may come from any of it."""
+    if fact_uuids or episode_uuids:
+        return Citations(fact_uuids=list(fact_uuids), episode_uuids=list(episode_uuids))
+    everything = read or Citations()
+    return Citations(
+        fact_uuids=everything.fact_uuids,
+        episode_uuids=everything.episode_uuids,
+        statement=statement,
+    )
+
+
 async def _write_consolidated_fact(
     scope: MemoryScope,
     pass_id: str,
@@ -165,6 +186,8 @@ async def _write_consolidated_fact(
     fact: ConsolidatedFact,
     session_id: str,
     completion: IngestionCompletion,
+    *,
+    read: Citations | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=fact.content,
@@ -187,6 +210,7 @@ async def _write_consolidated_fact(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
+        citations=_citations(fact.content, [], fact.source_episode_uuids, read),
     )
 
 
@@ -197,6 +221,8 @@ async def _write_proposed_finding(
     finding: ProposedFinding,
     session_id: str,
     completion: IngestionCompletion,
+    *,
+    read: Citations | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=finding.content,
@@ -221,6 +247,12 @@ async def _write_proposed_finding(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
+        citations=_citations(
+            finding.content,
+            finding.source_fact_uuids,
+            finding.source_episode_uuids,
+            read,
+        ),
     )
 
 
@@ -533,6 +565,7 @@ async def apply_operations(
     ops: DreamOperations,
     *,
     known_fact_uuids: set[str] | None = None,
+    known_episode_uuids: set[str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
@@ -563,6 +596,14 @@ async def apply_operations(
     (see ``_filter_demotions_to_known_facts``). ``None`` means "look
     up the persisted input bundle by pass_id" — the batch path's
     callbacks rely on that fallback.
+
+    Each write and proposal is queued with what it cites; one that cites
+    nothing is taken to rest on everything the pass read, its
+    ``known_fact_uuids`` and ``known_episode_uuids``. The ingestion worker
+    drops, unwritten, any whose citations a forget reached after the pass
+    read the graph (``graphiti/recall_citations.py``). ``dropped_forgotten``
+    counts those dropped before apply returned: all of them on a drained
+    pass, possibly fewer when the drain was skipped or timed out.
 
     ``ingestion_drain_timeout`` bounds the in-line wait for the enqueued
     episodes to land (see ``_drain_ingestion``). The sync path keeps the
@@ -606,6 +647,7 @@ async def apply_operations(
             "demotion_count": 0,
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
+            "dropped_forgotten": 0,
             # Vacuously drained — the pass enqueued nothing.
             "ingestion_drain_status": IngestionDrainStatus.drained,
             "snapshot": DreamOperationsSnapshot(),
@@ -622,6 +664,10 @@ async def apply_operations(
     # live-chat ingestion sharing the same per-user queue. Registered once
     # per successful enqueue; the worker signals each as it lands.
     completion = IngestionCompletion()
+    read = Citations(
+        fact_uuids=sorted(known_fact_uuids or ()),
+        episode_uuids=sorted(known_episode_uuids or ()),
+    )
 
     written = 0
     write_summaries: list[WriteSummary] = []
@@ -633,6 +679,7 @@ async def apply_operations(
             fact,
             session_id=session_id,
             completion=completion,
+            read=read,
         ):
             completion.register()
             written += 1
@@ -656,6 +703,7 @@ async def apply_operations(
             prop,
             session_id=session_id,
             completion=completion,
+            read=read,
         ):
             completion.register()
             proposed += 1
@@ -737,12 +785,13 @@ async def apply_operations(
 
     logger.info(
         "Dream pass %s applied for user %s: "
-        "writes=%d proposals=%d demoted=%d (failed=%d) entity_edges=%d "
-        "ingestion_drain_status=%s",
+        "writes=%d proposals=%d dropped_forgotten=%d demoted=%d (failed=%d) "
+        "entity_edges=%d ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
         written,
         proposed,
+        completion.dropped_forgotten,
         demoted_ok,
         demoted_fail,
         entity_edges_demoted,
@@ -763,6 +812,9 @@ async def apply_operations(
         "demotion_count": demoted_ok,
         "demotion_failed_count": demoted_fail,
         "entity_invalidation_count": entity_edges_demoted,
+        # Writes and proposals dropped unwritten: a forget reached what they
+        # rest on after the pass read the graph.
+        "dropped_forgotten": completion.dropped_forgotten,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }

@@ -17,7 +17,8 @@ from graphiti_core.nodes import EpisodeType
 
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
-from .recall import previous_episode_uuids
+from .recall_citations import Citations, rests_on_a_forget
+from .recall_ingest import previous_episode_uuids
 from .scope import MemoryScope
 from .scope_lock import INGEST_LOCK_WAIT_SECONDS, LockState, graph_write_lock
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
@@ -84,13 +85,16 @@ class IngestionCompletion:
     interleave can never drive the outstanding count negative.
     """
 
-    __slots__ = ("_registered", "_completed", "_event")
+    __slots__ = ("_registered", "_completed", "_event", "dropped_forgotten")
 
     def __init__(self) -> None:
         self._registered = 0
         self._completed = 0
         self._event = asyncio.Event()
         self._event.set()  # nothing outstanding yet
+        # Episodes the worker dropped, unwritten, for resting on a forget
+        # made since they were queued (``recall_citations.py``).
+        self.dropped_forgotten = 0
 
     @property
     def registered(self) -> int:
@@ -300,7 +304,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     raise MemoryScopeViolationError(
                         "Ingestion payload memory group mismatch"
                     )
-                if not await _write_locked(user_id, group_id, payload):
+                if not await _write_locked(user_id, group_id, payload, completion):
                     requeued = _requeue_once(queue, payload, completion, retried)
             except MemoryScopeViolationError:
                 logger.error(
@@ -347,15 +351,23 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     )
 
 
-async def _write_locked(user_id: str, group_id: str, payload: dict[str, Any]) -> bool:
+async def _write_locked(
+    user_id: str,
+    group_id: str,
+    payload: dict[str, Any],
+    completion: IngestionCompletion | None,
+) -> bool:
     """Write one episode holding the graph's write lock (``scope_lock.py``),
     so no forget lands between what graphiti reads and what it saves over
-    it; False, writing nothing, when another writer kept it for the wait."""
+    it; False, writing nothing, when another writer kept it for the wait.
+    A dream write resting on a forget is dropped under the same lock."""
     wait = INGEST_LOCK_WAIT_SECONDS
     async with graph_write_lock(group_id, wait_seconds=wait) as lock:
         if lock is LockState.BUSY:
             return False
         client = await get_graphiti_client(group_id)
+        if await _dropped_as_forgotten(client, payload, completion):
+            return True
         # This is the write path, so materializing the graph is intended
         # here — unlike driver construction, which must never create one.
         # Once per group per loop.
@@ -370,6 +382,22 @@ async def _write_locked(user_id: str, group_id: str, payload: dict[str, Any]) ->
         # ``_stamp_edge_metadata`` for the dedup-safety invariant).
         if edge_metadata:
             await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
+    return True
+
+
+async def _dropped_as_forgotten(
+    client: Graphiti,
+    payload: dict[str, Any],
+    completion: IngestionCompletion | None,
+) -> bool:
+    """True, counting it on ``completion``, when ``payload`` is a dream write
+    that rests on a forget made since the dream read the graph."""
+    reason = await rests_on_a_forget(client.driver, payload.pop("_citations", None))
+    if reason is None:
+        return False
+    logger.info(f"Dropped dream write {payload.get('name')!r}: it {reason}")
+    if completion is not None:
+        completion.dropped_forgotten += 1
     return True
 
 
@@ -517,6 +545,7 @@ async def enqueue_episode(
     is_json: bool = False,
     edge_metadata: dict | None = None,
     completion: IngestionCompletion | None = None,
+    citations: Citations | None = None,
 ) -> bool:
     """Enqueue an arbitrary episode for background ingestion in ``scope``.
 
@@ -539,6 +568,11 @@ async def enqueue_episode(
             await ONLY its own episodes (scoped drain), not everything on the
             shared memory-group queue. ``None`` for chat / memory-store writes
             that are pure fire-and-forget.
+        citations: What a dream write rests on. The worker checks them under
+            the graph's write lock right before writing and drops the
+            episode, counting it on ``completion``, when a forget made since
+            the dream read the graph reached them (``recall_citations.py``).
+            ``None`` for chat / memory-store writes.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.
     The caller registers the episode on ``completion`` iff this returns
@@ -576,6 +610,8 @@ async def enqueue_episode(
             # Sidecar — the worker calls ``complete_one`` on it after
             # processing so a scoped-drain caller can await this episode.
             "_completion": completion,
+            # Sidecar — popped and checked by the worker under the lock.
+            "_citations": citations,
         },
     )
     if not queued:

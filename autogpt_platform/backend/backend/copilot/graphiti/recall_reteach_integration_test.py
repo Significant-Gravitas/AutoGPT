@@ -8,7 +8,9 @@ merged into a forgotten edge is saved as its own live edge, and one merged
 into a live edge stays merged, as graphiti decided: no statement is lost or
 saved twice, and graphiti extracts the episode once. Reproduced first by an
 independent validation (``r3-ingestion-independent.py``, ``multi_merge``;
-``r4-ingestion-repair-extra.py``, the mixed forgotten and live pair).
+``r4-ingestion-repair-extra.py``, the mixed forgotten and live pair;
+``r5-ingestion-independent.py``, ``corrupt_partial``, a dedup prompt the
+guard cannot read in full).
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -23,11 +25,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from graphiti_core.prompts.dedupe_edges import EdgeDuplicate
+from graphiti_core.prompts.models import Message
+from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall import FORGOTTEN_FACT
 from .recall_forget import retract
+from .recall_ingest import ForgetAwareLLMClient
 from .recall_integration_fixtures import (
     ALICE,
     BuildClient,
@@ -192,4 +198,47 @@ async def test_an_episode_that_only_mentions_the_entity_adds_no_fact(
 
     assert await live_facts(driver) == {}
     assert await edge_row(driver, alice) == audit
+    assert episode in await recalled_episodes(scope)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_dedup_prompt_the_guard_cannot_read_saves_the_statement_as_new(
+    scope_graph, stub_graphiti_client, ingest_worker_cleanup
+) -> None:
+    """The existing-facts tags renamed on the way to the guard, the model
+    naming the forgotten edge a duplicate: the statement is saved as its own
+    live fact and the forgotten edge keeps its marker and audit copies."""
+    driver, scope = scope_graph
+    [alice] = await _learn(driver, scope, stub_graphiti_client, [ALICE])
+    await retract(scope, [alice])
+    audit = await edge_row(driver, alice)
+    responses = _responses([_ASSIGNED], "2026-06-01T00:00:00Z")
+    responses["EdgeDuplicate"] = {"duplicate_facts": [0], "contradicted_facts": []}
+    client = stub_graphiti_client(driver, responses)
+    guard = ForgetAwareLLMClient.generate_response
+
+    async def renamed(
+        self: ForgetAwareLLMClient,
+        messages: list[Message],
+        response_model: type[BaseModel] | None = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        if response_model is EdgeDuplicate:
+            messages = [
+                m.model_copy(
+                    update={"content": m.content.replace("EXISTING FACTS", "RENAMED")}
+                )
+                for m in messages
+            ]
+        return await guard(self, messages, response_model, *args, **kwargs)
+
+    with patch.object(ForgetAwareLLMClient, "generate_response", renamed):
+        episode = await ingest_through_the_worker(
+            driver, scope, client, [_ASSIGNED], session_id="s-2"
+        )
+
+    assert list((await live_facts(driver)).values()) == [_ASSIGNED[2]]
+    assert await edge_row(driver, alice) == audit, "the forgotten edge changed"
     assert episode in await recalled_episodes(scope)

@@ -8,6 +8,7 @@ from graphiti_core.edges import EntityEdge
 
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.recall import recent_episodes, record_hit, search_facts
+from backend.copilot.graphiti.recall_recheck import recheck
 from backend.copilot.graphiti.recall_render import episode_scope, render, render_episode
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
@@ -112,6 +113,9 @@ class MemorySearchTool(BaseTool):
                 search_facts(memory_scope, query, limit=limit),
                 recent_episodes(memory_scope, _RECENT_EPISODES),
             )
+            # The last read before rendering: a forget that answered while
+            # the search ran is not shown (``recall_recheck.py``).
+            edges, episodes = await recheck(memory_scope, edges, episodes)
         except Exception:
             logger.warning(
                 "Memory search failed for user %s", user_id[:12], exc_info=True

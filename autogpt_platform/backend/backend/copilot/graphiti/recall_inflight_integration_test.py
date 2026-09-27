@@ -203,11 +203,12 @@ async def test_a_hard_forget_arriving_mid_ingestion_deletes_what_it_wrote(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_a_forget_from_another_process_waits_for_the_ingestion(
+async def test_a_forget_on_another_event_loop_waits_for_the_ingestion(
     scope_graph, stub_graphiti_client, ingest_worker_cleanup, mocker
 ) -> None:
-    """The forget runs on its own event loop and Redis connection; only
-    Redis and the graph are shared, as between two processes."""
+    """The forget runs on another thread's event loop with its own Redis
+    connection, sharing only Redis and the graph, as a second process would
+    (not a process: an independent validation ran that, ``r5-lock-probes.py``)."""
     driver, scope = scope_graph
     clients: dict[asyncio.AbstractEventLoop, Redis] = {}
 

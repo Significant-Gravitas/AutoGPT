@@ -88,14 +88,23 @@ class TestFetchWarmContextGeneralError:
 class TestFetchInternal:
     """``_fetch`` reads through the recall policy (``recall.py``).
 
-    Both reads are mocked at their use site; the hit hook is replaced so no
-    test here reaches Redis or FalkorDB.
+    Both reads and their recheck are mocked at their use site (the recheck
+    keeps everything unless a test says otherwise); the hit hook is replaced
+    so no test here reaches Redis or FalkorDB.
     """
 
     @pytest.fixture(autouse=True)
     def spawn_hits(self):
         with patch.object(context, "_spawn_ratification_hits") as spawn:
             yield spawn
+
+    @pytest.fixture(autouse=True)
+    def recheck(self):
+        async def everything(scope, facts, episodes):
+            return facts, episodes
+
+        with patch.object(context, "recheck", side_effect=everything) as recheck:
+            yield recheck
 
     @staticmethod
     def _reads(edges: list[EntityEdge], episodes: list[EpisodicNode]):
@@ -142,6 +151,27 @@ class TestFetchInternal:
         assert "<temporal_context>" in result
         assert "user likes python" in result
         spawn_hits.assert_called_once_with(MemoryScope.for_user("abc"), [edge])
+
+    @pytest.mark.asyncio
+    async def test_renders_only_what_the_recheck_still_finds(
+        self, spawn_hits, recheck
+    ) -> None:
+        """A forget that answered while the search ran (a cross-encoder
+        rerank can take seconds): the last read before rendering no longer
+        finds the fact or its episode, so neither is shown or counted."""
+        forgotten, kept = _edge("e1", "Alice works on Atlas"), _edge("e2", "Bob")
+        episode = _episode("Alice works on Atlas")
+        recheck.side_effect = None
+        recheck.return_value = ([kept], [])
+        search, recent = self._reads([forgotten, kept], [episode])
+        with search, recent:
+            result = await context._fetch(MemoryScope.for_user("abc"), "hello")
+
+        recheck.assert_awaited_once_with(
+            MemoryScope.for_user("abc"), [forgotten, kept], [episode]
+        )
+        assert result is not None and "Alice" not in result and "Bob" in result
+        spawn_hits.assert_called_once_with(MemoryScope.for_user("abc"), [kept])
 
     @pytest.mark.asyncio
     async def test_returns_context_with_episodes(self) -> None:

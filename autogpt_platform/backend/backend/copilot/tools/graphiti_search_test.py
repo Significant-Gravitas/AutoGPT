@@ -48,18 +48,22 @@ async def _search(
     episodes: list[EpisodicNode],
     *,
     expert_id: str | None = None,
+    still: tuple[list[EntityEdge], list[EpisodicNode]] | None = None,
     **tool_kwargs,
 ):
-    """Run the tool with both recall reads and the hit recorder mocked."""
+    """Run the tool with both recall reads, their recheck (``still``, or
+    everything read) and the hit recorder mocked."""
     session = ChatSession.new("user-1", dry_run=False, expert_id=expert_id)
     search_facts = AsyncMock(return_value=edges)
     recent_episodes = AsyncMock(return_value=episodes)
+    recheck = AsyncMock(return_value=still or (edges, episodes))
     record_hit = MagicMock(return_value="hit-coroutine")
     spawn = MagicMock()
     with (
         patch(f"{_MODULE}.is_enabled_for_user", AsyncMock(return_value=True)),
         patch(f"{_MODULE}.search_facts", search_facts),
         patch(f"{_MODULE}.recent_episodes", recent_episodes),
+        patch(f"{_MODULE}.recheck", recheck),
         patch(f"{_MODULE}.record_hit", record_hit),
         patch(f"{_MODULE}.spawn_background_task", spawn),
     ):
@@ -92,6 +96,24 @@ async def test_renders_facts_and_episodes() -> None:
         "Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)"
     ]
     assert result.recent_episodes == ["[2025-01-01 00:00:00+00:00] talked about Atlas"]
+
+
+@pytest.mark.asyncio
+async def test_only_what_the_recheck_still_finds_is_shown_and_counted() -> None:
+    """A forget that answered while the search ran: the last read before
+    rendering (``recall_recheck.recheck``) no longer finds the fact or its
+    episode, so neither is shown or counted as a hit."""
+    kept = _edge("e2", "Bob leads Atlas")
+    edges = [_edge("e1", "Alice works on Atlas"), kept]
+
+    result, _, _, record_hit, _ = await _search(
+        edges, [_episode("Alice works on Atlas")], still=([kept], [])
+    )
+
+    assert isinstance(result, MemorySearchResponse)
+    assert [fact.split(" (")[0] for fact in result.facts] == ["Bob leads Atlas"]
+    assert result.recent_episodes == []
+    record_hit.assert_called_once_with(MemoryScope.for_user("user-1"), ["e2"])
 
 
 @pytest.mark.asyncio

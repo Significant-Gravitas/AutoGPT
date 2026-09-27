@@ -1,10 +1,12 @@
 """Unit tests for ``recall_ingest``: graphiti's edge dedup never names a
-forgotten edge, checked against graphiti's own dedup prompt.
+forgotten edge, checked against graphiti's own dedup prompt, and a prompt the
+guard cannot read in full names no edge at all.
 
 The live runs, through the production worker, are
 ``recall_ingest_integration_test.py`` and ``recall_reteach_integration_test.py``.
 """
 
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,9 +19,23 @@ from graphiti_core.prompts.dedupe_edges import EdgeDuplicate
 from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.models import Message
 
+from . import recall_ingest
 from .client import _build_graphiti
 from .recall import FORGOTTEN_FACT
 from .recall_ingest import ForgetAwareLLMClient, forgotten_candidates, off_forgotten
+
+_EXISTING = "EXISTING FACTS"
+_CANDIDATES = "FACT INVALIDATION CANDIDATES"
+# A forgotten and a live existing fact, then one invalidation candidate; the
+# model names the live ones, which only an unreadable prompt takes away.
+_NAMES_LIVE_EDGES = {"duplicate_facts": [1], "contradicted_facts": [2]}
+_NAMES_NOTHING = {"duplicate_facts": [], "contradicted_facts": []}
+
+
+@pytest.fixture(autouse=True)
+def reported_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each test starts with no prompt shape logged yet."""
+    monkeypatch.setattr(recall_ingest, "_REPORTED_SHAPES", set())
 
 
 def _dedup_prompt(existing: list[str], candidates: list[str]) -> list[Message]:
@@ -33,6 +49,22 @@ def _dedup_prompt(existing: list[str], candidates: list[str]) -> list[Message]:
             ],
         }
     )
+
+
+def _mixed_prompt() -> list[Message]:
+    return _dedup_prompt([FORGOTTEN_FACT, "Alice owns the Atlas budget"], ["Bob"])
+
+
+def _edited(prompt: list[Message], old: str, new: str) -> list[Message]:
+    return [
+        m.model_copy(update={"content": m.content.replace(old, new)}) for m in prompt
+    ]
+
+
+def _retagged(prompt: list[Message], tag: str, new: str) -> list[Message]:
+    """``prompt`` with the ``tag`` pair printed as ``new`` (gone when empty)."""
+    opened = _edited(prompt, f"<{tag}>", f"<{new}>" if new else "")
+    return _edited(opened, f"</{tag}>", f"</{new}>" if new else "")
 
 
 def _inner(answer: dict[str, Any]) -> MagicMock:
@@ -66,6 +98,103 @@ class TestForgottenCandidates:
         prompt = [Message(role="user", content=f"<EXISTING FACTS>\n{FORGOTTEN_FACT}")]
 
         assert forgotten_candidates(prompt) is None
+
+    def test_a_forgotten_candidate_outside_the_two_lists_is_still_found(
+        self,
+    ) -> None:
+        """By its text, not its tags: a list the guard does not know about."""
+        extra = Message(
+            role="user",
+            content=f"<RELATED FACTS>\n[{{'idx': 2, 'fact': 'Carol owns Borealis', "
+            f"'name': '{FORGOTTEN_FACT}'}}, {{'idx': 3, 'fact': '{FORGOTTEN_FACT}'}}]"
+            "\n</RELATED FACTS>",
+        )
+        prompt = [*_dedup_prompt([FORGOTTEN_FACT], ["Bob leads Atlas"]), extra]
+
+        assert forgotten_candidates(prompt) == {0, 2, 3}
+
+    def test_with_the_tags_gone_the_placeholder_still_marks_its_candidate(
+        self,
+    ) -> None:
+        prompt = _retagged(_retagged(_mixed_prompt(), _EXISTING, ""), _CANDIDATES, "")
+        text = "\n".join(message.content for message in prompt)
+
+        assert recall_ingest._shown(text) == {0}
+        assert forgotten_candidates(prompt) is None
+
+    def test_a_placeholder_outside_any_candidate_names_no_edge(self) -> None:
+        prompt = _edited(
+            _mixed_prompt(), "NEW FACT>\n", f"NEW FACT>\n{FORGOTTEN_FACT} "
+        )
+
+        assert forgotten_candidates(prompt) is None
+
+
+class TestAnUnreadablePrompt:
+    """Codex's r5 ``corrupt_partial`` and its relatives: when the prompt
+    shows the placeholder, anything short of both lists, once each and
+    readable, names no edge, so the statement is saved as new."""
+
+    @pytest.mark.parametrize(
+        "damage",
+        [
+            lambda p: _retagged(p, _EXISTING, "EXISTING_EDGES"),
+            lambda p: _retagged(p, _CANDIDATES, "INVALIDATION_EDGES"),
+            lambda p: [
+                *p,
+                Message(role="user", content=f"<{_EXISTING}>[]</{_EXISTING}>"),
+            ],
+            lambda p: _edited(p, f"<{_CANDIDATES}>\n[", f"<{_CANDIDATES}>\n[oops, "),
+            lambda p: _edited(p, "'fact': 'Bob'", "'text': 'Bob'"),
+        ],
+        ids=[
+            "existing renamed",
+            "candidates renamed",
+            "shown twice",
+            "unparsable",
+            "no fact",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_names_no_edge(
+        self, damage: Callable[[list[Message]], list[Message]]
+    ) -> None:
+        client = ForgetAwareLLMClient(_inner(dict(_NAMES_LIVE_EDGES)))
+
+        answer = await client.generate_response(damage(_mixed_prompt()), EdgeDuplicate)
+
+        assert answer == _NAMES_NOTHING
+
+    @pytest.mark.asyncio
+    async def test_the_intact_prompt_keeps_the_live_edges_named(self) -> None:
+        client = ForgetAwareLLMClient(_inner(dict(_NAMES_LIVE_EDGES)))
+
+        answer = await client.generate_response(_mixed_prompt(), EdgeDuplicate)
+
+        assert answer == _NAMES_LIVE_EDGES
+
+    def test_is_logged_at_error_once_per_shape(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        renamed = _retagged(_mixed_prompt(), _EXISTING, "EXISTING_EDGES")
+        for prompt in (renamed, renamed, _retagged(_mixed_prompt(), _CANDIDATES, "")):
+            forgotten_candidates(prompt)
+
+        errors = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert len(errors) == 2
+        assert "EXISTING_EDGES" in errors[0].getMessage()
+
+    @pytest.mark.asyncio
+    async def test_without_the_placeholder_passes_the_answer_but_is_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        prompt = _retagged(_dedup_prompt(["Alice"], ["Bob"]), _EXISTING, "RENAMED")
+        client = ForgetAwareLLMClient(_inner({"duplicate_facts": [0]}))
+
+        answer = await client.generate_response(prompt, EdgeDuplicate)
+
+        assert answer == {"duplicate_facts": [0]}
+        assert "RENAMED" in caplog.text
 
 
 class TestOffForgotten:

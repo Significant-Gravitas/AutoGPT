@@ -188,10 +188,45 @@ class TestRecallableEpisodePredicate:
 
 class TestSearchFacts:
     @staticmethod
-    def _client(edges: list[EntityEdge]) -> MagicMock:
+    def _client(edges: list[EntityEdge], still: list[str] | None = None) -> MagicMock:
+        """graphiti found ``edges``; reading them again by uuid finds
+        ``still`` (every one of them unless given)."""
         client = MagicMock()
         client.search_ = AsyncMock(return_value=SearchResults(edges=edges))
+        found = [edge.uuid for edge in edges] if still is None else still
+        rows = [{"uuid": uuid} for uuid in found]
+        client.driver.execute_query = AsyncMock(return_value=(rows, [], None))
         return client
+
+    @pytest.mark.asyncio
+    async def test_a_fact_forgotten_while_the_search_ran_is_not_returned(
+        self,
+    ) -> None:
+        """The search's last step reads the facts again by uuid under the
+        live test (``live_now``); what a forget took meanwhile is dropped."""
+        client = self._client([_fact("forgotten"), _fact("kept")], still=["kept"])
+        with patch.object(
+            recall, "get_graphiti_client", AsyncMock(return_value=client)
+        ):
+            facts = await recall.search_facts(_SCOPE, "atlas", limit=10)
+
+        assert [f.uuid for f in facts] == ["kept"]
+        query = client.driver.execute_query.await_args.args[0]
+        assert "e.uuid IN $uuids" in query
+        assert recall.live_fact_predicate("e") in query
+        assert client.driver.execute_query.await_args.kwargs == {
+            "uuids": ["forgotten", "kept"]
+        }
+
+    @pytest.mark.asyncio
+    async def test_nothing_found_reads_nothing_again(self) -> None:
+        client = self._client([])
+        with patch.object(
+            recall, "get_graphiti_client", AsyncMock(return_value=client)
+        ):
+            assert await recall.search_facts(_SCOPE, "atlas", limit=10) == []
+
+        client.driver.execute_query.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_keeps_live_facts_and_drops_retired_ones(self) -> None:
@@ -224,6 +259,8 @@ class TestSearchFacts:
             )
 
         assert [f.uuid for f in facts] == ["active"]
+        query = client.driver.execute_query.await_args.args[0]
+        assert recall.live_fact_predicate("e", include_tentative=False) in query
 
     @pytest.mark.asyncio
     async def test_asks_graphiti_for_unexpired_facts_in_the_scope(self) -> None:

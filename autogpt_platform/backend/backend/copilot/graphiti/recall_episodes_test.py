@@ -1,6 +1,6 @@
-"""Unit tests for the recall policy's episode reads (``recall.py``):
-``recent_episodes`` for the assistant, ``previous_episode_uuids`` for
-ingestion's extraction context, and ``record_hit``.
+"""Unit tests for the recall policy's episode reads: ``recent_episodes``
+for the assistant, ``previous_episode_uuids`` for ingestion's extraction
+context (``recall_ingest.py``), and ``record_hit``.
 
 The predicates and the fact search are pinned in ``recall_test.py``; the
 live runs are ``recall_integration_test.py`` and
@@ -14,7 +14,7 @@ import pytest
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 
-from . import recall
+from . import recall, recall_ingest
 from .scope import MemoryScope
 
 _NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
@@ -88,7 +88,7 @@ class TestPreviousEpisodeUuids:
             [_episode_record("newest", "b"), _episode_record("older", "a")]
         )
 
-        uuids = await recall.previous_episode_uuids(
+        uuids = await recall_ingest.previous_episode_uuids(
             driver, _SCOPE.group_id, _NOW, EpisodeType.message
         )
 
@@ -110,7 +110,7 @@ class TestPreviousEpisodeUuids:
         driver = AsyncMock()
         driver.execute_query.side_effect = RuntimeError("falkordb down")
 
-        uuids = await recall.previous_episode_uuids(
+        uuids = await recall_ingest.previous_episode_uuids(
             driver, _SCOPE.group_id, _NOW, EpisodeType.text
         )
 

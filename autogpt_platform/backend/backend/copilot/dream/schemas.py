@@ -331,6 +331,10 @@ class DreamPassResult(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Of those writes and proposals, the ones dropped unwritten because a
+    # forget reached what they rest on after the pass read the graph; only
+    # those dropped before the pass was reported (see ingestion_drain_status).
+    dropped_forgotten: int = 0
 
     summary_for_user: str = ""
     dream_session_id: str | None = None

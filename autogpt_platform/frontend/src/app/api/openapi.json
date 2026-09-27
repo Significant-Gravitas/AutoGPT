@@ -21099,6 +21099,11 @@
             "title": "Entity Invalidation Count",
             "default": 0
           },
+          "dropped_forgotten": {
+            "type": "integer",
+            "title": "Dropped Forgotten",
+            "default": 0
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",

@@ -762,6 +762,7 @@ async def _finalize_complete(
             pass_id,
             ops,
             known_fact_uuids=input_bundle.known_fact_uuids,
+            known_episode_uuids=input_bundle.known_episode_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
@@ -829,6 +830,7 @@ async def _finalize_complete(
                 proposal_count=_count("proposal_count"),
                 demotion_count=_count("demotion_count"),
                 entity_invalidation_count=_count("entity_invalidation_count"),
+                dropped_forgotten=_count("dropped_forgotten"),
                 dream_session_id=session_id,
                 ingestion_drain_status=ingestion_drain_status,
                 operations=snapshot,

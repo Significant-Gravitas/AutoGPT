@@ -3,7 +3,9 @@ dream and ingestion.
 
 Warm context, ``memory_search``, ``memory_forget_search``, the settings fact
 list, the dream gather and ingestion's extraction context read through this
-module's functions or predicates, and every forget goes through ``retract``
+module's functions or predicates, and what the assistant is shown is read
+again by uuid right before it is rendered (``live_now``,
+``recall_recheck.py``). Every forget goes through ``retract``
 (``recall_forget.py``); ``graphiti/AGENTS.md`` lists what a forget reaches
 and what it does not. ``recall_render.py`` writes out what recall returns.
 
@@ -21,13 +23,12 @@ episode's other facts stay live.
 """
 
 import asyncio
-import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.edges import EntityEdge
-from graphiti_core.nodes import EpisodeType, EpisodicNode, get_episodic_node_from_record
+from graphiti_core.nodes import EpisodicNode, get_episodic_node_from_record
 from graphiti_core.search.search_config import SearchConfig
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_RRF
 from graphiti_core.search.search_filters import (
@@ -35,7 +36,6 @@ from graphiti_core.search.search_filters import (
     DateFilter,
     SearchFilters,
 )
-from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 
 from backend.copilot.dream.ratification_hits import record_memory_hit
 
@@ -43,8 +43,6 @@ from .client import get_graphiti_client
 from .falkordb_driver import open_driver
 from .memory_model import MemoryStatus
 from .scope import MemoryScope
-
-logger = logging.getLogger(__name__)
 
 # The ``expiration_reason`` a user's forget records (``recall_forget.retract``).
 USER_FORGET_REASON = "user_signal"
@@ -176,7 +174,10 @@ async def search_facts(
 
     ``recipe`` defaults to the hybrid RRF config ``Graphiti.search`` uses. Its
     ``limit`` is replaced on a copy: ``Graphiti.search`` sets it on the shared
-    recipe object, which graphiti's own ingestion dedup also reads.
+    recipe object, which graphiti's own ingestion dedup also reads. The search
+    can take seconds (a cross-encoder rerank), so its last step reads the
+    facts again by uuid (``live_now``): a forget that answered meanwhile is
+    not returned.
     """
     client = await get_graphiti_client(scope.group_id)
     config = (recipe or EDGE_HYBRID_SEARCH_RRF).model_copy(update={"limit": limit})
@@ -186,11 +187,27 @@ async def search_facts(
         group_ids=[scope.group_id],
         search_filter=_LIVE_SEARCH_FILTER,
     )
-    return [
-        fact
-        for fact in results.edges
-        if is_live(fact, include_tentative=include_tentative)
-    ]
+    tentative = include_tentative
+    found = [f for f in results.edges if is_live(f, include_tentative=tentative)]
+    return await live_now(client.driver, found, include_tentative=tentative)
+
+
+async def live_now(
+    driver: GraphDriver, facts: list[EntityEdge], *, include_tentative: bool = True
+) -> list[EntityEdge]:
+    """``facts`` still live, in order, read again by uuid in one query. As
+    the last graph read before they are shown, it bounds the stale window to
+    the time between this read and the response."""
+    if not facts:
+        return facts
+    live = live_fact_predicate("e", include_tentative=include_tentative)
+    result = await driver.execute_query(
+        f"MATCH ()-[e:RELATES_TO]->() WHERE e.uuid IN $uuids AND {live}"
+        " RETURN e.uuid AS uuid",
+        uuids=[fact.uuid for fact in facts],
+    )
+    kept = {row["uuid"] for row in (result[0] if result else [])}
+    return [fact for fact in facts if fact.uuid in kept]
 
 
 async def recent_episodes(scope: MemoryScope, n: int) -> list[EpisodicNode]:
@@ -201,7 +218,7 @@ async def recent_episodes(scope: MemoryScope, n: int) -> list[EpisodicNode]:
     """
     driver = open_driver(scope)
     try:
-        records = await _recallable_episodes(
+        records = await recallable_episodes(
             driver, scope.group_id, datetime.now(timezone.utc), n
         )
     finally:
@@ -209,47 +226,15 @@ async def recent_episodes(scope: MemoryScope, n: int) -> list[EpisodicNode]:
     return [get_episodic_node_from_record(record) for record in reversed(records)]
 
 
-async def previous_episode_uuids(
-    driver: GraphDriver,
-    group_id: str,
-    reference_time: datetime,
-    source: EpisodeType,
-) -> list[str]:
-    """The earlier episodes ``add_episode`` may show its extraction prompts.
-
-    graphiti's own pick (``retrieve_episodes``: the ``RELEVANT_SCHEMA_LIMIT``
-    newest of the same source up to ``reference_time``) cannot see a forget,
-    so ingestion passes this one: the same pick of recallable episodes,
-    oldest first. Never raises: on a failed read extraction gets no earlier
-    episodes, not graphiti's unfiltered pick, and the write still happens.
-
-    Inherited limitation: on FalkorDB 4.x the indexed ``valid_at <=
-    $reference_time`` range can admit an episode dated just after the
-    cut-off (a direct comparison of the same values says it should not),
-    so, exactly like graphiti's own ``retrieve_episodes``, the newest
-    episode here may postdate ``reference_time``. Not fixed here.
-    """
-    try:
-        records = await _recallable_episodes(
-            driver, group_id, reference_time, RELEVANT_SCHEMA_LIMIT, source.value
-        )
-    except Exception:
-        logger.warning(
-            f"Prior-episode read failed for group {group_id[:12]}; "
-            "extracting without earlier episodes",
-            exc_info=True,
-        )
-        return []
-    return [str(record["uuid"]) for record in reversed(records)]
-
-
-async def _recallable_episodes(
+async def recallable_episodes(
     driver: GraphDriver,
     group_id: str,
     reference_time: datetime,
     limit: int,
     source: str | None = None,
 ) -> list[dict[str, Any]]:
+    """The ``limit`` newest recallable episodes up to ``reference_time``
+    (of ``source`` when given), newest first, as records."""
     result = await driver.execute_query(
         _RECALLABLE_EPISODES_QUERY,
         group_id=group_id,

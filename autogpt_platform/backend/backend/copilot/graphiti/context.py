@@ -9,6 +9,7 @@ from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_
 
 from .config import graphiti_config
 from .recall import recent_episodes, search_facts
+from .recall_recheck import recheck
 from .recall_render import GLOBAL_SCOPE, episode_scope, render, render_episode
 from .scope import MemoryScope
 
@@ -58,7 +59,10 @@ async def _fetch(scope: MemoryScope, message: str) -> str | None:
     # recipe combines BM25 + cosine + BFS edge search with cross-encoder
     # reranking; ``context_max_facts`` replaces its default ``limit=10`` so
     # existing operator tuning still applies. Both reads go through the
-    # recall policy, so forgotten facts and their episodes stay out.
+    # recall policy, so forgotten facts and their episodes stay out, and both
+    # lists are read again right before rendering (``recall_recheck.py``):
+    # the episodes wait here for the slower search, a forget can answer
+    # meanwhile, and what it hid is then not shown.
     edges, episodes = await asyncio.gather(
         search_facts(
             scope,
@@ -68,6 +72,7 @@ async def _fetch(scope: MemoryScope, message: str) -> str | None:
         ),
         recent_episodes(scope, _RECENT_EPISODES),
     )
+    edges, episodes = await recheck(scope, edges, episodes)
 
     # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge
     # that's currently ``status='tentative'`` gets promoted to
