@@ -65,8 +65,10 @@ async def graph_write_lock(
     group_id: str, *, wait_seconds: float
 ) -> AsyncIterator[LockState]:
     """Hold graph ``group_id``'s write lock for the block, waiting up to
-    ``wait_seconds`` for it. Yields ``BUSY`` (write nothing) or
-    ``UNAVAILABLE`` (write without it) instead of raising."""
+    ``wait_seconds`` for it. Yields ``BUSY`` (another writer kept it for the
+    whole wait) or ``UNAVAILABLE`` (Redis could not be reached) instead of
+    raising; the caller decides what to do without it: the worker and a
+    forget write anyway, the backfill skips the graph."""
     key = write_lock_key(group_id)
     token = uuid.uuid4().hex
     state = await _acquire(key, token, wait_seconds)
@@ -93,7 +95,7 @@ async def _acquire(key: str, token: str, wait_seconds: float) -> LockState:
                 )
         except Exception:
             logger.warning(
-                f"Redis unreachable for {key[:48]}: writing without the lock",
+                f"Redis unreachable for {key[:48]}: write lock unavailable",
                 exc_info=True,
             )
             return LockState.UNAVAILABLE

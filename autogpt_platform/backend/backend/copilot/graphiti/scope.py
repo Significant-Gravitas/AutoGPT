@@ -34,8 +34,8 @@ LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
 HIT_TRACKER_KEY_PREFIX = "mem:hits"
 # One community rebuild per graph (graphiti/communities.py).
 REBUILD_LOCK_KEY_PREFIX = "graphiti:community_rebuild_lock:"
-# One writer at a time per graph: a forget or an ingestion
-# (graphiti/scope_lock.py).
+# One writer at a time per graph: an ingestion, a forget or the
+# legacy-forget backfill (graphiti/scope_lock.py).
 WRITE_LOCK_KEY_PREFIX = "graphiti:write_lock:"
 
 

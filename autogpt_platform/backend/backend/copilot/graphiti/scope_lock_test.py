@@ -76,7 +76,7 @@ async def test_without_redis_the_writer_goes_ahead_and_warns(
         async with graph_write_lock(_GROUP, wait_seconds=5) as lock:
             assert lock is LockState.UNAVAILABLE
 
-    assert "writing without the lock" in caplog.text
+    assert "write lock unavailable" in caplog.text
 
 
 @pytest.mark.asyncio

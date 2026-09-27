@@ -204,4 +204,4 @@ async def test_without_redis_both_writers_go_ahead_and_warn(
         result = await retract(scope, [alice])
 
     assert (result.deleted, result.failures) == ([alice], [])
-    assert caplog.text.count("writing without the lock") >= 2
+    assert caplog.text.count("write lock unavailable") >= 2

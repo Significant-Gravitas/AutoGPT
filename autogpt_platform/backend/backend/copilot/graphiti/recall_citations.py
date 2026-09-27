@@ -2,14 +2,16 @@
 
 A dream pass reads the graph, asks its model for consolidated facts and
 proposals, and queues them as episodes minutes or hours later
-(``dream/apply.py``). A forget can answer in between, and graphiti, which
-never merges a statement into a forgotten edge (``recall_ingest.py``), would
-then save such a write as a new live fact: the forget undone without a word
-from the user. So each dream write carries what it rests on (``Citations``)
-and the ingestion worker checks it under the graph's write lock, right
-before ``add_episode`` (``ingest._write_locked``). A forget that answered
-before the check drops the write; one that comes later waits for the lock
-and then reaches the facts it names, as after any write.
+(``dream/apply.py``). A forget can answer in between, and graphiti, whose
+model-decided dedup never merges a statement into a forgotten edge
+(``recall_ingest.py``; its exact-text match only lists an episode on one
+when the statement itself reads ``[forgotten]``), would then save such a
+write as a new live fact: the forget undone without a word from the user.
+So each dream write carries what it rests on (``Citations``) and the
+ingestion worker checks it under the graph's write lock, right before
+``add_episode`` (``ingest._write_locked``). A forget that answered before
+the check drops the write; one that comes later waits for the lock and then
+reaches the facts it names, as after any write.
 
 A write rests on a forget when a fact it cites is forgotten or gone (a hard
 forget deletes it), or an episode it cites is no longer recallable or gone.

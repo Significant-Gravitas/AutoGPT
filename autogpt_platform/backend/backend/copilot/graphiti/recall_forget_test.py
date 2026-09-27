@@ -224,7 +224,7 @@ class TestWriteLock:
             result = await _retract(driver, ["u1"])
 
         assert (result.deleted, result.failures) == (["u1"], [])
-        assert "writing without the lock" in caplog.text
+        assert "write lock unavailable" in caplog.text
 
 
 class TestHardRetract:

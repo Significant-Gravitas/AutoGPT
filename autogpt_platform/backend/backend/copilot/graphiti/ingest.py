@@ -73,7 +73,7 @@ class IngestionCompletion:
 
     A memory group's ingestion queue is shared between live-chat ingestion and
     dream-pass writes. A caller that must wait for only its own episodes to
-    land (dream-pass apply) creates one of these, passes it to each
+    be finished (dream-pass apply) creates one of these, passes it to each
     ``enqueue_episode`` it makes, and awaits it. Unrelated activity on the
     same queue — chat episodes enqueued before, during, or after — never
     registers on this tracker, so it cannot extend the wait.
@@ -628,7 +628,8 @@ async def enqueue_episode(
 async def wait_for_ingestion(
     completion: IngestionCompletion, timeout_seconds: float
 ) -> bool:
-    """Block until a specific set of enqueued episodes have all landed.
+    """Block until the worker has finished a specific set of enqueued
+    episodes: each written, dropped for resting on a forget, or failed.
 
     ``enqueue_episode`` returning ``True`` only proves the episode reached
     the in-process queue; the real graph write (LLM extraction + embedding

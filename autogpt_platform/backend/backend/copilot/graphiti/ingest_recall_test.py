@@ -186,4 +186,4 @@ class TestWriteLock:
             await _run_worker(client, monkeypatch)
 
         client.add_episode.assert_awaited_once()
-        assert "writing without the lock" in caplog.text
+        assert "write lock unavailable" in caplog.text
