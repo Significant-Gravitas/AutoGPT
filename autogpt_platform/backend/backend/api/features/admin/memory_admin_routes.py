@@ -35,6 +35,7 @@ from backend.copilot.dream.nightly_batch import NightlyBatchResult
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
 from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.util.clients import get_scheduler_client
 
@@ -121,6 +122,9 @@ class GraphNode(BaseModel):
     type: str | None = None
     name: str | None = None
     summary: str | None = None
+    # Set on the tombstone a hard forget leaves of an episode; its text is
+    # gone, and only its title and this stamp are shown.
+    hard_deleted_at: str | None = None
 
 
 class GraphEdge(BaseModel):
@@ -533,10 +537,13 @@ async def _list_facts_impl(
     )
     group_id = memory_scope.group_id
 
-    # Build optional filters
+    # Build optional filters. "active" means live and active under the recall
+    # policy, so a forgotten or expired fact never shows as active.
     where_clauses = ["e.group_id = $g"]
     params: dict[str, Any] = {"g": group_id, "limit": limit}
-    if status != "any":
+    if status == "active":
+        where_clauses.append(live_fact_predicate("e", include_tentative=False))
+    elif status != "any":
         where_clauses.append("e.status = $status")
         params["status"] = status
     if scope:
@@ -553,8 +560,8 @@ async def _list_facts_impl(
             RETURN e.uuid AS uuid,
                    src.name AS source,
                    tgt.name AS target,
-                   e.name AS name,
-                   e.fact AS fact,
+                   coalesce(e.name_redacted, e.name) AS name,
+                   coalesce(e.fact_redacted, e.fact) AS fact,
                    e.status AS status,
                    e.scope AS scope,
                    e.confidence AS confidence,
@@ -792,6 +799,7 @@ async def _get_graph_impl(
                 RETURN n.uuid AS uuid,
                        n.name AS name,
                        n.summary AS summary,
+                       toString(n.hard_deleted_at) AS hard_deleted_at,
                        labels(n) AS all_labels
                 LIMIT $limit
                 """,
@@ -816,6 +824,7 @@ async def _get_graph_impl(
                         type=custom_type,
                         name=r.get("name"),
                         summary=r.get("summary"),
+                        hard_deleted_at=r.get("hard_deleted_at"),
                     )
                 )
                 if len(nodes) >= node_limit:
@@ -846,8 +855,8 @@ async def _get_graph_impl(
                    type(e) AS label,
                    src.uuid AS source,
                    tgt.uuid AS target,
-                   e.name AS name,
-                   e.fact AS fact,
+                   coalesce(e.name_redacted, e.name) AS name,
+                   coalesce(e.fact_redacted, e.fact) AS fact,
                    e.status AS status,
                    e.scope AS scope
             LIMIT $limit

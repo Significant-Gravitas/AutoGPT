@@ -14,6 +14,7 @@ from .scope import (
     HIT_TRACKER_KEY_PREFIX,
     LAST_COMPLETED_KEY_PREFIX,
     REBUILD_LOCK_KEY_PREFIX,
+    WRITE_LOCK_KEY_PREFIX,
     MemoryScope,
 )
 
@@ -99,6 +100,13 @@ class TestRedisKeys:
         group_id = derive_memory_group_id(USER_ID, expert_id)
         legacy = f"{REBUILD_LOCK_KEY_PREFIX}{group_id}"
         assert scope.redis_key("rebuild_lock") == legacy
+
+    @BOTH_SCOPES
+    def test_write_lock_keys_on_group_id(self, expert_id: str | None) -> None:
+        """The ingestion worker takes it knowing only the graph."""
+        scope = MemoryScope.build(USER_ID, expert_id)
+        group_id = derive_memory_group_id(USER_ID, expert_id)
+        assert scope.redis_key("write_lock") == (f"{WRITE_LOCK_KEY_PREFIX}{group_id}")
 
     @BOTH_SCOPES
     @pytest.mark.parametrize(

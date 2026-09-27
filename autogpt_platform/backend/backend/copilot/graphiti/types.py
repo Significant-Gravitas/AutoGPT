@@ -7,8 +7,9 @@ Per the integration audit (dream/dreaming-graphiti.md §6.4), passing
 the durable ``:RELATES_TO`` edge — not only in the ``:Episodic.content``
 JSON blob, which Cypher cannot filter without parsing.
 
-After this lands, search filters can do ``WHERE e.status = 'active'``
-natively and ratification can flip ``status`` with a single SET.
+Cypher can then filter on ``e.status`` (``recall.live_fact_predicate``)
+and ratification can flip it with a single SET. graphiti's own search does
+not filter on it: ``recall.search_facts`` checks it in Python.
 """
 
 from datetime import datetime

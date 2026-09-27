@@ -203,13 +203,15 @@ def _build_graphiti(
     function. One construction site means a kwarg added here reaches the
     tests too, instead of silently drifting from a hand-mirrored copy.
     Production passes none of them; each defaults to the real component.
-    ``group_id`` is only consulted when ``graph_driver`` is not supplied.
+    ``group_id`` is only consulted when ``graph_driver`` is not supplied;
+    ``llm_client`` is wrapped in ``recall_ingest.ForgetAwareLLMClient``.
     """
     from graphiti_core import Graphiti
     from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
     from graphiti_core.llm_client import LLMConfig
 
     from .falkordb_driver import AutoGPTFalkorDriver
+    from .recall_ingest import ForgetAwareLLMClient
     from .reranker import CompatOpenAIRerankerClient
 
     if embedder is None:
@@ -243,7 +245,7 @@ def _build_graphiti(
             database=group_id,
         )
     return Graphiti(
-        llm_client=llm_client,
+        llm_client=ForgetAwareLLMClient(llm_client),
         embedder=embedder,
         cross_encoder=cross_encoder,
         graph_driver=graph_driver,
