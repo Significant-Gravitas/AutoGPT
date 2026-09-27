@@ -21553,6 +21553,13 @@
             ],
             "title": "Lease Expires At"
           },
+          "cleanup_pending_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Cleanup Pending At"
+          },
           "input_bundle": {
             "anyOf": [
               { "$ref": "#/components/schemas/DreamInput" },

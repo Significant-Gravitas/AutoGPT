@@ -410,13 +410,20 @@ class TestWalkOnceDispatch:
 
 class TestShouldDispatch:
     """A namespace's check, asked before each poll of a due entry: ``False``
-    drops the entry unpolled and undispatched, for good."""
+    drops the entry unpolled and undispatched, for good, claimed before the
+    namespace's drop hook runs, so only the walker whose claim took it runs
+    the hook."""
 
     @pytest.mark.asyncio
     async def test_a_check_that_says_no_drops_the_entry_for_good(self, fake_redis):
         handler = AsyncMock()
         check = AsyncMock(return_value=False)
-        register_handler("dream_pass", handler, should_dispatch=check)
+        pending_at_drop: list[int] = []
+
+        async def on_drop(entry: PendingEntry) -> None:
+            pending_at_drop.append(len(await list_pending()))
+
+        register_handler("dream_pass", handler, should_dispatch=check, on_drop=on_drop)
         await enqueue_pending(_entry())
         poll, download = AsyncMock(return_value="ended"), AsyncMock(return_value=[])
 
@@ -433,6 +440,58 @@ class TestShouldDispatch:
         check.assert_awaited()
         assert check.await_args_list[0].args[0].provider_batch_id == "msgbatch_1"
         handler.assert_not_awaited()
+        # The hook ran once, for the walk that dropped the entry, and only
+        # after its claim had taken it off the queue.
+        assert pending_at_drop == [0]
+        assert await list_pending() == []
+
+    @pytest.mark.asyncio
+    async def test_a_walker_that_finds_the_drop_claimed_does_nothing(self, fake_redis):
+        """A walker that read the entry before another claimed its drop
+        (here: the same entry back on the queue after its drop): the claim
+        refuses, the leftover row goes, and the hook is not run again."""
+        on_drop = AsyncMock()
+        register_handler(
+            "dream_pass",
+            AsyncMock(),
+            should_dispatch=AsyncMock(return_value=False),
+            on_drop=on_drop,
+        )
+        await enqueue_pending(_entry())
+        await walk_once(api_key_for=lambda p: "sk-ant-test")
+        on_drop.assert_awaited_once()
+
+        await enqueue_pending(_entry())
+        await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        on_drop.assert_awaited_once()
+        assert await list_pending() == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("fails", ["raises", "hangs"])
+    async def test_a_drop_hook_that_fails_leaves_the_entry_dropped(
+        self, fake_redis, fails
+    ):
+        async def hang(entry):
+            await asyncio.Event().wait()
+
+        on_drop = AsyncMock(side_effect=RuntimeError("cleanup failed"))
+        if fails == "hangs":
+            on_drop = AsyncMock(side_effect=hang)
+        register_handler(
+            "dream_pass",
+            AsyncMock(),
+            should_dispatch=AsyncMock(return_value=False),
+            on_drop=on_drop,
+        )
+        await enqueue_pending(_entry())
+
+        with patch(
+            "backend.executor.batch_executor.DISPATCH_CHECK_TIMEOUT_SECONDS", 0.05
+        ):
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        on_drop.assert_awaited_once()
         assert await list_pending() == []
 
     @pytest.mark.asyncio

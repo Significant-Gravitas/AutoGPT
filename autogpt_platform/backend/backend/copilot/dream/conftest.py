@@ -191,7 +191,8 @@ class FakeDreamDb:
     phase, ``phase_outputs`` and ``operations`` merge one field at a time, a
     stop bumps the cancel generation, ``clear`` empties its columns, and a
     terminal row, another user's row (for an update naming the owner) or a
-    row written after the update's instant is not written. ``writes`` holds
+    row written after the update's instant is not written; an update marked
+    ``closed_row`` writes a terminal row only. ``writes`` holds
     every draft and update that was written, in order, as sent. ``fail``
     makes every call raise, as an unreachable database would.
     """
@@ -272,15 +273,29 @@ class FakeDreamDb:
         ]
         return [self.record(pass_id) for _, pass_id in sorted(lapsed)[:limit]]
 
+    async def list_dream_pass_cleanups(self, limit: int = 100) -> list[DreamPassRecord]:
+        """Closed rows marked for a cleanup, longest pending first."""
+        self._raise_if_down()
+        pending = [
+            (row["cleanup_pending_at"], pass_id)
+            for pass_id, row in self.rows.items()
+            if row["status"] not in OPEN_STATUSES
+            and row.get("cleanup_pending_at") is not None
+        ]
+        return [self.record(pass_id) for _, pass_id in sorted(pending)[:limit]]
+
     async def delete_old_dream_passes(
         self, created_before: datetime, limit: int = 1000
     ) -> int:
-        """Delete at most *limit* closed rows created before *created_before*."""
+        """Delete at most *limit* closed rows created before *created_before*,
+        none whose cleanup is pending."""
         self._raise_if_down()
         old = [
             pass_id
             for pass_id, row in self.rows.items()
-            if row["status"] not in OPEN_STATUSES and row["created_at"] < created_before
+            if row["status"] not in OPEN_STATUSES
+            and row.get("cleanup_pending_at") is None
+            and row["created_at"] < created_before
         ][:limit]
         for pass_id in old:
             del self.rows[pass_id]
@@ -335,15 +350,17 @@ _NOT_WRITTEN_AS_IS = frozenset(
         "owner_user_id",
         "not_updated_since",
         "clear",
+        "closed_row",
     }
 )
 
 
 def _writable(row: dict[str, Any], update: DreamPassUpdate) -> bool:
-    """Whether *update* may write *row*: open, the owner's when it names one,
-    not written after its instant when it names one."""
+    """Whether *update* may write *row*: open (closed, for a ``closed_row``
+    update), the owner's when it names one, not written after its instant
+    when it names one."""
     return (
-        row["status"] in OPEN_STATUSES
+        (row["status"] in OPEN_STATUSES) is not update.closed_row
         and update.owner_user_id in (None, row["user_id"])
         and (
             update.not_updated_since is None

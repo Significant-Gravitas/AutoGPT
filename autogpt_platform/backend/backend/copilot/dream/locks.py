@@ -22,9 +22,10 @@ timeout; the batch path extends it (see ``BATCH_LOCK_TTL_SECONDS``). A pass
 renews its lock at each step, and its DreamPass row records the new expiry
 as the pass's lease (``lease.py``).
 
-Right before it applies, a pass reads the key once more (``held``,
-``dream_lock_held_by``): a lock that lapsed may already be a newer pass's,
-and only the holder may write the scope's graph.
+Right before it applies, a pass proves the key is still its own by renewing
+it (``extend``), and the sync pass reads it first (``held``): a lock that
+lapsed may already be a newer pass's, and only the holder may write the
+scope's graph.
 """
 
 from __future__ import annotations
@@ -42,12 +43,13 @@ logger = logging.getLogger(__name__)
 # Sync-path lock TTL (30 min).
 DEFAULT_LOCK_TTL_SECONDS = 1800
 
-# Batch path: the dream pass is async and stays in flight up to the
-# BatchExecutor's MAX_BATCH_LIFETIME_SECONDS (24h). The lock must outlive the
-# whole batch so apply — which runs hours later in the callback — is still
-# covered by "one dream per user". The batch callback releases it on
-# terminal/failure; this TTL is only the crash backstop, kept > 24h so the
-# lock can't expire before the executor times the batch out.
+# Batch path: one phase's batch stays in flight up to the BatchExecutor's
+# MAX_BATCH_LIFETIME_SECONDS (24h). The lock is extended to this TTL at submit
+# and again at each callback whose phase landed, and once more before apply,
+# so it covers the phase batch in flight (not the whole chain of three) with
+# 10 minutes to spare, and apply, which runs in the last callback, is still
+# covered by "one dream per user". The callbacks release it when the pass
+# ends; the TTL is the backstop for a pass that died.
 BATCH_LOCK_TTL_SECONDS = 24 * 60 * 60 + 600
 
 # How long the ownership read right before apply may take.
@@ -227,18 +229,6 @@ async def read_dream_lock_token(scope: MemoryScope) -> str | None:
     return _as_text(await redis.get(scope.redis_key("dream_lock")))
 
 
-async def dream_lock_held_by(scope: MemoryScope, token: str | None) -> bool:
-    """Whether the scope's lock still holds *token* (``False`` for no token):
-    the batch callback's check right before apply. One GET, raising when
-    Redis does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS``."""
-    if token is None:
-        return False
-    current = await asyncio.wait_for(
-        read_dream_lock_token(scope), timeout=LOCK_CHECK_TIMEOUT_SECONDS
-    )
-    return current == token
-
-
 async def extend_dream_lock(scope: MemoryScope, token: str, ttl_seconds: int) -> bool:
     """``DreamLockHandle.extend`` for a caller holding only the token (a batch
     callback renewing a disowned lock); the caller bounds it."""
@@ -263,11 +253,10 @@ async def release_dream_lock(scope: MemoryScope, token: str | None) -> None:
     Compare-and-delete on ``token``: a blind delete is NOT safe here — the
     callback can land close to (or after) the lock's TTL, by which point the
     key may already belong to a newer pass, and deleting it would let a
-    third concurrent pass start. When the token is unknown (per-pass state
-    expired or corrupted) the key is left for its TTL to clear: the batch
-    lock outlives the input bundle's 24h TTL by only ~10 min, so a short
-    extra lockout beats releasing someone else's lock. A failed delete
-    likewise falls back to the TTL.
+    third concurrent pass start. When the token is unknown (the input bundle
+    that carries it expired, or is corrupted) the key is left for its TTL to
+    clear: a lockout until then beats releasing someone else's lock. A failed
+    delete likewise falls back to the TTL.
     """
     user_id = scope.owner_user_id
     if token is None:

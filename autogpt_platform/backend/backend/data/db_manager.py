@@ -632,6 +632,7 @@ class DatabaseManager(AppService):
     list_open_dream_passes = _(dream_pass_db.list_open_dream_passes)
     list_dream_passes = _(dream_pass_db.list_dream_passes)
     list_expired_dream_passes = _(dream_pass_db.list_expired_dream_passes)
+    list_dream_pass_cleanups = _(dream_pass_db.list_dream_pass_cleanups)
     delete_old_dream_passes = _(dream_pass_db.delete_old_dream_passes)
 
     # ============ Morning Briefing ============ #
@@ -1051,4 +1052,5 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_open_dream_passes = d.list_open_dream_passes
     list_dream_passes = d.list_dream_passes
     list_expired_dream_passes = d.list_expired_dream_passes
+    list_dream_pass_cleanups = d.list_dream_pass_cleanups
     delete_old_dream_passes = d.delete_old_dream_passes

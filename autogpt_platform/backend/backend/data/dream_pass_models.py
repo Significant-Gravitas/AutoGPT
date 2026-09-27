@@ -31,12 +31,16 @@ from backend.copilot.dream.schemas import (
 )
 
 # The statuses a row can still move on from. Any other status is terminal: the
-# row is final and no update writes it.
+# row is final, and only the reaper finishing its cleanup writes it again
+# (``DreamPassUpdate.closed_row``).
 OPEN_STATUSES: tuple[DreamPassStatus, ...] = (
     DreamPassStatus.QUEUED,
     DreamPassStatus.RUNNING,
     DreamPassStatus.SUBMITTED,
     DreamPassStatus.APPLYING,
+)
+CLOSED_STATUSES: tuple[DreamPassStatus, ...] = tuple(
+    status for status in DreamPassStatus if status not in OPEN_STATUSES
 )
 
 # A new row's cancelGeneration (the column default). Only a stop from outside
@@ -44,7 +48,9 @@ OPEN_STATUSES: tuple[DreamPassStatus, ...] = (
 INITIAL_CANCEL_GENERATION = 0
 
 # The nullable columns an update may empty, by their field names.
-ClearableColumn = Literal["lease_token", "lease_expires_at", "input_bundle"]
+ClearableColumn = Literal[
+    "lease_token", "lease_expires_at", "input_bundle", "cleanup_pending_at"
+]
 
 # What a row drops as it closes: a finished pass holds no lease, and nothing
 # resumes it from its input bundle, the bulk of an open batch row. Its phase
@@ -117,6 +123,10 @@ class DreamPassUpdate(BaseModel):
     ``clear`` names the nullable columns the update empties, which a ``None``
     field cannot say; every transition that closes a row clears
     ``CLOSED_ROW_CLEARS``. A column is given a value or cleared, not both.
+
+    ``closed_row`` is the one write a closed row takes: the reaper saying it
+    has finished cleaning up after the pass. It applies to a closed row only,
+    and may only clear columns.
     """
 
     status: DreamPassStatus | None = None
@@ -138,7 +148,9 @@ class DreamPassUpdate(BaseModel):
     bump_cancel_generation: bool = False
     owner_user_id: str | None = None
     not_updated_since: datetime | None = None
+    cleanup_pending_at: datetime | None = None
     clear: frozenset[ClearableColumn] = frozenset()
+    closed_row: bool = False
 
     @model_validator(mode="after")
     def _batch_names_its_phase(self) -> "DreamPassUpdate":
@@ -152,10 +164,24 @@ class DreamPassUpdate(BaseModel):
             "lease_token": self.lease_token is not None,
             "lease_expires_at": self.lease_expires_at is not None,
             "input_bundle": self.input_bundle is not None,
+            "cleanup_pending_at": self.cleanup_pending_at is not None,
         }
         both = sorted(column for column in self.clear if given[column])
         if both:
             raise ValueError(f"set and cleared at once: {', '.join(both)}")
+        return self
+
+    @model_validator(mode="after")
+    def _closed_row_only_clears(self) -> "DreamPassUpdate":
+        if not self.closed_row:
+            return self
+        written = self.model_dump(
+            exclude={"clear", "closed_row"}, exclude_defaults=True
+        )
+        if written:
+            raise ValueError(
+                f"a closed row only has columns cleared: {sorted(written)}"
+            )
         return self
 
 
@@ -175,6 +201,7 @@ class DreamPassRecord(BaseModel):
     provider_batch_id: str | None
     lease_token: str | None
     lease_expires_at: datetime | None
+    cleanup_pending_at: datetime | None = None
     input_bundle: DreamInput | None
     phase_outputs: DreamPhaseOutputs
     operations: DreamPassOperations
@@ -205,6 +232,7 @@ class DreamPassRecord(BaseModel):
             provider_batch_id=row.providerBatchId,
             lease_token=row.leaseToken,
             lease_expires_at=row.leaseExpiresAt,
+            cleanup_pending_at=row.cleanupPendingAt,
             input_bundle=(
                 input_bundle_from_dict(dict(row.inputBundle))
                 if row.inputBundle is not None

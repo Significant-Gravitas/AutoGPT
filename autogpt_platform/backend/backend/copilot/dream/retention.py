@@ -11,11 +11,17 @@ KB. A closed row keeps the smaller JSON only, a few KB.
 
 Closed rows are kept ``Config.dream_pass_retention_days`` (the
 ``DREAM_PASS_RETENTION_DAYS`` setting, 90 by default) from their creation;
-a weekly scheduler job deletes the older ones, ``RETENTION_BATCH_SIZE`` per
-statement, for at most ``RETENTION_MAX_BATCHES`` statements and
-``RETENTION_BUDGET_SECONDS`` a run (the next run goes on from there), and
-logs how many went. An open row is never deleted, however old: closing it is
-the reaper's job.
+a weekly scheduler job deletes the older ones and logs how many went. An open
+row is never deleted, however old (closing it is the reaper's job), nor a
+closed one whose cleanup the reaper has yet to finish.
+
+Bounded: ``RETENTION_BATCH_SIZE`` rows per statement, each statement
+``RETENTION_BATCH_TIMEOUT_SECONDS``, at most ``RETENTION_MAX_BATCHES``
+statements and ``RETENTION_BUDGET_SECONDS`` a run; the next run goes on from
+there. Not bounded: how much of the table a statement reads to find its
+batch. There is no index on ``createdAt`` alone, so each statement scans
+the table until it has its batch: cheap while the table is small, and an
+index to add should it grow.
 """
 
 import asyncio

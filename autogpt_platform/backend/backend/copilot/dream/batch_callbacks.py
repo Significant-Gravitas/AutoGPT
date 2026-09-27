@@ -21,11 +21,11 @@ how the pass ends (JobStatus, the durable ``DreamPass`` record, the lock)
 is ``batch_outcome.py``; what its phases cost and used is ``batch_costs.py``;
 the deliveries that never run the chain (a closed pass's batch, a dead-end
 payload, a duplicate) are ``batch_deliveries.py``. Each callback advances the
-record (the phase that landed and its output, the next batch, the apply, the
-end) and, once its phase has landed, renews the pass's lease (``lease.py``),
+record and, once its phase has landed, renews the pass's lease (``lease.py``),
 ending a pass whose lock is no longer its own. It ends a pass cancelled or
-expired meanwhile before it chains or claims the apply gate, and one that
-lost its scope's lock after the claim, before it applies (``cancel.py``).
+expired meanwhile before it chains or claims the apply gate (``cancel.py``),
+and after the claim applies only on a renewal proving the lock is the pass's
+(``lease.admit_batch_apply``).
 """
 
 from __future__ import annotations
@@ -40,7 +40,12 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.context import InferenceError
 
 from .batch_costs import landed_usage, log_all_phase_costs
-from .batch_deliveries import end_dead_end, finish_duplicate, should_dispatch
+from .batch_deliveries import (
+    drop_closed,
+    end_dead_end,
+    finish_duplicate,
+    should_dispatch,
+)
 from .batch_outcome import (
     ApplyStats,
     BatchPass,
@@ -61,9 +66,9 @@ from .batch_submit import (
     read_lock_token,
     submit_phase,
 )
-from .cancel import end_batch_pass_if_lock_lost, end_batch_pass_if_stopped, pass_closed
+from .cancel import end_batch_pass_if_stopped, pass_closed
 from .clamp import clamp_operations
-from .lease import renew_batch_lease
+from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
 from .llm import parse_json_with_prose_fallback
 from .provider_batch import anthropic_api_key
 from .schemas import DreamOperations, DreamPhase, IngestionDrainStatus
@@ -90,18 +95,11 @@ NEXT_PHASE: dict[DreamPhase, DreamPhase | None] = {
 async def handle_dream_batch_result(
     entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
-    """BatchExecutor entry — called once per finished phase batch.
-
-    Reads the phase label off ``entry.payload``, validates the
-    response shape, persists it to the per-pass accumulator, then
-    decides what to do next:
-
-      * If error → mark JobStatus errored, clean up state + input
-      * If non-terminal phase → submit next phase batch, leave job
-        in ``submitted`` state with updated ``current_phase``
-      * If terminal phase (sanitize) → run apply, log costs for all
-        three phases, mark JobStatus complete, clean up
-    """
+    """BatchExecutor entry, once per finished phase batch: validate and keep
+    the phase's result, then end the pass on an error, submit the next phase
+    (the job left ``submitted`` at it), or after sanitize apply, charge the
+    three phases and complete the job. A payload no phase can take is a dead
+    end (``batch_deliveries``)."""
     payload = entry.payload or {}
     bp = BatchPass.from_payload(payload)
     phase = payload.get("phase")
@@ -315,20 +313,20 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
         return
     state = await read_state(bp.pass_id)
     ops = await _terminal_ops(bp, state, input_bundle)
-    if ops is None or not await _claim_apply(bp, state, ops):
+    lease = await _claim_apply(bp, state, ops) if ops is not None else None
+    if ops is None or lease is None:
         return
     try:
-        # Skip the ingestion drain on this path: apply runs inside this
-        # handler, which BatchExecutor.walk_once awaits serially in its single
-        # poll loop — a 300s in-line drain would stall the poll/dispatch of
-        # every other user's pending batch. See
-        # ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``.
+        # No ingestion drain here: walk_once awaits this handler serially, so
+        # an in-line drain would stall every other user's pending batch
+        # (``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``).
         apply_stats = await apply_operations(
             MemoryScope.build(bp.user_id, bp.expert_id),
             bp.pass_id,
             ops,
             known_fact_uuids=input_bundle.known_fact_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
+            lease=lease,
         )
     except Exception as exc:
         logger.exception(
@@ -344,18 +342,18 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
 
 async def _claim_apply(
     bp: BatchPass, state: dict[str, dict[str, Any]], ops: DreamOperations
-) -> bool:
-    """Record APPLYING, check for a stop, claim the apply gate, check the
-    lock; ``False`` once a stop, a duplicate, an unreadable gate or a lost lock
-    has ended this delivery. A delivery that stalls or dies before the claim
-    has not claimed it, so a redelivery still applies. Between the claim and
-    apply only the lock is read (one GET), so a newer pass that took the scope
-    while this one waited is never applied over.
-    """
+) -> ApplyLease | None:
+    """Record APPLYING, check for a stop, claim the apply gate, admit apply
+    on a renewal of the lock: the lease apply renews again before it writes,
+    or ``None`` once a stop, a duplicate, an unreadable gate or an unproven
+    lease has ended this delivery. A delivery that dies before the claim has
+    not claimed it, so a redelivery still applies. After the claim only the
+    compare-and-extend runs, so a newer pass that took the scope meanwhile is
+    never applied over (``lease.py`` has what stays open)."""
     await record_applying(bp.pass_id, ops)
     lock_token = await read_lock_token(bp.pass_id)
     if await end_batch_pass_if_stopped(bp):
-        return False
+        return None
     gate = await claim_apply_gate(bp.pass_id)
     if gate == "error":
         # We cannot tell first-vs-duplicate apart, and "complete with no
@@ -363,11 +361,11 @@ async def _claim_apply(
         await fail_pass(
             bp, "apply: gate unavailable (redis) — cannot guarantee at-most-once"
         )
-        return False
+        return None
     if gate == "duplicate":
         await finish_duplicate(bp, state, ops)
-        return False
-    return not await end_batch_pass_if_lock_lost(bp, lock_token)
+        return None
+    return await admit_batch_apply(bp, lock_token)
 
 
 async def _terminal_ops(
@@ -403,11 +401,9 @@ async def _finish_applied(
     ops: DreamOperations,
     ingestion_drain_status: IngestionDrainStatus,
 ) -> None:
-    """Charge the landed phases, close the job and the record, release."""
-    # Per-phase usage log on the success path. Failure paths record the
-    # same usage via ``fail_pass`` (we incurred those provider tokens
-    # regardless); the Redis dedup gate inside ``log_all_phase_costs``
-    # keeps it at-most-once across both paths and any repeated delivery.
+    """Charge the landed phases, close the job and the record, release.
+    Failure paths charge them through ``fail_pass``; the gate inside
+    ``log_all_phase_costs`` keeps that at-most-once across every path."""
     await log_all_phase_costs(
         user_id=bp.user_id,
         expert_id=bp.expert_id,
@@ -436,7 +432,10 @@ def _register() -> None:
         from backend.executor.batch_executor import register_handler
 
         register_handler(
-            NAMESPACE, handle_dream_batch_result, should_dispatch=should_dispatch
+            NAMESPACE,
+            handle_dream_batch_result,
+            should_dispatch=should_dispatch,
+            on_drop=drop_closed,
         )
     except Exception:
         logger.exception(

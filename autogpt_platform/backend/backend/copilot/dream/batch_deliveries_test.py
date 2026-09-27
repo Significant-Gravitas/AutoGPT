@@ -1,7 +1,8 @@
 """The dream batch deliveries that never run the phase chain, over the
 in-memory store and Redis: the executor's check that drops a closed pass's
-batch before it is polled, a dead-end payload, and a duplicate of the last
-phase. The provider and the charges are stubbed at their edges."""
+batch before it is polled and the drop that ends the pass (two walkers at
+once included), a dead-end payload, and a duplicate of the last phase. The
+provider and the charges are stubbed at their edges."""
 
 import asyncio
 import logging
@@ -19,12 +20,15 @@ from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import DreamPassDraft
+from backend.data.redis_helpers import _CLAIM_BATCH_DISPATCH_LUA
+from backend.executor import batch_executor as executor
 from backend.executor.batch_executor import PendingEntry
 from backend.util.llm.providers import BatchResultRow
 
+from . import batch_deliveries as deliveries_mod
 from . import job_status
 from .batch_callbacks import handle_dream_batch_result
-from .batch_deliveries import DUPLICATE_ERROR, should_dispatch
+from .batch_deliveries import DUPLICATE_ERROR, drop_closed, should_dispatch
 from .batch_state import state_key, write_phase_to_state
 from .batch_submit import input_bundle_key, persist_input_bundle
 from .cancel import cancel_dream_pass
@@ -62,17 +66,22 @@ def charges(mocker) -> AsyncMock:
 
 
 class TestShouldDispatch:
-    async def test_a_cancelled_pass_has_its_batch_cancelled_and_is_ended(
+    async def test_a_cancelled_pass_is_dropped_and_its_drop_ends_it(
         self, fake_dream_db, fake_dream_redis, provider_cancel, charges
     ):
         """Cancelled while recombine's batch was in flight: the executor's
-        check cancels that batch, charges the phase that landed, releases the
-        lock and cleans the pass up, and says not to poll it."""
+        check only says not to poll it; the drop then cancels that batch,
+        charges the phase that landed, releases the lock and cleans up."""
         await _in_flight(fake_dream_db, fake_dream_redis)
         assert (await cancel_dream_pass("p1", user_id="u1", reason="testing")).cancelled
         provider_cancel.reset_mock()
 
         assert await should_dispatch(_entry("recombine")) is False
+        provider_cancel.assert_not_awaited()
+        charges.assert_not_awaited()
+        assert state_key("p1") in fake_dream_redis.hashes
+
+        await drop_closed(_entry("recombine"))
 
         provider_cancel.assert_awaited_once()
         assert provider_cancel.await_args.kwargs["provider_batch_id"] == "b-rec"
@@ -100,6 +109,7 @@ class TestShouldDispatch:
         fake_dream_redis.store[_LOCK_KEY] = "newer-token"
 
         assert await should_dispatch(_entry("recombine")) is False
+        await drop_closed(_entry("recombine"))
 
         assert fake_dream_redis.store[_LOCK_KEY] == "newer-token"
         assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.EXPIRED
@@ -158,6 +168,72 @@ class TestShouldDispatch:
         assert await should_dispatch(entry) is True
 
         provider_cancel.assert_not_awaited()
+
+
+class TestTwoWalkersDropOneClosedBatch:
+    async def test_only_the_claimant_ends_the_pass_and_its_usage_stays(
+        self, monkeypatch, fake_dream_db, fake_dream_redis, provider_cancel, charges
+    ):
+        """Codex's interleaving, through two real executor walks of the same
+        due entry: both read the closed row, the second held until the first
+        has claimed the entry and ended the pass. The second finds the entry
+        claimed and does nothing: one drop, one provider cancel, one charge,
+        and the job keeps the usage the first recorded."""
+        _emulate_the_dispatch_claim(monkeypatch, fake_dream_redis)
+        await _in_flight(fake_dream_db, fake_dream_redis)
+        entry = _entry("recombine")
+        await executor.enqueue_pending(entry)
+        executor.register_handler(
+            "dream_pass",
+            handle_dream_batch_result,
+            should_dispatch=should_dispatch,
+            on_drop=drop_closed,
+        )
+        assert (await cancel_dream_pass("p1", user_id="u1", reason="stop")).cancelled
+        provider_cancel.reset_mock()
+        poll = AsyncMock(side_effect=AssertionError("a closed batch is not polled"))
+        monkeypatch.setattr(executor, "poll_batch", poll)
+        drops = AsyncMock(wraps=deliveries_mod.fail_pass)
+        monkeypatch.setattr(deliveries_mod, "fail_pass", drops)
+        first_read, second_read, first_done = (asyncio.Event() for _ in range(3))
+        read = deliveries_mod._row
+        reads = 0
+
+        async def staggered(pass_id: str):
+            nonlocal reads
+            row = await read(pass_id)
+            reads += 1
+            if reads == 1:
+                first_read.set()
+                await second_read.wait()
+            else:
+                second_read.set()
+                await first_done.wait()
+            return row
+
+        monkeypatch.setattr(deliveries_mod, "_row", staggered)
+        now = datetime.now(timezone.utc)
+
+        async def first_walk() -> None:
+            await executor._walk_entry(entry, now=now, api_key_for=lambda _: "k")
+            first_done.set()
+
+        first = asyncio.create_task(first_walk())
+        await asyncio.wait_for(first_read.wait(), 5)
+        second = executor._walk_entry(entry, now=now, api_key_for=lambda _: "k")
+        await asyncio.wait_for(asyncio.gather(first, second), 5)
+
+        status = await job_status.read_status(kind="dream_pass", job_id="j1")
+        assert status is not None and status.state == "errored"
+        assert status.result is not None
+        usage = status.result["usage"]
+        assert (usage["total_input_tokens"], usage["total_output_tokens"]) == (10, 20)
+        assert usage["total_cost_usd"] == pytest.approx(0.00011)
+        drops.assert_awaited_once()
+        provider_cancel.assert_awaited_once()
+        charges.assert_awaited_once()
+        poll.assert_not_awaited()
+        assert await executor.list_pending() == []
 
 
 class TestADeadEnd:
@@ -301,3 +377,23 @@ def _row(phase: str, output) -> BatchResultRow:
 
 def _charged(charges: AsyncMock) -> list[str]:
     return [call.args[0].job.phase for call in charges.await_args_list]
+
+
+def _emulate_the_dispatch_claim(monkeypatch, fake_dream_redis) -> None:
+    """The executor's two-key claim script over the in-memory Redis, whose
+    ``eval`` models only the lock scripts: a tombstone SET NX EX, then the
+    pending row's HDEL, one indivisible step as Redis runs it."""
+    evaluate = fake_dream_redis.eval
+
+    async def with_the_claim(script: str, numkeys: int, *args):
+        if script != _CLAIM_BATCH_DISPATCH_LUA:
+            return await evaluate(script, numkeys, *args)
+        pending, tombstone, batch_id, ttl = args
+        if tombstone in fake_dream_redis.store:
+            return 0
+        fake_dream_redis.store[tombstone] = "1"
+        fake_dream_redis.ttls[tombstone] = int(ttl)
+        await fake_dream_redis.hdel(pending, batch_id)
+        return 1
+
+    monkeypatch.setattr(fake_dream_redis, "eval", with_the_claim)

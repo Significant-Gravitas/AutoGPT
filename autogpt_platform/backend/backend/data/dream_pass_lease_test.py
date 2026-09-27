@@ -1,8 +1,11 @@
-"""The DreamPass lease, the reaper's scan and retention against a real
+"""The DreamPass lease, the reaper's scans and retention against a real
 database: a new row carries its lease, a renewal moves it, a closing
 transition empties it and the input bundle (the statement's ``clear``), the
-reaper lists open rows whose lease lapsed, oldest first, on its index, and
-retention deletes closed rows past their retention, a batch at a time."""
+reaper lists open rows whose lease lapsed and closed rows whose cleanup it
+left, oldest first, on their indexes, its expiry marks the row and keeps the
+token until the one write a closed row takes clears both, and retention
+deletes closed rows past their retention, a batch at a time, none whose
+cleanup is pending."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -19,7 +22,13 @@ from prisma.models import DreamPass as PrismaDreamPass
 from prisma.models import User
 
 from backend.copilot.dream.fetch import DreamInput
-from backend.copilot.dream.pass_record import cancelled, expired, lease
+from backend.copilot.dream.pass_record import (
+    cancelled,
+    cleanup_finished,
+    expired,
+    lease,
+    reaped,
+)
 from backend.copilot.dream.schemas import ConsolidationOutput
 from backend.data.db import query_raw_with_schema
 from backend.util.json import SafeJson
@@ -28,6 +37,7 @@ from .dream_pass import (
     create_dream_pass,
     delete_old_dream_passes,
     get_dream_pass,
+    list_dream_pass_cleanups,
     list_dream_passes,
     list_expired_dream_passes,
     update_dream_pass,
@@ -146,6 +156,87 @@ async def test_the_reaper_scans_an_index_on_status_and_lease_expiry():
     assert (
         '(status, "leaseExpiresAt")' in by_name["DreamPass_status_leaseExpiresAt_idx"]
     )
+
+
+async def test_the_reapers_expiry_marks_the_row_until_its_cleanup_finishes(owner):
+    pass_id = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+    row = await _row(pass_id)
+    assert not await update_dream_pass(pass_id, cleanup_finished())
+
+    assert await update_dream_pass(
+        pass_id, reaped("lapsed", not_updated_since=row.updated_at)
+    )
+
+    closed = await _row(pass_id)
+    assert (closed.status, closed.error) == (DreamPassStatus.EXPIRED, "lapsed")
+    assert (closed.lease_token, closed.lease_expires_at) == ("tok", None)
+    assert closed.cleanup_pending_at is not None
+    assert closed.cancel_generation == 1
+    listed = await list_dream_pass_cleanups(limit=1000)
+    assert pass_id in [r.id for r in listed]
+
+    assert await update_dream_pass(pass_id, cleanup_finished())
+
+    done = await _row(pass_id)
+    assert (done.cleanup_pending_at, done.lease_token) == (None, None)
+    assert (done.status, done.error, done.cancel_generation) == (
+        DreamPassStatus.EXPIRED,
+        "lapsed",
+        1,
+    )
+    assert pass_id not in [r.id for r in await list_dream_pass_cleanups(limit=1000)]
+
+
+async def test_the_cleanup_scan_lists_closed_marked_rows_longest_pending_first(
+    owner,
+):
+    marked = []
+    for minutes in (5, 50):
+        pass_id = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+        row = await _row(pass_id)
+        assert await update_dream_pass(
+            pass_id, reaped("lapsed", not_updated_since=row.updated_at)
+        )
+        await PrismaDreamPass.prisma().update(
+            where={"id": pass_id},
+            data={"cleanupPendingAt": _LONG_AGO + timedelta(minutes=minutes)},
+        )
+        marked.append(pass_id)
+    unmarked = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+    await update_dream_pass(unmarked, cancelled("testing", owner_user_id=owner))
+    await _new_pass(owner, lease_expires_at=_LONG_AGO)
+
+    rows = await list_dream_pass_cleanups(limit=1000)
+
+    assert [r.id for r in rows if r.user_id == owner] == marked
+    assert [r.id for r in await list_dream_pass_cleanups(limit=1)] == marked[:1]
+
+
+async def test_the_cleanup_scan_has_its_index():
+    indexes = await query_raw_with_schema(
+        "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'DreamPass'"
+    )
+
+    by_name = {row["indexname"]: row["indexdef"] for row in indexes}
+    assert (
+        '(status, "cleanupPendingAt")'
+        in by_name["DreamPass_status_cleanupPendingAt_idx"]
+    )
+
+
+async def test_retention_keeps_a_closed_row_whose_cleanup_is_pending(owner):
+    pending = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+    row = await _row(pending)
+    assert await update_dream_pass(
+        pending, reaped("lapsed", not_updated_since=row.updated_at)
+    )
+    await PrismaDreamPass.prisma().update(
+        where={"id": pending}, data={"createdAt": _LONG_AGO}
+    )
+
+    assert await delete_old_dream_passes(_LONG_AGO + timedelta(days=1), limit=10) == 0
+    assert await update_dream_pass(pending, cleanup_finished())
+    assert await delete_old_dream_passes(_LONG_AGO + timedelta(days=1), limit=10) == 1
 
 
 async def test_retention_deletes_closed_passes_past_their_time_a_batch_at_a_time(

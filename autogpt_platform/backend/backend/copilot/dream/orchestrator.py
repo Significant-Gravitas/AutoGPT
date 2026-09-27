@@ -51,7 +51,6 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
-from .cancel import stop_before_apply
 from .clamp import clamp_operations
 from .fetch import (
     DreamInput,
@@ -61,7 +60,7 @@ from .fetch import (
     parse_episode_timestamp,
 )
 from .guard import guard_dream_pass
-from .lease import checkpoint, renew_sync_lease
+from .lease import admit_sync_apply, checkpoint
 from .locks import DreamLockHandle, DreamLockHeld, dream_lock
 from .pass_record import DreamTrigger
 from .pass_run import DreamPassRun, PassEnded
@@ -470,7 +469,8 @@ async def _run_locked(
     to take the lock normally finds this one's row closed. It is best-effort
     like every record write: one that fails or times out is dropped and the
     lock is released anyway, so a free lock can still have an open row
-    (APPLYING, say) behind it until the reaper closes it."""
+    (APPLYING, say) behind it until a later pass's guard or the reaper
+    closes it."""
     try:
         result = await _dream(
             run, scope, lock_handle, config=config, status_id=status_id
@@ -641,20 +641,19 @@ async def _apply(
         known_fact_uuids=input_bundle.known_fact_uuids,
     )
     await record_applying(run.pass_id, ops)
-    await stop_before_apply(run, lock_handle)
-    await renew_sync_lease(run, "apply")
+    lease = await admit_sync_apply(run, scope, lock_handle)
     apply_stats = await apply_operations(
         scope,
         run.pass_id,
         ops,
         known_fact_uuids=input_bundle.known_fact_uuids,
         lock_handle=lock_handle,
+        lease=lease,
     )
-    # Apply succeeded (even as a no-op) — stamp the marker so the
-    # next nightly pass can skip when nothing new has landed.
-    # Stamped with the gather-window end so episodes that arrived
-    # mid-pass still count as new next time. Sync path only: batch
-    # apply runs hours later in batch_callbacks, which doesn't
+    # Apply succeeded (even as a no-op) — stamp the marker so the next nightly
+    # pass can skip when nothing new has landed. Stamped with the gather-window
+    # end so episodes that arrived mid-pass still count as new next time. Sync
+    # path only: batch apply runs hours later in batch_callbacks, which doesn't
     # stamp yet.
     await _stamp_last_completed_marker(scope, input_bundle.window_end)
     return _applied_result(run, apply_stats, ops)

@@ -1,9 +1,10 @@
 """A sync pass's lease through the real entry point, with the real dream lock
 over the in-memory Redis and the pass's row in the in-memory store: written
 with the row, renewed before every phase and before apply, emptied when the
-row closes; and a pass whose lock is no longer its own stops at its next
-step. Only the models, the budget and apply are stubbed. Every transition
-that closes a row drops the lease and the input bundle."""
+row closes; a pass whose lock is no longer its own stops at its next step,
+and one that cannot renew before apply does not apply. Only the models, the
+budget and apply are stubbed. Every transition that closes a row drops the
+lease and the input bundle."""
 
 import logging
 from collections.abc import Awaitable, Callable
@@ -24,6 +25,8 @@ from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import InferenceUsage, RouteDecision
 from backend.data.dream_pass_models import (
     CLOSED_ROW_CLEARS,
+    CLOSED_STATUSES,
+    OPEN_STATUSES,
     DreamPassDraft,
     DreamPassUpdate,
 )
@@ -34,7 +37,7 @@ from . import orchestrator as orchestrator_mod
 from .fetch import DreamInput, EpisodeRow
 from .lease import renew_sync_lease
 from .locks import DEFAULT_LOCK_TTL_SECONDS
-from .pass_record import cancelled, expired, failed, outcome
+from .pass_record import cancelled, cleanup_finished, expired, failed, outcome, reaped
 from .pass_run import DreamPassRun, PassEnded
 from .schemas import (
     ConsolidationOutput,
@@ -162,25 +165,30 @@ class TestTheSyncLease:
         row = fake_dream_db.rows[result.pass_id]
         assert (row["status"], row["error"]) == (DreamPassStatus.ERRORED, result.error)
 
-    async def test_a_renewal_redis_cannot_answer_goes_on(
+    async def test_a_renewal_redis_cannot_answer_goes_on_until_apply(
         self, mocker, fake_dream_db, apply, caplog
     ):
-        """Unsure is not lost: the pass goes on, and its check right before
-        apply still decides whether it may apply."""
+        """Unsure is not lost before a phase: the pass goes on through all
+        three. Before apply it is not ownership either: the pass ends there,
+        with its phases' usage, and applies nothing."""
         mocker.patch.object(
             locks_mod.DreamLockHandle,
             "extend",
             AsyncMock(side_effect=ConnectionError("redis down")),
         )
-        _phases(mocker)
+        phases = _phases(mocker)
 
         with caplog.at_level(logging.WARNING):
             result = await orchestrator_mod.execute_dream_pass("u")
 
-        assert result.error is None
-        apply.assert_awaited_once()
+        assert result.error == "apply: dream lease could not be renewed"
+        assert phases.await_count == 3
+        assert result.usage is not None and len(result.usage.phases) == 3
+        apply.assert_not_awaited()
         assert caplog.text.count("could not renew its lease") == 4
         assert _lease_writes(fake_dream_db, result.pass_id) == []
+        row = fake_dream_db.rows[result.pass_id]
+        assert (row["status"], row["error"]) == (DreamPassStatus.ERRORED, result.error)
 
     async def test_a_lease_the_row_will_not_take_does_not_stop_the_pass(
         self, mocker, fake_dream_db, fake_dream_redis, apply, caplog
@@ -262,8 +270,52 @@ class TestAClosingRow:
 
         assert args[21] == ["inputBundle", "leaseExpiresAt", "leaseToken"]
         assert transition_args("p1", DreamPassUpdate())[21] == []
-        for column in ("leaseToken", "leaseExpiresAt", "inputBundle"):
+        for column in (
+            "leaseToken",
+            "leaseExpiresAt",
+            "inputBundle",
+            "cleanupPendingAt",
+        ):
             assert f"'{column}' = ANY($22::text[]) THEN NULL" in TRANSITION_SQL
+
+    async def test_the_reapers_close_marks_it_and_only_the_mark_is_written_after(
+        self, fake_dream_db
+    ):
+        """The reaper's expiry keeps the token its cleanup may need and marks
+        the row; the write that says the cleanup finished is the one a closed
+        row takes, and it only clears."""
+        now = datetime.now(timezone.utc)
+        fake_dream_db.seed(
+            _draft("p1"), lease_token="tok", lease_expires_at=now, updated_at=now
+        )
+
+        assert await fake_dream_db.update_dream_pass(
+            "p1", reaped("lapsed", not_updated_since=now)
+        )
+        row = fake_dream_db.rows["p1"]
+        assert (row["status"], row["lease_token"]) == (DreamPassStatus.EXPIRED, "tok")
+        assert row["cleanup_pending_at"] is not None
+        assert not await fake_dream_db.update_dream_pass(
+            "p1", failed("late", None, now)
+        )
+
+        assert await fake_dream_db.update_dream_pass("p1", cleanup_finished())
+        assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
+        assert (row["status"], row["error"]) == (DreamPassStatus.EXPIRED, "lapsed")
+
+    def test_the_cleanup_write_goes_to_closed_rows_and_only_clears(self):
+        with pytest.raises(ValidationError, match="a closed row only has columns"):
+            DreamPassUpdate(closed_row=True, error="late")
+        closed = transition_args("p1", cleanup_finished())
+        opened = transition_args("p1", DreamPassUpdate())
+
+        assert set(closed[17]) == {s.value for s in CLOSED_STATUSES}
+        assert set(opened[17]) == {s.value for s in OPEN_STATUSES}
+        assert closed[21] == ["cleanupPendingAt", "leaseToken"]
+        marked = transition_args(
+            "p1", reaped("x", not_updated_since=datetime.now(timezone.utc))
+        )
+        assert marked[22] is not None and "leaseToken" not in marked[21]
 
 
 def _phases(

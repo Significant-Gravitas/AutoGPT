@@ -9,17 +9,22 @@ deleted.
 
   * A batch whose pass has already ended: cancelled or expired while the
     batch was in flight, or closed any other way. Before the executor polls
-    it (``should_dispatch``) it reads the pass's row, bounded; a closed row
-    means nobody waits for the batch, so it is cancelled at the provider and
-    the executor drops it without polling or dispatching it: nothing chained,
-    nothing applied, nothing charged beyond the phases that landed. An open
-    row, a missing one or one the store cannot read in time dispatches as
-    before, and the phase handler keeps its own stop checks.
+    it, it asks ``should_dispatch``, which only reads the pass's row,
+    bounded: a closed row means nobody waits for the batch, and the executor
+    drops it, claimed off its queue before anything else happens. The walker
+    whose claim took it then runs ``drop_closed``: the batch cancelled at
+    the provider and the pass ended out, nothing chained, nothing applied,
+    nothing charged beyond the phases that landed; a walker that lost the
+    claim does nothing. An open row, a missing one or one the store cannot
+    read in time dispatches as before, and the phase handler keeps its own
+    stop checks.
   * A payload no phase handler can take (``end_dead_end``).
   * A repeat of a delivery whose apply already claimed the gate
     (``finish_duplicate``): apply is never run twice, and the row, which a
     first delivery that died after its claim left APPLYING, is closed
-    EXPIRED rather than left for the reaper.
+    EXPIRED rather than left for the reaper. A claimed gate proves neither
+    that apply ran nor that its writes landed: the first delivery may have
+    died before, during or after them.
 """
 
 from __future__ import annotations
@@ -55,16 +60,35 @@ DUPLICATE_ERROR = (
 
 async def should_dispatch(entry: PendingEntry) -> bool:
     """The executor's check before it polls one of a dream pass's batches:
-    ``False`` once the pass's row has closed, after the batch is cancelled
-    and the pass ended out (see the module docstring); ``True`` otherwise."""
+    ``False`` once the pass's row has closed, ``True`` otherwise. It only
+    reads; ending the pass is ``drop_closed``'s, once the drop is claimed."""
     bp = BatchPass.from_payload(entry.payload or {})
     if not bp.pass_id:
         return True
     row = await _row(bp.pass_id)
-    if row is None or row.status in OPEN_STATUSES:
-        return True
-    await _drop_closed(bp, row, entry.provider_batch_id)
-    return False
+    return row is None or row.status in OPEN_STATUSES
+
+
+async def drop_closed(entry: PendingEntry) -> None:
+    """The executor's drop hook, run only by the walker whose claim took a
+    closed pass's batch off the queue: the batch is cancelled at the
+    provider and the pass ended out as its owner on the row. The row refuses
+    the failure ``fail_pass`` writes: it keeps how it closed."""
+    bp = BatchPass.from_payload(entry.payload or {})
+    row = await _closed_row(bp.pass_id)
+    owner = bp
+    reason = "pass already closed"
+    if row is not None:
+        owner = bp.model_copy(
+            update={"user_id": row.user_id, "expert_id": row.expert_id}
+        )
+        reason = stop_error(row) or f"pass already {row.status.value.lower()}"
+    logger.info(
+        f"Dream batch {entry.provider_batch_id} of pass {bp.pass_id} dropped "
+        f"unpolled: {reason}"
+    )
+    await cancel_provider_batch(entry.provider_batch_id)
+    await fail_pass(owner, reason)
 
 
 async def end_dead_end(bp: BatchPass, error: str) -> None:
@@ -95,8 +119,8 @@ async def finish_duplicate(
     closed EXPIRED (``DUPLICATE_ERROR``). Then as any end: the landed phases
     charged once, the lock released, the state and bundle deleted."""
     logger.info(
-        "Duplicate dispatch for pass=%s — operations already applied; "
-        "preserving the first delivery's job result",
+        "Duplicate dispatch for pass=%s — apply already claimed, not run "
+        "again; preserving the first delivery's job result",
         bp.pass_id,
     )
     await _finalize_stuck_duplicate(bp, ops)
@@ -112,19 +136,18 @@ async def finish_duplicate(
     await best_effort_cleanup(bp.pass_id)
 
 
-async def _drop_closed(
-    bp: BatchPass, row: DreamPassRecord, provider_batch_id: str
-) -> None:
-    """End out a pass whose row closed while *provider_batch_id* was in
-    flight, as its owner on the row. The row refuses the failure
-    ``fail_pass`` writes: it keeps how it closed."""
-    owner = bp.model_copy(update={"user_id": row.user_id, "expert_id": row.expert_id})
-    reason = stop_error(row) or f"pass already {row.status.value.lower()}"
-    logger.info(
-        f"Dream batch {provider_batch_id} of pass {row.id} dropped unpolled: {reason}"
-    )
-    await cancel_provider_batch(provider_batch_id)
-    await fail_pass(owner, reason)
+async def _closed_row(pass_id: str) -> DreamPassRecord | None:
+    """The dropped pass's row again, for its owner and how it closed; ``None``
+    when the store cannot say in time, and the payload's owner stands."""
+    try:
+        return await read_pass(pass_id, timeout=DISPATCH_CHECK_READ_TIMEOUT_SECONDS)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read its row again to end it; "
+            "going by its batch's payload",
+            exc_info=True,
+        )
+        return None
 
 
 async def _row(pass_id: str) -> DreamPassRecord | None:
@@ -176,7 +199,7 @@ def _attempted_result(bp: BatchPass, ops: DreamOperations) -> DreamPassResult:
     so the admin UI doesn't present them as confirmed apply results."""
     note = (
         "[finalized after duplicate delivery — counts reflect attempted "
-        "operations; writes landed with the original delivery] "
+        "operations; the original delivery may or may not have written them] "
     )
     return DreamPassResult(
         user_id=bp.user_id,

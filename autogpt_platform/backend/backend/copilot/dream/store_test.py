@@ -441,16 +441,26 @@ class TestTheLeaseAndTheSweeps:
     async def test_the_sweeps_and_the_admin_list_reach_the_table(self, db):
         cutoff = _STARTED - timedelta(minutes=30)
         db.list_expired_dream_passes = AsyncMock(return_value=[_row()])
+        db.list_dream_pass_cleanups = AsyncMock(return_value=[])
         db.list_dream_passes = AsyncMock(return_value=[])
         db.delete_old_dream_passes = AsyncMock(return_value=3)
 
         assert await store.read_expired_passes(cutoff, limit=100) == [_row()]
+        assert await store.read_pending_cleanups(limit=100) == []
         assert await store.read_user_passes("u1", open_only=True, limit=5) == []
         assert await store.delete_old_passes(cutoff, limit=1000, timeout=60) == 3
 
         db.list_expired_dream_passes.assert_awaited_once_with(cutoff, limit=100)
+        db.list_dream_pass_cleanups.assert_awaited_once_with(limit=100)
         db.list_dream_passes.assert_awaited_once_with("u1", limit=5, open_only=True)
         db.delete_old_dream_passes.assert_awaited_once_with(cutoff, limit=1000)
+
+    async def test_a_finished_cleanup_clears_the_mark_on_the_closed_row(self, db):
+        assert await store.record_cleanup_finished("p1") is True
+
+        pass_id, update = _update(db)
+        assert (pass_id, update.closed_row) == ("p1", True)
+        assert update.clear == frozenset({"cleanup_pending_at", "lease_token"})
 
     async def test_a_sweep_that_stalls_raises_at_its_deadline(self, db, monkeypatch):
         async def hang(*_args, **_kwargs) -> None:
@@ -458,10 +468,16 @@ class TestTheLeaseAndTheSweeps:
 
         monkeypatch.setattr(store, "RECORD_WRITE_TIMEOUT_SECONDS", 0.05)
         db.list_expired_dream_passes = AsyncMock(side_effect=hang)
+        db.list_dream_pass_cleanups = AsyncMock(side_effect=hang)
         db.delete_old_dream_passes = AsyncMock(side_effect=hang)
+        db.update_dream_pass = AsyncMock(side_effect=hang)
 
         with pytest.raises(TimeoutError):
             await store.read_expired_passes(_STARTED, limit=1)
+        with pytest.raises(TimeoutError):
+            await store.read_pending_cleanups(limit=1)
+        with pytest.raises(TimeoutError):
+            await store.record_cleanup_finished("p1")
         with pytest.raises(TimeoutError):
             await store.delete_old_passes(_STARTED, limit=1, timeout=0.05)
 

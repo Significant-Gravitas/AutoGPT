@@ -10,7 +10,12 @@ from prisma.enums import (
 from pydantic import TypeAdapter
 
 from backend.copilot.dream.fetch import DreamInput
-from backend.copilot.dream.pass_record import cancelled, expired
+from backend.copilot.dream.pass_record import (
+    cancelled,
+    cleanup_finished,
+    expired,
+    reaped,
+)
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -61,6 +66,7 @@ _DREAM_PASS_METHODS = (
     "list_open_dream_passes",
     "list_dream_passes",
     "list_expired_dream_passes",
+    "list_dream_pass_cleanups",
     "delete_old_dream_passes",
 )
 
@@ -113,6 +119,8 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
     for stop in (
         expired("stale", not_updated_since=now.replace(microsecond=123000)),
         cancelled("testing", owner_user_id="u1"),
+        reaped("lapsed", not_updated_since=now),
+        cleanup_finished(),
     ):
         sent = body.model_validate(to_dict({"pass_id": "p1", "update": stop}))
         assert sent.update == stop
@@ -132,6 +140,7 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
         provider_batch_id="msgbatch_1",
         lease_token="tok",
         lease_expires_at=now,
+        cleanup_pending_at=now,
         input_bundle=bundle,
         phase_outputs=outputs,
         operations=operations,
@@ -164,3 +173,8 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
         body = inspect.signature(endpoint).parameters["body"].annotation
         sent = body.model_validate(to_dict({cutoff_name: cutoff, "limit": 7}))
         assert sent.model_dump() == {cutoff_name: cutoff, "limit": 7}
+    endpoint = manager._create_fastapi_endpoint(
+        DatabaseManager.list_dream_pass_cleanups
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    assert body.model_validate({"limit": 7}).model_dump() == {"limit": 7}

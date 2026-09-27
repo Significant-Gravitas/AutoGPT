@@ -23,6 +23,7 @@ import logging
 import uuid as uuidlib
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from backend.copilot.graphiti.falkordb_driver import open_driver
 from backend.copilot.graphiti.ingest import (
@@ -59,6 +60,9 @@ from .schemas import (
     ProposedFinding,
     WriteSummary,
 )
+
+if TYPE_CHECKING:
+    from .lease import ApplyLease
 
 logger = logging.getLogger(__name__)
 
@@ -535,6 +539,7 @@ async def apply_operations(
     known_fact_uuids: set[str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
+    lease: ApplyLease | None = None,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
@@ -576,6 +581,13 @@ async def apply_operations(
     admit a concurrent pass onto the same graph). ``None`` on the batch
     path — it already disowned the lock to its callback with a 24h TTL.
 
+    ``lease`` is the pass's lease, on either path: renewed once more right
+    after the session shell is created and before the first graph write,
+    failing closed (``DreamLockLostError``), so a lock that lapsed while the
+    session was created, and maybe went to a newer pass, stops the writes.
+    It narrows the window, it does not fence each write: a lease can still
+    lapse between this renewal and the writes after it (``lease.py``).
+
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
     Prisma is intentionally NOT locally connected — those accessors
@@ -616,6 +628,11 @@ async def apply_operations(
     # is written AFTER the ops (see below), so a partway failure leaves an
     # empty dream rather than a 'completed' narrative with no memory.
     session_id = await _create_dream_session(scope, pass_id)
+    # Creating the session can take long enough for the lock to lapse: a pass
+    # that cannot prove it still holds it writes nothing (the shell stays, as
+    # after any partway failure).
+    if lease is not None and not await lease.renew():
+        raise DreamLockLostError(user_id)
 
     # Tracks completion of only the episodes THIS pass enqueues, so the
     # drain below waits on the dream's own writes and not on unrelated

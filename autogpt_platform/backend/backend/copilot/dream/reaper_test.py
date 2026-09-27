@@ -6,6 +6,7 @@ transitions are the real ones."""
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -79,7 +80,7 @@ class TestAPassThatOutlivedItsLease:
         assert row["error"].startswith("recombine: the lease lapsed at ")
         assert row["error"].endswith("; closed by the reaper")
         assert (row["lease_token"], row["lease_expires_at"]) == (None, None)
-        assert row["input_bundle"] is None
+        assert (row["input_bundle"], row["cleanup_pending_at"]) == (None, None)
         provider_cancel.assert_awaited_once()
         assert provider_cancel.await_args.kwargs["provider_batch_id"] == "b-rec"
         assert _charged(charges) == ["consolidate"]
@@ -253,9 +254,11 @@ class TestARun:
         self, mocker, fake_dream_db, fake_dream_redis, provider_cancel
     ):
         """A provider cancel that never answers holds the first row: the
-        budget cancels it, the rows not reached are left for the next run,
-        and the scope the reaper held is let go."""
+        budget cancels it, the row keeps its mark for the next run, the rows
+        not reached are left for it too, and the scope the reaper held is let
+        go."""
         mocker.patch.object(reaper_mod, "REAPER_BUDGET_SECONDS", 0.5)
+        mocker.patch.object(reaper_mod, "RELEASE_TIMEOUT_SECONDS", 0.1)
         mocker.patch.object(reaper_mod, "ROW_RESERVE_SECONDS", 0.1)
         mocker.patch(
             "backend.copilot.dream.provider_batch.PROVIDER_CANCEL_TIMEOUT_SECONDS",
@@ -274,8 +277,10 @@ class TestARun:
         started = loop.time()
         run = await asyncio.wait_for(reap_expired_passes(), 10)
 
-        assert loop.time() - started < 5
+        assert loop.time() - started < 1
         assert (run.listed, run.outcomes) == (3, {"out_of_budget": 3})
+        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.EXPIRED
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is not None
         assert fake_dream_db.rows["p2"]["status"] is DreamPassStatus.SUBMITTED
         assert _LOCK_KEY not in fake_dream_redis.store
 
@@ -362,9 +367,11 @@ def _seed(
     phase: DreamPassPhase = DreamPassPhase.RECOMBINE,
     lapsed: int = REAP_GRACE_SECONDS + 600,
     provider_batch_id: str | None = None,
+    **columns: Any,
 ) -> None:
-    """An open row whose lease lapsed *lapsed* seconds ago and that nothing
-    has written since."""
+    """A row (open, unless *status* says otherwise) whose lease lapsed
+    *lapsed* seconds ago and that nothing has written since; *columns* set
+    the rest of it."""
     lease_end = datetime.now(timezone.utc) - timedelta(seconds=lapsed)
     fake_dream_db.seed(
         DreamPassDraft(
@@ -380,6 +387,7 @@ def _seed(
         ),
         updated_at=lease_end - timedelta(minutes=1),
         provider_batch_id=provider_batch_id,
+        **columns,
     )
 
 

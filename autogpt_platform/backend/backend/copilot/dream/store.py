@@ -46,6 +46,7 @@ from .fetch import DreamInput
 from .pass_record import (
     DreamTrigger,
     applying,
+    cleanup_finished,
     expired,
     failed,
     gathered,
@@ -210,6 +211,13 @@ async def read_expired_passes(
     )
 
 
+async def read_pending_cleanups(*, limit: int) -> list[DreamPassRecord]:
+    """Closed passes, of every user, whose cleanup the reaper started and has
+    not finished, the longest pending first. Raises when the read fails or
+    runs out of time."""
+    return await _bounded(dream_db().list_dream_pass_cleanups(limit=limit))
+
+
 async def read_user_passes(
     user_id: str, *, open_only: bool, limit: int
 ) -> list[DreamPassRecord]:
@@ -237,6 +245,13 @@ async def write_stop(pass_id: str, update: DreamPassUpdate) -> bool:
     whether it landed, which its caller acts on, unlike a pass's own writes.
     Raises when the write fails or runs out of time."""
     return await _bounded(dream_db().update_dream_pass(pass_id, update))
+
+
+async def record_cleanup_finished(pass_id: str) -> bool:
+    """The reaper has cleaned up after the closed pass; whether the row took
+    it. Raises when the write fails or runs out of time, and the cleanup,
+    idempotent, is resumed next run."""
+    return await _bounded(dream_db().update_dream_pass(pass_id, cleanup_finished()))
 
 
 async def _write(

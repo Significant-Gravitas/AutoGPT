@@ -7,7 +7,9 @@ the lease renewal and the two that stop a pass from outside (a cancel, an
 expiry), and what a row reads back as: the ``DreamPassResult`` it describes,
 for the admin API and the eval driver, and whether it says its pass was
 stopped. Every transition that closes a row drops its lease and its input
-bundle (``CLOSED_ROW_CLEARS``).
+bundle (``CLOSED_ROW_CLEARS``), but for the reaper's, which keeps the lease
+token until the cleanup it marks has finished (``reaped``,
+``cleanup_finished``).
 """
 
 from datetime import datetime, timedelta, timezone
@@ -217,11 +219,12 @@ def cancelled(reason: str, *, owner_user_id: str) -> DreamPassUpdate:
 
 
 def expired(reason: str, *, not_updated_since: datetime | None) -> DreamPassUpdate:
-    """An open pass closed EXPIRED from outside (a newer pass's guard, the
-    reaper, a duplicate delivery), its cancel generation bumped like a
-    cancel's. Written only while the row is open and, given
-    *not_updated_since* (the stale row as it was read), only if nothing has
-    written it since; an admin's forced expiry gives ``None``."""
+    """An open pass closed EXPIRED from outside (a newer pass's guard, a
+    duplicate delivery), its cancel generation bumped like a cancel's.
+    Written only while the row is open and, given *not_updated_since* (the
+    stale row as it was read), only if nothing has written it since. Only an
+    admin forcing out a fresh row, and a duplicate delivery, give ``None``:
+    a forced expiry of a stale row keeps the compare-and-set."""
     return DreamPassUpdate(
         status=DreamPassStatus.EXPIRED,
         error=reason[:MAX_ERROR_CHARS],
@@ -229,6 +232,32 @@ def expired(reason: str, *, not_updated_since: datetime | None) -> DreamPassUpda
         bump_cancel_generation=True,
         not_updated_since=not_updated_since,
         clear=CLOSED_ROW_CLEARS,
+    )
+
+
+def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
+    """The reaper closes an open pass that outlived its lease: EXPIRED like
+    ``expired``, only if nothing has written the row since *not_updated_since*,
+    and marked for the cleanup the reaper is about to do, so a cleanup it
+    cannot finish is resumed on its next run. The lease token stays until then,
+    the key to release the dead pass's lock by compare-and-delete."""
+    now = datetime.now(timezone.utc)
+    return DreamPassUpdate(
+        status=DreamPassStatus.EXPIRED,
+        error=reason[:MAX_ERROR_CHARS],
+        completed_at=now,
+        bump_cancel_generation=True,
+        not_updated_since=not_updated_since,
+        cleanup_pending_at=now,
+        clear=frozenset({"lease_expires_at", "input_bundle"}),
+    )
+
+
+def cleanup_finished() -> DreamPassUpdate:
+    """The reaper has cleaned up after a pass it closed: the mark and the
+    lease token it kept go. The one write a closed row takes."""
+    return DreamPassUpdate(
+        closed_row=True, clear=frozenset({"cleanup_pending_at", "lease_token"})
     )
 
 

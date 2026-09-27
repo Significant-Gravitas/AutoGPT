@@ -6,9 +6,10 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Protocol, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import (
@@ -1496,8 +1497,9 @@ def execution_accuracy_alerts():
 
 def execute_dream_pass_reaper() -> None:
     """Close the dream passes of every user that outlived their lease
-    (``copilot/dream/reaper.py``). The run bounds itself; this timeout only
-    frees the job thread should the event loop stall."""
+    (``copilot/dream/reaper.py``). The run bounds itself, and that budget is
+    what stops it: ``run_async``'s timeout frees the job thread should the
+    event loop stall, but does not cancel the run."""
     from backend.copilot.dream.reaper import REAPER_BUDGET_SECONDS, reap_expired_passes
 
     run_async(reap_expired_passes(), timeout=REAPER_BUDGET_SECONDS + 30)
@@ -1517,7 +1519,25 @@ def execute_dream_pass_retention() -> None:
     )
 
 
-def _register_dream_pass_jobs(scheduler: BackgroundScheduler) -> None:
+class _SystemJobs(Protocol):
+    """The call the dream pass jobs make on the scheduler, typed:
+    ``BackgroundScheduler.add_job`` itself is unannotated."""
+
+    def add_job(
+        self,
+        func: Callable[[], None],
+        trigger: str | CronTrigger,
+        *,
+        id: str,
+        replace_existing: bool,
+        max_instances: int,
+        jobstore: str,
+        coalesce: bool = ...,
+        minutes: int = ...,
+    ) -> JobObj: ...
+
+
+def _register_dream_pass_jobs(scheduler: _SystemJobs) -> None:
     """The two jobs over every user's DreamPass rows, registered once at
     start like the other system jobs: the reaper every
     ``REAPER_INTERVAL_MINUTES``, retention weekly (Sunday 05:30 UTC)."""

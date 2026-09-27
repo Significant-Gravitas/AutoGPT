@@ -1,8 +1,8 @@
-"""The lock check right before a dream pass applies, on both routes, with the
+"""The lock checks right before a dream pass applies, on both routes, with the
 real dream lock, callbacks and orchestrator over the in-memory Redis and
 store: a pass whose lock lapsed, and was maybe taken by a newer pass, never
-applies, so at most one pass of a scope applies. Only apply's graph writes and
-the models are stubbed."""
+applies, and neither does one that cannot prove it still holds its lock, so at
+most one pass of a scope applies. Only apply and the models are stubbed."""
 
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -26,8 +26,8 @@ from backend.util.llm.providers import BatchResultRow
 
 from . import batch_callbacks as batch_callbacks_mod
 from . import batch_outcome as batch_outcome_mod
-from . import cancel as cancel_mod
 from . import job_status
+from . import lease as lease_mod
 from . import locks as locks_mod
 from . import orchestrator as orchestrator_mod
 from .batch_callbacks import handle_dream_batch_result
@@ -172,21 +172,83 @@ class TestTheBatchRoute:
         )
         assert _charged(charges) == ["consolidate", "recombine", "sanitize"]
 
-    async def test_a_lock_that_cannot_be_read_after_the_claim_fails_closed(
+    @pytest.mark.parametrize("failure", ["timeout", "error"])
+    async def test_a_fence_renewal_without_an_answer_never_applies_after_its_replacement(
+        self,
+        fake_dream_db,
+        fake_dream_redis,
+        apply,
+        charges,
+        sync_pass,
+        mocker,
+        failure,
+    ):
+        """Codex's failed-final-renewal case, the timeout at the real two
+        seconds: the last callback claims its gate, and its compare-and-extend
+        gets no answer while its lock lapses and a forced admin pass takes the
+        scope and applies. Ownership unknown is not ownership: the callback
+        ends without applying."""
+        await _seed_batch_pass(fake_dream_db, fake_dream_redis)
+        extend = lease_mod.extend_dream_lock
+        at_fence, proceed = asyncio.Event(), asyncio.Event()
+        renewals = 0
+
+        async def no_answer_at_the_fence(scope, token: str, ttl_seconds: int) -> bool:
+            nonlocal renewals
+            renewals += 1
+            if renewals == 2:  # the landing renewal first, then the fence
+                at_fence.set()
+                await proceed.wait()
+                if failure == "timeout":
+                    await asyncio.Event().wait()
+                raise ConnectionError("redis did not answer")
+            return await extend(scope, token, ttl_seconds)
+
+        mocker.patch.object(lease_mod, "extend_dream_lock", no_answer_at_the_fence)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        old = asyncio.create_task(_deliver_sanitize())
+        await asyncio.wait_for(at_fence.wait(), 5)
+        await fake_dream_redis.delete(_LOCK_KEY)
+
+        newer = await orchestrator_mod.execute_dream_pass(
+            "u1", trigger="admin", force=True
+        )
+        proceed.set()
+        await asyncio.wait_for(old, 5)
+
+        if failure == "timeout":
+            assert 1.9 < loop.time() - started < 4
+        assert newer.error is None and not newer.skipped
+        assert [call.args[1] for call in apply.await_args_list] == [newer.pass_id]
+        error = f"expired: forced by an admin-triggered dream pass {newer.pass_id}"
+        await _assert_ended_without_applying(fake_dream_db, fake_dream_redis, error)
+        assert _charged(charges) == ["consolidate", "recombine", "sanitize"]
+
+    async def test_a_fence_renewal_without_an_answer_fails_closed_and_releases(
         self, fake_dream_db, fake_dream_redis, apply, charges, mocker
     ):
-        """The pass does not apply on a lock it cannot confirm, and releases
-        it by compare-and-delete, which only ever deletes its own."""
+        """With no newer pass about: the pass does not apply on a lock it
+        cannot prove, ends with the lease it could not renew, and releases
+        the lock by compare-and-delete, which only ever deletes its own."""
         await _seed_batch_pass(fake_dream_db, fake_dream_redis)
-        mocker.patch.object(
-            cancel_mod, "dream_lock_held_by", AsyncMock(side_effect=TimeoutError())
-        )
+        extend = lease_mod.extend_dream_lock
+        renewals = 0
+
+        async def no_answer_at_the_fence(scope, token: str, ttl_seconds: int) -> bool:
+            nonlocal renewals
+            renewals += 1
+            if renewals == 2:
+                raise TimeoutError()
+            return await extend(scope, token, ttl_seconds)
+
+        mocker.patch.object(lease_mod, "extend_dream_lock", no_answer_at_the_fence)
 
         await _deliver_sanitize()
 
         apply.assert_not_awaited()
         await _assert_ended_without_applying(
-            fake_dream_db, fake_dream_redis, LOCK_LOST_ERROR
+            fake_dream_db, fake_dream_redis, "apply: dream lease could not be renewed"
         )
         assert _LOCK_KEY not in fake_dream_redis.store
 
