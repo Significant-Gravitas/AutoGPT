@@ -57,10 +57,12 @@ export function CopilotChatHost({
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting,
+    followBackendTurn,
   } = useCopilotPage();
 
   return (
@@ -82,6 +84,7 @@ export function CopilotChatHost({
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
           sessionSentFrom={sessionSentFrom}
+          sessionAutopilotMode={sessionAutopilotMode}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
@@ -108,6 +111,7 @@ export function CopilotChatHost({
           isResolvingExpertIdentity={isResolvingExpertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
+          onBackendTurn={followBackendTurn}
           hasFloatingControls={hasFloatingControls}
         />
       </div>

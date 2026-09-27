@@ -24,6 +24,7 @@ import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
+import { useAutopilotModeStore } from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
 
@@ -315,6 +316,7 @@ export function useChatSession({
       useCopilotStreamStore
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
+      useAutopilotModeStore.getState().bindNewChatToSession(response.data.id);
       setSessionId(response.data.id);
       if (expertId) {
         trackFunnel("expert_thread_created", { expert_id: expertId });
@@ -392,6 +394,11 @@ export function useChatSession({
       ? (sessionQuery.data.data.expert_id ?? null)
       : null;
 
+  const sessionAutopilotMode =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.metadata?.autopilot_mode ?? null)
+      : null;
+
   const sessionSentFrom =
     sessionQuery.data?.status === 200
       ? getSessionSentFrom(sessionQuery.data.data.metadata)
@@ -424,5 +431,6 @@ export function useChatSession({
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
   };
 }

@@ -16,7 +16,7 @@ import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, type HttpHandler } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { ReactNode, useState } from "react";
+import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
 
@@ -29,6 +29,7 @@ export interface SessionOverride {
   has_more_messages?: boolean;
   chat_status?: string;
   expert_id?: string | null;
+  metadata?: SessionDetailResponse["metadata"];
 }
 
 /**
@@ -47,7 +48,7 @@ export function sessionHandler(opts: SessionOverride = {}) {
     has_more_messages: opts.has_more_messages ?? false,
     oldest_sequence: null,
     active_stream: opts.active_stream ?? null,
-    metadata: { dry_run: false, builder_graph_id: null },
+    metadata: opts.metadata ?? { dry_run: false, builder_graph_id: null },
     expert_id: opts.expert_id ?? null,
   });
 }
@@ -109,7 +110,15 @@ function Wrapper({
  * input into "limit reached" or injects ghost queued chips, so we pin them.
  */
 export function renderHost(
-  opts: { sessionOverride?: SessionOverride; searchParams?: string } = {},
+  opts: {
+    sessionOverride?: SessionOverride;
+    searchParams?: string;
+    /** Follow-ups the backend still holds in the session's pending buffer. */
+    pendingMessages?: string[];
+    /** Mount under React Strict Mode, as the dev server does: every effect
+     *  runs twice on mount, so load-time requests fire twice. */
+    strictMode?: boolean;
+  } = {},
 ) {
   server.use(
     sessionHandler(opts.sessionOverride),
@@ -126,8 +135,8 @@ export function renderHost(
       reset_cost: 0,
     }),
     getGetV2GetPendingMessagesMockHandler200({
-      count: 0,
-      messages: [],
+      count: opts.pendingMessages?.length ?? 0,
+      messages: opts.pendingMessages ?? [],
     }),
     // useCopilotStop POSTs here when the user clicks Stop. The default
     // Orval handler returns random faker fields; pin to a deterministic
@@ -139,18 +148,18 @@ export function renderHost(
       reason: null,
     }),
   );
-  return render(
-    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />,
-    {
-      wrapper: ({ children }) => (
-        <Wrapper
-          searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
-        >
-          {children}
-        </Wrapper>
-      ),
-    },
+  const host = (
+    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />
   );
+  return render(opts.strictMode ? <StrictMode>{host}</StrictMode> : host, {
+    wrapper: ({ children }) => (
+      <Wrapper
+        searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
+      >
+        {children}
+      </Wrapper>
+    ),
+  });
 }
 
 /**

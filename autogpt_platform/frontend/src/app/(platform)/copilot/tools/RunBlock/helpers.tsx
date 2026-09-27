@@ -37,7 +37,6 @@ export interface ReviewRequiredResponse {
   block_id: string;
   block_name: string;
   review_id: string;
-  graph_exec_id: string;
   input_data: Record<string, unknown>;
 }
 

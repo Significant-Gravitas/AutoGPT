@@ -76,6 +76,8 @@ BillingCycle = Literal["monthly", "yearly"]
 class UsageTransactionMetadata(BaseModel):
     graph_exec_id: str | None = None
     graph_id: str | None = None
+    # Set instead of the graph fields when the usage came from an AutoPilot chat.
+    chat_session_id: str | None = None
     node_id: str | None = None
     node_exec_id: str | None = None
     block_id: str | None = None
@@ -801,13 +803,16 @@ class UserCredit(UserCreditBase):
 
         # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
-        if auto_top_up.threshold and balance < auto_top_up.threshold:
+        if (
+            auto_top_up.threshold
+            and balance < auto_top_up.threshold
+            and not await _legacy_chat_top_up_exists(user_id, metadata)
+        ):
             try:
                 await self._top_up_credits(
                     user_id=user_id,
                     amount=auto_top_up.amount,
-                    # Avoid multiple auto top-ups within the same graph execution.
-                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
+                    key=_auto_top_up_key(user_id, metadata),
                     ceiling_balance=auto_top_up.threshold,
                     top_up_type=TopUpType.AUTO,
                 )
@@ -1398,6 +1403,28 @@ class UserCredit(UserCreditBase):
             )
             for invoice in invoices.data
         ]
+
+
+def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:
+    """One auto top-up per graph execution or chat. A top-up stays inactive
+    until its charge succeeds, so the key is what stops a repeat charge."""
+    return f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id or metadata.chat_session_id}"
+
+
+async def _legacy_chat_top_up_exists(
+    user_id: str, metadata: UsageTransactionMetadata
+) -> bool:
+    """A chat's auto top-up keyed before chats had their own id (only a failed
+    or still-pending one keeps its key; a charged one takes the payment's)."""
+    if not metadata.chat_session_id:
+        return False
+    legacy_key = f"AUTO-TOP-UP-{user_id}-copilot-session-{metadata.chat_session_id}"
+    return (
+        await CreditTransaction.prisma().find_first(
+            where={"transactionKey": legacy_key, "userId": user_id}
+        )
+        is not None
+    )
 
 
 class DisabledUserCredit(UserCreditBase):

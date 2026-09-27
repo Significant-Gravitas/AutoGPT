@@ -75,7 +75,11 @@ describe("Transaction history activity and states", () => {
           transactions: [
             {
               ...run,
+              id: "chat:chat-123",
+              transaction_key: "chat:chat-123",
               activity_type: "copilot_tools",
+              usage_execution_id: null,
+              usage_chat_session_id: "chat-123",
               conversation_id: "chat-123",
               conversation_title: "Market landscape",
               library_agent_id: null,
@@ -102,6 +106,9 @@ describe("Transaction history activity and states", () => {
     expect(
       screen.getByText(/Subscription usage is tracked separately/),
     ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Reference" }));
+    expect(screen.getByText("Chat ID")).toBeDefined();
+    expect(screen.getByText("chat-123")).toBeDefined();
   });
 
   it("opens related receipts without adding child charges to the parent amount", async () => {

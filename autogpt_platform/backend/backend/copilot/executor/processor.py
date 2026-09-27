@@ -782,7 +782,7 @@ class CoPilotProcessor:
             # Handle all exceptions (including CancelledError) with appropriate logging
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
-                error_msg = "Operation cancelled"
+                error_msg = stream_registry.CANCELLED_MESSAGE
             else:
                 error_msg = str(e) or type(e).__name__
                 log.error(f"Turn failed: {error_msg}")
@@ -790,7 +790,7 @@ class CoPilotProcessor:
         finally:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
-                error_msg = "Operation cancelled"
+                error_msg = stream_registry.CANCELLED_MESSAGE
             try:
                 if credential_lease is not None:
                     try:

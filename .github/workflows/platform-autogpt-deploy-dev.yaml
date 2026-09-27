@@ -64,6 +64,69 @@ jobs:
           DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
+  # The catalog's main is what this environment serves from now on: new and
+  # changed packages get immutable versions, the expert roster is upserted by
+  # key, and copies users hold catch up lazily on their next turn (unedited
+  # copies replaced, edited ones merged). Idempotent: a second run against
+  # the same commit is a no-op.
+  #
+  # After the migrations and never in the deploy's way: ``trigger`` waits on
+  # ``migrate`` only, so a catalog that cannot be fetched or published fails
+  # this job visibly while the backend keeps serving the previous catalog,
+  # until the next deploy or a manual run of this workflow publishes it.
+  publish-skills:
+    needs: migrate
+    environment: develop
+    name: Publish skills catalog
+    runs-on: ubuntu-latest
+    # One publish at a time per environment: the skills go under a database
+    # lock, the roster does not.
+    concurrency:
+      group: publish-skills-develop
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate ephemeral secrets
+        # backend module imports read settings.secrets, so ENCRYPTION_KEY has to
+        # exist. Generated per run: a value committed here would be published.
+        run: echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.11-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python .github/workflows/scripts/get_package_version_from_lockfile.py poetry autogpt_platform/backend/poetry.lock)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install backend
+        working-directory: ./autogpt_platform/backend
+        run: |
+          poetry install --only main --no-interaction --no-ansi
+          poetry run prisma generate
+
+      - name: Publish skills catalog
+        working-directory: ./autogpt_platform/backend
+        run: poetry run publish-skills-catalog
+        env:
+          DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.BACKEND_DATABASE_URL }}
+          SKILLS_CATALOG_TOKEN: ${{ github.token }}
+
   trigger:
     needs: migrate
     runs-on: ubuntu-latest

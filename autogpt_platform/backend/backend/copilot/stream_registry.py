@@ -68,6 +68,9 @@ from .response_model import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The error a turn ends with when the user stopped it.
+CANCELLED_MESSAGE = "Operation cancelled"
 config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
 
@@ -972,6 +975,14 @@ async def mark_session_completed(
                 session_id,
                 exc,
             )
+
+    # A card answered while this turn ran has nobody to start its turn but us,
+    # an error included; only the user's own Stop leaves it for their next turn.
+    if user_id and error_message != CANCELLED_MESSAGE:
+        # Deferred: the gate reaches back here through pending_messages.
+        from backend.copilot.gate.held import wake as wake_for_held_calls
+
+        await wake_for_held_calls(user_id, session_id)
 
     if error_message and not skip_error_publish:
         try:

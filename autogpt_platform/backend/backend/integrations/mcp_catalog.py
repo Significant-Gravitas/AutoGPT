@@ -165,3 +165,56 @@ def parse_mcp_catalog(content: str) -> tuple[MCPCatalogEntry, ...]:
     if len({entry.name for entry in entries}) != len(entries):
         raise ValueError("MCP catalog provider names must be unique")
     return tuple(entries)
+
+
+MCPToolEffect = Literal["read", "external", "irreversible"]
+
+
+class MCPEffectMap(BaseModel):
+    """A catalogued server's tools by effect, written from its published list.
+
+    A tool the map does not name has no known effect, so it asks on first use.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source: str = Field(min_length=1)
+    read: list[str] = Field(default_factory=list)
+    external: list[str] = Field(default_factory=list)
+    # External writes that cannot be taken back.
+    irreversible: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_disjoint(self) -> "MCPEffectMap":
+        tools = [*self.read, *self.external, *self.irreversible]
+        if len(set(tools)) != len(tools):
+            raise ValueError("A tool appears in more than one effect list")
+        return self
+
+    def effect_of(self, tool: str) -> MCPToolEffect | None:
+        if tool in self.irreversible:
+            return "irreversible"
+        if tool in self.external:
+            return "external"
+        return "read" if tool in self.read else None
+
+
+def mcp_tool_effect(server_url: str, tool: str) -> MCPToolEffect | None:
+    """None: the server is not catalogued, or its map does not name the tool."""
+    entry = get_mcp_catalog_entry_for_url(server_url)
+    effects = get_mcp_effect_maps().get(entry.name) if entry else None
+    return effects.effect_of(tool) if effects else None
+
+
+@cache
+def get_mcp_effect_maps() -> dict[str, MCPEffectMap]:
+    content = Path(__file__).with_name("mcp_effects.json").read_text(encoding="utf-8")
+    return parse_mcp_effect_maps(content)
+
+
+def parse_mcp_effect_maps(content: str) -> dict[str, MCPEffectMap]:
+    maps = TypeAdapter(dict[str, MCPEffectMap]).validate_json(content)
+    unknown = set(maps) - {entry.name for entry in get_mcp_catalog()}
+    if unknown:
+        raise ValueError(f"Effect maps for servers not in the catalog: {unknown}")
+    return maps

@@ -1,6 +1,8 @@
 "use client";
 
 import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { getHeldOutcomes } from "../../ChatMessagesContainer/heldCallRows";
+import { HeldOutcomesContext } from "../../ChatMessagesContainer/HeldOutcomesContext";
 import { getPendingOnboardingCallId } from "../../ExpertOnboardingCard/helpers";
 import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { getPendingQuestions } from "../../QuestionDock/helpers";
@@ -12,16 +14,18 @@ interface Props {
 }
 
 /** What the session is still waiting on the user for: the clarifying-question
- *  dock and the hire's onboarding card each decide from here whether their
- *  form is live or already history, rather than from local state a reload
- *  would lose. */
+ *  dock, the hire's onboarding card and a held call's row each decide from
+ *  here whether they are live or already history, rather than from local
+ *  state a reload would lose. */
 export function PendingAnswerContexts({ messages, children }: Props) {
   return (
     <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
       <PendingOnboardingContext.Provider
         value={getPendingOnboardingCallId(messages)}
       >
-        {children}
+        <HeldOutcomesContext.Provider value={getHeldOutcomes(messages)}>
+          {children}
+        </HeldOutcomesContext.Provider>
       </PendingOnboardingContext.Provider>
     </PendingQuestionsContext.Provider>
   );

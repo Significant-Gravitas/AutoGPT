@@ -12,6 +12,7 @@ from pydantic import (
     model_validator,
 )
 
+from backend.api.features.experts.avatar_catalog import resolve_avatar_url
 from backend.data.expert_run_output import OutputType
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
@@ -26,9 +27,9 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-# Only some outward calls are actually gated for approval — is_sensitive_action
-# (backend/blocks/_base.py, checked in backend/data/graph.py:261) covers 17 of
-# 513 blocks — so this is phrased as expert behaviour, not a platform guarantee.
+# Only some outward calls are actually gated for approval — is_irreversible_action
+# (backend/blocks/_base.py) marks only the irreversible blocks — so this is
+# phrased as expert behaviour, not a platform guarantee.
 EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
 # Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
 # instruction text. Reword for one audience without silently breaking the other.
@@ -130,6 +131,13 @@ class ExpertWorkflowRef(BaseModel):
     integration_providers: list[str] = Field(default_factory=list)
 
 
+class ExpertWorkflowLabel(BaseModel):
+    """What names an installed workflow on an approval card."""
+
+    expert_id: str
+    name: str | None
+
+
 class ExpertIdentity(BaseModel):
     id: str
     name: str
@@ -138,6 +146,11 @@ class ExpertIdentity(BaseModel):
     role: str
     job_title: str | None = None
     is_archived: bool
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertSetupItem(BaseModel):
@@ -163,6 +176,11 @@ class ExpertSetupItem(BaseModel):
     # Titles of the graph inputs a scheduled run cannot supply; only set on
     # an ``inputs`` item.
     missing_inputs: list[str] = Field(default_factory=list)
+
+    @field_validator("expert_avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertCredentialRef(BaseModel):
@@ -296,6 +314,11 @@ class Expert(BaseModel):
     setup_status: ExpertSetupStatus = "ready"
     # What setup could not install; re-hiring the template retries it.
     setup_failures: list[str] = []
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertBundledSkill(BaseModel):
