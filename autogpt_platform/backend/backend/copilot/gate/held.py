@@ -27,6 +27,7 @@ from backend.util.encryption import JSONCryptor
 
 from . import chat_rules
 from . import review as review_store
+from .policy import PARKABLE, effect_for
 
 if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
@@ -101,7 +102,8 @@ async def rule_key(session_id: str, review_id: str, tool_name: str) -> str:
 
 
 async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]:
-    """The subject each held card named; a bare tool or a held read names none."""
+    """The key each held card can set a rule on; a held read or a money card
+    has none."""
     if not review_ids:
         return {}
     try:
@@ -118,7 +120,7 @@ async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]
         for review_id in review_ids
         if (call := held.get(review_id))
         and call.rule_key
-        and call.rule_key != call.tool_name
+        and (call.rule_key != call.tool_name or effect_for(call.tool_name) in PARKABLE)
     }
 
 

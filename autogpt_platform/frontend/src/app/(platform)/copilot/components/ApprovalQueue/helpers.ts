@@ -118,6 +118,11 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
   };
 }
 
+// A rule on a bare tool covers every call of it, so it is named as an action.
+export function ruleSubjectName(subject: ApprovalItem["subject"]) {
+  return subject.kind === "tool" ? `“${subject.name}”` : subject.name;
+}
+
 // A row the server wrote no headline for still names its tool.
 export function fallbackAsk(toolName: string) {
   return `Run ${beautifyString(toolName.replace(/^run_/, "")).toLowerCase()}`;
