@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import backend
+from backend.executor import cluster_lock
 from backend.util import e2b_network
 from backend.util.e2b_network import (
     EgressOwner,
@@ -27,6 +28,16 @@ _OWNER = EgressOwner(kind="expert", id="exp-1", user_id="user-1")
 _PROXY = "proxy.agpt.internal:1080"
 
 
+@pytest.fixture(autouse=True)
+def _lock_release_runs_on_the_mock(monkeypatch):
+    """Route the rotation lock's release script to the mocked client."""
+    monkeypatch.setattr(
+        cluster_lock,
+        "delete_if_owner",
+        lambda client, **kwargs: client.delete_if_owner(**kwargs),
+    )
+
+
 def _redis(values: dict[str, str] | None = None) -> MagicMock:
     store: dict[str, str] = dict(values or {})
     r = MagicMock()
@@ -40,9 +51,9 @@ def _redis(values: dict[str, str] | None = None) -> MagicMock:
         store[key] = value
         return True
 
-    async def _eval(script, numkeys, key, value):
+    async def _delete_if_owner(*, key, token):
         # The rotation lock's compare-and-delete release.
-        if store.get(key) == value:
+        if store.get(key) == token:
             del store[key]
             return 1
         return 0
@@ -54,7 +65,7 @@ def _redis(values: dict[str, str] | None = None) -> MagicMock:
     r.get = AsyncMock(side_effect=_get)
     r.set = AsyncMock(side_effect=_set)
     r.delete = AsyncMock(side_effect=_delete)
-    r.eval = AsyncMock(side_effect=_eval)
+    r.delete_if_owner = AsyncMock(side_effect=_delete_if_owner)
     r.store = store
     return r
 

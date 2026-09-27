@@ -29,6 +29,7 @@ from backend.blocks.desktop._common import (
 )
 from backend.util.sandbox_metadata import deployment_env
 
+from . import e2b_sandbox
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
@@ -129,6 +130,26 @@ def _mock_redis(
     r.set = AsyncMock(return_value=set_nx_result)
     r.delete = AsyncMock()
     return r
+
+
+# The Lua itself, read before the fixture below swaps the scripts out.
+_INCR_ACTIVE_TURNS_LUA = e2b_sandbox._incr_active_turns.lua
+_DECR_ACTIVE_TURNS_LUA = e2b_sandbox._decr_active_turns.lua
+
+
+@pytest.fixture(autouse=True)
+def _turn_scripts_run_on_the_mock(monkeypatch):
+    """Route the turn-count scripts to the mocked client they are called with."""
+    monkeypatch.setattr(
+        e2b_sandbox,
+        "_incr_active_turns",
+        lambda client, **kwargs: client.incr_active_turns(**kwargs),
+    )
+    monkeypatch.setattr(
+        e2b_sandbox,
+        "_decr_active_turns",
+        lambda client, **kwargs: client.decr_active_turns(**kwargs),
+    )
 
 
 def _patch_redis(redis: AsyncMock):
@@ -1170,17 +1191,14 @@ def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMo
     r.delete = AsyncMock()
     # Two scripts: ``_acquire_turn`` (INCR + EXPIRE) and ``_release_turn``
     # (DECR, and DEL when nothing is left).
-    r.eval = AsyncMock(
-        side_effect=lambda script, *_: 1 if "incr" in script else max(decr_result, 0)
-    )
+    r.incr_active_turns = AsyncMock(return_value=1)
+    r.decr_active_turns = AsyncMock(return_value=max(decr_result, 0))
     return r
 
 
 def _turn_acquires(redis: AsyncMock) -> list[str]:
     """Keys the acquire script ran against, in order."""
-    return [
-        call.args[2] for call in redis.eval.await_args_list if "incr" in call.args[0]
-    ]
+    return [call.kwargs["key"] for call in redis.incr_active_turns.await_args_list]
 
 
 class TestConnectOwned:
@@ -1444,9 +1462,10 @@ class TestExpertShellBox:
         redis = _keyed_redis({})
         with _patch_redis(redis):
             asyncio.run(count_expert_turn(_SESSION_ID, _EXPERT_ID))
-        script, nkeys, key, ttl = redis.eval.await_args.args
-        assert nkeys == 1 and key == _EXPERT_ACTIVE_KEY
-        assert "incr" in script and "expire" in script and ttl > 0
+        kwargs = redis.incr_active_turns.await_args.kwargs
+        assert kwargs["key"] == _EXPERT_ACTIVE_KEY and kwargs["ttl_seconds"] > 0
+        lua = _INCR_ACTIVE_TURNS_LUA
+        assert "'INCR'" in lua and "'EXPIRE'" in lua
 
     def test_a_turn_that_cannot_be_counted_does_not_get_the_box(self):
         """An uncounted turn's release would decrement someone else's count
@@ -1455,7 +1474,7 @@ class TestExpertShellBox:
             "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
         )
         redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
-        redis.eval = AsyncMock(side_effect=ConnectionError("redis down"))
+        redis.incr_active_turns = AsyncMock(side_effect=ConnectionError("redis down"))
         with (
             _patch_sdk() as mock_cls,
             _patch_redis(redis),
@@ -1468,9 +1487,7 @@ class TestExpertShellBox:
                     )
                 )
         # The failed acquire was the only script; no release ran for it.
-        assert [
-            c.args[0] for c in redis.eval.await_args_list if "decr" in c.args[0]
-        ] == []
+        redis.decr_active_turns.assert_not_awaited()
 
     def test_creates_expert_box_with_home_and_shared_volumes(self):
         sb = _mock_sandbox("sb-expert-new")
@@ -1563,8 +1580,9 @@ class TestExpertPause:
         sb.pause.assert_awaited_once()
         # One script does the DECR and, at zero, the DEL: no window for a turn
         # that starts in between to lose its count.
-        script, _, key = redis.eval.await_args.args
-        assert key == _EXPERT_ACTIVE_KEY and "decr" in script and "del" in script
+        redis.decr_active_turns.assert_awaited_once_with(key=_EXPERT_ACTIVE_KEY)
+        lua = _DECR_ACTIVE_TURNS_LUA
+        assert "'DECR'" in lua and "'DEL'" in lua
 
     def test_concurrent_turn_keeps_the_box_running(self):
         """Pausing under another session of the same expert would sever its
@@ -1595,7 +1613,8 @@ class TestExpertPause:
         with _patch_redis(redis):
             ok = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
         assert ok is True
-        redis.eval.assert_not_awaited()
+        redis.incr_active_turns.assert_not_awaited()
+        redis.decr_active_turns.assert_not_awaited()
 
 
 class TestExpertKill:
@@ -1883,7 +1902,7 @@ class TestExpertBoxRecovery:
         box is left running for the lifecycle timeout to pause."""
         sb = _mock_sandbox()
         redis = _keyed_redis({})
-        redis.eval = AsyncMock(side_effect=ConnectionError("redis down"))
+        redis.decr_active_turns = AsyncMock(side_effect=ConnectionError("redis down"))
         with _patch_redis(redis):
             ok = asyncio.run(
                 pause_sandbox_direct(sb, _SESSION_ID, expert_id=_EXPERT_ID)

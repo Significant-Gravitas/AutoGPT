@@ -47,6 +47,7 @@ from backend.copilot.tools.e2b_sandbox import (
     list_owned_sandboxes,
 )
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_scripts import delete_if_owner
 from backend.util.desktop_preview import create_preview_link
 
 logger = logging.getLogger(__name__)
@@ -62,10 +63,6 @@ _DESKTOP_LOCK_TTL_SECONDS = 300
 _DESKTOP_OPEN_DEADLINE_SECONDS = _DESKTOP_LOCK_TTL_SECONDS - 15
 _DESKTOP_LOCK_WAIT_SECONDS = 300
 _DESKTOP_LOCK_POLL_SECONDS = 0.5
-_UNLOCK_SCRIPT = (
-    'if redis.call("get", KEYS[1]) == ARGV[1] then '
-    'return redis.call("del", KEYS[1]) else return 0 end'
-)
 
 
 class SandboxSummary(BaseModel):
@@ -174,7 +171,7 @@ async def open_desktop(
             timeout=_DESKTOP_OPEN_DEADLINE_SECONDS,
         )
     finally:
-        await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
+        await delete_if_owner(redis, key=lock_key, token=token)
 
 
 async def _open_desktop_locked(

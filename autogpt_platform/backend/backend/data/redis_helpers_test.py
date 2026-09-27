@@ -2,14 +2,17 @@
 
 Uses a minimal in-memory fake Redis that only implements the surface
 exercised by the helpers: pipeline(transaction=True) with
-incr/expire/rpush/ltrim/llen, and eval() for the CAS helper.
+incr/expire/rpush/ltrim/llen, and the helpers' Lua scripts, one method each.
 """
 
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
+from backend.data import redis_client, redis_helpers
 from backend.data.redis_helpers import (
+    SlotAdmission,
     as_str,
     capped_rpush,
     capped_rpush_if_hash_field,
@@ -17,7 +20,9 @@ from backend.data.redis_helpers import (
     hash_compare_and_set,
     incr_with_ttl,
     incr_with_ttl_sync,
+    try_acquire_concurrency_slot,
 )
+from backend.util.testing import is_tcp_port_reachable
 
 # ── Fake Redis + pipeline ──────────────────────────────────────────────
 
@@ -59,36 +64,37 @@ class _Fake:
     async def llen(self, key: str) -> int:
         return len(self.lists.get(key, []))
 
-    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
-        # Discriminate by script content — the helpers all use distinct
-        # Lua so we can route on a unique substring per script.
-        if "HDEL" in script:
-            # ``claim_batch_dispatch_atomic`` shape:
-            #   KEYS[1]=pending hash, KEYS[2]=per-batch tombstone key,
-            #   ARGV[1]=batch_id, ARGV[2]=ttl_seconds
-            pending_key, tombstone_key = args[0], args[1]
-            batch_id, ttl_seconds = args[2], args[3]
-            if tombstone_key in self.strings:
-                return 0
-            self.strings[tombstone_key] = "1"
-            await self.expire(tombstone_key, int(ttl_seconds))
-            self.hashes.setdefault(pending_key, {}).pop(batch_id, None)
-            return 1
+    # --- the helpers' Lua scripts, routed here by the fixture below ---
+    async def claim_batch_dispatch(
+        self, *, pending_key: str, tombstone_key: str, batch_id: str, ttl_seconds: int
+    ) -> int:
+        if tombstone_key in self.strings:
+            return 0
+        self.strings[tombstone_key] = "1"
+        await self.expire(tombstone_key, ttl_seconds)
+        self.hashes.setdefault(pending_key, {}).pop(batch_id, None)
+        return 1
 
-        if numkeys == 2:
-            # ``capped_rpush_if_hash_field`` shape.
-            hash_key, list_key = args[0], args[1]
-            field, expected, value, max_len, ttl_seconds = args[2:7]
-            h = self.hashes.setdefault(hash_key, {})
-            if h.get(field) != expected:
-                return -1
-            await self.rpush(list_key, value)
-            await self.ltrim(list_key, -int(max_len), -1)
-            await self.expire(list_key, int(ttl_seconds))
-            return await self.llen(list_key)
+    async def gated_capped_rpush(
+        self,
+        *,
+        hash_key: str,
+        list_key: str,
+        hash_field: str,
+        expected: str,
+        value: str,
+        max_len: int,
+        ttl_seconds: int,
+    ) -> int:
+        h = self.hashes.setdefault(hash_key, {})
+        if h.get(hash_field) != expected:
+            return -1
+        await self.rpush(list_key, value)
+        await self.ltrim(list_key, -max_len, -1)
+        await self.expire(list_key, ttl_seconds)
+        return await self.llen(list_key)
 
-        # ``hash_compare_and_set`` shape (numkeys == 1).
-        key, field, expected, new = args[0], args[1], args[2], args[3]
+    async def hash_cas(self, *, key: str, field: str, expected: str, new: str) -> int:
         h = self.hashes.setdefault(key, {})
         if h.get(field) == expected:
             h[field] = new
@@ -98,6 +104,25 @@ class _Fake:
     # --- pipeline ---
     def pipeline(self, transaction: bool = True) -> "_FakePipe":
         return _FakePipe(self)
+
+
+@pytest.fixture(autouse=True)
+def _scripts_run_on_the_fake(monkeypatch):
+    monkeypatch.setattr(
+        redis_helpers,
+        "_claim_batch_dispatch",
+        lambda client, **kwargs: client.claim_batch_dispatch(**kwargs),
+    )
+    monkeypatch.setattr(
+        redis_helpers,
+        "_gated_capped_rpush",
+        lambda client, **kwargs: client.gated_capped_rpush(**kwargs),
+    )
+    monkeypatch.setattr(
+        redis_helpers,
+        "_hash_cas",
+        lambda client, **kwargs: client.hash_cas(**kwargs),
+    )
 
 
 class _FakePipe:
@@ -431,3 +456,45 @@ class TestAsStr:
         assert as_str("x") == "x"
         assert as_str(b"x") == "x"
         assert as_str(None) is None
+
+
+# ── Concurrency slots, on the live cluster ────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="local redis cluster not reachable",
+)
+async def test_concurrency_slot_admits_refreshes_rejects_and_sweeps():
+    """Runs the real script, so a slot missing from the pool (ZSCORE hands
+    Lua ``false``, not ``nil``) is admitted against capacity rather than
+    taken for a refresh."""
+    client = await redis_client.connect_async()
+    pool = f"test:concurrency-slot:{{{uuid4()}}}"
+
+    async def acquire(slot: str, score: float, stale_before: float = 0):
+        return await try_acquire_concurrency_slot(
+            client,
+            pool_key=pool,
+            slot_id=slot,
+            score=score,
+            capacity=2,
+            stale_before_score=stale_before,
+            ttl_seconds=60,
+        )
+
+    try:
+        assert await acquire("a", 10) is SlotAdmission.ADMITTED
+        assert await acquire("a", 11) is SlotAdmission.REFRESHED
+        assert await client.zscore(pool, "a") == 11
+        assert await acquire("b", 12) is SlotAdmission.ADMITTED
+        assert await acquire("c", 13) is SlotAdmission.REJECTED
+        assert await client.zscore(pool, "c") is None
+        # "a" (score 11) goes stale, which frees a seat for "c".
+        assert await acquire("c", 14, stale_before=11) is SlotAdmission.ADMITTED
+        assert set(await client.zrange(pool, 0, -1)) == {"b", "c"}
+        assert 0 < await client.ttl(pool) <= 60
+    finally:
+        await client.delete(pool)
+        await client.aclose()

@@ -1041,30 +1041,45 @@ class TestBatchedTenancy:
 
 class TestMigrationLock:
     @pytest.mark.asyncio
-    async def test_renew_extends_owned_lock(self):
+    async def test_renew_extends_owned_lock(self, mocker):
         redis = AsyncMock()
-        redis.execute_command = AsyncMock(return_value=1)
+        expire = mocker.patch(
+            "backend.data.org_migration.expire_if_owner",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
 
         await _renew_migration_lock(redis, "lock-key", "token", 300)
 
-        redis.execute_command.assert_awaited_once()
+        expire.assert_awaited_once_with(
+            redis, key="lock-key", token="token", seconds=300
+        )
 
     @pytest.mark.asyncio
-    async def test_renew_fails_loud_when_lock_is_lost(self):
+    async def test_renew_fails_loud_when_lock_is_lost(self, mocker):
         redis = AsyncMock()
-        redis.execute_command = AsyncMock(return_value=0)
+        mocker.patch(
+            "backend.data.org_migration.expire_if_owner",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
 
         with pytest.raises(RuntimeError, match="lost the distributed bootstrap lock"):
             await _renew_migration_lock(redis, "lock-key", "token", 300)
 
     @pytest.mark.asyncio
-    async def test_release_uses_token_safe_script(self):
+    async def test_release_uses_token_safe_script(self, mocker):
         redis = AsyncMock()
-        redis.execute_command = AsyncMock(return_value=0)
+        delete = mocker.patch(
+            "backend.data.org_migration.delete_if_owner",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
 
         released = await _release_migration_lock(redis, "lock-key", "token")
 
         assert released is False
+        delete.assert_awaited_once_with(redis, key="lock-key", token="token")
         redis.delete.assert_not_called()
 
 
@@ -1092,7 +1107,16 @@ class TestRunMigration:
         calls: list[str] = []
         redis = AsyncMock()
         redis.set = AsyncMock(return_value=True)
-        redis.execute_command = AsyncMock(return_value=1)
+        expire = mocker.patch(
+            "backend.data.org_migration.expire_if_owner",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
+        delete = mocker.patch(
+            "backend.data.org_migration.delete_if_owner",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
 
         mocker.patch(
             "backend.data.redis_client.get_redis_async",
@@ -1141,7 +1165,14 @@ class TestRunMigration:
         redis.set.assert_awaited_once_with(
             "org-migration-bootstrap-lock", "lock-token", nx=True, ex=300
         )
-        assert redis.execute_command.await_count == 9
+        # Seven renewals between steps, one inside assign_resources, then release.
+        assert expire.await_count == 8
+        expire.assert_awaited_with(
+            redis, key="org-migration-bootstrap-lock", token="lock-token", seconds=300
+        )
+        delete.assert_awaited_once_with(
+            redis, key="org-migration-bootstrap-lock", token="lock-token"
+        )
         assert calls == [
             "create_orgs",
             "balances",

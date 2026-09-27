@@ -36,6 +36,7 @@ from typing import Any
 from uuid import uuid4
 
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_scripts import delete_if_owner
 
 from .client import (
     close_graphiti_client,
@@ -244,11 +245,6 @@ async def _activity_since_last_rebuild(
 _REBUILD_LOCK_KEY_PREFIX = "graphiti:community_rebuild_lock:"
 _REBUILD_LOCK_TTL_SECONDS = 1800 + 120
 
-_REBUILD_UNLOCK_SCRIPT = (
-    "if redis.call('get', KEYS[1]) == ARGV[1] then "
-    "return redis.call('del', KEYS[1]) else return 0 end"
-)
-
 
 def _rebuild_lock_key(group_id: str) -> str:
     return f"{_REBUILD_LOCK_KEY_PREFIX}{group_id}"
@@ -261,7 +257,7 @@ async def _release_rebuild_lock(redis, key: str, token: str) -> None:
     clears the key, so a failed release never wedges the user.
     """
     try:
-        await redis.eval(_REBUILD_UNLOCK_SCRIPT, 1, key, token)
+        await delete_if_owner(redis, key=key, token=token)
     except Exception:
         logger.warning(
             "Failed to release community-rebuild lock %s — TTL will clear it",

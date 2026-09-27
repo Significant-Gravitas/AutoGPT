@@ -31,12 +31,18 @@ def _owner_bound_links():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _desktop_lock_release():
+    """The lock release is a script on the real client; stub it."""
+    with patch(f"{_C}.delete_if_owner", AsyncMock(return_value=1)):
+        yield
+
+
 def _make_redis(display: str | None = None) -> MagicMock:
     redis = MagicMock()
     redis.get = AsyncMock(return_value=display)
     redis.set = AsyncMock(return_value=True)
     redis.delete = AsyncMock()
-    redis.eval = AsyncMock(return_value=1)
     return redis
 
 

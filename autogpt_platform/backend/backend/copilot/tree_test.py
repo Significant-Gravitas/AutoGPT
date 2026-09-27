@@ -19,8 +19,6 @@ from backend.data.redis_client import AsyncRedisClient
 
 from . import tree
 from .tree import (
-    _CLAIM_WRAPUP_SCRIPT,
-    _OPEN_TREE_SCRIPT,
     DESCENT_DENIED_TOOLS,
     ISOLATE_DENIED_TOOLS,
     MAX_DEPTH,
@@ -73,16 +71,16 @@ class FakeRedis:
     def pipeline(self, transaction: bool = True) -> "_FakePipeline":
         return _FakePipeline(self)
 
-    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
-        """Emulate the ledger's Lua scripts, dispatching on the script itself
-        so a new one cannot silently inherit another's emulation."""
-        key = str(args[0])
-        if script == _CLAIM_WRAPUP_SCRIPT:
-            if "ceiling" not in self.hashes.get(key, {}):
-                return 0
-            return await self.hsetnx(key, "wrapup", "1")
-        assert script == _OPEN_TREE_SCRIPT, "unemulated Lua script"
-        ceiling, max_nodes, nodes, ttl = (str(a) for a in args[1:5])
+    # The ledger's two Lua scripts, emulated one method each; the fixture
+    # below routes them here, so a new script has no emulation to inherit.
+    async def claim_wrapup(self, *, key: str) -> int:
+        if "ceiling" not in self.hashes.get(key, {}):
+            return 0
+        return await self.hsetnx(key, "wrapup", "1")
+
+    async def open_tree(
+        self, *, key: str, ceiling: str, max_nodes: str, nodes: str, ttl_seconds: int
+    ) -> int:
         if key in self.hashes:
             return 0
         self.hashes[key] = {
@@ -91,8 +89,24 @@ class FakeRedis:
             "nodes": nodes,
             "spent": "0",
         }
-        self.ttls[key] = int(ttl)
+        self.ttls[key] = ttl_seconds
         return 1
+
+
+def route_ledger_scripts_to_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Send the ledger's scripts to the fake's emulations. Every suite that
+    drives a ``TreeLedger`` on ``FakeRedis`` calls this from its own fixture."""
+    monkeypatch.setattr(
+        tree, "_open_tree", lambda client, **kwargs: client.open_tree(**kwargs)
+    )
+    monkeypatch.setattr(
+        tree, "_claim_wrapup", lambda client, **kwargs: client.claim_wrapup(**kwargs)
+    )
+
+
+@pytest.fixture(autouse=True)
+def _ledger_scripts_run_on_the_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    route_ledger_scripts_to_fake(monkeypatch)
 
 
 class _FakePipeline:

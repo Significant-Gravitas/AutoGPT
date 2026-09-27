@@ -61,6 +61,7 @@ from autogpt_libs.auth.dependencies import get_user_id
 from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
+from redis_lua_py import Key, redis, script
 
 from backend.copilot.trial_cost_context import record_attributed_trial_cost
 from backend.data.db_accessors import credit_db, user_db
@@ -904,14 +905,13 @@ async def _incr_counter_atomic(
 # Atomic DECRBY + floor-to-zero so a concurrent INCRBY from record_cost_usage
 # cannot be lost. DELETE on underflow also avoids leaving a zero-valued key
 # with no TTL, which the non-atomic set-with-keepttl variant could do.
-_DECR_FLOOR_ZERO_SCRIPT = """
-local value = redis.call("DECRBY", KEYS[1], ARGV[1])
-if value < 0 then
-    redis.call("DEL", KEYS[1])
-    return 0
-end
-return value
-"""
+@script
+def _decr_floor_zero(key: Key, delta: int) -> int:
+    value = redis.decrby(key, delta)
+    if value < 0:
+        redis.delete(key)
+        return 0
+    return value
 
 
 async def _decr_counter_floor_zero(
@@ -923,7 +923,7 @@ async def _decr_counter_floor_zero(
     next INCRBY in ``record_cost_usage`` re-seeds both the value and the
     expiry in one shot.
     """
-    await redis.eval(_DECR_FLOOR_ZERO_SCRIPT, 1, key, delta)
+    await _decr_floor_zero(redis, key=key, delta=delta)
 
 
 class _UserNotFoundError(Exception):

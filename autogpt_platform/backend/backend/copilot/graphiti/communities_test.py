@@ -22,10 +22,16 @@ def _free_rebuild_lock():
     release → ok); the contention test overrides ``set``."""
     redis = AsyncMock()
     redis.set = AsyncMock(return_value=True)
-    redis.eval = AsyncMock(return_value=1)
-    with patch(
-        "backend.copilot.graphiti.communities.get_redis_async",
-        new=AsyncMock(return_value=redis),
+    redis.delete_if_owner = AsyncMock(return_value=1)
+    with (
+        patch(
+            "backend.copilot.graphiti.communities.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.copilot.graphiti.communities.delete_if_owner",
+            new=lambda client, **kwargs: client.delete_if_owner(**kwargs),
+        ),
     ):
         yield redis
 
@@ -332,11 +338,11 @@ class TestRebuildCommunitiesForUser:
         flex.assert_not_awaited()
         plain.assert_not_awaited()
         # We don't own the lock, so we must NOT release it.
-        _free_rebuild_lock.eval.assert_not_awaited()
+        _free_rebuild_lock.delete_if_owner.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_releases_lock_after_run(self, _free_rebuild_lock) -> None:
-        """A normal run releases via single-key compare-and-delete Lua
+        """A normal run releases via single-key compare-and-delete
         (cluster-routable) using the same token it acquired with."""
         driver = AsyncMock()
         driver.execute_query.return_value = ([], None, None)
@@ -367,13 +373,13 @@ class TestRebuildCommunitiesForUser:
         set_args, set_kwargs = _free_rebuild_lock.set.call_args
         assert set_kwargs.get("nx") is True
         assert set_kwargs.get("ex") == 1800 + 120
-        # Release: single-key Lua compare-and-delete (numkeys=1 → routes on
-        # the cluster) using the same token we acquired with.
-        _free_rebuild_lock.eval.assert_awaited_once()
-        eval_args = _free_rebuild_lock.eval.call_args.args
-        assert eval_args[1] == 1
-        assert eval_args[2].startswith("graphiti:community_rebuild_lock:")
-        assert eval_args[3] == set_args[1]
+        # Release: single-key compare-and-delete (the lock is the script's
+        # only key → routes on the cluster) using the same token we acquired
+        # with.
+        _free_rebuild_lock.delete_if_owner.assert_awaited_once()
+        release = _free_rebuild_lock.delete_if_owner.call_args.kwargs
+        assert release["key"].startswith("graphiti:community_rebuild_lock:")
+        assert release["token"] == set_args[1]
 
 
 def _ep_query_result(latest: str | None, total: int) -> tuple:

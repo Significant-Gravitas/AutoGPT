@@ -43,6 +43,7 @@ from e2b.template.types import BuildInfo
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_scripts import delete_if_owner, expire_if_owner
 
 logger = logging.getLogger(__name__)
 
@@ -82,17 +83,6 @@ _BUILD_LOCK_TTL_SECONDS = 300
 _BUILD_TIMEOUT_SECONDS = 240
 _BUILD_WAIT_SECONDS = _BUILD_LOCK_TTL_SECONDS
 _BUILD_POLL_SECONDS = 2.0
-
-# Release or extend only if we still own the lock: a build that outlived the
-# TTL must not touch the lock a later builder took.
-_UNLOCK_SCRIPT = (
-    'if redis.call("get", KEYS[1]) == ARGV[1] then '
-    'return redis.call("del", KEYS[1]) else return 0 end'
-)
-_EXTEND_SCRIPT = (
-    'if redis.call("get", KEYS[1]) == ARGV[1] then '
-    'return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end'
-)
 
 # Templates this process has already confirmed ready, keyed by alias and
 # team: one round of API calls per alias per team per process lifetime.
@@ -172,15 +162,15 @@ async def _provision(spec: TemplateSpec, api_key: str) -> None:
             # fresh TTL so the build cannot outlive it; if the lock is no
             # longer ours, someone else is provisioning, so start over as a
             # follower (or the next holder).
-            if not await redis.eval(
-                _EXTEND_SCRIPT, 1, lock_key, token, _BUILD_LOCK_TTL_SECONDS
+            if not await expire_if_owner(
+                redis, key=lock_key, token=token, seconds=_BUILD_LOCK_TTL_SECONDS
             ):
                 return await _provision(spec, api_key)
             await asyncio.wait_for(
                 build_template(spec, api_key), timeout=_BUILD_TIMEOUT_SECONDS
             )
     finally:
-        await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
+        await delete_if_owner(redis, key=lock_key, token=token)
 
 
 async def build_template(spec: TemplateSpec, api_key: str) -> BuildInfo:

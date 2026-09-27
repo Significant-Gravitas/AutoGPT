@@ -23,9 +23,14 @@ from .budget_signal import (
     build_turn_budget_block,
 )
 from .tree import TreeLedger, root_envelope
-from .tree_test import BrokenRedis, FakeRedis
+from .tree_test import BrokenRedis, FakeRedis, route_ledger_scripts_to_fake
 
 ENVELOPE = root_envelope("t")
+
+
+@pytest.fixture(autouse=True)
+def _ledger_scripts_run_on_the_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    route_ledger_scripts_to_fake(monkeypatch)
 
 
 @pytest.fixture

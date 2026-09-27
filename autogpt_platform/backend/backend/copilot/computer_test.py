@@ -36,6 +36,16 @@ def _info(sandbox_id: str, state: SandboxState, mounts: str = "attached"):
     )
 
 
+@pytest.fixture(autouse=True)
+def _lock_release_runs_on_the_mock():
+    """Route the desktop lock's release script to the mocked client."""
+    with patch(
+        f"{_C}.delete_if_owner",
+        lambda client, **kwargs: client.delete_if_owner(**kwargs),
+    ):
+        yield
+
+
 def _redis(display: str | None, lock_free: bool = True, stream: str | None = None):
     r = MagicMock()
     r.get = AsyncMock(
@@ -43,7 +53,7 @@ def _redis(display: str | None, lock_free: bool = True, stream: str | None = Non
     )
     r.set = AsyncMock(return_value=lock_free)
     r.delete = AsyncMock()
-    r.eval = AsyncMock(return_value=1)
+    r.delete_if_owner = AsyncMock(return_value=1)
     return r
 
 
@@ -334,9 +344,10 @@ class TestOpenDesktop:
         attempts = [c for c in redis.set.await_args_list if c.args[0] == lock_key]
         assert len(attempts) == 2
         # The lock is released by token, never a bare delete of the key.
-        _script, _, released_key, token = redis.eval.await_args.args
-        assert released_key == lock_key
-        assert token == attempts[1].args[1]
+        assert redis.delete_if_owner.await_args.kwargs == {
+            "key": lock_key,
+            "token": attempts[1].args[1],
+        }
 
     @pytest.mark.asyncio
     async def test_the_open_is_cut_off_before_the_lock_can_lapse(self):
@@ -360,7 +371,7 @@ class TestOpenDesktop:
             computer._DESKTOP_OPEN_DEADLINE_SECONDS < computer._DESKTOP_LOCK_TTL_SECONDS
         )
         # The lock is still released on the way out.
-        redis.eval.assert_awaited_once()
+        redis.delete_if_owner.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_gives_up_when_the_lock_never_frees(self):
@@ -375,7 +386,7 @@ class TestOpenDesktop:
             with pytest.raises(RuntimeError, match="still opening"):
                 await open_desktop(owner, {}, "k", user_id=_USER)
         get_mock.assert_not_awaited()
-        redis.eval.assert_not_awaited()
+        redis.delete_if_owner.assert_not_awaited()
 
 
 class TestScreenIsOn:

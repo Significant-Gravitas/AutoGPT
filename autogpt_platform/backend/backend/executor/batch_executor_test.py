@@ -32,7 +32,7 @@ from backend.util.llm.providers import BatchResultRow
 def fake_redis():
     """In-memory hash-backed redis stub.
 
-    Also fakes the Lua ``eval`` path so the BatchExecutor's atomic
+    Also fakes the claim script so the BatchExecutor's atomic
     ``claim_batch_dispatch_atomic`` works under test — the real script
     SETs a per-batch tombstone key (``NX EX``) + HDELs the pending
     entry in one indivisible step; the fake replays the same effects.
@@ -59,19 +59,15 @@ def fake_redis():
     async def fake_expire(key, ttl):
         return 1
 
-    async def fake_eval(script, numkeys, *args):
-        # Only the claim_batch_dispatch_atomic shape is used by the
-        # BatchExecutor today. Branch on content so we don't pretend
-        # to know how to evaluate arbitrary Lua.
-        if "HDEL" in script:
-            pending_key, tombstone_key = args[0], args[1]
-            batch_id = args[2]
-            if tombstone_key in tombstones:
-                return 0
-            tombstones[tombstone_key] = "1"
-            store.setdefault(pending_key, {}).pop(batch_id, None)
-            return 1
-        raise NotImplementedError(f"fake_redis.eval: unknown script: {script!r}")
+    async def fake_claim_batch_dispatch(
+        client, *, pending_key, tombstone_key, batch_id, ttl_seconds
+    ):
+        # The only script the BatchExecutor runs today.
+        if tombstone_key in tombstones:
+            return 0
+        tombstones[tombstone_key] = "1"
+        store.setdefault(pending_key, {}).pop(batch_id, None)
+        return 1
 
     stub = AsyncMock()
     stub.hset.side_effect = fake_hset
@@ -79,14 +75,19 @@ def fake_redis():
     stub.hdel.side_effect = fake_hdel
     stub.delete.side_effect = fake_delete
     stub.expire.side_effect = fake_expire
-    stub.eval.side_effect = fake_eval
 
     async def fake_get_redis_async():
         return stub
 
-    with patch(
-        "backend.data.redis_client.get_redis_async",
-        side_effect=fake_get_redis_async,
+    with (
+        patch(
+            "backend.data.redis_client.get_redis_async",
+            side_effect=fake_get_redis_async,
+        ),
+        patch(
+            "backend.data.redis_helpers._claim_batch_dispatch",
+            side_effect=fake_claim_batch_dispatch,
+        ),
     ):
         yield stub, store
 

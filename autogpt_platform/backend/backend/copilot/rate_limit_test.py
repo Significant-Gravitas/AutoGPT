@@ -8,6 +8,7 @@ from redis.exceptions import RedisClusterException, RedisError
 
 from backend.data.subscription_trial import TrialState
 
+from . import rate_limit
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
     _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
@@ -46,6 +47,17 @@ from .rate_limit import (
     reset_user_usage,
     set_user_tier,
 )
+
+
+@pytest.fixture(autouse=True)
+def _decr_script_runs_on_the_mock(monkeypatch):
+    """Route the DECRBY+floor script to the mocked client it is called with."""
+    monkeypatch.setattr(
+        rate_limit,
+        "_decr_floor_zero",
+        lambda client, **kwargs: client.decr_floor_zero(**kwargs),
+    )
+
 
 _USER = "test-user-rl"
 
@@ -2061,7 +2073,7 @@ class TestResetDailyUsage:
         mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_reduces_weekly_usage_via_eval(self):
+    async def test_reduces_weekly_usage_via_script(self):
         """Weekly counter should be decremented via the atomic Lua script."""
         mock_redis = AsyncMock()
 
@@ -2075,12 +2087,9 @@ class TestResetDailyUsage:
         # call — no separate SET is expected for the clamp branch any more.
         # Pin the call shape so a regression that targets the wrong key or
         # delta (e.g. the daily key, or a sign-flip) fails loudly.
-        mock_redis.eval.assert_called_once()
-        eval_args = mock_redis.eval.call_args.args
-        # eval(script, numkeys, KEYS[1], ARGV[1])
-        assert eval_args[1] == 1
-        assert eval_args[2] == _weekly_key(_USER)
-        assert int(eval_args[3]) == 10000
+        mock_redis.decr_floor_zero.assert_called_once_with(
+            key=_weekly_key(_USER), delta=10000
+        )
         mock_redis.set.assert_not_called()
 
     @pytest.mark.asyncio
@@ -2095,7 +2104,7 @@ class TestResetDailyUsage:
             await reset_daily_usage(_USER, daily_cost_limit=0)
 
         mock_redis.delete.assert_called_once()
-        mock_redis.eval.assert_not_called()
+        mock_redis.decr_floor_zero.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_false_when_redis_unavailable(self):
@@ -2109,20 +2118,15 @@ class TestResetDailyUsage:
 
     @pytest.mark.asyncio
     async def test_decr_counter_floor_zero_invokes_lua_script(self):
-        """The atomic DECRBY+floor helper routes through redis.eval with the
-        expected single-key, single-arg call shape."""
-        from backend.copilot.rate_limit import (
-            _DECR_FLOOR_ZERO_SCRIPT,
-            _decr_counter_floor_zero,
-        )
+        """The atomic DECRBY+floor helper runs the script with the expected
+        key and delta."""
+        from backend.copilot.rate_limit import _decr_counter_floor_zero
 
         mock_redis = AsyncMock()
 
         await _decr_counter_floor_zero(mock_redis, "weekly:user1", 42)
 
-        mock_redis.eval.assert_called_once_with(
-            _DECR_FLOOR_ZERO_SCRIPT, 1, "weekly:user1", 42
-        )
+        mock_redis.decr_floor_zero.assert_called_once_with(key="weekly:user1", delta=42)
 
 
 # ---------------------------------------------------------------------------

@@ -4,11 +4,13 @@ import asyncio
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from redis.exceptions import ClusterDownError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
+
+from backend.data.redis_scripts import delete_if_owner
 
 if TYPE_CHECKING:
     from backend.data.redis_client import AsyncRedisClient, RedisClient
@@ -41,15 +43,6 @@ def _is_transient_redis_error(exc: BaseException) -> bool:
         msg = str(exc)
         return any(attr in msg for attr in _REDIS_RECONNECT_ATTRS)
     return False
-
-
-# CAS release: DEL only when the stored owner still matches — guards against
-# wiping a successor's lock after an external force-release.
-_RELEASE_LUA = (
-    "if redis.call('get', KEYS[1]) == ARGV[1] then "
-    "return redis.call('del', KEYS[1]) "
-    "else return 0 end"
-)
 
 
 class ClusterLock:
@@ -180,7 +173,7 @@ class ClusterLock:
                 return
 
         try:
-            self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id)
+            delete_if_owner(self.redis, key=self.key, token=self.owner_id)
         except Exception:
             pass
 
@@ -320,7 +313,7 @@ class AsyncClusterLock:
                 return
 
         try:
-            await cast(Any, self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id))
+            await delete_if_owner(self.redis, key=self.key, token=self.owner_id)
         except Exception:
             pass
 

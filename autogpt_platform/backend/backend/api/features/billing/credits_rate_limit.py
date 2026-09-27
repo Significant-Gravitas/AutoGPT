@@ -23,11 +23,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any, cast
 
 import fastapi
 from autogpt_libs.auth import get_user_id
 from redis.exceptions import RedisClusterException, RedisError
+from redis_lua_py import Key, redis, script
 
 from backend.data.redis_client import get_redis_async
 from backend.monitoring.instrumentation import record_rate_limit_hit
@@ -48,37 +48,28 @@ SUBSCRIPTION_STATUS_MAX_REQUESTS = 60
 # inside it.
 SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS = 0.25
 
+
 # Atomic fixed-window counter: INCR the key, and set the TTL only on the INCR
 # that opened the window (count == 1). Doing both in one server-side script
 # means a freshly-created key always gets its expiry — the key can never linger
 # without a TTL if it happened to be recreated by INCR, and the window stays
 # fixed (the TTL is not refreshed on later hits).
-_INCR_OPEN_WINDOW = """
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then
-    redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
-return count
-"""
+@script
+def _incr_open_window(key: Key, window_seconds: int) -> int:
+    count = redis.incr(key)
+    if count == 1:
+        redis.expire(key, window_seconds)
+    return count
 
 
 async def _incr_window(key: str) -> int:
     """Run the atomic counter, returning the request's position in the window.
 
     Split out so the connect and the command share one deadline in the caller.
-    Lua ARGV values are strings; ``EXPIRE`` coerces ``"60"`` back to an int. The
-    cast mirrors the other ``eval()`` call sites (e.g. ``copilot/dream/locks``):
-    the cluster client types ``eval()``'s return as ``str``.
     """
     redis = await get_redis_async()
-    return await cast(
-        Any,
-        redis.eval(
-            _INCR_OPEN_WINDOW,
-            1,
-            key,
-            str(SUBSCRIPTION_STATUS_WINDOW_SECONDS),
-        ),
+    return await _incr_open_window(
+        redis, key=key, window_seconds=SUBSCRIPTION_STATUS_WINDOW_SECONDS
     )
 
 

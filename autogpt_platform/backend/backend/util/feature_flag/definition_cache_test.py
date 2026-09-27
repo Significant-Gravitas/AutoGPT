@@ -15,6 +15,7 @@ import backend.data.redis_client as redis_client
 import backend.util.feature_flag as ff
 import backend.util.feature_flag.definition_cache as cache
 import backend.util.feature_flag.posthog as ph
+from backend.data import redis_scripts
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.settings import Config, FeatureFlagBackend, FlagDefinitionCacheBackend
 from backend.util.testing import is_tcp_port_reachable
@@ -44,15 +45,19 @@ class FakeRedis:
         entry = self._values.get(key)
         return entry[0] if entry else None
 
-    def eval(self, script, numkeys, key, holder, *args):
+    def pexpire_if_owner(self, *, key, token, milliseconds):
         self._check()
         entry = self._values.get(key)
-        if not entry or entry[0] != holder:
+        if not entry or entry[0] != token:
             return 0
-        if script is cache._RENEW_LOCK:
-            self._values[key] = (entry[0], self.now + int(args[0]) / 1000)
-            return 1
-        assert script is cache._RELEASE_LOCK
+        self._values[key] = (entry[0], self.now + milliseconds / 1000)
+        return 1
+
+    def delete_if_owner(self, *, key, token):
+        self._check()
+        entry = self._values.get(key)
+        if not entry or entry[0] != token:
+            return 0
         del self._values[key]
         return 1
 
@@ -88,6 +93,21 @@ DEFINITIONS = {
 @pytest.fixture
 def redis():
     return FakeRedis()
+
+
+@pytest.fixture(autouse=True)
+def _lock_scripts_run_on_the_fake(monkeypatch):
+    """FakeRedis models the two lock scripts; only a real Redis runs the Lua."""
+    monkeypatch.setattr(
+        cache,
+        "pexpire_if_owner",
+        lambda client, **kwargs: client.pexpire_if_owner(**kwargs),
+    )
+    monkeypatch.setattr(
+        cache,
+        "delete_if_owner",
+        lambda client, **kwargs: client.delete_if_owner(**kwargs),
+    )
 
 
 @pytest.fixture
@@ -536,20 +556,22 @@ class TestTheLockScriptsOnRealRedis:
         redis = redis_client.get_redis()
         redis.set(key, "holder", px=5_000)
 
-        assert redis.eval(cache._RENEW_LOCK, 1, key, "someone-else", 60_000) == 0
+        renew = redis_scripts.pexpire_if_owner
+        assert renew(redis, key=key, token="someone-else", milliseconds=60_000) == 0
         assert redis.pttl(key) <= 5_000
 
-        assert redis.eval(cache._RENEW_LOCK, 1, key, "holder", 60_000) == 1
+        assert renew(redis, key=key, token="holder", milliseconds=60_000) == 1
         assert redis.pttl(key) > 5_000
 
     def test_releasing_frees_only_our_own_lock(self, key):
         redis = redis_client.get_redis()
         redis.set(key, "holder", px=60_000)
 
-        assert redis.eval(cache._RELEASE_LOCK, 1, key, "someone-else") == 0
+        release = redis_scripts.delete_if_owner
+        assert release(redis, key=key, token="someone-else") == 0
         assert redis.get(key) == "holder"
 
-        assert redis.eval(cache._RELEASE_LOCK, 1, key, "holder") == 1
+        assert release(redis, key=key, token="holder") == 1
         assert redis.get(key) is None
 
 

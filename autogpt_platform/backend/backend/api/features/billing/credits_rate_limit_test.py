@@ -17,7 +17,7 @@ from backend.api.features.billing import credits_rate_limit as rate_limit
 class FakeRedis:
     """Minimal Redis stand-in that actually interprets the limiter's Lua.
 
-    ``eval`` is mocked in most suites, which means the script — the only
+    The script is mocked in most suites, which means it — the only
     non-trivial logic in the module — never runs. This executes the same
     semantics (INCR, and EXPIRE only on the call that opened the window)
     against real state, so a regression in the script (e.g. dropping the
@@ -28,20 +28,28 @@ class FakeRedis:
         self.counters: dict[str, int] = {}
         self.ttls: dict[str, int] = {}
 
-    async def eval(self, script: str, numkeys: int, key: str, ttl: str) -> int:
-        assert script == rate_limit._INCR_OPEN_WINDOW
-        assert numkeys == 1
+    async def incr_open_window(self, *, key: str, window_seconds: int) -> int:
         count = self.counters.get(key, 0) + 1
         self.counters[key] = count
         if count == 1:
-            self.ttls[key] = int(ttl)
+            self.ttls[key] = window_seconds
         return count
+
+
+@pytest.fixture(autouse=True)
+def _window_script_runs_on_the_client(monkeypatch):
+    """Route the limiter's script to whichever stand-in client a test uses."""
+    monkeypatch.setattr(
+        rate_limit,
+        "_incr_open_window",
+        lambda client, **kwargs: client.incr_open_window(**kwargs),
+    )
 
 
 @pytest.fixture
 def fake_redis(mocker):
-    """Patch ``get_redis_async`` to return a stateful fake whose ``eval``
-    executes the limiter's script semantics."""
+    """Patch ``get_redis_async`` to return a stateful fake that executes
+    the limiter's script semantics."""
     redis = FakeRedis()
     mocker.patch(
         "backend.api.features.billing.credits_rate_limit.get_redis_async",
@@ -52,10 +60,10 @@ def fake_redis(mocker):
 
 @pytest.fixture
 def mock_redis(mocker):
-    """Patch ``get_redis_async`` with a MagicMock whose ``eval`` return value
+    """Patch ``get_redis_async`` with a MagicMock whose script return value
     each test sets directly, for driving specific counts/errors."""
     redis = MagicMock()
-    redis.eval = AsyncMock()
+    redis.incr_open_window = AsyncMock()
     mocker.patch(
         "backend.api.features.billing.credits_rate_limit.get_redis_async",
         new=AsyncMock(return_value=redis),
@@ -117,7 +125,9 @@ async def test_cap_is_enforced_over_a_real_sequence(fake_redis):
 async def test_over_limit_sets_retry_after(mock_redis):
     """429 must carry Retry-After: without it clients retry blind and a single
     block turns into several more requests against the endpoint."""
-    mock_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS + 1
+    mock_redis.incr_open_window.return_value = (
+        rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS + 1
+    )
     with pytest.raises(fastapi.HTTPException) as exc_info:
         await rate_limit.enforce_subscription_status_rate_limit("u1")
     headers = exc_info.value.headers or {}
@@ -128,7 +138,9 @@ async def test_over_limit_sets_retry_after(mock_redis):
 @pytest.mark.asyncio
 async def test_at_limit_passes(mock_redis):
     """Exactly MAX is still allowed — the cap is exclusive (count > MAX raises)."""
-    mock_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS
+    mock_redis.incr_open_window.return_value = (
+        rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS
+    )
     await rate_limit.enforce_subscription_status_rate_limit("u1")
 
 
@@ -149,9 +161,9 @@ async def test_fails_open_on_redis_errors_from_the_command(mock_redis, error):
     """Every flavour of Redis trouble on an established client must fail open.
 
     The client is cached per event loop, so in production the connect path
-    rarely runs — the real surface is ``eval`` raising mid-command.
+    rarely runs — the real surface is the script raising mid-command.
     """
-    mock_redis.eval.side_effect = error
+    mock_redis.incr_open_window.side_effect = error
     await rate_limit.enforce_subscription_status_rate_limit("u1")
 
 
@@ -213,7 +225,9 @@ async def test_over_limit_records_a_rate_limit_hit(mock_redis):
     before = _counter(
         "autogpt_rate_limit_hits_total", endpoint="/api/credits/subscription"
     )
-    mock_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS + 1
+    mock_redis.incr_open_window.return_value = (
+        rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS + 1
+    )
     with pytest.raises(fastapi.HTTPException):
         await rate_limit.enforce_subscription_status_rate_limit("u1")
     assert (
@@ -227,7 +241,7 @@ async def test_under_limit_does_not_record(mock_redis):
     before = _counter(
         "autogpt_rate_limit_hits_total", endpoint="/api/credits/subscription"
     )
-    mock_redis.eval.return_value = 1
+    mock_redis.incr_open_window.return_value = 1
     await rate_limit.enforce_subscription_status_rate_limit("u1")
     assert (
         _counter("autogpt_rate_limit_hits_total", endpoint="/api/credits/subscription")
