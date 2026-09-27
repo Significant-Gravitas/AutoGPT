@@ -5678,6 +5678,39 @@ async def test_update_skills_resolves_every_name_before_copying(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_rejects_attach_and_remove_before_copying(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    copies: list[str] = []
+
+    async def _find(user_id, names):
+        return {n.strip().lower(): n for n in names}
+
+    async def _copy(user_id, expert_id, name):
+        copies.append(name)
+        return name
+
+    async def _listing_name(listing_id):
+        return "Deep Research"
+
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _find)
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
+    monkeypatch.setattr(experts_db, "_resolve_marketplace_skill_name", _listing_name)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(ValueError, match="both attached and removed"):
+        await experts_db.update_skills(
+            test_user.id,
+            hired.expert.id,
+            ["valid"],
+            marketplace_listing_ids=["listing-1"],
+            remove=["deep_research"],
+        )
+    assert copies == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_update_skills_keeps_the_display_name_of_a_skill_already_carried(
     server: SpinTestServer, test_user, monkeypatch
 ):
