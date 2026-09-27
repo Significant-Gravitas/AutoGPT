@@ -530,7 +530,10 @@ async def update_expert_soul(
 @router.put(
     "/{expert_id}/skills",
     operation_id="update_expert_skills",
-    responses={404: {"description": "Expert or skill not found"}},
+    responses={
+        400: {"description": "A marketplace skill is both attached and removed"},
+        404: {"description": "Expert or skill not found"},
+    },
 )
 async def update_expert_skills(
     expert_id: str,
@@ -543,9 +546,14 @@ async def update_expert_skills(
             expert_id,
             request.skills,
             marketplace_listing_ids=request.marketplace_listing_ids,
+            remove=request.remove,
         )
     except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        # A listing resolves to its name only inside update_skills, so this
+        # attach-and-remove contradiction can't be caught by the request model.
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
 @router.patch(

@@ -1444,14 +1444,18 @@ async def update_skills(
     expert_id: str,
     skills: list[str],
     marketplace_listing_ids: list[str] | None = None,
+    remove: list[str] | None = None,
 ) -> Expert:
-    """Replace an expert's skill list.
+    """Attach ``skills`` to an expert and remove the names in ``remove``.
 
     Names the expert does not already carry must resolve to a library skill.
     A personal-Otto skill is copied into the expert's own folder so the
-    expert owns it from then on; names dropped from the list delete the
-    expert's copy. The stored name is the skill's canonical one so display
-    and lookup agree."""
+    expert owns it from then on; a removed name deletes the expert's copy.
+    The stored name is the skill's canonical one so display and lookup agree.
+
+    Only an explicit ``remove`` deletes anything. The expert distils new
+    skills into its own folder at any time, so a list the client read earlier
+    can be missing one; treating an absent name as a removal destroyed it."""
     row = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -1477,6 +1481,16 @@ async def update_skills(
         await _resolve_marketplace_skill_name(listing_id)
         for listing_id in marketplace_listing_ids or []
     ]
+    removed = {skill_name_key(name) for name in remove or []}
+    # A listing resolves to a name only here, so the request validator could
+    # not see this contradiction: attaching a marketplace skill and removing
+    # it in the same call would delete the copy and then recreate it. Checked
+    # before the copies below so a rejected request writes nothing.
+    both = sorted(n for n in marketplace if skill_name_key(n) in removed)
+    if both:
+        raise ValueError(
+            f"Skills cannot be both attached and removed: {', '.join(both)}"
+        )
     resolved: list[str] = []
     for canonical, folder in plan:
         if folder is not None:
@@ -1495,8 +1509,7 @@ async def update_skills(
     for name in marketplace:
         if name.lower() not in {r.lower() for r in resolved}:
             resolved.append(name)
-    kept = {r.lower() for r in resolved}
-    for dropped in [name for name in current.values() if name.lower() not in kept]:
+    for dropped in [n for n in current.values() if skill_name_key(n) in removed]:
         # delete_user_skill drops the row name itself — except for a built-in,
         # where it raises first and _detach_expert_skill swallows that.
         await _detach_expert_skill(user_id, expert_id, dropped)
