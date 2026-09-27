@@ -892,3 +892,23 @@ class TestCompletionOnRealRedis:
         session = await stream_registry.get_session(session_id)
         assert closed is True
         assert session is not None and session.status == "completed"
+
+    async def test_meta_without_a_turn_id_still_completes(self, session_id):
+        await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+        redis = await redis_client.get_redis_async()
+        await redis.hdel(stream_registry.get_session_meta_key(session_id), "turn_id")
+
+        with (
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+        ):
+            closed = await stream_registry.mark_session_completed(
+                session_id, turn_id="a"
+            )
+
+        assert closed is True

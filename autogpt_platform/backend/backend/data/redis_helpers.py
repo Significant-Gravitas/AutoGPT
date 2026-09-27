@@ -38,13 +38,16 @@ from backend.data.redis_client import AsyncRedisClient, RedisClient
 #   ARGV[1]  hash field
 #   ARGV[2]  expected current value
 #   ARGV[3]  new value
-#   ARGV[4]  optional guard field, which must equal ARGV[5] too
+#   ARGV[4]  optional guard field which, when set and non-empty, must equal ARGV[5]
 _HASH_CAS_LUA = """
 if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
     return 0
 end
-if #ARGV > 3 and redis.call('HGET', KEYS[1], ARGV[4]) ~= ARGV[5] then
-    return 0
+if #ARGV > 3 then
+    local guard = redis.call('HGET', KEYS[1], ARGV[4])
+    if guard and guard ~= '' and guard ~= ARGV[5] then
+        return 0
+    end
 end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
 return 1
@@ -415,7 +418,7 @@ async def hash_compare_and_set(
     guard: tuple[str, str] | None = None,
 ) -> bool:
     """Atomically set ``HSET key field new`` iff current value == *expected*
-    (and, with ``guard=(field, value)``, that field also equals value).
+    (and, with ``guard=(field, value)``, that field is unset, empty or value).
 
     Returns ``True`` if the swap happened, ``False`` otherwise.
 

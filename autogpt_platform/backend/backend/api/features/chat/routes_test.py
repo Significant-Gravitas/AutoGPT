@@ -3274,11 +3274,16 @@ def test_cancel_confirms_once_the_next_turn_holds_the_session(
     )
     mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.02)
     mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS", 0.01)
+    clear_pending = mocker.patch.object(
+        chat_routes, "_clear_pending_best_effort", new_callable=AsyncMock
+    )
 
     response = client.post("/sessions/sess-1/cancel")
 
     assert response.json()["cancelled"] is True
     mock_registry.mark_session_completed.assert_not_awaited()
+    # Only the up-front clear; the next turn's follow-ups stay queued.
+    clear_pending.assert_awaited_once()
 
 
 def test_cancel_session_clears_pending_buffer(

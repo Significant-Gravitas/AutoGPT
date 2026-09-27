@@ -1617,12 +1617,11 @@ async def cancel_session_task(
         await asyncio.sleep(_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS)
         waited += _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS
         session_state = await stream_registry.get_session(session_id)
-        # A turn the cancelled one's end woke is not the one the user stopped.
-        if (
-            session_state is None
-            or session_state.status != "running"
-            or session_state.turn_id != active_session.turn_id
-        ):
+        # A turn the cancelled one's end woke is not the one the user stopped,
+        # and its queued follow-ups are its own.
+        if session_state and session_state.turn_id != active_session.turn_id:
+            return CancelSessionResponse(cancelled=True)
+        if session_state is None or session_state.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
                 f"(status={session_state.status if session_state else 'gone'}) after {waited:.1f}s"

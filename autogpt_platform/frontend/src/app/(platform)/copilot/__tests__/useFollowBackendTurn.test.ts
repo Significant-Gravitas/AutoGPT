@@ -63,3 +63,25 @@ test("the probe retries until the answer's turn has a stream", async () => {
 
   expect(refetchSession).toHaveBeenCalledTimes(3);
 });
+
+test("a second answer mid-probe does not start a second probe", async () => {
+  vi.useFakeTimers();
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const hasResumedRef = { current: true };
+  async function refetchSession() {
+    maxInFlight = Math.max(maxInFlight, ++inFlight);
+    await new Promise((r) => setTimeout(r, 200));
+    inFlight--;
+    return idle;
+  }
+  const hook = renderHook(() =>
+    useFollowBackendTurn({ status: "ready", refetchSession, hasResumedRef }),
+  );
+
+  await act(async () => hook.result.current.followBackendTurn());
+  await act(async () => hook.result.current.followBackendTurn());
+  await act(async () => vi.advanceTimersByTimeAsync(10_000));
+
+  expect(maxInFlight).toBe(1);
+});

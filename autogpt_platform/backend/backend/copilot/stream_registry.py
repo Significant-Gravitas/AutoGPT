@@ -1170,7 +1170,7 @@ async def get_active_session(
                 await mark_session_completed(
                     session_id,
                     error_message=f"Session timed out after {age_seconds:.0f}s",
-                    turn_id=meta.get("turn_id", ""),
+                    turn_id=_parse_session_meta(meta, session_id).turn_id,
                 )
                 return None, "0-0"
         except (ValueError, TypeError) as e:

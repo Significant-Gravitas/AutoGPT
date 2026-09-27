@@ -27,26 +27,45 @@ export function useFollowBackendTurn({
   const isBusyRef = useRef(isBusy);
   isBusyRef.current = isBusy;
   const isMountedRef = useRef(true);
+  // One probe at a time; a second answer mid-probe restarts its budget.
+  const attemptsLeftRef = useRef(0);
+  const isProbingRef = useRef(false);
+  const timerRef = useRef<{ id: number; wake: () => void } | null>(null);
   const followRef = useRef(follow);
   followRef.current = follow;
 
   async function follow() {
     pendingRef.current = false;
-    for (let attempt = 0; attempt < FOLLOW_ATTEMPTS; attempt++) {
-      if (attempt > 0) {
-        await new Promise((r) => setTimeout(r, FOLLOW_INTERVAL_MS));
+    attemptsLeftRef.current = FOLLOW_ATTEMPTS;
+    if (isProbingRef.current) return;
+    isProbingRef.current = true;
+    try {
+      while (attemptsLeftRef.current-- > 0) {
+        if (!isMountedRef.current || isBusyRef.current) return;
+        hasResumedRef.current = false;
+        const result = await refetchSession();
+        if (hasActiveBackendStream(result)) return;
+        if (attemptsLeftRef.current > 0) await wait(FOLLOW_INTERVAL_MS);
       }
-      if (!isMountedRef.current || isBusyRef.current) return;
-      hasResumedRef.current = false;
-      const result = await refetchSession();
-      if (hasActiveBackendStream(result)) return;
+    } finally {
+      isProbingRef.current = false;
     }
+  }
+
+  function wait(ms: number) {
+    return new Promise<void>((wake) => {
+      timerRef.current = { id: window.setTimeout(wake, ms), wake };
+    });
   }
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current.id);
+        timerRef.current.wake();
+      }
     };
   }, []);
 
