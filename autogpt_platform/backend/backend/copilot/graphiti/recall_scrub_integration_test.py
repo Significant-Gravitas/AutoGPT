@@ -58,7 +58,7 @@ def boundaries(mocker, scope_graph, stub_graphiti_client):
 @pytest_asyncio.fixture(loop_scope="function")
 async def ingest_worker_cleanup(mocker: MockerFixture) -> AsyncIterator[None]:
     mocker.patch(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
+        "backend.copilot.dream.registry.ensure_dream_system_scheduled",
         AsyncMock(return_value=None),
     )
     yield
