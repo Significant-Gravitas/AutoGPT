@@ -50,6 +50,7 @@ from backend.copilot.transcript import (
     _transcript_to_messages,
 )
 from backend.util import json
+from backend.util.prompt import CompressResult
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
@@ -67,19 +68,15 @@ def _mock_compress_result(
     original_token_count: int = 500,
     token_count: int = 100,
 ) -> object:
-    """Create a mock CompressResult."""
-    return type(
-        "CompressResult",
-        (),
-        {
-            "was_compacted": was_compacted,
-            "messages": messages or [],
-            "original_token_count": original_token_count,
-            "token_count": token_count,
-            "messages_summarized": 2 if was_compacted else 0,
-            "messages_dropped": 0,
-        },
-    )()
+    """A real CompressResult, so the code under test sees every field."""
+    return CompressResult(
+        messages=messages or [],
+        token_count=token_count,
+        was_compacted=was_compacted,
+        original_token_count=original_token_count,
+        messages_summarized=2 if was_compacted else 0,
+        messages_dropped=0,
+    )
 
 
 # ---------------------------------------------------------------------------
