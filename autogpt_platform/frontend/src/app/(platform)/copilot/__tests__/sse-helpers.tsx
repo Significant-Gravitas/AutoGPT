@@ -15,7 +15,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, type HttpHandler } from "msw";
-import { NuqsTestingAdapter } from "nuqs/adapters/testing";
+import {
+  NuqsTestingAdapter,
+  type OnUrlUpdateFunction,
+} from "nuqs/adapters/testing";
 import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
@@ -83,16 +86,18 @@ export function copilotStreamSequenceHandler({
 function Wrapper({
   children,
   searchParams,
+  onUrlUpdate,
 }: {
   children: ReactNode;
   searchParams: string;
+  onUrlUpdate?: OnUrlUpdateFunction;
 }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   );
   return (
     <QueryClientProvider client={queryClient}>
-      <NuqsTestingAdapter searchParams={searchParams}>
+      <NuqsTestingAdapter searchParams={searchParams} onUrlUpdate={onUrlUpdate}>
         <BackendAPIProvider>
           <OnboardingProvider>
             <TooltipProvider>{children}</TooltipProvider>
@@ -117,6 +122,7 @@ export function renderHost(
     pendingMessages?: string[];
     /** Replaces the default session GET, e.g. to answer it with an error. */
     sessionResponse?: HttpHandler;
+    onUrlUpdate?: OnUrlUpdateFunction;
     /** Mount under React Strict Mode, as the dev server does: every effect
      *  runs twice on mount, so load-time requests fire twice. */
     strictMode?: boolean;
@@ -157,6 +163,7 @@ export function renderHost(
     wrapper: ({ children }) => (
       <Wrapper
         searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
+        onUrlUpdate={opts.onUrlUpdate}
       >
         {children}
       </Wrapper>

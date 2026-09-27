@@ -74,6 +74,28 @@ describe("a chat link the user cannot open", () => {
     await waitFor(() => expect(screen.queryByText(UNAVAILABLE)).toBeNull());
   });
 
+  it("clears the expert deep link too, so the new chat is not an old expert thread", async () => {
+    const { handler } = sessionError(404);
+    const onUrlUpdate = vi.fn();
+    renderHost({
+      sessionResponse: handler,
+      searchParams: `?sessionId=${TEST_SESSION_ID}&expertId=expert-1`,
+      onUrlUpdate,
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /new chat/i }),
+    );
+    await waitFor(
+      () => {
+        const params = onUrlUpdate.mock.calls.at(-1)?.[0].searchParams;
+        expect(params?.get("sessionId")).toBeNull();
+        expect(params?.get("expertId")).toBeNull();
+      },
+      { timeout: 3000 },
+    );
+  });
+
   it("keeps a server error on the existing path rather than calling the chat unavailable", async () => {
     const { handler, calls } = sessionError(500);
     renderHost({ sessionResponse: handler });
