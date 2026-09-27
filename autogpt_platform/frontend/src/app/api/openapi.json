@@ -25495,6 +25495,12 @@
             "type": "array",
             "title": "Server Url Options"
           },
+          "allow_custom_url": {
+            "type": "boolean",
+            "title": "Allow Custom Url",
+            "description": "Hosted entries only: server_url stays the default, and users may replace it with their own endpoint, such as a self-hosted instance of the service.",
+            "default": false
+          },
           "oauth_server_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Oauth Server Url"

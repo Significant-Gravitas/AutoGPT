@@ -7,6 +7,7 @@
 - Keep a stable `mcp_...` ID and link directly to the vendor's setup documentation.
 - Describe the server's purpose and required plan, admin approval, region, endpoint, and credentials in `description` and `setup_instructions`.
 - Use `connection_mode: hosted` with a fixed public HTTPS `server_url`, or `custom` for a user-provided endpoint. Add `server_url_options` for documented regions.
+- Set `allow_custom_url` on a hosted entry whose service can also be self-hosted. `server_url` stays the default, and users can replace it with their own instance's URL. Explain how in `setup_instructions`.
 - Order the supported `auth_methods` by preference; the first method is selected initially. Choices are `oauth`, `bearer`, `basic`, and `none`.
 - Set `oauth_server_url` when the vendor supplies a separate signed-in endpoint.
 - Set documented `oauth_scopes` for the initial grant and separate `oauth_write_scopes` for the optional **Allow changes** choice. An empty default list omits the scope parameter; omission/null uses discovery defaults.

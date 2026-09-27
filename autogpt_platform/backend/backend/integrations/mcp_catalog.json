@@ -823,8 +823,9 @@
     "mcp_server": {
       "server_url": "https://app.openseo.so/mcp",
       "documentation_url": "https://openseo.so/docs/mcp",
-      "setup_instructions": "Sign in to OpenSEO, or use an OpenSEO API key. Requires an active OpenSEO subscription; keyword, SERP, backlink, site audit and rank tracking tools spend OpenSEO credits.",
+      "setup_instructions": "Sign in to OpenSEO, or use an OpenSEO API key. OpenSEO's cloud service requires an active subscription; keyword, SERP, backlink, site audit and rank tracking tools spend OpenSEO credits. Self-hosting OpenSEO on Cloudflare? Replace the server URL with your instance's /mcp URL and sign in; turn on Managed OAuth in its Cloudflare Access application first.",
       "connection_mode": "hosted",
+      "allow_custom_url": true,
       "auth_methods": [
         "oauth",
         "bearer"
