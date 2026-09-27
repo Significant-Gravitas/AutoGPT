@@ -1531,7 +1531,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Dream Pass Records",
-        "description": "List a user's dream passes, across the account and every expert,\nnewest first: the durable records, each as ``GET .../record`` returns\nit. A finished pass keeps its phase outputs, operations and usage; its\nlease and input bundle went when it closed.",
+        "description": "List a user's dream passes, across the account and every expert,\nnewest first: the durable records, each as ``GET .../record`` returns\nit. A finished pass keeps its phase outputs, operations and usage; its\ninput bundle went when it closed, and its lease with it, or, for a pass\nwhose close left a cleanup pending, once that cleanup finished.",
         "operationId": "getV2ListDreamPassRecords",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

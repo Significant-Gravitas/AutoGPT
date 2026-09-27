@@ -29,7 +29,11 @@ scope now. A renewal Redis cannot answer in time is taken by what follows it.
 Before a phase, or at a landed callback, the pass goes on, warned: nothing it
 does before apply writes the graph, and apply's admission decides. The
 renewals that admit apply fail closed: ownership unknown is not ownership,
-and a pass that cannot prove it holds its lock does not write.
+and a pass that cannot prove it holds its lock does not write. A batch pass
+renews under the token its input bundle carries, else the one its row keeps
+(``batch_outcome.lock_token_of``); with none anywhere its ownership is
+unknown, never "no lock": it does not apply, and its row stays marked until
+the reaper can tell the lock is not its own.
 
 What stays open: a renewal proves ownership at the instant Redis runs it and
 keeps the lock one more TTL, not up to every write. A pass that stalls longer
@@ -48,8 +52,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.graphiti.scope import MemoryScope
 
-from .batch_outcome import BatchPass, fail_pass
-from .batch_submit import read_lock_token
+from .batch_outcome import BatchPass, fail_pass, lock_token_of
 from .cancel import stop_before_apply, stop_if_stopped, stopped_error
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
@@ -132,10 +135,12 @@ async def renew_batch_lease(bp: BatchPass, next_step: str) -> bool:
     for another ``BATCH_LOCK_TTL_SECONDS`` (a whole batch lifetime) and
     record it on the row. ``False`` once the lock turned out to be no longer
     the pass's and the pass has been ended: its landed phases charged, its
-    state and bundle deleted, the lock left to whoever holds it. A pass with
-    no token to renew under, or whose renewal Redis could not answer, goes
-    on unrenewed: apply's admission decides (``admit_batch_apply``)."""
-    token = await _lock_token(bp.pass_id)
+    state and bundle deleted, the lock left to whoever holds it. The token
+    is the one the bundle carries, else the one the row keeps
+    (``lock_token_of``). A pass with no token anywhere, or whose renewal
+    Redis could not answer, goes on unrenewed: apply's admission decides
+    (``admit_batch_apply``)."""
+    token = await lock_token_of(bp.pass_id)
     if token is None:
         return True
     scope = MemoryScope.build(bp.user_id, bp.expert_id)
@@ -160,13 +165,15 @@ async def admit_batch_apply(bp: BatchPass, lock_token: str | None) -> ApplyLease
     could return a stale "yours" whose reply crossed the lock's expiry.
 
     Fails closed: a lock that is no longer the pass's, one Redis could not
-    answer for in time, and a pass with no token all end the pass, its
-    landed phases charged and its state and bundle cleaned; the lock is
-    released by compare-and-delete, which only ever deletes the pass's own,
-    unless it is known to be another's. Returns the lease apply renews once
-    more before it writes, or ``None`` once the pass has ended."""
+    answer for in time, and a pass with no token anywhere (its ownership
+    unknown, not "no lock") all end the pass, its landed phases charged and
+    its state and bundle cleaned. The lock is released by compare-and-delete,
+    which only ever deletes the pass's own, unless it is known to be
+    another's; with no token to release it by, the row keeps its mark and
+    the reaper settles it. Returns the lease apply renews once more before it
+    writes, or ``None`` once the pass has ended."""
     scope = MemoryScope.build(bp.user_id, bp.expert_id)
-    renewed: bool | None = False
+    renewed: bool | None = None
     if lock_token is not None:
         extend = extend_dream_lock(scope, lock_token, BATCH_LOCK_TTL_SECONDS)
         renewed = await _renewed(extend, bp.pass_id)
@@ -179,7 +186,7 @@ async def admit_batch_apply(bp: BatchPass, lock_token: str | None) -> ApplyLease
         )
     error = await stopped_error(bp.pass_id) or _ended_error("apply", renewed)
     logger.warning(f"Dream batch pass {bp.pass_id} does not apply: {error}")
-    await fail_pass(bp, error, holds_lock=renewed is None)
+    await fail_pass(bp, error, holds_lock=renewed is not False)
     return None
 
 
@@ -215,19 +222,6 @@ async def _renewed(extend: Awaitable[bool], pass_id: str) -> bool | None:
     except Exception:
         logger.warning(
             f"Dream pass {pass_id}: could not renew its lease in time",
-            exc_info=True,
-        )
-        return None
-
-
-async def _lock_token(pass_id: str) -> str | None:
-    """The token the batch pass holds its lock under, kept with its input
-    bundle; ``None`` when there is none or Redis cannot say."""
-    try:
-        return await read_lock_token(pass_id)
-    except Exception:
-        logger.warning(
-            f"Dream pass {pass_id}: could not read its lock token to renew it",
             exc_info=True,
         )
         return None

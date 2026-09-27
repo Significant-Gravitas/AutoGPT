@@ -18,15 +18,16 @@ statement against the row as it stands when the statement runs:
     racing for one open row exactly one lands and bumps it;
   * ``leaseToken``, ``leaseExpiresAt``, ``inputBundle`` and
     ``cleanupPendingAt`` become NULL when the update names them in ``clear``
-    (a closing row drops its lease and its bundle);
+    (a closing row drops its bundle, and its lease unless the close marks
+    it for a cleanup, whose end then clears the lease with the mark);
   * every other column takes the new value when the update gives one.
 
 Nothing is written to a row that has reached a terminal status, nor to one
 that fails the update's own conditions: another user's row when it names the
 owner, a row written since the instant it names. The one exception is the
-update marked ``closed_row`` (the reaper's cleanup finished), which applies
-to a closed row only and only clears. The statement text is constant; every
-value is a bound parameter.
+update marked ``closed_row`` (the cleanup after the pass finished), which
+applies to a closed row only and only clears. The statement text is
+constant; every value is a bound parameter.
 """
 
 from typing import Any

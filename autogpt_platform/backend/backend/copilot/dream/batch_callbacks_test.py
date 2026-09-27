@@ -212,7 +212,10 @@ class TestPhaseChaining:
             mark_errored.await_args.kwargs["error"]
             == "batch DreamInput missing; memory scope unavailable"
         )
-        release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), None)
+        # No token anywhere (no bundle, no row): the pass's ownership of the
+        # lock is unknown, so nothing is released; its TTL, or the reaper,
+        # settles it.
+        release_lock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_autopilot_payload_cannot_apply_expert_dream(
@@ -1114,9 +1117,9 @@ class TestLockTokenWiring:
     ):
         """A Redis blip on the lock-token read in the terminal tail fires
         AFTER mark_complete already ran. The read must stay best-effort
-        (token=None → lock TTL fallback) — letting it propagate would hit
-        the handler's crash guard, whose fail_pass rewrites the
-        already-completed job to errored."""
+        (no token: the lock is left, never blind-deleted) — letting it
+        propagate would hit the handler's crash guard, whose fail_pass
+        rewrites the already-completed job to errored."""
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
         await self._seed_terminal_pass()
@@ -1124,7 +1127,13 @@ class TestLockTokenWiring:
         mark_complete = AsyncMock()
         mark_errored = AsyncMock()
         release_lock = AsyncMock()
-        read_token = AsyncMock(side_effect=ConnectionError("redis blip"))
+
+        async def blips_once_the_job_is_complete(pass_id: str) -> str:
+            if mark_complete.await_count:
+                raise ConnectionError("redis blip")
+            return "tok-u1"
+
+        read_token = AsyncMock(side_effect=blips_once_the_job_is_complete)
         with patch(
             "backend.copilot.dream.apply.apply_operations",
             AsyncMock(return_value={"writes": 0}),
@@ -1146,9 +1155,10 @@ class TestLockTokenWiring:
 
         mark_complete.assert_awaited_once()
         mark_errored.assert_not_awaited()
-        # Token read failed → token-less release; release_dream_lock then
-        # defers to the lock TTL rather than blind-deleting.
-        release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), None)
+        # The token read failed and the row keeps none either: ownership is
+        # unknown, so nothing is released rather than blind-deleted.
+        release_lock.assert_not_awaited()
+        assert string_store["dream:inflight:u1"] == "tok-u1"
 
     @pytest.mark.asyncio
     async def test_cleanup_failure_after_complete_keeps_job_completed(self, fake_redis):
@@ -1451,8 +1461,10 @@ class TestDreamPassRecord:
     ):
         """The consolidate phase landed and was billed; a payload no phase
         handler can take then ends the pass. The record is closed with that
-        phase's usage before the disowned lock is released."""
+        phase's usage before the disowned lock is released, under the token
+        the row keeps: the pass never persisted a bundle to carry one."""
         _seed_submitted_pass(fake_dream_db)
+        fake_dream_db.rows["p1"]["lease_token"] = "tok-u1"
         await write_phase_to_state(
             pass_id="p1",
             phase="consolidate",
@@ -1481,6 +1493,7 @@ class TestDreamPassRecord:
         # Like any failure: the landed phase charged once, and the pass's
         # batch state gone with its lock.
         assert order == ["record ERRORED", "charged", "lock released"]
+        assert release_lock.await_args.args == (MemoryScope.for_user("u1"), "tok-u1")
         assert state_key("p1") not in fake_redis[1]
 
     @pytest.mark.asyncio
@@ -1647,10 +1660,11 @@ class TestDreamPassRecord:
             "p1",
             "p2",
         }
-        # Each callback's two writes (its output, its next batch) and its
-        # stop check's read, each abandoned at the deadline; the check that
-        # got no answer let the chain go on.
-        assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (6, 6)
+        # Each callback's two writes (its output, its next batch), its stop
+        # check's read and the read of its row for the lock token its bundle
+        # lacks, each abandoned at the deadline; the reads that got no answer
+        # let the chain go on.
+        assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (8, 8)
 
     @pytest.mark.asyncio
     async def test_a_store_outage_never_fails_a_batch_pass(

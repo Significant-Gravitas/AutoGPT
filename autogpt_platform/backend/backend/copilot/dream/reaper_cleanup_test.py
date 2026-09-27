@@ -2,12 +2,13 @@
 in-memory store and Redis: a cleanup cut short at any step (the process dying
 there), or by the budget, is resumed by the next run and finishes once (one
 charge, the state and bundle gone, the mark and the kept token cleared; a
-step that fails without raising is ``cleanup_retry_test.py``'s); a run never
-outlasts its budget, the release of its hold on a scope included, and that
-release finishes when the budget cuts into it; the budget runs from before
-the listing; every row gets its own line. The provider and the charges are
-stubbed at their edges; the lock, the gates and the row transitions are the
-real ones."""
+step that fails without raising is ``cleanup_retry_test.py``'s); a row that
+kept no token has its lock left alone unless it is gone or another open
+pass's; a run never outlasts its budget, the release of its hold on a scope
+included, and that release finishes when the budget cuts into it; the budget
+runs from before the listing; every row gets its own line. The provider and
+the charges are stubbed at their edges; the lock, the gates and the row
+transitions are the real ones."""
 
 import asyncio
 import logging
@@ -222,6 +223,85 @@ class TestTheBudget:
         assert fake_dream_db.rows["s1"]["status"] is DreamPassStatus.RUNNING
 
 
+class TestATokenlessRow:
+    """A marked row that kept no lease token (one written before leases, say):
+    its pass's lock cannot be released by compare-and-delete, and a lock the
+    reaper cannot match to a pass is never deleted."""
+
+    async def test_whose_scope_lock_is_gone_is_cleaned(
+        self, fake_dream_db, fake_dream_redis, charges
+    ):
+        await _tokenless_marked_row(fake_dream_db)
+
+        run = await reap_expired_passes()
+
+        assert run.outcomes == {"cleaned": 1}
+        assert _charged(charges) == ["consolidate"]
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
+
+    async def test_whose_scope_lock_another_open_pass_holds_leaves_that_lock(
+        self, fake_dream_db, fake_dream_redis
+    ):
+        """The lock is the newer pass's by the token its open row keeps: not
+        the tokenless pass's, so its unlock is done and the lock untouched."""
+        await _tokenless_marked_row(fake_dream_db)
+        _seed(
+            fake_dream_db,
+            "newer",
+            route=DreamPassRoute.SYNC,
+            lapsed=-600,
+            lease_token="newer-token",
+        )
+        fake_dream_redis.store[_LOCK_KEY] = "newer-token"
+
+        run = await reap_expired_passes()
+
+        assert run.outcomes == {"cleaned": 1}
+        assert fake_dream_redis.store[_LOCK_KEY] == "newer-token"
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
+        assert fake_dream_db.rows["newer"]["status"] is DreamPassStatus.RUNNING
+
+    async def test_whose_scope_lock_no_open_pass_keeps_waits_for_it_to_lapse(
+        self, fake_dream_db, fake_dream_redis, charges, caplog
+    ):
+        """Maybe the pass's own lock: left alone, the row retried every run
+        until the lock lapses on its TTL, then cleaned; charged once."""
+        await _tokenless_marked_row(fake_dream_db)
+        fake_dream_redis.store[_LOCK_KEY] = "whose-token"
+
+        with caplog.at_level(logging.WARNING):
+            first = await reap_expired_passes()
+
+        assert first.outcomes == {"retry": 1}
+        assert "cleanup unfinished at unlock; listed again" in caplog.text
+        assert fake_dream_redis.store[_LOCK_KEY] == "whose-token"
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is not None
+
+        del fake_dream_redis.store[_LOCK_KEY]
+        second = await reap_expired_passes()
+
+        assert second.outcomes == {"cleaned": 1}
+        assert _charged(charges) == ["consolidate"]
+
+    async def test_whose_scope_lock_cannot_be_read_is_retried(
+        self, monkeypatch, fake_dream_db, fake_dream_redis
+    ):
+        await _tokenless_marked_row(fake_dream_db)
+        read = fake_dream_redis.get
+
+        async def lock_read_down(key: str):
+            if key == _LOCK_KEY:
+                raise ConnectionError("redis down at the lock read")
+            return await read(key)
+
+        monkeypatch.setattr(fake_dream_redis, "get", lock_read_down)
+        first = await reap_expired_passes()
+        monkeypatch.setattr(fake_dream_redis, "get", read)
+        second = await reap_expired_passes()
+
+        assert (first.outcomes, second.outcomes) == ({"retry": 1}, {"cleaned": 1})
+
+
 async def test_every_row_gets_its_own_line(mocker, fake_dream_db, caplog):
     """Expired and moved at INFO; failed, and each row the budget did not
     reach, at WARNING; then the counts."""
@@ -293,3 +373,14 @@ def _hang_the_release_of_the_hold(mocker) -> None:
         await release(scope, token)
 
     mocker.patch.object(reaper_mod, "release_dream_lock", hangs_for_the_hold)
+
+
+async def _tokenless_marked_row(fake_dream_db) -> None:
+    """Dead batch pass p1, consolidate landed, its row closed EXPIRED and
+    marked for its cleanup an hour ago, without a lease token."""
+    await _dead_batch_pass(fake_dream_db)
+    fake_dream_db.rows["p1"].update(
+        status=DreamPassStatus.EXPIRED,
+        cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        lease_token=None,
+    )

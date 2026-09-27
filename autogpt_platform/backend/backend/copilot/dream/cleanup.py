@@ -11,8 +11,10 @@ Four steps, each idempotent and each saying whether it finished:
             (``batch_costs.charge_landed_phases``); a state that cannot be
             read is not an empty one
   unlock    the pass's dream lock released by compare-and-delete on its
-            token, or found no longer the pass's; with no token to release
-            it with, the lock is left held and the step unfinished
+            token, or found no longer the pass's; with no token anywhere
+            the pass's ownership is unknown, and the lock is left held and
+            the step unfinished, until the reaper finds the lock gone or
+            another open pass's
   delete    the state and the input bundle deleted, once every landed phase
             is charged: a charge left unfinished keeps what it needs
 
@@ -25,6 +27,7 @@ reaper's list, and its next run does every step again, the finished ones
 doing nothing (``reaper.py``).
 """
 
+import asyncio
 import logging
 from typing import Literal
 
@@ -34,10 +37,10 @@ from backend.copilot.graphiti.scope import MemoryScope
 
 from .batch_costs import PhaseCharges, charge_landed_phases
 from .batch_state import best_effort_cleanup, read_state
-from .locks import release_dream_lock
+from .locks import LOCK_CHECK_TIMEOUT_SECONDS, read_dream_lock_token, release_dream_lock
 from .provider_batch import provider_batch_stopped
 from .schemas import DreamPhase
-from .store import record_cleanup_finished
+from .store import read_open_passes, record_cleanup_finished
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,7 @@ async def clean_up_pass(
     provider_batch_id: str | None,
     lock_token: str | None,
     release: bool,
+    attribute_tokenless: bool = False,
 ) -> PassCleanup:
     """Every step of the cleanup after pass *pass_id* of *scope*, each run
     whatever became of the others but the delete, which waits on the charge.
@@ -72,14 +76,18 @@ async def clean_up_pass(
     *provider_batch_id* names the batch to stop, if any; *phase_models*
     prices the landed phases (``None``: they cannot be priced, and the
     charge stays unfinished while any landed); the lock is released under
-    *lock_token* only when *release*."""
+    *lock_token* only when *release*. Without a token the unlock stays
+    unfinished, unless *attribute_tokenless* (the reaper, for a row that kept
+    no token) and the lock is found not to be the pass's."""
     unfinished: list[CleanupStep] = []
     if provider_batch_id and not await provider_batch_stopped(provider_batch_id):
         unfinished.append("provider")
     charges = await _charge(pass_id, scope, phase_models)
     if not charges.settled:
         unfinished.append("charge")
-    if release and not await release_dream_lock(scope, lock_token):
+    if release and not await _unlock(
+        pass_id, scope, lock_token, attribute=attribute_tokenless
+    ):
         unfinished.append("unlock")
     if not charges.settled or not await best_effort_cleanup(pass_id):
         unfinished.append("delete")
@@ -131,3 +139,50 @@ async def _charge(
         state=state,
         phase_models=phase_models,
     )
+
+
+async def _unlock(
+    pass_id: str, scope: MemoryScope, lock_token: str | None, *, attribute: bool
+) -> bool:
+    """Release the pass's lock by compare-and-delete under *lock_token*.
+    Without a token the pass's ownership is unknown: the step finishes only
+    when *attribute* and the lock is found not to be the pass's
+    (``_lock_is_not_the_passes``); otherwise it stays unfinished and the
+    lock is left alone."""
+    if lock_token is not None:
+        return await release_dream_lock(scope, lock_token)
+    if not attribute:
+        logger.warning(
+            f"Dream pass {pass_id}: no lock token to release its lock with; "
+            "left for the reaper"
+        )
+        return False
+    return await _lock_is_not_the_passes(pass_id, scope)
+
+
+async def _lock_is_not_the_passes(pass_id: str, scope: MemoryScope) -> bool:
+    """Whether the scope's lock is surely not the tokenless pass's: gone, or
+    held under the lease token of another open pass of the scope. Never
+    deletes: a lock held under a token no open pass keeps may be the pass's
+    own, so it is left to lapse on its TTL (24 h 10 min at most for a batch
+    lock, 30 min for a sync one), and the step stays unfinished until then."""
+    try:
+        holder = await asyncio.wait_for(
+            read_dream_lock_token(scope), timeout=LOCK_CHECK_TIMEOUT_SECONDS
+        )
+        if holder is None:
+            return True
+        others = await read_open_passes(scope)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not tell whose its scope's lock is",
+            exc_info=True,
+        )
+        return False
+    if any(row.id != pass_id and row.lease_token == holder for row in others):
+        return True
+    logger.warning(
+        f"Dream pass {pass_id}: its scope's lock is held under a token no open "
+        "pass keeps; left to lapse on its TTL"
+    )
+    return False

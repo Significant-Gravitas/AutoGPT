@@ -12,11 +12,14 @@ write failed looks dead too, and is stopped at its next check.
 Each run lists ``REAPER_ROW_LIMIT`` rows at most, oldest first: the closed
 rows whose cleanup (``cleanup.py``) is pending and due, then the open rows
 whose lease lapsed more than ``REAP_GRACE_SECONDS`` (one sync lock TTL) ago.
-A cleanup is due once its pass cannot still be running: its lease lapsed a
-grace ago, or it was marked a grace ago, time for a pass stopped while it
-ran to reach its next check and for the executor's drop to clean up after
-it; sooner, the reaper could release the lock of a pass still applying. It
-closes an open row EXPIRED, holding the scope's lock when it is free, its
+A cleanup is due once its lease lapsed a grace ago, or it was marked a grace
+ago: time for a pass stopped while it ran to reach its next check, and for
+the executor's drop to clean up after it. The grace is a bound, not a fence:
+an apply that runs on longer than the grace after its pass was stopped can
+still be writing when the reaper releases the lock; without the grace, the
+reaper would release the lock of any pass still applying.
+
+It closes an open row EXPIRED, holding the scope's lock when it is free, its
 cancel generation bumped and its error naming the phase the pass died at,
 only if nothing wrote the row since it was read (else ``moved``, left
 alone), and marks it in the same statement, keeping the dead pass's lease
@@ -29,7 +32,12 @@ lock under the token the row kept unless the reaper holds the scope itself,
 and clears the mark and the lease only once every step has finished
 (``expired``, ``cleaned``); else the row stays marked (``retry``) and the
 next run does every step again, the finished ones doing nothing. A row
-marked longer ago than a batch can run no longer waits on the provider.
+marked longer ago than a batch can run no longer waits on the provider. A
+row that kept no token (one written before leases, say) cannot have its
+pass's lock released: its unlock finishes once the scope's lock is gone or
+held under another open pass's token, and never by deleting a lock no one
+can be matched to, so such a row stays marked until its lock lapses, 24 h
+10 min at most for a batch lock and 30 min for a sync one.
 
 Bounded: a run takes at most ``REAPER_BUDGET_SECONDS``, from before its
 listing to the release of its hold on a scope. Rows are worked until
@@ -209,22 +217,25 @@ async def _finish_cleanup(row: DreamPassRecord, scope: MemoryScope) -> ReapOutco
     not finished: every step again, the ones that already ran doing
     nothing."""
     cleanup = await _clean_up(row, scope, release=True)
-    return _logged(row, cleanup, "cleaned", f"({row.status.value.lower()}) cleaned")
+    done = "cleaned" if cleanup.finished else "not cleaned up yet"
+    return _logged(row, cleanup, "cleaned", f"({row.status.value.lower()}) {done}")
 
 
 async def _clean_up(
     row: DreamPassRecord, scope: MemoryScope, *, release: bool
 ) -> PassCleanup:
     """Clean up after *row*'s pass, releasing its lock under the token the
-    row kept when *release*, then clear the row's mark and lease if every
-    step finished. Raises when that write fails: the row is listed again."""
+    row kept when *release* (for a row that kept none, finding the lock not
+    the pass's), then clear the row's mark and lease if every step finished.
+    Raises when that write fails: the row is listed again."""
     cleanup = await clean_up_pass(
         row.id,
         scope,
         phase_models=_phase_models(row),
         provider_batch_id=_batch_to_stop(row),
         lock_token=row.lease_token,
-        release=release and row.lease_token is not None,
+        release=release,
+        attribute_tokenless=True,
     )
     if cleanup.finished:
         await record_cleanup_finished(row.id)

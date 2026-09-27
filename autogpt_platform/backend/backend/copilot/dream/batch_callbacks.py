@@ -51,16 +51,12 @@ from .batch_outcome import (
     BatchPass,
     clean_up_after,
     fail_pass,
+    lock_token_of,
     record_completion,
     release_lock,
 )
 from .batch_state import claim_apply_gate, content_for, read_state, write_phase_to_state
-from .batch_submit import (
-    PHASE_RESPONSE_MODELS,
-    read_input_bundle,
-    read_lock_token,
-    submit_phase,
-)
+from .batch_submit import PHASE_RESPONSE_MODELS, read_input_bundle, submit_phase
 from .cancel import end_batch_pass_if_stopped, pass_closed
 from .clamp import clamp_operations
 from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
@@ -344,7 +340,7 @@ async def _claim_apply(bp: BatchPass, ops: DreamOperations) -> ApplyLease | None
     compare-and-extend runs, so a newer pass that took the scope meanwhile is
     never applied over (``lease.py`` has what stays open)."""
     await record_applying(bp.pass_id, ops)
-    lock_token = await read_lock_token(bp.pass_id)
+    lock_token = await lock_token_of(bp.pass_id)
     if await end_batch_pass_if_stopped(bp):
         return None
     gate = await claim_apply_gate(bp.pass_id)

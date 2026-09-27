@@ -1,8 +1,9 @@
 """How long the DreamPass table keeps a pass, and the job that enforces it.
 
 A row sheds most of its weight as it closes: every closing transition drops
-its input bundle with its lease (``pass_record.py``), keeping the phase
-outputs, the operations and the usage. The bundle is the bulk of an open
+its input bundle (``pass_record.py``), keeping the phase outputs, the
+operations and the usage, and its small lease until the cleanup after the
+pass, when one is pending, has finished. The bundle is the bulk of an open
 batch row: Codex measured one gathered from the dream fixtures (50 episodes,
 500 facts, 10 session bodies) at 167 KB of JSON, which Postgres compressed to
 7.2 KB, about 8.7 KB of table per row all told; real text compresses less,

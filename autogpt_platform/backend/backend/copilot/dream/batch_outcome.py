@@ -30,7 +30,7 @@ from .schemas import (
     DreamPassUsage,
     IngestionDrainStatus,
 )
-from .store import record_batch_complete, record_batch_failed
+from .store import read_pass, record_batch_complete, record_batch_failed
 
 logger = logging.getLogger(__name__)
 
@@ -103,12 +103,11 @@ async def clean_up_after(
     bp: BatchPass, *, holds_lock: bool = True, provider_batch_id: str | None = None
 ) -> None:
     """The cleanup after the ended pass (``cleanup.clean_up_pass``), its lock
-    released under the token its input bundle carries, then its row's mark
-    cleared if every step finished; a step that did not leaves the mark for
-    the reaper, which releases the lock under the token the row kept. Never
-    raises: on the success tail an exception would fire AFTER
-    ``mark_complete`` and the crash guard would rewrite a completed job to
-    errored."""
+    released under the pass's token (``lock_token_of``), then its row's mark
+    cleared if every step finished; a step that did not, a lock the pass has
+    no token for included, leaves the mark for the reaper. Never raises: on
+    the success tail an exception would fire AFTER ``mark_complete`` and the
+    crash guard would rewrite a completed job to errored."""
     try:
         scope = MemoryScope.build(bp.user_id, bp.expert_id)
     except ValueError:
@@ -122,7 +121,7 @@ async def clean_up_after(
         scope,
         phase_models=bp.phase_models,
         provider_batch_id=provider_batch_id,
-        lock_token=await _bundle_lock_token(bp) if holds_lock else None,
+        lock_token=await lock_token_of(bp.pass_id) if holds_lock else None,
         release=holds_lock,
     )
     await finish_cleanup(bp.pass_id, cleanup)
@@ -183,12 +182,11 @@ async def mark_job_errored(
 
 
 async def release_lock(bp: BatchPass) -> bool:
-    """Release the disowned dream lock with the ownership token persisted
-    alongside the input bundle, and say whether the lock is no longer the
-    pass's (``release_dream_lock``). Must run before ``delete_input_bundle``
-    — the token rides on that key. A missing token (bundle TTL'd out,
-    malformed payload) leaves the lock alone rather than blind-deleting what
-    may be a newer pass's lock.
+    """Release the disowned dream lock under the pass's ownership token
+    (``lock_token_of``), and say whether the lock is no longer the pass's
+    (``release_dream_lock``). Must run before ``delete_input_bundle``, whose
+    key carries the token first. With no token anywhere the lock is left
+    alone rather than blind-deleting what may be a newer pass's lock.
 
     Best-effort like ``release_dream_lock`` itself: a Redis blip on the
     token read must not propagate — on the success tail it would fire
@@ -203,23 +201,54 @@ async def release_lock(bp: BatchPass) -> bool:
             bp.user_id[:12],
         )
         return False
-    return await release_dream_lock(scope, await _bundle_lock_token(bp))
+    return await release_dream_lock(scope, await lock_token_of(bp.pass_id))
 
 
-async def _bundle_lock_token(bp: BatchPass) -> str | None:
-    """The lock token the pass's input bundle carries; ``None`` when there is
-    no bundle or no pass id, or Redis cannot say."""
-    if not bp.pass_id:
+async def lock_token_of(pass_id: str) -> str | None:
+    """The token the batch pass holds its scope's lock under: the one its
+    input bundle carries, else the one its row keeps (one bounded read, for
+    a bundle that lost its token or is gone). ``None`` when neither can say:
+    the pass's ownership of the lock is then unknown, never taken for "no
+    lock", so it neither applies nor has its lock taken for released."""
+    if not pass_id:
         return None
+    token = await _bundle_lock_token(pass_id)
+    if token is not None:
+        return token
+    token = await _row_lock_token(pass_id)
+    if token is not None:
+        logger.warning(
+            f"Dream pass {pass_id}: no lock token with its input bundle; "
+            "going by the one its row keeps"
+        )
+    return token
+
+
+async def _bundle_lock_token(pass_id: str) -> str | None:
+    """The lock token the pass's input bundle carries; ``None`` when there is
+    no bundle, it carries none, or Redis cannot say."""
     try:
-        return await read_lock_token(bp.pass_id)
+        return await read_lock_token(pass_id)
     except Exception:
         logger.exception(
-            "Failed to read dream lock token for pass=%s — "
-            "leaving the lock to the reaper",
-            bp.pass_id,
+            "Failed to read dream lock token for pass=%s — going by its row",
+            pass_id,
         )
         return None
+
+
+async def _row_lock_token(pass_id: str) -> str | None:
+    """The lease token the pass's row keeps, read once under the store's
+    deadline; ``None`` when there is none, or the store cannot say in time."""
+    try:
+        row = await read_pass(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read its row for its lock token",
+            exc_info=True,
+        )
+        return None
+    return row.lease_token if row is not None else None
 
 
 def _applied_result(

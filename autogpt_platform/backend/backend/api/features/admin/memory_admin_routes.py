@@ -1121,7 +1121,8 @@ async def list_dream_pass_records(
     """List a user's dream passes, across the account and every expert,
     newest first: the durable records, each as ``GET .../record`` returns
     it. A finished pass keeps its phase outputs, operations and usage; its
-    lease and input bundle went when it closed."""
+    input bundle went when it closed, and its lease with it, or, for a pass
+    whose close left a cleanup pending, once that cleanup finished."""
     target = _resolve_user_id(user_id, caller_id)
     _audit_cross_user_access(
         request=request,
