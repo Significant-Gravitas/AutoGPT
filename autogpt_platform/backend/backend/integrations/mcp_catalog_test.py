@@ -35,6 +35,18 @@ def test_posthog_catalog_entry_uses_hosted_authentication():
     )
 
 
+def test_openseo_catalog_entry_uses_hosted_authentication():
+    entry = get_mcp_catalog_entry_for_url("https://app.openseo.so/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_openseo"
+    assert entry.display_name == "OpenSEO"
+    assert entry.mcp_server.icon_id == "openseo"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
+
+
 @pytest.mark.parametrize(
     "url",
     [

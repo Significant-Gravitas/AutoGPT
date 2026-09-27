@@ -817,6 +817,22 @@
     }
   },
   {
+    "name": "mcp_openseo",
+    "display_name": "OpenSEO",
+    "description": "Research keywords, SERPs, backlinks and competitor domains, run site audits, track rankings, and build SEO reports.",
+    "mcp_server": {
+      "server_url": "https://app.openseo.so/mcp",
+      "documentation_url": "https://openseo.so/docs/mcp",
+      "setup_instructions": "Sign in to OpenSEO, or use an OpenSEO API key. Requires an active OpenSEO subscription; keyword, SERP, backlink, site audit and rank tracking tools spend OpenSEO credits.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "openseo"
+    }
+  },
+  {
     "name": "mcp_opsera",
     "display_name": "Opsera",
     "description": "Use DevSecOps investigation, architecture, compliance, and security tools.",
