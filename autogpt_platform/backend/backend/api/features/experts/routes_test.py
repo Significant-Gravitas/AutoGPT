@@ -1098,6 +1098,49 @@ def test_update_expert_skills_passes_explicit_removals_through(
     )
 
 
+def test_update_expert_skills_dedupes_names_by_skill_key(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        return_value=_make_expert(name="Maria", skills=[]),
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills",
+        json={"remove": ["Deep Research", "deep_research", "deep-research"]},
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_awaited_once_with(
+        test_user_id,
+        "expert-1",
+        [],
+        marketplace_listing_ids=[],
+        remove=["Deep Research"],
+    )
+
+
+def test_update_expert_skills_returns_400_when_a_listing_is_also_removed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        side_effect=ValueError("Skills cannot be both attached and removed: SEO"),
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills",
+        json={"marketplace_listing_ids": ["listing-1"], "remove": ["SEO"]},
+    )
+
+    assert response.status_code == 400
+    assert "both attached and removed" in response.json()["detail"]
+
+
 def test_update_expert_skills_rejects_a_name_both_added_and_removed(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

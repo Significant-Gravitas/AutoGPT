@@ -460,7 +460,11 @@ class ExpertSkillsUpdate(BaseModel):
     Only names listed in ``remove`` are removed. A skill the expert carries
     that appears in neither list is left alone, so a client holding a stale
     list can never delete a skill it has not seen (the expert can distil new
-    ones at any time)."""
+    ones at any time).
+
+    A normalized name must not appear in both ``skills`` and ``remove``;
+    such a request is rejected with a validation error. A marketplace listing
+    whose name matches a ``remove`` entry is rejected with a 400."""
 
     skills: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
     remove: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
@@ -494,9 +498,12 @@ class ExpertSkillsUpdate(BaseModel):
             name = item.strip()
             if not name or len(name) > 100:
                 raise ValueError("Skill names must be 1-100 characters")
-            if name.lower() in seen:
+            # Same key the overlap check and update_skills use, so
+            # "Deep Research" and "deep_research" count as one skill.
+            key = skill_name_key(name)
+            if key in seen:
                 continue
-            seen.add(name.lower())
+            seen.add(key)
             cleaned.append(name)
         return cleaned
 
