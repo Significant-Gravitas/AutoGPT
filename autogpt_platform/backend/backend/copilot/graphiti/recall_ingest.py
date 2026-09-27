@@ -35,9 +35,11 @@ And when the prompt shows the placeholder anywhere, both lists must be
 there, once each, and parse, and every placeholder must belong to a
 candidate the guard can read; otherwise the answer names no edge at all and
 the statement is saved as new (a duplicate at worst, never a merge into a
-forgotten edge). Every prompt it cannot read in full is logged at error
-once per process for each shape and reason, so a graphiti upgrade that
-changes the prompt is noticed even before a forgotten edge shows up in it.
+forgotten edge). So does anything else that goes wrong while it reads the
+prompt: the error is never let into graphiti's ``add_episode``. Every prompt
+it cannot read in full is logged at error once per process for each shape
+and reason, so a graphiti upgrade that changes the prompt is noticed even
+before a forgotten edge shows up in it.
 """
 
 import ast
@@ -72,8 +74,16 @@ _ENTRY = re.compile(r"\{[^{}]*\}")
 # A prompt's tags, in order: its shape, for the once-per-shape error log.
 _TAG = re.compile(r"</?([A-Z][A-Z _]*)>")
 _REPORTED_SHAPES: set[tuple[str, ...]] = set()
-# What ``ast.literal_eval`` and the validation raise on text they cannot read.
-_UNREADABLE = (ValueError, TypeError, SyntaxError, MemoryError, RecursionError)
+# What ``ast.literal_eval`` and the validation raise on text they cannot read
+# (pydantic's ``ValidationError`` is a ``ValueError``; named for the reader).
+_UNREADABLE = (
+    ValidationError,
+    ValueError,
+    TypeError,
+    SyntaxError,
+    MemoryError,
+    RecursionError,
+)
 
 
 class _Candidate(BaseModel):
@@ -116,7 +126,7 @@ class ForgetAwareLLMClient(LLMClient):
         attribute_extraction: bool = False,
     ) -> dict[str, Any]:
         forgotten = (
-            forgotten_candidates(messages) if response_model is EdgeDuplicate else set()
+            _forgotten_or_none(messages) if response_model is EdgeDuplicate else set()
         )
         answer = await self.inner.generate_response(
             messages,
@@ -176,6 +186,18 @@ async def previous_episode_uuids(
     return [str(record["uuid"]) for record in reversed(records)]
 
 
+def _forgotten_or_none(messages: list[Message]) -> set[int] | None:
+    """``forgotten_candidates``, failing closed on anything it did not
+    expect: the answer then names no edge, the prompt is reported once per
+    shape, and graphiti's ``add_episode`` goes on."""
+    try:
+        return forgotten_candidates(messages)
+    except Exception as exc:
+        text = "\n".join(str(message.content) for message in messages)
+        _report_unreadable(text, f"reading it raised {type(exc).__name__}", exc)
+        return None
+
+
 def forgotten_candidates(messages: list[Message]) -> set[int] | None:
     """The idx of every forgotten edge an edge dedup prompt shows; None, so
     that the answer names no edge, when the prompt shows the placeholder but
@@ -226,9 +248,10 @@ def _shown(text: str) -> set[int] | None:
     return {c.idx for c in shown} if all(c.forgotten for c in shown) else None
 
 
-def _report_unreadable(text: str, why: str) -> None:
+def _report_unreadable(text: str, why: str, error: Exception | None = None) -> None:
     """Log, at error and once per process for each reason and shape (the
-    prompt's tags), a dedup prompt the guard cannot read in full."""
+    prompt's tags), a dedup prompt the guard cannot read in full, with
+    ``error``'s traceback when there is one."""
     tags = _TAG.findall(text)
     shape = (why, *tags)
     if shape in _REPORTED_SHAPES:
@@ -237,7 +260,8 @@ def _report_unreadable(text: str, why: str) -> None:
     logger.error(
         "graphiti's edge dedup prompt no longer reads as recall_ingest expects: "
         f"{why} (tags {tags}); while it does not, an answer that may name a "
-        "forgotten edge names none, so restated facts are saved as new"
+        "forgotten edge names none, so restated facts are saved as new",
+        exc_info=error,
     )
 
 

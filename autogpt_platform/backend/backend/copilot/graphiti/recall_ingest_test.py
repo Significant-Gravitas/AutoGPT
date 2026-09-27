@@ -7,17 +7,21 @@ The live runs, through the production worker, are
 """
 
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.edges import EntityEdge
 from graphiti_core.llm_client.client import LLMClient
 from graphiti_core.llm_client.config import LLMConfig, ModelSize
 from graphiti_core.llm_client.token_tracker import TokenUsageTracker
+from graphiti_core.nodes import EpisodeType, EpisodicNode
 from graphiti_core.prompts import prompt_library
 from graphiti_core.prompts.dedupe_edges import EdgeDuplicate
 from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.models import Message
+from graphiti_core.utils.maintenance.edge_operations import resolve_extracted_edge
 
 from . import recall_ingest
 from .client import _build_graphiti
@@ -283,3 +287,103 @@ def test_every_graphiti_client_is_built_forget_aware() -> None:
 
     wrapped = graphiti.call_args.kwargs["llm_client"]
     assert isinstance(wrapped, ForgetAwareLLMClient) and wrapped.inner is inner
+
+
+def _errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+
+
+def _failing_parser(text: str) -> None:
+    raise RuntimeError("parser bug")
+
+
+_THEN = datetime(2026, 9, 27, tzinfo=timezone.utc)
+
+
+def _edge(uuid: str, fact: str) -> EntityEdge:
+    """An edge with its valid time known, so graphiti asks no timestamps."""
+    return EntityEdge(
+        uuid=uuid,
+        group_id="user_abc",
+        source_node_uuid="alice",
+        target_node_uuid="atlas",
+        created_at=_THEN,
+        valid_at=_THEN,
+        name="works_on",
+        fact=fact,
+    )
+
+
+class TestAGuardThatHitsAnError:
+    """Sentry's review of #14972: a candidate that reads as a literal but
+    fails validation, or anything unexpected while the guard reads the
+    prompt, names no edge, is logged at error once per shape and never
+    stops graphiti's edge resolution."""
+
+    @pytest.mark.parametrize(
+        "old, new",
+        [
+            ("{'idx': 1, 'fact'", "{'idx': 'one', 'fact'"),
+            ("{'idx': 0, 'fact'", "{'idx': 'zero', 'fact'"),
+        ],
+        ids=["a live candidate", "the forgotten candidate"],
+    )
+    @pytest.mark.asyncio
+    async def test_a_candidate_that_fails_validation_names_no_edge(
+        self, old: str, new: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = ForgetAwareLLMClient(_inner(dict(_NAMES_LIVE_EDGES)))
+        prompt = _edited(_mixed_prompt(), old, new)
+
+        first = await client.generate_response(prompt, EdgeDuplicate)
+        logged = _errors(caplog)
+        again = await client.generate_response(prompt, EdgeDuplicate)
+
+        assert first == again == _NAMES_NOTHING
+        assert logged and _errors(caplog) == logged, "once per shape"
+
+    @pytest.mark.asyncio
+    async def test_an_unexpected_error_while_reading_names_no_edge(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(recall_ingest, "_listed", _failing_parser)
+        client = ForgetAwareLLMClient(_inner(dict(_NAMES_LIVE_EDGES)))
+
+        for _ in range(2):
+            answer = await client.generate_response(_mixed_prompt(), EdgeDuplicate)
+            assert answer == _NAMES_NOTHING
+
+        [error] = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert "raised RuntimeError" in error.getMessage()
+        assert error.exc_info is not None, "with its traceback"
+
+    @pytest.mark.asyncio
+    async def test_graphitis_edge_resolution_still_completes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """graphiti's own resolution of a new statement, its model naming
+        the forgotten edge a duplicate: the statement stays a new edge and
+        the forgotten one is untouched, instead of the error ending
+        ``add_episode``."""
+        monkeypatch.setattr(recall_ingest, "_listed", _failing_parser)
+        duplicate = {"duplicate_facts": [0], "contradicted_facts": []}
+        client = ForgetAwareLLMClient(_inner(duplicate))
+        forgotten = _edge("forgotten", FORGOTTEN_FACT)
+        new = _edge("new", "Alice is assigned to work on the Atlas project")
+
+        episode = EpisodicNode(
+            name="s-2",
+            group_id="user_abc",
+            source=EpisodeType.text,
+            source_description="chat",
+            content=new.fact,
+            created_at=_THEN,
+            valid_at=_THEN,
+        )
+
+        resolved, invalidated, duplicates = await resolve_extracted_edge(
+            client, new, [forgotten], [], episode
+        )
+
+        assert (resolved.uuid, invalidated, duplicates) == ("new", [], [])
+        assert (forgotten.fact, forgotten.episodes) == (FORGOTTEN_FACT, [])
