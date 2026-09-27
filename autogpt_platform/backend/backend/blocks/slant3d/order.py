@@ -99,6 +99,7 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
                 ("order_id", "SLANT_1234567890"),
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
+            # EXTERNAL: the estimate POSTs an uncharged draft order to Slant3D.
             effect=BlockEffect.EXTERNAL,
         )
 
@@ -156,6 +157,7 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
                 ("order_id", "SLANT_1234567890"),
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
+            # EXTERNAL: the estimate POSTs an uncharged draft order to Slant3D.
             effect=BlockEffect.EXTERNAL,
         )
 
