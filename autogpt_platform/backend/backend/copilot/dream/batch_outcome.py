@@ -267,6 +267,7 @@ def _applied_result(
         proposal_count=_stat_count(apply_stats, "proposal_count"),
         demotion_count=_stat_count(apply_stats, "demotion_count"),
         entity_invalidation_count=_stat_count(apply_stats, "entity_invalidation_count"),
+        dropped_forgotten=_stat_count(apply_stats, "dropped_forgotten"),
         dream_session_id=raw_session_id if isinstance(raw_session_id, str) else None,
         ingestion_drain_status=ingestion_drain_status,
         operations=_stat_snapshot(apply_stats),

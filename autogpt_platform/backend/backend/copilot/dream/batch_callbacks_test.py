@@ -444,6 +444,7 @@ class TestPhaseChaining:
                 window_start=now,
                 window_end=now,
                 known_fact_uuids={"fact-1"},
+                known_episode_uuids={"episode-1"},
             ),
         )
         await write_phase_to_state(
@@ -484,6 +485,7 @@ class TestPhaseChaining:
         # The demotion allowlist is threaded from the bundle already loaded
         # for the clamp — apply must not re-read the bundle from Redis.
         assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
+        assert apply.call_args.kwargs["known_episode_uuids"] == {"episode-1"}
         # The batch path must NOT run the 300s in-line ingestion drain: apply
         # executes inside this handler, which BatchExecutor.walk_once awaits
         # serially — a long drain would stall every other user's batch poll.

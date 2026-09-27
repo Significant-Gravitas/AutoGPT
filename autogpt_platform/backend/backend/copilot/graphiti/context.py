@@ -2,20 +2,21 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 
-from ._format import (
-    extract_episode_body,
-    extract_episode_body_raw,
-    extract_episode_timestamp,
-    extract_fact,
-    extract_temporal_validity,
-)
-from .client import get_graphiti_client
+from graphiti_core.edges import EntityEdge
+from graphiti_core.nodes import EpisodicNode
+from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
+
 from .config import graphiti_config
+from .recall import recent_episodes, search_facts
+from .recall_recheck import recheck
+from .recall_render import GLOBAL_SCOPE, episode_scope, render, render_episode
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
+
+# Recent raw episodes shown next to the facts.
+_RECENT_EPISODES = 5
 
 
 async def fetch_warm_context(
@@ -51,39 +52,27 @@ async def fetch_warm_context(
 
 
 async def _fetch(scope: MemoryScope, message: str) -> str | None:
-    # Imported lazily so the module can be imported without graphiti-core
-    # installed (matches the pattern in client.py).
-    from graphiti_core.search.search_config_recipes import (
-        EDGE_HYBRID_SEARCH_CROSS_ENCODER,
-    )
-
-    group_id = scope.group_id
-    client = await get_graphiti_client(group_id)
-
     # P-1.4: warm context is the single most-impactful retrieval per
     # session — the one place where the cross-encoder rerank earns its
     # ~10–15% precision lift (per the audit) at the cost of one extra
     # batch of boolean-classifier prompts. The EDGE_HYBRID_SEARCH_CROSS_ENCODER
     # recipe combines BM25 + cosine + BFS edge search with cross-encoder
-    # reranking. The recipe defaults ``limit=10``; we override to our
-    # configured ``context_max_facts`` so existing operator tuning still
-    # applies.
-    search_config = EDGE_HYBRID_SEARCH_CROSS_ENCODER.model_copy(
-        update={"limit": graphiti_config.context_max_facts}
-    )
-    edge_results, episodes = await asyncio.gather(
-        client.search_(
-            query=message,
-            config=search_config,
-            group_ids=[group_id],
+    # reranking; ``context_max_facts`` replaces its default ``limit=10`` so
+    # existing operator tuning still applies. Both reads go through the
+    # recall policy, so forgotten facts and their episodes stay out, and both
+    # lists are read again right before rendering (``recall_recheck.py``):
+    # the episodes wait here for the slower search, a forget can answer
+    # meanwhile, and what it hid is then not shown.
+    edges, episodes = await asyncio.gather(
+        search_facts(
+            scope,
+            message,
+            limit=graphiti_config.context_max_facts,
+            recipe=EDGE_HYBRID_SEARCH_CROSS_ENCODER,
         ),
-        client.retrieve_episodes(
-            reference_time=datetime.now(timezone.utc),
-            group_ids=[group_id],
-            last_n=5,
-        ),
+        recent_episodes(scope, _RECENT_EPISODES),
     )
-    edges = edge_results.edges if edge_results is not None else []
+    edges, episodes = await recheck(scope, edges, episodes)
 
     # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge
     # that's currently ``status='tentative'`` gets promoted to
@@ -115,7 +104,7 @@ def _on_hit_task_done(task: asyncio.Task) -> None:
         logger.warning("Ratification hit task %s failed", task.get_name(), exc_info=exc)
 
 
-def _spawn_ratification_hits(scope: MemoryScope, edges) -> None:
+def _spawn_ratification_hits(scope: MemoryScope, edges: list[EntityEdge]) -> None:
     """Fire-and-forget the ratification hit-hook for retrieved edges.
 
     Imports lazily so the dream/ratification module isn't pulled into
@@ -123,7 +112,7 @@ def _spawn_ratification_hits(scope: MemoryScope, edges) -> None:
     users on the rare GRAPHITI_MEMORY=on / DREAM_PASS_ENABLED=off
     combination.
     """
-    edge_uuids = [uuid for uuid in (getattr(e, "uuid", None) for e in edges) if uuid]
+    edge_uuids = [edge.uuid for edge in edges]
     if not edge_uuids:
         return
 
@@ -137,49 +126,29 @@ def _spawn_ratification_hits(scope: MemoryScope, edges) -> None:
     task.add_done_callback(_on_hit_task_done)
 
 
-def _format_context(edges, episodes) -> str | None:
+def _format_context(
+    edges: list[EntityEdge], episodes: list[EpisodicNode]
+) -> str | None:
     sections: list[str] = []
 
     if edges:
-        fact_lines = []
-        for e in edges:
-            valid_from, valid_to = extract_temporal_validity(e)
-            fact = extract_fact(e)
-            fact_lines.append(f"  - {fact} ({valid_from} — {valid_to})")
+        fact_lines = [f"  - {render(edge)}" for edge in edges]
         sections.append("<FACTS>\n" + "\n".join(fact_lines) + "\n</FACTS>")
 
-    if episodes:
-        ep_lines = []
-        for ep in episodes:
-            # Use raw body (no truncation) for scope parsing — truncated
-            # JSON from extract_episode_body() would fail json.loads().
-            raw_body = extract_episode_body_raw(ep)
-            if _is_non_global_scope(raw_body):
-                continue
-            display_body = extract_episode_body(ep)
-            ts = extract_episode_timestamp(ep)
-            ep_lines.append(f"  - [{ts}] {display_body}")
-        if ep_lines:
-            sections.append(
-                "<RECENT_EPISODES>\n" + "\n".join(ep_lines) + "\n</RECENT_EPISODES>"
-            )
+    # Warm context is scope-agnostic, so a project- or book-scoped memory
+    # stays out of it.
+    ep_lines = [
+        f"  - {render_episode(ep)}"
+        for ep in episodes
+        if episode_scope(ep) == GLOBAL_SCOPE
+    ]
+    if ep_lines:
+        sections.append(
+            "<RECENT_EPISODES>\n" + "\n".join(ep_lines) + "\n</RECENT_EPISODES>"
+        )
 
     if not sections:
         return None
 
     body = "\n\n".join(sections)
     return f"<temporal_context>\n{body}\n</temporal_context>"
-
-
-def _is_non_global_scope(body: str) -> bool:
-    """Check if an episode body is a MemoryEnvelope with a non-global scope."""
-    import json
-
-    try:
-        data = json.loads(body)
-        if not isinstance(data, dict):
-            return False
-        scope = data.get("scope", "real:global")
-        return scope != "real:global"
-    except (json.JSONDecodeError, TypeError):
-        return False

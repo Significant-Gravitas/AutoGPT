@@ -316,6 +316,7 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
             bp.pass_id,
             ops,
             known_fact_uuids=input_bundle.known_fact_uuids,
+            known_episode_uuids=input_bundle.known_episode_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
             lease=lease,
         )

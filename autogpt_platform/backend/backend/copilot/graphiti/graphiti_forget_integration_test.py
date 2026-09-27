@@ -20,8 +20,6 @@ runaway-demotion footgun.
 import pytest
 
 from backend.copilot.tools.graphiti_forget import (
-    _retract_edges,
-    _soft_delete_edges,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
@@ -42,38 +40,8 @@ async def _select_edge(driver, uuid: str) -> dict | None:
     return records[0] if records else None
 
 
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_retract_edges_sets_only_expired_at(seeded_graph) -> None:
-    """Per Snodgrass — system retraction sets expired_at only."""
-    driver, group_id = seeded_graph
-
-    deleted, failed = await _retract_edges(driver, ["e1"], "test-user")
-    assert deleted == ["e1"]
-    assert failed == []
-
-    row = await _select_edge(driver, "e1")
-    assert row is not None
-    assert row["expired_at"] is not None, "_retract_edges must set expired_at"
-    assert row["invalid_at"] is None, (
-        "_retract_edges must NOT set invalid_at — that's the contradiction-detector "
-        "path. Conflating the two breaks the bi-temporal model."
-    )
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_soft_delete_edges_sets_both(seeded_graph) -> None:
-    """Contradiction-detector path keeps the original both-timestamps behavior."""
-    driver, group_id = seeded_graph
-
-    deleted, _ = await _soft_delete_edges(driver, ["e1"], "test-user")
-    assert deleted == ["e1"]
-
-    row = await _select_edge(driver, "e1")
-    assert row is not None
-    assert row["expired_at"] is not None
-    assert row["invalid_at"] is not None
+# The user-forget retraction (``expired_at`` + ``status='retracted'``,
+# never ``invalid_at``) is pinned live in ``recall_integration_test.py``.
 
 
 @pytest.mark.integration
