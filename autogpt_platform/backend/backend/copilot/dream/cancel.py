@@ -10,7 +10,7 @@ reads its row at its next check and stops itself:
     the usage of the phases billed so far kept, nothing applied, its lock
     released on the way out like any other failure;
   * a pass about to submit its first batch submits nothing, and one whose row
-    closed while it submitted cancels that batch instead of handing it on
+    refuses its submit cancels that batch instead of handing it on
     (``batch_handoff``);
   * a batch pass in its callback, before it chains the next phase and before
     it claims the apply gate (``end_batch_pass_if_stopped``), cancels its

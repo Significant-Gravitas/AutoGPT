@@ -8,9 +8,9 @@ The dream lock goes with the pass: extended to the batch window here and
 released by the callbacks when the pass ends.
 
 A pass whose row was cancelled (or expired) while it gathered submits
-nothing; one whose row closed while it submitted cancels that batch here and
-keeps its lock to release on the way out, rather than handing both to
-callbacks that would only stop.
+nothing; one whose row refuses its submit (closed meanwhile, or gone) cancels
+that batch here and keeps its lock to release on the way out, rather than
+handing both to callbacks that would only stop.
 
 Any caller can take this route (it depends on the flag and the deployment's
 key, not the caller). ``status_id`` ties the callbacks' updates to the
@@ -39,6 +39,9 @@ from .schemas import DreamPassResult
 from .store import record_submitted
 
 logger = logging.getLogger(__name__)
+
+# How a pass ends whose row refused its submit and cannot say why.
+REFUSED_SUBMIT_ERROR = "stopped: row refused the submitted write"
 
 
 async def submit_dream_pass_batch(
@@ -102,9 +105,9 @@ async def _hand_off(
     its results are discarded. The lock is NOT disowned, so the context
     manager's compare-and-delete release stays a safe no-op.
 
-    A row that refuses the submit because a stop closed it meanwhile gets the
-    same revoke, the provider batch cancelled too, and keeps the lock to
-    release on the way out.
+    A row that refuses the submit (a stop closed it meanwhile, or it is gone)
+    gets the same revoke, the provider batch cancelled too, and keeps the lock
+    to release on the way out.
     """
     logger.info(
         "Dream pass %s submitted via Anthropic batch=%s (phase=consolidate)",
@@ -131,9 +134,14 @@ async def _record_submit(
     provider_batch_id: str,
     input_bundle: DreamInput,
 ) -> str | None:
-    """Record the submit on the pass's row; the stop that closed the row when
-    the write did not land on it, else ``None``. A write that failed on a row
-    still open (or unreadable) hands off anyway, its batch off the record."""
+    """Record the submit on the pass's row; why the pass must not be handed
+    off, else ``None``.
+
+    A refused write is authoritative: the row has closed or is gone, so the
+    pass never hands off, its error the stop that closed the row or, when the
+    row cannot say, ``REFUSED_SUBMIT_ERROR``. A write that failed or ran out
+    of time says nothing about the row: the pass hands off, logged, unless its
+    row reads stopped."""
     recorded = await record_submitted(
         run.pass_id,
         input_bundle=input_bundle,
@@ -144,12 +152,19 @@ async def _record_submit(
     if recorded:
         return None
     stopped = await stopped_error(run.pass_id)
-    if stopped is None and recorded is None:
+    if stopped is not None:
+        return stopped
+    if recorded is False:
         logger.warning(
-            f"Dream pass {run.pass_id}: batch {provider_batch_id} is not on its "
-            "record; handing it to the callbacks anyway"
+            f"Dream pass {run.pass_id}: its row refused batch {provider_batch_id} "
+            "and does not say why; not handing it off"
         )
-    return stopped
+        return REFUSED_SUBMIT_ERROR
+    logger.warning(
+        f"Dream pass {run.pass_id}: batch {provider_batch_id} is not on its "
+        "record; handing it to the callbacks anyway"
+    )
+    return None
 
 
 async def _revoke_stopped(pass_id: str, provider_batch_id: str) -> None:

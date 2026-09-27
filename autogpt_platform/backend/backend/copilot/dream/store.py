@@ -108,7 +108,7 @@ async def record_submitted(
     lease_ttl_seconds: int,
 ) -> bool | None:
     """The batch submit, and whether it landed (see ``_write``): the handoff
-    hands the lock on unless the row refused it because a stop closed it."""
+    never hands the lock on once the row has refused it."""
     return await _write(
         pass_id,
         "the batch submit",

@@ -145,9 +145,40 @@ async def test_a_submit_write_that_fails_on_an_open_row_still_hands_off(
     provider.cancel.assert_not_awaited()
 
 
-async def test_a_pass_whose_row_was_never_inserted_still_hands_off(
+async def test_a_refused_submit_whose_row_cannot_be_read_is_not_handed_off(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker, caplog
+):
+    """The row refused the submit (a cancel closed it meanwhile) and the
+    read that would say why fails: a refusal is authoritative, so the pass
+    stops as if the row had said so, and the reason it could not read is
+    logged."""
+
+    async def submitted_then_cancelled_unreadably(**_kwargs) -> MagicMock:
+        await _cancel_the_pass(fake_dream_db)
+        mocker.patch.object(
+            fake_dream_db,
+            "get_dream_pass",
+            AsyncMock(side_effect=ConnectionError("dream pass database unreachable")),
+        )
+        return MagicMock(provider_batch_id="batch-1")
+
+    provider.submit.side_effect = submitted_then_cancelled_unreadably
+
+    with caplog.at_level(logging.WARNING, logger=batch_handoff_mod.logger.name):
+        result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == batch_handoff_mod.REFUSED_SUBMIT_ERROR
+    assert "refused batch batch-1 and does not say why" in caplog.text
+    _assert_revoked(provider, fake_dream_redis, result.pass_id)
+    _assert_cancelled(fake_dream_db, result.pass_id)
+
+
+async def test_a_pass_whose_row_is_gone_is_not_handed_off(
     fake_dream_db, fake_dream_redis, gather, provider, mocker
 ):
+    """A row that was never inserted (or was deleted with its user or
+    expert) refuses the submit too: the pass has nothing that could stop it
+    later, so it stops here."""
     mocker.patch.object(
         fake_dream_db,
         "create_dream_pass",
@@ -156,9 +187,17 @@ async def test_a_pass_whose_row_was_never_inserted_still_hands_off(
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error is None
-    assert fake_dream_redis.ttls[_LOCK_KEY] == BATCH_LOCK_TTL_SECONDS
-    provider.cancel.assert_not_awaited()
+    assert result.error == batch_handoff_mod.REFUSED_SUBMIT_ERROR
+    _assert_revoked(provider, fake_dream_redis, result.pass_id)
+
+
+def _assert_revoked(provider: MagicMock, fake_dream_redis, pass_id: str) -> None:
+    """The batch taken back: off the executor's queue and cancelled at the
+    provider, the bundle dropped, the lock released on the way out."""
+    provider.revoke.assert_awaited_once_with("batch-1")
+    provider.cancel.assert_awaited_once_with("batch-1")
+    assert input_bundle_key(pass_id) not in fake_dream_redis.store
+    assert _LOCK_KEY not in fake_dream_redis.store
 
 
 async def _cancel_the_pass(fake_dream_db) -> None:
