@@ -3,7 +3,7 @@ import urllib.parse
 from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Security, status
+from fastapi import APIRouter, Body, HTTPException, Security, status
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
@@ -14,11 +14,8 @@ import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
 from backend.api.external.rate_limit import (
-    EXECUTION_MAX_REQUESTS,
-    EXECUTION_WINDOW_SECONDS,
-    READ_MAX_REQUESTS,
-    READ_WINDOW_SECONDS,
-    require_rate_limit,
+    EXECUTION_LIMIT,
+    READ_LIMIT,
 )
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
@@ -45,7 +42,10 @@ logger = logging.getLogger(__name__)
 
 v1_router = APIRouter()
 
-v1_router.include_router(integrations_router)
+# The integrations router owns several routes, so the read tier is attached at
+# the include site rather than per route: a router-level dependency applies to
+# every route it brings in, and cannot be forgotten on a newly added one.
+v1_router.include_router(integrations_router, dependencies=[READ_LIMIT])
 v1_router.include_router(tools_router)
 
 
@@ -63,13 +63,7 @@ class UserInfoResponse(BaseModel):
     path="/me",
     tags=["user", "meta"],
     dependencies=[
-        Depends(
-            require_rate_limit(
-                max_requests=READ_MAX_REQUESTS,
-                window_seconds=READ_WINDOW_SECONDS,
-                scope="read",
-            )
-        ),
+        READ_LIMIT,
     ],
 )
 async def get_user_info(
@@ -92,13 +86,7 @@ async def get_user_info(
     tags=["blocks"],
     dependencies=[
         Security(require_permission(APIKeyPermission.READ_BLOCK)),
-        Depends(
-            require_rate_limit(
-                max_requests=READ_MAX_REQUESTS,
-                window_seconds=READ_WINDOW_SECONDS,
-                scope="read",
-            )
-        ),
+        READ_LIMIT,
     ],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
@@ -111,13 +99,7 @@ async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[
         Security(require_permission(APIKeyPermission.EXECUTE_BLOCK)),
-        Depends(
-            require_rate_limit(
-                max_requests=EXECUTION_MAX_REQUESTS,
-                window_seconds=EXECUTION_WINDOW_SECONDS,
-                scope="execution",
-            )
-        ),
+        EXECUTION_LIMIT,
     ],
 )
 async def execute_graph_block(
@@ -177,13 +159,7 @@ async def execute_graph_block(
                 APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
             )
         ),
-        Depends(
-            require_rate_limit(
-                max_requests=EXECUTION_MAX_REQUESTS,
-                window_seconds=EXECUTION_WINDOW_SECONDS,
-                scope="execution",
-            )
-        ),
+        EXECUTION_LIMIT,
     ],
 )
 async def create_graph(
@@ -231,13 +207,7 @@ async def create_graph(
     path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
     dependencies=[
-        Depends(
-            require_rate_limit(
-                max_requests=EXECUTION_MAX_REQUESTS,
-                window_seconds=EXECUTION_WINDOW_SECONDS,
-                scope="execution",
-            )
-        ),
+        EXECUTION_LIMIT,
     ],
 )
 async def execute_graph(
@@ -316,13 +286,7 @@ class GraphExecutionResult(TypedDict):
     path="/graphs/{graph_id}/executions/{graph_exec_id}/results",
     tags=["graphs"],
     dependencies=[
-        Depends(
-            require_rate_limit(
-                max_requests=READ_MAX_REQUESTS,
-                window_seconds=READ_WINDOW_SECONDS,
-                scope="read",
-            )
-        ),
+        READ_LIMIT,
     ],
 )
 async def get_graph_execution_results(
@@ -382,13 +346,7 @@ async def get_graph_execution_results(
     tags=["store"],
     dependencies=[
         Security(require_auth),  # data is public; auth required as anti-DDoS
-        Depends(
-            require_rate_limit(
-                max_requests=READ_MAX_REQUESTS,
-                window_seconds=READ_WINDOW_SECONDS,
-                scope="read",
-            )
-        ),
+        READ_LIMIT,
     ],
     response_model=store_model.StoreAgentsResponse,
 )
@@ -439,13 +397,7 @@ async def get_store_agents(
     tags=["store"],
     dependencies=[
         Security(require_auth),  # data is public; auth required as anti-DDoS
-        Depends(
-            require_rate_limit(
-                max_requests=READ_MAX_REQUESTS,
-                window_seconds=READ_WINDOW_SECONDS,
-                scope="read",
-            )
-        ),
+        READ_LIMIT,
     ],
     response_model=store_model.StoreAgentDetails,
 )
@@ -476,13 +428,7 @@ async def get_store_agent(
     tags=["store"],
     dependencies=[
         Security(require_auth),  # data is public; auth required as anti-DDoS
-        Depends(
-            require_rate_limit(
-                max_requests=READ_MAX_REQUESTS,
-                window_seconds=READ_WINDOW_SECONDS,
-                scope="read",
-            )
-        ),
+        READ_LIMIT,
     ],
     response_model=store_model.CreatorsResponse,
 )
@@ -527,13 +473,7 @@ async def get_store_creators(
     tags=["store"],
     dependencies=[
         Security(require_auth),  # data is public; auth required as anti-DDoS
-        Depends(
-            require_rate_limit(
-                max_requests=READ_MAX_REQUESTS,
-                window_seconds=READ_WINDOW_SECONDS,
-                scope="read",
-            )
-        ),
+        READ_LIMIT,
     ],
     response_model=store_model.CreatorDetails,
 )

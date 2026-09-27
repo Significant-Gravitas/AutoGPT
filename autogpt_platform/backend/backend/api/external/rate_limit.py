@@ -5,9 +5,14 @@ The external API authenticates with API keys / OAuth tokens, so one valid
 credential can hammer store endpoints or spam graph executions. This module
 provides an atomic fixed-window counter in Redis (Lua ``INCR`` + first-hit
 ``EXPIRE``, mirroring ``backend/api/features/credits_rate_limit.py``) keyed
-per (user, credential, scope), with per-scope tiers, returning HTTP 429 with
+per (user, scope), with per-scope tiers, returning HTTP 429 with
 ``Retry-After`` / ``X-RateLimit-*`` headers once the window counter is
 exhausted.
+
+The bucket is deliberately keyed on the *user*, not on the credential: an
+abuse control must not be resettable by minting another API key or by
+refreshing an OAuth access token, both of which produce a new credential id
+for the same principal.
 
 Availability: the check is strictly best-effort and **fails open** on any
 Redis trouble — being unable to prove a principal is under its cap must never
@@ -23,8 +28,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
-import fastapi
-from fastapi import HTTPException, Response, Security, status
+from fastapi import Depends, HTTPException, Response, Security, status
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.api.external.middleware import require_auth
@@ -63,14 +67,26 @@ return count
 
 
 def _rate_limit_key(auth: APIAuthorizationInfo, scope: str) -> str:
-    """One bucket per (user, credential, scope).
+    """One bucket per (user, scope).
 
-    API-key principals carry a key ``id``, so two keys belonging to the same
-    user get independent budgets; OAuth principals have no key id and fall
-    back to ``user_id + type``.
+    The user is the unit that cannot be multiplied, so the budget must follow
+    the user rather than the credential presented with the request. Minting a
+    second API key, or letting an OAuth access token refresh, both yield a new
+    credential ``id`` for the same principal; keying on that id would hand out
+    a fresh budget each time and make the limit trivially bypassable.
     """
-    principal = getattr(auth, "id", auth.type)
-    return f"external_api:rl:{auth.user_id}:{principal}:{scope}"
+    return f"external_api:rl:{auth.user_id}:{scope}"
+
+
+def _window_start(now: datetime, window_seconds: int) -> int:
+    """Start of the wall-clock window ``now`` falls in.
+
+    The window is aligned to absolute time so the key, ``X-RateLimit-Reset``
+    and ``Retry-After`` all describe the same instant. A client that waits for
+    ``Retry-After`` therefore lands in the next window and is admitted, instead
+    of being refused again because the TTL runs from its first hit.
+    """
+    return int(now.timestamp()) // window_seconds * window_seconds
 
 
 async def _incr_window(key: str, window_seconds: int) -> int:
@@ -106,7 +122,12 @@ def require_rate_limit(
         response: Response,
         auth: APIAuthorizationInfo = Security(require_auth),
     ) -> APIAuthorizationInfo:
-        key = _rate_limit_key(auth, scope)
+        now = datetime.now(UTC)
+        window_start = _window_start(now, window_seconds)
+        # The window start is part of the key so that the counter, the TTL and
+        # the reported reset time all refer to the same window: a request is
+        # never counted against a window it is told it can retry out of.
+        key = f"{_rate_limit_key(auth, scope)}:{window_start}"
         try:
             count = await asyncio.wait_for(
                 _incr_window(key, window_seconds),
@@ -128,11 +149,8 @@ def require_rate_limit(
             )
             return auth
 
-        now = datetime.now(UTC)
         remaining = max(0, max_requests - int(count))
-        reset_at = (
-            int(now.timestamp()) // window_seconds * window_seconds + window_seconds
-        )
+        reset_at = window_start + window_seconds
         retry_after = max(0, reset_at - int(now.timestamp()))
 
         response.headers["X-RateLimit-Limit"] = str(max_requests)
@@ -161,3 +179,22 @@ def require_rate_limit(
         return auth
 
     return dependency
+
+
+# Ready-made dependencies for the two tiers. Every ``/v1`` route carries one
+# of these, so they are defined once here rather than repeating the eight-line
+# ``Depends(require_rate_limit(...))`` block at each of the twelve call sites.
+READ_LIMIT = Depends(
+    require_rate_limit(
+        max_requests=READ_MAX_REQUESTS,
+        window_seconds=READ_WINDOW_SECONDS,
+        scope="read",
+    )
+)
+EXECUTION_LIMIT = Depends(
+    require_rate_limit(
+        max_requests=EXECUTION_MAX_REQUESTS,
+        window_seconds=EXECUTION_WINDOW_SECONDS,
+        scope="execution",
+    )
+)

@@ -3,20 +3,26 @@
 
 from __future__ import annotations
 
+import asyncio
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import pytest
 from fastapi import Response
+from fastapi.testclient import TestClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisClusterException
 
 from backend.api.external import rate_limit
 from backend.api.external.middleware import require_auth
+from backend.data import redis_client
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.redis_client import get_redis_async
+from backend.util.testing import is_tcp_port_reachable
 
 
 class FakeRedis:
@@ -25,20 +31,50 @@ class FakeRedis:
     Mirrors the approach in ``credits_rate_limit_test``: the script (the only
     non-trivial logic in the module) runs against real state, so a regression
     in the script fails a test.
+
+    ``EXPIRE`` is honoured for real (the entry is dropped once the deadline has
+    passed), because the script's whole job is to guarantee a key can never
+    linger without a TTL. A fake that counted in Python and ignored ``EXPIRE``
+    would stay green even if the script stopped expiring keys or re-armed the
+    window on every hit.
     """
 
     def __init__(self) -> None:
         self.counters: dict[str, int] = {}
-        self.ttls: dict[str, int] = {}
+        self.expires_at: dict[str, float] = {}
+        self._now = 0.0
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
+
+    def _sweep(self) -> None:
+        """Drop keys whose expiry has passed, as Redis would."""
+        for key in [k for k, deadline in self.expires_at.items() if deadline <= self._now]:
+            del self.counters[key]
+            del self.expires_at[key]
 
     async def eval(self, script: str, numkeys: int, key: str, ttl: str) -> int:
         assert script == rate_limit._INCR_OPEN_WINDOW
         assert numkeys == 1
+        self._sweep()
         count = self.counters.get(key, 0) + 1
         self.counters[key] = count
         if count == 1:
-            self.ttls[key] = int(ttl)
+            self.expires_at[key] = self._now + int(ttl)
         return count
+
+    async def ttl(self, key: str) -> int:
+        self._sweep()
+        if key not in self.expires_at:
+            return -2
+        return max(0, int(self.expires_at[key] - self._now))
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        self._sweep()
+        if key not in self.counters:
+            return False
+        self.expires_at[key] = self._now + seconds
+        return True
 
 
 @pytest.fixture
@@ -109,15 +145,25 @@ async def test_first_hit_sets_ttl_and_headers(fake_redis):
         rate_limit.READ_MAX_REQUESTS - 1
     )
     assert int(response.headers["X-RateLimit-Reset"]) > 0
-    (key,) = fake_redis.ttls
-    assert key.startswith("external_api:rl:u1:")
-    assert "k1" in key
-    assert fake_redis.ttls[key] == rate_limit.READ_WINDOW_SECONDS
+    (key,) = fake_redis.expires_at
+    assert key.startswith("external_api:rl:u1:read:")
+    # The key ends with the wall-clock window start, so the counter, the TTL
+    # and the reported reset all describe the same window.
+    window_start = int(key.rsplit(":", 1)[1])
+    assert window_start % rate_limit.READ_WINDOW_SECONDS == 0
+    assert int(response.headers["X-RateLimit-Reset"]) == (
+        window_start + rate_limit.READ_WINDOW_SECONDS
+    )
+    assert fake_redis.expires_at[key] - fake_redis._now == rate_limit.READ_WINDOW_SECONDS
 
 
 @pytest.mark.asyncio
-async def test_api_key_gets_independent_bucket(fake_redis):
-    """Two API keys of the same user must not share a budget."""
+async def test_api_keys_of_one_user_share_a_bucket(fake_redis):
+    """A second API key must not buy a fresh budget.
+
+    The user is the unit that cannot be multiplied: if the bucket were keyed on
+    the credential id, minting another key would reset the limit.
+    """
     dep = rate_limit.require_rate_limit(
         max_requests=rate_limit.READ_MAX_REQUESTS,
         window_seconds=rate_limit.READ_WINDOW_SECONDS,
@@ -127,8 +173,31 @@ async def test_api_key_gets_independent_bucket(fake_redis):
     await dep(response=response, auth=_auth(user_id="u1", key_id="k1"))
     await dep(response=response, auth=_auth(user_id="u1", key_id="k2"))
 
-    assert len(fake_redis.counters) == 2
-    assert all("k1" in k or "k2" in k for k in fake_redis.counters)
+    assert len(fake_redis.counters) == 1
+    (key,) = fake_redis.counters
+    assert key.startswith("external_api:rl:u1:read:")
+    assert fake_redis.counters[key] == 2
+
+
+@pytest.mark.asyncio
+async def test_oauth_refresh_shares_the_bucket(fake_redis):
+    """Refreshing an OAuth token must not reset the budget either.
+
+    OAuth principals carry an access-token id, which changes on every refresh;
+    the bucket has to follow the user instead.
+    """
+    dep = rate_limit.require_rate_limit(
+        max_requests=rate_limit.READ_MAX_REQUESTS,
+        window_seconds=rate_limit.READ_WINDOW_SECONDS,
+        scope="read",
+    )
+    response = Response()
+    await dep(response=response, auth=_auth(user_id="u9", key_id=None))
+    await dep(response=response, auth=_auth(user_id="u9", key_id=None))
+
+    assert len(fake_redis.counters) == 1
+    (key,) = fake_redis.counters
+    assert key.startswith("external_api:rl:u9:read:")
 
 
 @pytest.mark.asyncio
@@ -185,9 +254,44 @@ def test_integration_429_via_route(mocker, mock_redis):
     app.dependency_overrides[require_auth] = fake_require_auth
     mock_redis.eval = AsyncMock(return_value=rate_limit.READ_MAX_REQUESTS + 1)
 
-    client = fastapi.testclient.TestClient(app)
+    client = TestClient(app)
     res = client.get("/v1/me")
     assert res.status_code == 429
     assert res.headers["Retry-After"] is not None
     assert res.headers["X-RateLimit-Limit"] == str(rate_limit.READ_MAX_REQUESTS)
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+async def test_the_script_opens_a_window_once_on_real_redis():
+    """FakeRedis re-implements the Lua, so only real Redis can catch a
+    script that never expires the key or re-opens the window on every hit."""
+    key = f"external_api:rl:test:{uuid.uuid4().hex}"
+    redis = await get_redis_async()
+    try:
+        assert await rate_limit._incr_window(key, 60) == 1
+        assert 0 < await redis.ttl(key) <= 60
+        await redis.expire(key, 30)
+        assert await rate_limit._incr_window(key, 60) == 2
+        assert 0 < await redis.ttl(key) <= 30
+    finally:
+        await redis.delete(key)
+
+
+@pytest.mark.asyncio
+async def test_a_hung_redis_fails_open_within_the_deadline(mock_redis):
+    """A Redis that never answers must not park the request: the 0.25s
+    deadline fires and the request is let through."""
+
+    async def hang(*_):
+        await asyncio.Event().wait()
+
+    mock_redis.eval = hang
+    ret, response = await asyncio.wait_for(_call_dependency(), timeout=2)
+
+    assert ret is not None
+    assert "X-RateLimit-Limit" not in response.headers
