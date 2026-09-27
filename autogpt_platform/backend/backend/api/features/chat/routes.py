@@ -1617,7 +1617,12 @@ async def cancel_session_task(
         await asyncio.sleep(_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS)
         waited += _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS
         session_state = await stream_registry.get_session(session_id)
-        if session_state is None or session_state.status != "running":
+        # A turn the cancelled one's end woke is not the one the user stopped.
+        if (
+            session_state is None
+            or session_state.status != "running"
+            or session_state.turn_id != active_session.turn_id
+        ):
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
                 f"(status={session_state.status if session_state else 'gone'}) after {waited:.1f}s"
@@ -1638,6 +1643,7 @@ async def cancel_session_task(
         session_id,
         error_message=stream_registry.CANCELLED_MESSAGE,
         skip_error_publish=True,
+        turn_id=active_session.turn_id,
     )
     # Status is now force-flipped out of "running"; re-clear to drop any
     # follow-up that landed during the poll window.
