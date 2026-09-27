@@ -70,11 +70,15 @@ async def get_dream_pass_for_user(pass_id: str, user_id: str) -> DreamPassRecord
     return DreamPassRecord.from_db(row) if row else None
 
 
-async def list_open_dream_passes(scope_key: str) -> list[DreamPassRecord]:
-    """The scope's passes that have not reached a terminal status, oldest first."""
+async def list_open_dream_passes(
+    scope_key: str, limit: int | None = None
+) -> list[DreamPassRecord]:
+    """The scope's passes that have not reached a terminal status, newest
+    first; at most *limit* of them when given."""
     rows = await prisma.models.DreamPass.prisma().find_many(
         where={"scopeKey": scope_key, "status": {"in": list(OPEN_STATUSES)}},
-        order={"createdAt": "asc"},
+        order={"createdAt": "desc"},
+        take=limit,
     )
     return [DreamPassRecord.from_db(row) for row in rows]
 

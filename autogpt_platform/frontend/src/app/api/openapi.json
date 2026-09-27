@@ -1585,7 +1585,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Cancel Dream Pass Run",
-        "description": "Cancel an open dream pass and return its record, now CANCELLED.\n\nThe row closes at once; the pass itself stops at its next check (a\nphase boundary or just before apply, on either route) without applying,\nand whatever it already applied stays. 404 for a pass that does not\nexist or belongs to another user, alike; 409 once the pass has ended.",
+        "description": "Cancel an open dream pass and return its record, now CANCELLED.\n\nThe row closes at once; the pass itself stops at its next check (a phase\nboundary, its batch submit, or just before apply, on either route)\nwithout applying. A batch pass waiting on its provider stops when that\nbatch lands. A pass already past its last check still applies, once, and\nwhatever a pass applied stays. 404 for a pass that does not exist or\nbelongs to another user, alike; 409 once the pass has ended.",
         "operationId": "postV2CancelDreamPassRun",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1654,7 +1654,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Dream Pass Record",
-        "description": "Read one dream pass's durable record, on either route.\n\nThe job status above is a Redis row that lapses after six hours and, for\na batch pass, carries no usage; the record outlives the pass and holds\nwhat its phases used. 404 for a pass that does not exist or belongs to\nanother user, alike.",
+        "description": "Read one dream pass's durable record, on either route.\n\nThe job status above is a Redis row that lapses after six hours and, for\na batch pass, carries no usage; the record outlives the pass and holds\nwhat its phases used, unless a cancel or a newer pass closed it first\n(the cost log still has that usage). 404 for a pass that does not exist\nor belongs to another user, alike.",
         "operationId": "getV2GetDreamPassRecord",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

@@ -100,7 +100,9 @@ class TestOpenPasses:
 
         await guard.guard_dream_pass(run, _SCOPE)
 
-        db.list_open_dream_passes.assert_awaited_once_with(_SCOPE.scope_key)
+        db.list_open_dream_passes.assert_awaited_once_with(
+            _SCOPE.scope_key, limit=guard.GUARD_ROW_LIMIT + 1
+        )
         db.update_dream_pass.assert_not_awaited()
 
     async def test_a_fresh_open_pass_skips_this_one(self, db, caplog):
@@ -210,6 +212,41 @@ class TestOpenPasses:
 
         [call] = db.update_dream_pass.await_args_list
         assert call.args[0] == "stale"
+
+
+class TestTheGuardsBounds:
+    async def test_the_guard_weighs_at_most_its_row_limit(self, db):
+        """However many stale rows the store lists, the guard expires at most
+        ``GUARD_ROW_LIMIT`` of them, in the (newest first) order listed."""
+        rows = [_row(f"stale-{i}", updated_at=_STALE) for i in range(8)]
+        db.list_open_dream_passes.return_value = rows
+
+        await guard.guard_dream_pass(_run(), _SCOPE)
+
+        expired = [call.args[0] for call in db.update_dream_pass.await_args_list]
+        assert expired == [f"stale-{i}" for i in range(guard.GUARD_ROW_LIMIT)]
+
+    async def test_the_guard_gives_up_once_its_budget_is_spent(
+        self, db, monkeypatch, caplog
+    ):
+        """Five stale rows whose expiries each stall to the store's deadline
+        would hold the pass for five deadlines; the guard's own budget ends
+        it first, and the pass goes on."""
+        monkeypatch.setattr(store, "RECORD_WRITE_TIMEOUT_SECONDS", 0.05)
+        monkeypatch.setattr(guard, "GUARD_BUDGET_SECONDS", 0.12)
+        db.list_open_dream_passes.return_value = [
+            _row(f"stale-{i}", updated_at=_STALE) for i in range(5)
+        ]
+        db.update_dream_pass.side_effect = _hang
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+
+        with caplog.at_level(logging.WARNING, logger=guard.logger.name):
+            await asyncio.wait_for(guard.guard_dream_pass(_run(), _SCOPE), 5)
+
+        assert loop.time() - started < 5 * 0.05
+        assert db.update_dream_pass.await_count < 5
+        assert "used up its 0.12s budget" in caplog.text
 
 
 class TestTheStoreNeverHoldsThePassUp:

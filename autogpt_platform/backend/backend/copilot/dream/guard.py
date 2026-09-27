@@ -6,7 +6,8 @@ triggers go through it like the nightly job. The lock alone does not keep two
 passes apart: it lapses under a sync pass that outlives it and under a batch
 pass whose last phase lands after its lease, and a row can stay open behind a
 free lock when the pass's last write was lost. So the guard reads the scope's
-open ``DreamPass`` rows, other than the pass's own, oldest first:
+open ``DreamPass`` rows, newest first, up to ``GUARD_ROW_LIMIT`` other than the
+pass's own:
 
   master flag off (an authoritative answer)   skip, ``disabled``
   no other open row                           go on
@@ -16,15 +17,26 @@ open ``DreamPass`` rows, other than the pass's own, oldest first:
 
 A row is fresh while its lease has not lapsed or, without a lease, while it was
 written within the pass lock's TTL. Expiring is one conditional transition that
-bumps the row's cancel generation, so its pass stops at its next check: it
-lands only while the row is still open and, unless forced, only if nothing has
-written the row since the guard read it. A row that moved in between is alive
-and blocks after all. Rows no newer pass looks at are left for a reaper.
+bumps the row's cancel generation, so its pass stops at its next check; it
+lands only while the row is still open. A stale row's expiry is also a
+compare-and-set on the row's last write: it lands only if nothing has written
+the row since the guard read it, and a row that moved in between is alive and
+blocks after all. An admin's forced expiry of a fresh row skips that
+compare-and-set: that row's pass no longer holds the lock (the forcing pass
+took it), and it stops at its next check or at its lock check before apply.
+Rows past the limit, and rows no newer pass looks at, are left for a reaper.
+
+Two passes triggered together can both skip: the one that lost the lock race
+records ``lock_held`` while its row is still open, and the winner's guard sees
+that fresh row and skips as ``pass_in_progress``. That is a deliberate
+liveness trade-off, never two passes at once but sometimes none: an admin
+retry or the scope's next trigger runs the pass.
 
 The guard never blocks on the store or the flag service: a read or write that
 fails or runs out of time is logged at warning and the pass goes on as it did
-before the guard existed. The master flag is read here, once per pass; the
-phases never read it.
+before the guard existed, and the guard as a whole gets
+``GUARD_BUDGET_SECONDS``, after which the pass goes on unguarded. The master
+flag is read here, once per pass; the phases never read it.
 """
 
 import asyncio
@@ -44,11 +56,27 @@ logger = logging.getLogger(__name__)
 
 # How long the master-flag read may take before the pass goes on without it.
 FLAG_READ_TIMEOUT_SECONDS = 10.0
+# The whole guard's budget, however many reads and expiries it makes.
+GUARD_BUDGET_SECONDS = 15.0
+# How many of the scope's other open passes, newest first, the guard weighs.
+GUARD_ROW_LIMIT = 5
 
 
 async def guard_dream_pass(run: DreamPassRun, scope: MemoryScope) -> None:
     """Raise ``PassEnded`` with the skip that keeps *run* from starting, or
-    return and let it gather."""
+    return and let it gather, the pass going on unguarded once the guard has
+    used ``GUARD_BUDGET_SECONDS``."""
+    try:
+        async with asyncio.timeout(GUARD_BUDGET_SECONDS):
+            await _guard(run, scope)
+    except TimeoutError:
+        logger.warning(
+            f"Dream pass {run.pass_id}: the guard used up its "
+            f"{GUARD_BUDGET_SECONDS:g}s budget; going on unguarded"
+        )
+
+
+async def _guard(run: DreamPassRun, scope: MemoryScope) -> None:
     if not await _dream_pass_enabled(run):
         raise PassEnded(run.skipped("disabled"))
     for row in await _other_open_passes(run, scope):
@@ -85,10 +113,11 @@ async def _dream_pass_enabled(run: DreamPassRun) -> bool:
 async def _other_open_passes(
     run: DreamPassRun, scope: MemoryScope
 ) -> list[DreamPassRecord]:
-    """The scope's open passes other than *run*; none when the store cannot
-    say in time, and the pass goes on unguarded."""
+    """The scope's newest open passes other than *run*, at most
+    ``GUARD_ROW_LIMIT``; none when the store cannot say in time, and the pass
+    goes on unguarded. One more row is read for the pass's own."""
     try:
-        rows = await read_open_passes(scope)
+        rows = await read_open_passes(scope, limit=GUARD_ROW_LIMIT + 1)
     except Exception:
         logger.warning(
             f"Dream pass {run.pass_id}: could not read the scope's open passes; "
@@ -96,7 +125,7 @@ async def _other_open_passes(
             exc_info=True,
         )
         return []
-    return [row for row in rows if row.id != run.pass_id]
+    return [row for row in rows if row.id != run.pass_id][:GUARD_ROW_LIMIT]
 
 
 async def _holds_scope(run: DreamPassRun, row: DreamPassRecord) -> bool:

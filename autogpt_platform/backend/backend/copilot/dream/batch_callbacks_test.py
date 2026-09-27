@@ -538,6 +538,9 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
+        _, _, string_store = fake_redis
+        expert_lock = MemoryScope.for_expert("u1", "expert-1").redis_key("dream_lock")
+        string_store[expert_lock] = "tok-expert"
         now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p-expert",
@@ -607,6 +610,8 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
         now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
@@ -1154,6 +1159,8 @@ class TestLockTokenWiring:
         not route through the crash guard to fail_pass — both keys carry
         24h TTLs, so cleanup is best-effort and the completed job stays
         completed."""
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
         await self._seed_terminal_pass()
 
         mark_complete = AsyncMock()
@@ -1408,6 +1415,8 @@ class TestDreamPassRecord:
     async def test_an_apply_crash_closes_the_row_errored_after_applying(
         self, fake_redis, fake_dream_db
     ):
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
         await _persist_autopilot_bundle()
         _seed_submitted_pass(fake_dream_db)
         with patch(
@@ -1531,6 +1540,9 @@ class TestDreamPassRecord:
     ):
         """A delivery that dies while its APPLYING write is in flight has not
         claimed the apply gate yet, so the next delivery still applies."""
+        fake_dream_redis.store[MemoryScope.for_user("u1").redis_key("dream_lock")] = (
+            "tok-u1"
+        )
         await _persist_autopilot_bundle()
         _seed_submitted_pass(fake_dream_db)
         for phase, content in (
@@ -1643,6 +1655,8 @@ class TestDreamPassRecord:
     async def test_a_store_outage_never_fails_a_batch_pass(
         self, fake_redis, fake_dream_db
     ):
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
         await _persist_autopilot_bundle()
         _seed_submitted_pass(fake_dream_db)
         fake_dream_db.fail = True
@@ -1802,6 +1816,37 @@ class TestAStoppedPass:
             "consolidate"
         ]
         await self._assert_ended(fake_dream_db, fake_dream_redis, lock_key, error)
+
+    @pytest.mark.asyncio
+    async def test_a_replayed_callback_keeps_the_job_it_ended(
+        self, fake_dream_db, fake_dream_redis, anthropic, charges
+    ):
+        """The same consolidate batch delivered again after the stop ended the
+        pass and dropped its bundle: the job keeps the stop's error, nothing
+        is charged or cancelled twice."""
+        await self._in_flight(fake_dream_db, fake_dream_redis, landed=())
+        error = await _cancel_p1()
+        entry = _entry(phase="consolidate")
+        rows = [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)]
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.anthropic_api_key",
+            return_value="sk-ant-test",
+        ):
+            await handle_dream_batch_result(entry, rows)
+            await handle_dream_batch_result(entry, rows)
+
+        status = await job_status.read_status(kind="dream_pass", job_id="j1")
+        assert status is not None and (status.state, status.error) == (
+            "errored",
+            error,
+        )
+        anthropic.messages.batches.cancel.assert_awaited_once_with("msgbatch_live")
+        assert [call.args[0].job.phase for call in charges.await_args_list] == [
+            "consolidate"
+        ]
+        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.CANCELLED
 
     @pytest.mark.asyncio
     async def test_it_does_not_claim_the_apply_gate(

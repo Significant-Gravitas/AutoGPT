@@ -106,8 +106,10 @@ async def record_submitted(
     provider_batch_id: str,
     lease_token: str,
     lease_ttl_seconds: int,
-) -> None:
-    await _write(
+) -> bool | None:
+    """The batch submit, and whether it landed (see ``_write``): the handoff
+    hands the lock on unless the row refused it because a stop closed it."""
+    return await _write(
         pass_id,
         "the batch submit",
         lambda: submitted(
@@ -167,10 +169,14 @@ async def read_pass(pass_id: str) -> DreamPassRecord | None:
     return await _bounded(dream_db().get_dream_pass(pass_id))
 
 
-async def read_open_passes(scope: MemoryScope) -> list[DreamPassRecord]:
-    """The scope's passes that are still open, oldest first. Raises when the
-    read fails or runs out of time."""
-    return await _bounded(dream_db().list_open_dream_passes(scope.scope_key))
+async def read_open_passes(
+    scope: MemoryScope, *, limit: int | None = None
+) -> list[DreamPassRecord]:
+    """The scope's passes that are still open, newest first, at most *limit*
+    when given. Raises when the read fails or runs out of time."""
+    return await _bounded(
+        dream_db().list_open_dream_passes(scope.scope_key, limit=limit)
+    )
 
 
 async def write_stop(pass_id: str, update: DreamPassUpdate) -> bool:
@@ -180,9 +186,12 @@ async def write_stop(pass_id: str, update: DreamPassUpdate) -> bool:
     return await _bounded(dream_db().update_dream_pass(pass_id, update))
 
 
-async def _write(pass_id: str, step: str, build: Callable[[], DreamPassUpdate]) -> None:
+async def _write(
+    pass_id: str, step: str, build: Callable[[], DreamPassUpdate]
+) -> bool | None:
     """Write one transition, bounded, building it inside the guard so no part
-    of it can fail the pass."""
+    of it can fail the pass: ``True`` when it landed, ``False`` when the row
+    refused it, ``None`` when it failed or ran out of time."""
     try:
         written = await _bounded(dream_db().update_dream_pass(pass_id, build()))
     except Exception:
@@ -190,12 +199,13 @@ async def _write(pass_id: str, step: str, build: Callable[[], DreamPassUpdate]) 
             f"Dream pass {pass_id}: could not record {step}; the pass goes on",
             exc_info=True,
         )
-        return
+        return None
     if not written:
         # Expected, not a fault: the row is closed (a late or repeated
         # delivery, which the transition rules refuse by design) or was
         # never inserted (that failure was logged when it happened).
         logger.debug("Dream pass %s: no open record to write %s to", pass_id, step)
+    return written
 
 
 async def _bounded(call: Awaitable[_T]) -> _T:

@@ -19,7 +19,7 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import ResponseError
 
 from backend.api.features.experts import experts_db
@@ -1017,6 +1017,9 @@ ADMIN_CANCEL_REASON = "cancelled by an admin"
 class DreamPassCancelRequest(BaseModel):
     """Why an admin cancels a dream pass, kept as the pass's error."""
 
+    # Stripped before the length check, so a blank reason is refused.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     reason: str | None = Field(default=None, min_length=1, max_length=500)
 
 
@@ -1132,8 +1135,9 @@ async def get_dream_pass_record(
 
     The job status above is a Redis row that lapses after six hours and, for
     a batch pass, carries no usage; the record outlives the pass and holds
-    what its phases used. 404 for a pass that does not exist or belongs to
-    another user, alike.
+    what its phases used, unless a cancel or a newer pass closed it first
+    (the cost log still has that usage). 404 for a pass that does not exist
+    or belongs to another user, alike.
     """
     target = _resolve_user_id(user_id, caller_id)
     _audit_cross_user_access(
@@ -1159,15 +1163,17 @@ async def cancel_dream_pass_run(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     pass_id: Annotated[str, Path(description="The dream pass id")],
     caller_id: Annotated[str, Depends(get_user_id)],
-    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    jwt_payload: Annotated[dict[str, Any], Security(get_jwt_payload)],
     body: DreamPassCancelRequest | None = None,
 ) -> DreamPassRecordResponse:
     """Cancel an open dream pass and return its record, now CANCELLED.
 
-    The row closes at once; the pass itself stops at its next check (a
-    phase boundary or just before apply, on either route) without applying,
-    and whatever it already applied stays. 404 for a pass that does not
-    exist or belongs to another user, alike; 409 once the pass has ended.
+    The row closes at once; the pass itself stops at its next check (a phase
+    boundary, its batch submit, or just before apply, on either route)
+    without applying. A batch pass waiting on its provider stops when that
+    batch lands. A pass already past its last check still applies, once, and
+    whatever a pass applied stays. 404 for a pass that does not exist or
+    belongs to another user, alike; 409 once the pass has ended.
     """
     target = _resolve_user_id(user_id, caller_id)
     _audit_cross_user_access(

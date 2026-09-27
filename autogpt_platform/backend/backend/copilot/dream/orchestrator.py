@@ -16,9 +16,9 @@ Every pass, on either route, gets a durable ``DreamPass`` row
 (``store.py``): inserted at the start, advanced after each step, and
 closed with how the pass ended, a write attempted before the pass releases
 its lock. Like every record write it is best-effort: one that fails or
-times out leaves the row open behind a free lock until a reaper closes it.
-A pass holding the lock runs ``guard.py`` first, and ``cancel.py``'s stop
-check before each phase and before apply.
+times out leaves the row open behind a free lock until a later pass's guard
+or a reaper closes it. A pass holding the lock runs ``guard.py`` first, and
+``cancel.py``'s checks before each phase, before its batch submit and apply.
 
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set and, on the sync route, the usage
@@ -50,7 +50,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
-from .cancel import stop_if_stopped
+from .cancel import stop_before_apply, stop_if_stopped
 from .clamp import clamp_operations
 from .fetch import (
     DreamInput,
@@ -636,14 +636,14 @@ async def _apply(
     sanitized: DreamOperations,
     input_bundle: DreamInput,
 ) -> DreamPassResult:
-    """Clamp the operations, check for a stop, apply them and stamp the marker."""
+    """Clamp the operations, make the last checks, apply and stamp the marker."""
     ops = clamp_operations(
         sanitized,
         len(input_bundle.facts),
         known_fact_uuids=input_bundle.known_fact_uuids,
     )
     await record_applying(run.pass_id, ops)
-    await stop_if_stopped(run)
+    await stop_before_apply(run, lock_handle)
     apply_stats = await apply_operations(
         scope,
         run.pass_id,

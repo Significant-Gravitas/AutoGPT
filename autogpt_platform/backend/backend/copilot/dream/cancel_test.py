@@ -184,7 +184,8 @@ class TestCancelOpenPasses:
             DreamPassCancel(cancelled=True, record=_cancelled("a")),
             DreamPassCancel(cancelled=True, record=_cancelled("b")),
         ]
-        db.list_open_dream_passes.assert_awaited_once_with(_SCOPE.scope_key)
+        # Every open row, however many: the wipe must not leave one running.
+        db.list_open_dream_passes.assert_awaited_once_with(_SCOPE.scope_key, limit=None)
         sent = [call.args for call in db.update_dream_pass.await_args_list]
         assert [pass_id for pass_id, _ in sent] == ["a", "b"]
         assert {(u.error, u.owner_user_id) for _, u in sent} == {("wiped", "u1")}

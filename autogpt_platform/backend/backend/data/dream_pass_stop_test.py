@@ -22,7 +22,12 @@ from backend.copilot.dream.schemas import ConsolidationOutput
 from backend.data.db import execute_raw_with_schema
 from backend.util.json import SafeJson
 
-from .dream_pass import create_dream_pass, get_dream_pass, update_dream_pass
+from .dream_pass import (
+    create_dream_pass,
+    get_dream_pass,
+    list_open_dream_passes,
+    update_dream_pass,
+)
 from .dream_pass_models import (
     DreamPassDraft,
     DreamPassRecord,
@@ -227,6 +232,23 @@ async def test_a_forced_expiry_lands_on_a_fresh_row(owner):
 
     row = await _row(pass_id)
     assert (row.status, row.cancel_generation) == (DreamPassStatus.EXPIRED, 1)
+
+
+async def test_open_passes_list_newest_first_and_capped(owner):
+    """The guard weighs a scope's newest open passes, a handful at most."""
+    pass_ids = []
+    for _ in range(3):
+        pass_ids.append(await _new_pass(owner))
+        await asyncio.sleep(0.01)
+    await update_dream_pass(
+        pass_ids[1], DreamPassUpdate(status=DreamPassStatus.COMPLETE)
+    )
+
+    newest = await list_open_dream_passes(owner, limit=1)
+    every = await list_open_dream_passes(owner)
+
+    assert [row.id for row in newest] == [pass_ids[2]]
+    assert [row.id for row in every] == [pass_ids[2], pass_ids[0]]
 
 
 async def test_the_times_the_guard_compares_read_back_in_utc(owner):

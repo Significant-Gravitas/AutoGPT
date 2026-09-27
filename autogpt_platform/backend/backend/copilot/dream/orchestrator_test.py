@@ -157,9 +157,24 @@ def _build_input(*, episodes=1, facts=1) -> DreamInput:
     )
 
 
+class _HeldLock:
+    """A dream lock handle whose lock is still held whenever a pass looks."""
+
+    token = "tok"
+
+    async def held(self) -> bool:
+        return True
+
+    async def extend(self, ttl_seconds: int) -> bool:
+        return True
+
+    def disown(self) -> None:
+        return None
+
+
 @asynccontextmanager
 async def _noop_lock(*args, **kwargs):
-    yield
+    yield _HeldLock()
 
 
 @pytest.fixture(autouse=True)
@@ -390,7 +405,7 @@ async def test_held_dream_lock_handle_is_threaded_into_apply(mocker):
     """apply renews the dream lock before the drain + demotions, which it can
     only do with the handle the orchestrator holds. Dropping that kwarg would
     silently reinstate the lock-expiry-during-drain window, so pin it."""
-    sentinel_handle = object()
+    sentinel_handle = _HeldLock()
 
     @asynccontextmanager
     async def _handle_lock(*args, **kwargs):

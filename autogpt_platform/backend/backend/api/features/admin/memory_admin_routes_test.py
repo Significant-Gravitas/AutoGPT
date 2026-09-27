@@ -988,6 +988,18 @@ class TestCancelDreamPass:
         assert resp.status_code == 200
         cancel.assert_awaited_once_with("p1", user_id="abc", reason=ADMIN_CANCEL_REASON)
 
+    def test_a_reason_is_kept_without_its_surrounding_whitespace(self) -> None:
+        cancel = AsyncMock(
+            return_value=DreamPassCancel(cancelled=True, record=_cancelled_row("abc"))
+        )
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post(
+                "/admin/memory/abc/dream/p1/cancel", json={"reason": "  testing\n"}
+            )
+
+        assert resp.status_code == 200
+        cancel.assert_awaited_once_with("p1", user_id="abc", reason="testing")
+
     def test_me_cancels_the_callers_own_pass(self, mock_jwt_admin) -> None:
         caller = mock_jwt_admin["user_id"]
         cancel = AsyncMock(
@@ -1018,7 +1030,11 @@ class TestCancelDreamPass:
         assert resp.status_code == 409
         assert resp.json()["detail"] == "dream pass already complete"
 
-    @pytest.mark.parametrize("reason", ["", "x" * 501], ids=["blank", "overlong"])
+    @pytest.mark.parametrize(
+        "reason",
+        ["", " ", "\t\n", "x" * 501],
+        ids=["empty", "space", "whitespace", "overlong"],
+    )
     def test_a_blank_or_overlong_reason_is_422_before_the_cancel(
         self, reason: str
     ) -> None:

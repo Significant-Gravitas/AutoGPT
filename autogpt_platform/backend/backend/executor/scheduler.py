@@ -8,7 +8,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import (
@@ -1315,7 +1315,9 @@ def execute_dream_pass_with_status(user_id: str, job_id: str, force: bool = Fals
         # a failed dream as a successful one.
         try:
             run_async(
-                mark_errored(kind="dream_pass", job_id=job_id, error=result.error),
+                mark_errored(
+                    kind="dream_pass", job_id=job_id, error=result.error, result=result
+                ),
                 timeout=10,
             )
         except Exception:
@@ -3011,7 +3013,7 @@ class Scheduler(AppService):
     @expose
     def schedule_immediate_dream_pass(
         self, user_id: str, job_id: str, force: bool = False
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Schedule a one-shot dream pass run keyed by ``job_id``; ``force``
         goes to the pass's guard (see ``execute_dream_pass_with_status``)."""
         import datetime as _dt

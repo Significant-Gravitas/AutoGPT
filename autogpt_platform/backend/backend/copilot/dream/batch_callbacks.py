@@ -20,9 +20,9 @@ The pass's Redis state and its at-most-once gates are ``batch_state.py``;
 how the pass ends (JobStatus, the durable ``DreamPass`` record, the lock)
 is ``batch_outcome.py``; what its phases cost and used is ``batch_costs.py``. Each
 callback also advances the record: the phase that landed and its output,
-the next batch, the apply, and the end. Before it chains the next phase and
-before it claims the apply gate, it reads the record and ends a pass that was
-cancelled or expired meanwhile (``cancel.py``).
+the next batch, the apply, and the end. It ends a pass cancelled or expired
+meanwhile before it chains or claims the apply gate, and one that lost its
+scope's lock after the claim, before it applies (``cancel.py``).
 """
 
 from __future__ import annotations
@@ -53,8 +53,13 @@ from .batch_state import (
     read_state,
     write_phase_to_state,
 )
-from .batch_submit import PHASE_RESPONSE_MODELS, read_input_bundle, submit_phase
-from .cancel import end_batch_pass_if_stopped
+from .batch_submit import (
+    PHASE_RESPONSE_MODELS,
+    read_input_bundle,
+    read_lock_token,
+    submit_phase,
+)
+from .cancel import end_batch_pass_if_lock_lost, end_batch_pass_if_stopped, pass_closed
 from .clamp import clamp_operations
 from .llm import parse_json_with_prose_fallback
 from .provider_batch import anthropic_api_key
@@ -146,6 +151,9 @@ async def _handle_guarded(
     scoped = bp
     try:
         input_bundle = await read_input_bundle(bp.pass_id)
+        if input_bundle is None and await pass_closed(bp.pass_id):
+            logger.debug("Dream pass %s ended; late delivery ignored", bp.pass_id)
+            return
         if input_bundle is None:
             logger.error(
                 "Dream batch input missing; refusing payload-only scope for pass=%s",
@@ -350,16 +358,15 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
 async def _claim_apply(
     bp: BatchPass, state: dict[str, dict[str, Any]], ops: DreamOperations
 ) -> bool:
-    """Record APPLYING, check the record for a stop, then claim the apply
-    gate; ``False`` once a stop, a duplicate delivery or an unreadable gate
-    has ended this one.
-
-    The write and the check come first, so a delivery that stalls or dies on
-    them has not claimed the gate and a redelivery still applies; the check
-    comes last of the two to leave a cancel the least time to slip past it.
-    Once the gate is claimed, apply follows with nothing awaited in between.
+    """Record APPLYING, check for a stop, claim the apply gate, check the
+    lock; ``False`` once a stop, a duplicate, an unreadable gate or a lost lock
+    has ended this delivery. A delivery that stalls or dies before the claim
+    has not claimed it, so a redelivery still applies. Between the claim and
+    apply only the lock is read (one GET), so a newer pass that took the scope
+    while this one waited is never applied over.
     """
     await record_applying(bp.pass_id, ops)
+    lock_token = await read_lock_token(bp.pass_id)
     if await end_batch_pass_if_stopped(bp):
         return False
     gate = await claim_apply_gate(bp.pass_id)
@@ -373,7 +380,7 @@ async def _claim_apply(
     if gate == "duplicate":
         await _finish_duplicate(bp, state, ops)
         return False
-    return True
+    return not await end_batch_pass_if_lock_lost(bp, lock_token)
 
 
 async def _terminal_ops(

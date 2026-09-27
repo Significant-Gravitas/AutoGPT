@@ -6,36 +6,51 @@ open and the caller's own. It does not reach into the running pass; the pass
 reads its row at its next check and stops itself:
 
   * a sync pass at each phase boundary and once more just before apply
-    (``stop_if_stopped``) ends with its failure result: the usage of the
-    phases billed so far kept, nothing applied, its lock released on the way
-    out like any other failure;
+    (``stop_if_stopped``, ``stop_before_apply``) ends with its failure result:
+    the usage of the phases billed so far kept, nothing applied, its lock
+    released on the way out like any other failure;
+  * a pass about to submit its first batch submits nothing, and one whose row
+    closed while it submitted cancels that batch instead of handing it on
+    (``batch_handoff``);
   * a batch pass in its callback, before it chains the next phase and before
     it claims the apply gate (``end_batch_pass_if_stopped``), cancels its
     provider batch best-effort and ends through ``fail_pass``: its landed
     phases charged, its lock released, its batch state and bundle cleaned.
 
+A cancel that lands after a pass's last check, while it claims apply or
+applies, is too late: that apply runs, once, and the row stays CANCELLED.
+
 A row a newer pass's guard expired (``guard.py``) has its generation bumped the
-same way, so its pass stops at the same checks. A closed row takes no other
-write, so the failure each route records on the way out leaves it CANCELLED
-(or EXPIRED). The checks read the row under the store's deadline and never
-stop a pass on a read that fails: the store being down must not end work that
-nobody cancelled.
+same way, so its pass stops at the same checks. And right before apply each
+route checks that it still holds its scope's lock (``stop_before_apply``,
+``end_batch_pass_if_lock_lost``): a newer pass takes the scope only once
+this one's lock has lapsed, so a pass that lost it never applies over the
+newer one. A closed row takes no other write, so the failure each route
+records on the way out leaves it CANCELLED (or EXPIRED). The stop checks read
+the row under the store's deadline and never stop a pass on a read that fails:
+the store being down must not end work that nobody cancelled. The lock check
+fails closed: a pass that cannot confirm its lock does not apply.
 """
 
 import logging
+from collections.abc import Awaitable
 
 from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.data.dream_pass_models import DreamPassRecord
+from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
 
 from .batch_outcome import BatchPass, fail_pass
+from .locks import DreamLockHandle, dream_lock_held_by
 from .pass_record import cancelled, stop_error
 from .pass_run import DreamPassRun, PassEnded
 from .provider_batch import cancel_provider_batch
 from .store import read_dream_pass, read_open_passes, read_pass, write_stop
 
 logger = logging.getLogger(__name__)
+
+# How a pass that lost its scope's lock before apply ends.
+LOCK_LOST_ERROR = "apply: dream lock lost before apply"
 
 
 class DreamPassCancel(BaseModel):
@@ -66,23 +81,47 @@ async def cancel_open_passes(
 ) -> list[DreamPassCancel]:
     """Cancel every open pass of *scope*, one ``cancel_dream_pass`` each, for
     the wipe to call before it erases the scope's memory. Raises when the
-    store cannot list or cancel them, so the wipe does not go on unsure."""
+    store cannot list or cancel them, so the wipe does not go on unsure.
+
+    This closes the rows; it is not a barrier. Each pass stops at its next
+    check, and one already past its last check still applies, so a wipe must
+    also wait for the scope's lock before it erases."""
     rows = await read_open_passes(scope)
     return [
         await cancel_dream_pass(row.id, user_id=user_id, reason=reason) for row in rows
     ]
 
 
+async def stopped_error(pass_id: str) -> str | None:
+    """Why the pass's row says it was stopped from outside; ``None`` when it
+    was not, or when the store cannot say in time and the pass goes on."""
+    row = await _read_row(pass_id)
+    return stop_error(row) if row is not None else None
+
+
+async def pass_closed(pass_id: str) -> bool:
+    """Whether the pass's row has ended; ``False`` when there is no row or the
+    store cannot say in time."""
+    row = await _read_row(pass_id)
+    return row is not None and row.status not in OPEN_STATUSES
+
+
 async def stop_if_stopped(run: DreamPassRun) -> None:
     """Raise ``PassEnded`` with the run's failure when its row says it was
-    stopped from outside; the sync pass's check before each phase and before
-    apply."""
-    row = await _read_row(run.pass_id)
-    error = stop_error(row) if row is not None else None
+    stopped from outside; the sync pass's check before each phase."""
+    error = await stopped_error(run.pass_id)
     if error is None:
         return
     logger.info(f"Dream pass {run.pass_id} stops: {error}")
     raise PassEnded(run.failure(error))
+
+
+async def stop_before_apply(run: DreamPassRun, lock_handle: DreamLockHandle) -> None:
+    """The sync pass's last checks before apply: its row shows no stop and it
+    still holds its scope's lock; else raise ``PassEnded`` with its failure."""
+    await stop_if_stopped(run)
+    if not await _lock_held(lock_handle.held(), run.pass_id):
+        raise PassEnded(run.failure(LOCK_LOST_ERROR))
 
 
 async def end_batch_pass_if_stopped(bp: BatchPass) -> bool:
@@ -102,6 +141,39 @@ async def end_batch_pass_if_stopped(bp: BatchPass) -> bool:
         await cancel_provider_batch(row.provider_batch_id)
     await fail_pass(bp, error)
     return True
+
+
+async def end_batch_pass_if_lock_lost(bp: BatchPass, lock_token: str | None) -> bool:
+    """The batch pass's check once its apply gate is claimed, with nothing
+    durable awaited before it: end the pass and say so when it no longer
+    holds its scope's lock under *lock_token*.
+
+    Its landed phases are charged and its state and bundle cleaned. A lock
+    that is no longer the pass's is left alone; one that could not be read is
+    released by compare-and-delete, which only ever deletes the pass's own.
+    The job and the record say why: the stop that closed the row (a newer
+    pass's expiry), else that the lock was lost."""
+    scope = MemoryScope.build(bp.user_id, bp.expert_id)
+    held = await _lock_held(dream_lock_held_by(scope, lock_token), bp.pass_id)
+    if held:
+        return False
+    error = await stopped_error(bp.pass_id) or LOCK_LOST_ERROR
+    logger.warning(f"Dream batch pass {bp.pass_id} does not apply: {error}")
+    await fail_pass(bp, error, holds_lock=held is None)
+    return True
+
+
+async def _lock_held(check: Awaitable[bool], pass_id: str) -> bool | None:
+    """*check*'s answer, or ``None`` when Redis cannot give it in time: a pass
+    that cannot confirm its lock does not apply."""
+    try:
+        return await check
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not confirm it still holds its dream lock",
+            exc_info=True,
+        )
+        return None
 
 
 async def _read_row(pass_id: str) -> DreamPassRecord | None:

@@ -7,6 +7,11 @@ The BatchExecutor polls; ``batch_callbacks`` submits phases 2 (recombine) and
 The dream lock goes with the pass: extended to the batch window here and
 released by the callbacks when the pass ends.
 
+A pass whose row was cancelled (or expired) while it gathered submits
+nothing; one whose row closed while it submitted cancels that batch here and
+keeps its lock to release on the way out, rather than handing both to
+callbacks that would only stop.
+
 Any caller can take this route (it depends on the flag and the deployment's
 key, not the caller). ``status_id`` ties the callbacks' updates to the
 JobStatus row an admin trigger created; without one the callbacks skip the
@@ -18,15 +23,18 @@ import logging
 from backend.copilot.config import ChatConfig
 from backend.executor.batch_executor import remove_pending
 
+from .batch_state import best_effort_cleanup
 from .batch_submit import (
     delete_input_bundle,
     persist_input_bundle,
     phase_models_for_config,
     submit_phase,
 )
+from .cancel import stopped_error
 from .fetch import DreamInput
 from .locks import BATCH_LOCK_TTL_SECONDS, DreamLockHandle
 from .pass_run import DreamPassRun
+from .provider_batch import cancel_provider_batch
 from .schemas import DreamPassResult
 from .store import record_submitted
 
@@ -47,6 +55,9 @@ async def submit_dream_pass_batch(
         # Shouldn't happen — routing.py only picks anthropic_batch when
         # the key is present. Guard for type-narrowing + future safety.
         return run.failure("anthropic_batch: no Anthropic API key (routing bug)")
+    stopped = await stopped_error(run.pass_id)
+    if stopped is not None:
+        return run.failure(stopped)
 
     # Persist DreamInput so the per-phase callbacks can rebuild the
     # next phase's prompt without re-fetching from Postgres + FalkorDB.
@@ -81,7 +92,8 @@ async def _hand_off(
 ) -> DreamPassResult:
     """Phase 1 is enqueued — hand the dream lock to the batch callback so it
     spans the full async lifetime (apply runs hours later). Extend the TTL to
-    the batch window first; the callback releases it on terminal/failure.
+    the batch window and record the submit first; the callback releases the
+    lock on terminal/failure.
 
     A failed extend means the lock expired before the handoff — a newer pass
     may already own the graph, so the just-submitted batch must never be
@@ -89,6 +101,10 @@ async def _hand_off(
     callback chain) and drop the input bundle. The provider batch is orphaned;
     its results are discarded. The lock is NOT disowned, so the context
     manager's compare-and-delete release stays a safe no-op.
+
+    A row that refuses the submit because a stop closed it meanwhile gets the
+    same revoke, the provider batch cancelled too, and keeps the lock to
+    release on the way out.
     """
     logger.info(
         "Dream pass %s submitted via Anthropic batch=%s (phase=consolidate)",
@@ -101,12 +117,51 @@ async def _hand_off(
         return run.failure(
             "anthropic_batch: dream lock lost before handoff — batch revoked"
         )
+    stopped = await _record_submit(run, lock_handle, provider_batch_id, input_bundle)
+    if stopped is not None:
+        await _revoke_stopped(run.pass_id, provider_batch_id)
+        return run.failure(stopped)
     lock_handle.disown()
-    await record_submitted(
+    return run.handed_off()
+
+
+async def _record_submit(
+    run: DreamPassRun,
+    lock_handle: DreamLockHandle,
+    provider_batch_id: str,
+    input_bundle: DreamInput,
+) -> str | None:
+    """Record the submit on the pass's row; the stop that closed the row when
+    the write did not land on it, else ``None``. A write that failed on a row
+    still open (or unreadable) hands off anyway, its batch off the record."""
+    recorded = await record_submitted(
         run.pass_id,
         input_bundle=input_bundle,
         provider_batch_id=provider_batch_id,
         lease_token=lock_handle.token,
         lease_ttl_seconds=BATCH_LOCK_TTL_SECONDS,
     )
-    return run.handed_off()
+    if recorded:
+        return None
+    stopped = await stopped_error(run.pass_id)
+    if stopped is None and recorded is None:
+        logger.warning(
+            f"Dream pass {run.pass_id}: batch {provider_batch_id} is not on its "
+            "record; handing it to the callbacks anyway"
+        )
+    return stopped
+
+
+async def _revoke_stopped(pass_id: str, provider_batch_id: str) -> None:
+    """Take back a stopped pass's just-submitted batch: off the executor's
+    queue, cancelled at the provider (best-effort), its bundle dropped."""
+    logger.info(f"Dream pass {pass_id} stopped at its handoff; revoking batch")
+    try:
+        await remove_pending(provider_batch_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not revoke batch {provider_batch_id}",
+            exc_info=True,
+        )
+    await cancel_provider_batch(provider_batch_id)
+    await best_effort_cleanup(pass_id)

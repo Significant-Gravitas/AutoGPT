@@ -245,14 +245,16 @@ class FakeDreamDb:
         row = await self.get_dream_pass(pass_id)
         return row if row is not None and row.user_id == user_id else None
 
-    async def list_open_dream_passes(self, scope_key: str) -> list[DreamPassRecord]:
-        """Open rows of the scope in the order they were inserted."""
+    async def list_open_dream_passes(
+        self, scope_key: str, limit: int | None = None
+    ) -> list[DreamPassRecord]:
+        """Open rows of the scope, the last inserted first, at most *limit*."""
         self._raise_if_down()
         return [
             self.record(pass_id)
-            for pass_id, row in self.rows.items()
+            for pass_id, row in reversed(self.rows.items())
             if row["scope_key"] == scope_key and row["status"] in OPEN_STATUSES
-        ]
+        ][:limit]
 
     def seed(self, draft: DreamPassDraft, **columns: Any) -> None:
         """A row as an earlier step (another process) would have left it;
@@ -353,7 +355,9 @@ class StalledDreamDb:
         await self._hang()
         return None
 
-    async def list_open_dream_passes(self, scope_key: str) -> list[DreamPassRecord]:
+    async def list_open_dream_passes(
+        self, scope_key: str, limit: int | None = None
+    ) -> list[DreamPassRecord]:
         await self._hang()
         return []
 
