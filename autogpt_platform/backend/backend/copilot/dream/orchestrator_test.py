@@ -2721,5 +2721,5 @@ async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
 
     result = await asyncio.wait_for(nightly_batch_mod.run_nightly_batch_submit("u"), 10)
 
-    ratification.assert_awaited_once_with("u")
+    ratification.assert_awaited_once_with("u", expert_id=None)
     assert result.dream is not None and result.dream.error is None

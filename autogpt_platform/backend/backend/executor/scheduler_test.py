@@ -551,7 +551,7 @@ class TestNightlyBatchScopeGate:
         returned, submit, stamp = self._fire(gate=True, result=result)
 
         assert returned is result
-        submit.assert_called_once_with("abc", None)
+        submit.assert_called_once_with("abc", None, trigger="cron")
         stamp.assert_awaited_once_with(MemoryScope.for_user("abc"), "nightly")
 
     def test_an_errored_run_is_not_stamped(self) -> None:
@@ -565,7 +565,7 @@ class TestNightlyBatchScopeGate:
             gate=True, result=_nightly_result(), expert_id="expert-1"
         )
 
-        submit.assert_called_once_with("abc", "expert-1")
+        submit.assert_called_once_with("abc", "expert-1", trigger="cron")
         stamp.assert_awaited_once_with(
             MemoryScope.for_expert("abc", "expert-1"), "nightly"
         )

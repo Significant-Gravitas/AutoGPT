@@ -647,6 +647,7 @@ async def _apply(
         run.pass_id,
         ops,
         known_fact_uuids=input_bundle.known_fact_uuids,
+        known_episode_uuids=input_bundle.known_episode_uuids,
         lock_handle=lock_handle,
         lease=lease,
     )

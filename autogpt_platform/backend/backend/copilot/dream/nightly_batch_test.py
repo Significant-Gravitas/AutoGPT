@@ -324,7 +324,7 @@ async def test_expert_scope_reaches_both_submitters_and_the_owner_pays():
         result = await run_nightly_batch_submit("u", expert_id="expert-1")
 
     budget.assert_awaited_once_with("u")
-    dream_spy.assert_awaited_once_with("u", expert_id="expert-1")
+    dream_spy.assert_awaited_once_with("u", expert_id="expert-1", trigger="cron")
     rat_spy.assert_awaited_once_with("u", expert_id="expert-1")
     assert result.expert_id == "expert-1"
 
@@ -344,6 +344,6 @@ async def test_account_scope_runs_the_account_graph():
     ):
         result = await run_nightly_batch_submit("u")
 
-    dream_spy.assert_awaited_once_with("u", expert_id=None)
+    dream_spy.assert_awaited_once_with("u", expert_id=None, trigger="cron")
     rat_spy.assert_awaited_once_with("u", expert_id=None)
     assert result.expert_id is None
