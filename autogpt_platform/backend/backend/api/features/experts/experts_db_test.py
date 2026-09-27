@@ -5678,6 +5678,39 @@ async def test_update_skills_resolves_every_name_before_copying(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_rejects_attach_and_remove_before_copying(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    copies: list[str] = []
+
+    async def _find(user_id, names):
+        return {n.strip().lower(): n for n in names}
+
+    async def _copy(user_id, expert_id, name):
+        copies.append(name)
+        return name
+
+    async def _listing_name(listing_id):
+        return "Deep Research"
+
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _find)
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
+    monkeypatch.setattr(experts_db, "_resolve_marketplace_skill_name", _listing_name)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(ValueError, match="both attached and removed"):
+        await experts_db.update_skills(
+            test_user.id,
+            hired.expert.id,
+            ["valid"],
+            marketplace_listing_ids=["listing-1"],
+            remove=["deep_research"],
+        )
+    assert copies == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_update_skills_keeps_the_display_name_of_a_skill_already_carried(
     server: SpinTestServer, test_user, monkeypatch
 ):
@@ -5826,10 +5859,54 @@ async def test_update_skills_dropping_a_skill_removes_the_copy_and_the_row_name(
         "backend.copilot.tools.skills._get_user_skill_manager",
         new=AsyncMock(return_value=fake),
     ):
-        updated = await experts_db.update_skills(test_user.id, expert_id, [])
+        updated = await experts_db.update_skills(
+            test_user.id, expert_id, [], remove=[name]
+        )
 
     assert copy not in fake.files
     assert name not in {s.lower() for s in updated.skills}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_from_a_stale_list_keeps_a_skill_the_client_never_saw(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """SECRT-2693: the expert distils a skill after the client read its list;
+    saving that stale list must not delete the new skill, and only a name the
+    client asks to remove is removed."""
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _no_library_skills)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "kept")
+    fake = _FakeWorkspaceManager()
+    fresh = f"/experts/{expert_id}/skills/fresh-skill/SKILL.md"
+    fake.files[fresh] = b"---\nname: fresh-skill\ndescription: d\n---\nsteps\n"
+    kept = f"/experts/{expert_id}/skills/kept/SKILL.md"
+    fake.files[kept] = b"---\nname: kept\ndescription: d\n---\nsteps\n"
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "fresh-skill")
+
+    with patch(
+        "backend.copilot.tools.skills._get_user_skill_manager",
+        new=AsyncMock(return_value=fake),
+    ):
+        stale = await experts_db.update_skills(test_user.id, expert_id, ["kept"])
+        assert fresh in fake.files
+        assert {"kept", "fresh-skill"} <= {s.lower() for s in stale.skills}
+
+        removed = await experts_db.update_skills(
+            test_user.id, expert_id, [], remove=["kept"]
+        )
+
+    assert kept not in fake.files
+    assert fresh in fake.files
+    names = {s.lower() for s in removed.skills}
+    assert "kept" not in names
+    assert "fresh-skill" in names
+
+
+async def _no_library_skills(_user_id, _names):
+    return {}
 
 
 @pytest.mark.asyncio(loop_scope="session")
