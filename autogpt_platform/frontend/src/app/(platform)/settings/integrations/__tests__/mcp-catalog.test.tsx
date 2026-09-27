@@ -106,6 +106,12 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
       target: { value: "https://openseo.example.workers.dev/mcp" },
     });
     expect(input.value).toBe("https://openseo.example.workers.dev/mcp");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
+    await waitFor(() => {
+      expect(oauthRequest).toHaveBeenCalledWith({
+        server_url: "https://openseo.example.workers.dev/mcp",
+      });
+    });
   });
 
   test("lists native providers and branded MCP entries together", async () => {
