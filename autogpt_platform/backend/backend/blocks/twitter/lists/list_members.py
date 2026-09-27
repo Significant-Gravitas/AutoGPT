@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -80,6 +81,7 @@ class TwitterRemoveListMemberBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"remove_list_member": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -153,6 +155,7 @@ class TwitterAddListMemberBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"add_list_member": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -269,6 +272,7 @@ class TwitterGetListMembersBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -434,6 +438,7 @@ class TwitterGetListMembershipsBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

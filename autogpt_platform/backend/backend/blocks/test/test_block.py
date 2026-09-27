@@ -104,47 +104,6 @@ _EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
     GoogleSheetsMetadataBlock GoogleSheetsProtectRangeBlock
     GoogleSheetsRemoveDuplicatesBlock GoogleSheetsSortBlock
     GoogleSheetsUpdateCellBlock GoogleSheetsUpdateRowBlock GoogleSheetsWriteBlock
-    HubSpotCompanyBlock HubSpotContactBlock JevAskManyBlock JevChoiceBlock
-    JevFilterBlock JevPickBestBlock JevRouteBlock JevScoreBlock JevYesNoBlock
-    LinearCreateCommentBlock LinearCreateIssueBlock LoopVideoBlock
-    MediaDurationBlock ModQueueBlock NotionCreatePageBlock NotionReadDatabaseBlock
-    NotionReadPageBlock NotionReadPageMarkdownBlock NotionSearchBlock
-    PersistInformationBlock PineconeInitBlock PineconeInsertBlock
-    ProfileEnrichmentBlock RMFGAnalyzeDesignBlock RMFGCreateCartBlock
-    RMFGCreateDFMReportBlock RMFGCreateQuoteBlock RMFGCreateReviewLinkBlock
-    RMFGGetOrderBlock RMFGUpdateCartBlock RedditGetMyPostsBlock
-    RetrieveInformationBlock SaveCampaignSequencesBlock SearchRedditBlock
-    SearchStoreAgentsBlock Slant3DEstimateOrderBlock Slant3DEstimateShippingBlock
-    Slant3DFilamentBlock Slant3DSlicerBlock Slant3DTrackingBlock StagehandActBlock
-    StagehandExtractBlock StagehandObserveBlock
-    StripeLinkCreateCardSpendRequestBlock StripeLinkCreateTokenSpendRequestBlock
-    StripeLinkGetPaymentChallengeBlock StripeLinkRetrieveCardBlock
-    TodoistCloseTaskBlock TodoistCreateCommentBlock TodoistCreateLabelBlock
-    TodoistCreateProjectBlock TodoistCreateTaskBlock TodoistGetCommentBlock
-    TodoistGetCommentsBlock TodoistGetLabelBlock TodoistGetProjectBlock
-    TodoistGetSectionBlock TodoistGetSharedLabelsBlock TodoistGetTaskBlock
-    TodoistGetTasksBlock TodoistListCollaboratorsBlock TodoistListLabelsBlock
-    TodoistListProjectsBlock TodoistListSectionsBlock TodoistRenameSharedLabelsBlock
-    TodoistReopenTaskBlock TodoistUpdateCommentBlock TodoistUpdateLabelBlock
-    TodoistUpdateProjectBlock TodoistUpdateTaskBlock TwitterAddListMemberBlock
-    TwitterBookmarkTweetBlock TwitterCreateListBlock TwitterFollowListBlock
-    TwitterFollowUserBlock TwitterGetBlockedUsersBlock
-    TwitterGetBookmarkedTweetsBlock TwitterGetFollowersBlock
-    TwitterGetFollowingBlock TwitterGetHomeTimelineBlock TwitterGetLikedTweetsBlock
-    TwitterGetLikingUsersBlock TwitterGetListBlock TwitterGetListMembersBlock
-    TwitterGetListMembershipsBlock TwitterGetListTweetsBlock
-    TwitterGetMutedUsersBlock TwitterGetOwnedListsBlock TwitterGetPinnedListsBlock
-    TwitterGetQuoteTweetsBlock TwitterGetRetweetersBlock TwitterGetSpaceBuyersBlock
-    TwitterGetSpaceByIdBlock TwitterGetSpaceTweetsBlock TwitterGetSpacesBlock
-    TwitterGetTweetBlock TwitterGetTweetsBlock TwitterGetUserBlock
-    TwitterGetUserMentionsBlock TwitterGetUserTweetsBlock TwitterGetUsersBlock
-    TwitterHideReplyBlock TwitterLikeTweetBlock TwitterMuteUserBlock
-    TwitterPinListBlock TwitterRemoveBookmarkTweetBlock TwitterRemoveListMemberBlock
-    TwitterRemoveRetweetBlock TwitterSearchRecentTweetsBlock
-    TwitterSearchSpacesBlock TwitterUnfollowListBlock TwitterUnfollowUserBlock
-    TwitterUnhideReplyBlock TwitterUnlikeTweetBlock TwitterUnmuteUserBlock
-    TwitterUnpinListBlock TwitterUpdateListBlock VideoClipBlock VideoConcatBlock
-    VideoDownloadBlock VideoNarrationBlock VideoTextOverlayBlock
     """.split()
 )
 

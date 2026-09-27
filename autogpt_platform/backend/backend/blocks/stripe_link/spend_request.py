@@ -449,6 +449,7 @@ class StripeLinkCreateCardSpendRequestBlock(Block):
                     "approval_url": "",
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -565,6 +566,7 @@ class StripeLinkCreateTokenSpendRequestBlock(Block):
                     "approval_url": "",
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -842,6 +844,7 @@ class StripeLinkRetrieveCardBlock(Block):
                     },
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

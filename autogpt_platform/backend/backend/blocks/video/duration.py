@@ -6,6 +6,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -40,6 +41,7 @@ class MediaDurationBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=MediaDurationBlock.Input,
             output_schema=MediaDurationBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

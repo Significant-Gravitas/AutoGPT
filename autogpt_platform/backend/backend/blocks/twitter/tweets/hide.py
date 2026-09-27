@@ -3,6 +3,7 @@ import tweepy
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -54,6 +55,7 @@ class TwitterHideReplyBlock(Block):
                 ("success", True),
             ],
             test_mock={"hide_reply": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -125,6 +127,7 @@ class TwitterUnhideReplyBlock(Block):
                 ("success", True),
             ],
             test_mock={"unhide_reply": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

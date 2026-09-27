@@ -811,6 +811,7 @@ class RedditGetMyPostsBlock(Block):
                     ),
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -1005,6 +1006,7 @@ class SearchRedditBlock(Block):
                     ),
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -4,7 +4,13 @@ import tweepy
 from pydantic import BaseModel
 from tweepy.client import Response
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaOutput,
+)
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -134,6 +140,7 @@ class TwitterGetSpacesBlock(Block):
                     ["Test Space"],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -281,6 +288,7 @@ class TwitterGetSpaceByIdBlock(Block):
                     {},
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -433,6 +441,7 @@ class TwitterGetSpaceBuyersBlock(Block):
                     ["testuser"],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -563,6 +572,7 @@ class TwitterGetSpaceTweetsBlock(Block):
                     {},
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

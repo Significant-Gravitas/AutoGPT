@@ -4,6 +4,7 @@ import tweepy
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -57,6 +58,7 @@ class TwitterUnfollowListBlock(Block):
                 ("success", True),
             ],
             test_mock={"unfollow_list": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -119,6 +121,7 @@ class TwitterFollowListBlock(Block):
                 ("success", True),
             ],
             test_mock={"follow_list": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

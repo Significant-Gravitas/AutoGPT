@@ -147,6 +147,7 @@ class TwitterRemoveRetweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"remove_retweet": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -273,6 +274,7 @@ class TwitterGetRetweetersBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

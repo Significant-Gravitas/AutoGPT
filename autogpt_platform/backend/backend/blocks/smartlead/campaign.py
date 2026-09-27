@@ -309,6 +309,7 @@ class SaveCampaignSequencesBlock(Block):
                     message="Sequences saved successfully",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

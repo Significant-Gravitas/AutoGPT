@@ -3,7 +3,7 @@ from typing import Any
 from pydantic import model_validator
 from typesafe_sdk import Score
 
-from backend.blocks._base import BlockCategory, BlockOutput
+from backend.blocks._base import BlockCategory, BlockEffect, BlockOutput
 from backend.data.model import SchemaField
 
 from ._base import JevBlockBase
@@ -83,6 +83,7 @@ class JevFilterBlock(JevBlockBase):
                     {"judgment": SCORE_ANSWER}
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

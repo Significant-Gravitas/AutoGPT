@@ -6,6 +6,7 @@ from backend.api.features.store.db import StoreAgentsSortOptions
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -248,6 +249,7 @@ class SearchStoreAgentsBlock(Block):
                     total_count=1,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
