@@ -184,6 +184,8 @@ test("a row flips to Approved at the click, before the late result lands", async
     screen.getAllByText('Create library folder "Q3 reports"').length,
   ).toBeGreaterThan(0);
   expect(screen.queryByText('Created folder "Q3 reports"')).toBeNull();
+  // The open row does not fall back to showing the held marker's fields.
+  expect(screen.queryByText("copilot-node-gate-create_folder:abc")).toBeNull();
 });
 
 test("a row flips to Rejected at the click", async () => {

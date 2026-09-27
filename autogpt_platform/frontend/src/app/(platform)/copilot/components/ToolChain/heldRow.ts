@@ -46,14 +46,10 @@ export function applyHeldOutcome(
   const outcome = outcomes.get(row.key);
   // Answered here and not yet run: the tag flips now, the result lands later.
   const answer = outcome ? undefined : answers[reviewId];
-  if (answer) {
-    return settle(
-      row,
-      answer === "approved" ? ask : didnt,
-      answer,
-      reviewId,
-      read,
-    );
+  if (answer === "rejected") return settle(row, didnt, answer, reviewId, read);
+  // Approved but not run: nothing to show until its result lands.
+  if (answer === "approved") {
+    return { ...settle(row, ask, answer, reviewId, read), output: undefined };
   }
   if (!outcome) {
     return {
