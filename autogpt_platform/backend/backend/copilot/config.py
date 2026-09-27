@@ -73,6 +73,12 @@ CODEX_ENGINE_CONTEXT_WINDOW = 272_000
 # Codex compacts at 90% of its window; the Codex route mirrors that
 # trigger instead of the Anthropic-tuned default below.
 CODEX_ENGINE_AUTOCOMPACT_PCT = 90
+# The subscription route holds its window at 200K (see ``_TRANSPORT_PROFILES``)
+# but fills it.  Those turns draw on the subscriber's own plan, so the
+# cache-creation cost behind the platform's 50% trigger is not the platform's
+# to save, and compacting a 200K window at 100K would discard half of what
+# the clamp already allows.  90 sits under the CLI's ~93% ceiling.
+SUBSCRIPTION_AUTOCOMPACT_PCT = 90
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
@@ -165,7 +171,10 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         # 700K resends 700K every turn — a handful of messages drains a
         # usage window. A pin *below* the CLI's model table is the one that
         # takes effect (one above it is clamped away), so this is the lever
-        # that keeps a long chat from eating the plan limit.
+        # that keeps a long chat from eating the plan limit.  The trigger on
+        # this route is ``SUBSCRIPTION_AUTOCOMPACT_PCT``, not the platform's
+        # cost-motivated default: the clamp protects the plan, and the
+        # session then uses the window the clamp allows.
         sdk_context_window=CLI_DEFAULT_CONTEXT_WINDOW,
     ),
     "openrouter": TransportProfile(
@@ -556,8 +565,9 @@ class ChatConfig(BaseSettings):
         "SDK subprocess). The CLI caps at its default (~93% of window); values "
         "above that have no effect. 50 (100K of the platform route's 200K "
         "window, 500K of a 1M Claude-engine window) keeps Anthropic context "
-        "creation costs down. The Codex route ignores this and compacts at "
-        "the engine's 90% trigger instead. Set to 0 to omit the env var entirely "
+        "creation costs down. The Codex and subscription routes ignore this "
+        "and compact at 90% instead: those windows are billed to the connected "
+        "account, not the platform. Set to 0 to omit the env var entirely "
         "and let the CLI use its default ~93% threshold — useful when the "
         "post-compaction floor (system prompt + tool defs ≈ 65-110K) is close "
         "to the trigger and a more aggressive value causes back-to-back "

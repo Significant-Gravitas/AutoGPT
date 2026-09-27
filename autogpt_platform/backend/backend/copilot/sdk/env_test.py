@@ -70,7 +70,9 @@ class TestBuildSdkEnvSubscription:
         assert result["ANTHROPIC_AUTH_TOKEN"] == ""
         assert result["ANTHROPIC_BASE_URL"] == ""
         assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
-        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+        # The subscription route fills its 200K window (90%), not the
+        # platform's cost-motivated 50%.
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
         mock_validate.assert_called_once()
 
     @patch(

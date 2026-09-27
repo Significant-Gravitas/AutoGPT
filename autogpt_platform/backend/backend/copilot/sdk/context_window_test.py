@@ -7,6 +7,7 @@ from backend.copilot.config import (
     CLI_DEFAULT_CONTEXT_WINDOW,
     CODEX_ENGINE_AUTOCOMPACT_PCT,
     CODEX_ENGINE_CONTEXT_WINDOW,
+    SUBSCRIPTION_AUTOCOMPACT_PCT,
     ChatConfig,
 )
 from backend.copilot.sdk.context_window import (
@@ -177,6 +178,31 @@ class TestAutocompactPct:
         assert (
             autocompact_pct(cfg, "anthropic/claude-opus-4-7", codex_route=False) == 50
         )
+
+    def test_subscription_route_fills_its_window(self):
+        """The 200K clamp protects the plan limit; the trigger then uses what
+        the clamp allows, whatever the platform's cost default is."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        assert (
+            autocompact_pct(cfg, "anthropic/claude-opus-4-7", codex_route=False)
+            == SUBSCRIPTION_AUTOCOMPACT_PCT
+            == 90
+        )
+        assert (
+            autocompact_pct(cfg, "anthropic/claude-sonnet-5", codex_route=False) == 90
+        )
+        assert (
+            cli_autocompact_threshold(
+                cfg, "anthropic/claude-opus-4-7", codex_route=False
+            )
+            == 180_000
+        )
+
+    def test_subscription_zero_pct_omits(self):
+        cfg = _make_config(
+            use_claude_code_subscription=True, claude_agent_autocompact_pct_override=0
+        )
+        assert autocompact_pct(cfg, "anthropic/claude-opus-4-7", codex_route=False) == 0
 
     def test_sonnet_5_scales_on_non_codex_routes(self):
         cfg = _make_config()

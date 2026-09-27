@@ -9,8 +9,11 @@ that same pin.  One window per route, one trigger, one set of numbers.
 - direct_anthropic: the engine default, 1M.  The CLI clamps a pin *above*
   its own model-table window (measured, 2.1.274), so on this route the pin
   can only lower; 1M means "let the table decide".
-- subscription: 200K.  The turns draw on the subscriber's plan, and a chat
-  resending 700K per turn drains a usage window in a few messages.
+- subscription: 200K, compacting at 90%.  The turns draw on the
+  subscriber's plan, and a chat resending 700K per turn drains a usage
+  window in a few messages — hence the clamp.  Within it the platform's
+  cache-cost trigger has nothing to save, so the route fills the window
+  the clamp allows rather than compacting at 100K.
 - codex: what the connected account advertises for the routed model
   (``CodexEngineWindow``), falling back to the Codex engine default (272K,
   90% trigger) when the payload carries no window.  Either way
@@ -36,6 +39,7 @@ from backend.copilot.config import (
     CLI_DEFAULT_CONTEXT_WINDOW,
     CODEX_ENGINE_AUTOCOMPACT_PCT,
     CODEX_ENGINE_CONTEXT_WINDOW,
+    SUBSCRIPTION_AUTOCOMPACT_PCT,
 )
 from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
 
@@ -158,8 +162,12 @@ def autocompact_pct(
     the routed model when there is one, and otherwise mirrors the engine's
     own 90%-of-window trigger (its costs accrue to the connected ChatGPT
     account, so the Anthropic cache-cost rationale behind the configured
-    default does not apply there).  A configured 0 still omits the override
-    on every route.  Elsewhere the base value comes from config; Sonnet 5
+    default does not apply there).  The subscription route likewise
+    compacts at ``SUBSCRIPTION_AUTOCOMPACT_PCT``: its window is held to 200K
+    for the subscriber's plan, and inside it the platform's cost trigger
+    would only discard context the clamp already allows.  A configured 0
+    still omits the override on every route.  Elsewhere the base value
+    comes from config; Sonnet 5
     is scaled up by the tokenizer-inflation factor (capped at 90, below the
     CLI's ~93% internal ceiling) so its compaction fires at the same
     text-equivalent point as on 4.x models.
@@ -169,6 +177,10 @@ def autocompact_pct(
             return 0
         advertised = codex_engine.trigger_pct if codex_engine is not None else None
         return advertised if advertised is not None else CODEX_ENGINE_AUTOCOMPACT_PCT
+    if config.transport.name == "subscription":
+        if config.claude_agent_autocompact_pct_override == 0:
+            return 0
+        return SUBSCRIPTION_AUTOCOMPACT_PCT
     pct = config.claude_agent_autocompact_pct_override
     if model and "claude-sonnet-5" in model:
         pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)
