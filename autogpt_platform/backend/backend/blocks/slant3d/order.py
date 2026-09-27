@@ -99,6 +99,7 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
                 ("order_id", "SLANT_1234567890"),
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -155,6 +156,7 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
                 ("order_id", "SLANT_1234567890"),
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

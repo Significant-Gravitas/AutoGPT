@@ -16,6 +16,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -125,6 +126,7 @@ class StagehandObserveBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandObserveBlock.Input,
             output_schema=StagehandObserveBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -218,6 +220,7 @@ class StagehandActBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandActBlock.Input,
             output_schema=StagehandActBlock.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -303,6 +306,7 @@ class StagehandExtractBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandExtractBlock.Input,
             output_schema=StagehandExtractBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

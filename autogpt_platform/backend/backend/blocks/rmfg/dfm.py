@@ -136,6 +136,7 @@ class RMFGCreateDFMReportBlock(Block):
                 ("review_url", TEST_DFM_REPORT.review_url),
             ],
             test_mock={"create_report": lambda *args, **kwargs: TEST_DFM_REPORT},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

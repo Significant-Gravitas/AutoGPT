@@ -250,6 +250,7 @@ class SearchStoreAgentsBlock(Block):
                     total_count=1,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

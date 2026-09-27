@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -76,6 +77,7 @@ class TwitterLikeTweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"like_tweet": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -191,6 +193,7 @@ class TwitterGetLikingUsersBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -385,6 +388,7 @@ class TwitterGetLikedTweetsBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -547,6 +551,7 @@ class TwitterUnlikeTweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"unlike_tweet": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

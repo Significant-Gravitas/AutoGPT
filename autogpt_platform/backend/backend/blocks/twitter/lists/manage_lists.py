@@ -138,6 +138,7 @@ class TwitterUpdateListBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"update_list": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -236,6 +237,7 @@ class TwitterCreateListBlock(Block):
                 ("url", "https://twitter.com/i/lists/1234567890"),
             ],
             test_mock={"create_list": lambda *args, **kwargs: ("1234567890")},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

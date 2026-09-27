@@ -50,77 +50,19 @@ async def test_available_blocks(block: Type[Block]):
     await execute_block_test(block_instance)
 
 
-# Blocks that predate the ``effect`` declaration and are not classified yet.
-# An undeclared block asks before it runs, so an entry costs friction, never
-# safety. MAY ONLY SHRINK: a new block declares its effect, and a follow-up that
-# classifies a provider family deletes its rows.
-_EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
-    """
-    HubSpotCompanyBlock HubSpotContactBlock JevAskManyBlock JevChoiceBlock
-    JevFilterBlock JevPickBestBlock JevRouteBlock JevScoreBlock JevYesNoBlock
-    LinearCreateCommentBlock LinearCreateIssueBlock LoopVideoBlock
-    MediaDurationBlock ModQueueBlock NotionCreatePageBlock NotionReadDatabaseBlock
-    NotionReadPageBlock NotionReadPageMarkdownBlock NotionSearchBlock
-    PersistInformationBlock PineconeInitBlock PineconeInsertBlock
-    ProfileEnrichmentBlock RMFGAnalyzeDesignBlock RMFGCreateCartBlock
-    RMFGCreateDFMReportBlock RMFGCreateQuoteBlock RMFGCreateReviewLinkBlock
-    RMFGGetOrderBlock RMFGUpdateCartBlock RedditGetMyPostsBlock
-    RetrieveInformationBlock SaveCampaignSequencesBlock SearchRedditBlock
-    SearchStoreAgentsBlock Slant3DEstimateOrderBlock Slant3DEstimateShippingBlock
-    Slant3DFilamentBlock Slant3DSlicerBlock Slant3DTrackingBlock StagehandActBlock
-    StagehandExtractBlock StagehandObserveBlock
-    StripeLinkCreateCardSpendRequestBlock StripeLinkCreateTokenSpendRequestBlock
-    StripeLinkGetPaymentChallengeBlock StripeLinkRetrieveCardBlock
-    TodoistCloseTaskBlock TodoistCreateCommentBlock TodoistCreateLabelBlock
-    TodoistCreateProjectBlock TodoistCreateTaskBlock TodoistGetCommentBlock
-    TodoistGetCommentsBlock TodoistGetLabelBlock TodoistGetProjectBlock
-    TodoistGetSectionBlock TodoistGetSharedLabelsBlock TodoistGetTaskBlock
-    TodoistGetTasksBlock TodoistListCollaboratorsBlock TodoistListLabelsBlock
-    TodoistListProjectsBlock TodoistListSectionsBlock TodoistRenameSharedLabelsBlock
-    TodoistReopenTaskBlock TodoistUpdateCommentBlock TodoistUpdateLabelBlock
-    TodoistUpdateProjectBlock TodoistUpdateTaskBlock TwitterAddListMemberBlock
-    TwitterBookmarkTweetBlock TwitterCreateListBlock TwitterFollowListBlock
-    TwitterFollowUserBlock TwitterGetBlockedUsersBlock
-    TwitterGetBookmarkedTweetsBlock TwitterGetFollowersBlock
-    TwitterGetFollowingBlock TwitterGetHomeTimelineBlock TwitterGetLikedTweetsBlock
-    TwitterGetLikingUsersBlock TwitterGetListBlock TwitterGetListMembersBlock
-    TwitterGetListMembershipsBlock TwitterGetListTweetsBlock
-    TwitterGetMutedUsersBlock TwitterGetOwnedListsBlock TwitterGetPinnedListsBlock
-    TwitterGetQuoteTweetsBlock TwitterGetRetweetersBlock TwitterGetSpaceBuyersBlock
-    TwitterGetSpaceByIdBlock TwitterGetSpaceTweetsBlock TwitterGetSpacesBlock
-    TwitterGetTweetBlock TwitterGetTweetsBlock TwitterGetUserBlock
-    TwitterGetUserMentionsBlock TwitterGetUserTweetsBlock TwitterGetUsersBlock
-    TwitterHideReplyBlock TwitterLikeTweetBlock TwitterMuteUserBlock
-    TwitterPinListBlock TwitterRemoveBookmarkTweetBlock TwitterRemoveListMemberBlock
-    TwitterRemoveRetweetBlock TwitterSearchRecentTweetsBlock
-    TwitterSearchSpacesBlock TwitterUnfollowListBlock TwitterUnfollowUserBlock
-    TwitterUnhideReplyBlock TwitterUnlikeTweetBlock TwitterUnmuteUserBlock
-    TwitterUnpinListBlock TwitterUpdateListBlock VideoClipBlock VideoConcatBlock
-    VideoDownloadBlock VideoNarrationBlock VideoTextOverlayBlock
-    """.split()
-)
-
-
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
 def test_block_declares_an_effect(block: Type[Block]):
     instance = block()
     name = block.__name__
     if instance.effect is not None:
-        assert name not in _EFFECT_UNCLASSIFIED, (
-            f"{name} declares an effect, so delete it from _EFFECT_UNCLASSIFIED "
-            f"— that list may only shrink."
-        )
         assert name not in UNREADABLE_BLOCKS, (
             f"{name} is unreadable by construction; a declaration would let it "
             f"run without asking."
         )
         return
-    if instance.block_type in STRUCTURAL_TYPES or name in UNREADABLE_BLOCKS:
-        return
-    assert name in _EFFECT_UNCLASSIFIED, (
+    assert instance.block_type in STRUCTURAL_TYPES or name in UNREADABLE_BLOCKS, (
         f"{name} declares no effect. Pass effect=BlockEffect.NONE, READ, "
-        f"WORKSPACE, PLATFORM or EXTERNAL (see BlockEffect). Do not add it to "
-        f"_EFFECT_UNCLASSIFIED."
+        f"WORKSPACE, PLATFORM or EXTERNAL (see BlockEffect)."
     )
 
 

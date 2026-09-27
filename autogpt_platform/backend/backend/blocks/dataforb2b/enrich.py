@@ -88,6 +88,7 @@ class ProfileEnrichmentBlock(Block):
                     "work_email": "john@acme.com",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

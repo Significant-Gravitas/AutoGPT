@@ -167,6 +167,7 @@ class ModQueueBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
