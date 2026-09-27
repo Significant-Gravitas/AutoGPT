@@ -20,7 +20,7 @@ def cache_settings(event: str, ref: str, image: str, arch: str) -> list[str]:
         export = shared
     settings = [
         f"{target}.cache-from=type=registry,ref={cache_ref}"
-        for target in ("backend-server", "single-container")
+        for target in ("backend-server-base", "backend-server", "single-container")
         for cache_ref in imports
     ]
     if export:
