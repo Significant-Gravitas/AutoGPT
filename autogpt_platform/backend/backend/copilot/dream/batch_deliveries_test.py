@@ -6,7 +6,7 @@ provider and the charges are stubbed at their edges."""
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -27,6 +27,7 @@ from backend.util.llm.providers import BatchResultRow
 
 from . import batch_deliveries as deliveries_mod
 from . import job_status
+from . import reaper as reaper_mod
 from .batch_callbacks import handle_dream_batch_result
 from .batch_deliveries import DUPLICATE_ERROR, drop_closed, should_dispatch
 from .batch_state import state_key, write_phase_to_state
@@ -34,6 +35,7 @@ from .batch_submit import input_bundle_key, persist_input_bundle
 from .cancel import cancel_dream_pass
 from .fetch import DreamInput
 from .pass_record import expired
+from .reaper import REAP_GRACE_SECONDS, reap_expired_passes
 from .schemas import (
     ConsolidationOutput,
     DreamOperations,
@@ -100,6 +102,8 @@ class TestShouldDispatch:
         row = fake_dream_db.rows["p1"]
         assert (row["status"], row["error"]) == (DreamPassStatus.CANCELLED, "testing")
         assert row.get("usage") is None
+        # Every step finished, so the drop cleared the mark the cancel set.
+        assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
 
     async def test_an_expired_pass_whose_lock_a_newer_pass_holds_keeps_that_lock(
         self, fake_dream_db, fake_dream_redis
@@ -256,19 +260,37 @@ class TestADeadEnd:
         assert input_bundle_key("p1") not in fake_dream_redis.store
         assert _LOCK_KEY not in fake_dream_redis.store
 
-    async def test_without_an_owner_closes_the_record_and_charges_nobody(
-        self, fake_dream_db, fake_dream_redis, charges
+    async def test_without_an_owner_leaves_the_cleanup_to_the_reaper(
+        self, mocker, fake_dream_db, fake_dream_redis, charges
     ):
+        """A payload that names the pass but not its owner closes the job and
+        the row, marked, and charges nobody itself; the reaper, which reads
+        the owner and the lock's token off the row, charges that owner,
+        releases the lock and cleans up."""
         await _in_flight(fake_dream_db, fake_dream_redis)
         entry = _entry("recombine")
         entry.payload["user_id"] = ""
 
         await handle_dream_batch_result(entry, [])
 
-        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.ERRORED
+        row = fake_dream_db.rows["p1"]
+        assert row["status"] is DreamPassStatus.ERRORED
+        assert (row["lease_token"], row["cleanup_pending_at"] is None) == (
+            "tok",
+            False,
+        )
         charges.assert_not_awaited()
-        assert state_key("p1") not in fake_dream_redis.hashes
+        assert state_key("p1") in fake_dream_redis.hashes
         assert fake_dream_redis.store[_LOCK_KEY] == "tok"
+
+        mocker.patch.object(reaper_mod, "phase_models_for_config", return_value=_MODELS)
+        run = await reap_expired_passes(now=_past_the_grace())
+
+        assert run.outcomes == {"cleaned": 1}
+        assert _charged(charges) == ["consolidate"]
+        assert _LOCK_KEY not in fake_dream_redis.store
+        assert state_key("p1") not in fake_dream_redis.hashes
+        assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
 
 
 class TestADuplicateOfTheLastPhase:
@@ -346,6 +368,11 @@ async def _in_flight(fake_dream_db, fake_dream_redis, *, landed: int = 1) -> Non
         ),
         provider_batch_id="b-rec" if landed == 1 else "b-san",
     )
+
+
+def _past_the_grace() -> datetime:
+    """An instant by which the cleanup of a row closed now is due."""
+    return datetime.now(timezone.utc) + timedelta(seconds=REAP_GRACE_SECONDS + 60)
 
 
 def _entry(phase: str) -> PendingEntry:

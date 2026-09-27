@@ -17,6 +17,7 @@ from prisma.enums import (
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import (
     CLOSED_ROW_CLEARS,
+    MARKED_ROW_CLEARS,
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -330,6 +331,9 @@ class TestWrites:
         _, update = _update(db)
         assert update.status is DreamPassStatus.COMPLETE
         assert update.usage == usage
+        # Marked for the cleanup after the pass, its lease kept for it.
+        assert update.cleanup_pending_at is not None
+        assert update.clear == MARKED_ROW_CLEARS
 
     async def test_a_failed_batch_pass_records_the_error_and_usage(self, db):
         usage = _usage()
@@ -341,6 +345,8 @@ class TestWrites:
         assert update.error == "recombine: provider down"
         assert update.usage == usage
         assert update.completed_at is not None
+        assert update.cleanup_pending_at == update.completed_at
+        assert update.clear == MARKED_ROW_CLEARS
 
 
 class TestAFailedWriteNeverFailsThePass:
@@ -427,7 +433,7 @@ class TestTheLeaseAndTheSweeps:
         assert update.lease_expires_at >= before + timedelta(seconds=1800)
         assert update.clear == frozenset()
 
-    async def test_a_delivery_closes_its_row_expired_without_its_lease(self, db):
+    async def test_a_delivery_closes_its_row_expired_and_marked(self, db):
         await store.record_expired("p1", "apply: never finished")
 
         _, update = _update(db)
@@ -436,7 +442,8 @@ class TestTheLeaseAndTheSweeps:
             "apply: never finished",
         )
         assert update.bump_cancel_generation is True
-        assert update.clear == CLOSED_ROW_CLEARS
+        assert update.cleanup_pending_at is not None
+        assert update.clear == MARKED_ROW_CLEARS
 
     async def test_the_sweeps_and_the_admin_list_reach_the_table(self, db):
         cutoff = _STARTED - timedelta(minutes=30)
@@ -446,12 +453,12 @@ class TestTheLeaseAndTheSweeps:
         db.delete_old_dream_passes = AsyncMock(return_value=3)
 
         assert await store.read_expired_passes(cutoff, limit=100) == [_row()]
-        assert await store.read_pending_cleanups(limit=100) == []
+        assert await store.read_pending_cleanups(due_before=cutoff, limit=100) == []
         assert await store.read_user_passes("u1", open_only=True, limit=5) == []
         assert await store.delete_old_passes(cutoff, limit=1000, timeout=60) == 3
 
         db.list_expired_dream_passes.assert_awaited_once_with(cutoff, limit=100)
-        db.list_dream_pass_cleanups.assert_awaited_once_with(limit=100)
+        db.list_dream_pass_cleanups.assert_awaited_once_with(cutoff, limit=100)
         db.list_dream_passes.assert_awaited_once_with("u1", limit=5, open_only=True)
         db.delete_old_dream_passes.assert_awaited_once_with(cutoff, limit=1000)
 
@@ -460,7 +467,9 @@ class TestTheLeaseAndTheSweeps:
 
         pass_id, update = _update(db)
         assert (pass_id, update.closed_row) == ("p1", True)
-        assert update.clear == frozenset({"cleanup_pending_at", "lease_token"})
+        assert update.clear == frozenset(
+            {"cleanup_pending_at", "lease_token", "lease_expires_at"}
+        )
 
     async def test_a_sweep_that_stalls_raises_at_its_deadline(self, db, monkeypatch):
         async def hang(*_args, **_kwargs) -> None:
@@ -475,7 +484,7 @@ class TestTheLeaseAndTheSweeps:
         with pytest.raises(TimeoutError):
             await store.read_expired_passes(_STARTED, limit=1)
         with pytest.raises(TimeoutError):
-            await store.read_pending_cleanups(limit=1)
+            await store.read_pending_cleanups(due_before=_STARTED, limit=1)
         with pytest.raises(TimeoutError):
             await store.record_cleanup_finished("p1")
         with pytest.raises(TimeoutError):

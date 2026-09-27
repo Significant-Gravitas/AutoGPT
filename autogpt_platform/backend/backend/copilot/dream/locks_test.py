@@ -212,7 +212,7 @@ async def test_release_dream_lock_compare_and_deletes_with_token(mocker):
     redis = _redis_mock()
     _patch_redis(mocker, redis)
 
-    await release_dream_lock(MemoryScope.for_user("user-g"), "tok-g")
+    assert await release_dream_lock(MemoryScope.for_user("user-g"), "tok-g")
 
     redis.eval.assert_awaited_once()
     eval_args = redis.eval.call_args.args
@@ -230,7 +230,8 @@ async def test_release_skips_delete_when_token_mismatch(mocker, caplog):
     redis = _redis_mock(eval=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
-    await release_dream_lock(MemoryScope.for_user("user-h"), "stale-token")
+    # Not ours any more: nothing left to release, so the release is done.
+    assert await release_dream_lock(MemoryScope.for_user("user-h"), "stale-token")
 
     redis.eval.assert_awaited_once()
     redis.delete.assert_not_awaited()
@@ -244,7 +245,7 @@ async def test_release_without_token_leaves_lock_for_ttl(mocker, caplog):
     redis = _redis_mock()
     _patch_redis(mocker, redis)
 
-    await release_dream_lock(MemoryScope.for_user("user-i"), None)
+    assert not await release_dream_lock(MemoryScope.for_user("user-i"), None)
 
     redis.eval.assert_not_awaited()
     redis.delete.assert_not_awaited()
@@ -256,7 +257,7 @@ async def test_release_dream_lock_swallows_redis_failure(mocker, caplog):
     redis = _redis_mock(eval=AsyncMock(side_effect=Exception("redis down")))
     _patch_redis(mocker, redis)
 
-    await release_dream_lock(MemoryScope.for_user("user-j"), "tok-j")
+    assert not await release_dream_lock(MemoryScope.for_user("user-j"), "tok-j")
 
     assert "Failed to release disowned dream lock" in caplog.text
 

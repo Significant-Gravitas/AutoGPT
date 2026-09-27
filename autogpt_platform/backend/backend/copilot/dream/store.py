@@ -6,8 +6,9 @@ executor. The sync orchestrator records the start with its lease, the
 gathered window, each phase's output, each renewal of the lease, the
 operations it is about to apply and how the pass ended. The batch path
 records the submit, each phase that lands and the lease it renewed, each next
-batch, the apply and the end, with what the landed phases used; every end
-clears the lease and the input bundle. What each step writes is
+batch, the apply and the end, with what the landed phases used; its end
+marks the row for the cleanup after it, which clears the mark once done
+(``cleanup.py``). What each step writes is
 ``pass_record.py``; how a write lands on the row (forward only, JSON merged in
 the database) is ``backend/data/dream_pass_update.py``.
 
@@ -153,18 +154,21 @@ async def record_batch_complete(
     result: DreamPassResult, usage: DreamPassUsage | None
 ) -> None:
     """A batch pass applied: *result* holds what apply reported, *usage* what
-    its phases used."""
-    await _write(result.pass_id, "the outcome", lambda: outcome(result, usage))
+    its phases used; the row marked for the cleanup after it."""
+    await _write(
+        result.pass_id, "the outcome", lambda: outcome(result, usage, marked=True)
+    )
 
 
 async def record_batch_failed(
     pass_id: str, error: str, usage: DreamPassUsage | None
 ) -> None:
-    """A batch pass failed; *usage* is what its landed phases used."""
+    """A batch pass failed; *usage* is what its landed phases used. The row
+    is marked for the cleanup after it."""
     await _write(
         pass_id,
         "the failure",
-        lambda: failed(error, usage, datetime.now(timezone.utc)),
+        lambda: failed(error, usage, datetime.now(timezone.utc), marked=True),
     )
 
 
@@ -211,11 +215,14 @@ async def read_expired_passes(
     )
 
 
-async def read_pending_cleanups(*, limit: int) -> list[DreamPassRecord]:
-    """Closed passes, of every user, whose cleanup the reaper started and has
-    not finished, the longest pending first. Raises when the read fails or
-    runs out of time."""
-    return await _bounded(dream_db().list_dream_pass_cleanups(limit=limit))
+async def read_pending_cleanups(
+    *, due_before: datetime, limit: int
+) -> list[DreamPassRecord]:
+    """Closed passes, of every user, marked for a cleanup that has not
+    finished and is due: marked, or their lease lapsed, before *due_before*;
+    the longest pending first. Raises when the read fails or runs out of
+    time."""
+    return await _bounded(dream_db().list_dream_pass_cleanups(due_before, limit=limit))
 
 
 async def read_user_passes(
@@ -248,9 +255,9 @@ async def write_stop(pass_id: str, update: DreamPassUpdate) -> bool:
 
 
 async def record_cleanup_finished(pass_id: str) -> bool:
-    """The reaper has cleaned up after the closed pass; whether the row took
+    """The cleanup after the closed pass has finished; whether the row took
     it. Raises when the write fails or runs out of time, and the cleanup,
-    idempotent, is resumed next run."""
+    idempotent, is resumed by the reaper's next run."""
     return await _bounded(dream_db().update_dream_pass(pass_id, cleanup_finished()))
 
 

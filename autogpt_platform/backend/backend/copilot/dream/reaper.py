@@ -1,5 +1,5 @@
 """The dream pass reaper: close the passes that outlived their lease, and
-finish the cleanups it could not.
+finish the cleanups nobody else finished.
 
 A pass renews its lease at every step (``lease.py``), so an open row whose
 lease lapsed a while ago most likely belongs to a pass that died (its process
@@ -10,27 +10,34 @@ is the authority: a pass whose Redis renewals kept landing while every row
 write failed looks dead too, and is stopped at its next check.
 
 Each run lists ``REAPER_ROW_LIMIT`` rows at most, oldest first: the closed
-rows whose cleanup an earlier run left (``cleanupPendingAt`` set), then the
-open rows whose lease lapsed more than ``REAP_GRACE_SECONDS`` (one sync lock
-TTL) ago. It closes an open row EXPIRED, holding the scope's lock when it is
-free, its cancel generation bumped and its error naming the phase the pass
-died at, only if nothing wrote the row since it was read (else ``moved``,
-left alone), and marks it for cleanup in the same statement. Then, as for a
-row an earlier run left, it cancels the provider batch the row names
-(best-effort), charges the landed phases once through the cost gate while
-the batch state is in Redis, releases the dead pass's lock by
-compare-and-delete on the token the row kept (unless the reaper holds the
-scope itself), deletes the batch state and bundle, and clears the mark and
-the token. Every step is idempotent, so a cleanup cut short anywhere is run
-again next time. A row left APPLYING is closed the same way and never
-applied again: apply is gated, and the reaper never calls it.
+rows whose cleanup (``cleanup.py``) is pending and due, then the open rows
+whose lease lapsed more than ``REAP_GRACE_SECONDS`` (one sync lock TTL) ago.
+A cleanup is due once its pass cannot still be running: its lease lapsed a
+grace ago, or it was marked a grace ago, time for a pass stopped while it
+ran to reach its next check and for the executor's drop to clean up after
+it; sooner, the reaper could release the lock of a pass still applying. It
+closes an open row EXPIRED, holding the scope's lock when it is free, its
+cancel generation bumped and its error naming the phase the pass died at,
+only if nothing wrote the row since it was read (else ``moved``, left
+alone), and marks it in the same statement, keeping the dead pass's lease
+token and dropping its lease expiry, so its cleanup is due at once. A row
+left APPLYING is closed the same way and never applied again: apply is
+gated, and the reaper never calls it.
+
+Then it cleans up after the pass (``cleanup.clean_up_pass``), releasing the
+lock under the token the row kept unless the reaper holds the scope itself,
+and clears the mark and the lease only once every step has finished
+(``expired``, ``cleaned``); else the row stays marked (``retry``) and the
+next run does every step again, the finished ones doing nothing. A row
+marked longer ago than a batch can run no longer waits on the provider.
 
 Bounded: a run takes at most ``REAPER_BUDGET_SECONDS``, from before its
 listing to the release of its hold on a scope. Rows are worked until
 ``RELEASE_TIMEOUT_SECONDS`` before the end, each started only with
 ``ROW_RESERVE_SECONDS`` left; the release that may follow the cut has those
 last seconds, and finishes even if the cut lands during it. A row the budget
-does not reach, or cuts short, is listed again next run.
+does not reach, or cuts short, is listed again next run; a phase charge it
+cuts into finishes on its own (``batch_costs.py``).
 
 Not bounded here: the scheduler's ``run_async`` stops waiting on a timeout
 but does not cancel the run, so the run's own budget is what stops it; rows
@@ -40,7 +47,8 @@ attempt, after the grace, an interval and a budget, about 1,140 s of nominal
 margin to charge the landed phases, an interval less per resumed attempt.
 
 One line per row (INFO when it expired, was cleaned or moved; WARNING when it
-failed or the budget left it), then one with the counts per outcome.
+failed, is to be retried, or the budget left it), then one with the counts
+per outcome.
 """
 
 import asyncio
@@ -58,16 +66,15 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.data import redis_client
 from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
 
-from .batch_costs import log_all_phase_costs
-from .batch_state import best_effort_cleanup, read_state_or_none
 from .batch_submit import phase_models_for_config
+from .cleanup import PassCleanup, clean_up_pass
 from .locks import (
     DEFAULT_LOCK_TTL_SECONDS,
     LOCK_CHECK_TIMEOUT_SECONDS,
     release_dream_lock,
 )
 from .pass_record import reaped
-from .provider_batch import cancel_provider_batch
+from .provider_batch import PROVIDER_BATCH_WINDOW_SECONDS
 from .store import (
     read_expired_passes,
     read_pending_cleanups,
@@ -80,7 +87,8 @@ logger = logging.getLogger(__name__)
 REAPER_INTERVAL_MINUTES = 10
 REAPER_BUDGET_SECONDS = 60.0
 REAPER_ROW_LIMIT = 100
-# How long past its lease a pass is left before the reaper takes it for dead.
+# How long past its lease a pass is left before the reaper takes it for dead,
+# and how long after a stop its cleanup waits for the pass to end itself.
 REAP_GRACE_SECONDS = DEFAULT_LOCK_TTL_SECONDS
 # The reaper's own hold on a scope while it closes one row.
 REAPER_LOCK_TTL_SECONDS = 120
@@ -89,7 +97,7 @@ ROW_RESERVE_SECONDS = 15.0
 # Giving back the reaper's hold on a scope, carved out of the budget.
 RELEASE_TIMEOUT_SECONDS = 2.0
 
-ReapOutcome = Literal["expired", "cleaned", "moved", "failed", "out_of_budget"]
+ReapOutcome = Literal["expired", "cleaned", "moved", "retry", "failed", "out_of_budget"]
 
 
 class ReaperRun(BaseModel):
@@ -115,14 +123,14 @@ async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
 
 
 async def _list(now: datetime) -> list[DreamPassRecord]:
-    """The rows to work, oldest first: the cleanups left pending, then the
+    """The rows to work, oldest first: the cleanups pending and due, then the
     open rows whose lease lapsed a grace ago, ``REAPER_ROW_LIMIT`` in all."""
-    pending = await read_pending_cleanups(limit=REAPER_ROW_LIMIT)
+    due_before = now - timedelta(seconds=REAP_GRACE_SECONDS)
+    pending = await read_pending_cleanups(due_before=due_before, limit=REAPER_ROW_LIMIT)
     room = REAPER_ROW_LIMIT - len(pending)
     if room <= 0:
         return pending
-    lapsed_before = now - timedelta(seconds=REAP_GRACE_SECONDS)
-    return pending + await read_expired_passes(lapsed_before, limit=room)
+    return pending + await read_expired_passes(due_before, limit=room)
 
 
 async def _reap_rows(
@@ -153,10 +161,11 @@ def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> Reape
 
 async def _reap(row: DreamPassRecord, done: dict[str, ReapOutcome]) -> None:
     """Close one dead pass and clean up after it, holding the scope's lock
-    while it does when the lock is free, or finish the cleanup an earlier run
-    left; note the outcome in *done* before the hold is given back, so a
-    budget that cuts into that release keeps it. ``failed`` when the store or
-    Redis would not answer, and the row is listed again next run."""
+    while it does when the lock is free, or finish the cleanup a closed row
+    was left marked for; note the outcome in *done* before the hold is given
+    back, so a budget that cuts into that release keeps it. ``failed`` when
+    the store would not answer, or Redis would not let the reaper take the
+    scope, and the row is listed again next run."""
     scope: MemoryScope | None = None
     hold: str | None = None
     try:
@@ -188,39 +197,62 @@ async def _close(
         logger.info(f"Dream pass reaper: pass {row.id} moved since it was read; left")
         return "moved"
     # A held scope may still be the dead pass's: released only if it is.
-    charged = await _clean_up(row, scope, release=not took_scope)
+    cleanup = await _clean_up(row, scope, release=not took_scope)
     lock = "held by the reaper" if took_scope else "released if the dead pass's"
-    logger.info(
-        f"Dream pass reaper: pass {row.id} expired ({_error(row)}); "
-        f"batch {row.provider_batch_id or 'none'}; charged {charged}; "
-        f"scope lock {lock}"
+    return _logged(
+        row, cleanup, "expired", f"expired ({_error(row)})", f"; scope lock {lock}"
     )
-    return "expired"
 
 
 async def _finish_cleanup(row: DreamPassRecord, scope: MemoryScope) -> ReapOutcome:
-    """Clean up after a pass an earlier run closed and could not clean up
-    after: every step again, the ones that already ran doing nothing."""
-    charged = await _clean_up(row, scope, release=True)
-    logger.info(
-        f"Dream pass reaper: pass {row.id} ({row.status.value.lower()}) cleaned "
-        f"up after an earlier run; batch {row.provider_batch_id or 'none'}; "
-        f"charged {charged}"
+    """Clean up after a pass whose row closed marked and whose cleanup was
+    not finished: every step again, the ones that already ran doing
+    nothing."""
+    cleanup = await _clean_up(row, scope, release=True)
+    return _logged(row, cleanup, "cleaned", f"({row.status.value.lower()}) cleaned")
+
+
+async def _clean_up(
+    row: DreamPassRecord, scope: MemoryScope, *, release: bool
+) -> PassCleanup:
+    """Clean up after *row*'s pass, releasing its lock under the token the
+    row kept when *release*, then clear the row's mark and lease if every
+    step finished. Raises when that write fails: the row is listed again."""
+    cleanup = await clean_up_pass(
+        row.id,
+        scope,
+        phase_models=_phase_models(row),
+        provider_batch_id=_batch_to_stop(row),
+        lock_token=row.lease_token,
+        release=release and row.lease_token is not None,
     )
-    return "cleaned"
+    if cleanup.finished:
+        await record_cleanup_finished(row.id)
+    return cleanup
 
 
-async def _clean_up(row: DreamPassRecord, scope: MemoryScope, *, release: bool) -> str:
-    """Clean up after *row*'s pass, each step idempotent, then clear the
-    row's mark; say what was charged."""
-    if row.provider_batch_id:
-        await cancel_provider_batch(row.provider_batch_id)
-    charged = await _charge_landed(row)
-    if release:
-        await release_dream_lock(scope, row.lease_token)
-    await best_effort_cleanup(row.id)
-    await record_cleanup_finished(row.id)
-    return charged
+def _logged(
+    row: DreamPassRecord,
+    cleanup: PassCleanup,
+    outcome: ReapOutcome,
+    what: str,
+    lock: str = "",
+) -> ReapOutcome:
+    """*outcome* once *cleanup* has finished, logged at INFO; else ``retry``,
+    logged at WARNING with the steps left for the next run."""
+    line = (
+        f"Dream pass reaper: pass {row.id} {what}; batch "
+        f"{row.provider_batch_id or 'none'}; charged "
+        f"{', '.join(cleanup.charged) or 'nothing'}{lock}"
+    )
+    if cleanup.finished:
+        logger.info(line)
+        return outcome
+    logger.warning(
+        f"{line}; cleanup unfinished at {', '.join(cleanup.unfinished)}; "
+        "listed again next run"
+    )
+    return "retry"
 
 
 async def _take_scope(scope: MemoryScope) -> str | None:
@@ -263,29 +295,28 @@ async def _release_within_bound(scope: MemoryScope, hold: str) -> None:
         )
 
 
-async def _charge_landed(row: DreamPassRecord) -> str:
-    """Charge the phases of *row*'s pass that landed in its batch state, once
-    through the cost gate, pricing them with the deployment's batch phase
-    models; say what happened."""
-    state = await read_state_or_none(row.id)
-    if not state:
-        return "nothing (no batch state)"
+def _phase_models(row: DreamPassRecord) -> dict[str, str] | None:
+    """The deployment's batch phase models, to price *row*'s landed phases
+    with; ``None`` when they cannot be read, and its charge waits."""
     try:
-        phase_models = phase_models_for_config(ChatConfig())
+        return phase_models_for_config(ChatConfig())
     except Exception:
         logger.warning(
             f"Dream pass reaper: no batch phase models to price pass {row.id}",
             exc_info=True,
         )
-        return "nothing (no phase models)"
-    charged = await log_all_phase_costs(
-        user_id=row.user_id,
-        expert_id=row.expert_id,
-        pass_id=row.id,
-        state=state,
-        phase_models=phase_models,
-    )
-    return ", ".join(sorted(state)) if charged else "nothing (already charged)"
+        return None
+
+
+def _batch_to_stop(row: DreamPassRecord) -> str | None:
+    """The provider batch the cleanup stops: the one the row names, unless
+    the row was marked longer ago than a batch can run, so it has ended
+    whatever the provider says (or cannot say)."""
+    marked = row.cleanup_pending_at
+    window = timedelta(seconds=PROVIDER_BATCH_WINDOW_SECONDS)
+    if marked is not None and datetime.now(timezone.utc) - marked > window:
+        return None
+    return row.provider_batch_id
 
 
 def _error(row: DreamPassRecord) -> str:

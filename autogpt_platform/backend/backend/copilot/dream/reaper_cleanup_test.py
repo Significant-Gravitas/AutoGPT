@@ -1,10 +1,11 @@
 """The reaper's cleanup after the passes it closes, and its budget, over the
-in-memory store and Redis: a cleanup cut short at any step, or by the budget,
-is resumed by the next run and finishes once (one charge, the state and
-bundle gone, the mark and the kept token cleared); a run never outlasts its
-budget, the release of its hold on a scope included, and that release
-finishes when the budget cuts into it; the budget runs from before the
-listing; every row gets its own line. The provider and the charges are
+in-memory store and Redis: a cleanup cut short at any step (the process dying
+there), or by the budget, is resumed by the next run and finishes once (one
+charge, the state and bundle gone, the mark and the kept token cleared; a
+step that fails without raising is ``cleanup_retry_test.py``'s); a run never
+outlasts its budget, the release of its hold on a scope included, and that
+release finishes when the budget cuts into it; the budget runs from before
+the listing; every row gets its own line. The provider and the charges are
 stubbed at their edges; the lock, the gates and the row transitions are the
 real ones."""
 
@@ -16,19 +17,20 @@ from unittest.mock import AsyncMock
 import pytest
 from prisma.enums import DreamPassRoute, DreamPassStatus
 
+from . import cleanup as cleanup_mod
 from . import reaper as reaper_mod
 from .batch_state import state_key
 from .batch_submit import input_bundle_key
 from .reaper import reap_expired_passes
 from .reaper_test import _LOCK_KEY, _charged, _dead_batch_pass, _seed
 
-# Each cleanup step, by the name the reaper calls it under.
+# Each cleanup step, by the module that calls it and the name it calls it by.
 _STEPS = (
-    "cancel_provider_batch",
-    "read_state_or_none",
-    "release_dream_lock",
-    "best_effort_cleanup",
-    "record_cleanup_finished",
+    (cleanup_mod, "provider_batch_stopped"),
+    (cleanup_mod, "charge_landed_phases"),
+    (cleanup_mod, "release_dream_lock"),
+    (cleanup_mod, "best_effort_cleanup"),
+    (reaper_mod, "record_cleanup_finished"),
 )
 
 
@@ -56,7 +58,7 @@ def charges(mocker) -> AsyncMock:
 
 
 class TestACleanupCutShort:
-    @pytest.mark.parametrize("step", _STEPS)
+    @pytest.mark.parametrize("step", _STEPS, ids=[name for _, name in _STEPS])
     async def test_at_any_step_is_finished_by_the_next_run_once(
         self, mocker, fake_dream_db, fake_dream_redis, charges, step
     ):
@@ -67,7 +69,7 @@ class TestACleanupCutShort:
         the kept token cleared."""
         await _dead_batch_pass(fake_dream_db)
         fake_dream_redis.store[_LOCK_KEY] = "dead-token"
-        _fail_once(mocker, step)
+        _fail_once(mocker, *step)
 
         first = await reap_expired_passes()
 
@@ -208,9 +210,9 @@ class TestTheBudget:
         _seed(fake_dream_db, "s1", route=DreamPassRoute.SYNC)
         list_pending = reaper_mod.read_pending_cleanups
 
-        async def slow_listing(*, limit: int):
+        async def slow_listing(*, due_before, limit: int):
             await asyncio.sleep(0.5)
-            return await list_pending(limit=limit)
+            return await list_pending(due_before=due_before, limit=limit)
 
         mocker.patch.object(reaper_mod, "read_pending_cleanups", slow_listing)
 
@@ -254,10 +256,10 @@ async def test_every_row_gets_its_own_line(mocker, fake_dream_db, caplog):
     )
 
 
-def _fail_once(mocker, step: str) -> None:
-    """Make the reaper's *step* raise the first time it is called, as a run
-    cut short there would stop, and work as before after that."""
-    real = getattr(reaper_mod, step)
+def _fail_once(mocker, module, step: str) -> None:
+    """Make *step*, as *module* calls it, raise the first time it is called,
+    as a run cut short there would stop, and work as before after that."""
+    real = getattr(module, step)
     calls = 0
 
     async def once(*args, **kwargs):
@@ -267,7 +269,7 @@ def _fail_once(mocker, step: str) -> None:
             raise ConnectionError(f"cut short at {step}")
         return await real(*args, **kwargs)
 
-    mocker.patch.object(reaper_mod, step, once)
+    mocker.patch.object(module, step, once)
 
 
 def _scale_the_budget(

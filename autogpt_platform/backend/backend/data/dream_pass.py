@@ -10,11 +10,11 @@ forward and merges its JSON columns in the database.
 A pass that has reached a terminal status (complete, errored, cancelled,
 expired, skipped) is final: no update writes it, the way
 ``job_status.mark_complete`` never rewrites a finished job, but for the
-reaper marking its cleanup finished.
+cleanup after it marking itself finished.
 
 Three queries work across users: the reaper lists open passes whose lease
 lapsed (``list_expired_dream_passes``, on the status and lease expiry index)
-and closed passes whose cleanup it has not finished
+and closed passes whose cleanup is due and has not finished
 (``list_dream_pass_cleanups``, on the status and cleanup index), and the
 retention job deletes closed passes past their retention
 (``delete_old_dream_passes``). None is exposed to a user.
@@ -142,13 +142,21 @@ async def list_expired_dream_passes(
     return [DreamPassRecord.from_db(row) for row in rows]
 
 
-async def list_dream_pass_cleanups(limit: int = 100) -> list[DreamPassRecord]:
-    """Closed passes, of every user, whose cleanup the reaper started and has
-    not finished: the longest pending first, at most *limit*."""
+async def list_dream_pass_cleanups(
+    due_before: datetime, limit: int = 100
+) -> list[DreamPassRecord]:
+    """Closed passes, of every user, marked for a cleanup that has not
+    finished and is due: marked before *due_before*, or holding no lease or
+    one that lapsed before it. The longest pending first, at most *limit*."""
     rows = await prisma.models.DreamPass.prisma().find_many(
         where={
             "status": {"in": list(CLOSED_STATUSES)},
             "cleanupPendingAt": {"not": None},
+            "OR": [
+                {"cleanupPendingAt": {"lte": due_before}},
+                {"leaseExpiresAt": None},
+                {"leaseExpiresAt": {"lte": due_before}},
+            ],
         },
         order={"cleanupPendingAt": "asc"},
         take=limit,

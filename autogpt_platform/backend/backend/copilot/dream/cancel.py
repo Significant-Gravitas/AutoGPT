@@ -1,9 +1,10 @@
 """The stop path of a dream pass: cancel it, and notice a stop while it runs.
 
 ``cancel_dream_pass`` closes the pass's row CANCELLED in one conditional
-transition that also bumps its cancel generation, and only while the row is
-open and the caller's own. It does not reach into the running pass; the pass
-reads its row at its next check and stops itself:
+transition that also bumps its cancel generation and marks the row for the
+cleanup after the pass (``cleanup.py``), and only while the row is open and
+the caller's own. It does not reach into the running pass; the pass reads
+its row at its next check and stops itself:
 
   * a sync pass at each phase boundary and once more just before apply
     (``stop_if_stopped``, ``stop_before_apply``) ends with its failure result:
@@ -13,13 +14,18 @@ reads its row at its next check and stops itself:
     refuses its submit cancels that batch instead of handing it on
     (``batch_handoff``);
   * a batch pass in its callback, before it chains the next phase and before
-    it claims the apply gate (``end_batch_pass_if_stopped``), cancels its
-    provider batch best-effort and ends through ``fail_pass``: its landed
-    phases charged, its lock released, its batch state and bundle cleaned;
+    it claims the apply gate (``end_batch_pass_if_stopped``), ends through
+    ``fail_pass``: its provider batch stopped, its landed phases charged,
+    its lock released, its batch state and bundle cleaned, and the mark
+    cleared once all of that has finished;
   * a batch pass waiting on its provider has that batch cancelled by the
     cancel itself, and the executor drops it at its next poll without
     dispatching it; the walker whose claim takes the entry off the queue
     ends the pass the same way (``batch_deliveries``).
+
+Whatever that leaves undone (an executor that is down, a drop hook that
+fails, a pass that stopped without a cleanup of its own) the reaper finishes
+from the mark, once the pass has had its grace to stop (``reaper.py``).
 
 A cancel that lands after a pass's last check, while it claims apply or
 applies, is too late: that apply runs, once, and the row stays CANCELLED.
@@ -141,17 +147,16 @@ async def end_batch_pass_if_stopped(bp: BatchPass) -> bool:
     say whether it did; the callback's check before it chains the next phase
     and before it claims the apply gate.
 
-    The batch the row names is cancelled at the provider first. By the time a
-    callback runs, that is usually the batch that just ended, which refuses;
-    it matters when the row names a later one still in flight."""
+    The batch the row names is stopped at the provider as part of the
+    cleanup. By the time a callback runs, that is usually the batch that just
+    ended, which refuses and reads as ended; it matters when the row names a
+    later one still in flight."""
     row = await _read_row(bp.pass_id)
     error = stop_error(row) if row is not None else None
     if row is None or error is None:
         return False
     logger.info(f"Dream batch pass {bp.pass_id} stops: {error}")
-    if row.provider_batch_id:
-        await cancel_provider_batch(row.provider_batch_id)
-    await fail_pass(bp, error)
+    await fail_pass(bp, error, provider_batch_id=row.provider_batch_id)
     return True
 
 

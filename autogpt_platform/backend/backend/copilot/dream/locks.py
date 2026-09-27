@@ -247,16 +247,19 @@ def _as_text(raw: Any) -> str | None:
     return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
 
 
-async def release_dream_lock(scope: MemoryScope, token: str | None) -> None:
-    """Release a disowned dream lock (batch path) once the pass terminates.
+async def release_dream_lock(scope: MemoryScope, token: str | None) -> bool:
+    """Release a disowned dream lock (batch path) once the pass terminates,
+    and say whether the lock is no longer held under *token*: released now,
+    or already another's or nobody's.
 
     Compare-and-delete on ``token``: a blind delete is NOT safe here — the
     callback can land close to (or after) the lock's TTL, by which point the
     key may already belong to a newer pass, and deleting it would let a
     third concurrent pass start. When the token is unknown (the input bundle
-    that carries it expired, or is corrupted) the key is left for its TTL to
-    clear: a lockout until then beats releasing someone else's lock. A failed
-    delete likewise falls back to the TTL.
+    that carries it expired, or is corrupted) the key is left alone: a
+    lockout until its TTL, or until the reaper releases it with the token
+    the pass's row keeps, beats releasing someone else's lock. ``False``
+    then, and when the delete fails; never raises.
     """
     user_id = scope.owner_user_id
     if token is None:
@@ -265,7 +268,7 @@ async def release_dream_lock(scope: MemoryScope, token: str | None) -> None:
             "leaving it for the TTL to clear",
             user_id[:12],
         )
-        return
+        return False
     from backend.data.redis_client import get_redis_async
 
     try:
@@ -293,3 +296,5 @@ async def release_dream_lock(scope: MemoryScope, token: str | None) -> None:
             user_id[:12],
             exc_info=True,
         )
+        return False
+    return True

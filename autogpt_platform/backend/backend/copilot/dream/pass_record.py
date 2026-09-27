@@ -6,10 +6,15 @@ update each transition makes (``store.py`` writes them, bounded), including
 the lease renewal and the two that stop a pass from outside (a cancel, an
 expiry), and what a row reads back as: the ``DreamPassResult`` it describes,
 for the admin API and the eval driver, and whether it says its pass was
-stopped. Every transition that closes a row drops its lease and its input
-bundle (``CLOSED_ROW_CLEARS``), but for the reaper's, which keeps the lease
-token until the cleanup it marks has finished (``reaped``,
-``cleanup_finished``).
+stopped.
+
+Every transition that closes a row drops its input bundle. One that may
+leave a cleanup behind (Redis state, a provider batch, a lock) also marks
+the row for it (``cleanup_pending_at``) and keeps its lease until the cleanup
+has finished (``cleanup_finished``): every stop from outside (a cancel, an
+expiry, the reaper's) and every end of a batch pass. The sync route's own
+end drops its lease with its bundle: its lock goes with the pass, and it has
+no batch to leave behind.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -27,6 +32,7 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import (
     CLOSED_ROW_CLEARS,
     INITIAL_CANCEL_GENERATION,
+    MARKED_ROW_CLEARS,
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -169,8 +175,11 @@ def handed_to_batch(result: DreamPassResult) -> bool:
     )
 
 
-def outcome(result: DreamPassResult, usage: DreamPassUsage | None) -> DreamPassUpdate:
-    """How a pass ended: skipped, failed, or applied."""
+def outcome(
+    result: DreamPassResult, usage: DreamPassUsage | None, *, marked: bool = False
+) -> DreamPassUpdate:
+    """How a pass ended: skipped, failed, or applied; a failure or an apply
+    *marked* for the cleanup after it (a batch pass's end)."""
     finished = result.completed_at or datetime.now(timezone.utc)
     if result.skipped:
         return DreamPassUpdate(
@@ -180,7 +189,7 @@ def outcome(result: DreamPassResult, usage: DreamPassUsage | None) -> DreamPassU
             clear=CLOSED_ROW_CLEARS,
         )
     if result.error is not None:
-        return failed(result.error, usage, finished)
+        return failed(result.error, usage, finished, marked=marked)
     return DreamPassUpdate(
         status=DreamPassStatus.COMPLETE,
         phase=DreamPassPhase.DONE,
@@ -188,50 +197,64 @@ def outcome(result: DreamPassResult, usage: DreamPassUsage | None) -> DreamPassU
         usage=usage,
         applied_at=finished,
         completed_at=finished,
-        clear=CLOSED_ROW_CLEARS,
+        cleanup_pending_at=finished if marked else None,
+        clear=MARKED_ROW_CLEARS if marked else CLOSED_ROW_CLEARS,
     )
 
 
 def failed(
-    error: str, usage: DreamPassUsage | None, finished: datetime
+    error: str,
+    usage: DreamPassUsage | None,
+    finished: datetime,
+    *,
+    marked: bool = False,
 ) -> DreamPassUpdate:
+    """The pass failed with *error*; *marked* for the cleanup after it (a
+    batch pass's end)."""
     return DreamPassUpdate(
         status=DreamPassStatus.ERRORED,
         error=error[:MAX_ERROR_CHARS],
         usage=usage,
         completed_at=finished,
-        clear=CLOSED_ROW_CLEARS,
+        cleanup_pending_at=finished if marked else None,
+        clear=MARKED_ROW_CLEARS if marked else CLOSED_ROW_CLEARS,
     )
 
 
 def cancelled(reason: str, *, owner_user_id: str) -> DreamPassUpdate:
     """A cancel: the owner's open pass closes CANCELLED with *reason* as its
     error, its cancel generation bumped so the running pass stops at its next
-    check. Written only while the row is open and the owner's."""
+    check, marked for the cleanup after it. Written only while the row is
+    open and the owner's."""
+    now = datetime.now(timezone.utc)
     return DreamPassUpdate(
         status=DreamPassStatus.CANCELLED,
         error=reason[:MAX_ERROR_CHARS],
-        completed_at=datetime.now(timezone.utc),
+        completed_at=now,
         bump_cancel_generation=True,
         owner_user_id=owner_user_id,
-        clear=CLOSED_ROW_CLEARS,
+        cleanup_pending_at=now,
+        clear=MARKED_ROW_CLEARS,
     )
 
 
 def expired(reason: str, *, not_updated_since: datetime | None) -> DreamPassUpdate:
     """An open pass closed EXPIRED from outside (a newer pass's guard, a
-    duplicate delivery), its cancel generation bumped like a cancel's.
-    Written only while the row is open and, given *not_updated_since* (the
-    stale row as it was read), only if nothing has written it since. Only an
-    admin forcing out a fresh row, and a duplicate delivery, give ``None``:
-    a forced expiry of a stale row keeps the compare-and-set."""
+    duplicate delivery), its cancel generation bumped like a cancel's and
+    the row marked for the cleanup after it. Written only while the row is
+    open and, given *not_updated_since* (the stale row as it was read), only
+    if nothing has written it since. Only an admin forcing out a fresh row,
+    and a duplicate delivery, give ``None``: a forced expiry of a stale row
+    keeps the compare-and-set."""
+    now = datetime.now(timezone.utc)
     return DreamPassUpdate(
         status=DreamPassStatus.EXPIRED,
         error=reason[:MAX_ERROR_CHARS],
-        completed_at=datetime.now(timezone.utc),
+        completed_at=now,
         bump_cancel_generation=True,
         not_updated_since=not_updated_since,
-        clear=CLOSED_ROW_CLEARS,
+        cleanup_pending_at=now,
+        clear=MARKED_ROW_CLEARS,
     )
 
 
@@ -240,7 +263,8 @@ def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
     ``expired``, only if nothing has written the row since *not_updated_since*,
     and marked for the cleanup the reaper is about to do, so a cleanup it
     cannot finish is resumed on its next run. The lease token stays until then,
-    the key to release the dead pass's lock by compare-and-delete."""
+    the key to release the dead pass's lock by compare-and-delete; the lease
+    expiry goes, the pass being dead, so that cleanup is due at once."""
     now = datetime.now(timezone.utc)
     return DreamPassUpdate(
         status=DreamPassStatus.EXPIRED,
@@ -254,10 +278,11 @@ def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
 
 
 def cleanup_finished() -> DreamPassUpdate:
-    """The reaper has cleaned up after a pass it closed: the mark and the
-    lease token it kept go. The one write a closed row takes."""
+    """The cleanup after a closed pass has finished: the mark and the lease
+    the row kept for it go. The one write a closed row takes."""
     return DreamPassUpdate(
-        closed_row=True, clear=frozenset({"cleanup_pending_at", "lease_token"})
+        closed_row=True,
+        clear=frozenset({"cleanup_pending_at", "lease_token", "lease_expires_at"}),
     )
 
 

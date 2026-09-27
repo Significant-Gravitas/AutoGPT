@@ -31,7 +31,7 @@ from backend.copilot.dream.schemas import (
 )
 
 # The statuses a row can still move on from. Any other status is terminal: the
-# row is final, and only the reaper finishing its cleanup writes it again
+# row is final, and only the cleanup after its pass finishing writes it again
 # (``DreamPassUpdate.closed_row``).
 OPEN_STATUSES: tuple[DreamPassStatus, ...] = (
     DreamPassStatus.QUEUED,
@@ -58,6 +58,10 @@ ClearableColumn = Literal[
 CLOSED_ROW_CLEARS: frozenset[ClearableColumn] = frozenset(
     {"lease_token", "lease_expires_at", "input_bundle"}
 )
+# What a row marked for a cleanup drops as it closes: the bundle only. It
+# keeps its lease until the cleanup has finished: the token to release the
+# pass's lock with, and the expiry that says whether the pass may still run.
+MARKED_ROW_CLEARS: frozenset[ClearableColumn] = frozenset({"input_bundle"})
 
 
 class DreamPhaseOutputs(BaseModel):
@@ -122,11 +126,13 @@ class DreamPassUpdate(BaseModel):
 
     ``clear`` names the nullable columns the update empties, which a ``None``
     field cannot say; every transition that closes a row clears
-    ``CLOSED_ROW_CLEARS``. A column is given a value or cleared, not both.
+    ``CLOSED_ROW_CLEARS``, or ``MARKED_ROW_CLEARS`` when it marks the row for
+    a cleanup (``cleanup_pending_at``). A column is given a value or cleared,
+    not both.
 
-    ``closed_row`` is the one write a closed row takes: the reaper saying it
-    has finished cleaning up after the pass. It applies to a closed row only,
-    and may only clear columns.
+    ``closed_row`` is the one write a closed row takes: the cleanup after its
+    pass saying it has finished. It applies to a closed row only, and may
+    only clear columns.
     """
 
     status: DreamPassStatus | None = None

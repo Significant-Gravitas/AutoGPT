@@ -1,11 +1,11 @@
 """The DreamPass lease, the reaper's scans and retention against a real
-database: a new row carries its lease, a renewal moves it, a closing
-transition empties it and the input bundle (the statement's ``clear``), the
-reaper lists open rows whose lease lapsed and closed rows whose cleanup it
-left, oldest first, on their indexes, its expiry marks the row and keeps the
-token until the one write a closed row takes clears both, and retention
-deletes closed rows past their retention, a batch at a time, none whose
-cleanup is pending."""
+database: a new row carries its lease, a renewal moves it, the sync route's
+own end empties it and the input bundle (the statement's ``clear``), a close
+that leaves a cleanup behind (a cancel, the reaper's expiry) marks the row
+and keeps its lease until the one write a closed row takes clears both, the
+reaper lists open rows whose lease lapsed and closed rows whose cleanup is
+due, oldest first, on their indexes, and retention deletes closed rows past
+their retention, a batch at a time, none whose cleanup is pending."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -27,9 +27,10 @@ from backend.copilot.dream.pass_record import (
     cleanup_finished,
     expired,
     lease,
+    outcome,
     reaped,
 )
-from backend.copilot.dream.schemas import ConsolidationOutput
+from backend.copilot.dream.schemas import ConsolidationOutput, DreamPassResult
 from backend.data.db import query_raw_with_schema
 from backend.util.json import SafeJson
 
@@ -88,34 +89,51 @@ async def test_a_new_row_carries_its_lease_and_a_renewal_moves_it(owner):
 
 
 async def test_a_closing_transition_empties_the_lease_and_the_bundle(owner):
-    """Written by the statement's ``clear``: the lease and the bundle go,
-    the outputs stay; an update that clears nothing leaves them."""
-    pass_id = await _new_pass(owner, lease_expires_at=_NOW)
-    await update_dream_pass(
-        pass_id,
-        DreamPassUpdate(
-            input_bundle=DreamInput(
-                user_id=owner,
-                group_id=f"user_{owner}",
-                window_start=_NOW,
-                window_end=_NOW,
-            ),
-            phase=DreamPassPhase.RECOMBINE,
-            phase_outputs=DreamPhaseOutputs(consolidate=ConsolidationOutput()),
-        ),
-    )
-    assert (await _row(pass_id)).input_bundle is not None
+    """Written by the statement's ``clear``: the sync route's own end drops
+    the lease and the bundle, the outputs stay; an update that clears
+    nothing leaves them."""
+    pass_id = await _new_pass_with_a_bundle(owner)
 
-    assert await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
+    assert await update_dream_pass(
+        pass_id, outcome(DreamPassResult(user_id=owner, pass_id=pass_id), None)
+    )
 
     row = await _row(pass_id)
-    assert row.status is DreamPassStatus.CANCELLED
+    assert row.status is DreamPassStatus.COMPLETE
     assert (row.lease_token, row.lease_expires_at, row.input_bundle) == (
         None,
         None,
         None,
     )
+    assert row.cleanup_pending_at is None
     assert row.phase_outputs.consolidate == ConsolidationOutput()
+
+
+async def test_a_close_that_leaves_a_cleanup_marks_the_row_and_keeps_its_lease(
+    owner,
+):
+    """A cancel marks the row for the cleanup after the pass, drops the
+    bundle and keeps the lease that cleanup needs, until the write that says
+    it finished empties the mark and the lease."""
+    pass_id = await _new_pass_with_a_bundle(owner)
+
+    assert await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
+
+    row = await _row(pass_id)
+    assert row.status is DreamPassStatus.CANCELLED
+    assert (row.lease_token, row.lease_expires_at) == ("tok", _NOW)
+    assert (row.input_bundle, row.cleanup_pending_at is not None) == (None, True)
+    assert pass_id in [r.id for r in await list_dream_pass_cleanups(_NOW)]
+
+    assert await update_dream_pass(pass_id, cleanup_finished())
+
+    done = await _row(pass_id)
+    assert (done.cleanup_pending_at, done.lease_token, done.lease_expires_at) == (
+        None,
+        None,
+        None,
+    )
+    assert pass_id not in [r.id for r in await list_dream_pass_cleanups(_NOW)]
 
 
 async def test_an_update_that_clears_nothing_leaves_the_lease(owner):
@@ -134,10 +152,8 @@ async def test_the_reaper_lists_open_passes_whose_lease_lapsed_oldest_first(owne
     await _new_pass(owner, lease_expires_at=None)
     closed = await _new_pass(owner, lease_expires_at=_LONG_AGO)
     await update_dream_pass(closed, expired("stale", not_updated_since=None))
-    # A row closed before closing cleared the lease still carries one.
-    await PrismaDreamPass.prisma().update(
-        where={"id": closed}, data={"leaseToken": "tok", "leaseExpiresAt": _LONG_AGO}
-    )
+    # A closed row marked for its cleanup still carries its lapsed lease.
+    assert (await _row(closed)).lease_expires_at == _LONG_AGO
 
     rows = await list_expired_dream_passes(_NOW, limit=1000)
     mine = [row.id for row in rows if row.user_id == owner]
@@ -172,7 +188,7 @@ async def test_the_reapers_expiry_marks_the_row_until_its_cleanup_finishes(owner
     assert (closed.lease_token, closed.lease_expires_at) == ("tok", None)
     assert closed.cleanup_pending_at is not None
     assert closed.cancel_generation == 1
-    listed = await list_dream_pass_cleanups(limit=1000)
+    listed = await list_dream_pass_cleanups(_NOW, limit=1000)
     assert pass_id in [r.id for r in listed]
 
     assert await update_dream_pass(pass_id, cleanup_finished())
@@ -184,7 +200,8 @@ async def test_the_reapers_expiry_marks_the_row_until_its_cleanup_finishes(owner
         "lapsed",
         1,
     )
-    assert pass_id not in [r.id for r in await list_dream_pass_cleanups(limit=1000)]
+    cleanups = await list_dream_pass_cleanups(_NOW, limit=1000)
+    assert pass_id not in [r.id for r in cleanups]
 
 
 async def test_the_cleanup_scan_lists_closed_marked_rows_longest_pending_first(
@@ -203,13 +220,43 @@ async def test_the_cleanup_scan_lists_closed_marked_rows_longest_pending_first(
         )
         marked.append(pass_id)
     unmarked = await _new_pass(owner, lease_expires_at=_LONG_AGO)
-    await update_dream_pass(unmarked, cancelled("testing", owner_user_id=owner))
+    await update_dream_pass(
+        unmarked, outcome(DreamPassResult(user_id=owner, pass_id=unmarked), None)
+    )
     await _new_pass(owner, lease_expires_at=_LONG_AGO)
 
-    rows = await list_dream_pass_cleanups(limit=1000)
+    rows = await list_dream_pass_cleanups(_NOW, limit=1000)
 
     assert [r.id for r in rows if r.user_id == owner] == marked
-    assert [r.id for r in await list_dream_pass_cleanups(limit=1)] == marked[:1]
+    first = await list_dream_pass_cleanups(_NOW, limit=1)
+    assert [r.id for r in first] == marked[:1]
+
+
+async def test_the_cleanup_scan_lists_a_row_once_its_cleanup_is_due(owner):
+    """Due once the row was marked, or its lease lapsed, before the cutoff,
+    or it holds no lease: a pass stopped while it ran has had its grace."""
+    due_before = _NOW - timedelta(minutes=30)
+    shapes = {
+        "marked long ago": (_LONG_AGO + timedelta(hours=1), _NOW + timedelta(days=1)),
+        "lease lapsed": (_NOW, _LONG_AGO),
+        "no lease": (_NOW, None),
+        "marked just now, lease fresh": (_NOW, _NOW + timedelta(days=1)),
+    }
+    ids = {}
+    for name, (marked, lease_expires_at) in shapes.items():
+        pass_id = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+        await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
+        await PrismaDreamPass.prisma().update(
+            where={"id": pass_id},
+            data={"cleanupPendingAt": marked, "leaseExpiresAt": lease_expires_at},
+        )
+        ids[pass_id] = name
+
+    rows = await list_dream_pass_cleanups(due_before, limit=1000)
+
+    listed = [ids[r.id] for r in rows if r.id in ids]
+    assert listed[0] == "marked long ago"
+    assert set(listed) == {"marked long ago", "lease lapsed", "no lease"}
 
 
 async def test_the_cleanup_scan_has_its_index():
@@ -243,11 +290,11 @@ async def test_retention_deletes_closed_passes_past_their_time_a_batch_at_a_time
     owner,
 ):
     old_closed = [await _new_pass(owner) for _ in range(3)]
-    for pass_id in old_closed:
-        await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
     old_open = await _new_pass(owner)
     recent_closed = await _new_pass(owner)
-    await update_dream_pass(recent_closed, cancelled("testing", owner_user_id=owner))
+    for pass_id in [*old_closed, recent_closed]:
+        await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
+        await update_dream_pass(pass_id, cleanup_finished())
     for pass_id in [*old_closed, old_open]:
         await PrismaDreamPass.prisma().update(
             where={"id": pass_id}, data={"createdAt": _LONG_AGO}
@@ -272,6 +319,26 @@ async def test_a_users_passes_list_the_open_ones_only_when_asked(owner):
 
     assert {row.id for row in everything} == {closed, open_pass}
     assert [row.id for row in only_open] == [open_pass]
+
+
+async def _new_pass_with_a_bundle(owner: str) -> str:
+    """A leased pass with its input bundle and consolidate's output."""
+    pass_id = await _new_pass(owner, lease_expires_at=_NOW)
+    await update_dream_pass(
+        pass_id,
+        DreamPassUpdate(
+            input_bundle=DreamInput(
+                user_id=owner,
+                group_id=f"user_{owner}",
+                window_start=_NOW,
+                window_end=_NOW,
+            ),
+            phase=DreamPassPhase.RECOMBINE,
+            phase_outputs=DreamPhaseOutputs(consolidate=ConsolidationOutput()),
+        ),
+    )
+    assert (await _row(pass_id)).input_bundle is not None
+    return pass_id
 
 
 async def _new_pass(owner: str, *, lease_expires_at: datetime | None = None) -> str:

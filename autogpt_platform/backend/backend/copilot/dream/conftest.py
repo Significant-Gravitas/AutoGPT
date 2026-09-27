@@ -14,7 +14,9 @@ in-memory stand-in by default. Tests that need their own fake keep patching
 No Postgres either, and the DatabaseManager RPC client behind ``dream_db()``
 would stall a write until the store's deadline, so the dream store writes
 each pass's record to an in-memory ``FakeDreamDb`` that tests can read the
-transitions back from. The master flag the guard reads answers on.
+transitions back from. The master flag the guard reads answers on. And no
+test reaches Anthropic from a pass's cleanup: there is no key to reach it
+with, and a batch's status reads ended, unless a test sets its own.
 """
 
 from __future__ import annotations
@@ -273,14 +275,19 @@ class FakeDreamDb:
         ]
         return [self.record(pass_id) for _, pass_id in sorted(lapsed)[:limit]]
 
-    async def list_dream_pass_cleanups(self, limit: int = 100) -> list[DreamPassRecord]:
-        """Closed rows marked for a cleanup, longest pending first."""
+    async def list_dream_pass_cleanups(
+        self, due_before: datetime, limit: int = 100
+    ) -> list[DreamPassRecord]:
+        """Closed rows marked for a cleanup that is due (marked, or holding
+        no lease or one that lapsed, before *due_before*), longest pending
+        first."""
         self._raise_if_down()
         pending = [
             (row["cleanup_pending_at"], pass_id)
             for pass_id, row in self.rows.items()
             if row["status"] not in OPEN_STATUSES
             and row.get("cleanup_pending_at") is not None
+            and _due(row, due_before)
         ]
         return [self.record(pass_id) for _, pass_id in sorted(pending)[:limit]]
 
@@ -369,6 +376,14 @@ def _writable(row: dict[str, Any], update: DreamPassUpdate) -> bool:
     )
 
 
+def _due(row: dict[str, Any], due_before: datetime) -> bool:
+    """Whether a marked row's cleanup is due, as the cleanup scan decides."""
+    lease = row.get("lease_expires_at")
+    return row["cleanup_pending_at"] <= due_before or (
+        lease is None or lease <= due_before
+    )
+
+
 def _order(value: Enum | None) -> int:
     """Where *value* sits in its enum's declared order, as Postgres compares
     enums."""
@@ -438,6 +453,19 @@ def dream_pass_flag(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     flag = AsyncMock(return_value=(True, True))
     monkeypatch.setattr("backend.copilot.dream.guard.evaluate_feature_flag", flag)
     return flag
+
+
+@pytest.fixture(autouse=True)
+def batch_status(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """No Anthropic key behind a pass's cleanup, and a batch status that reads
+    ended: the cleanup's provider step never reaches the network. Tests of
+    that step set their own key, cancel and status."""
+    monkeypatch.setattr(
+        "backend.copilot.dream.provider_batch.anthropic_api_key", lambda: None
+    )
+    status = AsyncMock(return_value="ended")
+    monkeypatch.setattr("backend.copilot.dream.provider_batch.poll_batch", status)
+    return status
 
 
 @pytest.fixture(autouse=True)

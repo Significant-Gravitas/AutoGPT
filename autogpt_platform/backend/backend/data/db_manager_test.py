@@ -167,14 +167,10 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
     manager = DatabaseManager()
     for method, cutoff_name in (
         (DatabaseManager.list_expired_dream_passes, "expired_before"),
+        (DatabaseManager.list_dream_pass_cleanups, "due_before"),
         (DatabaseManager.delete_old_dream_passes, "created_before"),
     ):
         endpoint = manager._create_fastapi_endpoint(method)
         body = inspect.signature(endpoint).parameters["body"].annotation
         sent = body.model_validate(to_dict({cutoff_name: cutoff, "limit": 7}))
         assert sent.model_dump() == {cutoff_name: cutoff, "limit": 7}
-    endpoint = manager._create_fastapi_endpoint(
-        DatabaseManager.list_dream_pass_cleanups
-    )
-    body = inspect.signature(endpoint).parameters["body"].annotation
-    assert body.model_validate({"limit": 7}).model_dump() == {"limit": 7}

@@ -26,6 +26,7 @@ from backend.copilot.inference.context import InferenceUsage, RouteDecision
 from backend.data.dream_pass_models import (
     CLOSED_ROW_CLEARS,
     CLOSED_STATUSES,
+    MARKED_ROW_CLEARS,
     OPEN_STATUSES,
     DreamPassDraft,
     DreamPassUpdate,
@@ -237,12 +238,10 @@ class TestAClosingRow:
             lambda: outcome(_result(skipped=True), None),
             lambda: outcome(_result(), None),
             lambda: failed("boom", None, datetime.now(timezone.utc)),
-            lambda: cancelled("testing", owner_user_id="u"),
-            lambda: expired("stale", not_updated_since=None),
         ],
-        ids=["skipped", "complete", "errored", "cancelled", "expired"],
+        ids=["skipped", "complete", "errored"],
     )
-    async def test_drops_its_lease_and_bundle_and_keeps_its_outputs(
+    async def test_the_sync_routes_end_drops_its_lease_and_bundle_keeps_its_outputs(
         self, fake_dream_db, close: Callable[[], DreamPassUpdate]
     ):
         closing = close()
@@ -255,20 +254,67 @@ class TestAClosingRow:
         )
 
         assert closing.clear == CLOSED_ROW_CLEARS
+        assert closing.cleanup_pending_at is None
         assert await fake_dream_db.update_dream_pass("p1", closing)
 
         row = fake_dream_db.rows["p1"]
         assert [row[column] for column in sorted(CLOSED_ROW_CLEARS)] == [None] * 3
         assert row["phase_outputs"] == {"consolidate": ConsolidationOutput()}
 
+    @pytest.mark.parametrize(
+        "close",
+        [
+            lambda: outcome(_result(), None, marked=True),
+            lambda: failed("boom", None, datetime.now(timezone.utc), marked=True),
+            lambda: cancelled("testing", owner_user_id="u"),
+            lambda: expired("stale", not_updated_since=None),
+        ],
+        ids=["batch complete", "batch errored", "cancelled", "expired"],
+    )
+    async def test_a_close_that_leaves_a_cleanup_marks_the_row_and_keeps_its_lease(
+        self, fake_dream_db, close: Callable[[], DreamPassUpdate]
+    ):
+        """A stop from outside, or a batch pass's end, marks the row for the
+        cleanup after the pass and keeps the lease that cleanup needs (the
+        token to release the lock with, the expiry that says whether the pass
+        may still run) until the write that says it finished."""
+        closing = close()
+        lapses = datetime.now(timezone.utc)
+        fake_dream_db.seed(
+            _draft("p1"),
+            lease_token="tok",
+            lease_expires_at=lapses,
+            input_bundle=_input(),
+            phase_outputs={"consolidate": ConsolidationOutput()},
+        )
+
+        assert closing.clear == MARKED_ROW_CLEARS
+        assert await fake_dream_db.update_dream_pass("p1", closing)
+
+        row = fake_dream_db.rows["p1"]
+        assert (row["lease_token"], row["lease_expires_at"]) == ("tok", lapses)
+        assert (row["input_bundle"], row["cleanup_pending_at"] is None) == (
+            None,
+            False,
+        )
+        assert row["phase_outputs"] == {"consolidate": ConsolidationOutput()}
+        assert await fake_dream_db.update_dream_pass("p1", cleanup_finished())
+        assert (
+            row["cleanup_pending_at"],
+            row["lease_token"],
+            row["lease_expires_at"],
+        ) == (None, None, None)
+
     def test_a_column_is_set_or_cleared_not_both(self):
         with pytest.raises(ValidationError, match="set and cleared at once"):
             DreamPassUpdate(lease_token="tok", clear=frozenset({"lease_token"}))
 
     def test_the_statement_empties_the_columns_the_update_clears(self):
-        args = transition_args("p1", expired("stale", not_updated_since=None))
+        dropped = transition_args("p1", outcome(_result(), None))
+        marked = transition_args("p1", expired("stale", not_updated_since=None))
 
-        assert args[21] == ["inputBundle", "leaseExpiresAt", "leaseToken"]
+        assert dropped[21] == ["inputBundle", "leaseExpiresAt", "leaseToken"]
+        assert (marked[21], marked[22] is not None) == (["inputBundle"], True)
         assert transition_args("p1", DreamPassUpdate())[21] == []
         for column in (
             "leaseToken",
@@ -311,7 +357,7 @@ class TestAClosingRow:
 
         assert set(closed[17]) == {s.value for s in CLOSED_STATUSES}
         assert set(opened[17]) == {s.value for s in OPEN_STATUSES}
-        assert closed[21] == ["cleanupPendingAt", "leaseToken"]
+        assert closed[21] == ["cleanupPendingAt", "leaseExpiresAt", "leaseToken"]
         marked = transition_args(
             "p1", reaped("x", not_updated_since=datetime.now(timezone.utc))
         )

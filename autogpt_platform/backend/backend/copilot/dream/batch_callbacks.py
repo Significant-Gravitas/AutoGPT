@@ -39,7 +39,7 @@ from pydantic import BaseModel, ValidationError
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.context import InferenceError
 
-from .batch_costs import landed_usage, log_all_phase_costs
+from .batch_costs import landed_usage
 from .batch_deliveries import (
     drop_closed,
     end_dead_end,
@@ -49,17 +49,12 @@ from .batch_deliveries import (
 from .batch_outcome import (
     ApplyStats,
     BatchPass,
+    clean_up_after,
     fail_pass,
     record_completion,
     release_lock,
 )
-from .batch_state import (
-    best_effort_cleanup,
-    claim_apply_gate,
-    content_for,
-    read_state,
-    write_phase_to_state,
-)
+from .batch_state import claim_apply_gate, content_for, read_state, write_phase_to_state
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
     read_input_bundle,
@@ -313,7 +308,7 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
         return
     state = await read_state(bp.pass_id)
     ops = await _terminal_ops(bp, state, input_bundle)
-    lease = await _claim_apply(bp, state, ops) if ops is not None else None
+    lease = await _claim_apply(bp, ops) if ops is not None else None
     if ops is None or lease is None:
         return
     try:
@@ -340,9 +335,7 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
     )
 
 
-async def _claim_apply(
-    bp: BatchPass, state: dict[str, dict[str, Any]], ops: DreamOperations
-) -> ApplyLease | None:
+async def _claim_apply(bp: BatchPass, ops: DreamOperations) -> ApplyLease | None:
     """Record APPLYING, check for a stop, claim the apply gate, admit apply
     on a renewal of the lock: the lease apply renews again before it writes,
     or ``None`` once a stop, a duplicate, an unreadable gate or an unproven
@@ -363,7 +356,7 @@ async def _claim_apply(
         )
         return None
     if gate == "duplicate":
-        await finish_duplicate(bp, state, ops)
+        await finish_duplicate(bp, ops)
         return None
     return await admit_batch_apply(bp, lock_token)
 
@@ -401,16 +394,11 @@ async def _finish_applied(
     ops: DreamOperations,
     ingestion_drain_status: IngestionDrainStatus,
 ) -> None:
-    """Charge the landed phases, close the job and the record, release.
-    Failure paths charge them through ``fail_pass``; the gate inside
-    ``log_all_phase_costs`` keeps that at-most-once across every path."""
-    await log_all_phase_costs(
-        user_id=bp.user_id,
-        expert_id=bp.expert_id,
-        pass_id=bp.pass_id,
-        state=state,
-        phase_models=bp.phase_models,
-    )
+    """Close the job and the record, marked, then clean up after the pass
+    (``clean_up_after``): the landed phases charged, the lock the batch path
+    disowned to this callback released so the user's next dream can run.
+    Failure paths do the same through ``fail_pass``; the per-phase claims
+    keep the charges at-most-once across every path."""
     # The batch path skips the drain by design, so apply reports
     # ``skipped`` whenever the pass enqueued writes (``drained`` only
     # for an empty pass), read via the shared, fail-closed helper.
@@ -421,10 +409,7 @@ async def _finish_applied(
         summary_for_user=ops.summary_for_user,
         usage=landed_usage(state, bp.phase_models, bp.pass_id),
     )
-    # The batch path disowned the dream lock to this callback; release it now
-    # that the pass has terminated so the next dream for this user can run.
-    await release_lock(bp)
-    await best_effort_cleanup(bp.pass_id)
+    await clean_up_after(bp)
 
 
 def _register() -> None:

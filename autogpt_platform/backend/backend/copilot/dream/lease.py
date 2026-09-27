@@ -20,9 +20,9 @@ then overstates the lock by up to twenty-two minutes.
                 has landed (``renew_batch_lease``), and once its apply gate
                 is claimed (``admit_batch_apply``)
   either        renewed by apply once more right before its first graph
-                write (``ApplyLease``); emptied by every transition that
-                closes the row (the reaper's keeps the token until its
-                cleanup is done)
+                write (``ApplyLease``); emptied as the row closes, or, when
+                the close marks the row for a cleanup (a stop, a batch
+                pass's end), once that cleanup is done (``cleanup.py``)
 
 A lock that is no longer the pass's ends the pass: another pass may hold the
 scope now. A renewal Redis cannot answer in time is taken by what follows it.

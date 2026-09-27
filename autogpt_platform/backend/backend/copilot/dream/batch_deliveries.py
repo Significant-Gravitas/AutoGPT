@@ -3,19 +3,22 @@
 The BatchExecutor hands each finished dream batch to ``batch_callbacks``'s
 phase handler, which lands the phase and chains the next one or applies.
 Three kinds of delivery end the pass instead, each the way ``fail_pass`` ends
-one: the admin job closed, the landed phases charged once (through the cost
-gate), the lock released by compare-and-delete, the batch state and bundle
-deleted.
+one: the admin job closed, the row closed and marked for the cleanup after
+the pass, then that cleanup (``cleanup.py``): the landed phases charged once
+each, the lock released by compare-and-delete, the batch state and bundle
+deleted, the mark cleared once every step has finished.
 
   * A batch whose pass has already ended: cancelled or expired while the
-    batch was in flight, or closed any other way. Before the executor polls
-    it, it asks ``should_dispatch``, which only reads the pass's row,
-    bounded: a closed row means nobody waits for the batch, and the executor
-    drops it, claimed off its queue before anything else happens. The walker
-    whose claim took it then runs ``drop_closed``: the batch cancelled at
-    the provider and the pass ended out, nothing chained, nothing applied,
-    nothing charged beyond the phases that landed; a walker that lost the
-    claim does nothing. An open row, a missing one or one the store cannot
+    batch was in flight, or closed any other way, and marked by whatever
+    closed it. Before the executor polls it, it asks ``should_dispatch``,
+    which only reads the pass's row, bounded: a closed row means nobody
+    waits for the batch, and the executor drops it, claimed off its queue
+    before anything else happens. The walker whose claim took it then runs
+    ``drop_closed``: the batch stopped at the provider and the pass ended
+    out, nothing chained, nothing applied, nothing charged beyond the phases
+    that landed; a walker that lost the claim does nothing. A drop hook that
+    fails, times out or never runs leaves the row marked, and the reaper
+    finishes the cleanup. An open row, a missing one or one the store cannot
     read in time dispatches as before, and the phase handler keeps its own
     stop checks.
   * A payload no phase handler can take (``end_dead_end``).
@@ -30,17 +33,14 @@ deleted.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
 from backend.executor.batch_executor import PendingEntry
 
 from . import job_status
-from .batch_costs import log_all_phase_costs, recorded_usage
-from .batch_outcome import BatchPass, fail_pass, mark_job_errored, release_lock
-from .batch_state import best_effort_cleanup
+from .batch_costs import recorded_usage
+from .batch_outcome import BatchPass, clean_up_after, fail_pass, mark_job_errored
 from .pass_record import stop_error
-from .provider_batch import cancel_provider_batch
 from .schemas import DreamOperations, DreamPassResult, IngestionDrainStatus
 from .store import read_pass, record_batch_failed, record_expired
 
@@ -71,9 +71,9 @@ async def should_dispatch(entry: PendingEntry) -> bool:
 
 async def drop_closed(entry: PendingEntry) -> None:
     """The executor's drop hook, run only by the walker whose claim took a
-    closed pass's batch off the queue: the batch is cancelled at the
-    provider and the pass ended out as its owner on the row. The row refuses
-    the failure ``fail_pass`` writes: it keeps how it closed."""
+    closed pass's batch off the queue: the pass ended out as its owner on
+    the row, its batch stopped at the provider as part of the cleanup. The
+    row refuses the failure ``fail_pass`` writes: it keeps how it closed."""
     bp = BatchPass.from_payload(entry.payload or {})
     row = await _closed_row(bp.pass_id)
     owner = bp
@@ -87,16 +87,16 @@ async def drop_closed(entry: PendingEntry) -> None:
         f"Dream batch {entry.provider_batch_id} of pass {bp.pass_id} dropped "
         f"unpolled: {reason}"
     )
-    await cancel_provider_batch(entry.provider_batch_id)
-    await fail_pass(owner, reason)
+    await fail_pass(owner, reason, provider_batch_id=entry.provider_batch_id)
 
 
 async def end_dead_end(bp: BatchPass, error: str) -> None:
     """A payload no phase handler can take ends its pass as far as the
     payload names it: with an owner and a pass, like any failure. Without an
-    owner there is nobody to charge, so the admin job and the record close
-    and the pass's state goes; without a pass there is no token, so the lock
-    is left to its TTL (``release_lock`` says so)."""
+    owner, the admin job closes and so does the record, marked: the reaper
+    cleans up after the pass from its row, which names the owner to charge
+    and keeps the token to release the lock with. Without a pass there is
+    nothing more to end."""
     if bp.user_id and bp.pass_id:
         await fail_pass(bp, error)
         return
@@ -104,20 +104,16 @@ async def end_dead_end(bp: BatchPass, error: str) -> None:
     if bp.pass_id:
         usage = await recorded_usage(bp.pass_id, bp.phase_models)
         await record_batch_failed(bp.pass_id, error, usage)
-        await best_effort_cleanup(bp.pass_id)
-    if bp.user_id:
-        await release_lock(bp)
 
 
-async def finish_duplicate(
-    bp: BatchPass, state: dict[str, dict[str, Any]], ops: DreamOperations
-) -> None:
+async def finish_duplicate(bp: BatchPass, ops: DreamOperations) -> None:
     """A repeat of a delivery that already claimed the pass's apply: apply is
     skipped and the first delivery's results kept. That delivery normally
     closed the job and the row; one that died after its claim left both
     open, so the job is finalized with the attempted counts and the row
-    closed EXPIRED (``DUPLICATE_ERROR``). Then as any end: the landed phases
-    charged once, the lock released, the state and bundle deleted."""
+    closed EXPIRED (``DUPLICATE_ERROR``), marked. Then the cleanup after it,
+    as after any end (``clean_up_after``): the landed phases charged once,
+    the lock released, the state and bundle deleted."""
     logger.info(
         "Duplicate dispatch for pass=%s — apply already claimed, not run "
         "again; preserving the first delivery's job result",
@@ -125,15 +121,7 @@ async def finish_duplicate(
     )
     await _finalize_stuck_duplicate(bp, ops)
     await record_expired(bp.pass_id, DUPLICATE_ERROR)
-    await log_all_phase_costs(
-        user_id=bp.user_id,
-        expert_id=bp.expert_id,
-        pass_id=bp.pass_id,
-        state=state,
-        phase_models=bp.phase_models,
-    )
-    await release_lock(bp)
-    await best_effort_cleanup(bp.pass_id)
+    await clean_up_after(bp)
 
 
 async def _closed_row(pass_id: str) -> DreamPassRecord | None:

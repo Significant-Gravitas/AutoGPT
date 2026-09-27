@@ -163,18 +163,29 @@ class TestAPassThatOutlivedItsLease:
         assert _charged(charges) == ["consolidate"]
         assert state_key("p1") not in fake_dream_redis.hashes
 
+    @pytest.mark.parametrize(
+        "claimed",
+        [
+            # The phase's own claim, taken by an earlier cleanup.
+            "dream:batch:charged:p1:consolidate",
+            # The whole-pass gate an earlier build took before charging.
+            "dream:batch:costs_logged:p1",
+        ],
+        ids=["phase claimed", "charged whole by an earlier build"],
+    )
     async def test_already_charged_is_not_charged_again(
-        self, fake_dream_db, fake_dream_redis, charges, caplog
+        self, fake_dream_db, fake_dream_redis, charges, caplog, claimed
     ):
         await _dead_batch_pass(fake_dream_db)
-        fake_dream_redis.store["dream:batch:costs_logged:p1"] = "1"
+        fake_dream_redis.store[claimed] = "1"
 
         with caplog.at_level(logging.INFO):
             run = await reap_expired_passes()
 
         assert run.outcomes == {"expired": 1}
         charges.assert_not_awaited()
-        assert "charged nothing (already charged)" in caplog.text
+        assert "; charged nothing; " in caplog.text
+        assert state_key("p1") not in fake_dream_redis.hashes
 
     async def test_that_died_applying_is_closed_without_applying_again(
         self, mocker, fake_dream_db, fake_dream_redis, charges

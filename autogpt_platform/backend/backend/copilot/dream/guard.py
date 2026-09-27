@@ -17,8 +17,10 @@ pass's own:
 
 A row is fresh while its lease has not lapsed or, without a lease, while it was
 written within the pass lock's TTL. Expiring is one conditional transition that
-bumps the row's cancel generation, so its pass stops at its next check; it
-lands only while the row is still open. A stale row's expiry is also a
+bumps the row's cancel generation, so its pass stops at its next check, and
+marks the row for the cleanup after that pass (its batch, its landed phases,
+its state), which the reaper finishes if the pass does not (``cleanup.py``);
+it lands only while the row is still open. A stale row's expiry is also a
 compare-and-set on the row's last write: it lands only if nothing has written
 the row since the guard read it, and a row that moved in between is alive and
 blocks after all. An admin's forced expiry of a fresh row skips that
