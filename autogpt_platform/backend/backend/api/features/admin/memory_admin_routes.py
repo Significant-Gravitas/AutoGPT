@@ -36,7 +36,7 @@ from backend.copilot.dream.nightly_batch import NightlyBatchResult
 from backend.copilot.dream.pass_record import dream_pass_result_from_row
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
-from backend.copilot.dream.store import read_dream_pass
+from backend.copilot.dream.store import read_dream_pass, read_user_passes
 from backend.copilot.graphiti.falkordb_driver import open_driver
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import DreamPassRecord
@@ -1010,6 +1010,12 @@ class DreamPassRecordResponse(BaseModel):
     result: DreamPassResult
 
 
+class DreamPassListResponse(BaseModel):
+    """A user's dream passes, every scope, newest first."""
+
+    passes: list[DreamPassRecord]
+
+
 # What a cancelled pass's record says when the admin gave no reason.
 ADMIN_CANCEL_REASON = "cancelled by an admin"
 
@@ -1093,6 +1099,40 @@ async def trigger_dream_pass(
     return JSONResponse(status_code=202, content=payload.model_dump(mode="json"))
 
 
+# Declared before ``GET /{user_id}/dream/{job_id}``, which would otherwise
+# read "passes" as a job id.
+@router.get(
+    "/{user_id}/dream/passes",
+    response_model=DreamPassListResponse,
+)
+async def list_dream_pass_records(
+    request: Request,
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict[str, Any], Security(get_jwt_payload)],
+    status: Annotated[
+        Literal["open", "all"],
+        Query(description="Only the passes still running, or all of them"),
+    ] = "all",
+    limit: Annotated[
+        int, Query(ge=1, le=100, description="How many passes, newest first")
+    ] = 20,
+) -> DreamPassListResponse:
+    """List a user's dream passes, across the account and every expert,
+    newest first: the durable records, each as ``GET .../record`` returns
+    it. A finished pass keeps its phase outputs, operations and usage; its
+    lease and input bundle went when it closed."""
+    target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
+    passes = await read_user_passes(target, open_only=status == "open", limit=limit)
+    return DreamPassListResponse(passes=passes)
+
+
 @router.get(
     "/{user_id}/dream/{job_id}",
     response_model=DreamJobStatus,
@@ -1170,10 +1210,12 @@ async def cancel_dream_pass_run(
 
     The row closes at once; the pass itself stops at its next check (a phase
     boundary, its batch submit, or just before apply, on either route)
-    without applying. A batch pass waiting on its provider stops when that
-    batch lands. A pass already past its last check still applies, once, and
-    whatever a pass applied stays. 404 for a pass that does not exist or
-    belongs to another user, alike; 409 once the pass has ended.
+    without applying. A batch pass waiting on its provider has that batch
+    cancelled too, and the batch executor drops it at its next poll, which
+    releases the pass's lock. A pass already past its last check still
+    applies, once, and whatever a pass applied stays. 404 for a pass that
+    does not exist or belongs to another user, alike; 409 once the pass has
+    ended.
     """
     target = _resolve_user_id(user_id, caller_id)
     _audit_cross_user_access(

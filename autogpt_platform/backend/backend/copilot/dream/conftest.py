@@ -189,11 +189,11 @@ class FakeDreamDb:
     a ``None`` field leaves its column, status and phase only move forward,
     a batch id lands only while the row has not moved past the update's
     phase, ``phase_outputs`` and ``operations`` merge one field at a time, a
-    stop bumps the cancel generation, and a terminal row, another user's row
-    (for an update naming the owner) or a row written after the update's
-    instant is not written. ``writes`` holds every draft and update that was
-    written, in order, as sent. ``fail`` makes every call raise, as an
-    unreachable database would.
+    stop bumps the cancel generation, ``clear`` empties its columns, and a
+    terminal row, another user's row (for an update naming the owner) or a
+    row written after the update's instant is not written. ``writes`` holds
+    every draft and update that was written, in order, as sent. ``fail``
+    makes every call raise, as an unreachable database would.
     """
 
     def __init__(self) -> None:
@@ -231,6 +231,7 @@ class FakeDreamDb:
                 )
             else:
                 row[field] = value
+        row.update({column: None for column in update.clear})
         row["cancel_generation"] += int(update.bump_cancel_generation)
         row["updated_at"] = datetime.now(timezone.utc)
         return True
@@ -255,6 +256,35 @@ class FakeDreamDb:
             for pass_id, row in reversed(self.rows.items())
             if row["scope_key"] == scope_key and row["status"] in OPEN_STATUSES
         ][:limit]
+
+    async def list_expired_dream_passes(
+        self, expired_before: datetime, limit: int = 100
+    ) -> list[DreamPassRecord]:
+        """Open rows whose lease lapsed before *expired_before*, oldest
+        lapse first, at most *limit*."""
+        self._raise_if_down()
+        lapsed = [
+            (row["lease_expires_at"], pass_id)
+            for pass_id, row in self.rows.items()
+            if row["status"] in OPEN_STATUSES
+            and row.get("lease_expires_at") is not None
+            and row["lease_expires_at"] < expired_before
+        ]
+        return [self.record(pass_id) for _, pass_id in sorted(lapsed)[:limit]]
+
+    async def delete_old_dream_passes(
+        self, created_before: datetime, limit: int = 1000
+    ) -> int:
+        """Delete at most *limit* closed rows created before *created_before*."""
+        self._raise_if_down()
+        old = [
+            pass_id
+            for pass_id, row in self.rows.items()
+            if row["status"] not in OPEN_STATUSES and row["created_at"] < created_before
+        ][:limit]
+        for pass_id in old:
+            del self.rows[pass_id]
+        return len(old)
 
     def seed(self, draft: DreamPassDraft, **columns: Any) -> None:
         """A row as an earlier step (another process) would have left it;
@@ -295,7 +325,7 @@ class FakeDreamDb:
 
 
 # Update fields that are not a column written as sent: the forward-only
-# columns, the generation bump and the conditions.
+# columns, the generation bump, the conditions and the columns to empty.
 _NOT_WRITTEN_AS_IS = frozenset(
     {
         "status",
@@ -304,6 +334,7 @@ _NOT_WRITTEN_AS_IS = frozenset(
         "bump_cancel_generation",
         "owner_user_id",
         "not_updated_since",
+        "clear",
     }
 )
 

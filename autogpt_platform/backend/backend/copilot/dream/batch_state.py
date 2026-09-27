@@ -11,7 +11,8 @@ Per-pass state lives in two Redis keys:
     token usage, so the apply step has everything it needs and the cost log
     can record all three rows at once
 
-Both are TTL'd to 24h (Anthropic's batch SLA) so a forgotten pass naturally
+Both are TTL'd to an hour past the pass's lease (``INPUT_TTL_SECONDS``), so
+the reaper can still charge and delete them and a forgotten pass naturally
 falls off the radar. Two SETNX gates (7-day TTL) keep the side effects
 at-most-once should a finished batch be delivered twice:
 ``dream:applied:{pass_id}`` for the memory writes and
@@ -25,7 +26,7 @@ import logging
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from .batch_submit import delete_input_bundle
+from .batch_submit import INPUT_TTL_SECONDS, delete_input_bundle
 from .schemas import DreamPhase
 
 if TYPE_CHECKING:
@@ -33,10 +34,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# 24h matches Anthropic's batch SLA; if no phase has landed in that
-# window the BatchExecutor has already issued a timeout error via
-# ``MAX_BATCH_LIFETIME_SECONDS``.
-STATE_TTL_SECONDS = 24 * 60 * 60
+# The same as the input bundle's, see ``batch_submit.INPUT_TTL_SECONDS``.
+STATE_TTL_SECONDS = INPUT_TTL_SECONDS
 
 _APPLIED_GATE_PREFIX = "dream:applied"
 # 7 days — same window as the costs_logged gate; no realistic
@@ -136,7 +135,7 @@ async def best_effort_cleanup(pass_id: str) -> None:
     blip propagate. These deletes run AFTER ``mark_complete`` on the
     success/duplicate tails — an exception here would route through the
     crash guard to ``fail_pass`` and rewrite a completed job to errored.
-    Both keys carry 24h TTLs, so a failed delete self-heals."""
+    Both keys carry TTLs, so a failed delete self-heals."""
     try:
         await delete_state(pass_id)
         await delete_input_bundle(pass_id)

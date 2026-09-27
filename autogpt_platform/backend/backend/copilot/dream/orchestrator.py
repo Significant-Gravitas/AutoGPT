@@ -13,12 +13,13 @@ submits the first phase to Anthropic's Message Batches API instead and
 results land.
 
 Every pass, on either route, gets a durable ``DreamPass`` row
-(``store.py``): inserted at the start, advanced after each step, and
-closed with how the pass ended, a write attempted before the pass releases
-its lock. Like every record write it is best-effort: one that fails or
-times out leaves the row open behind a free lock until a later pass's guard
-or a reaper closes it. A pass holding the lock runs ``guard.py`` first, and
-``cancel.py``'s checks before each phase, before its batch submit and apply.
+(``store.py``): inserted with its lease at the start, advanced after each
+step, and closed with how the pass ended, a write attempted before the pass
+releases its lock. Like every record write it is best-effort: one that fails
+leaves the row open behind a free lock until a later pass's guard or the
+reaper (``reaper.py``) closes it. A pass holding the lock runs ``guard.py``
+first, then before each phase and apply checks for a stop (``cancel.py``) and
+renews its lease (``lease.py``); the batch route checks before its submit.
 
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set and, on the sync route, the usage
@@ -50,7 +51,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
-from .cancel import stop_before_apply, stop_if_stopped
+from .cancel import stop_before_apply
 from .clamp import clamp_operations
 from .fetch import (
     DreamInput,
@@ -60,7 +61,8 @@ from .fetch import (
     parse_episode_timestamp,
 )
 from .guard import guard_dream_pass
-from .locks import DEFAULT_LOCK_TTL_SECONDS, DreamLockHandle, DreamLockHeld, dream_lock
+from .lease import checkpoint, renew_sync_lease
+from .locks import DreamLockHandle, DreamLockHeld, dream_lock
 from .pass_record import DreamTrigger
 from .pass_run import DreamPassRun, PassEnded
 from .phase_jobs import phase_job
@@ -412,14 +414,9 @@ async def _execute_dream_pass_async(
     run = DreamPassRun.begin(user_id, await _route_for(user_id, config), force=force)
     try:
         scope = MemoryScope.build(user_id, expert_id)
-        await start_pass(
-            run.pass_id,
-            scope,
-            route=run.execution_path,
-            trigger=trigger,
-            started_at=run.started_at,
-        )
-        async with dream_lock(scope, ttl_seconds=DEFAULT_LOCK_TTL_SECONDS) as handle:
+        await start_pass(run, scope, trigger=trigger)
+        async with dream_lock(scope, token=run.lease_token) as handle:
+            run.hold(handle)
             return await _run_locked(
                 run, scope, handle, config=config, status_id=status_id
             )
@@ -473,7 +470,7 @@ async def _run_locked(
     to take the lock normally finds this one's row closed. It is best-effort
     like every record write: one that fails or times out is dropped and the
     lock is released anyway, so a free lock can still have an open row
-    (APPLYING, say) behind it until a reaper closes it."""
+    (APPLYING, say) behind it until the reaper closes it."""
     try:
         result = await _dream(
             run, scope, lock_handle, config=config, status_id=status_id
@@ -610,12 +607,13 @@ async def _phase(
     phase: DreamPhase,
     call: Callable[[], Awaitable[tuple[_Output, PhaseUsage]]],
 ) -> _Output:
-    """One phase's output, once the pass's row shows no stop. A phase with no
-    usable answer ends the pass (``PassEnded``) with the usage billed so far,
-    the failed attempt's included when its answer came back. A phase whose
-    charge failed (``PhaseChargeError``) joins that usage too, then its error
-    ends the pass as a crash does."""
-    await stop_if_stopped(run)
+    """One phase's output, once the pass's row shows no stop and its lease
+    is renewed (``lease.checkpoint``). A phase with no usable answer ends the
+    pass (``PassEnded``) with the usage billed so far, the failed attempt's
+    included when its answer came back. A phase whose charge failed
+    (``PhaseChargeError``) joins that usage too, then its error ends the pass
+    as a crash does."""
+    await checkpoint(run, phase)
     try:
         output, usage = await call()
     except InferenceError as exc:
@@ -644,6 +642,7 @@ async def _apply(
     )
     await record_applying(run.pass_id, ops)
     await stop_before_apply(run, lock_handle)
+    await renew_sync_lease(run, "apply")
     apply_stats = await apply_operations(
         scope,
         run.pass_id,

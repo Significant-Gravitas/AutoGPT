@@ -1,11 +1,15 @@
 """One dream pass while the sync entry point runs it: who and what it is,
-when it started, and what its phases have used so far.
+when it started, the lease it holds, and what its phases have used so far.
 
 Built once when a pass starts and handed down, so every result the pass can
 end with (a skip, a failure at any step, a stop from outside, an unexpected
 error, the hand-off to the batch route) carries the same identity and timing,
 and every failure carries the usage of every phase billed before it. A step
 that ends the pass early raises ``PassEnded`` with the result it ends with.
+
+The pass mints its lease token with its id, so its row carries the lease from
+the first write; the scope's lock is then taken under that token and held by
+the run (``hold``) for the renewals at each step (``lease.py``).
 """
 
 import asyncio
@@ -13,10 +17,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from backend.copilot.inference.context import InferenceError
 
+from .locks import DreamLockHandle
 from .routing import ExecutionPath
 from .schemas import DreamPassResult, DreamPassUsage, DreamPhase, PhaseUsage
 from .usage import aggregate_usage, phase_usage
@@ -46,6 +51,9 @@ class DreamPassRun(BaseModel):
     # Every phase billed so far, in order, a failed phase whose answer came
     # back included.
     phases: list[PhaseUsage] = Field(default_factory=list)
+    # The ownership token of the scope's dream lock the pass takes.
+    lease_token: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    _lock: DreamLockHandle | None = PrivateAttr(default=None)
 
     @classmethod
     def begin(
@@ -59,6 +67,14 @@ class DreamPassRun(BaseModel):
             execution_path=execution_path,
             force=force,
         )
+
+    @property
+    def lock(self) -> DreamLockHandle | None:
+        """The scope's lock the pass holds, once it has taken it."""
+        return self._lock
+
+    def hold(self, lock: DreamLockHandle) -> None:
+        self._lock = lock
 
     def usage(self) -> DreamPassUsage:
         """What the phases billed so far used, per phase and in total."""

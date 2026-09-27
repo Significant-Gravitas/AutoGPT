@@ -79,13 +79,15 @@ def fake_redis():
     async def fake_expire(key, ttl):
         return 1
 
-    async def fake_eval(script, numkeys, key, token):
-        # The only Lua the dream path runs is the lock's single-key
-        # compare-and-delete; mirror its semantics on the string store.
-        if string_store.get(key) == token:
+    async def fake_eval(script, numkeys, key, token, *argv):
+        # The only Lua the dream path runs is the lock's two single-key
+        # scripts, compare-and-delete and compare-and-extend (the lease
+        # renewal, which passes the TTL); mirror them on the string store.
+        if string_store.get(key) != token:
+            return 0
+        if not argv:
             string_store.pop(key, None)
-            return 1
-        return 0
+        return 1
 
     stub = AsyncMock()
     stub.hset.side_effect = fake_hset
@@ -1471,16 +1473,20 @@ class TestDreamPassRecord:
             return await record(pass_id, update)
 
         release_lock = AsyncMock(side_effect=lambda *_: order.append("lock released"))
+        charge = AsyncMock(side_effect=lambda ctx, usage: order.append("charged"))
         with patch.object(fake_dream_db, "update_dream_pass", recorded), patch(
             "backend.copilot.dream.batch_outcome.release_dream_lock", release_lock
-        ):
+        ), patch("backend.copilot.dream.batch_costs.record_phase_cost", charge):
             await handle_dream_batch_result(entry, [])
 
         row = fake_dream_db.rows["p1"]
         assert row["status"] is DreamPassStatus.ERRORED
         assert row["error"] == error
         assert [p.phase for p in row["usage"].phases] == ["consolidate"]
-        assert order == ["record ERRORED", "lock released"]
+        # Like any failure: the landed phase charged once, and the pass's
+        # batch state gone with its lock.
+        assert order == ["record ERRORED", "charged", "lock released"]
+        assert state_key("p1") not in fake_redis[1]
 
     @pytest.mark.asyncio
     async def test_an_unreadable_state_still_closes_the_row_errored(
@@ -1700,7 +1706,9 @@ class TestAStoppedPass:
     """A pass whose row was cancelled, or expired by a newer pass's guard,
     while its batch was in flight: the callback that lands next ends it before
     it chains the next phase or claims the apply gate, through ``fail_pass``,
-    after asking the provider to cancel the batch the row names."""
+    after asking the provider to cancel the batch the row names. (A cancel
+    asks for that itself as it closes the row; each test counts only the
+    callback's own request.)"""
 
     @pytest.fixture
     def anthropic(self):
@@ -1796,6 +1804,7 @@ class TestAStoppedPass:
     ):
         lock_key = await self._in_flight(fake_dream_db, fake_dream_redis, landed=())
         error = await stop()
+        anthropic.messages.batches.cancel.reset_mock()
         submit_phase = AsyncMock()
 
         with patch(
@@ -1826,6 +1835,7 @@ class TestAStoppedPass:
         is charged or cancelled twice."""
         await self._in_flight(fake_dream_db, fake_dream_redis, landed=())
         error = await _cancel_p1()
+        anthropic.messages.batches.cancel.reset_mock()
         entry = _entry(phase="consolidate")
         rows = [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)]
         with patch(
@@ -1856,6 +1866,7 @@ class TestAStoppedPass:
             fake_dream_db, fake_dream_redis, landed=("consolidate", "recombine")
         )
         error = await _cancel_p1()
+        anthropic.messages.batches.cancel.reset_mock()
         apply = AsyncMock()
 
         with patch("backend.copilot.dream.apply.apply_operations", apply):
@@ -1916,6 +1927,7 @@ class TestAStoppedPass:
     ):
         lock_key = await self._in_flight(fake_dream_db, fake_dream_redis, landed=())
         error = await _cancel_p1()
+        anthropic.messages.batches.cancel.reset_mock()
         anthropic.messages.batches.cancel.side_effect = RuntimeError(
             "batch has already ended"
         )

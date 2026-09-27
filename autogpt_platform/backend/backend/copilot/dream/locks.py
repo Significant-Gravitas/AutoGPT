@@ -18,7 +18,9 @@ single-key Lua scripts, no multi-key scripts and no cross-key
 transactions.
 
 The sync-path TTL is 1800 s (30 min), sized to the scheduler's job
-timeout; the batch path extends it (see ``BATCH_LOCK_TTL_SECONDS``).
+timeout; the batch path extends it (see ``BATCH_LOCK_TTL_SECONDS``). A pass
+renews its lock at each step, and its DreamPass row records the new expiry
+as the pass's lease (``lease.py``).
 
 Right before it applies, a pass reads the key once more (``held``,
 ``dream_lock_held_by``): a lock that lapsed may already be a newer pass's,
@@ -155,6 +157,7 @@ class DreamLockHandle:
 async def dream_lock(
     scope: MemoryScope,
     ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
+    token: str | None = None,
 ):
     """Acquire a per-user advisory lock for the dream pass.
 
@@ -162,7 +165,8 @@ async def dream_lock(
     The lock is released on context exit via compare-and-delete on this
     acquire's ownership token — a late exit can't delete a newer pass's
     lock. On crash the TTL provides a fallback release after
-    ``ttl_seconds``.
+    ``ttl_seconds``. *token*, minted by the pass so its record carries the
+    lease before the lock is taken, is the ownership value (uuid4 if not).
     """
     # Lazy import so this module is cheap to import in tests that mock redis.
     from backend.data.redis_client import get_redis_async
@@ -170,7 +174,7 @@ async def dream_lock(
     user_id = scope.owner_user_id
     redis = await get_redis_async()
     key = scope.redis_key("dream_lock")
-    token = str(uuid.uuid4())
+    token = token or str(uuid.uuid4())
 
     acquired = await redis.set(key, token, nx=True, ex=ttl_seconds)
     if not acquired:
@@ -233,6 +237,18 @@ async def dream_lock_held_by(scope: MemoryScope, token: str | None) -> bool:
         read_dream_lock_token(scope), timeout=LOCK_CHECK_TIMEOUT_SECONDS
     )
     return current == token
+
+
+async def extend_dream_lock(scope: MemoryScope, token: str, ttl_seconds: int) -> bool:
+    """``DreamLockHandle.extend`` for a caller holding only the token (a batch
+    callback renewing a disowned lock); the caller bounds it."""
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    key = scope.redis_key("dream_lock")
+    return await DreamLockHandle(redis, key, scope.owner_user_id, token).extend(
+        ttl_seconds
+    )
 
 
 def _as_text(raw: Any) -> str | None:

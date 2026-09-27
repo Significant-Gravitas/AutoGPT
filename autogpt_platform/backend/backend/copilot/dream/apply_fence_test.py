@@ -150,6 +150,9 @@ class TestTheBatchRoute:
     async def test_a_callback_whose_lock_a_newer_pass_holds_leaves_it_alone(
         self, fake_dream_db, fake_dream_redis, apply, charges, mocker
     ):
+        """The lock was already a newer pass's when the last phase landed:
+        the callback's lease renewal finds it and ends the pass before it
+        even claims apply."""
         await _seed_batch_pass(fake_dream_db, fake_dream_redis)
         fake_dream_redis.store[_LOCK_KEY] = "newer-token"
         release = mocker.spy(batch_outcome_mod, "release_dream_lock")
@@ -159,7 +162,7 @@ class TestTheBatchRoute:
         apply.assert_not_awaited()
         release.assert_not_called()
         await _assert_ended_without_applying(
-            fake_dream_db, fake_dream_redis, LOCK_LOST_ERROR
+            fake_dream_db, fake_dream_redis, LOCK_LOST_ERROR, gate_spent=False
         )
         assert fake_dream_redis.store[_LOCK_KEY] == "newer-token"
         row = fake_dream_db.rows["p1"]
@@ -381,15 +384,16 @@ def _landed(phase: str, output: BaseModel) -> BatchResultRow:
 
 
 async def _assert_ended_without_applying(
-    fake_dream_db, fake_dream_redis, error: str
+    fake_dream_db, fake_dream_redis, error: str, *, gate_spent: bool = True
 ) -> None:
     """Ended as ``fail_pass`` ends a pass: its job errored with *error*, its
-    batch state and bundle cleaned, its apply gate spent."""
+    batch state and bundle cleaned, its apply gate spent when it got that
+    far (else never claimed)."""
     status = await job_status.read_status(kind="dream_pass", job_id="j1")
     assert status is not None and (status.state, status.error) == ("errored", error)
     assert state_key("p1") not in fake_dream_redis.hashes
     assert input_bundle_key("p1") not in fake_dream_redis.store
-    assert fake_dream_redis.store["dream:applied:p1"] == "1"
+    assert ("dream:applied:p1" in fake_dream_redis.store) is gate_spent
     assert DreamPassStatus.COMPLETE not in fake_dream_db.statuses("p1")
 
 

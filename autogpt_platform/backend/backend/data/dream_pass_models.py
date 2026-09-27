@@ -8,6 +8,7 @@ How an update lands on a row, only ever moving it forward, is
 """
 
 from datetime import datetime
+from typing import Literal
 
 import prisma.models
 from prisma.enums import (
@@ -42,6 +43,16 @@ OPEN_STATUSES: tuple[DreamPassStatus, ...] = (
 # the pass moves it, so a pass that reads anything else was stopped.
 INITIAL_CANCEL_GENERATION = 0
 
+# The nullable columns an update may empty, by their field names.
+ClearableColumn = Literal["lease_token", "lease_expires_at", "input_bundle"]
+
+# What a row drops as it closes: a finished pass holds no lease, and nothing
+# resumes it from its input bundle, the bulk of an open batch row. Its phase
+# outputs, operations and usage stay.
+CLOSED_ROW_CLEARS: frozenset[ClearableColumn] = frozenset(
+    {"lease_token", "lease_expires_at", "input_bundle"}
+)
+
 
 class DreamPhaseOutputs(BaseModel):
     """Each phase's validated output, as the next phase and apply read it."""
@@ -73,7 +84,8 @@ class DreamPassOperations(BaseModel):
 
 
 class DreamPassDraft(BaseModel):
-    """A new row: whose pass it is, how it runs, what started it."""
+    """A new row: whose pass it is, how it runs, what started it, and the
+    lease it starts with (the token of the lock it is about to take)."""
 
     id: str = Field(min_length=1)
     user_id: str = Field(min_length=1)
@@ -84,6 +96,8 @@ class DreamPassDraft(BaseModel):
     status: DreamPassStatus = DreamPassStatus.RUNNING
     phase: DreamPassPhase = DreamPassPhase.GATHER
     started_at: datetime | None = None
+    lease_token: str | None = None
+    lease_expires_at: datetime | None = None
 
 
 class DreamPassUpdate(BaseModel):
@@ -99,6 +113,10 @@ class DreamPassUpdate(BaseModel):
     ``bump_cancel_generation``, and may make the write conditional on more
     than the row being open: ``owner_user_id`` (the row is that user's) and
     ``not_updated_since`` (nothing has written the row after that instant).
+
+    ``clear`` names the nullable columns the update empties, which a ``None``
+    field cannot say; every transition that closes a row clears
+    ``CLOSED_ROW_CLEARS``. A column is given a value or cleared, not both.
     """
 
     status: DreamPassStatus | None = None
@@ -120,11 +138,24 @@ class DreamPassUpdate(BaseModel):
     bump_cancel_generation: bool = False
     owner_user_id: str | None = None
     not_updated_since: datetime | None = None
+    clear: frozenset[ClearableColumn] = frozenset()
 
     @model_validator(mode="after")
     def _batch_names_its_phase(self) -> "DreamPassUpdate":
         if self.provider_batch_id is not None and self.phase is None:
             raise ValueError("a provider batch id needs the phase it runs")
+        return self
+
+    @model_validator(mode="after")
+    def _set_or_cleared(self) -> "DreamPassUpdate":
+        given: dict[ClearableColumn, bool] = {
+            "lease_token": self.lease_token is not None,
+            "lease_expires_at": self.lease_expires_at is not None,
+            "input_bundle": self.input_bundle is not None,
+        }
+        both = sorted(column for column in self.clear if given[column])
+        if both:
+            raise ValueError(f"set and cleared at once: {', '.join(both)}")
         return self
 
 

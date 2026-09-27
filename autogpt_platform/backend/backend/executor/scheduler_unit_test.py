@@ -1580,6 +1580,17 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     assert match.kwargs["seconds"] == 12 * 3600
 
 
+def test_dream_pass_reaper_and_retention_are_registered_at_start(monkeypatch):
+    ids = [c.kwargs["id"] for c in _registered_jobs(monkeypatch, 6).add_job_calls]
+
+    assert ids.count("dream_pass_reaper") == 1
+    assert ids.count("dream_pass_retention") == 1
+
+
+def test_dream_pass_retention_defaults_to_ninety_days():
+    assert Config.model_fields["dream_pass_retention_days"].default == 90
+
+
 def test_startup_embedding_backfill_defaults_on():
     assert Config.model_fields["scheduler_startup_embedding_backfill"].default is True
 

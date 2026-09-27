@@ -10,9 +10,17 @@ forward and merges its JSON columns in the database.
 A pass that has reached a terminal status (complete, errored, cancelled,
 expired, skipped) is final: no update writes it, the way
 ``job_status.mark_complete`` never rewrites a finished job.
+
+Two queries work across users: the reaper lists open passes whose lease
+lapsed (``list_expired_dream_passes``, on the status and lease expiry index)
+and the retention job deletes closed passes past their retention
+(``delete_old_dream_passes``). Neither is exposed to a user.
 """
 
+from datetime import datetime
+
 import prisma.models
+from prisma.types import DreamPassWhereInput
 
 from backend.data.db import execute_raw_with_schema
 from backend.data.dream_pass_models import (
@@ -22,6 +30,17 @@ from backend.data.dream_pass_models import (
     DreamPassUpdate,
 )
 from backend.data.dream_pass_update import TRANSITION_SQL, transition_args
+
+# One batch of the retention delete: at most $3 closed passes created before
+# $2. DELETE takes no LIMIT, so the batch's ids are picked in a subquery.
+RETENTION_SQL = """
+DELETE FROM {schema_prefix}"DreamPass" WHERE "id" IN (
+    SELECT "id" FROM {schema_prefix}"DreamPass"
+    WHERE NOT ("status"::text = ANY($1::text[]))
+        AND "createdAt" < $2::timestamptz AT TIME ZONE 'UTC'
+    LIMIT $3::int
+)
+"""
 
 
 async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
@@ -36,6 +55,8 @@ async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
             "status": draft.status,
             "phase": draft.phase,
             "startedAt": draft.started_at,
+            "leaseToken": draft.lease_token,
+            "leaseExpiresAt": draft.lease_expires_at,
         }
     )
     return DreamPassRecord.from_db(row)
@@ -83,9 +104,44 @@ async def list_open_dream_passes(
     return [DreamPassRecord.from_db(row) for row in rows]
 
 
-async def list_dream_passes(user_id: str, limit: int = 20) -> list[DreamPassRecord]:
-    """The user's passes, across every scope, newest first."""
+async def list_dream_passes(
+    user_id: str, limit: int = 20, open_only: bool = False
+) -> list[DreamPassRecord]:
+    """The user's passes, across every scope, newest first; only those still
+    open when *open_only*."""
+    where: DreamPassWhereInput = {"userId": user_id}
+    if open_only:
+        where["status"] = {"in": list(OPEN_STATUSES)}
     rows = await prisma.models.DreamPass.prisma().find_many(
-        where={"userId": user_id}, order={"createdAt": "desc"}, take=limit
+        where=where, order={"createdAt": "desc"}, take=limit
     )
     return [DreamPassRecord.from_db(row) for row in rows]
+
+
+async def list_expired_dream_passes(
+    expired_before: datetime, limit: int = 100
+) -> list[DreamPassRecord]:
+    """Open passes, of every user, whose lease lapsed before
+    *expired_before*: the oldest lapse first, at most *limit*. A pass with
+    no lease is not listed."""
+    rows = await prisma.models.DreamPass.prisma().find_many(
+        where={
+            "status": {"in": list(OPEN_STATUSES)},
+            "leaseExpiresAt": {"lt": expired_before},
+        },
+        order={"leaseExpiresAt": "asc"},
+        take=limit,
+    )
+    return [DreamPassRecord.from_db(row) for row in rows]
+
+
+async def delete_old_dream_passes(created_before: datetime, limit: int = 1000) -> int:
+    """Delete at most *limit* closed passes, of every user, created before
+    *created_before*, and say how many went. An open pass is never deleted,
+    however old."""
+    return await execute_raw_with_schema(
+        RETENTION_SQL,
+        [status.value for status in OPEN_STATUSES],
+        created_before,
+        limit,
+    )

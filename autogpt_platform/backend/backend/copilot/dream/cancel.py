@@ -15,7 +15,11 @@ reads its row at its next check and stops itself:
   * a batch pass in its callback, before it chains the next phase and before
     it claims the apply gate (``end_batch_pass_if_stopped``), cancels its
     provider batch best-effort and ends through ``fail_pass``: its landed
-    phases charged, its lock released, its batch state and bundle cleaned.
+    phases charged, its lock released, its batch state and bundle cleaned;
+  * a batch pass waiting on its provider has that batch cancelled by the
+    cancel itself, and the executor drops it at its next poll without
+    dispatching it, ending the pass the same way
+    (``batch_deliveries.should_dispatch``).
 
 A cancel that lands after a pass's last check, while it claims apply or
 applies, is too late: that apply runs, once, and the row stays CANCELLED.
@@ -66,13 +70,18 @@ async def cancel_dream_pass(
     pass_id: str, *, user_id: str, reason: str
 ) -> DreamPassCancel:
     """Cancel *user_id*'s pass *pass_id* while it is open, then read its row
-    back. Unlike a pass's own writes, a store call that fails or runs out of
-    time raises: the caller is answering a request, or about to erase the
-    memory the pass would write."""
+    back; a batch it closed has its provider batch in flight cancelled too,
+    best-effort (the executor drops that batch at its next poll whatever the
+    provider says, see ``batch_deliveries.should_dispatch``). Unlike a pass's
+    own writes, a store call that fails or runs out of time raises: the caller
+    is answering a request, or about to erase the memory the pass would
+    write."""
     closed = await write_stop(pass_id, cancelled(reason, owner_user_id=user_id))
     record = await read_dream_pass(pass_id, user_id=user_id)
     if closed:
         logger.info(f"Dream pass {pass_id} cancelled: {reason}")
+    if closed and record is not None and record.provider_batch_id:
+        await cancel_provider_batch(record.provider_batch_id)
     return DreamPassCancel(cancelled=closed, record=record)
 
 

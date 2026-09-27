@@ -16,6 +16,9 @@ statement against the row as it stands when the statement runs:
   * ``cancelGeneration`` goes up by one when the update stops the pass from
     outside, in the same statement that closes the row, so of two stops
     racing for one open row exactly one lands and bumps it;
+  * ``leaseToken``, ``leaseExpiresAt`` and ``inputBundle`` become NULL when
+    the update names them in ``clear`` (a closing row drops its lease and its
+    bundle);
   * every other column takes the new value when the update gives one.
 
 Nothing is written to a row that has reached a terminal status, nor to one
@@ -29,8 +32,19 @@ from typing import Any
 from pydantic import BaseModel
 
 from backend.copilot.dream.input_bundle import input_bundle_to_dict
-from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassUpdate
+from backend.data.dream_pass_models import (
+    OPEN_STATUSES,
+    ClearableColumn,
+    DreamPassUpdate,
+)
 from backend.util.json import dumps, sanitize_json, sanitize_string
+
+# The column each clearable field names in ``TRANSITION_SQL``.
+_CLEARABLE_COLUMNS: dict[ClearableColumn, str] = {
+    "lease_token": "leaseToken",
+    "lease_expires_at": "leaseExpiresAt",
+    "input_bundle": "inputBundle",
+}
 
 # ``{schema_prefix}`` is filled in by ``db.execute_raw_with_schema``; the
 # doubled braces are a literal empty JSON object once it has.
@@ -45,15 +59,17 @@ UPDATE {schema_prefix}"DreamPass" SET
         THEN $4::text ELSE "providerBatchId" END,
     "skipReason" = COALESCE($5::text, "skipReason"),
     "error" = COALESCE($6::text, "error"),
-    "leaseToken" = COALESCE($7::text, "leaseToken"),
-    "leaseExpiresAt" = COALESCE(
-        $8::timestamptz AT TIME ZONE 'UTC', "leaseExpiresAt"),
+    "leaseToken" = CASE WHEN 'leaseToken' = ANY($22::text[]) THEN NULL
+        ELSE COALESCE($7::text, "leaseToken") END,
+    "leaseExpiresAt" = CASE WHEN 'leaseExpiresAt' = ANY($22::text[]) THEN NULL
+        ELSE COALESCE($8::timestamptz AT TIME ZONE 'UTC', "leaseExpiresAt") END,
     "windowStart" = COALESCE($9::timestamptz AT TIME ZONE 'UTC', "windowStart"),
     "windowEnd" = COALESCE($10::timestamptz AT TIME ZONE 'UTC', "windowEnd"),
     "submittedAt" = COALESCE($11::timestamptz AT TIME ZONE 'UTC', "submittedAt"),
     "appliedAt" = COALESCE($12::timestamptz AT TIME ZONE 'UTC', "appliedAt"),
     "completedAt" = COALESCE($13::timestamptz AT TIME ZONE 'UTC', "completedAt"),
-    "inputBundle" = COALESCE($14::jsonb, "inputBundle"),
+    "inputBundle" = CASE WHEN 'inputBundle' = ANY($22::text[]) THEN NULL
+        ELSE COALESCE($14::jsonb, "inputBundle") END,
     "usage" = COALESCE($15::jsonb, "usage"),
     "phaseOutputs" = CASE WHEN $16::jsonb IS NULL THEN "phaseOutputs"
         ELSE COALESCE("phaseOutputs", '{{}}'::jsonb) || $16::jsonb END,
@@ -99,6 +115,7 @@ def transition_args(pass_id: str, update: DreamPassUpdate) -> list[Any]:
         update.bump_cancel_generation,
         update.owner_user_id,
         update.not_updated_since,
+        sorted(_CLEARABLE_COLUMNS[column] for column in update.clear),
     ]
 
 

@@ -26,8 +26,9 @@ async def log_all_phase_costs(
     pass_id: str,
     state: dict[str, dict[str, Any]],
     phase_models: dict[str, str],
-) -> None:
-    """One PlatformCostLog row per phase, on the ``anthropic_batch`` route.
+) -> bool:
+    """One PlatformCostLog row per phase, on the ``anthropic_batch`` route;
+    ``False`` when an earlier caller already claimed the pass's gate.
 
     Idempotent via a Redis SETNX gate keyed on ``pass_id``: a pass logs its
     costs from whichever terminal path it takes, success or failure, and a
@@ -55,7 +56,7 @@ async def log_all_phase_costs(
             "Skipping batch cost log for pass=%s — already charged",
             pass_id,
         )
-        return
+        return False
 
     for phase in PHASE_TIERS:
         row = state.get(phase)
@@ -68,6 +69,7 @@ async def log_all_phase_costs(
             logger.exception(
                 "Failed to log batch cost for pass=%s phase=%s", pass_id, phase
             )
+    return True
 
 
 async def recorded_usage(

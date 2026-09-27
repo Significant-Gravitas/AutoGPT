@@ -15,6 +15,11 @@ arrive asynchronously up to ~24h later. This service owns:
     ``callback_namespace`` (e.g. ``"dream_pass"``). Handlers run the
     apply step, write cost-log rows, and update whatever JobStatus
     row the caller cares about.
+  * **Dropping**: a namespace may also register a ``should_dispatch``
+    check, asked before each poll of a due entry. ``False`` drops the
+    entry unpolled, claimed like a dispatch so it never comes back; the
+    check does whatever cleanup that needs first (the dream pass cancels a
+    stopped pass's batch and ends the pass).
 
 Lives at the same architectural level as ``Scheduler`` — own process,
 own Redis connection, own service-port for health checks. Subscribing
@@ -70,6 +75,10 @@ DISPATCHED_TTL_SECONDS = 7 * 24 * 60 * 60
 # 24h hard ceiling — Anthropic's promised SLA. Beyond this we mark the
 # entry failed even if the provider still says ``processing``.
 MAX_BATCH_LIFETIME_SECONDS = 24 * 60 * 60
+
+# How long a namespace's ``should_dispatch`` check may take before the walk
+# goes on and treats the entry as due (its handler keeps its own checks).
+DISPATCH_CHECK_TIMEOUT_SECONDS = 60
 
 # Poll cadence (exponential backoff). The BatchExecutor walks the queue
 # every ``WALK_INTERVAL_SECONDS`` but each individual entry is only
@@ -211,23 +220,36 @@ async def _claim_dispatch(provider_batch_id: str) -> bool:
 # It is the handler's responsibility to log costs, update any caller-
 # supplied job status, and decide what to do with errored rows.
 BatchResultHandler = Callable[[PendingEntry, list[BatchResultRow]], Awaitable[None]]
+# A namespace's check before an entry is polled: whether it is still wanted.
+DispatchCheck = Callable[[PendingEntry], Awaitable[bool]]
 
 _HANDLERS: dict[str, BatchResultHandler] = {}
+_DISPATCH_CHECKS: dict[str, DispatchCheck] = {}
 
 
-def register_handler(namespace: str, handler: BatchResultHandler) -> None:
-    """Register a result handler for one namespace.
+def register_handler(
+    namespace: str,
+    handler: BatchResultHandler,
+    *,
+    should_dispatch: DispatchCheck | None = None,
+) -> None:
+    """Register a result handler for one namespace, and optionally the check
+    asked before each poll of one of its entries (``False`` drops it).
 
     Called at module-import time from the caller's ``__init__.py``
     (or from the BatchExecutor's bootstrap). Re-registering a
-    namespace overwrites — last registration wins.
+    namespace overwrites — last registration wins, check included.
     """
     _HANDLERS[namespace] = handler
+    _DISPATCH_CHECKS.pop(namespace, None)
+    if should_dispatch is not None:
+        _DISPATCH_CHECKS[namespace] = should_dispatch
 
 
 def clear_handlers_for_test() -> None:
     """Used by tests to reset the registry between cases."""
     _HANDLERS.clear()
+    _DISPATCH_CHECKS.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +299,16 @@ async def _walk_entry(
     api_key_for: Callable[[ProviderLiteral], str | None],
 ) -> None:
     """Process a single pending entry — gates, poll, then dispatch."""
-    if (now - entry.submitted_at).total_seconds() > MAX_BATCH_LIFETIME_SECONDS:
-        await _handle_timeout(entry)
+    timed_out = (now - entry.submitted_at).total_seconds() > MAX_BATCH_LIFETIME_SECONDS
+    if not timed_out and entry.next_poll_at > now:
         return
 
-    if entry.next_poll_at > now:
+    if not await _dispatch_wanted(entry):
+        await _drop(entry)
+        return
+
+    if timed_out:
+        await _handle_timeout(entry)
         return
 
     if entry.callback_namespace not in _HANDLERS:
@@ -400,6 +427,40 @@ async def _handle_timeout(entry: PendingEntry) -> None:
     await _dispatch_error(
         entry,
         error="exceeded MAX_BATCH_LIFETIME_SECONDS without completion",
+    )
+
+
+async def _dispatch_wanted(entry: PendingEntry) -> bool:
+    """The namespace's ``should_dispatch`` answer for a due *entry*; ``True``
+    when it registered none, or when the check raises or takes longer than
+    ``DISPATCH_CHECK_TIMEOUT_SECONDS``: an entry is never dropped on a check
+    that could not answer."""
+    check = _DISPATCH_CHECKS.get(entry.callback_namespace)
+    if check is None:
+        return True
+    try:
+        return await asyncio.wait_for(
+            check(entry), timeout=DISPATCH_CHECK_TIMEOUT_SECONDS
+        )
+    except Exception:
+        logger.warning(
+            "Dispatch check for namespace=%s failed on batch %s — polling it",
+            entry.callback_namespace,
+            entry.provider_batch_id,
+            exc_info=True,
+        )
+        return True
+
+
+async def _drop(entry: PendingEntry) -> None:
+    """Take *entry* off the queue unpolled and undispatched, claimed like a
+    dispatch (tombstone + HDEL) so a re-enqueue never brings it back."""
+    if not await _claim_dispatch(entry.provider_batch_id):
+        await remove_pending(entry.provider_batch_id)
+    logger.info(
+        "Batch %s for namespace=%s dropped by its dispatch check",
+        entry.provider_batch_id,
+        entry.callback_namespace,
     )
 
 

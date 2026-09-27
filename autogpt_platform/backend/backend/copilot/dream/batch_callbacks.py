@@ -18,11 +18,14 @@ runs the apply step + cost log + JobStatus complete when phase 3 lands.
 
 The pass's Redis state and its at-most-once gates are ``batch_state.py``;
 how the pass ends (JobStatus, the durable ``DreamPass`` record, the lock)
-is ``batch_outcome.py``; what its phases cost and used is ``batch_costs.py``. Each
-callback also advances the record: the phase that landed and its output,
-the next batch, the apply, and the end. It ends a pass cancelled or expired
-meanwhile before it chains or claims the apply gate, and one that lost its
-scope's lock after the claim, before it applies (``cancel.py``).
+is ``batch_outcome.py``; what its phases cost and used is ``batch_costs.py``;
+the deliveries that never run the chain (a closed pass's batch, a dead-end
+payload, a duplicate) are ``batch_deliveries.py``. Each callback advances the
+record (the phase that landed and its output, the next batch, the apply, the
+end) and, once its phase has landed, renews the pass's lease (``lease.py``),
+ending a pass whose lock is no longer its own. It ends a pass cancelled or
+expired meanwhile before it chains or claims the apply gate, and one that
+lost its scope's lock after the claim, before it applies (``cancel.py``).
 """
 
 from __future__ import annotations
@@ -36,13 +39,12 @@ from pydantic import BaseModel, ValidationError
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.context import InferenceError
 
-from .batch_costs import landed_usage, log_all_phase_costs, recorded_usage
+from .batch_costs import landed_usage, log_all_phase_costs
+from .batch_deliveries import end_dead_end, finish_duplicate, should_dispatch
 from .batch_outcome import (
     ApplyStats,
     BatchPass,
     fail_pass,
-    finalize_stuck_duplicate,
-    mark_job_errored,
     record_completion,
     release_lock,
 )
@@ -61,15 +63,11 @@ from .batch_submit import (
 )
 from .cancel import end_batch_pass_if_lock_lost, end_batch_pass_if_stopped, pass_closed
 from .clamp import clamp_operations
+from .lease import renew_batch_lease
 from .llm import parse_json_with_prose_fallback
 from .provider_batch import anthropic_api_key
 from .schemas import DreamOperations, DreamPhase, IngestionDrainStatus
-from .store import (
-    record_applying,
-    record_batch_failed,
-    record_next_batch,
-    record_phase_output,
-)
+from .store import record_applying, record_next_batch, record_phase_output
 
 if TYPE_CHECKING:
     from backend.executor.batch_executor import PendingEntry
@@ -112,26 +110,13 @@ async def handle_dream_batch_result(
             "Dream batch handler missing user_id/pass_id/phase — payload=%s",
             payload,
         )
-        await _dead_end(bp, "batch payload missing user_id/pass_id/phase")
+        await end_dead_end(bp, "batch payload missing user_id/pass_id/phase")
         return
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
-        await _dead_end(bp, f"unknown batch phase {phase!r}")
+        await end_dead_end(bp, f"unknown batch phase {phase!r}")
         return
     await _handle_guarded(bp, phase, rows)
-
-
-async def _dead_end(bp: BatchPass, error: str) -> None:
-    """A payload no phase handler can take. Close the admin job row (it
-    would otherwise sit queued/submitted until its TTL) and, when the pass
-    is known, its record with what its landed phases used; then release
-    the disowned lock so the user isn't locked out until the 24h TTL."""
-    await mark_job_errored(bp.job_id, error, dead_end=True)
-    if bp.pass_id:
-        usage = await recorded_usage(bp.pass_id, bp.phase_models)
-        await record_batch_failed(bp.pass_id, error, usage)
-    if bp.user_id:
-        await release_lock(bp)
 
 
 async def _handle_guarded(
@@ -213,6 +198,8 @@ async def _handle_phase_result(
     if await _landed_output(bp, phase, rows[0]) is None:
         return
     next_phase = NEXT_PHASE[phase]
+    if not await renew_batch_lease(bp, next_phase or "apply"):
+        return
     if next_phase is not None:
         await _chain_next_phase(bp, input_bundle, next_phase)
         return
@@ -378,7 +365,7 @@ async def _claim_apply(
         )
         return False
     if gate == "duplicate":
-        await _finish_duplicate(bp, state, ops)
+        await finish_duplicate(bp, state, ops)
         return False
     return not await end_batch_pass_if_lock_lost(bp, lock_token)
 
@@ -407,35 +394,6 @@ async def _terminal_ops(
         len(input_bundle.facts),
         known_fact_uuids=input_bundle.known_fact_uuids,
     )
-
-
-async def _finish_duplicate(
-    bp: BatchPass, state: dict[str, dict[str, Any]], ops: DreamOperations
-) -> None:
-    """A repeated delivery: an earlier one claimed the apply gate, so skip
-    apply and keep the first delivery's results.
-
-    Normally the first delivery closed the admin JobStatus row. If it died
-    between apply and ``mark_complete``, the row is stuck in 'submitted' and
-    is finalized here without clobbering an existing terminal result. The
-    pass's DreamPass record is left as it is: this delivery cannot tell
-    whether the first one's apply finished, so closing it is a reaper's job.
-    """
-    logger.info(
-        "Duplicate dispatch for pass=%s — operations already applied; "
-        "preserving the first delivery's job result",
-        bp.pass_id,
-    )
-    await finalize_stuck_duplicate(bp, ops)
-    await log_all_phase_costs(
-        user_id=bp.user_id,
-        expert_id=bp.expert_id,
-        pass_id=bp.pass_id,
-        state=state,
-        phase_models=bp.phase_models,
-    )
-    await release_lock(bp)
-    await best_effort_cleanup(bp.pass_id)
 
 
 async def _finish_applied(
@@ -477,7 +435,9 @@ def _register() -> None:
     try:
         from backend.executor.batch_executor import register_handler
 
-        register_handler(NAMESPACE, handle_dream_batch_result)
+        register_handler(
+            NAMESPACE, handle_dream_batch_result, should_dispatch=should_dispatch
+        )
     except Exception:
         logger.exception(
             "Failed to register dream batch handler — "

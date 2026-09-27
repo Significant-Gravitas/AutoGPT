@@ -1489,6 +1489,60 @@ def execution_accuracy_alerts():
     return report_execution_accuracy_alerts()
 
 
+# The dream modules import the batch executor, whose package imports this
+# module, so the dream jobs below import them where they run, as the other
+# dream job bodies in this module do.
+
+
+def execute_dream_pass_reaper() -> None:
+    """Close the dream passes of every user that outlived their lease
+    (``copilot/dream/reaper.py``). The run bounds itself; this timeout only
+    frees the job thread should the event loop stall."""
+    from backend.copilot.dream.reaper import REAPER_BUDGET_SECONDS, reap_expired_passes
+
+    run_async(reap_expired_passes(), timeout=REAPER_BUDGET_SECONDS + 30)
+
+
+def execute_dream_pass_retention() -> None:
+    """Delete the closed dream passes past their retention
+    (``copilot/dream/retention.py``), bounded the same way."""
+    from backend.copilot.dream.retention import (
+        RETENTION_BUDGET_SECONDS,
+        delete_expired_records,
+    )
+
+    run_async(
+        delete_expired_records(config.dream_pass_retention_days),
+        timeout=RETENTION_BUDGET_SECONDS + 60,
+    )
+
+
+def _register_dream_pass_jobs(scheduler: BackgroundScheduler) -> None:
+    """The two jobs over every user's DreamPass rows, registered once at
+    start like the other system jobs: the reaper every
+    ``REAPER_INTERVAL_MINUTES``, retention weekly (Sunday 05:30 UTC)."""
+    from backend.copilot.dream.reaper import REAPER_INTERVAL_MINUTES
+
+    scheduler.add_job(
+        execute_dream_pass_reaper,
+        id="dream_pass_reaper",
+        trigger="interval",
+        minutes=REAPER_INTERVAL_MINUTES,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        jobstore=Jobstores.EXECUTION.value,
+    )
+    scheduler.add_job(
+        execute_dream_pass_retention,
+        CronTrigger(day_of_week="sun", hour=5, minute=30, timezone="UTC"),
+        id="dream_pass_retention",
+        replace_existing=True,
+        max_instances=1,
+        jobstore=Jobstores.EXECUTION.value,
+    )
+
+
 def ensure_embeddings_coverage():
     """
     Ensure all content types (store agents, blocks, docs) have embeddings for search.
@@ -2140,6 +2194,10 @@ class Scheduler(AppService):
                 max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
+
+            # Dream passes: close those that outlived their lease, and delete
+            # the closed ones past their retention.
+            _register_dream_pass_jobs(self.scheduler)
 
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)

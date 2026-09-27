@@ -24,7 +24,8 @@ the row since the guard read it, and a row that moved in between is alive and
 blocks after all. An admin's forced expiry of a fresh row skips that
 compare-and-set: that row's pass no longer holds the lock (the forcing pass
 took it), and it stops at its next check or at its lock check before apply.
-Rows past the limit, and rows no newer pass looks at, are left for a reaper.
+Rows past the limit, and rows no newer pass looks at, are left for the reaper
+(``reaper.py``).
 
 Two passes triggered together can both skip: the one that lost the lock race
 records ``lock_held`` while its row is still open, and the winner's guard sees

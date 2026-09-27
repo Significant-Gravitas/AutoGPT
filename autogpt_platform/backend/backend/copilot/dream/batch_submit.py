@@ -46,7 +46,11 @@ from backend.util.llm.tool_use import (
 
 from .fetch import DreamInput
 from .input_bundle import input_bundle_from_dict, input_bundle_to_dict
-from .locks import read_dream_lock_token
+from .locks import (
+    BATCH_LOCK_TTL_SECONDS,
+    DEFAULT_LOCK_TTL_SECONDS,
+    read_dream_lock_token,
+)
 from .prompts import (
     build_consolidate_prompt,
     build_recombine_prompt,
@@ -332,10 +336,13 @@ def input_bundle_key(pass_id: str) -> str:
     return f"dream:batch:input:{pass_id}"
 
 
-# 24h TTL matches Anthropic's batch SLA — if a batch hasn't completed
-# in 24h we've already timed out via BatchExecutor's
-# ``MAX_BATCH_LIFETIME_SECONDS`` ceiling.
-INPUT_TTL_SECONDS = 24 * 60 * 60
+# The pass's lease runs ``BATCH_LOCK_TTL_SECONDS`` from its submit and each
+# callback; the reaper closes a pass one lock TTL after its lease lapsed and
+# runs every ten minutes. The per-pass keys (this bundle and the batch state)
+# outlive the lease by an hour so the reaper still finds them to charge and
+# delete. A batch that never completes is timed out well before, by the
+# BatchExecutor's 24h ``MAX_BATCH_LIFETIME_SECONDS``.
+INPUT_TTL_SECONDS = BATCH_LOCK_TTL_SECONDS + 2 * DEFAULT_LOCK_TTL_SECONDS
 
 
 async def persist_input_bundle(

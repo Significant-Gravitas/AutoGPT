@@ -541,12 +541,13 @@ model DreamPass {
 
   // The provider batch of the phase in flight (batch route only).
   providerBatchId String?
-  // The dream lock's ownership token, and when the lock lapses unless renewed.
+  // The dream lock's ownership token, and when the lock lapses unless renewed:
+  // written with the row, renewed at each step, emptied when the row closes.
   leaseToken      String?
   leaseExpiresAt  DateTime?
 
   // The pass's DreamInput, in the format the batch path already persists to
-  // Redis (batch route only).
+  // Redis (batch route only), emptied when the row closes.
   inputBundle  Json?
   // Each phase's validated output, keyed by phase.
   phaseOutputs Json?
@@ -571,6 +572,8 @@ model DreamPass {
   @@index([userId, createdAt])
   // Deleting an expert cascades here; without it that scans every pass.
   @@index([expertId])
+  // The reaper's scan: open passes whose lease lapsed, oldest first.
+  @@index([status, leaseExpiresAt])
 }
 
 ////////////////////////////////////////////////////////////

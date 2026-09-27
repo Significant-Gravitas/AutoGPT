@@ -23,7 +23,6 @@ from .batch_state import best_effort_cleanup, read_state_or_none
 from .batch_submit import read_lock_token
 from .locks import release_dream_lock
 from .schemas import (
-    DreamOperations,
     DreamOperationsSnapshot,
     DreamPassResult,
     DreamPassUsage,
@@ -70,9 +69,10 @@ async def fail_pass(bp: BatchPass, error: str, *, holds_lock: bool = True) -> No
     state. Each step is best-effort on its own, so one that fails never
     stops the ones after it.
 
-    The record carries the usage of the phases that landed, read off the
-    pass's state, unless a stop already closed it; a state that cannot be
-    read leaves that usage unknown rather than the record open.
+    The record and the job's result carry the usage of the phases that
+    landed, read off the pass's state (a stop that closed the record first
+    keeps it off the record, not off the job); a state that cannot be read
+    leaves that usage unknown rather than the record open.
 
     We incurred the provider tokens for completed phases regardless of
     whether the whole pass landed, so they're recorded against the
@@ -81,11 +81,10 @@ async def fail_pass(bp: BatchPass, error: str, *, holds_lock: bool = True) -> No
     ``log_all_phase_costs`` keeps this at-most-once.
     """
     logger.warning("Dream batch pass=%s failed: %s", bp.pass_id, error)
-    await mark_job_errored(bp.job_id, error)
     state = await read_state_or_none(bp.pass_id)
-    await record_batch_failed(
-        bp.pass_id, error, landed_usage(state, bp.phase_models, bp.pass_id)
-    )
+    usage = landed_usage(state, bp.phase_models, bp.pass_id)
+    await mark_job_errored(bp.job_id, error, result=_failed_result(bp, error, usage))
+    await record_batch_failed(bp.pass_id, error, usage)
     if state:
         await _charge_landed_phases(bp, state)
     if holds_lock:
@@ -123,47 +122,23 @@ async def record_completion(
     await record_batch_complete(pass_result, usage)
 
 
-async def finalize_stuck_duplicate(bp: BatchPass, ops: DreamOperations) -> None:
-    """On a duplicate delivery, finalize the admin job row iff the first
-    delivery crashed between apply and ``mark_complete`` and left it
-    non-terminal. An already-terminal row is left untouched so the first
-    delivery's real apply stats are never overwritten.
-
-    Best-effort: a status read/write failure here must not crash the
-    duplicate tail (lock release + cleanup still need to run)."""
-    if not bp.job_id:
-        return
-    try:
-        from .job_status import mark_complete, read_status
-
-        existing = await read_status(kind="dream_pass", job_id=bp.job_id)
-        if existing is None or existing.state in ("complete", "errored"):
-            return
-        logger.warning(
-            "Duplicate dispatch found job %s stuck in state=%s — "
-            "finalizing with the clamped op counts",
-            bp.job_id[:12],
-            existing.state,
-        )
-        await mark_complete(
-            kind="dream_pass", job_id=bp.job_id, result=_attempted_result(bp, ops)
-        )
-    except Exception:
-        logger.exception(
-            "Failed to finalize stuck duplicate for job %s", bp.job_id[:12]
-        )
-
-
-async def mark_job_errored(job_id: str, error: str, *, dead_end: bool = False) -> None:
-    """Close the admin job row errored. Best-effort: status write failures
-    are logged, never raised; a *dead_end* (a payload no phase handler can
-    take) logs under its own message."""
+async def mark_job_errored(
+    job_id: str,
+    error: str,
+    *,
+    dead_end: bool = False,
+    result: DreamPassResult | None = None,
+) -> None:
+    """Close the admin job row errored, with the pass's *result* when there
+    is one (its usage). Best-effort: status write failures are logged, never
+    raised; a *dead_end* (a payload no phase handler can take) logs under its
+    own message."""
     if not job_id:
         return
     try:
         from .job_status import mark_errored
 
-        await mark_errored(kind="dream_pass", job_id=job_id, error=error)
+        await mark_errored(kind="dream_pass", job_id=job_id, error=error, result=result)
     except Exception:
         if dead_end:
             logger.exception("Failed to mark dead-end job %s errored", job_id[:12])
@@ -246,27 +221,17 @@ def _applied_result(
     )
 
 
-def _attempted_result(bp: BatchPass, ops: DreamOperations) -> DreamPassResult:
-    """The first delivery's per-edge outcomes (and dream session id) died
-    with it, so the counts here are the clamped *attempted* ops — annotated
-    so the admin UI doesn't present them as confirmed apply results."""
-    note = (
-        "[finalized after duplicate delivery — counts reflect attempted "
-        "operations; writes landed with the original delivery] "
-    )
+def _failed_result(
+    bp: BatchPass, error: str, usage: DreamPassUsage | None
+) -> DreamPassResult:
+    """A failed batch pass as its job reports it: the error, and what the
+    phases that landed used."""
     return DreamPassResult(
         user_id=bp.user_id,
         pass_id=bp.pass_id,
         execution_path="anthropic_batch",
-        consolidated_count=len(ops.writes),
-        proposal_count=len(ops.proposals),
-        demotion_count=len(ops.demotions),
-        entity_invalidation_count=len(ops.entity_invalidations),
-        # Batch apply never drains in-line by design; the first
-        # delivery's writes (if any) landed fire-and-forget. ``skipped``
-        # marks this as a healthy by-design skip, NOT a drain failure.
-        ingestion_drain_status=IngestionDrainStatus.skipped,
-        summary_for_user=note + (ops.summary_for_user or ""),
+        error=error,
+        usage=usage,
     )
 
 

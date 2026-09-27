@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -405,6 +406,123 @@ class TestWalkOnceDispatch:
         entries = await list_pending()
         assert len(entries) == 1
         assert entries[0].poll_delay_seconds == 60
+
+
+class TestShouldDispatch:
+    """A namespace's check, asked before each poll of a due entry: ``False``
+    drops the entry unpolled and undispatched, for good."""
+
+    @pytest.mark.asyncio
+    async def test_a_check_that_says_no_drops_the_entry_for_good(self, fake_redis):
+        handler = AsyncMock()
+        check = AsyncMock(return_value=False)
+        register_handler("dream_pass", handler, should_dispatch=check)
+        await enqueue_pending(_entry())
+        poll, download = AsyncMock(return_value="ended"), AsyncMock(return_value=[])
+
+        with patch("backend.executor.batch_executor.poll_batch", poll), patch(
+            "backend.executor.batch_executor.download_batch_results", download
+        ):
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+            # A producer re-enqueues it: the claim it was dropped under
+            # refuses, and it is cleared without a dispatch.
+            check.return_value = True
+            await enqueue_pending(_entry())
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        check.assert_awaited()
+        assert check.await_args_list[0].args[0].provider_batch_id == "msgbatch_1"
+        handler.assert_not_awaited()
+        assert await list_pending() == []
+
+    @pytest.mark.asyncio
+    async def test_a_check_that_says_yes_polls_and_dispatches_as_before(
+        self, fake_redis
+    ):
+        handler = AsyncMock()
+        check = AsyncMock(return_value=True)
+        register_handler("dream_pass", handler, should_dispatch=check)
+        await enqueue_pending(_entry())
+
+        with patch(
+            "backend.executor.batch_executor.poll_batch",
+            new=AsyncMock(return_value="ended"),
+        ), patch(
+            "backend.executor.batch_executor.download_batch_results",
+            new=AsyncMock(return_value=[]),
+        ):
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        check.assert_awaited_once()
+        handler.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("fails", ["raises", "hangs"])
+    async def test_a_check_that_cannot_answer_polls_as_before(self, fake_redis, fails):
+        async def hang(entry):
+            await asyncio.Event().wait()
+
+        check = AsyncMock(side_effect=RuntimeError("store down"))
+        if fails == "hangs":
+            check = AsyncMock(side_effect=hang)
+        register_handler("dream_pass", AsyncMock(), should_dispatch=check)
+        await enqueue_pending(_entry())
+        poll = AsyncMock(return_value="processing")
+
+        with patch("backend.executor.batch_executor.poll_batch", poll), patch(
+            "backend.executor.batch_executor.DISPATCH_CHECK_TIMEOUT_SECONDS", 0.05
+        ):
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        poll.assert_awaited_once()
+        assert len(await list_pending()) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_timed_out_entry_is_checked_before_its_timeout_dispatch(
+        self, fake_redis
+    ):
+        handler = AsyncMock()
+        check = AsyncMock(return_value=False)
+        register_handler("dream_pass", handler, should_dispatch=check)
+        long_ago = datetime.now(timezone.utc) - timedelta(
+            seconds=MAX_BATCH_LIFETIME_SECONDS + 1
+        )
+        await enqueue_pending(_entry(submitted_at=long_ago))
+
+        await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        check.assert_awaited_once()
+        handler.assert_not_awaited()
+        assert await list_pending() == []
+
+    @pytest.mark.asyncio
+    async def test_an_entry_not_yet_due_is_not_checked(self, fake_redis):
+        check = AsyncMock(return_value=False)
+        register_handler("dream_pass", AsyncMock(), should_dispatch=check)
+        later = datetime.now(timezone.utc) + timedelta(minutes=5)
+        await enqueue_pending(_entry(next_poll_at=later))
+
+        await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        check.assert_not_awaited()
+        assert len(await list_pending()) == 1
+
+    @pytest.mark.asyncio
+    async def test_registering_again_without_a_check_drops_the_old_one(
+        self, fake_redis
+    ):
+        check = AsyncMock(return_value=False)
+        register_handler("dream_pass", AsyncMock(), should_dispatch=check)
+        register_handler("dream_pass", AsyncMock())
+        await enqueue_pending(_entry())
+
+        with patch(
+            "backend.executor.batch_executor.poll_batch",
+            new=AsyncMock(return_value="processing"),
+        ):
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        check.assert_not_awaited()
 
 
 class TestUnknownNamespace:

@@ -8,7 +8,6 @@ under it is replaced."""
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
-from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -18,6 +17,7 @@ from backend.data.db_manager import DatabaseManagerAsyncClient
 from backend.util.service import get_service_client
 
 from . import store
+from .pass_run import DreamPassRun
 from .schemas import DreamOperations
 
 _DEADLINE = 0.2
@@ -110,11 +110,9 @@ async def test_a_stalled_insert_costs_the_deadline(deadline, rpc_over, caplog):
     started = loop.time()
     with caplog.at_level(logging.WARNING, logger=store.logger.name):
         await store.start_pass(
-            "p1",
+            DreamPassRun.begin("u1", "sync_baseline"),
             MemoryScope.for_user("u1"),
-            route="sync_baseline",
             trigger="cron",
-            started_at=datetime.now(timezone.utc),
         )
 
     assert loop.time() - started < _BOUND
