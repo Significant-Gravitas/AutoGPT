@@ -56,54 +56,6 @@ async def test_available_blocks(block: Type[Block]):
 # classifies a provider family deletes its rows.
 _EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
     """
-    AddAudioToVideoBlock AddMemoryBlock AgentMailCreateDraftBlock
-    AgentMailCreateInboxBlock AgentMailCreatePodBlock AgentMailCreatePodInboxBlock
-    AgentMailUpdateDraftBlock AgentMailUpdateInboxBlock AgentMailUpdateMessageBlock
-    AirtableCreateBaseBlock AirtableCreateFieldBlock AirtableCreateRecordsBlock
-    AirtableCreateTableBlock AirtableUpdateFieldBlock AirtableUpdateRecordsBlock
-    AirtableUpdateTableBlock AllQuietUpdateIncidentBlock BaasBotLeaveMeetingBlock
-    BlockInstallationBlock CompanyEnrichmentBlock CreateCampaignBlock
-    DataForSeoKeywordSuggestionsBlock DataForSeoRelatedKeywordsBlock
-    DiscordGetCurrentUserBlock EditRedditPostBlock EditTelegramMessageBlock
-    ExaBulkWebsetItemsBlock ExaCancelEnrichmentBlock ExaCancelWebsetBlock
-    ExaCancelWebsetSearchBlock ExaCodeContextBlock ExaCreateEnrichmentBlock
-    ExaCreateImportBlock ExaCreateMonitorBlock ExaCreateOrFindWebsetBlock
-    ExaCreateResearchBlock ExaCreateWebsetBlock ExaCreateWebsetSearchBlock
-    ExaExportWebsetBlock ExaFindOrCreateSearchBlock ExaGetImportBlock
-    ExaUpdateEnrichmentBlock ExaUpdateMonitorBlock ExaUpdateWebsetBlock
-    ExaWaitForEnrichmentBlock ExaWaitForResearchBlock ExaWaitForWebsetBlock
-    ExaWebsetItemsSummaryBlock ExaWebsetSummaryBlock FileStoreBlock
-    GetRedditCommentBlock GetRedditCommentRepliesBlock GetRedditInboxBlock
-    GetRedditPostBlock GetRedditPostCommentsBlock GetRedditPostsBlock
-    GetRedditUserInfoBlock GetStoreAgentDetailsBlock GetSubredditFlairsBlock
-    GetSubredditInfoBlock GetSubredditRulesBlock GetUserPostsBlock
-    GithubAddLabelBlock GithubAssignIssueBlock GithubAssignPRReviewerBlock
-    GithubCreateCheckRunBlock GithubCreateRepositoryBlock GithubCreateStatusBlock
-    GithubForkRepositoryBlock GithubMakeBranchBlock
-    GithubMarkNotificationThreadAsDoneBlock GithubMarkNotificationThreadAsReadBlock
-    GithubMarkNotificationsAsReadBlock GithubMultiFileCommitBlock
-    GithubRemoveLabelBlock GithubResolveReviewDiscussionBlock
-    GithubStarRepositoryBlock GithubUnassignIssueBlock GithubUnassignPRReviewerBlock
-    GithubUnsubscribeNotificationThreadBlock GithubUpdateCheckRunBlock
-    GithubUpdateCommentBlock GmailAddLabelBlock GmailCreateDraftBlock
-    GmailDraftReplyBlock GmailRemoveLabelBlock GoogleDocsAppendMarkdownBlock
-    GoogleDocsAppendPlainTextBlock GoogleDocsCreateBlock
-    GoogleDocsDeleteContentBlock GoogleDocsExportBlock
-    GoogleDocsFindReplacePlainTextBlock GoogleDocsFormatTextBlock
-    GoogleDocsInsertMarkdownAtBlock GoogleDocsInsertPageBreakBlock
-    GoogleDocsInsertPlainTextBlock GoogleDocsInsertTableBlock
-    GoogleDocsReplaceAllWithMarkdownBlock GoogleDocsReplaceContentWithMarkdownBlock
-    GoogleDocsReplaceRangeWithMarkdownBlock GoogleSheetsAddColumnBlock
-    GoogleSheetsAddDropdownBlock GoogleSheetsAddNoteBlock GoogleSheetsAppendRowBlock
-    GoogleSheetsBatchOperationsBlock GoogleSheetsClearBlock
-    GoogleSheetsCopyToSpreadsheetBlock GoogleSheetsCreateNamedRangeBlock
-    GoogleSheetsCreateSpreadsheetBlock GoogleSheetsDeleteColumnBlock
-    GoogleSheetsDeleteRowsBlock GoogleSheetsExportCsvBlock
-    GoogleSheetsFindReplaceBlock GoogleSheetsFormatBlock GoogleSheetsImportCsvBlock
-    GoogleSheetsInsertRowBlock GoogleSheetsManageSheetBlock
-    GoogleSheetsMetadataBlock GoogleSheetsProtectRangeBlock
-    GoogleSheetsRemoveDuplicatesBlock GoogleSheetsSortBlock
-    GoogleSheetsUpdateCellBlock GoogleSheetsUpdateRowBlock GoogleSheetsWriteBlock
     HubSpotCompanyBlock HubSpotContactBlock JevAskManyBlock JevChoiceBlock
     JevFilterBlock JevPickBestBlock JevRouteBlock JevScoreBlock JevYesNoBlock
     LinearCreateCommentBlock LinearCreateIssueBlock LoopVideoBlock

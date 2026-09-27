@@ -218,6 +218,7 @@ class ExaCreateImportBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -355,6 +356,7 @@ class ExaGetImportBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=ExaGetImportBlock.Input,
             output_schema=ExaGetImportBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -558,6 +560,7 @@ class ExaExportWebsetBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

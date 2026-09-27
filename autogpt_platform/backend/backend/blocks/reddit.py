@@ -245,6 +245,7 @@ class GetRedditPostsBlock(Block):
                     MockObject(id="id3", title="title2", selftext="body2"),
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -558,6 +559,7 @@ class GetRedditPostBlock(Block):
                     over_18=False,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -680,6 +682,7 @@ class GetUserPostsBlock(Block):
                     ),
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -1108,6 +1111,7 @@ class EditRedditPostBlock(Block):
                     "https://reddit.com/r/test/comments/abc123/test_post/",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -1218,6 +1222,7 @@ class GetSubredditInfoBlock(Block):
                     url="/r/python/",
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -1404,6 +1409,7 @@ class GetRedditPostCommentsBlock(Block):
                     ),
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -1568,6 +1574,7 @@ class GetRedditCommentRepliesBlock(Block):
                     ),
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -1712,6 +1719,7 @@ class GetRedditCommentBlock(Block):
                     depth=0,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -1932,6 +1940,7 @@ class GetRedditUserInfoBlock(Block):
                     MockObject(display_name="learnpython"),
                 ],
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -2170,6 +2179,7 @@ class GetRedditInboxBlock(Block):
                     ),
                 ]
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -2429,6 +2439,7 @@ class GetSubredditFlairsBlock(Block):
                     },
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -2549,6 +2560,7 @@ class GetSubredditRulesBlock(Block):
                     ),
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -199,6 +199,7 @@ class GithubMakeBranchBlock(Block):
             test_mock={
                 "create_branch": lambda *args, **kwargs: "Branch created successfully"
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -117,6 +118,7 @@ class GithubCreateStatusBlock(Block):
                     "updated_at": "2024-01-21T10:00:00Z",
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

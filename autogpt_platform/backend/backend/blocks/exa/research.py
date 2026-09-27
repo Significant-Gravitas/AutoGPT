@@ -181,6 +181,7 @@ class ExaCreateResearchBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaCreateResearchBlock.Input,
             output_schema=ExaCreateResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -405,6 +406,7 @@ class ExaWaitForResearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForResearchBlock.Input,
             output_schema=ExaWaitForResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

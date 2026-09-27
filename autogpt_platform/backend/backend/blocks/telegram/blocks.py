@@ -724,6 +724,7 @@ class EditTelegramMessageBlock(Block):
                     message_id=42
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

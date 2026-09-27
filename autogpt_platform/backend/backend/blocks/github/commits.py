@@ -303,6 +303,7 @@ class GithubMultiFileCommitBlock(Block):
                     "https://github.com/owner/repo/commit/newcommitsha",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

@@ -68,6 +68,7 @@ class AgentMailCreatePodBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -627,6 +628,7 @@ class AgentMailCreatePodInboxBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

@@ -79,6 +79,19 @@ def gate():
 
 
 @pytest.fixture
+def undeclared():
+    """Every real block declares an effect; this one is stripped of it."""
+    init = GithubAddLabelBlock.__init__
+
+    def without_effect(self):
+        init(self)
+        self.effect = None
+
+    with patch.object(GithubAddLabelBlock, "__init__", without_effect):
+        yield
+
+
+@pytest.fixture
 def ran():
     """What reached the block run, if anything did."""
     run = AsyncMock(
@@ -171,7 +184,7 @@ async def test_the_chain_row_names_the_block_the_card_names(gate, ran):
     assert (output["ask"], output["object"]) == ("Run", "Send Discord Message")
 
 
-async def test_an_unclassified_block_asks(gate, ran):
+async def test_an_unclassified_block_asks(gate, ran, undeclared):
     result = await _run_capability(
         _session(),
         GithubAddLabelBlock().id,
@@ -405,7 +418,9 @@ async def test_a_run_looks_its_graph_up_once(gate, gate_on):
 
 @pytest.mark.parametrize("unreadable_first", [True, False])
 @pytest.mark.parametrize("kind", ["undeclared block", "linked web request"])
-def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, kind):
+def test_an_unreadable_node_never_hides_an_irreversible_one(
+    unreadable_first, kind, undeclared
+):
     """Approving the card lifts the pause, so the card must show the send."""
     unreadable = (
         _node("label", GithubAddLabelBlock(), {})
@@ -427,7 +442,7 @@ def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, ki
     )
 
 
-def test_an_unknown_step_leads_a_workflow_with_irreversible_steps():
+def test_an_unknown_step_leads_a_workflow_with_irreversible_steps(undeclared):
     """Kills: the steps list replacing the only warning about the unknown block."""
     subject = workflow_subject(
         _graph(
@@ -637,7 +652,9 @@ async def test_a_code_block_in_ask_first_asks_without_the_supervisor(gate, ran):
     classify.assert_not_awaited()
 
 
-async def test_the_reason_names_otto_as_he_even_in_an_experts_chat(gate, ran):
+async def test_the_reason_names_otto_as_he_even_in_an_experts_chat(
+    gate, ran, undeclared
+):
     """Otto is the supervisor in every chat, an expert's included."""
     session = _session().model_copy(update={"expert_id": "maria"})
     await _run_capability(

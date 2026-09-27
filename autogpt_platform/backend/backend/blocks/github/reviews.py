@@ -517,6 +517,7 @@ class GithubResolveReviewDiscussionBlock(Block):
                 ("success", True),
             ],
             test_mock={"resolve_discussion": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
