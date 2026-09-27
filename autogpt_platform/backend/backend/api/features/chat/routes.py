@@ -1771,7 +1771,7 @@ async def stream_chat_post(
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
-    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    # graphiti/ingest.py's ensure_scope_scheduled registration.
     from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
 
     # Spawned through the shared helper: the loop only holds a weak

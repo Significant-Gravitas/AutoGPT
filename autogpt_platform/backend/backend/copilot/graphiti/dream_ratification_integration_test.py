@@ -207,9 +207,9 @@ def stub_boundaries(
 
     * ``get_graphiti_client`` — patched on ``ingest`` (where it is used) to
       return a Graphiti wired to the test's real driver with the LLM stubbed.
-    * ``ensure_dream_system_scheduled`` — ``_ensure_worker`` imports it lazily
-      from ``dream.scheduling``, so that module IS the use site. Left live it
-      would fire LaunchDarkly + scheduler RPCs from a background task.
+    * ``ensure_scope_scheduled`` — patched on ``ingest`` (where the first
+      write per group calls it). Left live it would fire LaunchDarkly,
+      registry and scheduler calls from a background task.
     * ``get_redis_async`` — likewise imported lazily by the hit tracker.
     """
     driver, _user_id = dream_graph
@@ -217,9 +217,8 @@ def stub_boundaries(
     mocker.patch.object(
         ingest_mod, "get_graphiti_client", mocker.AsyncMock(return_value=client)
     )
-    mocker.patch(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
-        mocker.AsyncMock(return_value={}),
+    mocker.patch.object(
+        ingest_mod, "ensure_scope_scheduled", mocker.AsyncMock(return_value={})
     )
     mocker.patch(
         "backend.data.redis_client.get_redis_async",

@@ -77,6 +77,22 @@ def test_dream_pass_methods_registered() -> None:
         assert hasattr(DatabaseManagerAsyncClient, method)
 
 
+def test_memory_schedule_methods_registered() -> None:
+    """The scheduler and copilot-executor have no Prisma client; the
+    schedule registry reaches its rows through these."""
+    for method in (
+        "get_scope_schedule",
+        "claim_scope_schedule",
+        "record_scope_jobs",
+        "set_scope_state",
+        "forget_scope_job",
+        "record_scope_run",
+        "list_user_scope_schedules",
+    ):
+        assert hasattr(DatabaseManager, method)
+        assert hasattr(DatabaseManagerAsyncClient, method)
+
+
 def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
     """The dream store in the scheduler and the batch executor reaches the
     table over this RPC: an update must arrive, and a record come back, as
@@ -174,3 +190,9 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
         body = inspect.signature(endpoint).parameters["body"].annotation
         sent = body.model_validate(to_dict({cutoff_name: cutoff, "limit": 7}))
         assert sent.model_dump() == {cutoff_name: cutoff, "limit": 7}
+
+
+def test_memory_schedule_rpc_request_schemas_are_constructible() -> None:
+    manager = DatabaseManager()
+    manager._create_fastapi_endpoint(manager.claim_scope_schedule)
+    manager._create_fastapi_endpoint(manager.record_scope_run)

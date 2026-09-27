@@ -88,13 +88,13 @@ class MemoryScope(BaseModel):
         """This scope's Redis key for ``family``, exactly as it was keyed
         before this class existed.
 
-        Most families key on ``scope_key`` (the raw user id for the account,
-        the group id for an expert). Two do not, and keep their layouts:
-        ``rebuild_lock`` keys on ``group_id``, and ``registration`` keys on
-        the owner's user id even for an expert scope, because the dream
-        crons are registered per user. ``hits`` needs the counted
-        ``edge_uuid``; ``registration`` needs the cron's marker prefix (see
-        ``dream/scheduling.py``).
+        Every family keys on ``scope_key`` (the raw user id for the account,
+        the group id for an expert) except ``rebuild_lock``, which keeps its
+        ``group_id`` layout. ``registration`` is per scope because the dream
+        crons are registered per scope (``dream/registry.py``); the account's
+        key is unchanged from when they were registered per user. ``hits``
+        needs the counted ``edge_uuid``; ``registration`` needs the cron's
+        marker prefix (see ``dream/scheduling.py``).
         """
         match family:
             case "dream_lock":
@@ -110,7 +110,7 @@ class MemoryScope(BaseModel):
             case "registration":
                 if registration_prefix is None:
                     raise ValueError("the registration key needs a prefix")
-                return f"{registration_prefix}:{self.owner_user_id}"
+                return f"{registration_prefix}:{self.scope_key}"
 
     @model_validator(mode="after")
     def _ids_match_derivation(self) -> "MemoryScope":

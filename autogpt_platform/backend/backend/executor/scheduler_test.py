@@ -1,19 +1,28 @@
+import asyncio
+import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytz
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.model import CreateGraph
+from backend.copilot.dream import deadline, scope_crons
 from backend.copilot.dream.reaper import REAPER_BUDGET_SECONDS
 from backend.copilot.dream.retention import RETENTION_BUDGET_SECONDS
+from backend.copilot.dream.scheduling import DREAM_SYSTEM_JOBS
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.data import db
+from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import (
     Jobstores,
     Scheduler,
     _build_trigger,
+    _memory_scope_may_fire,
     _normalize_cron_day_of_week,
     _register_dream_pass_jobs,
     execute_dream_pass_reaper,
@@ -194,7 +203,7 @@ class TestAddCommunityRebuildSchedule:
         assert kwargs["replace_existing"] is True
         # Lands in the EXECUTION jobstore (Postgres-backed).
         assert kwargs["jobstore"] == Jobstores.EXECUTION.value
-        # Cron is 04:00 Sunday per spec (P-1.7). Trigger repr is the
+        # Cron is 04:00 on Mondays (P-1.7; see the next test). Trigger repr is the
         # most stable surface to assert against without depending on
         # APScheduler's internal CronTrigger.field accessors.
         trigger_repr = repr(kwargs["trigger"])
@@ -207,6 +216,21 @@ class TestAddCommunityRebuildSchedule:
         assert result["id"] == "community_rebuild_abc"
         assert result["user_id"] == "abc"
         assert result["user_timezone"] == "America/New_York"
+
+    def test_the_weekly_rebuild_fires_on_mondays(self) -> None:
+        """``0 4 * * 0`` is Monday to APScheduler, whose weekdays count from
+        0 = Monday (the docs used to say Sunday; the expression is kept)."""
+        s = _stub_scheduler()
+        s.scheduler.add_job.return_value = MagicMock(id="j", next_run_time=None)
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            s.add_community_rebuild_schedule(user_id="abc", user_timezone="UTC")
+        trigger = s.scheduler.add_job.call_args.kwargs["trigger"]
+        sunday = datetime(2026, 9, 27, tzinfo=timezone.utc)
+
+        fires = trigger.get_next_fire_time(None, sunday)
+
+        assert fires == datetime(2026, 9, 28, 4, tzinfo=timezone.utc)
+        assert fires.strftime("%A") == "Monday"
 
     def test_empty_timezone_falls_back_to_utc(self) -> None:
         s = _stub_scheduler()
@@ -235,7 +259,7 @@ class TestDeleteCommunityRebuildSchedule:
         s.scheduler.get_job.return_value = fake_job
         with (
             patch("backend.executor.scheduler.run_async"),
-            patch("backend.executor.scheduler.clear_registration_marker"),
+            patch("backend.executor.scheduler.forget_registration"),
         ):
             assert s.delete_community_rebuild_schedule("abc") is True
         # Look up by the canonical job id
@@ -249,21 +273,23 @@ class TestDeleteCommunityRebuildSchedule:
         s.scheduler.get_job.return_value = None
         assert s.delete_community_rebuild_schedule("abc") is False
 
-    def test_delete_clears_registration_marker_so_lazy_path_can_re_register(
+    def test_delete_forgets_the_registration_so_ensure_can_re_register(
         self,
     ) -> None:
-        """An in-band delete must clear the Redis registration marker —
-        otherwise ``ensure_dream_system_scheduled`` sees the stored tz
-        still matching and refuses to re-register for up to 7 days
-        while no cron exists in APScheduler."""
+        """An in-band delete must forget the job in the registry (its id on
+        the scope's row, and the Redis marker) — otherwise
+        ``ensure_scope_scheduled`` reads the recorded job id and never
+        re-registers a cron that no longer exists in APScheduler."""
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = MagicMock()
         with (
             patch("backend.executor.scheduler.run_async") as run_async_mock,
-            patch("backend.executor.scheduler.clear_registration_marker") as clear_mock,
+            patch("backend.executor.scheduler.forget_registration") as forget_mock,
         ):
             assert s.delete_community_rebuild_schedule("abc") is True
-        clear_mock.assert_called_once_with("abc", "community_rebuild_registered")
+        scope, job = forget_mock.call_args.args
+        assert scope == MemoryScope.for_user("abc")
+        assert job.job_id_prefix == "community_rebuild"
         run_async_mock.assert_called_once()
 
 
@@ -324,18 +350,21 @@ class TestAddNightlyBatchSchedule:
         assert kwargs["max_instances"] == 1
         assert kwargs["replace_existing"] is True
         assert kwargs["jobstore"] == Jobstores.EXECUTION.value
+        # The account's cron keeps its per-user kwargs, so existing jobs,
+        # re-registered ones and a rolled-back scheduler agree.
+        assert kwargs["kwargs"] == {"user_id": "abc"}
         trigger_repr = repr(kwargs["trigger"])
         # Daily 03:00 cron — same as the former dream pass cron, but
         # carries the consolidated submitter set.
         assert "hour='3'" in trigger_repr
         assert result["id"] == "dream_nightly_batch_abc"
+        assert result["scope_key"] == "abc"
         assert result.get("skipped") is not True
 
     def test_flag_off_returns_skipped_dict_without_calling_add_job(self) -> None:
         """Layer 2 of the 3-layer flag gating — direct callers
-        (admin endpoint, ad-hoc scripts) that bypass
-        ``ensure_dream_system_scheduled`` must STILL be refused when
-        the flag is off."""
+        (admin endpoint, ad-hoc scripts) that bypass the registry must
+        STILL be refused when the flag is off."""
         s = _stub_scheduler()
         with patch("backend.executor.scheduler.run_async", return_value=False):
             result = s.add_nightly_batch_schedule(user_id="abc")
@@ -343,11 +372,70 @@ class TestAddNightlyBatchSchedule:
         assert result == {
             "id": None,
             "user_id": "abc",
+            "scope_key": "abc",
             "user_timezone": "UTC",
             "next_run_time": None,
             "skipped": True,
             "reason": "dream_pass_disabled",
         }
+
+
+class TestAddScopeNightlyBatchAndCommunityRebuildSchedules:
+    """The scope-keyed registrations the registry calls."""
+
+    EXPERT = MemoryScope.for_expert("abc", "expert-1")
+
+    def _register(self, method: str, scope: MemoryScope) -> dict:
+        s = _stub_scheduler()
+        s.scheduler.add_job.side_effect = lambda *a, **kw: MagicMock(
+            id=kw["id"], next_run_time=None
+        )
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            getattr(s, method)(scope=scope, user_timezone="Asia/Tokyo")
+        return s.scheduler.add_job.call_args.kwargs
+
+    @pytest.mark.parametrize(
+        "method, prefix",
+        [
+            ("add_scope_nightly_batch_schedule", "dream_nightly_batch"),
+            ("add_scope_community_rebuild_schedule", "community_rebuild"),
+        ],
+    )
+    def test_expert_scope_is_keyed_by_its_scope_key(
+        self, method: str, prefix: str
+    ) -> None:
+        kwargs = self._register(method, self.EXPERT)
+
+        assert kwargs["id"] == f"{prefix}_{self.EXPERT.scope_key}"
+        assert kwargs["kwargs"] == {"user_id": "abc", "expert_id": "expert-1"}
+        assert "Asia/Tokyo" in repr(kwargs["trigger"])
+
+    def test_scope_methods_are_reachable_over_rpc(self) -> None:
+        """The RPC request schema is built from the signature: a
+        ``MemoryScope`` argument has to be constructible there."""
+        s = _stub_scheduler()
+        s._create_fastapi_endpoint(s.add_scope_nightly_batch_schedule)
+        s._create_fastapi_endpoint(s.add_scope_community_rebuild_schedule)
+        s._create_fastapi_endpoint(s.remove_scope_memory_jobs)
+
+
+class TestRemoveScopeMemoryJobsForNightlyBatchAndCommunityRebuild:
+    def test_removes_only_that_scopes_crons(self) -> None:
+        scope = MemoryScope.for_expert("abc", "expert-1")
+        s = _stub_scheduler()
+        nightly = MagicMock(id=f"dream_nightly_batch_{scope.scope_key}")
+        s.scheduler.get_job.side_effect = lambda job_id, jobstore: (
+            nightly if job_id == nightly.id else None
+        )
+
+        assert s.remove_scope_memory_jobs(scope=scope) == [nightly.id]
+
+        nightly.remove.assert_called_once()
+        looked_up = [call.args[0] for call in s.scheduler.get_job.call_args_list]
+        assert looked_up == [
+            f"community_rebuild_{scope.scope_key}",
+            f"dream_nightly_batch_{scope.scope_key}",
+        ]
 
 
 class TestDeleteNightlyBatchSchedule:
@@ -357,7 +445,7 @@ class TestDeleteNightlyBatchSchedule:
         s.scheduler.get_job.return_value = fake_job
         with (
             patch("backend.executor.scheduler.run_async"),
-            patch("backend.executor.scheduler.clear_registration_marker"),
+            patch("backend.executor.scheduler.forget_registration"),
         ):
             assert s.delete_nightly_batch_schedule("abc") is True
         s.scheduler.get_job.assert_called_once_with(
@@ -370,26 +458,38 @@ class TestDeleteNightlyBatchSchedule:
         s.scheduler.get_job.return_value = None
         assert s.delete_nightly_batch_schedule("abc") is False
 
-    def test_delete_clears_registration_marker_so_lazy_path_can_re_register(
+    def test_delete_forgets_the_registration_so_ensure_can_re_register(
         self,
     ) -> None:
         """Same contract as the community-rebuild delete: removing the
-        cron in-band must also drop the dedup marker so the next memory
-        write can lazily re-register without waiting out the TTL."""
+        cron in-band must also forget it in the registry so the next
+        memory write registers it again."""
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = MagicMock()
         with (
             patch("backend.executor.scheduler.run_async") as run_async_mock,
-            patch("backend.executor.scheduler.clear_registration_marker") as clear_mock,
+            patch("backend.executor.scheduler.forget_registration") as forget_mock,
         ):
             assert s.delete_nightly_batch_schedule("abc") is True
-        clear_mock.assert_called_once_with("abc", "dream_nightly_batch_registered")
+        scope, job = forget_mock.call_args.args
+        assert scope == MemoryScope.for_user("abc")
+        assert job.job_id_prefix == "dream_nightly_batch"
         run_async_mock.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
-# Execution-time flag gate for the nightly batch cron (layer 3)
+# Execution-time gates for the nightly batch and community crons
 # ---------------------------------------------------------------------------
+
+
+def _run_coroutine(coro, timeout=None, *, cancel_on_timeout=False):
+    """``run_async`` stand-in: run the (mocked) coroutine to completion on a
+    private loop, leaving the test session's loop alone."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 class TestExecuteNightlyBatchSyncRuntimeGate:
@@ -397,7 +497,7 @@ class TestExecuteNightlyBatchSyncRuntimeGate:
         """``DREAM_PASS_ENABLED`` flipped off after registration → the
         cron still fires but never calls ``run_nightly_batch_submit``,
         so no submitter runs."""
-        from backend.executor.scheduler import execute_nightly_batch_sync
+        from backend.executor.scheduler import _submit_nightly_batch
 
         with (
             patch(
@@ -407,12 +507,226 @@ class TestExecuteNightlyBatchSyncRuntimeGate:
                 "backend.copilot.dream.nightly_batch.run_nightly_batch_submit"
             ) as fanout_mock,
         ):
-            execute_nightly_batch_sync("abc")
+            assert _submit_nightly_batch("abc") is None
 
         # Exactly one run_async call (the flag check). The fan-out
         # function never gets invoked.
         run_async_mock.assert_called_once()
         fanout_mock.assert_not_called()
+
+
+class TestNightlyBatchScopeGate:
+    """The cron body runs only while the registry lets the scope fire, and
+    stamps the scope's last clean run."""
+
+    def _fire(self, *, gate: bool, result, expert_id: str | None = None):
+        from backend.executor.scheduler import execute_nightly_batch_sync
+
+        with (
+            patch("backend.executor.scheduler.run_async", new=_run_coroutine),
+            patch(
+                "backend.executor.scheduler._memory_scope_may_fire",
+                return_value=gate,
+            ),
+            patch(
+                "backend.executor.scheduler._submit_nightly_batch",
+                return_value=result,
+            ) as submit,
+            patch(
+                "backend.executor.scheduler.record_scope_run", new=AsyncMock()
+            ) as stamp,
+        ):
+            returned = execute_nightly_batch_sync("abc", expert_id)
+        return returned, submit, stamp
+
+    def test_a_scope_the_registry_holds_back_does_not_run(self) -> None:
+        returned, submit, stamp = self._fire(gate=False, result=_nightly_result())
+
+        assert returned is None
+        submit.assert_not_called()
+        stamp.assert_not_awaited()
+
+    def test_a_clean_run_stamps_the_scope(self) -> None:
+        result = _nightly_result(dream=_dream_result())
+        returned, submit, stamp = self._fire(gate=True, result=result)
+
+        assert returned is result
+        submit.assert_called_once_with("abc", None)
+        stamp.assert_awaited_once_with(MemoryScope.for_user("abc"), "nightly")
+
+    def test_an_errored_run_is_not_stamped(self) -> None:
+        result = _nightly_result(dream=_dream_result(error="phase 1 LLM down"))
+        _, _, stamp = self._fire(gate=True, result=result)
+
+        stamp.assert_not_awaited()
+
+    def test_an_expert_cron_runs_the_expert_scope(self) -> None:
+        _, submit, stamp = self._fire(
+            gate=True, result=_nightly_result(), expert_id="expert-1"
+        )
+
+        submit.assert_called_once_with("abc", "expert-1")
+        stamp.assert_awaited_once_with(
+            MemoryScope.for_expert("abc", "expert-1"), "nightly"
+        )
+
+
+class TestCommunityRebuildScopeGate:
+    def _fire(self, *, gate: bool, result: dict | None, expert_id=None):
+        from backend.executor.scheduler import execute_community_rebuild
+
+        with (
+            patch("backend.executor.scheduler.run_async", new=_run_coroutine),
+            patch(
+                "backend.executor.scheduler._memory_scope_may_fire",
+                return_value=gate,
+            ),
+            patch(
+                "backend.executor.scheduler._rebuild_scope_communities",
+                return_value=result,
+            ) as rebuild,
+            patch(
+                "backend.executor.scheduler.record_scope_run", new=AsyncMock()
+            ) as stamp,
+        ):
+            execute_community_rebuild("abc", expert_id)
+        return rebuild, stamp
+
+    def test_a_scope_the_registry_holds_back_does_not_run(self) -> None:
+        rebuild, stamp = self._fire(gate=False, result={"error": None})
+
+        rebuild.assert_not_called()
+        stamp.assert_not_awaited()
+
+    def test_a_clean_rebuild_of_an_expert_stamps_its_scope(self) -> None:
+        rebuild, stamp = self._fire(
+            gate=True, result={"error": None}, expert_id="expert-1"
+        )
+
+        scope = MemoryScope.for_expert("abc", "expert-1")
+        rebuild.assert_called_once_with(scope)
+        stamp.assert_awaited_once_with(scope, "community")
+
+    def test_an_errored_or_flag_skipped_rebuild_is_not_stamped(self) -> None:
+        for result in ({"error": "OpenRouterError: 502"}, None):
+            _, stamp = self._fire(gate=True, result=result)
+            stamp.assert_not_awaited()
+
+
+class _SchedulerLoop:
+    """A real event loop on its own thread, installed as the scheduler's
+    shared loop so ``run_async`` bridges to it as in production."""
+
+    def __enter__(self) -> asyncio.AbstractEventLoop:
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self.thread.start()
+        self.patch = patch.object(scheduler_module, "_event_loop", self.loop)
+        self.patch.start()
+        return self.loop
+
+    def __exit__(self, *exc) -> None:
+        self.patch.stop()
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=2)
+        self.loop.close()
+
+
+def _short_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(deadline, "BRIDGE_MARGIN_SECONDS", 0.05)
+
+
+class _HangRecorder:
+    def __init__(self) -> None:
+        self.started = threading.Event()
+        self.cancelled = threading.Event()
+
+    async def forever(self, *args, **kwargs):
+        self.started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+
+
+class TestMemoryScopeGateBridge:
+    """The scheduler side of the registry gate: the gate's answer passes
+    through, and a gate the bridge gives up on skips the run and is
+    cancelled instead of raising after 300 s."""
+
+    def test_the_gate_gets_the_expert_lifecycle_lookup(self) -> None:
+        gate = AsyncMock(return_value=True)
+        scope = MemoryScope.for_expert("abc", "expert-1")
+        with (
+            patch("backend.executor.scheduler.run_async", new=_run_coroutine),
+            patch("backend.executor.scheduler.memory_scope_may_fire", new=gate),
+        ):
+            assert _memory_scope_may_fire(scope) is True
+        gate.assert_awaited_once_with(scope, scheduler_module._expert_scope_status)
+
+    def test_a_gate_the_bridge_gives_up_on_skips_and_is_cancelled(
+        self, monkeypatch
+    ) -> None:
+        _short_deadline(monkeypatch)
+        hang = _HangRecorder()
+        monkeypatch.setattr(scheduler_module, "memory_scope_may_fire", hang.forever)
+        with _SchedulerLoop():
+            started = time.monotonic()
+            fires = _memory_scope_may_fire(MemoryScope.for_user("abc"))
+            elapsed = time.monotonic() - started
+            assert hang.cancelled.wait(timeout=2)
+
+        assert fires is False
+        assert elapsed < 1.0
+
+    @pytest.mark.parametrize("bridge", ["stamp", "forget"])
+    def test_the_other_memory_bridges_cancel_what_they_give_up_on(
+        self, monkeypatch, bridge
+    ) -> None:
+        """Like the gate, the run stamp and the in-band delete's bookkeeping
+        are safe to stop anywhere, so they ask ``run_async`` to cancel."""
+        _short_deadline(monkeypatch)
+        hang = _HangRecorder()
+        monkeypatch.setattr(scheduler_module, "record_scope_run", hang.forever)
+        monkeypatch.setattr(scheduler_module, "forget_registration", hang.forever)
+        scope = MemoryScope.for_user("abc")
+        with _SchedulerLoop():
+            if bridge == "stamp":
+                scheduler_module._stamp_scope_run(scope, "nightly")
+            else:
+                scheduler_module._forget_dream_registration(scope, DREAM_SYSTEM_JOBS[0])
+            assert hang.cancelled.wait(timeout=2)
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            scheduler_module.execute_nightly_batch_sync,
+            scheduler_module.execute_community_rebuild,
+        ],
+    )
+    def test_a_hanging_registry_skips_the_cron_promptly(self, monkeypatch, body):
+        """Codex's reproduction through the real bridge and the real gate: a
+        registry read that never answers used to raise TimeoutError out of
+        the cron body after 300 s and leave the read running."""
+        _short_deadline(monkeypatch)
+        hang = _HangRecorder()
+        registry = SimpleNamespace(get_scope_schedule=hang.forever)
+        monkeypatch.setattr(scope_crons, "memory_schedule_db", lambda: registry)
+        with (
+            _SchedulerLoop(),
+            patch("backend.executor.scheduler._submit_nightly_batch") as submit,
+            patch("backend.executor.scheduler._rebuild_scope_communities") as rebuild,
+        ):
+            started = time.monotonic()
+            body("abc")
+            elapsed = time.monotonic() - started
+            assert hang.cancelled.wait(timeout=2)
+
+        assert elapsed < 1.0
+        submit.assert_not_called()
+        rebuild.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -456,14 +770,15 @@ def _run_nightly_wrapper(result):
     ``mark_*`` / ``update_status_phase`` are imported inside the wrapper,
     so patching them at their definition module intercepts the call-time
     import. ``run_async`` is stubbed so the (mocked, non-coroutine)
-    status writes don't hit an event loop.
+    status writes don't hit an event loop. The admin trigger runs the
+    fan-out directly, past the cron body's registry gate.
     """
     from backend.executor.scheduler import execute_nightly_batch_with_status
 
     with (
         patch("backend.executor.scheduler.run_async"),
         patch(
-            "backend.executor.scheduler.execute_nightly_batch_sync",
+            "backend.executor.scheduler._submit_nightly_batch",
             return_value=result,
         ),
         patch("backend.copilot.dream.job_status.mark_complete") as complete_mock,
@@ -824,7 +1139,7 @@ class TestExecuteCommunityRebuildWithStatus:
 
 class TestExecuteCommunityRebuildRuntimeGate:
     def test_flag_off_short_circuits_before_rebuild_runs(self) -> None:
-        from backend.executor.scheduler import execute_community_rebuild
+        from backend.executor.scheduler import _rebuild_scope_communities
 
         # First run_async returns False (flag check). If we let the gate
         # pass, a second call would invoke rebuild_communities_for_user;
@@ -837,10 +1152,30 @@ class TestExecuteCommunityRebuildRuntimeGate:
                 "backend.executor.scheduler.rebuild_communities_for_user"
             ) as rebuild_mock,
         ):
-            execute_community_rebuild("abc")
+            assert _rebuild_scope_communities(MemoryScope.for_user("abc")) is None
 
         run_async_mock.assert_called_once()
         rebuild_mock.assert_not_called()
+
+    def test_an_expert_scope_rebuilds_the_expert_graph(self) -> None:
+        from backend.executor.scheduler import _rebuild_scope_communities
+
+        result = {"error": None, "communities_built": 2}
+        with (
+            patch("backend.executor.scheduler.run_async", side_effect=[True, result]),
+            patch(
+                "backend.copilot.graphiti.config.is_communities_enabled_for_user",
+                new=MagicMock(return_value="flag"),
+            ),
+            patch(
+                "backend.executor.scheduler.rebuild_communities_for_user",
+                new=MagicMock(return_value="rebuild"),
+            ) as rebuild_mock,
+        ):
+            scope = MemoryScope.for_expert("abc", "expert-1")
+            assert _rebuild_scope_communities(scope) == result
+
+        rebuild_mock.assert_called_once_with("abc", expert_id="expert-1")
 
 
 @pytest.mark.asyncio(loop_scope="session")
