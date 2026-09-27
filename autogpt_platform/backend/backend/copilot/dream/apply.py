@@ -526,8 +526,9 @@ async def _drain_ingestion(
     drain resolve the instant they land, regardless of other queue traffic.
 
     Returns:
-      * ``drained`` — nothing was enqueued (vacuous) or all of the pass's
-        episodes landed within the timeout.
+      * ``drained`` — nothing was enqueued (vacuous) or the worker finished
+        all of the pass's episodes within the timeout: written, dropped for
+        resting on a forget, or failed with a logged error.
       * ``skipped`` — ``timeout_seconds <= 0``; the batch path uses this to
         avoid stalling the shared, serial ``BatchExecutor.walk_once`` loop
         (see ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``). The episodes still
@@ -578,8 +579,8 @@ async def apply_operations(
     and an ``ingestion_drain_status`` (``IngestionDrainStatus``) —
     ``timed_out`` means the write/proposal counts were reported while
     episodes were still queued in-process, ``skipped`` is the by-design
-    batch skip, ``drained`` is a fully-landed pass (see
-    ``_drain_ingestion``). Read it back via ``drain_status_from_stats``.
+    batch skip, ``drained`` is a pass whose writes the worker all finished
+    (see ``_drain_ingestion``). Read it back via ``drain_status_from_stats``.
 
     An empty pass — no writes, proposals, demotions, or entity
     invalidations — returns zero counts and an empty snapshot WITHOUT

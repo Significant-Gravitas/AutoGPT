@@ -122,12 +122,20 @@ class TestForgottenCandidates:
         assert recall_ingest._shown(text) == {0}
         assert forgotten_candidates(prompt) is None
 
-    def test_a_placeholder_outside_any_candidate_names_no_edge(self) -> None:
+    def test_a_placeholder_outside_any_candidate_names_no_edge(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Both lists read, and it is logged at error like any prompt the
+        guard cannot read in full, once for the shape
+        (``r6-dedup-shapes.py``, ``placeholder_outside_candidate``)."""
         prompt = _edited(
             _mixed_prompt(), "NEW FACT>\n", f"NEW FACT>\n{FORGOTTEN_FACT} "
         )
 
         assert forgotten_candidates(prompt) is None
+        assert forgotten_candidates(prompt) is None
+        [error] = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert "outside a candidate" in error.getMessage()
 
 
 class TestAnUnreadablePrompt:

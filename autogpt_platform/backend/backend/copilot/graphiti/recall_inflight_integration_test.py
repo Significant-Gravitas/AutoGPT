@@ -7,9 +7,11 @@ used to be written over. Now the two never overlap (``scope_lock.py``): a
 forget that arrives while an episode is being written waits for it, then
 applies to what it wrote, and search never shows the forgotten sentence once
 the forget has answered (``scope_lock_integration_test.py`` covers a lock
-held past a writer's wait). Reproduced first by an independent validation
-(``r3-ingestion-independent.py``, ``mid_add_race``;
-``r4-stash-probes.py``, ``healthy_redis_pre_repair_read``).
+held past a writer's wait). The legacy-forget backfill takes the same lock,
+so it too waits for an episode being written. Reproduced first by an
+independent validation (``r3-ingestion-independent.py``, ``mid_add_race``;
+``r4-stash-probes.py``, ``healthy_redis_pre_repair_read``;
+``r6-migration-concurrency.py``, the backfill).
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -34,6 +36,7 @@ from . import recall, scope_lock
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
 from .memory_model import ForgetResult
+from .migrations.backfill_legacy_forgets import LegacyForgets, backfill_graph
 from .recall import FORGOTTEN_FACT
 from .recall_forget import retract
 from .recall_integration_fixtures import (
@@ -53,7 +56,8 @@ from .recall_integration_fixtures import (
 )
 from .scope import MemoryScope
 
-Forget = Callable[[], Awaitable[ForgetResult]]
+# A forget, or the legacy-forget backfill's restamp.
+Writer = Callable[[], Awaitable[ForgetResult | LegacyForgets]]
 
 
 @pytest.fixture(autouse=True)
@@ -85,7 +89,7 @@ async def _say(driver: AutoGPTFalkorDriver, scope: MemoryScope, build: BuildClie
 
 @contextmanager
 def _forget_arrives_at(
-    marker: str, forget: Forget, answered: asyncio.Event | None = None
+    marker: str, forget: Writer, answered: asyncio.Event | None = None
 ) -> Iterator[tuple[list[asyncio.Future], list[bool]]]:
     """Start ``forget`` right before graphiti's first query containing
     ``marker``, note whether it is still waiting for the lock 0.6 s later,
@@ -235,6 +239,36 @@ async def test_a_forget_on_another_event_loop_waits_for_the_ingestion(
     assert (result.deleted, result.failures) == ([alice], [])
     await _assert_forgotten(driver, scope, alice)
     assert waited == [True], "the forget did not wait for the ingestion"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_legacy_forget_backfill_waits_for_the_ingestion(
+    scope_graph, stub_graphiti_client, ingest_worker_cleanup
+) -> None:
+    """A forget from before the recall policy (``expired_at`` and nothing
+    else) is restamped while an episode stating the fact again is being
+    saved: the backfill waits for the write lock, then restamps what the
+    episode wrote, so nothing writes over its scrub."""
+    driver, scope = scope_graph
+    alice = await _learn(driver, scope, stub_graphiti_client)
+    await driver.execute_query(
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() SET e.expired_at = $then"
+        " REMOVE e.invalid_at, e.expiration_reason, e.forgotten_at",
+        uuid=alice,
+        then="2026-01-01T00:00:00+00:00",
+    )
+
+    async def backfill() -> LegacyForgets:
+        return await backfill_graph(driver, apply=True)
+
+    with _forget_arrives_at("SET r = edge", backfill) as (started, waited):
+        await _say(driver, scope, stub_graphiti_client)
+    result = await asyncio.wait_for(started[0], 30)
+
+    assert (result.edges, result.busy) == (1, 0)
+    await _assert_forgotten(driver, scope, alice)
+    assert waited == [True], "the backfill did not wait for the ingestion"
 
 
 async def _close(redis: Redis | None) -> None:

@@ -1,22 +1,29 @@
-"""One writer at a time per memory graph, so a forget never overlaps an
+"""One writer at a time per memory graph, so a forget does not overlap an
 ingestion.
 
 graphiti's ``add_episode`` saves the edges and entities it read when it
 began (``SET r = edge``, ``SET n = node``): a forget that landed while it
-ran would be written over by the older copy. So both writers hold this lock,
-the ingestion worker around ``add_episode`` and what it writes after it
-(``ingest.py``), and ``recall_forget.retract`` around the whole forget. It is
-one Redis key per graph (``MemoryScope.redis_key("write_lock")``), set NX
-with a token and a five-minute expiry that the holder keeps renewing, and
-released and renewed by the dream lock's compare-and-delete and
-compare-and-extend scripts (``dream/locks.py``), so a holder whose key
-expired never touches a newer holder's.
+ran would be written over by the older copy. So these writers hold this
+lock: the ingestion worker around ``add_episode`` and what it writes after
+it (``ingest.py``), ``recall_forget.retract`` around the whole forget, and
+the legacy-forget backfill around each graph's restamp
+(``migrations/backfill_legacy_forgets.py``); the weekly community rebuild
+and the settings page's erase-all do not (``graphiti/AGENTS.md``). It is one
+Redis key per graph (``MemoryScope.redis_key("write_lock")``), set NX with a
+token and a five-minute expiry that the holder keeps renewing, and released
+and renewed by the dream lock's compare-and-delete and compare-and-extend
+scripts (``dream/locks.py``), so a holder whose key expired never touches a
+newer holder's.
 
 A writer waits a bounded time: an ingestion ``INGEST_LOCK_WAIT_SECONDS``,
 then its episode goes to the back of the queue once; a forget
 ``FORGET_LOCK_WAIT_SECONDS``, then it fails as ``busy`` with nothing
-written. When Redis cannot be reached both go ahead without the lock and log
-a warning: the one window left in which a forget can be written over.
+written; the backfill skips the graph as busy. Two windows remain in which
+a forget can be written over, and neither has a bound. When Redis cannot be
+reached, the ingestion worker and a forget go ahead without the lock and
+log a warning. And a holder that loses its key (its renewals fail, or its
+event loop stalls past the expiry) keeps writing while another writer takes
+the lock: the renewal only warns, and nothing fences the graph write.
 """
 
 import asyncio

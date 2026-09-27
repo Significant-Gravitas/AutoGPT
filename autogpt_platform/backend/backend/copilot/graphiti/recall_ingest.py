@@ -6,21 +6,27 @@ a forget landed saves its older copy after it (graphiti saves what it read:
 ``SET r = edge``); the graph's write lock rules that out while Redis answers
 and the holder keeps its lease, since a forget and an ingestion then never
 overlap (``scope_lock.py``; ``graphiti/AGENTS.md`` has the windows with no
-bound). And a later ingestion resolves each new
-statement against the edges between the same entities, forgotten ones
-included: if its model calls the statement a duplicate of a forgotten edge,
-graphiti appends the episode to that edge and, because no edge type is named
-``[forgotten]``, clears every attribute on it, the forget's marker and audit
-copies among them (``edge_operations.resolve_extracted_edge``, then its bulk
-save's ``SET r = edge``); if it calls it a contradiction, it stamps the
-forgotten edge's ``invalid_at``.
+bound). And a later ingestion resolves each new statement against the edges
+between the same entities, forgotten ones included: if its model calls the
+statement a duplicate of a forgotten edge, graphiti appends the episode to
+that edge and, because no edge type is named ``[forgotten]``, clears every
+attribute on it, the forget's marker and audit copies among them
+(``edge_operations.resolve_extracted_edge``, then its bulk save's
+``SET r = edge``); if it calls it a contradiction, it stamps the forgotten
+edge's ``invalid_at``.
 
 So every graphiti client is built with ``ForgetAwareLLMClient``
 (``client._build_graphiti``): whatever graphiti's model answers, an edge
 whose text is ``recall.FORGOTTEN_FACT`` is neither a duplicate nor a
 contradiction. graphiti then saves a restated fact as a new live edge in the
-same ``add_episode``, as it would any new fact, and never touches the
-forgotten one: no second extraction, and nothing to repair afterwards.
+same ``add_episode``, as it would any new fact, and its model's dedup never
+touches the forgotten one: no second extraction, and nothing to repair
+afterwards. One path runs before the model and so past this guard:
+graphiti's exact-text match reuses an edge whose text equals the new
+statement's, lower-cased and whitespace-collapsed, so a statement that reads
+``[forgotten]`` appends its episode's uuid to the forgotten edge's
+``episodes``. The edge keeps its marker and audit copies and stays out of
+recall, and the episode, citing it, is hidden.
 
 The guard reads graphiti's prompt, so it fails closed. A candidate printed
 with the placeholder as its fact or name is forgotten wherever it appears,
@@ -29,9 +35,9 @@ And when the prompt shows the placeholder anywhere, both lists must be
 there, once each, and parse, and every placeholder must belong to a
 candidate the guard can read; otherwise the answer names no edge at all and
 the statement is saved as new (a duplicate at worst, never a merge into a
-forgotten edge). A prompt whose lists cannot be read is logged at error once
-per process for each shape, so a graphiti upgrade that changes the prompt
-is noticed even before a forgotten edge shows up in it.
+forgotten edge). Every prompt it cannot read in full is logged at error
+once per process for each shape and reason, so a graphiti upgrade that
+changes the prompt is noticed even before a forgotten edge shows up in it.
 """
 
 import ast
@@ -177,10 +183,12 @@ def forgotten_candidates(messages: list[Message]) -> set[int] | None:
     text = "\n".join(message.content for message in messages)
     listed = _listed(text)
     if listed is None:
-        _report_unreadable(text)
+        _report_unreadable(text, "its candidate lists cannot be read")
     if FORGOTTEN_FACT not in text:
         return set()
     shown = _shown(text)
+    if shown is None:
+        _report_unreadable(text, "it shows the placeholder outside a candidate")
     if listed is None or shown is None:
         return None
     return {c.idx for c in listed if c.forgotten} | shown
@@ -218,16 +226,17 @@ def _shown(text: str) -> set[int] | None:
     return {c.idx for c in shown} if all(c.forgotten for c in shown) else None
 
 
-def _report_unreadable(text: str) -> None:
-    """Log, at error and once per process for each shape (the prompt's
-    tags), a dedup prompt whose candidate lists cannot be read."""
-    shape = tuple(_TAG.findall(text))
+def _report_unreadable(text: str, why: str) -> None:
+    """Log, at error and once per process for each reason and shape (the
+    prompt's tags), a dedup prompt the guard cannot read in full."""
+    tags = _TAG.findall(text)
+    shape = (why, *tags)
     if shape in _REPORTED_SHAPES:
         return
     _REPORTED_SHAPES.add(shape)
     logger.error(
-        "graphiti's edge dedup prompt no longer reads as recall_ingest expects "
-        f"(tags {list(shape)}): while it does not, an answer that may name a "
+        "graphiti's edge dedup prompt no longer reads as recall_ingest expects: "
+        f"{why} (tags {tags}); while it does not, an answer that may name a "
         "forgotten edge names none, so restated facts are saved as new"
     )
 

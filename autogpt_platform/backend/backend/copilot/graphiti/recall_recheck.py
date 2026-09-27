@@ -4,14 +4,15 @@ Warm context and ``memory_search`` read facts (``recall.search_facts``) and
 recent episodes (``recall.recent_episodes``) side by side and render them
 once both reads are done; the fact search can take seconds (warm context
 reranks with a cross-encoder), and a forget can answer in the meantime. So
-right before rendering they call ``recheck``, which reads both lists again
-by uuid and keeps only the facts still live and the episodes still
-recallable. That bounds the stale window to the time between this read and
-the response: a forget that answers after it can miss a response already
-on its way, and nothing later.
+right before rendering they call ``recheck``, which checks every fact and
+episode they are about to show again, by uuid, in one statement, and keeps
+the facts still live and the episodes still recallable. Every item shown
+passed that check, its own last graph read. A forget writes each fact's
+marker before anything else, so a check that began after the marker
+committed drops the fact and every episode citing it; a response whose
+check began earlier can still carry them while it is delivered (rendering,
+scheduling, network), and no later read will.
 """
-
-import asyncio
 
 from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.edges import EntityEdge
@@ -19,16 +20,6 @@ from graphiti_core.nodes import EpisodicNode
 
 from . import recall
 from .scope import MemoryScope
-
-# The recallable-episode test, on the given episodes only.
-_RECALLABLE_NOW_QUERY = (
-    recall.forgotten_facts_clause()
-    + f"""
-MATCH (e:Episodic)
-WHERE e.uuid IN $uuids AND {recall.recallable_episode_predicate("e")}
-RETURN e.uuid AS uuid
-"""
-)
 
 
 async def recheck(
@@ -39,26 +30,52 @@ async def recheck(
     include_tentative: bool = True,
 ) -> tuple[list[EntityEdge], list[EpisodicNode]]:
     """``facts`` still live and ``episodes`` still recallable, each in its
-    order, read again by uuid on the driver the fact search used: the last
-    graph read before they are shown."""
+    order: one statement on the driver the fact search used, so no forget
+    lands between the check of one item and another's."""
     if not facts and not episodes:
         return facts, episodes
-    driver = (await recall.get_graphiti_client(scope.group_id)).driver
-    return await asyncio.gather(
-        recall.live_now(driver, facts, include_tentative=include_tentative),
-        recallable_now(driver, episodes),
+    client = await recall.get_graphiti_client(scope.group_id)
+    live, recallable = await _still_shown(
+        client.driver, facts, episodes, include_tentative
+    )
+    return (
+        [fact for fact in facts if fact.uuid in live],
+        [episode for episode in episodes if episode.uuid in recallable],
     )
 
 
-async def recallable_now(
-    driver: GraphDriver, episodes: list[EpisodicNode]
-) -> list[EpisodicNode]:
-    """``episodes`` still recallable, in order, read again by uuid in one
-    query."""
-    if not episodes:
-        return episodes
+async def _still_shown(
+    driver: GraphDriver,
+    facts: list[EntityEdge],
+    episodes: list[EpisodicNode],
+    include_tentative: bool,
+) -> tuple[set[str], set[str]]:
+    """The uuids of ``facts`` still live and of ``episodes`` still
+    recallable."""
     result = await driver.execute_query(
-        _RECALLABLE_NOW_QUERY, uuids=[episode.uuid for episode in episodes]
+        _recheck_query(include_tentative),
+        fact_uuids=[fact.uuid for fact in facts],
+        episode_uuids=[episode.uuid for episode in episodes],
     )
-    kept = {row["uuid"] for row in (result[0] if result else [])}
-    return [episode for episode in episodes if episode.uuid in kept]
+    rows = result[0] if result else []
+    # No row reads as nothing found: nothing is shown unchecked.
+    row = rows[0] if rows else {"facts": [], "episodes": []}
+    return set(row["facts"]), set(row["episodes"])
+
+
+def _recheck_query(include_tentative: bool) -> str:
+    """The live-fact and recallable-episode tests on the given uuids, in one
+    statement returning one row."""
+    live = recall.live_fact_predicate("fact", include_tentative=include_tentative)
+    return (
+        recall.forgotten_facts_clause()
+        + f"""
+OPTIONAL MATCH ()-[fact:RELATES_TO]->()
+WHERE fact.uuid IN $fact_uuids AND {live}
+WITH forgotten, collect(DISTINCT fact.uuid) AS facts
+OPTIONAL MATCH (episode:Episodic)
+WHERE episode.uuid IN $episode_uuids
+  AND {recall.recallable_episode_predicate("episode")}
+RETURN facts, collect(DISTINCT episode.uuid) AS episodes
+"""
+    )

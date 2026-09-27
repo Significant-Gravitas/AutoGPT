@@ -8,7 +8,10 @@ read resumes, its last graph read before rendering (``recall.live_now``,
 response shows neither, while a live fact and its episode still show.
 Reproduced first by an independent validation
 (``r5-quality-delayed-operations.py``, ``stale-warm-crossencoder`` and
-``stale-memory-search``).
+``stale-memory-search``). A forget that answers once warm context's fact
+check has passed is caught too: the recheck checks facts and episodes again
+in one statement, so no forget lands between two halves of it
+(``r6-read-split-check.py``).
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -21,6 +24,8 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from graphiti_core.driver.driver import GraphDriver
+from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EpisodicNode
 
 from backend.copilot.model import ChatSession
@@ -107,6 +112,41 @@ async def test_warm_context_paused_at_its_reranker_shows_nothing_forgotten(
 
     assert ALICE[2] in reranked, "the search read the fact before the forget"
     assert any(ALICE[2] in (ep.content or "") for ep in read_back)
+    assert shown is not None and ALICE[2] not in shown
+    assert BOB[2] in shown.split("<RECENT_EPISODES>")[0], "the live fact"
+    assert BOB[2] in shown.split("<RECENT_EPISODES>")[1], "its episode"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_warm_context_after_its_fact_check_passed_shows_nothing_forgotten(
+    scope_graph, stub_graphiti_client
+) -> None:
+    """The fact check has kept Alice's fact, a forget answers, then the rest
+    of the read runs: its one last statement finds neither her fact nor her
+    episode."""
+    driver, scope = scope_graph
+    alice = await _alice_and_bob(driver, scope, stub_graphiti_client)
+    live_now = recall.live_now
+    passed: list[str] = []
+
+    def pause(reached: asyncio.Event, release: asyncio.Event):
+        async def checked(
+            driver: GraphDriver, facts: list[EntityEdge], **kwargs: Any
+        ) -> list[EntityEdge]:
+            kept = await live_now(driver, facts, **kwargs)
+            passed.extend(fact.fact for fact in kept)
+            reached.set()
+            await release.wait()
+            return kept
+
+        return patch.object(recall, "live_now", checked)
+
+    shown = await _forget_while_paused(
+        scope, alice, lambda: context._fetch(scope, "Alice Bob Atlas"), pause
+    )
+
+    assert ALICE[2] in passed, "the fact check passed before the forget"
     assert shown is not None and ALICE[2] not in shown
     assert BOB[2] in shown.split("<RECENT_EPISODES>")[0], "the live fact"
     assert BOB[2] in shown.split("<RECENT_EPISODES>")[1], "its episode"

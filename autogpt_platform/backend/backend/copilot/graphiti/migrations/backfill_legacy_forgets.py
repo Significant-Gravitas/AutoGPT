@@ -18,6 +18,16 @@ It walks every memory graph on the FalkorDB server, account (``user_*``) and
 expert (``expert_*``) graphs alike, and is idempotent. Dry run by default: it
 only counts. Pass ``--apply`` to write.
 
+With ``--apply`` each graph is rewritten holding its write lock
+(``scope_lock.py``), the lock the ingestion worker and every forget take, from
+the count to the last restamp: an ingestion running meanwhile cannot save its
+older copy of an edge over the restamp. A graph whose lock another writer
+keeps past ``BACKFILL_LOCK_WAIT_SECONDS`` (60 s), or that cannot be locked
+because Redis is unreachable, is skipped with nothing written and counted
+busy; a graph whose backfill raises is counted failed (every step is
+idempotent). If any graph was skipped either way the script exits 1: run it
+again to pick those graphs up.
+
 Usage:
 
     poetry run python -m \\
@@ -39,18 +49,27 @@ from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.graphiti.memory_model import MemoryStatus
 from backend.copilot.graphiti.recall import USER_FORGET_REASON, legacy_forget_predicate
 from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY, scrub
+from backend.copilot.graphiti.scope_lock import LockState, graph_write_lock
 
 logger = logging.getLogger(__name__)
+
+# How long ``--apply`` waits for a graph's write lock, as long as the
+# ingestion worker waits, before counting the graph busy.
+BACKFILL_LOCK_WAIT_SECONDS = 60
 
 # Memory graphs are named for their scope (``client.derive_memory_group_id``).
 MEMORY_GRAPH_PREFIXES = ("user_", "expert_")
 
 
 class LegacyForgets(BaseModel):
-    """Legacy-forgotten edges, and the unredacted episodes naming them."""
+    """Legacy-forgotten edges and the unredacted episodes naming them, and
+    the graphs to run again: ``busy`` (write lock not taken, nothing
+    written) and ``failed``."""
 
     edges: int = 0
     episodes: int = 0
+    busy: int = 0
+    failed: int = 0
 
 
 class _GraphForgets(LegacyForgets):
@@ -58,25 +77,42 @@ class _GraphForgets(LegacyForgets):
 
 
 async def backfill_graph(driver: AutoGPTFalkorDriver, *, apply: bool) -> LegacyForgets:
-    """Count one graph's legacy forgets and, with ``apply``, restamp them."""
+    """Count one graph's legacy forgets and, with ``apply``, restamp them
+    holding the graph's write lock from the count to the last restamp;
+    ``busy``, with nothing written, when the lock cannot be taken."""
+    if not apply:
+        return await _legacy_forgets(driver)
+    graph, wait = driver.graph_name, BACKFILL_LOCK_WAIT_SECONDS
+    async with graph_write_lock(graph, wait_seconds=wait) as lock:
+        if lock is not LockState.HELD:
+            logger.warning(f"Skipped graph {graph[:20]}: write lock {lock.value}")
+            return LegacyForgets(busy=1)
+        found = await _legacy_forgets(driver)
+        if found.edges:
+            await _restamp(driver, found.uuids)
+        return found
+
+
+async def _legacy_forgets(driver: AutoGPTFalkorDriver) -> _GraphForgets:
     result = await driver.execute_query(COUNT_QUERY)
     records = result[0] if result else []
-    found = _GraphForgets.model_validate(records[0]) if records else _GraphForgets()
-    if not apply or not found.edges:
-        return found
-    await scrub(driver, found.uuids)
+    return _GraphForgets.model_validate(records[0]) if records else _GraphForgets()
+
+
+async def _restamp(driver: AutoGPTFalkorDriver, uuids: list[str]) -> None:
+    """Hide what a forget hides, then give the edges a forget's marker."""
+    await scrub(driver, uuids)
     await driver.execute_query(
         REDACT_EPISODES_QUERY,
-        uuids=found.uuids,
+        uuids=uuids,
         now=datetime.now(timezone.utc).isoformat(),
     )
     await driver.execute_query(
         RETRACT_EDGES_QUERY,
-        uuids=found.uuids,
+        uuids=uuids,
         status=MemoryStatus.retracted.value,
         reason=USER_FORGET_REASON,
     )
-    return found
 
 
 async def backfill_all_graphs(
@@ -84,7 +120,8 @@ async def backfill_all_graphs(
 ) -> LegacyForgets:
     """Backfill every memory graph on the server, or just ``graph``.
 
-    A graph that fails is logged and skipped; a re-run picks it up.
+    A graph that is busy or fails is logged, skipped and counted; a re-run
+    picks it up.
     """
     names = [graph] if graph else await _memory_graph_names()
     totals = LegacyForgets()
@@ -94,6 +131,7 @@ async def backfill_all_graphs(
             found = await backfill_graph(driver, apply=apply)
         except Exception:
             logger.warning(f"Backfill failed for graph {name[:20]}", exc_info=True)
+            totals.failed += 1
             continue
         finally:
             await driver.close()
@@ -101,6 +139,7 @@ async def backfill_all_graphs(
             logger.info(f"{name[:20]}: {found.edges} edges, {found.episodes} episodes")
         totals.edges += found.edges
         totals.episodes += found.episodes
+        totals.busy += found.busy
     return totals
 
 
@@ -156,11 +195,18 @@ async def main(args: argparse.Namespace) -> int:
     totals = await backfill_all_graphs(apply=args.apply, graph=args.graph)
     verb = "restamped" if args.apply else "would restamp (dry run)"
     print(f"{verb} {totals.edges} edges and {totals.episodes} episodes")
-    return 0
+    if not (totals.busy or totals.failed):
+        return 0
+    print(f"skipped {totals.busy} busy and {totals.failed} failed graphs: run again")
+    return 1
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apply", action="store_true", help="Write the changes.")
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write the changes, each graph holding its write lock.",
+    )
     parser.add_argument("--graph", help="Backfill one graph instead of all of them.")
     sys.exit(asyncio.run(main(parser.parse_args())))

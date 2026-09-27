@@ -433,9 +433,12 @@ async def _add_episode(
     caller of the worker. The earlier episodes are the ones graphiti would
     show its extraction prompts, minus those a forget hid: left to pick
     them itself it would show a forgotten episode again. The caller holds
-    the graph's write lock, and graphiti's model client never lets a new
-    statement merge into a forgotten edge (``recall_ingest.py``), so the
-    write leaves every forget as it found it.
+    the graph's write lock, and graphiti's model client never lets its model
+    merge a new statement into a forgotten edge (``recall_ingest.py``), so
+    the write leaves every forget's marker, audit copies and recall as it
+    found them. (graphiti's exact-text match, which runs before the model,
+    can still list a new episode on a forgotten edge whose ``[forgotten]``
+    text the statement repeats word for word.)
     """
     previous = await previous_episode_uuids(
         client.driver, group_id, payload["reference_time"], payload["source"]

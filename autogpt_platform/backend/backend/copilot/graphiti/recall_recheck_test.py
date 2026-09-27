@@ -1,8 +1,10 @@
-"""Unit tests for ``recall_recheck``: what a read is about to show is read
-again by uuid, and only what is still live or recallable is kept.
+"""Unit tests for ``recall_recheck``: what a read is about to show is checked
+again by uuid, facts and episodes in one statement, and only what is still
+live or recallable is kept.
 
 The live runs, a forget answering while warm context's cross-encoder or the
-``memory_search`` search is paused, are in ``recall_inflight_read_integration_test.py``.
+``memory_search`` search is paused, or once warm context's fact check has
+passed, are in ``recall_inflight_read_integration_test.py``.
 """
 
 from datetime import datetime, timezone
@@ -45,15 +47,24 @@ def _episode(uuid: str) -> EpisodicNode:
 
 
 def _client(still: set[str]) -> MagicMock:
-    """The scope's graphiti client, whose driver's re-read finds only the
-    uuids in ``still``."""
+    """The scope's graphiti client, whose driver finds only the uuids in
+    ``still``, in one row as the statement returns them."""
 
-    async def execute_query(query: str, *, uuids: list[str]):
-        return [{"uuid": uuid} for uuid in uuids if uuid in still], [], None
+    async def execute_query(
+        query: str, *, fact_uuids: list[str], episode_uuids: list[str]
+    ):
+        facts = [uuid for uuid in fact_uuids if uuid in still]
+        episodes = [uuid for uuid in episode_uuids if uuid in still]
+        return [{"facts": facts, "episodes": episodes}], [], None
 
     client = MagicMock()
     client.driver.execute_query = AsyncMock(side_effect=execute_query)
     return client
+
+
+async def _recheck(client: MagicMock, *args, **kwargs):
+    with patch.object(recall, "get_graphiti_client", AsyncMock(return_value=client)):
+        return await recall_recheck.recheck(_SCOPE, *args, **kwargs)
 
 
 class TestRecheck:
@@ -61,37 +72,30 @@ class TestRecheck:
     async def test_keeps_only_what_is_still_live_or_recallable_in_order(
         self,
     ) -> None:
-        client = _client({"f3", "f1", "ep2"})
         facts = [_fact("f1"), _fact("f2"), _fact("f3")]
         episodes = [_episode("ep1"), _episode("ep2")]
-        get_client = AsyncMock(return_value=client)
-        with patch.object(recall, "get_graphiti_client", get_client):
-            kept, recalled = await recall_recheck.recheck(_SCOPE, facts, episodes)
 
-        get_client.assert_awaited_once_with(_SCOPE.group_id)
+        kept, recalled = await _recheck(_client({"f3", "f1", "ep2"}), facts, episodes)
+
         assert [f.uuid for f in kept] == ["f1", "f3"]
         assert [e.uuid for e in recalled] == ["ep2"]
 
     @pytest.mark.asyncio
-    async def test_reads_facts_with_the_live_test_and_episodes_with_the_recallable_one(
-        self,
-    ) -> None:
+    async def test_facts_and_episodes_are_checked_in_one_statement(self) -> None:
+        """No forget can land between the check of a fact and of an episode
+        (a split check let one through: ``r6-read-split-check.py``)."""
         client = _client(set())
-        with patch.object(
-            recall, "get_graphiti_client", AsyncMock(return_value=client)
-        ):
-            await recall_recheck.recheck(
-                _SCOPE, [_fact("f1")], [_episode("ep1")], include_tentative=False
-            )
 
-        queries = {
-            call.kwargs["uuids"][0]: call.args[0]
-            for call in client.driver.execute_query.await_args_list
-        }
-        assert recall.live_fact_predicate("e", include_tentative=False) in queries["f1"]
-        assert queries["ep1"].startswith(recall.forgotten_facts_clause())
-        assert recall.recallable_episode_predicate("e") in queries["ep1"]
-        assert "e.uuid IN $uuids" in queries["ep1"]
+        await _recheck(
+            client, [_fact("f1")], [_episode("ep1")], include_tentative=False
+        )
+
+        [call] = client.driver.execute_query.await_args_list
+        query = call.args[0]
+        assert query.startswith(recall.forgotten_facts_clause())
+        assert recall.live_fact_predicate("fact", include_tentative=False) in query
+        assert recall.recallable_episode_predicate("episode") in query
+        assert call.kwargs == {"fact_uuids": ["f1"], "episode_uuids": ["ep1"]}
 
     @pytest.mark.asyncio
     async def test_nothing_to_show_reads_nothing(self) -> None:
@@ -102,13 +106,18 @@ class TestRecheck:
         get_client.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_no_answer_shows_nothing(self) -> None:
+        client = MagicMock()
+        client.driver.execute_query = AsyncMock(return_value=([], [], None))
+
+        assert await _recheck(client, [_fact("f1")], [_episode("ep1")]) == ([], [])
+
+    @pytest.mark.asyncio
     async def test_a_failed_read_raises_for_the_caller_to_degrade(self) -> None:
         """Warm context then shows no context and memory_search reports
         itself unavailable: nothing is shown unchecked."""
         client = _client(set())
         client.driver.execute_query.side_effect = RuntimeError("falkordb down")
-        with patch.object(
-            recall, "get_graphiti_client", AsyncMock(return_value=client)
-        ):
-            with pytest.raises(RuntimeError):
-                await recall_recheck.recheck(_SCOPE, [_fact("f1")], [])
+
+        with pytest.raises(RuntimeError):
+            await _recheck(client, [_fact("f1")], [])
