@@ -417,9 +417,11 @@ async def read_lock_token(pass_id: str) -> str | None:
     """Dream-lock ownership token persisted alongside the input bundle.
 
     None when the bundle is gone (TTL expired or already cleaned up), is
-    corrupted, or was written while no lock was held — the caller then
-    leaves the lock to its TTL rather than risking a blind delete of a
-    newer pass's lock.
+    corrupted, or was written while no lock was held. The batch paths then
+    go by the lease token the pass's row keeps
+    (``batch_outcome.lock_token_of``); with no token anywhere the pass's
+    ownership of the lock is unknown, and the lock is left held rather
+    than risking a blind delete of a newer pass's lock.
     """
     from backend.data.redis_client import get_redis_async
 

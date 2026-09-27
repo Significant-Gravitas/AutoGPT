@@ -180,7 +180,8 @@ async def remove_pending(provider_batch_id: str) -> None:
     atomically tombstones + HDELs in one Lua script so concurrent
     walkers (or a crash-replay) can never double-dispatch. The walk
     loop's only callers are the refused-claim zombie cleanups on the
-    ended, failed, and lifetime-timeout paths — clearing a pending row
+    ended, failed, and lifetime-timeout paths, and a drop whose claim
+    another walker already took (``_drop``) — each clearing a pending row
     whose batch already carries a dispatch tombstone.
     """
     from backend.data.redis_client import get_redis_async
