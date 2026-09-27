@@ -65,7 +65,7 @@
         "subject": {
           "kind": "tool",
           "key": "delete_folder",
-          "name": "Delete folder",
+          "name": "Delete library folder",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -73,7 +73,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Delete library folder",
           "object": "Q3 reports",
@@ -297,8 +297,8 @@
           }
         ],
         "reference_totals": {
-          "agent_ids": 7,
-          "folder_id": 1
+          "folder_id": 1,
+          "agent_ids": 7
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -306,7 +306,7 @@
         "subject": {
           "kind": "tool",
           "key": "move_agents_to_folder",
-          "name": "Move agents to folder",
+          "name": "Move agents into library folder",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -314,7 +314,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Move agents into library folder",
           "object": "Archive",
@@ -393,7 +393,7 @@
         "subject": {
           "kind": "tool",
           "key": "pause_schedule",
-          "name": "Pause schedule",
+          "name": "Pause a schedule",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -401,7 +401,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Pause a schedule",
           "object": "Daily digest",
@@ -478,7 +478,7 @@
         "subject": {
           "kind": "tool",
           "key": "hire_expert",
-          "name": "Hire expert",
+          "name": "Hire",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -486,7 +486,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Hire",
           "object": "Ada",
@@ -564,7 +564,7 @@
         "subject": {
           "kind": "tool",
           "key": "message_session",
-          "name": "Message session",
+          "name": "Message another chat",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -572,7 +572,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Message another chat",
           "object": "Q3 planning",
@@ -663,8 +663,8 @@
           }
         ],
         "reference_totals": {
-          "expert_id": 1,
-          "credential_id": 1
+          "credential_id": 1,
+          "expert_id": 1
         },
         "tool_call_id": "call-grant_expert_credential",
         "turn": 1,
@@ -672,7 +672,7 @@
         "subject": {
           "kind": "tool",
           "key": "grant_expert_credential",
-          "name": "Grant expert credential",
+          "name": "Give a teammate an account",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -680,7 +680,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Give a teammate an account",
           "object": "GitHub (work)",
@@ -759,7 +759,7 @@
         "subject": {
           "kind": "tool",
           "key": "edit_agent",
-          "name": "Edit agent",
+          "name": "Edit an agent",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -767,7 +767,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Edit an agent",
           "object": "Morning digest",
@@ -842,7 +842,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Update preset",
           "object": "Weekly digest",
@@ -909,7 +909,7 @@
         "subject": {
           "kind": "tool",
           "key": "delete_preset",
-          "name": "Delete preset",
+          "name": "Delete a preset",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -917,7 +917,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Delete a preset",
           "object": "New invoice email",
@@ -984,7 +984,7 @@
         "subject": {
           "kind": "tool",
           "key": "schedule_routine",
-          "name": "Schedule routine",
+          "name": "Schedule a routine",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -992,7 +992,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Schedule a routine",
           "object": "Month-end close",
@@ -1098,7 +1098,7 @@
         "subject": {
           "kind": "tool",
           "key": "install_expert_workflow",
-          "name": "Install expert workflow",
+          "name": "Give a teammate a workflow",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -1106,7 +1106,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Give a teammate a workflow",
           "object": null,
@@ -1166,7 +1166,7 @@
         "subject": {
           "kind": "tool",
           "key": "remove_expert_workflow",
-          "name": "Remove expert workflow",
+          "name": "Take a workflow from a teammate",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -1174,7 +1174,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Take a workflow from a teammate",
           "object": "Receipt matcher",
@@ -1247,7 +1247,7 @@
         "subject": {
           "kind": "tool",
           "key": "confirm_expert_change",
-          "name": "Confirm expert change",
+          "name": "Confirm the team change",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -1255,7 +1255,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Confirm the team change",
           "object": "Grace",
@@ -1353,7 +1353,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Delete workspace file",
           "object": "/reports/q3-report.pdf",
@@ -1413,7 +1413,7 @@
         "subject": {
           "kind": "tool",
           "key": "delete_preset",
-          "name": "Delete preset",
+          "name": "Delete a preset",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -1421,7 +1421,7 @@
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": [],
+        "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Delete a preset",
           "object": null,

@@ -10,6 +10,7 @@ import {
   isBare,
   isHeldRead,
   reasonLine,
+  ruleSubjectName,
 } from "../../helpers";
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
@@ -45,7 +46,7 @@ export function ApprovalCard({
     <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
       <ApproveSplitButton
         label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
-        subjectName={item.subject.name}
+        subjectName={ruleSubjectName(item.subject)}
         expertName={expertName}
         rules={read || item.spend ? [] : item.chatRulesAllowed}
         loading={status === "approving"}
