@@ -32,6 +32,7 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     ResultMessage,
     StreamEvent,
+    SystemMessage,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -205,6 +206,7 @@ from ..transcript import (
 )
 from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
 from .compaction import (
+    CompactionResult,
     CompactionStats,
     CompactionTracker,
     filter_compaction_messages,
@@ -365,16 +367,18 @@ async def _open_sdk_compaction_row(
 
 
 async def _measure_sdk_compaction(
-    ctx: "_StreamContext", state: "_RetryState"
+    ctx: "_StreamContext", state: "_RetryState", *, final: bool = True
 ) -> tuple[bool, list[dict] | None, CompactionStats | None, str | None]:
     """Read what the CLI kept after compacting and size the row's payoff.
 
     Runs before the row closes so the settled output carries the numbers.
     Returns ``(measured, compacted, stats, after_source)``: ``measured``
-    is False when no cycle was pending, and the compacted entries are
-    handed back so the caller can sync the transcript builder without a
-    second read. ``after_source`` names how the post-compaction read
-    resolved so a missing after-count stays diagnosable downstream.
+    is False when no cycle was pending — or, unless *final*, when the
+    session file does not hold this cycle's summary yet, so the cycle
+    stays open for the next message.  The compacted entries are handed
+    back so the caller can sync the transcript builder without a second
+    read. ``after_source`` names how the post-compaction read resolved so
+    a missing after-count stays diagnosable downstream.
     """
     # Let a PreCompact hook that raced this message land before we look —
     # ``emit_end_if_ready`` yields for the same reason.
@@ -385,6 +389,16 @@ async def _measure_sdk_compaction(
     compacted, after_source = await asyncio.to_thread(
         read_compacted_entries_detailed, path
     )
+    after_source = ctx.compaction.resolve_after_source(compacted, after_source)
+    if after_source in ("no_summary_line", "stale_summary"):
+        if not final:
+            # The boundary marker can land a beat before the summary line
+            # is on disk.  Leave the cycle open; the next message reads
+            # again and the turn's ResultMessage settles it either way.
+            return False, None, None, None
+        compacted = None
+    else:
+        ctx.compaction.note_summary(compacted)
     stats = await asyncio.to_thread(
         sdk_compaction_stats,
         state.transcript_builder.entries_as_dicts(),
@@ -715,11 +729,33 @@ async def _consume_sdk_until_done(
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
-        measured, compacted, end_stats, after_source = await _measure_sdk_compaction(
-            ctx, state
+        #
+        # ``status`` (and ``init``) system messages keep arriving while the
+        # CLI is still writing the summary — closing on those read the
+        # session file too early: a false "no readable summary" alarm on
+        # the first cycle, the previous cycle's summary counted as the
+        # second's.  A cycle closes on the CLI's own ``compact_boundary``
+        # or on the next non-system message; the ResultMessage closes it
+        # unconditionally so nothing leaks across turns.
+        closes_cycle = not isinstance(sdk_msg, SystemMessage) or (
+            sdk_msg.subtype == "compact_boundary"
         )
-        compact_result = await ctx.compaction.emit_end_if_ready(
-            ctx.session, end_stats, after_source=after_source
+        if closes_cycle:
+            measured, compacted, end_stats, after_source = (
+                await _measure_sdk_compaction(
+                    ctx, state, final=isinstance(sdk_msg, ResultMessage)
+                )
+            )
+        else:
+            measured, compacted, end_stats, after_source = False, None, None, None
+        # Close the row only with the measurement in hand: a pending cycle
+        # that is still waiting for its summary must stay open.
+        compact_result = (
+            await ctx.compaction.emit_end_if_ready(
+                ctx.session, end_stats, after_source=after_source
+            )
+            if measured
+            else CompactionResult()
         )
         if compact_result.events:
             # Compaction events end with StreamFinishStep; open blocks must

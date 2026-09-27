@@ -488,7 +488,7 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
 
 
 AfterSource = Literal[
-    "read", "no_summary_line", "unreadable", "no_path", "outside_base"
+    "read", "stale_summary", "no_summary_line", "unreadable", "no_path", "outside_base"
 ]
 """How the post-compaction read behind a row/event resolved."""
 

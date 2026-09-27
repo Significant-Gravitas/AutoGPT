@@ -378,10 +378,16 @@ class CompactionTracker:
         self._attempted_sources: list[str] = []
         self._completed_sources: list[str] = []
         # SDK-internal cycles that ended without a readable summary, by
-        # ``after_source``.  A cycle *ends* when the next message arrives
-        # whether or not the CLI wrote anything, so ``completed_count``
-        # alone cannot tell a compaction that landed from one that did not.
+        # ``after_source``.  A cycle *ends* on the CLI's ``compact_boundary``
+        # or the next non-system message, whether or not the CLI wrote
+        # anything, so ``completed_count`` alone cannot tell a compaction
+        # that landed from one that did not.
         self._failed_cycle_sources: list[str] = []
+        # uuid of the summary entry the last closed cycle read.  The CLI
+        # appends every cycle's summary to one session file and the read
+        # takes the last one, so until the new summary lands a read returns
+        # the *previous* cycle's — which must not be counted twice.
+        self._last_summary_uuid: str | None = None
         self._pre_query_tool_call_id: str = ""
         # The turn's Langfuse trace id, set by the service once the turn
         # span is open so every compaction event is pinned to that trace
@@ -567,6 +573,30 @@ class CompactionTracker:
     def start_stats(self) -> "CompactionStats | None":
         """Counts measured when the open row was emitted, if any."""
         return self._start_stats
+
+    def resolve_after_source(
+        self, compacted: list[dict] | None, after_source: str
+    ) -> str:
+        """``stale_summary`` when a read found only the previous cycle's summary.
+
+        Measured against CLI 2.1.274: the PreCompact hook fires, ``status``
+        system messages keep arriving for ~30 s while the CLI summarises,
+        and only then does the summary line reach the session file.  A read
+        in that window sees either no summary or the one from the cycle
+        before; the second case used to be reported as this cycle's payoff.
+        """
+        if compacted and after_source == "read":
+            uuid = compacted[0].get("uuid")
+            if uuid and uuid == self._last_summary_uuid:
+                return "stale_summary"
+        return after_source
+
+    def note_summary(self, compacted: list[dict] | None) -> None:
+        """Remember which summary the closing cycle read."""
+        if compacted:
+            uuid = compacted[0].get("uuid")
+            if uuid:
+                self._last_summary_uuid = uuid
 
     def emit_start_if_ready(
         self, stats: "CompactionStats | None" = None

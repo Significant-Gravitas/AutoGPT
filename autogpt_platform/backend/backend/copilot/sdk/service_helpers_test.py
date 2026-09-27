@@ -2694,3 +2694,69 @@ class TestContextLimitWithoutCompaction:
 
     def test_quiet_on_our_own_retries(self):
         assert _context_limit_without_compaction(1, CompactionTracker()) is None
+
+
+class TestMeasureSdkCompactionWaitsForTheSummary:
+    """Measured against CLI 2.1.274: the summary lands ~30 s after PreCompact."""
+
+    @staticmethod
+    def _ctx_state():
+        tracker = CompactionTracker()
+        tracker.on_compact("/projects/s/s.jsonl")
+        ctx = MagicMock()
+        ctx.compaction = tracker
+        state = MagicMock()
+        state.transcript_builder.entries_as_dicts.return_value = []
+        return tracker, ctx, state
+
+    @pytest.mark.asyncio
+    async def test_no_summary_yet_keeps_the_cycle_open_until_final(self):
+        from backend.copilot.sdk import service as svc
+
+        _, ctx, state = self._ctx_state()
+        with (
+            patch.object(
+                svc,
+                "read_compacted_entries_detailed",
+                return_value=(None, "no_summary_line"),
+            ),
+            patch.object(svc, "sdk_compaction_stats", return_value=None),
+        ):
+            assert await svc._measure_sdk_compaction(ctx, state, final=False) == (
+                False,
+                None,
+                None,
+                None,
+            )
+            measured, compacted, _, after = await svc._measure_sdk_compaction(
+                ctx, state, final=True
+            )
+        assert measured is True and compacted is None
+        assert after == "no_summary_line"
+
+    @pytest.mark.asyncio
+    async def test_previous_cycles_summary_is_stale_not_this_cycles(self):
+        from backend.copilot.sdk import service as svc
+
+        tracker, ctx, state = self._ctx_state()
+        old = [{"uuid": "cs1", "isCompactSummary": True}]
+        tracker.note_summary(old)
+        new = [{"uuid": "cs2", "isCompactSummary": True}]
+        with patch.object(svc, "sdk_compaction_stats", return_value=None):
+            with patch.object(
+                svc, "read_compacted_entries_detailed", return_value=(old, "read")
+            ):
+                assert await svc._measure_sdk_compaction(ctx, state, final=False) == (
+                    False,
+                    None,
+                    None,
+                    None,
+                )
+            with patch.object(
+                svc, "read_compacted_entries_detailed", return_value=(new, "read")
+            ):
+                measured, compacted, _, after = await svc._measure_sdk_compaction(
+                    ctx, state, final=False
+                )
+        assert measured is True and compacted == new and after == "read"
+        assert tracker.resolve_after_source(new, "read") == "stale_summary"
