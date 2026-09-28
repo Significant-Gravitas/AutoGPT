@@ -41,7 +41,10 @@ export function useExpertAvatarPicker({
     generatedUrl ?? uploadedUrl ?? resolveExpertAvatarUrl(avatarUrl);
 
   useMountEffect(() => {
-    if (autoGenerate) generate();
+    if (!autoGenerate) return;
+    // Let StrictMode finish its cleanup before attaching a mutation observer.
+    const timeout = setTimeout(generate, 0);
+    return () => clearTimeout(timeout);
   });
 
   function generate() {

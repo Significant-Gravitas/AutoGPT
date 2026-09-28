@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
+import { StrictMode } from "react";
 import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
 
 import { DEFAULT_EXPERT_AVATAR_URL } from "../ExpertAvatar/helpers";
@@ -52,6 +53,31 @@ test("auto-generates on mount, showing the General artwork until it lands", asyn
     screen.getByRole("button", { name: "Use this avatar" }),
   );
   expect(onPick).toHaveBeenCalledWith("https://cdn.test/generated.png");
+});
+
+test("StrictMode starts one automatic job and still allows regeneration", async () => {
+  const requests: unknown[] = [];
+  server.use(...completesAs("https://cdn.test/generated.png", requests));
+  render(
+    <StrictMode>
+      <ExpertAvatarPicker
+        name="Nova"
+        category="finance"
+        autoGenerate
+        onPick={vi.fn()}
+      />
+    </StrictMode>,
+  );
+
+  await waitFor(() =>
+    expect(
+      screen.getByRole("img", { name: "Nova" }).getAttribute("src"),
+    ).toContain("generated.png"),
+  );
+  expect(requests).toHaveLength(1);
+
+  await userEvent.click(screen.getByRole("button", { name: "Regenerate" }));
+  await waitFor(() => expect(requests).toHaveLength(2));
 });
 
 test("regenerating rolls every trait but the category", async () => {
