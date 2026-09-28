@@ -184,7 +184,7 @@ class DelegateToExpertTool(BaseTool):
         refusal = await chain_refusal(user_id, session, target)
         if refusal is not None:
             return self._error(refusal, session)
-        terms = await delegation_terms(user_id, session)
+        terms = await delegation_terms(user_id, session, target.id)
         if isinstance(terms, str):
             return self._error(terms, session)
 

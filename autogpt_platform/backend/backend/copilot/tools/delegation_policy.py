@@ -4,10 +4,12 @@ Two limits, set on Otto's Settings tab: a daily budget across every
 delegation (checked before a new hand-off starts) and a per-delegation cap
 (stored on the delegated thread, and checked whenever its status is read,
 since the tree ledger has no per-child ceiling to hand it). The settings'
-mode is the approval mode a thread Otto opens starts in.
+mode is the approval mode a thread Otto opens starts in, and Ask first for a
+teammate hired this week when ``new_experts_ask_first`` is on.
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 
@@ -22,6 +24,8 @@ from .sub_session_facts import MICRODOLLARS_PER_USD
 logger = logging.getLogger(__name__)
 
 CAP_REACHED = "cap reached"
+# How long a new hire's hand-offs start in Ask first, when the user asks for it.
+NEW_HIRE_WINDOW = timedelta(days=7)
 _UNCHECKED = (
     "Could not check today's delegation budget, so nothing was handed off. "
     "Try again in a moment."
@@ -35,7 +39,9 @@ class DelegationTerms(BaseModel):
     cap_usd: float
 
 
-async def delegation_terms(user_id: str, session: ChatSession) -> DelegationTerms | str:
+async def delegation_terms(
+    user_id: str, session: ChatSession, target_id: str
+) -> DelegationTerms | str:
     """The new thread's mode and cap, or why the hand-off may not start.
 
     Fails closed: a budget that cannot be read is not a budget with room.
@@ -44,6 +50,9 @@ async def delegation_terms(user_id: str, session: ChatSession) -> DelegationTerm
         settings = await delegation_db().get_delegation_settings(user_id)
         spent = await delegation_db().get_delegation_spend_since(
             user_id, start_of_utc_day()
+        )
+        new_hire = settings.new_experts_ask_first and await _hired_lately(
+            user_id, target_id
         )
     except Exception:
         logger.warning(f"Delegation budget unreadable for {user_id}", exc_info=True)
@@ -54,7 +63,16 @@ async def delegation_terms(user_id: str, session: ChatSession) -> DelegationTerm
     mode = (
         settings.mode if session.expert_id is None else session.metadata.autopilot_mode
     )
-    return DelegationTerms(mode=mode, cap_usd=settings.per_delegation_cap_usd)
+    return DelegationTerms(
+        mode="ask_first" if new_hire else mode,
+        cap_usd=settings.per_delegation_cap_usd,
+    )
+
+
+async def _hired_lately(user_id: str, expert_id: str) -> bool:
+    """Hired less than a week ago. An unknown hire date counts as new."""
+    hired_at = await delegation_db().get_expert_hired_at(user_id, expert_id)
+    return hired_at is None or datetime.now(UTC) - hired_at < NEW_HIRE_WINDOW
 
 
 async def enforce_cap(

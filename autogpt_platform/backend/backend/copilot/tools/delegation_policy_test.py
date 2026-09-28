@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,6 +25,9 @@ def settings_db(monkeypatch):
     )
     db.get_delegation_spend_since = AsyncMock(return_value=0)
     db.get_session_costs = AsyncMock(return_value={})
+    db.get_expert_hired_at = AsyncMock(
+        return_value=datetime.now(UTC) - timedelta(days=30)
+    )
     monkeypatch.setattr(
         "backend.copilot.tools.delegation_policy.delegation_db", lambda: db
     )
@@ -185,3 +189,31 @@ async def test_a_poll_stops_a_running_thread_past_its_stored_cap(
 
     assert (r.status, r.error) == ("error", "cap reached")
     cancel.assert_awaited_once_with("inner-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "hired_days_ago,toggle,expected",
+    [
+        (2, True, "ask_first"),
+        (8, True, "unsupervised"),
+        (2, False, "unsupervised"),
+    ],
+)
+async def test_a_newly_hired_teammate_starts_in_ask_first(
+    settings_db, delegate, hired_days_ago, toggle, expected
+):
+    """Only while the toggle is on, and only in the teammate's first week."""
+    create, _ = delegate
+    settings_db.get_delegation_settings.return_value = DelegationSettings(
+        mode="unsupervised", new_experts_ask_first=toggle
+    )
+    settings_db.get_expert_hired_at.return_value = datetime.now(UTC) - timedelta(
+        days=hired_days_ago
+    )
+
+    await _delegate(_parent(None))
+
+    assert create.await_args.kwargs["autopilot_mode"] == expected
+    # The hire date is only read while the toggle is on.
+    assert settings_db.get_expert_hired_at.await_count == (1 if toggle else 0)

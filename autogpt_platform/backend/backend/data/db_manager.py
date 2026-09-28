@@ -634,6 +634,7 @@ class DatabaseManager(AppService):
     get_session_costs = _(delegation_db.get_session_costs)
     get_delegation_spend_since = _(delegation_db.get_delegation_spend_since)
     get_delegation_settings = _(delegation_db.get_delegation_settings)
+    get_expert_hired_at = _(delegation_db.get_expert_hired_at)
 
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
@@ -1050,4 +1051,5 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_session_costs = d.get_session_costs
     get_delegation_spend_since = d.get_delegation_spend_since
     get_delegation_settings = d.get_delegation_settings
+    get_expert_hired_at = d.get_expert_hired_at
     add_chat_message = d.add_chat_message

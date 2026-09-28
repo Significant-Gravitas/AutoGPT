@@ -12,6 +12,7 @@ from backend.util.json import SafeJson
 from .delegation_db import (
     get_delegation_settings,
     get_delegation_spend_since,
+    get_expert_hired_at,
     get_session_costs,
     update_delegation_settings,
 )
@@ -125,3 +126,15 @@ async def test_settings_default_until_saved_then_round_trip(users):
     assert await update_delegation_settings(alice, saved) == saved
     assert await get_delegation_settings(alice) == saved
     assert await get_delegation_settings(bob) == DelegationSettings()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_date_is_only_the_owners_to_read(users):
+    alice, bob = users
+    bea = await _expert(alice)
+
+    hired = await get_expert_hired_at(alice, bea)
+
+    assert hired is not None
+    assert datetime.now(UTC) - hired < timedelta(minutes=5)
+    assert await get_expert_hired_at(bob, bea) is None

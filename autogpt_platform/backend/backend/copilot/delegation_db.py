@@ -9,7 +9,7 @@ filtered afterwards.
 
 from datetime import datetime
 
-from prisma.models import User
+from prisma.models import Expert, User
 
 from backend.copilot.delegation_settings import DelegationSettings
 from backend.data import db
@@ -85,3 +85,11 @@ async def update_delegation_settings(
         data={"delegationSettings": SafeJson(settings.model_dump())},
     )
     return settings
+
+
+async def get_expert_hired_at(user_id: str, expert_id: str) -> datetime | None:
+    """When *user_id* hired the expert; None if it is not theirs."""
+    expert = await Expert.prisma().find_first(
+        where={"id": expert_id, "ownerUserId": user_id}
+    )
+    return expert.createdAt if expert else None
