@@ -402,6 +402,25 @@ async def test_queue_pending_releases_the_claim_when_the_push_fails(
 
 
 @pytest.mark.asyncio
+async def test_queue_pending_retransmit_is_accepted_when_the_count_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The buffer length is informational, so a Redis error reading it still
+    answers the copy as accepted rather than failing it."""
+    _mock_queue_claims(monkeypatch, claimed=False)
+    monkeypatch.setattr(
+        helpers_module,
+        "peek_pending_count",
+        AsyncMock(side_effect=ConnectionError("down")),
+    )
+
+    result = await _queue_with_client_id()
+
+    assert result.turn_in_flight is True
+    assert result.buffer_length == 0
+
+
+@pytest.mark.asyncio
 async def test_check_pending_call_rate_at_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

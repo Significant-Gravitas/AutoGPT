@@ -315,8 +315,19 @@ async def already_accepted_response(session_id: str) -> QueuePendingMessageRespo
     client its message was taken, and ``False`` would make it fall back to
     ``POST /stream`` and send the message all over again.
     """
+    try:
+        buffer_length = await peek_pending_count(session_id)
+    except Exception as e:
+        # The count is informational. A Redis blip must not turn an accepted
+        # send into an error, which the client would answer by resending it.
+        logger.warning(
+            "pending_messages: buffer length lookup failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        buffer_length = 0
     return QueuePendingMessageResponse(
-        buffer_length=await peek_pending_count(session_id),
+        buffer_length=buffer_length,
         max_buffer_length=MAX_PENDING_MESSAGES,
         turn_in_flight=True,
     )
