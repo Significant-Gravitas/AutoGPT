@@ -2,33 +2,18 @@
 
 import { useState } from "react";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
-import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import { convertChatSessionMessagesToUiMessages } from "../../helpers/convertChatSessionToUiMessages";
-import {
-  type ChatDelegation,
-  type LiveDelegationStatus,
-  getChatDelegations,
-} from "../../delegations";
-
-const POLL_MS = 5000;
-
-function delegationsOf(session: SessionDetailResponse): ChatDelegation[] {
-  return getChatDelegations(
-    convertChatSessionMessagesToUiMessages(
-      session.id,
-      session.messages ?? [],
-      // A turn still streaming has calls with no result yet; marking them
-      // complete would read a hand-off in progress as stopped.
-      { isComplete: !session.active_stream },
-    ).messages,
-  );
-}
+import type { LiveDelegationStatus } from "../../delegations";
+import { delegationsOf, WORK_POLL_CAP_MS, workPollInterval } from "./workPoll";
 
 /** The chat's hand-offs, read off its own persisted transcript so the panel
  *  needs nothing from the chat column. Shares the chat's session query and
- *  keeps it fresh while any hand-off is still in flight. */
+ *  keeps it fresh while a teammate is live, as its probes report it. */
 export function useChatSessionDelegations(sessionId: string | null) {
-  const { data, isLoading, isError } = useGetV2GetSession(
+  const [liveStatuses, setLiveStatuses] = useState<
+    Record<string, LiveDelegationStatus>
+  >({});
+  const [armedAt, setArmedAt] = useState(() => Date.now());
+  const { data, isLoading, isError, refetch } = useGetV2GetSession(
     sessionId ?? "",
     undefined,
     {
@@ -36,33 +21,38 @@ export function useChatSessionDelegations(sessionId: string | null) {
         enabled: !!sessionId,
         refetchInterval: (query) => {
           const raw = query.state.data;
-          const session = raw && raw.status === 200 ? raw.data : null;
-          if (!session) return false;
-          const inFlight = delegationsOf(session).some(
-            (d) => d.status === "running" || d.status === "queued",
-          );
-          return inFlight || !!session.active_stream ? POLL_MS : false;
+          return workPollInterval({
+            session: raw && raw.status === 200 ? raw.data : null,
+            liveStatuses,
+            armedAt,
+            now: Date.now(),
+          });
         },
       },
     },
   );
   const session = data && data.status === 200 ? data.data : null;
-  return {
-    delegations: session ? delegationsOf(session) : [],
-    isLoading: isLoading && !session,
-    isError,
-  };
-}
 
-/** Each hand-off's live status as its probe reports it. */
-export function useLiveStatuses() {
-  const [liveStatuses, setLiveStatuses] = useState<
-    Record<string, LiveDelegationStatus>
-  >({});
   function reportStatus(toolCallId: string, status: LiveDelegationStatus) {
     setLiveStatuses((prev) =>
       prev[toolCallId] === status ? prev : { ...prev, [toolCallId]: status },
     );
   }
-  return { liveStatuses, reportStatus };
+
+  /** The user is looking again: restart a capped poll. */
+  function rearm() {
+    const now = Date.now();
+    setArmedAt(now);
+    // A capped poll has stopped; one fetch lets the interval decide again.
+    if (sessionId && now - armedAt > WORK_POLL_CAP_MS) void refetch();
+  }
+
+  return {
+    delegations: session ? delegationsOf(session) : [],
+    liveStatuses,
+    reportStatus,
+    rearm,
+    isLoading: isLoading && !session,
+    isError,
+  };
 }

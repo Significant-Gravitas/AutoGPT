@@ -35,6 +35,7 @@ export function WorkTab({ sessionId }: Props) {
     delegations,
     liveStatuses,
     reportStatus,
+    rearm,
     selected,
     select,
     isLoading,
@@ -62,7 +63,7 @@ export function WorkTab({ sessionId }: Props) {
   }
   if (selected) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" onPointerDown={rearm}>
         <DelegationDetail
           delegation={selected}
           chatSessionId={sessionId}
@@ -80,7 +81,10 @@ export function WorkTab({ sessionId }: Props) {
   const experts = countExperts(delegations);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4"
+      onPointerDown={rearm}
+    >
       <LiveDelegationProbes delegations={delegations} onStatus={reportStatus} />
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">

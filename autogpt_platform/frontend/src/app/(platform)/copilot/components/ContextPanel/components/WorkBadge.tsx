@@ -1,10 +1,7 @@
 "use client";
 
 import { LiveDelegationProbes } from "../../DelegationStatusLine/LiveDelegationProbes";
-import {
-  useChatSessionDelegations,
-  useLiveStatuses,
-} from "../useChatSessionDelegations";
+import { useChatSessionDelegations } from "../useChatSessionDelegations";
 
 interface Props {
   sessionId: string | null;
@@ -12,8 +9,8 @@ interface Props {
 
 /** How many hand-offs wait on the user: approvals plus questions. */
 export function WorkBadge({ sessionId }: Props) {
-  const { delegations } = useChatSessionDelegations(sessionId);
-  const { liveStatuses, reportStatus } = useLiveStatuses();
+  const { delegations, liveStatuses, reportStatus } =
+    useChatSessionDelegations(sessionId);
   const waiting = delegations.filter((delegation) => {
     const status = liveStatuses[delegation.toolCallId] ?? delegation.status;
     return status === "proposed" || status === "needs-input";
