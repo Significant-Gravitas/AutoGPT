@@ -9,6 +9,10 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.experts import delegation_routes
+from backend.api.features.experts.delegations import (
+    DelegationCounts,
+    DelegationListResponse,
+)
 from backend.api.features.experts.routes import router
 from backend.copilot.delegation_settings import DelegationSettings
 
@@ -91,3 +95,40 @@ def test_the_settings_route_is_not_taken_for_an_expert_id():
     assert paths.index("/experts/delegation-settings") < paths.index(
         "/experts/{expert_id}"
     )
+
+
+def test_the_list_passes_its_filters_for_the_caller(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+):
+    empty = DelegationListResponse(
+        delegations=[],
+        summary=DelegationCounts(
+            working=0, needs_you=0, completed=0, failed=0, spent_today_usd=0.0
+        ),
+    )
+    listing = mocker.patch.object(
+        delegation_routes.delegations,
+        "list_delegations",
+        AsyncMock(return_value=empty),
+    )
+
+    response = client.get(
+        "/experts/delegations",
+        params={"expert_id": "e1", "parent_session_id": "s1", "status": "running"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == empty.model_dump(mode="json")
+    listing.assert_awaited_once_with(
+        test_user_id,
+        expert_id="e1",
+        parent_session_id="s1",
+        status="running",
+        limit=50,
+    )
+
+
+def test_an_unknown_status_filter_is_refused():
+    response = client.get("/experts/delegations", params={"status": "sleeping"})
+
+    assert response.status_code == 422

@@ -5,6 +5,8 @@ gets these defaults. ``mode`` is the approval mode a thread Otto delegates
 starts in; the caps are enforced by ``delegate_to_expert``.
 """
 
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
 
 from backend.copilot.model import AutopilotMode
@@ -40,3 +42,8 @@ class DelegationSettingsUpdate(BaseModel):
     ask_before_external: bool
     ask_before_over_cap: bool
     new_experts_ask_first: bool
+
+
+def start_of_utc_day() -> datetime:
+    """Where "today" begins for the daily budget: midnight UTC."""
+    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)

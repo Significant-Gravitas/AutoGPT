@@ -8,11 +8,10 @@ mode is the approval mode a thread Otto opens starts in.
 """
 
 import logging
-from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
-from backend.copilot.delegation_settings import DelegationSettings
+from backend.copilot.delegation_settings import DelegationSettings, start_of_utc_day
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.data.db_accessors import delegation_db
@@ -44,7 +43,7 @@ async def delegation_terms(user_id: str, session: ChatSession) -> DelegationTerm
     try:
         settings = await delegation_db().get_delegation_settings(user_id)
         spent = await delegation_db().get_delegation_spend_since(
-            user_id, _start_of_day()
+            user_id, start_of_utc_day()
         )
     except Exception:
         logger.warning(f"Delegation budget unreadable for {user_id}", exc_info=True)
@@ -85,10 +84,6 @@ async def enforce_cap(
             ),
         }
     )
-
-
-def _start_of_day() -> datetime:
-    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _budget_spent(spent: int, settings: DelegationSettings) -> str:

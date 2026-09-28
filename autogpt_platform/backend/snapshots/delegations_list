@@ -1,0 +1,146 @@
+{
+  "delegations": [
+    {
+      "brief": "Revamp onboarding",
+      "cost_usd": null,
+      "created_at": "2026-09-28T11:31:00Z",
+      "elapsed_seconds": null,
+      "expert": {
+        "avatar_url": null,
+        "color": "",
+        "id": "<expert>",
+        "name": "Alex",
+        "role": "Product Manager"
+      },
+      "files_count": 0,
+      "finished_at": null,
+      "parent_session_id": "<otto>",
+      "question": null,
+      "question_options": [],
+      "review_id": "<review>",
+      "status": "proposed",
+      "sub_session_id": null,
+      "title": "Revamp onboarding"
+    },
+    {
+      "brief": "Write the FAQ",
+      "cost_usd": 0.0,
+      "created_at": "2026-09-28T11:21:00Z",
+      "elapsed_seconds": null,
+      "expert": {
+        "avatar_url": null,
+        "color": "violet",
+        "id": "<expert>",
+        "name": "Alex",
+        "role": "Product Manager"
+      },
+      "files_count": 0,
+      "finished_at": null,
+      "parent_session_id": "<otto>",
+      "question": null,
+      "question_options": [],
+      "review_id": null,
+      "status": "running",
+      "sub_session_id": "working",
+      "title": "Write the FAQ"
+    },
+    {
+      "brief": "Plan the launch",
+      "cost_usd": 0.0,
+      "created_at": "2026-09-28T11:11:00Z",
+      "elapsed_seconds": 120.0,
+      "expert": {
+        "avatar_url": null,
+        "color": "violet",
+        "id": "<expert>",
+        "name": "Alex",
+        "role": "Product Manager"
+      },
+      "files_count": 0,
+      "finished_at": "2026-09-28T11:13:00Z",
+      "parent_session_id": "<otto>",
+      "question": "Which release?",
+      "question_options": [
+        "Q4",
+        "December"
+      ],
+      "review_id": null,
+      "status": "needs_input",
+      "sub_session_id": "asking",
+      "title": "Plan the launch"
+    },
+    {
+      "brief": "Email Dana",
+      "cost_usd": 0.0,
+      "created_at": "2026-09-28T11:01:00Z",
+      "elapsed_seconds": 120.0,
+      "expert": {
+        "avatar_url": null,
+        "color": "violet",
+        "id": "<expert>",
+        "name": "Alex",
+        "role": "Product Manager"
+      },
+      "files_count": 0,
+      "finished_at": "2026-09-28T11:03:00Z",
+      "parent_session_id": "<otto>",
+      "question": null,
+      "question_options": [],
+      "review_id": null,
+      "status": "cancelled",
+      "sub_session_id": "stopped",
+      "title": "Email Dana"
+    },
+    {
+      "brief": "Pull Q3 numbers",
+      "cost_usd": 0.0,
+      "created_at": "2026-09-28T10:51:00Z",
+      "elapsed_seconds": 120.0,
+      "expert": {
+        "avatar_url": null,
+        "color": "violet",
+        "id": "<expert>",
+        "name": "Alex",
+        "role": "Product Manager"
+      },
+      "files_count": 0,
+      "finished_at": "2026-09-28T10:53:00Z",
+      "parent_session_id": "<otto>",
+      "question": null,
+      "question_options": [],
+      "review_id": null,
+      "status": "failed",
+      "sub_session_id": "failed",
+      "title": "Pull Q3 numbers"
+    },
+    {
+      "brief": "Draft the PRD",
+      "cost_usd": 0.31,
+      "created_at": "2026-09-28T10:41:00Z",
+      "elapsed_seconds": 120.0,
+      "expert": {
+        "avatar_url": null,
+        "color": "violet",
+        "id": "<expert>",
+        "name": "Alex",
+        "role": "Product Manager"
+      },
+      "files_count": 1,
+      "finished_at": "2026-09-28T10:43:00Z",
+      "parent_session_id": "<otto>",
+      "question": null,
+      "question_options": [],
+      "review_id": null,
+      "status": "completed",
+      "sub_session_id": "done",
+      "title": "Draft the PRD"
+    }
+  ],
+  "summary": {
+    "completed": 1,
+    "failed": 1,
+    "needs_you": 2,
+    "spent_today_usd": 0.31,
+    "working": 1
+  }
+}
