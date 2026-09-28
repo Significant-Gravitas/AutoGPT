@@ -24,6 +24,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 """
 
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 from itertools import product
 from types import SimpleNamespace
@@ -393,15 +394,25 @@ class _Boundary:
         """The fixture closes the driver."""
 
 
-# A write on the hub that computes for a second or so before its SET: it
-# holds FalkorDB's writer meanwhile, and reads still run beside it. The sum
-# depends on the matched node, so it is computed as the query runs, not
-# folded when it is planned.
+# A write on the hub that holds FalkorDB's writer until the server's clock is
+# $hold_ms past the write's start, then sets a property; reads still run
+# beside it. It reads the clock on every row it counts (``0 * j`` keeps the
+# planner from testing it once, before the count), so how long it holds does
+# not depend on the machine's speed. The count is capped, and it holds no
+# more memory than two short lists.
 _BLOCKER = (
     "MATCH (n:Entity {uuid: 'hub'}) "
-    "WITH n, reduce(total = 0, i IN range(1, 40000000 + size(n.uuid)) | total + i)"
-    " AS s SET n.barrier = s RETURN s // holds the writer"
+    "WITH n, timestamp() + $hold_ms AS until "
+    "UNWIND range(1, 10000) AS i "
+    "UNWIND range(1, 100000) AS j "
+    "WITH n, until WHERE timestamp() + 0 * j >= until "
+    "WITH n, until LIMIT 1 "
+    "SET n.barrier = until RETURN until // holds the writer"
 )
+# The writer is held at least this long, and ten times as long as the stage
+# had run when the retraction arrived, so a slower machine waits longer.
+_HOLD_SECONDS = 5.5
+_HOLD_FACTOR = 10
 
 
 class _Queued(_Boundary):
@@ -420,8 +431,16 @@ class _Queued(_Boundary):
         self.others = [_open(group_id), _open(group_id)]
         self.blocker: asyncio.Task | None = None
         self.queued: asyncio.Task | None = None
+        self.hold = self.first_query_at = self.held_from = self.released_at = 0.0
+
+    def held_seconds(self) -> float:
+        """How long the blocker held the writer, from its sending to its
+        reply."""
+        assert self.blocker is not None and self.blocker.done(), "no blocker ran"
+        return self.released_at - self.held_from
 
     async def execute_query(self, query: str, **params: Any) -> Any:
+        self.first_query_at = self.first_query_at or time.perf_counter()
         if self.queued is not None or params.get("reason") != self.reason:
             return await super().execute_query(query, **params)
         await self._hold_the_writer()
@@ -437,7 +456,13 @@ class _Queued(_Boundary):
             await other.close()
 
     async def _hold_the_writer(self) -> None:
-        self.blocker = asyncio.create_task(self.others[0].execute_query(_BLOCKER))
+        so_far = time.perf_counter() - self.first_query_at
+        self.hold = max(_HOLD_SECONDS, _HOLD_FACTOR * so_far)
+        self.held_from = time.perf_counter()
+        self.blocker = asyncio.create_task(
+            self.others[0].execute_query(_BLOCKER, hold_ms=int(self.hold * 1000))
+        )
+        self.blocker.add_done_callback(self._released)
         for _ in range(5000):
             info = str(
                 await self.redis.execute_command(
@@ -449,6 +474,9 @@ class _Queued(_Boundary):
             assert not self.blocker.done(), "the blocker finished before it was seen"
             await asyncio.sleep(0.001)
         raise AssertionError("the blocker never ran")
+
+    def _released(self, _: asyncio.Task) -> None:
+        self.released_at = time.perf_counter()
 
 
 def _open(group_id: str) -> AutoGPTFalkorDriver:
@@ -789,18 +817,31 @@ async def test_a_write_still_queued_at_the_final_read_leaves_the_count_provision
     another write, the pass's call raises, and the final read overtakes it.
     The read finds A live, as it then is, and counts it; the retraction
     lands after the stage returned. The count is provisional because a
-    write's outcome is unknown, never complete."""
+    write's outcome is unknown, never complete. The blocker holds the writer
+    for ``_HOLD_SECONDS`` or more whatever the server's speed, and the test
+    fails loudly if the stage ever takes more than half as long."""
     driver, scope = scope_graph
     await _edge(driver, scope.group_id, "A", source="hub")
     assert await stamp_recalls(driver, ["A"], owner=_OWNER) == 1
     boundary = _Queued(driver, live_lock, scope.group_id, reason="user_signal")
     try:
+        started = time.perf_counter()
         results = await _stage(mocker, scope, ops, {"A"}, boundary)
+        stage_seconds = time.perf_counter() - started
         still_queued = boundary.queued is not None and not boundary.queued.done()
         at_return = await _statuses(driver, ["A"])
     finally:
         await boundary.drain()
 
+    held = boundary.held_seconds()
+    assert held >= 0.95 * boundary.hold, (
+        f"the blocker held FalkorDB's writer for {held:.2f}s of its "
+        f"{boundary.hold:.2f}s"
+    )
+    assert stage_seconds < held / 2, (
+        f"the in-flight margin was exceeded: the stage took {stage_seconds:.2f}s, "
+        f"more than half the {held:.2f}s the blocker held FalkorDB's writer"
+    )
     assert still_queued, "the retraction was still queued when the stage returned"
     assert at_return == {"A": "active"}
     assert results.demotions[0].protected is True

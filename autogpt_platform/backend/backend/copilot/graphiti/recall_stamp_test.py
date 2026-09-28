@@ -167,7 +167,10 @@ class TestTheHooks:
         driver.execute_query = AsyncMock(side_effect=execute)
         mocker.patch.object(ratification_mod, "open_driver", return_value=driver)
 
-        assert await ratification_mod.try_ratify_on_hit(_SCOPE, ["e1"]) == 1
+        promoted = await ratification_mod.try_ratify_on_hit(_SCOPE, ["e1"])
+
+        # The stamp is not a ratification write: the count stands.
+        assert (promoted.promoted_count, promoted.accounting_complete) == (1, True)
 
     @pytest.mark.asyncio
     async def test_memory_search_counts_the_hit_and_stamps_its_scope(

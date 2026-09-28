@@ -208,6 +208,39 @@ async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
     assert "WHERE e.status = 'tentative' AND e.expired_at IS NULL" in promote.args[0]
     assert "AND e.forgotten_at IS NULL" in promote.args[0]
     stub_supersede.assert_not_awaited()
+    # Matching nothing is a known outcome: no error, and the counts stand.
+    assert (result.per_edge_errors, result.accounting_complete) == ([], True)
+
+
+@pytest.mark.asyncio
+async def test_a_promotion_whose_outcome_is_unknown_leaves_the_counts_provisional(
+    mocker, fake_redis, stub_supersede
+):
+    """Hits say promote, and the promotion's write raises. It may have
+    committed, never arrived, or still land, so the edge is neither counted
+    as ratified nor as a failure, and the sweep's counts are provisional."""
+    edges = [
+        {"uuid": "edge-lost", "created_at": _hours_ago(2)},
+        {"uuid": "edge-hot", "created_at": _hours_ago(2)},
+    ]
+    driver = _make_driver(records_for_list=edges)
+    answer = driver.execute_query.side_effect
+
+    async def lose_one_promotion(query: str, **kwargs):
+        if "ratified_at" in query and kwargs.get("uuid") == "edge-lost":
+            raise TimeoutError("the promotion's reply was lost")
+        return await answer(query, **kwargs)
+
+    driver.execute_query.side_effect = lose_one_promotion
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
+    fake_redis.hits.update({"edge-lost": 1, "edge-hot": 1})
+
+    result = await run_ratification_pass("u-lost")
+
+    assert result.ratified_count == 1
+    assert result.per_edge_errors == ["edge-lost: promote_outcome_unknown"]
+    assert result.accounting_complete is False
+    stub_supersede.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -468,6 +501,9 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     assert result.superseded_count == 1
     assert len(result.per_edge_errors) == 1
     assert "edge-poison" in result.per_edge_errors[0]
+    # The poison edge failed before any write (its hit count could not be
+    # read): a known outcome, so the counts stand.
+    assert result.accounting_complete is True
     scope = MemoryScope.build("u-mixed", expert_id)
     assert fake_redis.get_calls == [
         scope.redis_key("hits", edge_uuid="edge-good-hot"),
@@ -530,7 +566,7 @@ async def test_try_ratify_on_hit_empty_edge_list_returns_zero_without_redis_or_c
 
     promoted = await ratification_mod.try_ratify_on_hit(MemoryScope.for_user("u1"), [])
 
-    assert promoted == 0
+    assert (promoted.promoted_count, promoted.accounting_complete) == (0, True)
     record_spy.assert_not_called()
     driver_spy.assert_not_called()
 
@@ -588,13 +624,14 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
         MemoryScope.for_user("u1"), ["edge-1", "edge-2", "edge-3"]
     )
 
-    assert promoted == 2
+    assert (promoted.promoted_count, promoted.accounting_complete) == (2, True)
 
 
 @pytest.mark.asyncio
 async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
     """One bad Cypher call mustn't poison the rest of the retrieved
-    edges — log + continue."""
+    edges — log + continue. Its promotion may have committed, never arrived,
+    or still land, so the count is provisional."""
     mocker.patch.object(ratification_mod, "record_memory_hit", new=AsyncMock())
 
     calls = {"n": 0}
@@ -615,7 +652,7 @@ async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
     )
 
     # The poison edge errored; the others promoted.
-    assert promoted == 2
+    assert (promoted.promoted_count, promoted.accounting_complete) == (2, False)
     # One batched recall stamp, then all three promotions attempted; one raised.
     assert calls["n"] == 4
 

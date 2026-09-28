@@ -358,7 +358,8 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     await _ingest_dream_proposal(user_id)
     edge_uuid = (await _sole_edge(driver))["uuid"]
 
-    assert await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid]) == 1
+    promoted = await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid])
+    assert (promoted.promoted_count, promoted.accounting_complete) == (1, True)
 
     edge = await _sole_edge(driver)
     assert edge["status"] == "active"
@@ -375,8 +376,9 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     assert edge["scope"] == PROPOSAL.scope
     assert edge["confidence"] == pytest.approx(PROPOSAL.confidence)
 
+    again = await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid])
     assert (
-        await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid]) == 0
+        again.promoted_count == 0
     ), "the status='tentative' guard makes repeat hits no-ops"
 
 

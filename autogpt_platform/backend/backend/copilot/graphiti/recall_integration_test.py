@@ -219,7 +219,7 @@ async def test_retracted_fact_is_neither_gathered_nor_ratified_by_the_dream(
 
     assert facts == []
     assert {e.uuid for e in episodes}.isdisjoint({active_episode, tentative_episode})
-    assert await try_ratify_on_hit(scope, [tentative[CAROL[2]]]) == 0
+    assert (await try_ratify_on_hit(scope, [tentative[CAROL[2]]])).promoted_count == 0
     assert (await edge_row(driver, tentative[CAROL[2]]))["status"] == "retracted"
 
 
