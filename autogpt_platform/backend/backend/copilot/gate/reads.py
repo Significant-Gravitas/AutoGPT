@@ -11,6 +11,7 @@ reads what the model would read and the stored bytes are what it would have got.
 import base64
 import json
 import logging
+import posixpath
 import re
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -22,8 +23,9 @@ from pydantic import BaseModel, ConfigDict
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.models import ApprovalRequiredResponse
+from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.data.db_accessors import experts_db
+from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
 
 from . import active_mode, held
 from . import review as review_store
@@ -33,7 +35,9 @@ from .policy import DEFAULT_MODE
 
 logger = logging.getLogger(__name__)
 
-# Every tool whose output is bytes AutoPilot did not author (plan A4).
+# Every tool whose output is bytes AutoPilot did not author (plan A4). The
+# user's own memories are left out: a memory is content they already trust
+# (Reinier, 2026-09-28). ``trusted_read`` exempts installed skills.
 JUDGED_READS: frozenset[str] = frozenset(
     {
         "bash_exec",
@@ -42,8 +46,6 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_screenshot",
         "delegate_to_expert",
         "get_sub_session_result",
-        "memory_forget_search",
-        "memory_search",
         "read_expert_chat",
         "read_skill",
         "read_workspace_file",
@@ -69,6 +71,10 @@ model_view: ContextVar[Callable[[str, bool], str] | None] = ContextVar(
     "held_read_model_view", default=None
 )
 
+_WORKSPACE_READS = (
+    ResponseType.WORKSPACE_FILE_CONTENT,
+    ResponseType.WORKSPACE_FILE_METADATA,
+)
 _SOURCE_KEYS = (
     "url",
     "query",
@@ -205,7 +211,7 @@ async def screen_read(
     ``output`` is what the model would receive; ``text`` and ``images`` are
     what of it can be read. Any failure in here withholds the read.
     """
-    if tool_name not in JUDGED_READS:
+    if tool_name not in JUDGED_READS or trusted_read(tool_name, args, output):
         return None
     source = source_of(tool_name, args)
     try:
@@ -239,6 +245,44 @@ async def screen_read(
     except Exception:
         logger.warning(f"Held-read screen failed for {tool_name}", exc_info=True)
         return _stub(tool_name, source, _UNRECORDABLE, session)
+
+
+def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
+    """Whether the read is of an installed skill, which the user already
+    chose to trust, marketplace installs included (Reinier, 2026-09-28)."""
+    if tool_name == "read_skill":
+        # Any other name reaches outside the skill folders, which a slug cannot.
+        from backend.copilot.tools.skills import is_skill_slug
+
+        name = args.get("name")
+        return isinstance(name, str) and is_skill_slug(name.strip().lower())
+    if tool_name == "read_workspace_file":
+        return is_skill_path(_opened_path(output))
+    return False
+
+
+def is_skill_path(path: str | None) -> bool:
+    """A workspace path under an installed-skill folder. Only the skills
+    registry writes there; ``write_workspace_file`` refuses these roots."""
+    if not path or posixpath.normpath(path) != path:
+        return False
+    if path.startswith(SKILLS_ROOT):
+        return True
+    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
+    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
+
+
+def _opened_path(output: str) -> str | None:
+    """The path of the file the reader opened, as its row records it: an
+    argument can be relative, or resolve under the session."""
+    try:
+        data = json.loads(output)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("type") not in _WORKSPACE_READS:
+        return None
+    path = data.get("path")
+    return path if isinstance(path, str) else None
 
 
 def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
