@@ -250,12 +250,13 @@ class DemotionSummary(BaseModel):
     protected: bool = False
     """True when the write left a live fact alone because the user recalled
     it within the protection window (``recall_guard.py``); ``applied`` is
-    then False. Counted in ``protected_demotions`` if the fact is still live
-    after the pass's last write."""
+    then False. Counted in ``protected_demotions`` if the pass's final read,
+    after every acknowledged write, finds the fact live."""
     indeterminate: bool = False
     """True when the write raised: it may have committed before its
-    acknowledgement was lost, so ``applied`` and ``protected`` say nothing.
-    Counted in ``indeterminate_demotion_writes``."""
+    acknowledgement was lost, never arrived, or still be queued on the
+    server, so ``applied`` and ``protected`` say nothing. Counted in
+    ``indeterminate_demotion_writes``."""
 
 
 class EntityInvalidationSummary(BaseModel):
@@ -266,11 +267,11 @@ class EntityInvalidationSummary(BaseModel):
     edges_touched: list[str] = Field(default_factory=list)
     # Live neighbours the invalidation's write left alone: the user recalled
     # them within the protection window (``recall_guard.py``). Counted in
-    # ``protected_demotions`` if still live after the pass's last write.
+    # ``protected_demotions`` if the pass's final read finds them live.
     edges_protected: list[str] = Field(default_factory=list)
-    # The write raised: it may have committed, so which neighbours it
-    # touched or protected is unknown and both lists are empty. Counted in
-    # ``indeterminate_demotion_writes``.
+    # The write raised: it may have committed, never arrived, or still be
+    # queued, so which neighbours it touched or protected is unknown and both
+    # lists are empty. Counted in ``indeterminate_demotion_writes``.
     indeterminate: bool = False
 
 
@@ -359,16 +360,20 @@ class DreamPassResult(BaseModel):
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
     # Distinct facts the recall guard kept live through the pass
-    # (``recall_guard.py``): an acknowledged write spared them, and one read
-    # after the pass's last write found them still live. A fact spared by
-    # two writes counts once.
+    # (``recall_guard.py``): an acknowledged write spared them, and the
+    # pass's final read, after every acknowledged write, found them live. A
+    # snapshot at that read: a later forget or pass can retire them. A fact
+    # spared by two writes counts once.
     protected_demotions: int = 0
     # The pass's demotion and invalidation writes that raised. Each may have
-    # committed, so the changed counts above can be short by what they did.
+    # committed, never arrived, or still be queued on the server, so the
+    # changed counts above can be short by what they did.
     indeterminate_demotion_writes: int = 0
-    # False when that final read failed: ``protected_demotions`` is then
-    # provisional (spared minus acknowledged changes) and may count a fact a
-    # write whose acknowledgement was lost changed.
+    # True only when the final read answered and no write's outcome is
+    # unknown. Otherwise the counts are provisional: ``protected_demotions``
+    # may count a fact an unknown write changes, even after the pass
+    # returned, and falls back to spared minus acknowledged changes when the
+    # read failed.
     demotion_accounting_complete: bool = True
 
     summary_for_user: str = ""

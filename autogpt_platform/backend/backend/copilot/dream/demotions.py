@@ -14,18 +14,25 @@ window is left alone unless the write's reason overrides it, and the
 statement reports the facts it changed and those it spared. Nothing is read
 beforehand to decide.
 
-A write that raises has an unknown outcome: it may have committed before
-its acknowledgement was lost. It is counted in ``indeterminate``, and its
-facts are neither counted as changed nor assumed untouched.
+A write that raises has an unknown outcome. It may have committed before
+its acknowledgement was lost, it may never have arrived, or it may still be
+queued on the server and land after the pass returns. It is counted in
+``indeterminate``, and its facts are neither counted as changed nor assumed
+untouched.
+
 ``protected_demotions`` counts the distinct facts an acknowledged write
-spared that are still live once every write has run, which one final read
-of just those facts decides (``_count_kept_live``). That read writes
-nothing and changes no write. A fact spared twice (a duplicated demotion,
-or a demotion and an invalidation) counts once, and a fact spared and then
-changed by a later write whose reason overrides the guard, acknowledged or
-not, is not counted. Each operation's own summary still records what its
-write reported. If the read fails, the count is provisional (spared minus
-acknowledged changes) and ``accounting_complete`` is False.
+spared that one final read, after every acknowledged write, finds live
+(``_count_kept_live``). It is a snapshot at that read: a later forget,
+another pass, or a write of this pass still in flight can retire a counted
+fact afterwards. The read writes nothing and changes no write. A fact spared
+twice (a duplicated demotion, or a demotion and an invalidation) counts
+once, and a fact spared and then changed by a later write whose reason
+overrides the guard is not counted once that change is visible. Each
+operation's own summary still records what its write reported.
+
+``accounting_complete`` is True only when that read answered and no write of
+the pass has an unknown outcome. Otherwise the count is provisional: the
+read's count if it answered, else spared minus acknowledged changes.
 
 Entity invalidation single-hop demotes every live edge around the entity,
 with no degree cap, the most destructive op in the pass, so it stays behind
@@ -72,11 +79,11 @@ class DemotionResults(BaseModel):
 
     demotions: list[DemotionSummary] = Field(default_factory=list)
     entity_invalidations: list[EntityInvalidationSummary] = Field(default_factory=list)
-    # Distinct facts an acknowledged write spared that are still live after
-    # every write (``_count_kept_live``).
+    # Distinct facts an acknowledged write spared that the final read, after
+    # every acknowledged write, found live (``_count_kept_live``).
     protected: int = 0
-    # False when the final liveness read failed: ``protected`` is then the
-    # provisional count, spared minus acknowledged changes.
+    # False when that read failed or any write's outcome is unknown: the
+    # counts are then provisional.
     accounting_complete: bool = True
 
     @property
@@ -96,7 +103,8 @@ class DemotionResults(BaseModel):
 
     @property
     def indeterminate(self) -> int:
-        """Writes that raised: each may have committed."""
+        """Writes that raised: each may have committed, never arrived, or
+        still be queued on the server."""
         return sum(d.indeterminate for d in self.demotions) + sum(
             s.indeterminate for s in self.entity_invalidations
         )
@@ -150,16 +158,21 @@ async def _count_kept_live(
     pass_id: str,
     results: DemotionResults,
 ) -> DemotionResults:
-    """*results* with ``protected`` set: of the facts an acknowledged write
-    spared, those still live now that every write has run, read in one
-    statement over just those facts. Accounting only: the read writes nothing
-    and changes no write. It also sees what a write whose acknowledgement was
-    lost did. If it fails, the count stays provisional (spared minus
-    acknowledged changes, which such a write may have overtaken) and
-    ``accounting_complete`` is False."""
+    """*results* with the protected count set: of the facts an acknowledged
+    write spared, those live at one read made after every acknowledged write,
+    in one statement over just those facts. Accounting only: the read writes
+    nothing and changes no write.
+
+    The count is a snapshot at that read, and complete only when the read
+    answered and no write of the pass has an unknown outcome. A write that
+    raised may still be queued on the server, and the read (``RO_QUERY``,
+    which does not wait for queued writes) can run before it lands. So an
+    unknown write leaves the count provisional, as does a failed read, whose
+    count falls back to spared minus acknowledged changes."""
+    settled = results.indeterminate == 0
     spared = results.spared_uuids()
     if not spared:
-        return results
+        return results.model_copy(update={"accounting_complete": settled})
     try:
         live = await live_fact_uuids(driver, scope.group_id, sorted(spared))
     except Exception:
@@ -172,7 +185,9 @@ async def _count_kept_live(
         return results.model_copy(
             update={"protected": provisional, "accounting_complete": False}
         )
-    return results.model_copy(update={"protected": len(spared & live)})
+    return results.model_copy(
+        update={"protected": len(spared & live), "accounting_complete": settled}
+    )
 
 
 async def _demote(

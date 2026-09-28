@@ -281,8 +281,9 @@ async def test_a_pass_that_spared_nothing_reads_nothing(stage) -> None:
 async def test_a_lost_acknowledgement_is_indeterminate_not_protected(stage) -> None:
     """Codex's direct reproduction: the stale demotion spares ``a``, the
     user's retraction of ``a`` commits but its reply is lost. The write is
-    counted as indeterminate, and the final read, which sees ``a`` gone,
-    keeps it out of ``protected``."""
+    counted as indeterminate, the final read, which sees ``a`` gone, keeps it
+    out of ``protected``, and the count stays provisional: an unknown write
+    might as well have still been queued."""
     outcomes = {"stale_fact": [S], "user_signal": [U]}
     stage.supersede.side_effect = lambda driver, uuids, **kw: outcomes[kw["reason"]]
     stage.live.side_effect = lambda driver, group_id, uuids: set()
@@ -295,7 +296,7 @@ async def test_a_lost_acknowledgement_is_indeterminate_not_protected(stage) -> N
         (False, False, True),
     ]
     assert (results.demoted, results.failed, results.indeterminate) == (0, 0, 1)
-    assert (results.protected, results.accounting_complete) == (0, True)
+    assert (results.protected, results.accounting_complete) == (0, False)
 
 
 @pytest.mark.asyncio
@@ -323,6 +324,7 @@ async def test_a_neighbour_statement_that_raised_is_indeterminate(stage) -> None
         1,
         0,
     )
+    assert results.accounting_complete is False
 
 
 @pytest.mark.asyncio
@@ -375,3 +377,37 @@ async def test_no_operations_open_no_driver(stage) -> None:
 
     assert results.demotions == [] and results.entity_invalidations == []
     stage.open_driver.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_write_leaves_the_count_provisional_though_the_read_answers(
+    stage,
+) -> None:
+    """Codex's in-flight schedule: the retraction of ``a`` was delivered but
+    is still queued when the final read runs, so the read finds ``a`` live.
+    The count is the read's, and it is marked provisional: the queued write
+    may retire ``a`` after the pass returns."""
+    outcomes = {"stale_fact": [S], "user_signal": [U]}
+    stage.supersede.side_effect = lambda driver, uuids, **kw: outcomes[kw["reason"]]
+    ops = DreamOperations(demotions=[_demote("a"), _demote("a", "user_signal")])
+
+    results = await apply_demotions(_SCOPE, "p-14", ops, {"a"})
+
+    assert (results.protected, results.indeterminate) == (1, 1)
+    assert results.accounting_complete is False
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_write_that_spared_nothing_known_is_still_provisional(
+    stage,
+) -> None:
+    """Only an unknown write reached ``a``: it may have spared or changed it.
+    Nothing is credited, nothing is read, and the count is provisional."""
+    stage.supersede.side_effect = lambda driver, uuids, **kw: [U] * len(uuids)
+    ops = DreamOperations(demotions=[_demote("a")])
+
+    results = await apply_demotions(_SCOPE, "p-15", ops, {"a"})
+
+    stage.live.assert_not_awaited()
+    assert (results.protected, results.indeterminate) == (0, 1)
+    assert results.accounting_complete is False

@@ -10,19 +10,27 @@ unless the write's protection spares it; anything else is left as it is).
 Operations run in order on that state: an edge demoted once is not demoted
 again, an expired neighbour is not changed, a target a forget took between
 gather and apply fails, and duplicates, direct/entity overlaps and overrides
-are all generated, as are writes that commit but whose acknowledgement is
-lost and a final liveness read that fails. The real clamp and apply run each
-generated case twice: with the recall stamps, and in the world before them
-(no stamps anywhere, recalls stamping nothing). The pass's account is held
-to what it can know: acknowledged changes, the writes whose outcome it
-cannot know, and the facts protection kept live, confirmed by the final read
-or reported as provisional. What the statements themselves do is held to the
-same rule on FalkorDB by ``graphiti/recall_guard_integration_test.py``.
+are all generated, as are writes whose reply never reaches the pass (one
+that committed, one that never arrived, and one still queued on the server,
+landing between later statements or after the pass returned) and a final
+liveness read that fails. The real clamp and apply run each generated case
+twice: with the recall stamps, and in the world before them (no stamps
+anywhere, recalls stamping nothing). The pass's account is held to what it
+can know: acknowledged changes, the writes whose outcome it cannot know, and
+the facts protection kept live as its final read saw them. That count is
+complete only when the read answered and no write's outcome is unknown, and
+then it is the truth once every queued write has landed; otherwise it is
+provisional, and never below that truth. What the statements themselves do
+is held to the same rule on FalkorDB by
+``graphiti/recall_guard_integration_test.py``.
 """
 
 import random
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from types import SimpleNamespace
+from typing import Literal, TypeVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -61,6 +69,14 @@ _REASONS = [
     "entity_invalidated:n1",
     "no longer seems relevant",
 ]
+# The faults each scenario draws its lost replies from.
+_FAULTS: dict[str, tuple[str, ...]] = {
+    "lost_acknowledgements": ("after_commit",),
+    "never_delivered": ("never_delivered",),
+    "in_flight": ("in_flight",),
+    "failed_read": (),
+    "any": ("after_commit", "never_delivered", "in_flight"),
+}
 
 
 class Edge(BaseModel):
@@ -81,17 +97,32 @@ class Write(BaseModel):
     acknowledged: bool = True
 
 
+class Fault(BaseModel):
+    """Why one statement's reply never reaches the pass: it committed and the
+    reply was lost, it never arrived, or it was still queued on the server
+    when the pass went on. A queued write lands right before statement
+    ``lands_before`` runs or, when that is None, after the pass returned."""
+
+    kind: Literal["after_commit", "never_delivered", "in_flight"]
+    lands_before: int | None = None
+
+
+_Reply = TypeVar("_Reply", WriteOutcome, NeighbourWrites)
+
+
 class Graph:
     """The simulated graph behind the stage's two writers."""
 
     def __init__(self, case: "Case", usage: bool) -> None:
         self.edges = {e.uuid: e.model_copy() for e in case.edges}
         self.recalls = case.recalls
-        self.lost_acks = set(case.lost_acks)
+        self.faults = case.faults
         self.read_fails = case.read_fails
         self.usage = usage
         self.statements = 0
         self.writes: list[Write] = []
+        self.queued: list[tuple[int | None, Callable[[bool], object]]] = []
+        self.live_at_read: set[str] | None = None
 
     async def supersede(
         self,
@@ -104,7 +135,13 @@ class Graph:
         protection: RecallProtection,
         user_id: str | None = None,
     ) -> list[WriteOutcome]:
-        return [self._supersede_one(uuid, reason, protection) for uuid in uuids]
+        return [
+            self._statement(
+                partial(self._supersede_one, uuid, reason, protection),
+                WriteOutcome.UNKNOWN,
+            )
+            for uuid in uuids
+        ]
 
     async def invalidate(
         self,
@@ -115,25 +152,26 @@ class Graph:
         reason: str,
         protection: RecallProtection,
     ) -> NeighbourWrites:
-        acknowledged = self._statement()
-        writes = NeighbourWrites()
-        for edge in self.edges.values():
-            if entity_uuid in edge.ends and edge.live:
-                bucket = (
-                    writes.changed
-                    if self._write(edge, reason, protection, acknowledged)
-                    else writes.spared
-                )
-                bucket.append(edge.uuid)
-        return writes if acknowledged else NeighbourWrites(unknown=True)
+        return self._statement(
+            partial(self._invalidate, entity_uuid, reason, protection),
+            NeighbourWrites(unknown=True),
+        )
 
     async def live_uuids(
         self, driver: object, group_id: str, uuids: list[str]
     ) -> set[str]:
-        """The stage's final liveness read."""
+        """The stage's final liveness read. Like ``GRAPH.RO_QUERY`` it does
+        not wait for writes still queued."""
         if self.read_fails:
             raise TimeoutError("the liveness read's reply was lost")
-        return {uuid for uuid in uuids if self.edges[uuid].live}
+        self.live_at_read = {uuid for uuid in uuids if self.edges[uuid].live}
+        return self.live_at_read
+
+    def land_in_flight(self) -> None:
+        """The pass has returned: every write still queued lands."""
+        for _, run in self.queued:
+            run(False)
+        self.queued = []
 
     def changed(self) -> set[str]:
         """Every fact a write changed, acknowledged or not."""
@@ -144,39 +182,81 @@ class Graph:
         return {w.edge for w in self.writes if w.acknowledged and w.changed is changed}
 
     def kept_live(self) -> int:
-        """The distinct facts an acknowledged write spared that are still live
-        when the pass ends."""
+        """The distinct facts an acknowledged write spared that are live
+        now."""
         return len(
             {edge for edge in self.acknowledged(changed=False) if self.edges[edge].live}
         )
 
     def indeterminate(self) -> int:
-        """The statements that ran and lost their acknowledgement."""
-        return len({k for k in self.lost_acks if k < self.statements})
+        """The statements that ran with a fault: no reply reached the pass."""
+        return len([k for k in self.faults if k < self.statements])
 
-    def _supersede_one(
-        self, uuid: str, reason: str, protection: RecallProtection
-    ) -> WriteOutcome:
-        acknowledged = self._statement()
-        edge = self.edges.get(uuid)
-        if edge is None or not edge.live:
-            outcome = WriteOutcome.UNMATCHED
-        elif self._write(edge, reason, protection, acknowledged):
-            outcome = WriteOutcome.CHANGED
-        else:
-            outcome = WriteOutcome.SPARED
-        return outcome if acknowledged else WriteOutcome.UNKNOWN
-
-    def _statement(self) -> bool:
-        """Recalls that complete right before this statement runs; whether
-        the statement's reply will reach the pass."""
+    def _statement(self, run: Callable[[bool], _Reply], unknown: _Reply) -> _Reply:
+        """One statement as the pass sees it. The queued writes due by now
+        land and the recalls that complete right before it stamp; then it
+        runs, unless its fault drops it or leaves it queued, and its reply
+        reaches the pass only when it has no fault."""
         k = self.statements
+        self.statements += 1
+        self._land(before=k)
+        self._recall(k)
+        fault = self.faults.get(k)
+        if fault is None:
+            return run(True)
+        if fault.kind == "after_commit":
+            run(False)
+        elif fault.kind == "in_flight":
+            self.queued.append((fault.lands_before, run))
+        return unknown
+
+    def _land(self, before: int) -> None:
+        """The queued writes due to land before statement *before* land."""
+        due = [run for at, run in self.queued if at is not None and at <= before]
+        self.queued = [
+            (at, run) for at, run in self.queued if at is None or at > before
+        ]
+        for run in due:
+            run(False)
+
+    def _recall(self, k: int) -> None:
+        """The recalls that complete right before statement *k* runs."""
         for uuid in self.recalls.get(k, []):
             edge = self.edges.get(uuid)
             if self.usage and edge is not None and edge.live:
                 edge.last_recalled_at = datetime.now(timezone.utc)
-        self.statements += 1
-        return k not in self.lost_acks
+
+    def _supersede_one(
+        self,
+        uuid: str,
+        reason: str,
+        protection: RecallProtection,
+        acknowledged: bool,
+    ) -> WriteOutcome:
+        edge = self.edges.get(uuid)
+        if edge is None or not edge.live:
+            return WriteOutcome.UNMATCHED
+        if self._write(edge, reason, protection, acknowledged):
+            return WriteOutcome.CHANGED
+        return WriteOutcome.SPARED
+
+    def _invalidate(
+        self,
+        entity_uuid: str,
+        reason: str,
+        protection: RecallProtection,
+        acknowledged: bool,
+    ) -> NeighbourWrites:
+        writes = NeighbourWrites()
+        for edge in self.edges.values():
+            if entity_uuid in edge.ends and edge.live:
+                bucket = (
+                    writes.changed
+                    if self._write(edge, reason, protection, acknowledged)
+                    else writes.spared
+                )
+                bucket.append(edge.uuid)
+        return writes
 
     def _write(
         self,
@@ -211,15 +291,15 @@ class Graph:
 class Case(BaseModel):
     """One generated pass: the graph as gathered, what changed between
     gather and apply, the recalls that land during apply, the statements
-    whose acknowledgement is lost, whether the final read fails, and the
-    fixed proposals."""
+    whose reply never reaches the pass, whether the final read fails, and
+    the fixed proposals."""
 
     edges: list[Edge]
     forgotten_after_gather: list[str]
     recalled_after_gather: list[str]
     recalls: dict[int, list[str]]
     ops: DreamOperations
-    lost_acks: list[int] = []
+    faults: dict[int, Fault] = {}
     read_fails: bool = False
 
     def gathered(self) -> list[Edge]:
@@ -281,7 +361,8 @@ def _stamp(rng: random.Random, history: str, now: datetime) -> datetime | None:
 
 def _case(rng: random.Random, scenario: str) -> Case:
     now = datetime.now(timezone.utc)
-    lossy = scenario in ("lost_acknowledgements", "failed_read", "any")
+    lossy = scenario in _FAULTS
+    kinds = _FAULTS.get(scenario, ())
     history = scenario if scenario in (*_HISTORIES, "any") else "never"
     history = "any" if lossy else history
     edges = [
@@ -309,9 +390,21 @@ def _case(rng: random.Random, scenario: str) -> Case:
             if during and rng.random() < 0.3
         },
         ops=ops,
-        lost_acks=[k for k in range(30) if lossy and rng.random() < 0.3],
+        faults={
+            k: _fault(rng, k, kinds) for k in range(30) if kinds and rng.random() < 0.3
+        },
         read_fails=scenario == "failed_read"
         or (scenario == "any" and rng.random() < 0.2),
+    )
+
+
+def _fault(rng: random.Random, k: int, kinds: tuple[str, ...]) -> Fault:
+    """A fault for statement *k*; a queued write lands before the next
+    statement, a few later, or after the pass returned."""
+    kind = rng.choice(kinds)
+    lands_before = rng.choice([None, None, k + 1, k + rng.randint(2, 6)])
+    return Fault.model_validate(
+        {"kind": kind, "lands_before": lands_before if kind == "in_flight" else None}
     )
 
 
@@ -322,9 +415,10 @@ def _spare_then_override(
     ops: DreamOperations,
     now: datetime,
 ) -> None:
-    """Codex's lost-acknowledgement shape: a recently recalled fact the first
-    direct write spares, then the user's retraction through one of its
-    entities, whose reply may be lost after it committed."""
+    """Codex's lost-acknowledgement and in-flight shape: a recently recalled
+    fact the first direct write spares, then the user's retraction through
+    one of its entities, whose write may commit with its reply lost, never
+    arrive, or still be queued when the pass reads."""
     chosen = rng.choice(gathered)
     target = next(e for e in edges if e.uuid == chosen)
     target.last_recalled_at = now - timedelta(days=1)
@@ -360,7 +454,8 @@ def _proposals(
 
 
 async def _run(world: SimpleNamespace, case: Case, usage: bool) -> tuple[Graph, dict]:
-    """The real clamp and apply on *case*, with or without usage data."""
+    """The real clamp and apply on *case*, with or without usage data; then
+    the writes still queued when the pass returned land."""
     graph = Graph(case, usage)
     now = datetime.now(timezone.utc)
     for edge in graph.edges.values():
@@ -385,6 +480,7 @@ async def _run(world: SimpleNamespace, case: Case, usage: bool) -> tuple[Graph, 
         clamp_pass_operations(case.ops, bundle),
         known_fact_uuids=bundle.known_fact_uuids,
     )
+    graph.land_in_flight()
     return graph, stats
 
 
@@ -424,22 +520,25 @@ def _check_every_write(graph: Graph, known: set[str]) -> None:
 
 
 def _check_the_account(graph: Graph, stats: dict, case: Case) -> None:
-    """The pass reports what it can know and never a false protected count:
-    acknowledged changes; the writes whose outcome it cannot know; and the
-    facts protection kept live, confirmed by the final read, or provisional
-    (spared minus acknowledged changes) and marked incomplete when that read
-    failed."""
+    """The pass reports what it can know: acknowledged changes; the writes
+    whose outcome it cannot know; and the facts an acknowledged write spared
+    that its final read found live, or, when that read failed, spared minus
+    acknowledged changes. The count is complete only when the read answered
+    and no write's outcome is unknown, and then it is the truth once every
+    queued write has landed; a provisional count is never below it."""
     changed = graph.acknowledged(changed=True)
     reported = int(stats["demotion_count"]) + int(stats["entity_invalidation_count"])
     assert reported == len(changed), case
     assert stats["indeterminate_demotion_writes"] == graph.indeterminate(), case
     spared = graph.acknowledged(changed=False)
-    if case.read_fails and spared:
-        assert stats["demotion_accounting_complete"] is False, case
-        assert stats["protected_demotions"] == len(spared - changed), case
-        return
-    assert stats["demotion_accounting_complete"] is True, case
-    assert stats["protected_demotions"] == graph.kept_live(), case
+    read = graph.live_at_read
+    complete = graph.indeterminate() == 0 and (read is not None or not spared)
+    assert stats["demotion_accounting_complete"] is complete, case
+    counted = spared & read if read is not None else spared - changed
+    assert stats["protected_demotions"] == len(counted), case
+    assert stats["protected_demotions"] >= graph.kept_live(), case
+    if complete:
+        assert stats["protected_demotions"] == graph.kept_live(), case
 
 
 @pytest.mark.asyncio
@@ -454,6 +553,8 @@ def _check_the_account(graph: Graph, stats: dict, case: Case) -> None:
         "recalled_after_gather",
         "recalled_during_apply",
         "lost_acknowledgements",
+        "never_delivered",
+        "in_flight",
         "failed_read",
         "any",
     ],

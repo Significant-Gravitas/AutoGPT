@@ -262,10 +262,12 @@ async def test_hallucinated_demotion_uuids_dropped_before_cypher():
 
 
 @pytest.mark.asyncio
-async def test_batch_path_demotions_validated_against_persisted_bundle(mocker):
-    """Batch path: apply_operations is called without known_fact_uuids
-    (batch_callbacks doesn't have the in-memory DreamInput), so the
-    filter must fall back to the bundle persisted at submit time."""
+async def test_demotions_without_known_facts_validated_against_persisted_bundle(
+    mocker,
+):
+    """Both routes pass known_fact_uuids from their DreamInput; a caller that
+    passes none has the filter fall back to the input bundle persisted at
+    submit time."""
     mocker.patch.object(
         demotions_mod,
         "read_input_bundle",

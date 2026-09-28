@@ -29128,6 +29128,11 @@
             "title": "Protected Count",
             "default": 0
           },
+          "accounting_complete": {
+            "type": "boolean",
+            "title": "Accounting Complete",
+            "default": true
+          },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"

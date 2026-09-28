@@ -472,10 +472,10 @@ async def apply_operations(
     recall guard in their own statement: a live fact the user recalled within
     the protection window is left alone unless the write overrides it, and
     ``protected_demotions`` counts the distinct facts it kept live, as one
-    read after the last write finds them. A write that raised may have
-    committed: it is counted in ``indeterminate_demotion_writes``, not as a
-    failure, and ``demotion_accounting_complete`` is False if that read
-    failed.
+    read after every acknowledged write finds them. A write that raised (it
+    may have committed or still be queued) is counted in
+    ``indeterminate_demotion_writes``, not as a failure, and leaves
+    ``demotion_accounting_complete`` False, as does a failed read.
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -672,9 +672,9 @@ async def apply_operations(
         "dropped_forgotten": completion.dropped_forgotten,
         # Distinct facts the recall guard kept live through the pass.
         "protected_demotions": destroyed.protected,
-        # Destructive writes that raised: each may have committed.
+        # Destructive writes that raised: each may have committed or still land.
         "indeterminate_demotion_writes": destroyed.indeterminate,
-        # False when the read that confirms the protected count failed.
+        # False when the final read failed or any write's outcome is unknown.
         "demotion_accounting_complete": destroyed.accounting_complete,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,

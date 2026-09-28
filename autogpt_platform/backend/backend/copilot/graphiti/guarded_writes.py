@@ -53,8 +53,9 @@ class WriteOutcome(str, Enum):
     # The statement ran and matched nothing to write: the fact is no longer
     # live (or not in the expected status), or missing. Nothing was written.
     UNMATCHED = "unmatched"
-    # The statement raised (logged). It may still have committed before its
-    # acknowledgement was lost, so nothing is known about the fact.
+    # The statement raised (logged). It may have committed before its
+    # acknowledgement was lost, never arrived, or still be queued on the
+    # server and land later, so nothing is known about the fact.
     UNKNOWN = "unknown"
 
 
@@ -124,7 +125,8 @@ async def invalidate_entity_direct_neighbors(
     edge reached from both directions to one outcome, and the statement
     returns every outcome in one row, so the server's result-set row limit
     never truncates the account. A statement that raises is logged and
-    reported ``unknown``: it may have committed.
+    reported ``unknown``: it may have committed, never arrived, or still be
+    queued on the server.
     """
     try:
         result = await driver.execute_query(
@@ -139,7 +141,7 @@ async def invalidate_entity_direct_neighbors(
     except Exception:
         logger.warning(
             f"Invalidating the neighbours of entity {entity_uuid} in group "
-            f"{group_id} raised; it may have committed",
+            f"{group_id} raised; it may have committed or may still land",
             exc_info=True,
         )
         return NeighbourWrites(unknown=True)
@@ -203,7 +205,7 @@ async def _supersede_one(
     except Exception:
         logger.warning(
             f"Superseding edge {uuid} for user {(user_id or '?')[:12]} raised; "
-            "it may have committed",
+            "it may have committed or may still land",
             exc_info=True,
         )
         return WriteOutcome.UNKNOWN

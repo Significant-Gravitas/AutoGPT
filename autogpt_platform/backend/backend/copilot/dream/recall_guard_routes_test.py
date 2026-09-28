@@ -6,8 +6,12 @@ writes leave the two recalled facts alone and demote the third, and the two
 facts they spared reach ``protected_demotions`` in the result, the durable
 record and the admin job status. In a second pass the user's retraction of
 the late fact commits but its acknowledgement is lost (Codex's full-apply
-reproduction): the write is reported indeterminate, and the final liveness
-read keeps the fact it demoted out of the protected count. Only the LLM, the
+reproduction): the write is reported indeterminate, the final liveness read
+keeps the fact it demoted out of the protected count, and the count is
+provisional. In a third the retraction is still queued on the server when
+the pass reads, and lands after the pass returns (Codex's in-flight
+reproduction): the read still finds the fact live and counts it, so every
+surface reports the count as provisional, never complete. Only the LLM, the
 graph's guarded writer and liveness read (a small stateful stand-in applying
 the statement's rule) and the chat store are stubbed; the lock, lease,
 record and job status run on the in-memory Redis and DreamPass store from
@@ -107,35 +111,44 @@ _SANITIZED = DreamOperations(
 
 
 class Scenario(BaseModel):
-    """What the sanitizer proposed, whose writes lose their acknowledgement
-    after committing, and what every surface must then report: demotions,
-    protected facts, indeterminate writes, and whether the count is
-    confirmed."""
+    """What the sanitizer proposed; the writes whose reply is lost after they
+    commit, and those still queued when the pass reads, which land after it
+    returns; what the writes have changed once they all landed; and what
+    every surface must report: demotions, protected facts, indeterminate
+    writes, and whether the counts are settled."""
 
     ops: DreamOperations
     lost: set[tuple[str, str]] = set()
+    queued: set[tuple[str, str]] = set()
     changed: list[str]
     counts: tuple[int, int, int, bool]
 
 
+_RETRACTED = _SANITIZED.model_copy(
+    update={
+        "demotions": [
+            *_SANITIZED.demotions,
+            DreamDemotion(edge_uuid="late", reason="user_signal"),
+        ]
+    }
+)
 _ACKNOWLEDGED = Scenario(ops=_SANITIZED, changed=["cold"], counts=(1, 2, 0, True))
 _LOST_ACKNOWLEDGEMENT = Scenario(
-    ops=_SANITIZED.model_copy(
-        update={
-            "demotions": [
-                *_SANITIZED.demotions,
-                DreamDemotion(edge_uuid="late", reason="user_signal"),
-            ]
-        }
-    ),
+    ops=_RETRACTED,
     lost={("late", "user_signal")},
     changed=["cold", "late"],
-    counts=(1, 1, 1, True),
+    counts=(1, 1, 1, False),
+)
+_IN_FLIGHT = Scenario(
+    ops=_RETRACTED,
+    queued={("late", "user_signal")},
+    changed=["cold", "late"],
+    counts=(1, 2, 1, False),
 )
 _SCENARIOS = pytest.mark.parametrize(
     "scenario",
-    [_ACKNOWLEDGED, _LOST_ACKNOWLEDGEMENT],
-    ids=["acknowledged", "lost-acknowledgement"],
+    [_ACKNOWLEDGED, _LOST_ACKNOWLEDGEMENT, _IN_FLIGHT],
+    ids=["acknowledged", "lost-acknowledgement", "in-flight"],
 )
 
 
@@ -151,6 +164,8 @@ def graph(mocker) -> SimpleNamespace:
         },
         live={"held", "late", "cold"},
         lost=set(),
+        queued=set(),
+        pending=[],
         changed=[],
         spared=[],
     )
@@ -185,10 +200,30 @@ def graph(mocker) -> SimpleNamespace:
 def _write(
     state: SimpleNamespace, uuid: str, reason: str, protection: RecallProtection
 ) -> WriteOutcome:
-    """The guarded statement on one edge: nothing to write unless live;
+    """The guarded statement on one edge as the pass sees it. A write in
+    ``state.lost`` commits but its reply is lost; one in ``state.queued`` is
+    still queued on the server, so the pass hears nothing and the write
+    lands only when ``_land`` runs it, after the pass returned."""
+    if (uuid, reason) in state.queued:
+        state.pending.append((uuid, protection))
+        return WriteOutcome.UNKNOWN
+    outcome = _apply(state, uuid, protection)
+    return WriteOutcome.UNKNOWN if (uuid, reason) in state.lost else outcome
+
+
+def _land(state: SimpleNamespace) -> None:
+    """The writes still queued when the pass returned land."""
+    for uuid, protection in state.pending:
+        _apply(state, uuid, protection)
+    state.pending = []
+
+
+def _apply(
+    state: SimpleNamespace, uuid: str, protection: RecallProtection
+) -> WriteOutcome:
+    """The statement's rule on one edge: nothing to write unless live;
     spared when its stamp is at or after the window start and no override
-    reaches it; and, for a write in ``state.lost``, committed but reported
-    unknown because its reply was lost."""
+    reaches it."""
     if uuid not in state.live:
         return WriteOutcome.UNMATCHED
     last = state.stamps[uuid]
@@ -203,7 +238,7 @@ def _write(
         state.changed.append(uuid)
         state.live.discard(uuid)
         outcome = WriteOutcome.CHANGED
-    return WriteOutcome.UNKNOWN if (uuid, reason) in state.lost else outcome
+    return outcome
 
 
 def _answer(value) -> StructuredCompletion:
@@ -267,7 +302,7 @@ def test_the_sync_route_reports_what_the_writes_spared_everywhere(
 ) -> None:
     """Driven through the scheduler's own admin wrapper, which writes the
     pass's result to its job status."""
-    graph.lost = scenario.lost
+    graph.lost, graph.queued = scenario.lost, scenario.queued
     mocker.patch.object(orchestrator_mod, "resolve_route", side_effect=_route)
     mocker.patch.object(
         orchestrator_mod, "resolve_dream_execution_path", return_value="sync_baseline"
@@ -304,6 +339,7 @@ def test_the_sync_route_reports_what_the_writes_spared_everywhere(
     )
 
     execute_dream_pass_with_status("u-sync", "j-sync")
+    _land(graph)
 
     job = scheduler_loop.run_until_complete(_job_result("j-sync"))
     assert (graph.changed, graph.spared) == (scenario.changed, ["held", "late"])
@@ -360,7 +396,7 @@ async def test_the_batch_route_tests_the_stamps_the_graph_holds_at_write_time(
 ) -> None:
     """The batch pass applies hours after its gather: ``late``'s recall came
     in between, and only the write sees it."""
-    graph.lost = scenario.lost
+    graph.lost, graph.queued = scenario.lost, scenario.queued
     scope = MemoryScope.for_user("u-batch")
     fake_dream_redis.store[scope.redis_key("dream_lock")] = "tok-batch"
     await persist_input_bundle("p-batch", _bundle("u-batch"), lock_token="tok-batch")
@@ -398,6 +434,7 @@ async def test_the_batch_route_tests_the_stamps_the_graph_holds_at_write_time(
         ("sanitize", json.dumps(scenario.ops.model_dump())),
     ):
         await handle_dream_batch_result(_entry(phase), [_row(phase, content)])
+    _land(graph)
 
     assert (graph.changed, graph.spared) == (scenario.changed, ["held", "late"])
     row = fake_dream_db.rows["p-batch"]

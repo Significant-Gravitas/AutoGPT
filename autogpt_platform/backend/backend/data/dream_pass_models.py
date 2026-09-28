@@ -84,8 +84,8 @@ class DreamPassApplied(BaseModel):
     # written before it reads 0.
     protected_demotions: int = 0
     # Demotion writes whose outcome is unknown (they raised), and whether
-    # the protected count was confirmed by its final read; a row written
-    # before them reads 0 and True.
+    # the counts are settled (a final read answered and no write's outcome
+    # is unknown); a row written before them reads 0 and True.
     indeterminate_demotion_writes: int = 0
     demotion_accounting_complete: bool = True
     summary_for_user: str = ""

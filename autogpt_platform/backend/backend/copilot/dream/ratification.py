@@ -74,6 +74,10 @@ class RatificationResult(BaseModel):
     # Past the grace period with no hits, but recalled within the protection
     # window: the sweep's guarded write left the proposal tentative.
     protected_count: int = 0
+    # False when a supersession's outcome is unknown: its write raised and may
+    # have committed, never arrived, or still land, so superseded_count and
+    # protected_count are provisional.
+    accounting_complete: bool = True
     error: str | None = None
     skipped: bool = False
     skip_reason: str | None = None
@@ -234,9 +238,11 @@ async def _process_edge(
     elif outcome is WriteOutcome.SPARED:
         result.protected_count += 1
     elif outcome is WriteOutcome.UNKNOWN:
-        # The write raised and may have committed: neither superseded nor
-        # failed as far as the sweep knows.
+        # The write raised and may have committed, or may still land: neither
+        # superseded nor failed as far as the sweep knows, and its counts are
+        # provisional.
         result.per_edge_errors.append(f"{edge_uuid}: supersede_outcome_unknown")
+        result.accounting_complete = False
     else:
         # Surface non-matches too: an edge without a group_id property (legacy
         # write) matches nothing under the group-scoped predicate and would

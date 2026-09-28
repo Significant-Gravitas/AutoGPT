@@ -13,19 +13,24 @@ without it (cases A and B), and a recall stamped between the pass's read of
 the graph and its write, on each writer. Its second validation added the
 rest: a hub above FalkorDB's 10,000-row result limit is accounted in full,
 and a write whose acknowledgement is lost after it committed is reported
-indeterminate and never leaves a false protected count.
+indeterminate and never leaves a false protected count. Its third added a
+write still queued behind another when the pass's final read runs, which
+the read overtakes and which lands after the pass returned: any write of
+unknown outcome leaves the count provisional.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
     poetry run pytest -m integration backend/copilot/graphiti/recall_guard_integration_test.py
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from itertools import product
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from redis.asyncio import Redis
 
 from backend.copilot.dream import apply as apply_mod
 from backend.copilot.dream import demotions
@@ -37,6 +42,7 @@ from backend.copilot.dream.schemas import (
     EntityInvalidation,
 )
 
+from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
 from .guarded_writes import (
     WriteOutcome,
@@ -387,6 +393,74 @@ class _Boundary:
         """The fixture closes the driver."""
 
 
+# A write on the hub that computes for a second or so before its SET: it
+# holds FalkorDB's writer meanwhile, and reads still run beside it. The sum
+# depends on the matched node, so it is computed as the query runs, not
+# folded when it is planned.
+_BLOCKER = (
+    "MATCH (n:Entity {uuid: 'hub'}) "
+    "WITH n, reduce(total = 0, i IN range(1, 40000000 + size(n.uuid)) | total + i)"
+    " AS s SET n.barrier = s RETURN s // holds the writer"
+)
+
+
+class _Queued(_Boundary):
+    """The pass's driver, with its write for *reason* delivered but still
+    queued on the server when the pass goes on: a long write on the same
+    graph holds FalkorDB's writer, the statement is sent behind it on a
+    connection of its own, and the pass's call raises as if its connection
+    had dropped. The pass's final read, a ``GRAPH.RO_QUERY``, does not wait
+    for queued writes."""
+
+    def __init__(
+        self, driver: AutoGPTFalkorDriver, redis: Redis, group_id: str, reason: str
+    ) -> None:
+        super().__init__(driver)
+        self.redis, self.group_id, self.reason = redis, group_id, reason
+        self.others = [_open(group_id), _open(group_id)]
+        self.blocker: asyncio.Task | None = None
+        self.queued: asyncio.Task | None = None
+
+    async def execute_query(self, query: str, **params: Any) -> Any:
+        if self.queued is not None or params.get("reason") != self.reason:
+            return await super().execute_query(query, **params)
+        await self._hold_the_writer()
+        self.queued = asyncio.create_task(self.others[1].execute_query(query, **params))
+        await asyncio.sleep(0.05)
+        raise ConnectionError("the connection dropped with the write still queued")
+
+    async def drain(self) -> None:
+        """The blocker and the queued write finish; their connections close."""
+        pending = [task for task in (self.blocker, self.queued) if task]
+        await asyncio.gather(*pending, return_exceptions=True)
+        for other in self.others:
+            await other.close()
+
+    async def _hold_the_writer(self) -> None:
+        self.blocker = asyncio.create_task(self.others[0].execute_query(_BLOCKER))
+        for _ in range(5000):
+            info = str(
+                await self.redis.execute_command(
+                    "GRAPH.INFO", "RunningQueries", "WaitingQueries"
+                )
+            )
+            if "holds the writer" in info and self.group_id in info:
+                return
+            assert not self.blocker.done(), "the blocker finished before it was seen"
+            await asyncio.sleep(0.001)
+        raise AssertionError("the blocker never ran")
+
+
+def _open(group_id: str) -> AutoGPTFalkorDriver:
+    return AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=group_id,
+        build_indices=False,
+    )
+
+
 @pytest.fixture
 def live_pass(mocker, scope_graph) -> SimpleNamespace:
     """A dream pass on the live graph through the production gather, clamp
@@ -659,9 +733,7 @@ async def test_a_fact_spared_then_overridden_through_a_big_hub_is_not_protected(
     assert await _status_counts(driver) == {"superseded": _HUB_SIZE}
 
 
-@pytest.mark.integration
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
+_OVERRIDES = pytest.mark.parametrize(
     "ops",
     [
         DreamOperations(
@@ -679,13 +751,19 @@ async def test_a_fact_spared_then_overridden_through_a_big_hub_is_not_protected(
     ],
     ids=["direct", "neighbour"],
 )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@_OVERRIDES
 async def test_a_lost_acknowledgement_is_indeterminate_never_protected(
     mocker, scope_graph, ops: DreamOperations
 ) -> None:
     """Codex's reproductions: A, recalled, is spared by a stale demotion; the
     user's retraction of it then commits, directly or through its entity,
-    and its reply is lost. The write is indeterminate, not failed or empty,
-    and the final read finds A gone, so it is not counted as kept."""
+    and its reply is lost. The write is indeterminate, not failed or empty;
+    the final read finds A gone, so it is not counted as kept; and the count
+    is provisional, since the pass cannot know the write committed."""
     driver, scope = scope_graph
     await _edge(driver, scope.group_id, "A", source="hub")
     assert await stamp_recalls(driver, ["A"], owner=_OWNER) == 1
@@ -696,7 +774,38 @@ async def test_a_lost_acknowledgement_is_indeterminate_never_protected(
     assert boundary.lost_replies == 1
     assert results.demotions[0].protected is True
     assert (results.demoted, results.failed, results.indeterminate) == (0, 0, 1)
-    assert (results.protected, results.accounting_complete) == (0, True)
+    assert (results.protected, results.accounting_complete) == (0, False)
+    assert await _statuses(driver, ["A"]) == {"A": "superseded"}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@_OVERRIDES
+async def test_a_write_still_queued_at_the_final_read_leaves_the_count_provisional(
+    mocker, scope_graph, live_lock, ops: DreamOperations
+) -> None:
+    """Codex's in-flight reproduction: A, recalled, is spared by a stale
+    demotion; the user's retraction of it reaches FalkorDB but waits behind
+    another write, the pass's call raises, and the final read overtakes it.
+    The read finds A live, as it then is, and counts it; the retraction
+    lands after the stage returned. The count is provisional because a
+    write's outcome is unknown, never complete."""
+    driver, scope = scope_graph
+    await _edge(driver, scope.group_id, "A", source="hub")
+    assert await stamp_recalls(driver, ["A"], owner=_OWNER) == 1
+    boundary = _Queued(driver, live_lock, scope.group_id, reason="user_signal")
+    try:
+        results = await _stage(mocker, scope, ops, {"A"}, boundary)
+        still_queued = boundary.queued is not None and not boundary.queued.done()
+        at_return = await _statuses(driver, ["A"])
+    finally:
+        await boundary.drain()
+
+    assert still_queued, "the retraction was still queued when the stage returned"
+    assert at_return == {"A": "active"}
+    assert results.demotions[0].protected is True
+    assert (results.demoted, results.failed, results.indeterminate) == (0, 0, 1)
+    assert (results.protected, results.accounting_complete) == (1, False)
     assert await _statuses(driver, ["A"]) == {"A": "superseded"}
 
 
@@ -704,7 +813,7 @@ async def test_a_lost_acknowledgement_is_indeterminate_never_protected(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "fail_read, protected, complete",
-    [(False, 1, True), (True, 2, False)],
+    [(False, 1, False), (True, 2, False)],
     ids=["read-answers", "read-fails"],
 )
 async def test_a_full_pass_with_a_lost_acknowledgement_reports_the_truth(
@@ -712,9 +821,10 @@ async def test_a_full_pass_with_a_lost_acknowledgement_reports_the_truth(
 ) -> None:
     """Codex's full-apply reproduction: A and B recalled, stale proposals
     ``[A, A, B]`` and the user's retraction of B, whose reply is lost after
-    it committed. A alone is kept live, and the pass reports exactly that;
-    if the final read fails too, it reports the provisional count and says it
-    is incomplete, never a false count as if it were confirmed."""
+    it committed. A alone is kept live, and the final read counts exactly
+    that, provisionally, since the pass cannot know what the retraction did;
+    if the read fails too, the count falls back to spared minus acknowledged
+    changes. Neither is ever reported as complete."""
     driver, scope = live_pass.driver, live_pass.scope
     for uuid in ["A", "B", *(f"filler-{i}" for i in range(98))]:
         await _edge(driver, scope.group_id, uuid)

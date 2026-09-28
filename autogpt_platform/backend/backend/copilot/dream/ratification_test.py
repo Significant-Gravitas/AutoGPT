@@ -175,6 +175,7 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
 
     assert result.superseded_count == 1
     assert result.ratified_count == 0
+    assert result.accounting_complete is True
     stub_supersede.assert_awaited_once()
     call = stub_supersede.await_args
     assert call.args[1] == ["edge-stale"]
@@ -211,20 +212,21 @@ async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "outcome, error",
+    "outcome, error, complete",
     [
-        (WriteOutcome.UNMATCHED, "supersede_failed"),
-        (WriteOutcome.UNKNOWN, "supersede_outcome_unknown"),
+        (WriteOutcome.UNMATCHED, "supersede_failed", True),
+        (WriteOutcome.UNKNOWN, "supersede_outcome_unknown", False),
     ],
     ids=["unmatched", "unknown"],
 )
 async def test_supersede_failure_is_reported_not_silently_dropped(
-    mocker, fake_redis, outcome: WriteOutcome, error: str
+    mocker, fake_redis, outcome: WriteOutcome, error: str, complete: bool
 ):
     """An edge the group-scoped supersede can't match (legacy write without a
     group_id property) must land in per_edge_errors — otherwise it is silently
     re-examined by every future sweep forever. A write that raised may have
-    committed, so it is reported as unknown, never as superseded or failed."""
+    committed, never arrived, or still land, so it is reported as unknown,
+    never as superseded or failed, and the sweep's counts are provisional."""
     edge = {
         "uuid": "edge-legacy",
         "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
@@ -241,6 +243,7 @@ async def test_supersede_failure_is_reported_not_silently_dropped(
 
     assert (result.superseded_count, result.protected_count) == (0, 0)
     assert result.per_edge_errors == [f"edge-legacy: {error}"]
+    assert result.accounting_complete is complete
 
 
 @pytest.mark.asyncio
@@ -310,6 +313,7 @@ async def test_a_proposal_recalled_within_the_window_stays_tentative(
 
     assert (result.superseded_count, result.protected_count) == (0, 1)
     assert result.per_edge_errors == []
+    assert result.accounting_complete is True
 
 
 @pytest.mark.asyncio
