@@ -190,6 +190,9 @@ async def test_the_input_bundle_keeps_the_batch_paths_format(make_user):
                 confidence=0.7,
                 status="active",
                 created_at=None,
+                recall_count=3,
+                last_recalled_at="2026-09-27T09:30:00.000000+00:00",
+                prev_recalled_at="2026-09-20T18:00:00.000000+00:00",
             )
         ],
         recent_sessions=[

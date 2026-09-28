@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot.dream import ratification
+from backend.copilot.dream.fetch import _fetch_active_facts
 
 from . import context
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -214,3 +215,36 @@ async def test_a_forget_then_a_recall_never_stamps_the_forgotten_fact(
     assert after["recall_count"] == 1
     assert after["prev_recalled_at"] is None
     assert await read_recall_stamps(driver, scope.group_id, [fact]) == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_dream_reads_the_stamps_it_gathers_and_rereads(
+    clean_graph,
+) -> None:
+    driver, group_id = clean_graph
+    await _edge(driver, group_id, "never")
+    await _edge(
+        driver,
+        group_id,
+        "used",
+        recall_count=2,
+        last_recalled_at=_ago(days=1),
+        prev_recalled_at=_ago(days=3),
+    )
+    await _edge(driver, group_id, "gone", recall_count=5, forgotten_at=_ago(days=1))
+
+    facts = {f.uuid: f for f in await _fetch_active_facts(driver, group_id, 50)}
+    reread = await read_recall_stamps(driver, group_id, ["never", "used", "gone"])
+
+    assert set(facts) == {"never", "used"}
+    never = facts["never"]
+    assert (never.recall_count, never.last_recalled_at, never.prev_recalled_at) == (
+        None,
+        None,
+        None,
+    )
+    used = facts["used"]
+    assert used.recall_count == 2
+    assert used.last_recalled_at == (await _stamps(driver, "used"))["last_recalled_at"]
+    assert {s.uuid: s.recall_count for s in reread or []} == {"never": None, "used": 2}

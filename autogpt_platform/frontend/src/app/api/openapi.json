@@ -23361,6 +23361,18 @@
       "FactRow": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
+          "recall_count": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Recall Count"
+          },
+          "last_recalled_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Recalled At"
+          },
+          "prev_recalled_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Prev Recalled At"
+          },
           "source": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source"
@@ -23406,7 +23418,8 @@
           "status",
           "created_at"
         ],
-        "title": "FactRow"
+        "title": "FactRow",
+        "description": "An active fact and its recall stamps (all ``None``: never recalled)."
       },
       "FactSummary": {
         "properties": {
