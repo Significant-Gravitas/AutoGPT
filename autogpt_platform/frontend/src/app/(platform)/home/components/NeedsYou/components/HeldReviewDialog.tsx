@@ -5,12 +5,15 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ApprovalCard } from "@/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ApprovalCard";
+import {
+  ApprovalActions,
+  ApprovalCard,
+} from "@/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ApprovalCard";
 import {
   modeLine,
   toApprovalItem,
@@ -47,12 +50,12 @@ export function HeldReviewDialog({ carousel, held }: Props) {
         isOpen: carousel.open,
         set: (isOpen) => (isOpen ? undefined : carousel.close()),
       }}
-      className="h-[90vh] p-0 lg:h-[600px] lg:w-[960px] lg:min-w-0 lg:max-w-[95vw]"
+      className="h-[90vh] p-0 lg:h-[min(720px,85vh)] lg:w-[960px] lg:min-w-0 lg:max-w-[95vw]"
     >
       <Dialog.Content>
         <div
           onKeyDown={handleKeyDown}
-          className="relative -mx-2 flex h-[calc(90vh-1rem)] min-h-0 lg:h-[600px]"
+          className="relative -mx-2 flex h-[calc(90vh-1rem)] min-h-0 lg:h-[min(720px,85vh)]"
         >
           <div className="hidden w-[272px] shrink-0 border-r border-zinc-100 bg-zinc-50 lg:flex">
             <ReviewSidebar carousel={carousel} />
@@ -61,7 +64,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
             aria-label="Held call"
             className="flex min-w-0 flex-1 flex-col"
           >
-            <header className="flex min-h-16 items-center gap-2 border-b border-zinc-100 py-3 pl-4 pr-16">
+            <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-zinc-100 py-3 pl-4 pr-16">
               <Button
                 variant="secondary"
                 size="icon-sm"
@@ -112,9 +115,11 @@ export function HeldReviewDialog({ carousel, held }: Props) {
                 </span>
               ) : null}
             </header>
+            {/* Only the body scrolls; the header and the decision footer stay put. */}
             <div
               ref={carousel.paneRef}
-              className="min-h-0 flex-1 overflow-y-auto"
+              data-testid="review-pane-body"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
               {carousel.finished ? (
                 <Finished carousel={carousel} />
@@ -142,6 +147,26 @@ export function HeldReviewDialog({ carousel, held }: Props) {
                     carousel.decide(current.item, true, rule, scope)
                   }
                   onReject={() => carousel.decide(current.item, false)}
+                  hideActions
+                />
+              ) : null}
+            </div>
+            {carousel.finished ? (
+              <PaneFooter>
+                <Button size="small" variant="primary" onClick={carousel.close}>
+                  Done
+                </Button>
+              </PaneFooter>
+            ) : current && approval && !current.receipt ? (
+              <PaneFooter>
+                <ApprovalActions
+                  item={approval}
+                  status={held.statusOf(current.item.id)}
+                  expertName={current.item.expert?.name ?? null}
+                  onApprove={(rule, scope) =>
+                    carousel.decide(current.item, true, rule, scope)
+                  }
+                  onReject={() => carousel.decide(current.item, false)}
                   aside={
                     <Link
                       href={current.item.primary_action.href}
@@ -151,8 +176,8 @@ export function HeldReviewDialog({ carousel, held }: Props) {
                     </Link>
                   }
                 />
-              ) : null}
-            </div>
+              </PaneFooter>
+            ) : null}
           </section>
           {carousel.sheetOpen ? (
             <div className="absolute inset-x-0 bottom-0 top-16 z-10 flex rounded-t-2xl border-t border-zinc-200 bg-white shadow-lg lg:hidden">
@@ -171,26 +196,30 @@ function Finished({
   carousel: ReturnType<typeof useReviewCarousel>;
 }) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-        <Icon
-          icon={Tick02Icon}
-          size={20}
-          className="text-green-600"
-          aria-hidden
-        />
-        <Text variant="h4" as="h3" data-pane-focus>
-          All {carousel.total} reviewed
-        </Text>
-        <Text variant="body" tone="secondary">
-          {reviewTally(carousel.order)}
-        </Text>
-      </div>
-      <div className="flex justify-end border-t border-zinc-100 px-4 py-3">
-        <Button size="small" variant="primary" onClick={carousel.close}>
-          Done
-        </Button>
-      </div>
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+      <Icon
+        icon={Tick02Icon}
+        size={20}
+        className="text-green-600"
+        aria-hidden
+      />
+      <Text variant="h4" as="h3" data-pane-focus>
+        All {carousel.total} reviewed
+      </Text>
+      <Text variant="body" tone="secondary">
+        {reviewTally(carousel.order)}
+      </Text>
     </div>
+  );
+}
+
+function PaneFooter({ children }: { children: ReactNode }) {
+  return (
+    <footer
+      data-testid="review-pane-footer"
+      className="flex shrink-0 justify-end border-t border-zinc-100 bg-white px-4 py-3 [&>div]:w-full"
+    >
+      {children}
+    </footer>
   );
 }
