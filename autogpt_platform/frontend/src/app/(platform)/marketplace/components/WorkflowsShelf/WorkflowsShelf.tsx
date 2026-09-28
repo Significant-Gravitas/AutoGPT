@@ -4,7 +4,7 @@ import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import { UserAiIcon } from "@hugeicons/core-free-icons";
+import { GitCompareArrowsIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SectionHeader } from "../SectionHeader";
 import { SHELF_GRID, SHELF_PREVIEW_SIZE } from "../Shelf/helpers";
@@ -37,7 +37,9 @@ export function WorkflowsShelf({ id, agents, featuredAgents, total }: Props) {
     >
       <SectionHeader
         size="small"
-        titleIcon={<Icon icon={UserAiIcon} size="2.2rem" aria-hidden />}
+        titleIcon={
+          <Icon icon={GitCompareArrowsIcon} size="2.2rem" aria-hidden />
+        }
         title="Workflows"
         titleId={HEADING_ID}
         subtitle="Automations your experts can run — or install one yourself."

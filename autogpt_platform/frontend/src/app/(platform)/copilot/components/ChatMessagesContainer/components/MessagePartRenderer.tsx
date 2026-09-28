@@ -1,4 +1,4 @@
-import { MessageResponse } from "@/components/ai-elements/message";
+import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMentionMarkdown";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
@@ -95,12 +95,12 @@ function TextWithArtifactCards({
   // Text reads first, with the artifact cards trailing.
   return (
     <>
-      <MessageResponse
+      <CredentialMentionMarkdown
         components={STREAMDOWN_COMPONENTS}
         className="[&_li]:py-0"
       >
         {resolved}
-      </MessageResponse>
+      </CredentialMentionMarkdown>
       {artifacts.length > 0 && (
         <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {artifacts.map((artifact) => (

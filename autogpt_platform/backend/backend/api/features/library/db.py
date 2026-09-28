@@ -30,6 +30,7 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
@@ -799,6 +800,8 @@ async def create_graph_in_library(
     # to a user-friendly response.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -836,6 +839,8 @@ async def update_graph_in_library(
     # version half-saved. Raises GraphActivationError for the caller.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
