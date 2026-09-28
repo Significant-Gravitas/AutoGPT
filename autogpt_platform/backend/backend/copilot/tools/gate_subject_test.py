@@ -229,6 +229,18 @@ async def test_the_model_cannot_forge_an_approval(gate, ran):
     assert ran.await_args.args[5] is False
 
 
+async def test_unsupervised_asks_before_an_outward_block_while_the_toggle_is_on(
+    gate, ran, external_toggle_on
+):
+    await _run_capability(
+        _session("unsupervised"),
+        SendDiscordMessageBlock().id,
+        {"channel_name": "general", "message_content": "hi"},
+    )
+    ran.assert_not_awaited()
+    gate.open_review.assert_awaited_once()
+
+
 async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
     gate.find_review.return_value = SimpleNamespace(
         status=ReviewStatus.REJECTED, payload={}

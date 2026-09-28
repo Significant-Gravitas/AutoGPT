@@ -71,3 +71,25 @@ def stub_sub_session_costs(monkeypatch):
     ):
         monkeypatch.setattr(f"{module}.delegation_db", MagicMock(return_value=client))
     return client
+
+
+@pytest.fixture(autouse=True)
+def external_toggle_off(monkeypatch):
+    """The gate as it was before ``ask_before_external``: the mode table alone
+    decides an outward call. Tests of the toggle itself override this with
+    ``external_toggle_on``, or live in ``gate/delegation_rules_test.py``.
+
+    Patching the per-turn read (not the DB behind it) also keeps a settings
+    cache left by one test from answering the next.
+    """
+    read = AsyncMock(return_value=DelegationSettings(ask_before_external=False))
+    monkeypatch.setattr(
+        "backend.copilot.gate.delegation_rules.turn_delegation_settings", read
+    )
+    return read
+
+
+@pytest.fixture
+def external_toggle_on(external_toggle_off):
+    external_toggle_off.return_value = DelegationSettings(ask_before_external=True)
+    return external_toggle_off

@@ -4,10 +4,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import Expert, PlatformCostLog, User
 
+from backend.data.db import prisma as db_client
 from backend.util.json import SafeJson
+from backend.util.test import SpinTestServer
 
 from .delegation_db import (
     get_delegation_settings,
@@ -19,6 +22,19 @@ from .delegation_db import (
     update_delegation_settings,
 )
 from .delegation_settings import DelegationSettings
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def absorb_a_stale_event_loop(server: SpinTestServer):
+    """An earlier test can leave the shared Prisma client bound to a loop that
+    has since closed; only the first query on the new loop fails, and the engine
+    re-establishes itself. Spend that failure here rather than in a fixture
+    (same guard as ``experts_db_test``)."""
+    try:
+        await db_client.execute_raw("SELECT 1")
+    except RuntimeError as error:
+        if "Event loop is closed" not in str(error):
+            raise
 
 
 async def _user() -> str:

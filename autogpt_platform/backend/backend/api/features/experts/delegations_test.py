@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from prisma.models import ChatMessage, ChatSession
 from prisma.models import Expert as PrismaExpert
 from prisma.models import (
@@ -19,9 +20,24 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.features.experts.delegations import brief_of, list_delegations
 from backend.copilot.constants import COPILOT_ERROR_PREFIX
 from backend.copilot.delegation_list_db import HELD_HANDOFF_PREFIX
+from backend.data.db import prisma as db_client
 from backend.util.json import SafeJson
+from backend.util.test import SpinTestServer
 
 _T0 = datetime(2026, 9, 28, 10, 41, tzinfo=UTC)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def absorb_a_stale_event_loop(server: SpinTestServer):
+    """An earlier test can leave the shared Prisma client bound to a loop that
+    has since closed; only the first query on the new loop fails, and the engine
+    re-establishes itself. Spend that failure here rather than in a fixture
+    (same guard as ``experts_db_test``)."""
+    try:
+        await db_client.execute_raw("SELECT 1")
+    except RuntimeError as error:
+        if "Event loop is closed" not in str(error):
+            raise
 
 
 def test_the_brief_drops_the_hand_off_preamble():
