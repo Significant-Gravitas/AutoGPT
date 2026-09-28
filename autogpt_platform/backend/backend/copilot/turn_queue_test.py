@@ -284,7 +284,6 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
             message_length=5,
             expert_id=expert_id,
             origin=origin,
-            surface="chat",
         )
     else:
         tracked_message.assert_not_called()

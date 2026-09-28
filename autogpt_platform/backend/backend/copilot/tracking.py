@@ -24,7 +24,7 @@ def track_user_message(
     *,
     expert_id: str | None = None,
     origin: str | None = None,
-    surface: str | None = None,
+    source_platform: str | None = None,
 ) -> None:
     """Track when a user sends a message in chat.
 
@@ -36,15 +36,17 @@ def track_user_message(
         session_id: The chat session ID
         message_length: Length of the user's message
         expert_id: Expert the session is scoped to, if any
-        origin: Session origin ("interactive" | "automation"), when known
-        surface: Where the message came from (web chat, slack, telegram, ...)
+        origin: Session origin ("interactive" | "automation"), when known;
+            automation turns are not sent
+        source_platform: The bot platform the message came from (slack,
+            discord, ...); unset for the web app
     """
     product_analytics.track_chat_turn(
         user_id=user_id,
         session_id=session_id,
         expert_id=expert_id,
         origin=origin,
-        surface=surface,
+        source_platform=source_platform,
         message_length=message_length,
     )
 
@@ -67,7 +69,7 @@ def track_tool_called(
         user_id,
         PostHogEvent.CHAT_TOOL_CALLED,
         {
-            "session_id": session_id,
+            "chat_session_id": session_id,
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
         },
@@ -93,7 +95,7 @@ def track_chat_outcome(
     posthog_client.capture(
         user_id,
         PostHogEvent.CHAT_OUTCOME,
-        {**properties, "session_id": session_id, "outcome_type": outcome_type},
+        {**properties, "chat_session_id": session_id, "outcome_type": outcome_type},
         source=SOURCE,
     )
 
@@ -121,7 +123,7 @@ def track_library_check_outcome(
         user_id,
         PostHogEvent.CHAT_LIBRARY_CHECK_OUTCOME,
         {
-            "session_id": session_id,
+            "chat_session_id": session_id,
             "outcome": outcome,
             "matches_count": matches_count,
             "top_score": top_score,

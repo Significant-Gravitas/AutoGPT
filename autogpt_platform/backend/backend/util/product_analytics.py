@@ -102,8 +102,8 @@ def track_agent_run_started(
     properties = {
         "graph_id": graph_id,
         "graph_exec_id": graph_exec_id,
-        "trigger": trigger_value,
-        "trigger_ref": trigger_ref,
+        "via": trigger_value,
+        "via_ref": trigger_ref,
         "expert_id": expert_id,
         "preset_id": preset_id,
     }
@@ -142,7 +142,7 @@ def track_agent_run_finished(
             "status": status_value.lower(),
             "graph_id": graph_id,
             "graph_exec_id": graph_exec_id,
-            "trigger": _enum_value(trigger),
+            "via": _enum_value(trigger),
             "expert_id": expert_id,
             "failure_reason": _enum_value(failure_reason),
             "cost_cents": cost_cents,
@@ -189,20 +189,23 @@ def track_chat_turn(
     session_id: str,
     expert_id: str | None = None,
     origin: str | None = None,
-    surface: str | None = None,
+    source_platform: str | None = None,
     message_length: int | None = None,
 ) -> None:
-    """A person sent a chat message. Model-authored turns are not activation."""
+    """A person sent a chat message. Model-authored turns are not activation.
+
+    ``origin`` is the channel (``web``, or the bot platform the message came
+    from); the session's own origin only filters out automation turns.
+    """
     if origin == "automation":
         return
     track(
         user_id,
         PostHogEvent.CHAT_MESSAGE_SENT,
         {
-            "session_id": session_id,
+            "chat_session_id": session_id,
             "expert_id": expert_id,
-            "origin": origin,
-            "surface": surface or "chat",
+            "origin": source_platform or "web",
             "kind": "chat_turn",
             "message_length": message_length,
         },
@@ -237,7 +240,7 @@ def track_schedule_created(
             "is_recurring": cron is not None,
             "run_at": run_at.isoformat() if run_at else None,
             "graph_id": graph_id,
-            "session_id": session_id,
+            "chat_session_id": session_id,
         },
     )
 
@@ -261,7 +264,7 @@ def track_schedule_fired(
             "expert_id": expert_id,
             "graph_id": graph_id,
             "graph_exec_id": graph_exec_id,
-            "session_id": session_id,
+            "chat_session_id": session_id,
         },
     )
 
