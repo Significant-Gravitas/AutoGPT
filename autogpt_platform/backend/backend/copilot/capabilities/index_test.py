@@ -469,7 +469,7 @@ def test_a_platform_entry_keeps_a_bare_ref_a_skill_shares(index):
 def test_a_service_query_keeps_both_skills_and_platform_tools(rival_index):
     """Both layers that carry no service tag stay in a service query's main
     list: the owner's skill for the service and the first-party tool."""
-    announce = _skill("discord-announce", "Announce a release on Discord.")
+    announce = _skill("discord-announce", "Post a release announcement to Discord.")
     result = rival_index.with_entries([announce]).search("post to discord")
     assert result.service == "discord"
     assert {"discord-announce", "post_to_chat_platform"} <= set(result.names)
