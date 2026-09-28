@@ -57,6 +57,30 @@ class GraphitiConfig(BaseSettings):
     falkordb_host: str = Field(default="localhost")
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
+    # Transport deadlines on every FalkorDB connection this package opens
+    # (``falkordb_driver.new_falkordb_client``). The client probes the server
+    # with a synchronous INFO when it is built, which runs in a worker thread
+    # on the chat path (``connect_driver``); a cancelled await does not stop
+    # that thread, these deadlines do. Together they fit inside
+    # ``context_refresh_timeout``.
+    falkordb_socket_connect_timeout: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Seconds to open a TCP connection to FalkorDB before giving up. "
+            "Applies to every connection the memory code opens."
+        ),
+    )
+    falkordb_socket_timeout: float = Field(
+        default=2.0,
+        gt=0,
+        description=(
+            "Seconds to wait for any single FalkorDB reply (and to send a "
+            "command) before giving up. Applies to every connection the memory "
+            "code opens, so it bounds ingestion, dream and forget queries too; "
+            "raise it if a legitimate reply takes longer."
+        ),
+    )
 
     # LLM for entity extraction (used by graphiti-core during ingestion).
     # Default is a cloud OpenAI-compat slug. Under ``CHAT_USE_LOCAL=true``

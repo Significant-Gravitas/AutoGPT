@@ -40,7 +40,6 @@ from graphiti_core.search.search_filters import (
 from backend.copilot.dream.ratification_hits import record_memory_hit
 
 from .client import get_graphiti_client
-from .falkordb_driver import open_driver
 from .memory_model import MemoryStatus
 from .scope import MemoryScope
 
@@ -214,15 +213,15 @@ async def recent_episodes(scope: MemoryScope, n: int) -> list[EpisodicNode]:
     """The ``n`` newest recallable episodes, oldest first.
 
     graphiti's ``retrieve_episodes`` plus the recallable-episode test it has
-    no way to express.
+    no way to express. Read on the driver of the scope's cached client, as
+    the fact search and the recheck are: warm context calls this on every
+    qualifying chat turn, and opening a driver per read would connect to
+    FalkorDB on the event loop each time (``falkordb_driver.open_driver``).
     """
-    driver = open_driver(scope)
-    try:
-        records = await recallable_episodes(
-            driver, scope.group_id, datetime.now(timezone.utc), n
-        )
-    finally:
-        await driver.close()
+    client = await get_graphiti_client(scope.group_id)
+    records = await recallable_episodes(
+        client.driver, scope.group_id, datetime.now(timezone.utc), n
+    )
     return [get_episodic_node_from_record(record) for record in reversed(records)]
 
 

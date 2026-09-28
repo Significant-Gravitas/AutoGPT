@@ -1,3 +1,4 @@
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -97,13 +98,16 @@ def test_query_without_group_ids_returns_parenthesized_query(
 async def test_build_indices_false_skips_super_call() -> None:
     """``build_indices=False`` → our override returns early and never
     delegates to ``FalkorDriver.build_indices_and_constraints``."""
-    with patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
-        return_value=None,
-    ), patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
-        new=AsyncMock(),
-    ) as super_build:
+    with (
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
+            return_value=None,
+        ),
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
+            new=AsyncMock(),
+        ) as super_build,
+    ):
         driver = AutoGPTFalkorDriver(build_indices=False)
         await driver.build_indices_and_constraints()
     super_build.assert_not_called()
@@ -113,13 +117,16 @@ async def test_build_indices_false_skips_super_call() -> None:
 async def test_build_indices_true_delegates_to_super() -> None:
     """Default ``build_indices=True`` preserves upstream behaviour —
     the long-lived chat-write client still gets its indices built."""
-    with patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
-        return_value=None,
-    ), patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
-        new=AsyncMock(),
-    ) as super_build:
+    with (
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
+            return_value=None,
+        ),
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
+            new=AsyncMock(),
+        ) as super_build,
+    ):
         driver = AutoGPTFalkorDriver(build_indices=True)
         await driver.build_indices_and_constraints()
     super_build.assert_awaited_once()
@@ -135,13 +142,16 @@ async def test_default_build_indices_does_not_create_graph() -> None:
     minted a permanent empty graph for that user. Prod accumulated 13,732
     graphs, ~99.7% of them empty, which pinned FalkorDB at maxmemory.
     """
-    with patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
-        return_value=None,
-    ), patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
-        new=AsyncMock(),
-    ) as super_build:
+    with (
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
+            return_value=None,
+        ),
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
+            new=AsyncMock(),
+        ) as super_build,
+    ):
         driver = AutoGPTFalkorDriver()
         await driver.build_indices_and_constraints()
     super_build.assert_not_called()
@@ -151,13 +161,16 @@ async def test_default_build_indices_does_not_create_graph() -> None:
 async def test_ensure_indices_builds_despite_default_optout() -> None:
     """``ensure_indices()`` is the write path's explicit opt-in — it must
     delegate to upstream even though the init-time task is suppressed."""
-    with patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
-        return_value=None,
-    ), patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
-        new=AsyncMock(),
-    ) as super_build:
+    with (
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
+            return_value=None,
+        ),
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
+            new=AsyncMock(),
+        ) as super_build,
+    ):
         driver = AutoGPTFalkorDriver()
         await driver.build_indices_and_constraints()
         super_build.assert_not_called()
@@ -169,13 +182,16 @@ async def test_ensure_indices_builds_despite_default_optout() -> None:
 async def test_build_indices_false_persists_across_repeated_calls() -> None:
     """The override doesn't flip after the first call — every invocation
     against a ``build_indices=False`` driver stays a no-op."""
-    with patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
-        return_value=None,
-    ), patch(
-        "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
-        new=AsyncMock(),
-    ) as super_build:
+    with (
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
+            return_value=None,
+        ),
+        patch(
+            "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
+            new=AsyncMock(),
+        ) as super_build,
+    ):
         driver = AutoGPTFalkorDriver(build_indices=False)
         await driver.build_indices_and_constraints()
         await driver.build_indices_and_constraints()
@@ -217,9 +233,12 @@ async def test_execute_query_retries_pending_queue_overflow_then_succeeds(
 
     # max_attempts=5 (non-default) so the third attempt succeeds well within
     # budget — proves retries continue past the first failure.
-    with patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep, patch(
-        "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
-        5,
+    with (
+        patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep,
+        patch(
+            "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
+            5,
+        ),
     ):
         records, _, _ = await driver.execute_query("MATCH (n) RETURN 1")
 
@@ -237,11 +256,13 @@ async def test_execute_query_raises_after_exhausting_retries(
     query = _set_ro_query(driver, _overflow())
 
     # max_attempts=4 (non-default) proves the knob controls the attempt count.
-    with patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep, patch.object(
-        fdb, "_UPSTREAM_QUERY_LOGGER"
-    ) as upstream_logger, patch(
-        "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
-        4,
+    with (
+        patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep,
+        patch.object(fdb, "_UPSTREAM_QUERY_LOGGER") as upstream_logger,
+        patch(
+            "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
+            4,
+        ),
     ):
         with pytest.raises(Exception, match="Max pending queries exceeded"):
             await driver.execute_query("MATCH (n) RETURN 1")
@@ -276,9 +297,10 @@ async def test_execute_query_non_overflow_error_fails_fast(
     retried — it raises on the first attempt and logs once."""
     query = _set_ro_query(driver, ValueError("syntax error near RETRN"))
 
-    with patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep, patch.object(
-        fdb, "_UPSTREAM_QUERY_LOGGER"
-    ) as upstream_logger:
+    with (
+        patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep,
+        patch.object(fdb, "_UPSTREAM_QUERY_LOGGER") as upstream_logger,
+    ):
         with pytest.raises(ValueError):
             await driver.execute_query("MATCH (n) RETRN 1")
 
@@ -295,9 +317,10 @@ async def test_execute_query_already_indexed_returns_none_without_retry(
     no retry, no terminal error."""
     query = _set_query(driver, Exception("Index already indexed"))
 
-    with patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep, patch.object(
-        fdb, "_UPSTREAM_QUERY_LOGGER"
-    ) as upstream_logger:
+    with (
+        patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep,
+        patch.object(fdb, "_UPSTREAM_QUERY_LOGGER") as upstream_logger,
+    ):
         result = await driver.execute_query("CREATE INDEX ...")
 
     assert result is None
@@ -470,15 +493,54 @@ def test_clone_returns_subclass_with_indices_disabled() -> None:
 
 
 def test_open_driver_targets_the_scope_graph_without_building_indices() -> None:
-    """The factory opens the scope's own graph and keeps the default that a
-    bare construction never creates one."""
+    """The factory opens the scope's own graph on a client with transport
+    deadlines, and keeps the default that a bare construction never creates
+    one."""
     scope = MemoryScope.for_expert("user-1", "expert-1")
-    with patch.object(fdb, "AutoGPTFalkorDriver") as driver_cls:
+    with (
+        patch.object(fdb, "new_falkordb_client") as new_client,
+        patch.object(fdb, "AutoGPTFalkorDriver") as driver_cls,
+    ):
         assert fdb.open_driver(scope) is driver_cls.return_value
 
     kwargs = driver_cls.call_args.kwargs
+    assert kwargs["falkor_db"] is new_client.return_value
     assert kwargs["database"] == scope.group_id
     assert kwargs["build_indices"] is False
+
+
+def test_every_client_carries_the_transport_deadlines(monkeypatch) -> None:
+    """falkordb defaults both to None, and its constructor probes the server
+    with a synchronous INFO: without deadlines an unresponsive server holds
+    the caller, or an abandoned worker thread, indefinitely."""
+    monkeypatch.setattr(fdb.graphiti_config, "falkordb_socket_connect_timeout", 0.7)
+    monkeypatch.setattr(fdb.graphiti_config, "falkordb_socket_timeout", 1.3)
+    with patch.object(fdb, "FalkorDB") as falkordb:
+        assert fdb.new_falkordb_client() is falkordb.return_value
+
+    kwargs = falkordb.call_args.kwargs
+    assert kwargs["socket_connect_timeout"] == 0.7
+    assert kwargs["socket_timeout"] == 1.3
+    assert kwargs["host"] == fdb.graphiti_config.falkordb_host
+    assert kwargs["port"] == fdb.graphiti_config.falkordb_port
+
+
+@pytest.mark.asyncio
+async def test_connect_driver_builds_the_client_off_the_event_loop() -> None:
+    """The blocking construction runs on the connect pool; only the driver,
+    whose constructor schedules a task, is made on the loop."""
+    built_on: list[int] = []
+
+    def build() -> MagicMock:
+        built_on.append(threading.get_ident())
+        return MagicMock()
+
+    with patch.object(fdb, "new_falkordb_client", side_effect=build):
+        driver = await fdb.connect_driver("user_a", build_indices=False)
+
+    assert built_on and built_on[0] != threading.get_ident()
+    assert driver.graph_name == "user_a"
+    assert driver._build_indices_at_init is False
 
 
 @pytest.mark.asyncio

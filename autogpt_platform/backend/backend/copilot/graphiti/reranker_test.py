@@ -117,11 +117,9 @@ def test_build_graphiti_uses_compat_reranker(mocker):
             captured.update(kwargs)
 
     mocker.patch("graphiti_core.Graphiti", _FakeGraphiti)
-    mocker.patch(
-        "backend.copilot.graphiti.falkordb_driver.AutoGPTFalkorDriver",
-        MagicMock(),
-    )
 
-    client_mod._build_graphiti("user_test", llm_client=MagicMock())
+    client_mod._build_graphiti(
+        "user_test", llm_client=MagicMock(), graph_driver=MagicMock()
+    )
 
     assert isinstance(captured["cross_encoder"], CompatOpenAIRerankerClient)

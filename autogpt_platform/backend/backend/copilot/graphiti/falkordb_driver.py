@@ -2,9 +2,11 @@ import asyncio
 import logging
 import random
 import re
-from collections.abc import Awaitable
-from typing import Any, cast
+from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar, cast
 
+from falkordb.asyncio import FalkorDB
 from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.driver.falkordb import STOPWORDS
 from graphiti_core.driver.falkordb_driver import FalkorDriver
@@ -15,6 +17,8 @@ from .config import graphiti_config
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 # graphiti-core's ``FalkorDriver.execute_query`` logs terminal query errors
 # under this logger name. Our ``execute_query`` override no longer delegates to
@@ -46,6 +50,15 @@ _WRITE_CLAUSE_RE = re.compile(
 
 # FalkorDB's error when the graph key does not exist yet.
 _EMPTY_KEY_ERROR = "invalid graph operation on empty key"
+
+# Where FalkorDB clients are built off the event loop (``connect_driver``).
+# Building one sends a synchronous INFO (falkordb's cluster probe), so an
+# unreachable server holds the building thread for up to the transport
+# deadlines; a pool of its own keeps that from tying up the loop's default
+# executor, which DNS lookups and ``asyncio.to_thread`` share.
+_CONNECT_EXECUTOR = ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="falkordb-connect"
+)
 
 # FalkorDB's error when a write is attempted through GRAPH.RO_QUERY:
 # "graph.RO_QUERY is to be executed only on read-only queries".
@@ -362,12 +375,60 @@ def open_driver(
     The one place scope-level code constructs a driver. ``build_indices``
     stays False unless the caller is about to write — see
     ``AutoGPTFalkorDriver`` for why a bare construction must never create a
-    graph.
+    graph. Building the client blocks the calling thread on the server
+    (``new_falkordb_client``), up to the transport deadlines; code on the
+    chat path reads through the scope's cached Graphiti client instead
+    (``client.get_graphiti_client``), whose driver ``connect_driver`` builds
+    off the event loop.
     """
     return AutoGPTFalkorDriver(
+        falkor_db=new_falkordb_client(),
+        database=scope.group_id,
+        build_indices=build_indices,
+    )
+
+
+async def connect_driver(
+    database: str, *, build_indices: bool = False
+) -> AutoGPTFalkorDriver:
+    """A driver on graph ``database`` whose client is built off the event loop.
+
+    ``new_falkordb_client`` blocks on the server, and on the loop that would
+    stall every coroutine on it, deadline timers included, so it runs on the
+    connect pool (``build_off_loop``). The driver itself is made here, on
+    the loop: its constructor schedules the index build, when asked for.
+    """
+    client = await build_off_loop(new_falkordb_client)
+    return AutoGPTFalkorDriver(
+        falkor_db=client, database=database, build_indices=build_indices
+    )
+
+
+async def build_off_loop(build: Callable[[], _T]) -> _T:
+    """Run a blocking client build on ``_CONNECT_EXECUTOR`` and await it.
+
+    For construction that connects to FalkorDB (``new_falkordb_client``) or
+    is otherwise too slow for the event loop. Cancelling the await does not
+    stop the thread; the transport deadlines end any network wait in it.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_CONNECT_EXECUTOR, build)
+
+
+def new_falkordb_client() -> FalkorDB:
+    """A FalkorDB client with finite transport deadlines. Blocking.
+
+    falkordb's asyncio client probes the server for cluster mode with a
+    synchronous INFO when it is built, so this call does network I/O on the
+    calling thread. ``falkordb_socket_connect_timeout`` and
+    ``falkordb_socket_timeout`` bound that probe and every later command on
+    the client's connections; without them (falkordb's default) an
+    unresponsive server holds the caller indefinitely.
+    """
+    return FalkorDB(
         host=graphiti_config.falkordb_host,
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
-        database=scope.group_id,
-        build_indices=build_indices,
+        socket_connect_timeout=graphiti_config.falkordb_socket_connect_timeout,
+        socket_timeout=graphiti_config.falkordb_socket_timeout,
     )
