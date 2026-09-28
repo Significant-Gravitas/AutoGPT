@@ -654,6 +654,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         known_episode_uuids=None,
         lock_handle=None,
         lease=None,
+        protected_demotions=0,
     ):
         captured["ops"] = ops
         return {
@@ -724,6 +725,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         known_episode_uuids=None,
         lock_handle=None,
         lease=None,
+        protected_demotions=0,
     ):
         captured["ops"] = ops
         return {
@@ -839,6 +841,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         known_episode_uuids=None,
         lock_handle=None,
         lease=None,
+        protected_demotions=0,
     ):
         captured["ops"] = ops
         return {

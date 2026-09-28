@@ -21435,6 +21435,11 @@
             "title": "Entity Invalidation Count",
             "default": 0
           },
+          "protected_demotions": {
+            "type": "integer",
+            "title": "Protected Demotions",
+            "default": 0
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",
@@ -21726,6 +21731,11 @@
             "title": "Dropped Forgotten",
             "default": 0
           },
+          "protected_demotions": {
+            "type": "integer",
+            "title": "Protected Demotions",
+            "default": 0
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",
@@ -21923,6 +21933,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Edges Touched"
+          },
+          "edges_protected": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Edges Protected"
           }
         },
         "type": "object",

@@ -80,6 +80,8 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Demotions the recall guard dropped; a row written before it reads 0.
+    protected_demotions: int = 0
     summary_for_user: str = ""
     dream_session_id: str | None = None
     ingestion_drain_status: IngestionDrainStatus = IngestionDrainStatus.drained

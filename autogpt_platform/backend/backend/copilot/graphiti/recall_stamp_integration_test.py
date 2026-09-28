@@ -21,6 +21,7 @@ import pytest
 
 from backend.copilot.dream import ratification
 from backend.copilot.dream.fetch import _fetch_active_facts
+from backend.copilot.tools.graphiti_forget import invalidate_entity_direct_neighbors
 
 from . import context
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -28,6 +29,7 @@ from .recall_forget import retract
 from .recall_integration_fixtures import ALICE, ingest_facts, patch_recall_boundaries
 from .recall_stamp import (
     RECALL_DEDUPE_INTERVAL,
+    read_neighbour_stamps,
     read_recall_stamps,
     stamp_recalls,
     stamp_time,
@@ -248,3 +250,40 @@ async def test_the_dream_reads_the_stamps_it_gathers_and_rereads(
     assert used.recall_count == 2
     assert used.last_recalled_at == (await _stamps(driver, "used"))["last_recalled_at"]
     assert {s.uuid: s.recall_count for s in reread or []} == {"never": None, "used": 2}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_an_entity_invalidation_leaves_the_skipped_neighbours_alone(
+    clean_graph,
+) -> None:
+    driver, group_id = clean_graph
+    await driver.execute_query(
+        """
+        CREATE (hub:Entity {uuid: 'hub', name: 'Hub', group_id: $g}),
+               (a:Entity {uuid: 'a', name: 'A', group_id: $g}),
+               (b:Entity {uuid: 'b', name: 'B', group_id: $g}),
+               (hub)-[:RELATES_TO {uuid: 'kept', group_id: $g, status: 'active',
+                                   last_recalled_at: $recent}]->(a),
+               (b)-[:RELATES_TO {uuid: 'dropped', group_id: $g,
+                                 status: 'active'}]->(hub)
+        """,
+        g=group_id,
+        recent=_ago(hours=3),
+    )
+
+    neighbours = await read_neighbour_stamps(driver, group_id, "hub")
+    demoted = await invalidate_entity_direct_neighbors(
+        driver,
+        group_id=group_id,
+        entity_uuid="hub",
+        reason="dead_client",
+        skip={"kept"},
+    )
+    everything = await invalidate_entity_direct_neighbors(
+        driver, group_id=group_id, entity_uuid="hub", reason="dead_client"
+    )
+
+    assert {s.uuid for s in neighbours or []} == {"kept", "dropped"}
+    assert demoted == ["dropped"]
+    assert everything == ["kept"], "an empty skip leaves nothing out"

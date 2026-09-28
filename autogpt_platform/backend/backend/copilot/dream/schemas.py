@@ -253,6 +253,9 @@ class EntityInvalidationSummary(BaseModel):
     entity_uuid: str
     reason: str
     edges_touched: list[str] = Field(default_factory=list)
+    # Neighbours left alone: the user recalled them within the protection
+    # window (``recall_guard.py``). Counted in ``protected_demotions``.
+    edges_protected: list[str] = Field(default_factory=list)
 
 
 class DreamOperationsSnapshot(BaseModel):
@@ -339,6 +342,10 @@ class DreamPassResult(BaseModel):
     # forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
+    # Demotions the recall guard dropped (``recall_guard.py``): the user
+    # recalled the fact within the protection window, at clamp time or when
+    # apply read the stamps again, entity invalidations' neighbours included.
+    protected_demotions: int = 0
 
     summary_for_user: str = ""
     dream_session_id: str | None = None

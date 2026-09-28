@@ -14,6 +14,7 @@ live facts, so a demotion can never overwrite a user's forget.
 
 import asyncio
 import logging
+from collections.abc import Collection
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -400,13 +401,17 @@ async def invalidate_entity_direct_neighbors(
     group_id: str,
     entity_uuid: str,
     reason: str,
+    *,
+    skip: Collection[str] = (),
 ) -> list[str]:
     """Demote every live ``:RELATES_TO`` edge directly attached to an entity.
 
     **Single-hop only** — does NOT propagate to neighbors-of-neighbors.
     The instinct to write ``[r:RELATES_TO*1..N]`` is exactly the
     runaway-demotion bug we are protecting against (P0.3b in the dream
-    spec). Only live neighbours (``recall.live_fact_predicate``) are touched.
+    spec). Only live neighbours (``recall.live_fact_predicate``) are touched,
+    and none named in ``skip``: the dream's apply names the ones the user
+    recalled within its protection window (``dream/recall_guard.py``).
 
     Returns the list of edge UUIDs that were demoted. ``DISTINCT``
     matters: the undirected ``-[r]-`` pattern can yield the same edge
@@ -417,7 +422,7 @@ async def invalidate_entity_direct_neighbors(
     query = f"""
     MATCH (e:Entity {{uuid: $entity_uuid, group_id: $group_id}})
     MATCH (e)-[r:RELATES_TO]-(other)
-    WHERE {live_fact_predicate("r")}
+    WHERE {live_fact_predicate("r")} AND NOT (r.uuid IN $skip)
     SET r.expired_at = $now,
         r.status = 'superseded',
         r.expiration_reason = $reason
@@ -430,6 +435,7 @@ async def invalidate_entity_direct_neighbors(
             group_id=group_id,
             reason=reason,
             now=_now_iso(),
+            skip=sorted(skip),
         )
         return [r["edge_uuid"] for r in records]
     except Exception:

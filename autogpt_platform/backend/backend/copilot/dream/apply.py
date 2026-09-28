@@ -6,7 +6,8 @@ Three side-effects, in order:
   2. Proposals (novel findings) → ``status='tentative'`` envelopes.
      Ratification (P-0.4) will flip these to active or supersede them.
   3. Demotions / entity invalidations → ``mark_edges_superseded`` /
-     ``invalidate_entity_direct_neighbors`` against the FalkorDB driver.
+     ``invalidate_entity_direct_neighbors`` against the FalkorDB driver,
+     but for the facts the recall guard protects (``recall_guard.py``).
 
 A ``ChatSession`` shell (``metadata.kind='dream'`` +
 ``metadata.dream_pass_id``) is created up front so the MemoryEnvelope
@@ -25,7 +26,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.ingest import (
     IngestionCompletion,
     enqueue_episode,
@@ -49,6 +50,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .batch_submit import read_input_bundle
 from .fetch import DREAM_EPISODE_NAME_PREFIX
 from .locks import DreamLockHandle, DreamLockLostError
+from .recall_guard import guard_at_apply, protected_neighbours
 from .schemas import (
     ConsolidatedFact,
     DemotionSummary,
@@ -327,6 +329,23 @@ async def _filter_demotions_to_known_facts(
     return kept
 
 
+async def _guard_demotions(
+    scope: MemoryScope,
+    pass_id: str,
+    demotions: list[DreamDemotion],
+    citable: set[str],
+) -> tuple[list[DreamDemotion], int]:
+    """The recall guard on the stamps as the graph holds them now
+    (``recall_guard.guard_at_apply``), and how many demotions it dropped."""
+    if not demotions:
+        return demotions, 0
+    driver = open_driver(scope)
+    try:
+        return await guard_at_apply(driver, scope.group_id, pass_id, demotions, citable)
+    finally:
+        await driver.close()
+
+
 async def _apply_demotions(
     scope: MemoryScope,
     demotions: list[DreamDemotion],
@@ -384,37 +403,57 @@ async def _apply_demotions(
 async def _apply_entity_invalidations(
     scope: MemoryScope,
     invalidations: list[EntityInvalidation],
+    *,
+    pass_id: str = "",
+    citable: set[str] | None = None,
 ) -> tuple[int, list[EntityInvalidationSummary]]:
-    """Single-hop demotion of every :RELATES_TO around each invalidated entity.
+    """Single-hop demotion of every :RELATES_TO around each invalidated entity,
+    but for the neighbours the recall guard protects (read right before each
+    invalidation, ``recall_guard.protected_neighbours``).
 
     Returns ``(total_edges_touched, summaries)`` — summaries enumerate
     the per-entity edge uuids so callers can render or audit which
-    edges fell off when an entity was invalidated.
+    edges fell off when an entity was invalidated, and which were left
+    alone as protected.
     """
     if not invalidations:
         return 0, []
     driver = open_driver(scope)
-    total = 0
-    summaries: list[EntityInvalidationSummary] = []
     try:
-        for inv in invalidations:
-            uuids = await invalidate_entity_direct_neighbors(
-                driver,
-                group_id=scope.group_id,
-                entity_uuid=inv.entity_uuid,
-                reason=inv.reason,
-            )
-            total += len(uuids)
-            summaries.append(
-                EntityInvalidationSummary(
-                    entity_uuid=inv.entity_uuid,
-                    reason=inv.reason,
-                    edges_touched=list(uuids),
-                )
-            )
+        summaries = [
+            await _invalidate_entity(driver, scope, pass_id, inv, citable or set())
+            for inv in invalidations
+        ]
     finally:
         await driver.close()
-    return total, summaries
+    return sum(len(s.edges_touched) for s in summaries), summaries
+
+
+async def _invalidate_entity(
+    driver: AutoGPTFalkorDriver,
+    scope: MemoryScope,
+    pass_id: str,
+    inv: EntityInvalidation,
+    citable: set[str],
+) -> EntityInvalidationSummary:
+    """One entity's single-hop invalidation, its protected neighbours left
+    alone."""
+    protected = await protected_neighbours(
+        driver, scope.group_id, pass_id, inv, citable
+    )
+    uuids = await invalidate_entity_direct_neighbors(
+        driver,
+        group_id=scope.group_id,
+        entity_uuid=inv.entity_uuid,
+        reason=inv.reason,
+        skip=protected,
+    )
+    return EntityInvalidationSummary(
+        entity_uuid=inv.entity_uuid,
+        reason=inv.reason,
+        edges_touched=list(uuids),
+        edges_protected=sorted(protected),
+    )
 
 
 async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
@@ -578,6 +617,7 @@ async def apply_operations(
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
     lease: ApplyLease | None = None,
+    protected_demotions: int = 0,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
@@ -636,6 +676,13 @@ async def apply_operations(
     It narrows the window, it does not fence each write: a lease can still
     lapse between this renewal and the writes after it (``lease.py``).
 
+    Right before the demotions are written, under that lease, the recall
+    guard reads their facts' recall stamps from the graph again and drops a
+    demotion of a fact recalled within the protection window since the pass
+    gathered its input (``recall_guard.py``); each entity invalidation leaves
+    its protected neighbours alone the same way. ``protected_demotions`` is
+    how many the guard dropped at clamp time; the stats report it plus these.
+
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
     Prisma is intentionally NOT locally connected — those accessors
@@ -667,6 +714,8 @@ async def apply_operations(
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
+            # The clamp may have dropped every demotion the pass proposed.
+            "protected_demotions": protected_demotions,
             # Vacuously drained — the pass enqueued nothing.
             "ingestion_drain_status": IngestionDrainStatus.drained,
             "snapshot": DreamOperationsSnapshot(),
@@ -787,6 +836,11 @@ async def apply_operations(
     demotions = await _filter_demotions_to_known_facts(
         pass_id, ops.demotions, known_fact_uuids
     )
+    # What a contradiction may cite: the facts the pass read.
+    citable = known_fact_uuids if known_fact_uuids is not None else set()
+    demotions, protected_now = await _guard_demotions(
+        scope, pass_id, demotions, citable
+    )
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
         scope, demotions
     )
@@ -799,10 +853,13 @@ async def apply_operations(
         Flag.DREAM_PASS_INVALIDATE_ENTITY, user_id
     ):
         entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
-            scope, ops.entity_invalidations
+            scope, ops.entity_invalidations, pass_id=pass_id, citable=citable
         )
     else:
         entity_edges_demoted, entity_summaries = 0, []
+    protected_demotions += protected_now + sum(
+        len(summary.edges_protected) for summary in entity_summaries
+    )
 
     # Narrative summary last — only surface the user-facing dream story
     # once the memory ops above have been attempted.
@@ -811,7 +868,7 @@ async def apply_operations(
     logger.info(
         "Dream pass %s applied for user %s: "
         "writes=%d proposals=%d dropped_forgotten=%d demoted=%d (failed=%d) "
-        "entity_edges=%d ingestion_drain_status=%s",
+        "protected=%d entity_edges=%d ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
         written,
@@ -819,6 +876,7 @@ async def apply_operations(
         completion.dropped_forgotten,
         demoted_ok,
         demoted_fail,
+        protected_demotions,
         entity_edges_demoted,
         ingestion_drain_status.value,
     )
@@ -840,6 +898,8 @@ async def apply_operations(
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
         "dropped_forgotten": completion.dropped_forgotten,
+        # Demotions the recall guard dropped, at clamp time and here.
+        "protected_demotions": protected_demotions,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }

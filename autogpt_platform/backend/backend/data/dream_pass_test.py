@@ -140,7 +140,9 @@ async def test_phase_outputs_and_operations_merge_one_field_at_a_time(make_user)
         facts=[ConsolidatedFact(content="Nick ships on Fridays", confidence=0.8)]
     )
     planned = DreamOperations(summary_for_user="clamped")
-    applied = DreamPassApplied(consolidated_count=1, dream_session_id="s1")
+    applied = DreamPassApplied(
+        consolidated_count=1, protected_demotions=2, dream_session_id="s1"
+    )
 
     for update in (
         DreamPassUpdate(phase_outputs=DreamPhaseOutputs(consolidate=consolidated)),

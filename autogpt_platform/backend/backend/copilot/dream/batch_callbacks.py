@@ -58,7 +58,7 @@ from .batch_outcome import (
 from .batch_state import claim_apply_gate, content_for, read_state, write_phase_to_state
 from .batch_submit import PHASE_RESPONSE_MODELS, read_input_bundle, submit_phase
 from .cancel import end_batch_pass_if_stopped, pass_closed
-from .clamp import clamp_operations
+from .clamp import ClampedOperations, clamp_pass_operations
 from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
 from .llm import parse_json_with_prose_fallback
 from .provider_batch import anthropic_api_key
@@ -303,22 +303,22 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
         await fail_pass(bp, "apply: import failed")
         return
     state = await read_state(bp.pass_id)
-    ops = await _terminal_ops(bp, state, input_bundle)
-    lease = await _claim_apply(bp, ops) if ops is not None else None
-    if ops is None or lease is None:
+    clamped = await _terminal_ops(bp, state, input_bundle)
+    lease = await _claim_apply(bp, clamped.ops) if clamped is not None else None
+    if clamped is None or lease is None:
         return
     try:
-        # No ingestion drain here: walk_once awaits this handler serially, so
-        # an in-line drain would stall every other user's pending batch
-        # (``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``).
+        # No in-line drain: walk_once awaits this handler serially, so one would
+        # stall every other user's batch (``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``).
         apply_stats = await apply_operations(
             MemoryScope.build(bp.user_id, bp.expert_id),
             bp.pass_id,
-            ops,
+            clamped.ops,
             known_fact_uuids=input_bundle.known_fact_uuids,
             known_episode_uuids=input_bundle.known_episode_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
             lease=lease,
+            protected_demotions=clamped.protected_demotions,
         )
     except Exception as exc:
         logger.exception(
@@ -328,7 +328,7 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
         await fail_pass(bp, f"apply: {type(exc).__name__}: {exc}")
         return
     await _finish_applied(
-        bp, state, apply_stats, ops, drain_status_from_stats(apply_stats)
+        bp, state, apply_stats, clamped.ops, drain_status_from_stats(apply_stats)
     )
 
 
@@ -360,9 +360,10 @@ async def _claim_apply(bp: BatchPass, ops: DreamOperations) -> ApplyLease | None
 
 async def _terminal_ops(
     bp: BatchPass, state: dict[str, dict[str, Any]], input_bundle: DreamInput
-) -> DreamOperations | None:
-    """The sanitize phase's operations, clamped; ``None`` once a missing or
-    malformed result has failed the pass."""
+) -> ClampedOperations | None:
+    """The sanitize phase's operations, clamped, with the demotions the recall
+    guard dropped counted (``clamp.clamp_pass_operations``); ``None`` once a
+    missing or malformed result has failed the pass."""
     sanitize_row = state.get("sanitize")
     if sanitize_row is None or not sanitize_row.get("content"):
         await fail_pass(bp, "sanitize: missing terminal phase content")
@@ -375,13 +376,9 @@ async def _terminal_ops(
     # Enforce the same per-pass operation caps the sync path applies
     # before writing — the model can over-emit past the prompt's limits.
     # The 5%-of-active-facts demotion ceiling needs the original fact
-    # count, and the known-fact allowlist filters hallucinated demotion
-    # uuids BEFORE the cap slice (else they displace valid demotions).
-    return clamp_operations(
-        ops,
-        len(input_bundle.facts),
-        known_fact_uuids=input_bundle.known_fact_uuids,
-    )
+    # count, and the recall guard and the known-fact allowlist filter
+    # demotions BEFORE the cap slice (else they displace valid demotions).
+    return clamp_pass_operations(ops, input_bundle)
 
 
 async def _finish_applied(

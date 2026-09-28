@@ -20,6 +20,7 @@ from backend.copilot.graphiti.ingest import IngestionCompletion
 from backend.copilot.graphiti.scope import MemoryScope
 
 from . import apply as apply_mod
+from . import recall_guard as recall_guard_mod
 from .fetch import DreamInput
 from .locks import DreamLockLostError
 from .schemas import (
@@ -67,6 +68,14 @@ def _stub_boundaries(mocker):
         apply_mod,
         "invalidate_entity_direct_neighbors",
         AsyncMock(return_value=["e1", "e2"]),
+    )
+    # The recall guard's reads of the stamps as the graph holds them: none
+    # (never recalled), so it protects nothing unless a test says otherwise.
+    mocker.patch.object(
+        recall_guard_mod, "read_recall_stamps", AsyncMock(return_value=[])
+    )
+    mocker.patch.object(
+        recall_guard_mod, "read_neighbour_stamps", AsyncMock(return_value=[])
     )
     # ChatSession + ChatMessage writes — apply.py imports them lazily inside
     # ``_create_dream_session`` / ``_write_dream_summary_message`` to avoid a
