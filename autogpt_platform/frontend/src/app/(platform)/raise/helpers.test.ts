@@ -175,6 +175,19 @@ describe("restoring a persisted draft", () => {
     });
   });
 
+  test("keeps a custom role when reopening a draft without a job title", () => {
+    saveDraftFromEarlierBuild({ role: "Invoice chaser", step: "avatar" });
+
+    const draft = loadDraft();
+    expect(draft).toMatchObject({
+      step: "jobTitle",
+      category: "finance",
+      legacyRole: "Invoice chaser",
+    });
+    saveDraft(draft);
+    expect(loadDraft()).toEqual(draft);
+  });
+
   test("moves a draft parked on the old area beat on to the avatar", () => {
     saveDraftFromEarlierBuild({
       hasStarted: true,

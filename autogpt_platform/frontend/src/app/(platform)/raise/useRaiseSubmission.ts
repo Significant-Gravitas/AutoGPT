@@ -34,7 +34,7 @@ export function useRaiseSubmission() {
       const response = await createRaisedExpert({
         data: {
           name: draft.name,
-          role: roleFor(draft.category),
+          role: draft.legacyRole ?? roleFor(draft.category),
           job_title: draft.jobTitle || null,
           color: draft.color,
           avatar_url: draft.avatarUrl || null,

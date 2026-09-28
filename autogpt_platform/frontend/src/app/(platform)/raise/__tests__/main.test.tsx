@@ -175,6 +175,43 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+test.each([null, "finance"])(
+  "preserves a legacy custom role on submission with stored category %s",
+  async (category) => {
+    let captured: unknown = null;
+    server.use(
+      getCreateRaisedExpertMockHandler(async (info) => {
+        captured = await info.request.json();
+        return raiseResult();
+      }),
+    );
+    seedAtSkills("Tally");
+    window.sessionStorage.setItem(
+      "raise-expert-draft",
+      JSON.stringify({
+        ...loadDraft(),
+        category,
+        role: "Invoice chaser",
+        jobTitle: "Accounts Receivable Specialist",
+      }),
+    );
+    saveDraft(loadDraft());
+    renderRaise();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+    );
+
+    await waitFor(() =>
+      expect(captured).toMatchObject({
+        name: "Tally",
+        role: "Invoice chaser",
+        job_title: "Accounts Receivable Specialist",
+      }),
+    );
+  },
+);
+
 test("calls notFound when the experts feature is disabled", () => {
   setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
 

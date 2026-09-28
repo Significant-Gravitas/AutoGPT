@@ -91,6 +91,7 @@ export interface RaiseDraft {
   hasStarted: boolean;
   // Answers the color and the role too: every category owns one of each.
   category: ExpertAvatarRequestCategory | null;
+  legacyRole?: string;
   color: string | null;
   jobTitle: string | null;
   name: string;
@@ -129,6 +130,7 @@ export function loadDraft(): RaiseDraft {
     const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return EMPTY_DRAFT;
     const { role, ...parsed } = JSON.parse(raw) as StoredDraft;
+    if (role && !categoryForRole(role)) parsed.legacyRole = role;
     if (role && parsed.jobTitle == null) return reopenedAtJobTitle(role);
     const step = migrateStep(parsed.step);
     const draft = backfillSkippedVoice({
@@ -152,7 +154,12 @@ type StoredDraft = Omit<Partial<RaiseDraft>, "step"> & {
 // Every later beat waits on the title, so the draft resumes there.
 function reopenedAtJobTitle(role: string): RaiseDraft {
   return backfillCategory(
-    { ...EMPTY_DRAFT, hasStarted: true, step: "jobTitle" },
+    {
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      step: "jobTitle",
+      ...(!categoryForRole(role) ? { legacyRole: role } : {}),
+    },
     role,
   );
 }
