@@ -1,3 +1,8 @@
+import { serializeCredentialMention } from "../CredentialMention/helpers";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
+import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+
 // Browsers name clipboard screenshots "image.png"; rename so multiple
 // pasted images stay distinguishable in the composer and workspace.
 const GENERIC_CLIPBOARD_IMAGE_NAME = /^image\.\w+$/i;
@@ -52,4 +57,82 @@ export function describeSendFailure(error: unknown, recovery: string) {
   return reason
     ? `${reason} — ${recovery}.`
     : `${recovery.charAt(0).toUpperCase()}${recovery.slice(1)}. Try again.`;
+}
+
+export interface IntegrationMention {
+  credentialId: string;
+  provider: string;
+  providerName: string;
+  name: string;
+  username: string | null;
+  token: string;
+}
+
+export interface MentionRange {
+  start: number;
+  end: number;
+}
+
+export function connectedIntegrationsFromCredentials<
+  T extends Pick<
+    CredentialsMetaResponse,
+    "id" | "provider" | "title" | "username"
+  >,
+>(credentials: T[]): IntegrationMention[] {
+  const accounts = filterSystemCredentials(credentials)
+    .filter((credential) => credential.provider)
+    .map((credential) => {
+      const provider = credential.provider;
+      const providerName = formatProviderName(provider);
+      const name =
+        credential.title?.trim() || credential.username?.trim() || providerName;
+      const account = {
+        credentialId: credential.id,
+        provider,
+        providerName,
+        name,
+        username: credential.username,
+      };
+      return { ...account, token: serializeCredentialMention(account) };
+    });
+  return accounts.sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) ||
+      a.credentialId.localeCompare(b.credentialId),
+  );
+}
+
+function normalizeMentionText(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
+}
+
+export function filterIntegrationMentions(
+  integrations: IntegrationMention[],
+  query: string,
+): IntegrationMention[] {
+  const q = normalizeMentionText(query);
+  if (!q) return integrations;
+  return integrations.filter(
+    (integration) =>
+      normalizeMentionText(integration.name).includes(q) ||
+      normalizeMentionText(integration.provider).includes(q) ||
+      normalizeMentionText(integration.providerName).includes(q) ||
+      normalizeMentionText(integration.username ?? "").includes(q),
+  );
+}
+
+/** Replaces the `@query` under the caret with the integration's token and
+ *  makes sure a space follows it, so typing continues after the mention.
+ *  Returns the new text and where the caret belongs. */
+export function insertIntegrationMention(
+  value: string,
+  range: MentionRange,
+  integration: IntegrationMention,
+): { value: string; caret: number } {
+  const rest = value.slice(range.end);
+  const separator = /^\s/.test(rest) ? "" : " ";
+  return {
+    value: value.slice(0, range.start) + integration.token + separator + rest,
+    caret: range.start + integration.token.length + 1,
+  };
 }

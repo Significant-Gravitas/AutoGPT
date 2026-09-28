@@ -82,6 +82,7 @@ def make_review(
     expert_id=None,
     expert_name=None,
     expert_avatar_url=None,
+    session_id=None,
 ):
     from unittest.mock import MagicMock
 
@@ -92,6 +93,7 @@ def make_review(
         instructions,
     )
     r.graph_id = graph_id
+    r.session_id = session_id
     # Explicit None defaults matter: MagicMock auto-attributes are truthy and
     # would short-circuit compose_briefing's enriched-attribution preference.
     r.expert_id = expert_id
@@ -155,7 +157,7 @@ def test_copilot_review_links_to_session():
     content = compose_briefing(
         experts=[make_expert()],
         executions=[make_exec()],
-        reviews=[make_review(graph_exec_id="copilot-session-abc123")],
+        reviews=[make_review(graph_exec_id=None, graph_id=None, session_id="abc123")],
         agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
         generated_at=NOW,
         tz_name="UTC",
@@ -171,7 +173,9 @@ def test_decision_prefers_enriched_expert_attribution():
         executions=[],
         reviews=[
             make_review(
-                graph_exec_id="copilot-session-abc123",
+                graph_exec_id=None,
+                graph_id=None,
+                session_id="abc123",
                 expert_id="exp-2",
                 expert_name="Bob",
                 expert_avatar_url="https://a/b.png",

@@ -3,10 +3,18 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
+from backend.api.features.experts.avatar_catalog import resolve_avatar_url
 from backend.data.expert_run_output import OutputType
-from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
 ExpertRunStatus = Literal[
     "incomplete",
@@ -19,9 +27,9 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-# Only some outward calls are actually gated for approval — is_sensitive_action
-# (backend/blocks/_base.py, checked in backend/data/graph.py:261) covers 17 of
-# 513 blocks — so this is phrased as expert behaviour, not a platform guarantee.
+# Only some outward calls are actually gated for approval — is_irreversible_action
+# (backend/blocks/_base.py) marks only the irreversible blocks — so this is
+# phrased as expert behaviour, not a platform guarantee.
 EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
 # Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
 # instruction text. Reword for one audience without silently breaking the other.
@@ -123,6 +131,13 @@ class ExpertWorkflowRef(BaseModel):
     integration_providers: list[str] = Field(default_factory=list)
 
 
+class ExpertWorkflowLabel(BaseModel):
+    """What names an installed workflow on an approval card."""
+
+    expert_id: str
+    name: str | None
+
+
 class ExpertIdentity(BaseModel):
     id: str
     name: str
@@ -131,6 +146,11 @@ class ExpertIdentity(BaseModel):
     role: str
     job_title: str | None = None
     is_archived: bool
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertSetupItem(BaseModel):
@@ -156,6 +176,11 @@ class ExpertSetupItem(BaseModel):
     # Titles of the graph inputs a scheduled run cannot supply; only set on
     # an ``inputs`` item.
     missing_inputs: list[str] = Field(default_factory=list)
+
+    @field_validator("expert_avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertCredentialRef(BaseModel):
@@ -289,6 +314,11 @@ class Expert(BaseModel):
     setup_status: ExpertSetupStatus = "ready"
     # What setup could not install; re-hiring the template retries it.
     setup_failures: list[str] = []
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertBundledSkill(BaseModel):
@@ -427,16 +457,39 @@ class RaiseResult(BaseModel):
 
 
 class ExpertSkillsUpdate(BaseModel):
-    """The full list of skill names an expert should carry. Names new to the
-    expert must be library skills (default or uploaded); names already on
-    the expert are kept as-is so marketplace skills survive a round-trip."""
+    """Skills to attach to an expert and skills to remove from it. Names new
+    to the expert must be library skills (default or uploaded); names already
+    on the expert are kept as-is so marketplace skills survive a round-trip.
 
-    skills: list[str] = Field(max_length=MAX_SKILLS_PER_EXPERT)
+    Only names listed in ``remove`` are removed. A skill the expert carries
+    that appears in neither list is left alone, so a client holding a stale
+    list can never delete a skill it has not seen (the expert can distil new
+    ones at any time).
+
+    A normalized name must not appear in both ``skills`` and ``remove``;
+    such a request is rejected with a validation error. A marketplace listing
+    whose name matches a ``remove`` entry is rejected with a 400."""
+
+    skills: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
+    remove: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
 
-    @field_validator("skills", mode="before")
+    @model_validator(mode="after")
+    def reject_names_both_kept_and_removed(self) -> "ExpertSkillsUpdate":
+        # The same key update_skills removes by, so a name cannot pass this
+        # check as "different" and then match a removal on spelling alone.
+        both = {skill_name_key(n) for n in self.skills} & {
+            skill_name_key(n) for n in self.remove
+        }
+        if both:
+            raise ValueError(
+                f"Skills cannot be both added and removed: {', '.join(sorted(both))}"
+            )
+        return self
+
+    @field_validator("skills", "remove", mode="before")
     @classmethod
     def strip_and_dedupe(cls, value: object) -> object:
         if not isinstance(value, list):
@@ -449,9 +502,12 @@ class ExpertSkillsUpdate(BaseModel):
             name = item.strip()
             if not name or len(name) > 100:
                 raise ValueError("Skill names must be 1-100 characters")
-            if name.lower() in seen:
+            # Same key the overlap check and update_skills use, so
+            # "Deep Research" and "deep_research" count as one skill.
+            key = skill_name_key(name)
+            if key in seen:
                 continue
-            seen.add(name.lower())
+            seen.add(key)
             cleaned.append(name)
         return cleaned
 

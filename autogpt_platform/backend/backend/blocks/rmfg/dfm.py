@@ -5,6 +5,7 @@ from typing import Optional
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -203,6 +204,7 @@ class RMFGGetDFMReportBlock(Block):
                 ("review_url", TEST_DFM_REPORT.review_url),
             ],
             test_mock={"get_report": lambda *args, **kwargs: TEST_DFM_REPORT},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

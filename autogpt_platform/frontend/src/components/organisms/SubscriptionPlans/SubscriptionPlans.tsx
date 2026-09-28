@@ -5,18 +5,24 @@ import { PlanDetailsDialog } from "./components/PlanDetailsDialog/PlanDetailsDia
 import { PlanFooter } from "./components/PlanFooter";
 import { PlanHeader } from "./components/PlanHeader";
 import { SubscriptionOffer } from "./components/SubscriptionOffer";
-import type { SubscriptionPlansProps } from "./helpers";
+import { DEFAULT_GOAL_SURFACE, type SubscriptionPlansProps } from "./helpers";
 import { useSubscriptionPlans } from "./useSubscriptionPlans";
 
 export function SubscriptionPlans({
   trialStatus,
-  ...props
-}: SubscriptionPlansProps & { trialStatus?: ReactNode }) {
+  header,
+  goalSurface = DEFAULT_GOAL_SURFACE,
+  ...rest
+}: SubscriptionPlansProps & {
+  trialStatus?: ReactNode;
+  header?: ReactNode;
+}) {
   const { dialog, setDialog, setDialogOpen } = useSubscriptionPlans();
+  const props = { ...rest, goalSurface };
   return (
     <div className="mx-auto w-full max-w-7xl px-5 font-sans sm:px-8">
       <section aria-label="Choose your AutoGPT plan">
-        <PlanHeader {...props} />
+        <PlanHeader {...props} header={header} />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {props.plans.map((plan) => (
             <SubscriptionOffer
