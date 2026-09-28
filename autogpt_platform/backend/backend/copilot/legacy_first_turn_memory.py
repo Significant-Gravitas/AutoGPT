@@ -37,12 +37,20 @@ the block the platform wrote, where it wrote it, and nothing else:
   stored message never holds;
 - only the exact structure ``graphiti/context.py`` rendered: both wrapping
   tags on lines of their own, ``<FACTS>`` and/or ``<RECENT_EPISODES>`` in that
-  order, each item a ``  - `` line, and the blank line after the block;
+  order, each opening on a ``  - `` item, and the blank line after the block;
 - only when nothing after the block holds a ``<memory_context>`` or
   ``</memory_context>`` tag. ``inject_user_context`` stripped every such tag
   from the user's words before it wrote the message, so one there means the
   text is not the platform's own (a first turn that never reached injection
   keeps the user's raw text), or that stored memory forged an early close.
+
+It reads the text once, front to back, and never backtracks: each leading
+block ends at the first closing tag of its own name, and the memory block at
+the first ``</temporal_context>`` / ``</memory_context>`` pair. A user can
+type ``<budget_status>`` and the section tags, and a pattern that tried every
+way to split such text would take exponential time on a few kilobytes of it;
+this takes linear time, and leaves text that is not unambiguously the
+platform's alone.
 
 In a CLI session file only the first user entry is looked at, the first
 turn's query: a copy the user pasted into a later message is theirs.
@@ -56,20 +64,15 @@ import re
 
 from .cli_session_entry import is_user_entry, rewrite_user_entry
 
-# One or more ``  - `` items, as ``graphiti/context.py`` rendered a section.
-# An item's text may span lines.
-_ITEMS = r"  - .*?"
-_FACTS = rf"<FACTS>\n{_ITEMS}\n</FACTS>"
-_EPISODES = rf"<RECENT_EPISODES>\n{_ITEMS}\n</RECENT_EPISODES>"
-_FIRST_TURN_BLOCK_RE = re.compile(
-    r"(?P<query>(?:<(?P<query_tag>skills_update|builder_context|budget_status)>\n"
-    r".*?\n</(?P=query_tag)>\n\n)*)"
-    r"(?P<skills><available_skills>\n.*?\n</available_skills>\n\n)?"
-    r"<memory_context>\n<temporal_context>\n"
-    rf"(?:{_FACTS}(?:\n\n{_EPISODES})?|{_EPISODES})"
-    r"\n</temporal_context>\n</memory_context>\n\n",
-    re.DOTALL,
-)
+_QUERY_TAGS = ("skills_update", "builder_context", "budget_status")
+_SKILLS_TAG = "available_skills"
+_MEMORY_OPEN = "<memory_context>\n<temporal_context>\n"
+_MEMORY_CLOSE = "\n</temporal_context>\n</memory_context>\n\n"
+_FACTS_OPEN = "<FACTS>\n  - "
+_FACTS_CLOSE = "\n</FACTS>"
+_EPISODES_OPEN = "<RECENT_EPISODES>\n  - "
+_EPISODES_CLOSE = "\n</RECENT_EPISODES>"
+_BETWEEN_SECTIONS = f"{_FACTS_CLOSE}\n\n{_EPISODES_OPEN}"
 # The tags the inbound sanitizer removes from a user's words
 # (``service.strip_server_injected_tags``).
 _MEMORY_TAG_RE = re.compile(r"</?memory_context>", re.IGNORECASE)
@@ -87,13 +90,19 @@ def strip_first_turn_memory(
     engine's query-only blocks; a stored message never does, so the backfill
     leaves it False.
     """
-    match = _FIRST_TURN_BLOCK_RE.match(content)
-    if match is None or (match["query"] and not after_query_blocks):
+    start = _after_query_blocks(content) if after_query_blocks else 0
+    skills_end = _block_end(content, start, _SKILLS_TAG)
+    block_start = start if skills_end is None else skills_end
+    if not content.startswith(_MEMORY_OPEN, block_start):
         return None
-    rest = content[match.end() :]
+    body_start = block_start + len(_MEMORY_OPEN)
+    body_end = content.find(_MEMORY_CLOSE, body_start)
+    if body_end == -1 or not _is_rendered(content[body_start:body_end]):
+        return None
+    rest = content[body_end + len(_MEMORY_CLOSE) :]
     if _MEMORY_TAG_RE.search(rest):
         return None
-    return match["query"] + (match["skills"] or "") + rest
+    return content[:block_start] + rest
 
 
 def strip_first_turn_memory_from_session(content: bytes) -> bytes:
@@ -119,6 +128,44 @@ def strip_first_turn_memory_from_session(content: bytes) -> bytes:
         lines[index] = json.dumps(rewritten, ensure_ascii=False).encode() + end
         return b"".join(lines)
     return content
+
+
+def _after_query_blocks(content: str) -> int:
+    """Where ``content`` goes on past the query-only blocks it opens with."""
+    position = 0
+    while (end := _query_block_end(content, position)) is not None:
+        position = end
+    return position
+
+
+def _query_block_end(content: str, position: int) -> int | None:
+    ends = (_block_end(content, position, tag) for tag in _QUERY_TAGS)
+    return next((end for end in ends if end is not None), None)
+
+
+def _block_end(content: str, position: int, tag: str) -> int | None:
+    """Where the ``<tag>`` block opening at ``position`` ends, its blank line
+    included, or None when none opens there. It ends at the first closing
+    tag of its name."""
+    opening, closing = f"<{tag}>\n", f"\n</{tag}>\n\n"
+    if not content.startswith(opening, position):
+        return None
+    end = content.find(closing, position + len(opening))
+    return None if end == -1 else end + len(closing)
+
+
+def _is_rendered(body: str) -> bool:
+    """Whether ``body`` is ``<FACTS>``, ``<RECENT_EPISODES>`` or both, in that
+    order, each opening on a ``  - `` item, as ``graphiti/context.py``
+    rendered them."""
+    if body.startswith(_EPISODES_OPEN):
+        return body.endswith(_EPISODES_CLOSE)
+    if not body.startswith(_FACTS_OPEN):
+        return False
+    if body.endswith(_FACTS_CLOSE):
+        return True
+    between = body.find(_BETWEEN_SECTIONS, len(_FACTS_OPEN))
+    return between != -1 and body.endswith(_EPISODES_CLOSE)
 
 
 def _strip_query_text(text: str) -> str:

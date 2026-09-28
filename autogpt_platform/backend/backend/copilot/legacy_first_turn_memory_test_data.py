@@ -80,6 +80,15 @@ def legacy_first_message(
     return f"{prefix}<memory_context>\n{warm_block}\n</memory_context>\n\n{rest}"
 
 
+def built_to_backtrack(pairs: int) -> str:
+    """A first query that opens with the engine's budget block and holds no
+    memory block, whose user text repeats a ``<budget_status>`` closing and
+    opening ``pairs`` times: it splits into leading blocks in 2**pairs ways,
+    and a pattern that tried them all would take that long to give up."""
+    pair = "\n</budget_status>\n\n<budget_status>\n"
+    return BUDGET_BLOCK + REST + pair * pairs + "."
+
+
 def session_file(*entries: tuple[str, str | list[dict]]) -> bytes:
     """A CLI session file: one JSONL entry per ``(role, content)``, chained
     by ``parentUuid`` the way the CLI writes them."""
