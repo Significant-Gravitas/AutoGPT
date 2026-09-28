@@ -142,5 +142,10 @@ export function delegationSubtitle(
 
 /** Only a budget or cap failure can be fixed by raising it. */
 export function isBudgetError(error: string | null): boolean {
-  return !!error && /budget|cap\b|spend|limit/i.test(error);
+  return (
+    !!error &&
+    /\bbudget\b|\b(spend|spending|cost|delegation)\s+(cap|limit)\b|\bcap\s+reached\b/i.test(
+      error,
+    )
+  );
 }
