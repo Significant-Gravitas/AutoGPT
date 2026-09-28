@@ -666,8 +666,8 @@ def test_stream_chat_scopes_client_message_id_to_owner_and_session(
 
 
 class _ClaimRedis:
-    """The client-message claim's SET NX / GET / EXISTS / DELETE, plus the LLEN
-    a duplicate's response reads the buffer length with."""
+    """The client-message claim's SET NX / GET / compare-and-set, plus the
+    LLEN a duplicate's response reads the buffer length with."""
 
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
@@ -687,11 +687,25 @@ class _ClaimRedis:
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
 
-    async def exists(self, key: str) -> int:
-        return int(key in self.values)
-
-    async def delete(self, key: str) -> int:
-        return int(self.values.pop(key, None) is not None)
+    async def eval(
+        self,
+        script: str,
+        numkeys: int,
+        key: str,
+        expected: str,
+        new: str,
+        ttl_seconds: int,
+        or_missing: str,
+    ) -> int:
+        """``string_compare_and_set``, which settles a claim."""
+        current = self.values.get(key)
+        if current != expected and not (current is None and or_missing == "1"):
+            return 0
+        if new:
+            self.values[key] = new
+        else:
+            self.values.pop(key, None)
+        return 1
 
     async def llen(self, key: str) -> int:
         return 0
@@ -900,7 +914,7 @@ def _reserve_client_message(claims: _ClaimRedis, user_id: str) -> None:
         user_id, "sess-1", "client-click-id"
     )
     key = pending_messages_module._client_message_key("sess-1", scoped_id)
-    claims.values[key] = "reserved"
+    claims.values[key] = "reserved:first-copy"
 
 
 def test_stream_chat_copy_is_told_to_retry_while_the_first_is_unsettled(
@@ -920,7 +934,7 @@ def test_stream_chat_copy_is_told_to_retry_while_the_first_is_unsettled(
 
     assert response.status_code == 503
     mocks.enqueue.assert_not_awaited()
-    assert list(mocks.claims.values.values()) == ["reserved"]
+    assert list(mocks.claims.values.values()) == ["reserved:first-copy"]
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────

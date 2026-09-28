@@ -8,6 +8,7 @@ routes.py stays free of Redis/Lua details.
 """
 
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
@@ -264,8 +265,9 @@ async def queue_pending_for_http(
     # the FE's is_turn_in_flight check and our gate), which both this
     # endpoint and the POST /stream queue-fall-through can hit.  Pushing
     # first lets the gate own the no-op short-circuit.
+    claim_owner = uuid.uuid4().hex
     if client_message_id is not None:
-        claim = await claim_client_message(session_id, client_message_id)
+        claim = await claim_client_message(session_id, client_message_id, claim_owner)
         if claim == "accepted":
             logger.info(
                 "pending_messages: skipped retransmit of an accepted message "
@@ -286,17 +288,17 @@ async def queue_pending_for_http(
         )
     except BaseException:
         if client_message_id is not None:
-            await release_client_message(session_id, client_message_id)
+            await release_client_message(session_id, client_message_id, claim_owner)
         raise
     if not response.turn_in_flight:
         if client_message_id is not None:
-            await release_client_message(session_id, client_message_id)
+            await release_client_message(session_id, client_message_id, claim_owner)
         raise HTTPException(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
     if client_message_id is not None:
-        await accept_client_message(session_id, client_message_id)
+        await accept_client_message(session_id, client_message_id, claim_owner)
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)

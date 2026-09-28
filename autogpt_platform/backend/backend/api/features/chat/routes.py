@@ -1988,8 +1988,9 @@ async def stream_chat_post(
     # the row may not be written yet, and a queued copy never gets this id.
     # A copy that finds the key reserved waits for this request's outcome, so
     # it is never told a send was taken that is then refused.
+    claim_owner = uuid4().hex
     claim = (
-        await claim_client_message(session_id, client_message_id)
+        await claim_client_message(session_id, client_message_id, claim_owner)
         if client_message_id is not None
         else None
     )
@@ -1998,11 +1999,11 @@ async def stream_chat_post(
 
     async def release_client_message_claim() -> None:
         if claim == "claimed" and client_message_id is not None:
-            await release_client_message(session_id, client_message_id)
+            await release_client_message(session_id, client_message_id, claim_owner)
 
     async def accept_client_message_claim() -> None:
         if claim == "claimed" and client_message_id is not None:
-            await accept_client_message(session_id, client_message_id)
+            await accept_client_message(session_id, client_message_id, claim_owner)
 
     try:
         if claim == "accepted":

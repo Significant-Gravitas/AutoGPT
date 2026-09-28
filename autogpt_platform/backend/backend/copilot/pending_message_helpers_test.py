@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -356,8 +356,8 @@ async def test_queue_pending_keeps_the_claim_once_the_push_lands(
 
     await _queue_with_client_id()
 
-    claim.assert_awaited_once_with("sess-1", "scoped-msg-1")
-    accept.assert_awaited_once_with("sess-1", "scoped-msg-1")
+    claim.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
     release.assert_not_awaited()
 
 
@@ -384,7 +384,7 @@ async def test_queue_pending_releases_the_claim_when_the_push_is_refused(
         await _queue_with_client_id()
 
     assert exc_info.value.status_code == 409
-    release.assert_awaited_once_with("sess-1", "scoped-msg-1")
+    release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
     accept.assert_not_awaited()
 
 
@@ -402,7 +402,7 @@ async def test_queue_pending_releases_the_claim_when_the_push_fails(
     with pytest.raises(ConnectionError):
         await _queue_with_client_id()
 
-    release.assert_awaited_once_with("sess-1", "scoped-msg-1")
+    release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
     accept.assert_not_awaited()
 
 
