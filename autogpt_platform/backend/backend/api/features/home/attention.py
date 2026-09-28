@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 from pydantic import ValidationError
 
+from backend.api.features.experts.delegations import DelegationSummary
 from backend.api.features.experts.models import Expert
 from backend.api.features.experts.spend_approval import is_spend_review
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
@@ -13,6 +14,7 @@ from backend.copilot.gate.review import GATE_NODE_PREFIX, GateReviewPayload
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
+from .delegation_items import delegated_question_item, handoff_expert, handoff_title
 from .helpers import setup_count, to_home_expert
 from .models import HomeAction, HomeAttentionItem, HomeExpert, HomeHeadline
 
@@ -28,9 +30,15 @@ def compose_attention_items(
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
     questions: list[ChatSessionInfo] | None = None,
+    delegated_questions: list[DelegationSummary] | None = None,
 ) -> list[HomeAttentionItem]:
     expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
+    items.extend(
+        item
+        for delegation in delegated_questions or []
+        if (item := delegated_question_item(delegation, now, expert_by_id))
+    )
     items.extend(
         _expert_attention(expert) for expert in experts if _needs_attention(expert)
     )
@@ -84,15 +92,16 @@ def _gate_attention(
     """A held AutoPilot call: the card's own headline and reason, and its inputs
     as the preview, because Home answers it without opening the chat."""
     created_at = as_utc(review.created_at)
+    handoff = gate.handoff
     return HomeAttentionItem(
         id=f"approval-{review.node_exec_id}",
         kind="approval",
         priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
-        title=gate.headline.text,
+        title=handoff_title(handoff) if handoff else gate.headline.text,
         headline=HomeHeadline(ask=gate.headline.ask, object=gate.headline.object),
         description=_gate_reason(gate),
         why_it_matters="Nothing runs until you approve it.",
-        expert=_review_expert(review),
+        expert=handoff_expert(handoff) if handoff else _review_expert(review),
         created_at=created_at,
         preview=_clip(
             " · ".join(

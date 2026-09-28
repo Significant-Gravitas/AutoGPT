@@ -60,6 +60,9 @@ class DelegationSummary(BaseModel):
     files_count: int
     question: str | None
     question_options: list[str]
+    asked_at: datetime | None = None
+    # Who handed the work off; None is Otto.
+    delegated_by_expert_id: str | None = None
 
 
 class DelegationCounts(BaseModel):
@@ -100,6 +103,20 @@ async def list_delegations(
         delegations=[r for r in rows if status is None or r.status == status][:limit],
         summary=_counts(rows, spent),
     )
+
+
+async def delegated_questions(user_id: str, limit: int = 10) -> list[DelegationSummary]:
+    """Delegated threads paused on a question to the user, newest first."""
+    threads = await delegation_list_db.list_delegated_sessions(
+        user_id, limit=limit, question_only=True
+    )
+    return await summarize_threads(user_id, threads)
+
+
+async def recent_delegations(user_id: str, limit: int = 50) -> list[DelegationSummary]:
+    """The newest delegated threads, whatever their state."""
+    threads = await delegation_list_db.list_delegated_sessions(user_id, limit=limit)
+    return await summarize_threads(user_id, threads)
 
 
 async def summarize_threads(
@@ -203,6 +220,8 @@ def _summary(
         files_count=files_count,
         question=pending.text if pending else None,
         question_options=pending.options if pending else [],
+        asked_at=pending.asked_at if pending else None,
+        delegated_by_expert_id=thread.metadata.delegated_by_expert_id,
     )
 
 

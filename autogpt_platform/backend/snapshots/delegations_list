@@ -1,9 +1,11 @@
 {
   "delegations": [
     {
+      "asked_at": null,
       "brief": "Revamp onboarding",
       "cost_usd": null,
       "created_at": "2026-09-28T11:31:00Z",
+      "delegated_by_expert_id": null,
       "elapsed_seconds": null,
       "expert": {
         "avatar_url": null,
@@ -23,9 +25,11 @@
       "title": "Revamp onboarding"
     },
     {
+      "asked_at": null,
       "brief": "Write the FAQ",
       "cost_usd": 0.0,
       "created_at": "2026-09-28T11:21:00Z",
+      "delegated_by_expert_id": null,
       "elapsed_seconds": null,
       "expert": {
         "avatar_url": null,
@@ -45,9 +49,11 @@
       "title": "Write the FAQ"
     },
     {
+      "asked_at": "2026-09-28T10:41:00Z",
       "brief": "Plan the launch",
       "cost_usd": 0.0,
       "created_at": "2026-09-28T11:11:00Z",
+      "delegated_by_expert_id": null,
       "elapsed_seconds": 120.0,
       "expert": {
         "avatar_url": null,
@@ -70,9 +76,11 @@
       "title": "Plan the launch"
     },
     {
+      "asked_at": null,
       "brief": "Email Dana",
       "cost_usd": 0.0,
       "created_at": "2026-09-28T11:01:00Z",
+      "delegated_by_expert_id": null,
       "elapsed_seconds": 120.0,
       "expert": {
         "avatar_url": null,
@@ -92,9 +100,11 @@
       "title": "Email Dana"
     },
     {
+      "asked_at": null,
       "brief": "Pull Q3 numbers",
       "cost_usd": 0.0,
       "created_at": "2026-09-28T10:51:00Z",
+      "delegated_by_expert_id": null,
       "elapsed_seconds": 120.0,
       "expert": {
         "avatar_url": null,
@@ -114,9 +124,11 @@
       "title": "Pull Q3 numbers"
     },
     {
+      "asked_at": null,
       "brief": "Draft the PRD",
       "cost_usd": 0.31,
       "created_at": "2026-09-28T10:41:00Z",
+      "delegated_by_expert_id": null,
       "elapsed_seconds": 120.0,
       "expert": {
         "avatar_url": null,
