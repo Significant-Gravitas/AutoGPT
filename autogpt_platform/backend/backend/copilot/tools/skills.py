@@ -383,6 +383,10 @@ def render_skill_markdown(skill: ParsedSkill) -> str:
     return f"---\n{frontmatter}\n---\n\n{skill.body.rstrip()}\n"
 
 
+def is_skill_slug(name: str) -> bool:
+    return bool(_NAME_RE.fullmatch(name))
+
+
 def _validate_name(name: str) -> str | None:
     if not _NAME_RE.match(name):
         return (
