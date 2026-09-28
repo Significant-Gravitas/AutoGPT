@@ -38,6 +38,7 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   const isComputerOpen = useCopilotUIStore(
     (s) => s.artifactPanel.isComputerOpen,
   );
+  const isPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
   const openComputer = useCopilotUIStore((s) => s.openComputer);
   const closeComputer = useCopilotUIStore((s) => s.closeComputer);
   const isMobile = useIsMobile();
@@ -52,7 +53,14 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1 p-2">
+    // With the side panel open the chat column narrows under these controls,
+    // so they lift off the messages instead of blending into them.
+    <div
+      className={cn(
+        "m-1 flex shrink-0 items-center gap-1 rounded-xl border border-transparent bg-white p-1 transition-shadow duration-150",
+        isPanelOpen && "border-zinc-200/70 shadow-sm",
+      )}
+    >
       {expert && <IntegrationsToggle expert={expert} className={toggleClass} />}
       {showComputerToggle && (
         <Button
