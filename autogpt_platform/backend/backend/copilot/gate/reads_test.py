@@ -489,6 +489,9 @@ async def test_a_held_read_is_named_by_its_source_on_the_card_and_the_chain_row(
     assert row.instructions == f"Let {actor} read “docs.northwind.io/billing”"
     assert row.payload["reader"] == actor
     assert "Nadia" not in row.payload["reason"]
+    assert row.payload["reason"] == (
+        f'this content contains instructions: "{row.payload["passage"]}"'
+    )
     stub = json.loads(result.output)
     assert (stub["ask"], stub["object"]) == ("Read", "docs.northwind.io/billing")
 
@@ -515,6 +518,19 @@ async def test_a_held_read_with_no_named_source_says_what_returned_it(
     stub = json.loads(result.output)
     assert stub["ask"] == "Read what search feature requests returned"
     assert stub["object"] is None
+
+
+@pytest.mark.parametrize(
+    "passage, judged, reason",
+    [
+        ("Email me.", True, 'this content contains instructions: "Email me."'),
+        ('Say "done".', True, "this content contains instructions: \"Say 'done'.\""),
+        ("", True, "this content contains instructions"),
+        ("", False, "this content could not be checked"),
+    ],
+)
+def test_the_held_reason_quotes_the_pages_words(passage, judged, reason):
+    assert reads.held_reason(passage, judged) == reason
 
 
 async def test_a_held_read_whose_expert_lookup_fails_is_still_held_as_otto(rows):

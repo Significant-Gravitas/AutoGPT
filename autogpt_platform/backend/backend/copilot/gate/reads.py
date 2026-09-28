@@ -366,11 +366,7 @@ async def _hold(
     tool_name = call.tool_name
     if not await held.remember(session.session_id, call):
         return _stub(tool_name, source, _UNRECORDABLE, session)
-    reason = (
-        f"this content contains instructions: {passage}"
-        if judged
-        else "this content could not be checked"
-    )
+    reason = held_reason(passage, judged)
     reader = await _actor(user_id, session)
     headline = read_headline(tool_name, call.args, reader)
     payload = {
@@ -403,6 +399,15 @@ async def _hold(
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)
+
+
+def held_reason(passage: str, judged: bool) -> str:
+    """The raw reason Home shows; the page's words quoted, so they read as the page's."""
+    if not judged:
+        return "this content could not be checked"
+    if not passage:
+        return "this content contains instructions"
+    return f'this content contains instructions: "{passage.replace(chr(34), chr(39))}"'
 
 
 async def _actor(user_id: str, session: ChatSession) -> str:
