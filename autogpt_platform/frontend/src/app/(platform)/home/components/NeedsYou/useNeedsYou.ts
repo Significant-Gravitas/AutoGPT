@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
+import { groupByExpert, undecidedHeldCalls } from "./helpers";
 import { useAttentionDecisions } from "./useAttentionDecisions";
 import { useHeldReview } from "./useHeldReview";
 
@@ -22,6 +23,7 @@ export function useNeedsYou({ items }: Args) {
   const { pendingIDs, decide } = useAttentionDecisions();
   const held = useHeldReview({ items });
   const [activeKind, setActiveKind] = useState<AttentionFilter>("all");
+  const [confirmRejectAll, setConfirmRejectAll] = useState(false);
   const filterKinds = Array.from(new Set(items.map((item) => item.kind)));
   const selectedKind: AttentionFilter =
     activeKind !== "all" && filterKinds.includes(activeKind)
@@ -37,6 +39,10 @@ export function useNeedsYou({ items }: Args) {
   }
 
   return {
+    groups: groupByExpert(visibleRows),
+    rejectable: undecidedHeldCalls(visibleRows),
+    confirmRejectAll,
+    setConfirmRejectAll,
     visibleRows,
     pendingCount: held.pendingCount,
     filterOptions: (["all", ...filterKinds] as AttentionFilter[]).map(

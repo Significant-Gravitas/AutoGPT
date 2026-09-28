@@ -1,11 +1,14 @@
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import {
   type ApprovalItem,
+  canApproveAll,
   isBare,
   isGateReview,
   isHeldRead,
+  toApprovalItem,
 } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import type { AttentionListRow } from "./useHeldReview";
 
 // A passage this short is shown whole on the row, so it can be released from there.
 export const PASSAGE_FITS = 180;
@@ -59,4 +62,41 @@ export function shortAge(createdAt: Date | string, now = new Date()) {
 
 export function headlineButtonId(itemID: string) {
   return `held-${itemID.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+export interface AttentionGroup {
+  key: string;
+  // Null for Otto's own chats and for rows that belong to no Expert.
+  expert: HomeAttentionItem["expert"];
+  rows: AttentionListRow[];
+}
+
+// One Expert's rows together, groups in the order their first row was drawn,
+// so a call arriving on the poll joins the end of its group.
+export function groupByExpert(rows: AttentionListRow[]): AttentionGroup[] {
+  const groups = new Map<string, AttentionGroup>();
+  for (const row of rows) {
+    const { item } = row;
+    const key = item.expert?.id ?? (isHeldCall(item) ? "otto" : item.id);
+    const group = groups.get(key) ?? {
+      key,
+      expert: item.expert ?? null,
+      rows: [],
+    };
+    group.rows.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+export function undecidedHeldCalls(rows: AttentionListRow[]) {
+  return rows
+    .filter((row) => !row.receipt && isHeldCall(row.item))
+    .map((row) => row.item);
+}
+
+// The chat's rule for a set, and every call in it already shown whole on its row.
+export function canApproveGroup(items: HomeAttentionItem[]) {
+  const approvals = items.map((item) => toApprovalItem(item.review!));
+  return canApproveAll(approvals, false) && approvals.every(isInformed);
 }
