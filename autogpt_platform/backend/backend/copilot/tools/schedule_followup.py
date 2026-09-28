@@ -285,7 +285,7 @@ class ScheduleFollowupTool(BaseTool):
             "schedule_created",
             target="followup",
             schedule_id=info.id,
-            target_session_id=target_session_id,
+            target_chat_session_id=target_session_id,
             is_recurring=is_recurring,
         )
         if target_session_id is None:

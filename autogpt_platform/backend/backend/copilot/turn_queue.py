@@ -438,7 +438,6 @@ async def dispatch_next_for_user(user_id: str) -> bool:
                 message_length=len(pending.content),
                 expert_id=head.expert_id,
                 origin=head.metadata.origin,
-                surface="chat",
             )
         except Exception:
             logger.warning("Failed to track promoted chat turn", exc_info=True)

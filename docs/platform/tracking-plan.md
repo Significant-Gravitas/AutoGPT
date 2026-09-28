@@ -113,11 +113,11 @@ The same definition as a PostHog filter:
 
 ```sql
 event IN ('agent_run_started', 'chat_message_sent')
-AND coalesce(properties.trigger, '') != 'copilot'
+AND coalesce(properties.via, '') != 'copilot'
 ```
 
 In the insight UI: events `agent_run_started` and `chat_message_sent`,
-filtered by `trigger` "is not" `copilot`. Chat turns carry no `trigger`, so
+filtered by `via` "is not" `copilot`. Chat turns carry no `via`, so
 the filter must keep events where it is unset. The emitters already leave
 out dry runs, sub-graph runs, schedule and webhook runs, and automation-origin
 turns.
@@ -195,13 +195,13 @@ differently.
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `agent_run_started` | backend | live | `graph_id`, `graph_exec_id`, `trigger` (`manual`, `api`, `copilot`), `trigger_ref`, `preset_id`; an expert's workflow run adds `expert_id` and `kind: workflow_run` | A person starts an agent run. |
-| `chat_message_sent` | backend | live | `session_id`, `origin`, `surface`, `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
-| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. Deduplicated on `graph_exec_id`, so a requeue or resume that finishes the same run again sends no second event. |
-| `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `session_id` | Any schedule is registered, from any surface. |
-| `chat_tool_called` | backend | live | `session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
-| `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
-| `chat_library_check_outcome` | backend | live | `session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
+| `agent_run_started` | backend | live | `graph_id`, `graph_exec_id`, `via` (`manual`, `api`, `copilot`), `via_ref`, `preset_id`; an expert's workflow run adds `expert_id` and `kind: workflow_run` | A person starts an agent run. |
+| `chat_message_sent` | backend | live | `chat_session_id`, `origin` (`web`, or the bot platform: `slack`, `discord`, ...), `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
+| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `via`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. Deduplicated on `graph_exec_id`, so a requeue or resume that finishes the same run again sends no second event. |
+| `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `chat_session_id` | Any schedule is registered, from any surface. |
+| `chat_tool_called` | backend | live | `chat_session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
+| `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `chat_session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_chat_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
+| `chat_library_check_outcome` | backend | live | `chat_session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
@@ -273,7 +273,7 @@ sent or dropped this way, not while it is held.
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `schedule_fired` | backend | live | `schedule_id`, `target`, `expert_id`, `graph_id`, `graph_exec_id` or `session_id` | A schedule produces work. |
+| `schedule_fired` | backend | live | `schedule_id`, `target`, `expert_id`, `graph_id`, `graph_exec_id` or `chat_session_id` | A schedule produces work. |
 | `trigger_fired` | backend | live | `webhook_id`, `graph_id`, `graph_exec_id`, `expert_id`, `preset_id`, `target` | A webhook produces a run. |
 | `briefing_generated` | backend | live | `run_count`, `decision_count`, `has_content` | A morning briefing is composed (or found empty). |
 | `briefing_delivered` | backend | live | `briefing_id` | It is posted to the user's thread. |
@@ -333,7 +333,7 @@ new one.
 | `copilot_library_check_outcome` | `chat_library_check_outcome` | — |
 | `copilot_agent_run_success` | `chat_outcome` | `outcome_type = agent_run_success`. Dry runs no longer count; `graph_name` is dropped. |
 | `copilot_agent_scheduled` | `chat_outcome` | `outcome_type = schedule_created` and `target = agent`. `graph_name` and `schedule_name` are dropped. |
-| `copilot_followup_scheduled` | `chat_outcome` | `outcome_type = schedule_created` and `target = followup`. `session_id` is now the chat that scheduled it; the destination is `target_session_id`. |
+| `copilot_followup_scheduled` | `chat_outcome` | `outcome_type = schedule_created` and `target = followup`. `chat_session_id` is now the chat that scheduled it; the destination is `target_chat_session_id`. |
 | `subscription_trial_offer_viewed` | `trial_offer_viewed` | — |
 | `subscription_trial_started` | `trial_started` | — |
 | `subscription_trial_ending` | `trial_ending` | — |
@@ -348,6 +348,20 @@ new one.
 | `subscription_tier_reconciliation_discrepancy` | `subscription_tier_reconciled` | — |
 | `feature_flag_mismatch` | `feature_flag_mismatched` | — (not in the analytics plan; renamed to the `object_action` past-tense form before it reached production) |
 
+### Renamed properties
+
+Renamed in the same release as the events, to the analytics plan's envelope,
+so filters and breakdowns break once. Values are unchanged unless noted.
+
+| Old property | New property | On |
+| --- | --- | --- |
+| `session_id` | `chat_session_id` | `chat_message_sent`, `chat_tool_called`, `chat_outcome`, `chat_library_check_outcome`, `schedule_created`, `schedule_fired` |
+| `target_session_id` | `target_chat_session_id` | `chat_outcome` (`target = followup`) |
+| `trigger` | `via` | `agent_run_started`, `agent_run_finished` |
+| `trigger_ref` | `via_ref` | `agent_run_started` |
+| `surface` (`chat`, or the bot platform) | `origin` (`web`, or the bot platform) | `chat_message_sent`. The plan's `origin` is the channel. |
+| `origin` (`interactive`) | removed | `chat_message_sent`. Automation turns are not sent, so it was always `interactive`. |
+
 ## Differences from the analytics plan
 
 Left for follow-up changes, so this list and the plan can be compared line by
@@ -359,8 +373,6 @@ line:
   `hire_step_continued` become properties of `onboarding_step_viewed` /
   `_completed` / `_skipped` / `_back`. Spoken turns (`voice_turn_sent`)
   become `chat_message_sent` with `input_mode: voice`.
-- **Property names.** The plan's envelope says `chat_session_id` and `via`;
-  chat events still send `session_id` and run events `trigger`.
 - **`subscription_changed` covers upgrades only.** The plan also counts
   cancellations and downgrades there; `subscription_cancellation_scheduled`
   and `subscription_ended` stay separate events.

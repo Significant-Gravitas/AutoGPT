@@ -64,8 +64,8 @@ def test_human_run_start_is_agent_run_started(capture: Mock, trigger: str) -> No
 
     event, properties = _only_call(capture)
     assert event == "agent_run_started"
-    assert properties["trigger"] == trigger
-    assert properties["trigger_ref"] == "library"
+    assert properties["via"] == trigger
+    assert properties["via_ref"] == "library"
     assert "kind" not in properties
 
 
@@ -81,7 +81,7 @@ def test_run_start_accepts_enum_trigger(capture: Mock) -> None:
 
     event, properties = _only_call(capture)
     assert event == "agent_run_started"
-    assert properties["trigger"] == "manual"
+    assert properties["via"] == "manual"
 
 
 def test_expert_workflow_run_start_is_agent_run_started_with_expert(
@@ -136,7 +136,7 @@ def test_run_finished_completed(capture: Mock) -> None:
     event, properties = _only_call(capture)
     assert event == "agent_run_finished"
     assert properties["status"] == "completed"
-    assert properties["trigger"] == "schedule"
+    assert properties["via"] == "schedule"
     assert properties["cost_cents"] == 12
     assert properties["duration_seconds"] == 3.5
     assert properties["is_subgraph_run"] is False
@@ -242,18 +242,23 @@ def test_run_finished_terminated_or_dry_run_emits_nothing(capture: Mock) -> None
 def test_chat_turn_autopilot_vs_expert(capture: Mock) -> None:
     product_analytics.track_chat_turn(user_id="user-1", session_id="s1")
     product_analytics.track_chat_turn(
-        user_id="user-1", session_id="s2", expert_id="expert-1", surface="slack"
+        user_id="user-1",
+        session_id="s2",
+        expert_id="expert-1",
+        source_platform="slack",
     )
 
     events = [c.kwargs["event"] for c in capture.call_args_list]
     assert events == ["chat_message_sent", "chat_message_sent"]
     autopilot_props = capture.call_args_list[0].kwargs["properties"]
     expert_props = capture.call_args_list[1].kwargs["properties"]
-    assert autopilot_props["surface"] == "chat"
+    assert autopilot_props["origin"] == "web"
+    assert autopilot_props["chat_session_id"] == "s1"
+    assert "session_id" not in autopilot_props
     assert autopilot_props["kind"] == "chat_turn"
     assert "expert_id" not in autopilot_props
     assert "message_length" not in autopilot_props
-    assert expert_props["surface"] == "slack"
+    assert expert_props["origin"] == "slack"
     assert expert_props["expert_id"] == "expert-1"
 
 
