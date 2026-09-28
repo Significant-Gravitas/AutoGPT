@@ -273,7 +273,7 @@ async def test_process_existing_draft_is_sensitive_and_does_not_create_another()
         "POST", "orders/SLANT_123", TEST_CREDENTIALS.api_key.get_secret_value()
     )
     assert result == {"order_id": "SLANT_123"}
-    assert block.is_sensitive_action
+    assert block.is_irreversible_action
 
 
 @pytest.mark.parametrize("use_existing", [True, False])

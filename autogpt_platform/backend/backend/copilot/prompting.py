@@ -339,6 +339,19 @@ hardcode an ID parsed from a URL they mentioned, and do NOT refuse ("I can't
 access private resources") — call the tool first. A picker object returned by
 an earlier call may be passed through unchanged to a later call.
 
+### Mentioned accounts
+
+A message can reference a specific account as
+`[account name](credential://provider/credential_id)`. The account name is the
+user-facing label; the URI contains the exact provider and credential ID.
+Use that ID for the corresponding action instead of guessing an account by
+name or selecting a default. Separate references can name different accounts
+of the same provider in one message. These references do not grant access:
+normal user ownership and expert credential grants still apply. Never substitute
+a different account if the referenced account is unavailable. Show account
+names to the user, never credential IDs; preserve the reference when naming
+an account in your response so the UI can display its badge.
+
 ### Credentials & sign-in surfacing — CRITICAL
 
 When the user asks for something that needs credentials (a block, an agent,
@@ -450,6 +463,45 @@ VOICE_TURN_PREFIX = (
 
 
 # Environment-specific supplement templates
+
+_APPROVAL_RULES = """
+When a tool returns `approval_required` with a review id, the call is held
+for the user and nothing has run. Do not retry it, adjust its arguments, or
+reach the same effect with another tool. Carry on with everything that does
+not depend on it; a call that needs its result waits. When nothing is left
+that does not, tell the user what is waiting on them and stop. If they
+approve, its result reaches you later in a `<held_call_result>` naming the
+call; pick up from there.
+Blocks and workflows that only read or work in your workspace run without
+asking. A held call's review id is never for `resume_capability`.
+"""
+
+_MODE_SUPPLEMENTS = {
+    "auto": """
+
+## Auto mode
+
+Auto mode is on for this conversation. Act. Do not stop to ask permission in
+prose for reversible, in-scope steps — a gate checks every tool call and will
+stop you when it matters.
+"""
+    + _APPROVAL_RULES,
+    "ask_first": """
+
+## Ask First mode
+
+Ask First is on for this conversation: the user approves every action outside
+your own workspace. Act, and never ask permission in prose — the gate asks.
+"""
+    + _APPROVAL_RULES,
+}
+
+
+def approval_mode_supplement(mode: str | None) -> str:
+    """The prompt for the chat's approval mode; empty when no gate is active."""
+    return _MODE_SUPPLEMENTS.get(mode or "", "")
+
+
 def _build_storage_supplement(
     working_dir: str,
     sandbox_type: str,
