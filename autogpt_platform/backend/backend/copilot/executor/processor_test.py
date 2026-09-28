@@ -226,6 +226,10 @@ class TestExecuteAsyncAclose:
                 "backend.copilot.model.get_chat_session",
                 new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
             ),
+            patch(
+                "backend.copilot.executor.processor.cancel_delegated_children",
+                new=AsyncMock(return_value=[]),
+            ),
         ]
 
     @pytest.mark.asyncio
@@ -236,10 +240,18 @@ class TestExecuteAsyncAclose:
         cluster_lock = MagicMock()
 
         patches = self._patches(published)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5] as cascade,
+        ):
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+        cascade.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_cancel_break_calls_aclose(self) -> None:
@@ -251,10 +263,21 @@ class TestExecuteAsyncAclose:
         cluster_lock = MagicMock()
 
         patches = self._patches(published)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5] as cascade,
+        ):
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+        # Stop means stop: the threads this turn handed work to stop with it,
+        # on a detached task so the teardown never waits on them.
+        await asyncio.sleep(0)
+        cascade.assert_awaited_once_with("sess-1", "user-1")
 
     @pytest.mark.asyncio
     async def test_persisted_expert_session_is_passed_to_engine(self) -> None:

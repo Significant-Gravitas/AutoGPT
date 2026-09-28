@@ -54,6 +54,7 @@ from backend.api.features.store.db import (
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
+from backend.copilot import delegation_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
@@ -629,6 +630,14 @@ class DatabaseManager(AppService):
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
+    # ============ Delegated sub-sessions ============ #
+    get_session_costs = _(delegation_db.get_session_costs)
+    get_delegation_spend_since = _(delegation_db.get_delegation_spend_since)
+    get_delegation_settings = _(delegation_db.get_delegation_settings)
+    get_expert_hired_at = _(delegation_db.get_expert_hired_at)
+    raise_delegation_cap = _(delegation_db.raise_delegation_cap)
+    stop_delegation_at_cap = _(delegation_db.stop_delegation_at_cap)
+
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
     # post a briefing via db_accessors / the DatabaseManager RPC.
@@ -1041,4 +1050,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session_status = d.update_chat_session_status
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
+    get_session_costs = d.get_session_costs
+    get_delegation_spend_since = d.get_delegation_spend_since
+    get_delegation_settings = d.get_delegation_settings
+    get_expert_hired_at = d.get_expert_hired_at
+    raise_delegation_cap = d.raise_delegation_cap
+    stop_delegation_at_cap = d.stop_delegation_at_cap
     add_chat_message = d.add_chat_message

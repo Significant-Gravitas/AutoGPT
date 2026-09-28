@@ -1,5 +1,6 @@
 import {
   getGetExpertMockHandler,
+  getListDelegationsMockHandler200,
   getListExpertCredentialsMockHandler,
   getListExpertRunsMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
@@ -193,6 +194,8 @@ describe("managing an expert's integrations", () => {
     let revoked: string | null = null;
     let expertReads = 0;
     server.use(
+      // Ahead of the expert handler, whose :expertId would also match it.
+      getListDelegationsMockHandler200(),
       getGetExpertMockHandler(() => {
         expertReads += 1;
         return maria;

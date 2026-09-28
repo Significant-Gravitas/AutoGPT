@@ -67,7 +67,9 @@ export function applyHeldOutcome(
     return settle(row, didnt, outcome.outcome, reviewId, read);
   }
   const result = asObject(outcome.output);
-  const done = getCatalogLabel(tool, row.input, "done")?.text ?? ask;
+  const done = HANDOFF_TOOLS.has(tool)
+    ? approvedHandoffText(result, row.input)
+    : (getCatalogLabel(tool, row.input, "done")?.text ?? ask);
   // It ran and failed: the normal error row, still marked as approved.
   if (result?.type === "error") {
     return {
@@ -111,6 +113,26 @@ function settle(
     requiresAction: false,
     held: { state, reviewId, read },
   };
+}
+
+const HANDOFF_TOOLS = new Set(["delegate_to_expert", "handoff_to_expert"]);
+
+// Once a hand-off is approved its row says so, in the user's own words; the
+// teammate's progress lives on the status line under the chain, not here.
+function approvedHandoffText(
+  result: Record<string, unknown> | null,
+  input: unknown,
+): string {
+  const expert = result ? asObject(result.expert) : null;
+  const named = (expert && str(expert, "name")) ?? expertFromInput(input);
+  return `You approved the hand-off to ${named ?? "a teammate"}`;
+}
+
+// The model may name the expert instead of passing an id; an id reads as noise.
+function expertFromInput(input: unknown): string | null {
+  const args = asObject(input);
+  const value = args ? str(args, "expert_id") : null;
+  return value && !/^[0-9a-f-]{20,}$/i.test(value) ? value : null;
 }
 
 function isHeldReadId(reviewId: string | null) {

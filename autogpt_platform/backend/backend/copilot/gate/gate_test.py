@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.delegation_settings import DelegationSettings
 from backend.copilot.gate import (
     active_mode,
     chat_rules,
@@ -176,10 +177,28 @@ async def test_outward_actions_ask_without_the_supervisor(
 
 
 async def test_unsupervised_runs_outward_actions(gate_on, clean_session_state):
-    decision = await check_action(
-        "post_to_chat_platform", {"text": "hi"}, "u", _session("unsupervised")
-    )
+    """With the user's "ask before anything external" toggle off."""
+    with patch(
+        "backend.copilot.gate.delegation_rules.turn_delegation_settings",
+        AsyncMock(return_value=DelegationSettings(ask_before_external=False)),
+    ):
+        decision = await check_action(
+            "post_to_chat_platform", {"text": "hi"}, "u", _session("unsupervised")
+        )
     assert decision.allowed
+
+
+async def test_unsupervised_still_asks_outward_while_the_toggle_is_on(
+    gate_on, clean_session_state
+):
+    with patch(
+        "backend.copilot.gate.delegation_rules.turn_delegation_settings",
+        AsyncMock(return_value=DelegationSettings()),
+    ):
+        decision = await check_action(
+            "post_to_chat_platform", {"text": "hi"}, "u", _session("unsupervised")
+        )
+    assert not decision.allowed
 
 
 async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state):

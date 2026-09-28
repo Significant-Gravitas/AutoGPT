@@ -36,6 +36,9 @@ def _session(
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.delegated_by_session_id = None
+    sess.metadata.pending_question = None
+    sess.metadata.delegation_cap_usd = None
+    sess.metadata.autopilot_mode = None
     # Set explicitly: a bare MagicMock attribute is truthy, so an origin
     # assertion would pass even if the kwarg were dropped.
     sess.metadata.origin = origin
@@ -524,6 +527,31 @@ class TestDelegation:
         assert len(mock_sessions) == 1, "resume must not open a second thread"
         assert mock_turn.await_args.kwargs["session_id"] == "inner-1"
 
+    @pytest.mark.asyncio
+    async def test_a_spent_daily_budget_still_lets_a_follow_up_through(
+        self, roster, mock_turn, mock_sessions, stub_sub_session_costs
+    ):
+        """The daily budget gates opening new threads, not continuing one."""
+        parent = _session(session_id="s1")
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="first"
+        )
+        stub_sub_session_costs.get_delegation_spend_since.return_value = 99_000_000
+        stub_sub_session_costs.get_delegation_settings.side_effect = RuntimeError(
+            "down"
+        )
+
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="follow up",
+            delegated_session_id="inner-1",
+        )
+
+        assert not isinstance(r, ErrorResponse)
+        assert mock_turn.await_args.kwargs["session_id"] == "inner-1"
+
 
 class TestHandoffReentry:
     @pytest.mark.asyncio
@@ -950,3 +978,33 @@ class TestRefusedDelegationCleanup:
         )
 
         deleted.assert_not_awaited()
+
+
+class TestDelegatedModeInheritance:
+    """A teammate working for Otto asks the user as often as Otto was told
+    to: the delegated thread starts in the delegating chat's approval mode."""
+
+    @pytest.mark.asyncio
+    async def test_the_thread_starts_in_the_parents_mode(
+        self, roster, mock_turn, monkeypatch
+    ):
+        create = AsyncMock(return_value=MagicMock(session_id="inner-1"))
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.create_chat_session", create
+        )
+        parent = _session()
+        parent.metadata.autopilot_mode = "ask_first"
+
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="hi"
+        )
+
+        assert create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_the_model_can_say_why_this_teammate():
+    """The approval card shows the model's reason; it is optional."""
+    params = DelegateToExpertTool().parameters
+
+    assert params["properties"]["reason"]["type"] == "string"
+    assert "reason" not in params["required"]

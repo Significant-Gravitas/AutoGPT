@@ -9,6 +9,7 @@ import {
 } from "../../tools/GenericTool/helpers";
 import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
+import type { ChatDelegation, LiveDelegationStatus } from "../../delegations";
 import type { HeldRowInfo } from "./heldRow";
 import { heldAskText, heldToolName } from "./heldRow";
 import { asObject, integrationIconSrc } from "./resultHelpers";
@@ -37,6 +38,15 @@ export interface ChainRow {
   supersededSubSession?: boolean;
   /** A call the action gate held: whether it waits, ran or was turned down. */
   held?: HeldRowInfo;
+  /** A hand-off whose teammate is waiting on the user's answer. */
+  needsYou?: boolean;
+  /** The hand-off this row opened, with its live status, when it is one. */
+  delegation?: ChainDelegationInfo;
+}
+
+export interface ChainDelegationInfo {
+  data: ChatDelegation;
+  status: LiveDelegationStatus;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([

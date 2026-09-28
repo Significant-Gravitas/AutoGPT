@@ -239,8 +239,8 @@ describe("expert change cards", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
-  it("renders a handoff as the receiving teammate's sub-session", () => {
-    render(
+  it("leaves a handoff to the status line instead of a card", () => {
+    const { container } = render(
       <ToolResult
         row={{
           ...row("handoff_to_expert", {
@@ -256,11 +256,7 @@ describe("expert change cards", () => {
       />,
     );
 
-    expect(screen.getByText("Bea")).toBeDefined();
-    expect(screen.getByText("Ops lead")).toBeDefined();
-    expect(screen.getByLabelText("Open sub-session").getAttribute("href")).toBe(
-      "/copilot?sessionId=sub-1",
-    );
+    expect(container.textContent).toBe("");
   });
 });
 

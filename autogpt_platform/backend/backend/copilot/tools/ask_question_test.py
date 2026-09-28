@@ -517,3 +517,31 @@ async def test_clearing_a_session_with_no_question_touches_nothing(
         await clear_pending_question(session)
 
     db.clear_session_pending_question.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_parked_question_keeps_the_first_questions_options(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """A delegator renders the chips from the parked question, so the
+    options have to survive the park, not just the text."""
+    db = MagicMock()
+    db.set_session_pending_question = AsyncMock()
+    with patch(
+        "backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)
+    ):
+        await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[
+                {"question": "Which release?", "options": ["Q4", "December"]},
+                {"question": "Anything else?", "options": ["No"]},
+            ],
+        )
+
+    assert session.metadata.pending_question is not None
+    assert session.metadata.pending_question.options == ["Q4", "December"]
+    assert db.set_session_pending_question.await_args.kwargs["options"] == [
+        "Q4",
+        "December",
+    ]

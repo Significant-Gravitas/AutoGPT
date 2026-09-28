@@ -30,6 +30,7 @@ expert handing work back to one already waiting on it
 
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.api.features.experts.models import Expert
@@ -46,6 +47,7 @@ from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
+from .delegation_policy import CapState, DelegationTerms, delegation_terms, enforce_cap
 from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
@@ -61,6 +63,7 @@ from .run_sub_session import (
     list_sub_workspace_files,
     response_from_outcome,
 )
+from .sub_session_facts import record_stopped, run_facts
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +89,8 @@ class DelegateToExpertTool(BaseTool):
             f"work. Waits up to wait_for_result sec (max "
             f"{MAX_SUB_SESSION_WAIT_SECONDS}); if not done, returns "
             "status=running + sub_session_id — poll via "
-            "tool:get_sub_session_result."
+            "tool:get_sub_session_result. status=needs_input: they asked the "
+            "user `question`; tell the user and wait, never answer it yourself."
         )
 
     @property
@@ -113,6 +117,11 @@ class DelegateToExpertTool(BaseTool):
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
+                    "default": "",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "One line: why this teammate. Shown to the user.",
                     "default": "",
                 },
                 "delegated_session_id": {
@@ -175,17 +184,36 @@ class DelegateToExpertTool(BaseTool):
         refusal = await chain_refusal(user_id, session, target)
         if refusal is not None:
             return self._error(refusal, session)
+        # The budget and the new thread's terms gate opening a thread; a
+        # follow-up into one already open runs on the terms it was opened with.
+        terms = (
+            None
+            if delegated_session_id.strip()
+            else await delegation_terms(user_id, session, target.id)
+        )
+        if isinstance(terms, str):
+            return self._error(terms, session)
 
         inner_session_id = await self._resolve_session(
             user_id=user_id,
             session=session,
             target=target,
             delegated_session_id=delegated_session_id.strip(),
+            terms=terms,
         )
         if isinstance(inner_session_id, ErrorResponse):
             return inner_session_id
 
         caller = await self._caller_name(user_id, session.expert_id)
+        started_on = datetime.now(UTC)
+        expert = _expert_info(target)
+        record_stopped(
+            actor=target.name,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            started_at=started_on,
+            expert=expert,
+        )
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
@@ -227,18 +255,15 @@ class DelegateToExpertTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
             actor=target.name,
+            facts=await run_facts(user_id, inner_session_id, outcome, started_on),
+        )
+        # A resumed thread keeps the cap it was opened with; its poll checks it.
+        cap = terms.cap_usd if terms else None
+        delegated = await enforce_cap(
+            delegated, CapState(cap_usd=cap), target.name, user_id
         )
         delegated.message += await build_spawn_state_note()
-        return apply_delegated_expert(
-            delegated,
-            DelegatedExpertInfo(
-                id=target.id,
-                name=target.name,
-                role=target.role,
-                avatar_url=target.avatar_url,
-                color=target.color,
-            ),
-        )
+        return apply_delegated_expert(delegated, expert)
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
@@ -274,14 +299,15 @@ class DelegateToExpertTool(BaseTool):
         session: ChatSession,
         target: Expert,
         delegated_session_id: str,
+        terms: DelegationTerms | None,
     ) -> str | ErrorResponse:
         """Reuse a prior delegation thread with this teammate, or open one.
 
         Resuming is restricted to threads this session itself delegated, so a
         session can never read or steer another scope's conversation by
-        guessing an id.
+        guessing an id. ``terms`` is set exactly when a new thread is opened.
         """
-        if not delegated_session_id:
+        if terms is not None:
             new_session = await create_chat_session(
                 user_id,
                 dry_run=session.dry_run,
@@ -291,6 +317,9 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 origin=child_session_origin(session.metadata),
+                # The teammate asks the user as often as the delegator must.
+                autopilot_mode=terms.mode,
+                delegation_cap_usd=terms.cap_usd,
             )
             return new_session.session_id
 
@@ -333,6 +362,16 @@ class DelegateToExpertTool(BaseTool):
             logger.warning(f"Delegating expert lookup failed: {e}")
             return "a teammate"
         return caller.name if caller else "a teammate"
+
+
+def _expert_info(target: Expert) -> DelegatedExpertInfo:
+    return DelegatedExpertInfo(
+        id=target.id,
+        name=target.name,
+        role=target.role,
+        avatar_url=target.avatar_url,
+        color=target.color,
+    )
 
 
 def _handoff_message(caller: str, system_context: str, prompt: str) -> str:

@@ -60,7 +60,8 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   const { deliverables } = useSessionFiles(sessionId);
   const lastGenerated = getLastGeneratedFile(deliverables);
   const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
-  const isArtifactsOpen = isOpen && activeTab === "artifacts";
+  const isArtifactsOpen =
+    isOpen && (activeTab === "artifacts" || activeTab === "work");
   // An open artifact preview and the artifacts tab are both the document
   // face of the right sidebar, so the toggle reads active for either and is
   // another control that closes them alongside the panel header. With the

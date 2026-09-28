@@ -29,6 +29,7 @@ from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
 from .classifier import DecidedBy
+from .handoff import HANDOFF_TOOL, HandoffCard, handoff_card
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, PARKABLE, effect_for, is_irreversible
 from .references import Reference, listed_ids, resolve_references
@@ -86,6 +87,8 @@ class GateReviewPayload(BaseModel):
     headline: Headline
     # A money card's estimate, spend so far and ceiling.
     spend: dict[str, int] | None = None
+    # A held hand-off: who it goes to, the brief, and why.
+    handoff: HandoffCard | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
@@ -129,6 +132,7 @@ def review_payload(
     tool_call_id: str = "",
     turn: int = 0,
     references: list[Reference] | None = None,
+    handoff: HandoffCard | None = None,
 ) -> dict[str, Any]:
     """The subject is kept as decided when the card opened: what the user saw,
     not a recomputation over a tree that may have moved since."""
@@ -169,6 +173,7 @@ def review_payload(
             else headline_for(tool_name, args, references)
         ),
         spend=spend,
+        handoff=handoff,
     ).model_dump()
 
 
@@ -258,6 +263,7 @@ async def open_review(
             tool_call_id=tool_call_id,
             turn=turn_of(session),
             references=references,
+            handoff=await handoff_card(tool_name, args, user_id),
         )
     except Exception:
         logger.warning(
@@ -286,7 +292,8 @@ async def open_review_row(
             chat_session_id=session.session_id,
             input_data=payload,
             message=message,
-            editable=False,
+            # The user may rewrite a hand-off's brief or pick another teammate.
+            editable=payload.get("tool") == HANDOFF_TOOL,
             organization_id=session.organization_id,
             team_id=session.team_id,
         )

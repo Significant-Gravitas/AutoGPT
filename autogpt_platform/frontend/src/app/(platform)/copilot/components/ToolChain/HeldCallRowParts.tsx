@@ -39,6 +39,15 @@ export function HeldTag({ state, read }: { state: HeldState; read?: boolean }) {
   );
 }
 
+/** A teammate stopped on a question for the user. */
+export function NeedsYouTag() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-md bg-amber-50 px-1.5 py-px text-xs font-medium text-amber-700">
+      Needs you
+    </span>
+  );
+}
+
 const DETAIL: Record<Exclude<HeldState, "approved">, string> = {
   waiting: `Nothing has run yet. ${AUTOPILOT_NAME} carried on without it.`,
   rejected: `You rejected this, so it didn't run. ${AUTOPILOT_NAME} was told.`,

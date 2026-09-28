@@ -1,14 +1,15 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from pydantic import BaseModel, ValidationError
 
-from backend.api.features.experts import experts_db
+from backend.api.features.experts import delegations, experts_db
+from backend.api.features.experts.delegations import DelegationSummary
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.activity_gate import (
     hide_activity_summaries_if_disabled,
@@ -56,6 +57,8 @@ class HomeSourceData(BaseModel):
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo]
     credits_balance: int | None
     questions: list[ChatSessionInfo]
+    delegated_questions: list[DelegationSummary] = []
+    recent_delegations: list[DelegationSummary] = []
     work_events: list[activity_db.ActivityEvent]
     timezone_name: str
 
@@ -102,6 +105,8 @@ async def build_home_dashboard(
         credits_balance=data.credits_balance,
         timezone_name=data.timezone_name,
         questions=data.questions,
+        delegated_questions=data.delegated_questions,
+        recent_delegations=data.recent_delegations,
         persisted_briefing=persisted_briefing,
         work_events=data.work_events,
         session_titles=session_titles,
@@ -184,6 +189,12 @@ async def _load_home_source_data(
     schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
     credits_task = asyncio.create_task(_get_credits(user_id=user_id, ctx=ctx))
     questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
+    delegated_questions_task = asyncio.create_task(
+        _get_delegations(user_id, delegations.delegated_questions)
+    )
+    recent_delegations_task = asyncio.create_task(
+        _get_delegations(user_id, delegations.recent_delegations)
+    )
     work_events_task = asyncio.create_task(
         _get_work_events(user_id=user_id, since=week_start)
     )
@@ -198,6 +209,8 @@ async def _load_home_source_data(
         schedules_task,
         credits_task,
         questions_task,
+        delegated_questions_task,
+        recent_delegations_task,
         work_events_task,
         user_task,
     ]
@@ -213,6 +226,8 @@ async def _load_home_source_data(
         schedules=schedules_task.result(),
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
+        delegated_questions=delegated_questions_task.result(),
+        recent_delegations=recent_delegations_task.result(),
         work_events=work_events_task.result(),
         timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
     )
@@ -247,6 +262,23 @@ async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
         logger.warning(
             "Home could not load pending questions for user %s",
             user_id[:_LOG_ID_CHARS],
+        )
+        return []
+
+
+async def _get_delegations(
+    user_id: str,
+    load: Callable[[str], Awaitable[list[DelegationSummary]]],
+) -> list[DelegationSummary]:
+    # Fail-soft and flag-gated like pending questions: hand-offs ship with the
+    # expert-team surface, and a broken read costs its rows, not the page.
+    try:
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+            return []
+        return await load(user_id)
+    except Exception:
+        logger.warning(
+            "Home could not load delegations for user %s", user_id[:_LOG_ID_CHARS]
         )
         return []
 

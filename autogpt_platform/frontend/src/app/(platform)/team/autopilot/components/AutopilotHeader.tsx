@@ -5,6 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Tick02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { cn } from "@/lib/utils";
+import { WorkingForPill } from "../../components/DelegationList/DelegationStatusBadge";
 import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
 import {
   AUTOPILOT_COVER_COLOR,
@@ -12,7 +13,11 @@ import {
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
 
-export function AutopilotHeader() {
+interface Props {
+  delegationsToday: number;
+}
+
+export function AutopilotHeader({ delegationsToday }: Props) {
   return (
     <header>
       <ExpertCover
@@ -54,6 +59,12 @@ export function AutopilotHeader() {
               <Icon icon={Tick02Icon} size={12} />
               Built in
             </Text>
+            {delegationsToday > 0 ? (
+              <WorkingForPill>
+                {delegationsToday}{" "}
+                {delegationsToday === 1 ? "delegation" : "delegations"} today
+              </WorkingForPill>
+            ) : null}
           </div>
         </div>
         <Button

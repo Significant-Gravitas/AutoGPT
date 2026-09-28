@@ -4505,6 +4505,59 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/messages": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Answer Session",
+        "description": "Post a user message into a session and start its turn, without a stream.\n\nUsed to answer a delegated expert's question from the chat that\ndelegated it. A running turn takes the message into its pending buffer\ninstead, the same as a follow-up typed mid-turn. An answer to a\ndelegation's cap question raises the cap and resumes the thread, or\n(\"Stop\") leaves it stopped without starting a turn.",
+        "operationId": "answer_session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AnswerSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit or concurrent-turn cap exceeded"
+          },
+          "503": { "description": "Chat service degraded; retry shortly" }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/messages/pending": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -6762,6 +6815,168 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/delegation-settings": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Get Delegation Settings",
+        "description": "How Otto hands work to the team; the defaults until the user saves.",
+        "operationId": "get_delegation_settings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DelegationSettings" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "put": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Update Delegation Settings",
+        "operationId": "update_delegation_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DelegationSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DelegationSettings" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/delegations": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "List Delegations",
+        "description": "The user's hand-offs, newest first, a page at a time, with the total\nthat matched and counts and today's spend.",
+        "operationId": "list_delegations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Only this teammate's",
+              "title": "Expert Id"
+            },
+            "description": "Only this teammate's"
+          },
+          {
+            "name": "parent_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Only hand-offs made from this chat",
+              "title": "Parent Session Id"
+            },
+            "description": "Only hand-offs made from this chat"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "proposed",
+                    "queued",
+                    "running",
+                    "needs_input",
+                    "completed",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DelegationListResponse"
+                }
               }
             }
           },
@@ -17742,6 +17957,32 @@
         "title": "AgentsFoundResponse",
         "description": "Response for find_agent tool."
       },
+      "AnswerSessionRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "AnswerSessionRequest"
+      },
+      "AnswerSessionResponse": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" },
+          "queued": {
+            "type": "boolean",
+            "title": "Queued",
+            "description": "True when the message waits behind work already in flight: the thread's running turn takes it at its next step, or the turn is queued behind the user's running-turn cap. False when a new turn started with it."
+          }
+        },
+        "type": "object",
+        "required": ["session_id", "queued"],
+        "title": "AnswerSessionResponse"
+      },
       "ApiResponse": {
         "properties": {
           "answer": { "type": "string", "title": "Answer" },
@@ -19130,6 +19371,19 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Purpose"
           },
+          "delegation_cap_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Delegation Cap Usd"
+          },
+          "delegation_cap_stopped": {
+            "type": "boolean",
+            "title": "Delegation Cap Stopped",
+            "default": false
+          },
+          "delegation_cap_raised_for": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegation Cap Raised For"
+          },
           "pending_question": {
             "anyOf": [
               { "$ref": "#/components/schemas/PendingQuestion" },
@@ -20198,7 +20452,8 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
-              "kind": "normal"
+              "kind": "normal",
+              "delegation_cap_stopped": false
             }
           },
           "expert_id": {
@@ -20731,6 +20986,234 @@
         "required": ["step_id", "description", "action"],
         "title": "DecompositionStepModel",
         "description": "A single step in a decomposed agent-building plan."
+      },
+      "DelegatedExpertInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "color": { "type": "string", "title": "Color", "default": "" }
+        },
+        "type": "object",
+        "required": ["id", "name", "role"],
+        "title": "DelegatedExpertInfo",
+        "description": "Identity of the expert a delegated sub-session runs as.\n\nSet only by ``delegate_to_expert`` (and by polls of a delegated sub), so\nboth the model and the ToolChain card can name who is doing the work\ninstead of rendering a generic \"Subtask\"."
+      },
+      "DelegationCounts": {
+        "properties": {
+          "working": { "type": "integer", "title": "Working" },
+          "needs_you": { "type": "integer", "title": "Needs You" },
+          "completed": { "type": "integer", "title": "Completed" },
+          "failed": { "type": "integer", "title": "Failed" },
+          "spent_today_usd": { "type": "number", "title": "Spent Today Usd" }
+        },
+        "type": "object",
+        "required": [
+          "working",
+          "needs_you",
+          "completed",
+          "failed",
+          "spent_today_usd"
+        ],
+        "title": "DelegationCounts"
+      },
+      "DelegationListResponse": {
+        "properties": {
+          "delegations": {
+            "items": { "$ref": "#/components/schemas/DelegationSummary" },
+            "type": "array",
+            "title": "Delegations"
+          },
+          "total": { "type": "integer", "title": "Total" },
+          "summary": { "$ref": "#/components/schemas/DelegationCounts" }
+        },
+        "type": "object",
+        "required": ["delegations", "total", "summary"],
+        "title": "DelegationListResponse"
+      },
+      "DelegationSettings": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["ask_first", "auto", "unsupervised"],
+            "title": "Mode",
+            "default": "auto"
+          },
+          "per_delegation_cap_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Per Delegation Cap Usd",
+            "default": 2.0
+          },
+          "daily_budget_usd": {
+            "type": "number",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Daily Budget Usd",
+            "default": 10.0
+          },
+          "ask_before_external": {
+            "type": "boolean",
+            "title": "Ask Before External",
+            "default": true
+          },
+          "ask_before_over_cap": {
+            "type": "boolean",
+            "title": "Ask Before Over Cap",
+            "default": true
+          },
+          "new_experts_ask_first": {
+            "type": "boolean",
+            "title": "New Experts Ask First",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DelegationSettings"
+      },
+      "DelegationSettingsUpdate": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["ask_first", "auto", "unsupervised"],
+            "title": "Mode"
+          },
+          "per_delegation_cap_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Per Delegation Cap Usd"
+          },
+          "daily_budget_usd": {
+            "type": "number",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Daily Budget Usd"
+          },
+          "ask_before_external": {
+            "type": "boolean",
+            "title": "Ask Before External"
+          },
+          "ask_before_over_cap": {
+            "type": "boolean",
+            "title": "Ask Before Over Cap"
+          },
+          "new_experts_ask_first": {
+            "type": "boolean",
+            "title": "New Experts Ask First"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "per_delegation_cap_usd",
+          "daily_budget_usd",
+          "ask_before_external",
+          "ask_before_over_cap",
+          "new_experts_ask_first"
+        ],
+        "title": "DelegationSettingsUpdate",
+        "description": "The whole settings object, as the Settings tab saves it.\n\nEvery field is required, unlike :class:`DelegationSettings`: a model with\ndefaults gets separate input and output schemas, which the generated\nclient cannot name."
+      },
+      "DelegationSummary": {
+        "properties": {
+          "sub_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Sub Session Id"
+          },
+          "review_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Id"
+          },
+          "parent_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Session Id"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DelegatedExpertInfo" },
+              { "type": "null" }
+            ]
+          },
+          "title": { "type": "string", "title": "Title" },
+          "brief": { "type": "string", "title": "Brief" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "queued",
+              "running",
+              "needs_input",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Finished At"
+          },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cost Usd"
+          },
+          "files_count": { "type": "integer", "title": "Files Count" },
+          "question": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Question"
+          },
+          "question_options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Question Options"
+          },
+          "asked_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Asked At"
+          },
+          "delegated_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated By Expert Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sub_session_id",
+          "parent_session_id",
+          "expert",
+          "title",
+          "brief",
+          "status",
+          "created_at",
+          "finished_at",
+          "elapsed_seconds",
+          "cost_usd",
+          "files_count",
+          "question",
+          "question_options"
+        ],
+        "title": "DelegationSummary"
       },
       "DeleteFileResponse": {
         "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
@@ -24214,6 +24697,54 @@
         ],
         "title": "HomeDashboardResponse"
       },
+      "HomeDelegationItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "sub_session_id": { "type": "string", "title": "Sub Session Id" },
+          "title": { "type": "string", "title": "Title" },
+          "description": { "type": "string", "title": "Description" },
+          "status": {
+            "type": "string",
+            "enum": ["completed", "failed", "cancelled"],
+            "title": "Status"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "files_count": {
+            "type": "integer",
+            "title": "Files Count",
+            "default": 0
+          },
+          "cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cost Usd"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sub_session_id",
+          "title",
+          "description",
+          "status",
+          "occurred_at"
+        ],
+        "title": "HomeDelegationItem",
+        "description": "A hand-off that finished this week, under the teammate who took it."
+      },
       "HomeExpert": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -24291,9 +24822,19 @@
             "type": "array",
             "title": "Items"
           },
+          "delegations": {
+            "items": { "$ref": "#/components/schemas/HomeDelegationItem" },
+            "type": "array",
+            "title": "Delegations"
+          },
           "run_count": {
             "type": "integer",
             "title": "Run Count",
+            "default": 0
+          },
+          "delegation_count": {
+            "type": "integer",
+            "title": "Delegation Count",
             "default": 0
           },
           "file_count": {
@@ -27088,6 +27629,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Asked At"
+          },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
           }
         },
         "type": "object",
@@ -29251,7 +29797,8 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
-              "kind": "normal"
+              "kind": "normal",
+              "delegation_cap_stopped": false
             }
           },
           "expert_id": {

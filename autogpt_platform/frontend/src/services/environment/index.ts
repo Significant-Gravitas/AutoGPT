@@ -35,7 +35,9 @@ function getAGPTServerApiUrl() {
 }
 
 function getAGPTServerBaseUrl() {
-  return getAGPTServerApiUrl().replace("/api", "");
+  // Only the trailing "/api" is the API mount; an earlier one belongs to the
+  // host path (e.g. a same-origin "/api/proxy/api" route).
+  return getAGPTServerApiUrl().replace(/\/api\/?$/, "");
 }
 
 function getAGPTWsServerUrl() {
