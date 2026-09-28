@@ -527,6 +527,31 @@ class TestDelegation:
         assert len(mock_sessions) == 1, "resume must not open a second thread"
         assert mock_turn.await_args.kwargs["session_id"] == "inner-1"
 
+    @pytest.mark.asyncio
+    async def test_a_spent_daily_budget_still_lets_a_follow_up_through(
+        self, roster, mock_turn, mock_sessions, stub_sub_session_costs
+    ):
+        """The daily budget gates opening new threads, not continuing one."""
+        parent = _session(session_id="s1")
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="first"
+        )
+        stub_sub_session_costs.get_delegation_spend_since.return_value = 99_000_000
+        stub_sub_session_costs.get_delegation_settings.side_effect = RuntimeError(
+            "down"
+        )
+
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="follow up",
+            delegated_session_id="inner-1",
+        )
+
+        assert not isinstance(r, ErrorResponse)
+        assert mock_turn.await_args.kwargs["session_id"] == "inner-1"
+
 
 class TestHandoffReentry:
     @pytest.mark.asyncio

@@ -184,7 +184,13 @@ class DelegateToExpertTool(BaseTool):
         refusal = await chain_refusal(user_id, session, target)
         if refusal is not None:
             return self._error(refusal, session)
-        terms = await delegation_terms(user_id, session, target.id)
+        # The budget and the new thread's terms gate opening a thread; a
+        # follow-up into one already open runs on the terms it was opened with.
+        terms = (
+            None
+            if delegated_session_id.strip()
+            else await delegation_terms(user_id, session, target.id)
+        )
         if isinstance(terms, str):
             return self._error(terms, session)
 
@@ -252,7 +258,7 @@ class DelegateToExpertTool(BaseTool):
             facts=await run_facts(user_id, inner_session_id, outcome, started_on),
         )
         # A resumed thread keeps the cap it was opened with; its poll checks it.
-        cap = None if delegated_session_id.strip() else terms.cap_usd
+        cap = terms.cap_usd if terms else None
         delegated = await enforce_cap(
             delegated, CapState(cap_usd=cap), target.name, user_id
         )
@@ -293,15 +299,15 @@ class DelegateToExpertTool(BaseTool):
         session: ChatSession,
         target: Expert,
         delegated_session_id: str,
-        terms: DelegationTerms,
+        terms: DelegationTerms | None,
     ) -> str | ErrorResponse:
         """Reuse a prior delegation thread with this teammate, or open one.
 
         Resuming is restricted to threads this session itself delegated, so a
         session can never read or steer another scope's conversation by
-        guessing an id.
+        guessing an id. ``terms`` is set exactly when a new thread is opened.
         """
-        if not delegated_session_id:
+        if terms is not None:
             new_session = await create_chat_session(
                 user_id,
                 dry_run=session.dry_run,
