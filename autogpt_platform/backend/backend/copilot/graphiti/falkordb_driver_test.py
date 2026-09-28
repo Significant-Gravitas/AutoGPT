@@ -1,6 +1,8 @@
 import asyncio
+import gc
 import threading
 import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -641,6 +643,102 @@ class TestDeferredFalkorDB:
 
         assert await client.execute_command("PING") == 1
         assert len(builds) == 1
+
+    @staticmethod
+    def _abandoned_build(
+        release: threading.Event, real: MagicMock | None = None
+    ) -> tuple[Any, list[int]]:
+        """A build whose first attempt waits for ``release`` and then fails;
+        any later attempt returns ``real``."""
+        attempts: list[int] = []
+
+        def build() -> MagicMock:
+            attempts.append(1)
+            if len(attempts) == 1:
+                release.wait(5)
+                raise ConnectionError("the server stopped answering")
+            assert real is not None
+            return real
+
+        return build, attempts
+
+    @pytest.mark.asyncio
+    async def test_a_build_that_fails_after_its_caller_gave_up_is_read(
+        self,
+    ) -> None:
+        """The caller gives up, the build then fails with nobody waiting for
+        it, and the driver is closed and dropped, as a cancelled request's
+        ``finally`` does. The failure was read when the build settled, so the
+        loop's exception handler hears nothing ("Task exception was never
+        retrieved")."""
+        loop = asyncio.get_running_loop()
+        reported: list[dict[str, Any]] = []
+        previous = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, context: reported.append(context))
+        release = threading.Event()
+        build, _ = self._abandoned_build(release)
+        try:
+            client = fdb.DeferredFalkorDB(build)
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(client.execute_command("PING"), timeout=0.05)
+            building = client._building
+            assert building is not None
+            await client.aclose()
+            release.set()
+            await asyncio.wait({building}, timeout=5)
+            assert building.done() and client._building is None
+            del client, building
+            gc.collect()
+            await asyncio.sleep(0.01)
+        finally:
+            loop.set_exception_handler(previous)
+
+        assert reported == []
+
+    @pytest.mark.asyncio
+    async def test_the_first_command_after_an_abandoned_failed_build_succeeds(
+        self,
+    ) -> None:
+        """The caller gives up, the build then fails with nobody waiting, and
+        the server comes back: the very next command builds afresh, instead
+        of raising the dead build's error once more."""
+        release = threading.Event()
+        real = MagicMock()
+        real.execute_command = AsyncMock(return_value="PONG")
+        build, attempts = self._abandoned_build(release, real)
+        client = fdb.DeferredFalkorDB(build)
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(client.execute_command("PING"), timeout=0.05)
+        building = client._building
+        assert building is not None
+        release.set()
+        await asyncio.wait({building}, timeout=5)
+
+        assert await client.execute_command("PING") == "PONG"
+        assert len(attempts) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_build_is_dropped(self) -> None:
+        """A build cancelled outright (not a caller giving up, which the
+        shield absorbs) is dropped too, so the next command builds afresh
+        instead of raising ``CancelledError``."""
+        release = threading.Event()
+        real = MagicMock()
+        real.execute_command = AsyncMock(return_value="PONG")
+        build, attempts = self._abandoned_build(release, real)
+        client = fdb.DeferredFalkorDB(build)
+        waiter = asyncio.create_task(client.execute_command("PING"))
+        await asyncio.sleep(0.05)
+        building = client._building
+        assert building is not None
+        building.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        await asyncio.wait({building}, timeout=5)
+        release.set()
+
+        assert await client.execute_command("PING") == "PONG"
+        assert len(attempts) == 2
 
     @pytest.mark.asyncio
     async def test_close_releases_the_built_client_and_builds_none(self) -> None:

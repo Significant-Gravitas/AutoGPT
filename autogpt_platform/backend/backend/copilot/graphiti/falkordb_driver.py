@@ -435,9 +435,11 @@ class DeferredFalkorDB(FalkorDB):
     coroutine there until the server answers. This one does no I/O when it
     is made. The first command builds the real client (``build``) on the
     connect pool (``build_off_loop``); concurrent first commands share that
-    build, a caller that stops waiting leaves it running for the next, and
-    a failed build is dropped so the next command tries again. After that,
-    every command goes through the real client.
+    build, and a caller that stops waiting leaves it running for the next.
+    The build is settled when it finishes, whether or not anyone still waits
+    for it (``_settle``): a client it built is kept, and a build that failed
+    is dropped, its error read, so the next command builds afresh. After
+    that, every command goes through the real client.
 
     Deferred are the entry points the drivers reach: ``execute_command``,
     which every graph selected from this client sends its commands through
@@ -460,15 +462,22 @@ class DeferredFalkorDB(FalkorDB):
             building = asyncio.get_running_loop().create_task(
                 build_off_loop(self._build), name="falkordb-connect"
             )
+            building.add_done_callback(self._settle)
             self._building = building
-        try:
-            client = await asyncio.shield(building)
-        except Exception:
-            if self._building is building:
-                self._building = None
-            raise
-        self._client = client
-        return client
+        # Shielded: a caller that stops waiting leaves the build running.
+        return await asyncio.shield(building)
+
+    def _settle(self, building: "asyncio.Task[FalkorDB]") -> None:
+        """Called when a build finishes, by the loop rather than by a
+        waiter, since every waiter may have given up: keep the client it
+        built, or drop the build that failed or was cancelled. Reading the
+        error here means asyncio never reports it as unretrieved."""
+        failed = building.cancelled() or building.exception() is not None
+        if self._building is not building:
+            return
+        self._building = None
+        if not failed:
+            self._client = building.result()
 
     async def execute_command(self, *args: Any, **options: Any) -> Any:
         client = await self.connect()
