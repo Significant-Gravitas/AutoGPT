@@ -24,6 +24,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.recall_stamp import stamp_recalls
 from backend.copilot.graphiti.scope import HIT_TRACKER_KEY_PREFIX, MemoryScope
 from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 
@@ -244,7 +245,11 @@ async def try_ratify_on_hit(scope: MemoryScope, edge_uuids: list[str]) -> int:
       1. Bump the ``mem:hits:{scope_key}:{edge_uuid}`` Redis counter
          (so the nightly ratification sweep also sees the hit and
          agrees on promotion if Cypher fails here).
-      2. Issue a targeted Cypher ``SET status='active'`` filtered by
+      2. Stamp the recall on every retrieved live edge, in one batched
+         write (``graphiti/recall_stamp.py``). The Redis counter expires
+         with the grace period; the stamps are the durable usage signal
+         the dream pass reads to leave a relied-on fact alone.
+      3. Issue a targeted Cypher ``SET status='active'`` filtered by
          ``status='tentative' AND expired_at IS NULL`` — already-active
          and already-retracted edges are no-ops via the WHERE clause.
 
@@ -276,6 +281,8 @@ async def try_ratify_on_hit(scope: MemoryScope, edge_uuids: list[str]) -> int:
     promoted_count = 0
     driver = open_driver(scope)
     try:
+        # Never raises; a failed stamp is logged and promotion goes on.
+        await stamp_recalls(driver, edge_uuids, owner=user_id)
         for uuid in edge_uuids:
             try:
                 if await _promote_if_tentative(driver, uuid):

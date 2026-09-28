@@ -486,6 +486,8 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
     driver.close = AsyncMock(return_value=None)
 
     async def fake_execute(query: str, **kwargs):
+        if "recall_count" in query:
+            return ([{"stamped": 3}], None, None)
         return (list(next(promote_results)), None, None)
 
     driver.execute_query = AsyncMock(side_effect=fake_execute)
@@ -523,7 +525,8 @@ async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
 
     # The poison edge errored; the others promoted.
     assert promoted == 2
-    assert calls["n"] == 3  # all three attempted; one raised
+    # One batched recall stamp, then all three promotions attempted; one raised.
+    assert calls["n"] == 4
 
 
 @pytest.mark.asyncio
