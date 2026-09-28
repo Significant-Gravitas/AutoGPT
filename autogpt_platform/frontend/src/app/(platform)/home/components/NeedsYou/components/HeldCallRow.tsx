@@ -65,7 +65,7 @@ export function HeldCallRow({
               id={headlineButtonId(item.id)}
               aria-expanded={false}
               onClick={onOpen}
-              className="line-clamp-2 min-w-0 rounded-md text-left text-zinc-900 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+              className="line-clamp-2 min-w-0 rounded-md text-left text-zinc-900 [overflow-wrap:anywhere] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
             >
               <Text variant="body-medium" as="span" className="text-pretty">
                 <HeadlineText item={approval} />
