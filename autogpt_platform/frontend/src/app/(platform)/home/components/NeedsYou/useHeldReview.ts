@@ -180,9 +180,10 @@ export function useHeldReview({ items }: Args) {
   function focusNextAfter(ids: string[]) {
     const current = order.current;
     const last = Math.max(...ids.map((id) => current.indexOf(id)));
+    // Only a held call's row has a headline button; setup and question rows do not.
     const next = current
       .slice(last + 1)
-      .find((id) => !ids.includes(id) && !receipts[id]);
+      .find((id) => seen.current.has(id) && !ids.includes(id) && !receipts[id]);
     if (!next) return;
     requestAnimationFrame(() =>
       document.getElementById(headlineButtonId(next))?.focus(),

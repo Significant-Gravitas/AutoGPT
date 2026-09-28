@@ -160,6 +160,33 @@ test("a decided row stays as a receipt after the refetch drops it, and the count
   await waitFor(() => expect(document.activeElement?.id).toContain("f2"));
 });
 
+test("after an inline decision focus skips a setup row to the next held call", async () => {
+  serveAnswers();
+  const first = homeHeldItem(folder("f1", "Q3 reports"));
+  const next = homeHeldItem(folder("f2", "Invoices"));
+  const setup: HomeAttentionItem = {
+    id: "setup-ada",
+    kind: "setup",
+    priority: "normal",
+    title: "Finish setting up Ada",
+    description: "1 scheduled workflow needs setup.",
+    why_it_matters: "",
+    expert: first.expert,
+    primary_action: { label: "Finish setup", href: "/team/ada" },
+  };
+  renderTile([first, setup, next]);
+
+  await userEvent.click(
+    screen.getByRole("button", { name: `Approve: ${first.title}` }),
+  );
+
+  await waitFor(() =>
+    expect(document.activeElement?.textContent).toBe(
+      "Create library folder Invoices",
+    ),
+  );
+});
+
 test("a held call that leaves the feed undecided reads Answered elsewhere", async () => {
   const gone = homeHeldItem(folder("f1", "Q3 reports"));
   const { refetch } = renderTile([gone]);
