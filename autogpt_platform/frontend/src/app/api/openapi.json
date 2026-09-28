@@ -1527,6 +1527,78 @@
         }
       }
     },
+    "/api/admin/memory/{user_id}/dream/passes": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Dream Pass Records",
+        "description": "List a user's dream passes, across the account and every expert,\nnewest first: the durable records, each as ``GET .../record`` returns\nit. A finished pass keeps its phase outputs, operations and usage; its\ninput bundle went when it closed, and its lease with it, or, for a pass\nwhose close left a cleanup pending, once that cleanup finished.",
+        "operationId": "getV2ListDreamPassRecords",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["open", "all"],
+              "type": "string",
+              "description": "Only the passes still running, or all of them",
+              "default": "all",
+              "title": "Status"
+            },
+            "description": "Only the passes still running, or all of them"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many passes, newest first",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "How many passes, newest first"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DreamPassListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/memory/{user_id}/dream/{job_id}": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
@@ -1585,7 +1657,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Cancel Dream Pass Run",
-        "description": "Cancel an open dream pass and return its record, now CANCELLED.\n\nThe row closes at once; the pass itself stops at its next check (a phase\nboundary, its batch submit, or just before apply, on either route)\nwithout applying. A batch pass waiting on its provider stops when that\nbatch lands. A pass already past its last check still applies, once, and\nwhatever a pass applied stays. 404 for a pass that does not exist or\nbelongs to another user, alike; 409 once the pass has ended.",
+        "description": "Cancel an open dream pass and return its record, now CANCELLED.\n\nThe row closes at once; the pass itself stops at its next check (a phase\nboundary, its batch submit, or just before apply, on either route)\nwithout applying. A batch pass waiting on its provider has that batch\ncancelled too, and the batch executor drops it at its next poll, which\nreleases the pass's lock. A pass already past its last check still\napplies, once, and whatever a pass applied stays. 404 for a pass that\ndoes not exist or belongs to another user, alike; 409 once the pass has\nended.",
         "operationId": "postV2CancelDreamPassRun",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -21401,6 +21473,19 @@
         "title": "DreamPassCancelRequest",
         "description": "Why an admin cancels a dream pass, kept as the pass's error."
       },
+      "DreamPassListResponse": {
+        "properties": {
+          "passes": {
+            "items": { "$ref": "#/components/schemas/DreamPassRecord" },
+            "type": "array",
+            "title": "Passes"
+          }
+        },
+        "type": "object",
+        "required": ["passes"],
+        "title": "DreamPassListResponse",
+        "description": "A user's dream passes, every scope, newest first."
+      },
       "DreamPassOperations": {
         "properties": {
           "planned": {
@@ -21467,6 +21552,13 @@
               { "type": "null" }
             ],
             "title": "Lease Expires At"
+          },
+          "cleanup_pending_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Cleanup Pending At"
           },
           "input_bundle": {
             "anyOf": [

@@ -14,7 +14,9 @@ in-memory stand-in by default. Tests that need their own fake keep patching
 No Postgres either, and the DatabaseManager RPC client behind ``dream_db()``
 would stall a write until the store's deadline, so the dream store writes
 each pass's record to an in-memory ``FakeDreamDb`` that tests can read the
-transitions back from. The master flag the guard reads answers on.
+transitions back from. The master flag the guard reads answers on. And no
+test reaches Anthropic from a pass's cleanup: there is no key to reach it
+with, and a batch's status reads ended, unless a test sets its own.
 """
 
 from __future__ import annotations
@@ -189,11 +191,12 @@ class FakeDreamDb:
     a ``None`` field leaves its column, status and phase only move forward,
     a batch id lands only while the row has not moved past the update's
     phase, ``phase_outputs`` and ``operations`` merge one field at a time, a
-    stop bumps the cancel generation, and a terminal row, another user's row
-    (for an update naming the owner) or a row written after the update's
-    instant is not written. ``writes`` holds every draft and update that was
-    written, in order, as sent. ``fail`` makes every call raise, as an
-    unreachable database would.
+    stop bumps the cancel generation, ``clear`` empties its columns, and a
+    terminal row, another user's row (for an update naming the owner) or a
+    row written after the update's instant is not written; an update marked
+    ``closed_row`` writes a terminal row only. ``writes`` holds
+    every draft and update that was written, in order, as sent. ``fail``
+    makes every call raise, as an unreachable database would.
     """
 
     def __init__(self) -> None:
@@ -231,6 +234,7 @@ class FakeDreamDb:
                 )
             else:
                 row[field] = value
+        row.update({column: None for column in update.clear})
         row["cancel_generation"] += int(update.bump_cancel_generation)
         row["updated_at"] = datetime.now(timezone.utc)
         return True
@@ -255,6 +259,54 @@ class FakeDreamDb:
             for pass_id, row in reversed(self.rows.items())
             if row["scope_key"] == scope_key and row["status"] in OPEN_STATUSES
         ][:limit]
+
+    async def list_expired_dream_passes(
+        self, expired_before: datetime, limit: int = 100
+    ) -> list[DreamPassRecord]:
+        """Open rows whose lease lapsed before *expired_before*, oldest
+        lapse first, at most *limit*."""
+        self._raise_if_down()
+        lapsed = [
+            (row["lease_expires_at"], pass_id)
+            for pass_id, row in self.rows.items()
+            if row["status"] in OPEN_STATUSES
+            and row.get("lease_expires_at") is not None
+            and row["lease_expires_at"] < expired_before
+        ]
+        return [self.record(pass_id) for _, pass_id in sorted(lapsed)[:limit]]
+
+    async def list_dream_pass_cleanups(
+        self, due_before: datetime, limit: int = 100
+    ) -> list[DreamPassRecord]:
+        """Closed rows marked for a cleanup that is due (marked, or holding
+        no lease or one that lapsed, before *due_before*), longest pending
+        first."""
+        self._raise_if_down()
+        pending = [
+            (row["cleanup_pending_at"], pass_id)
+            for pass_id, row in self.rows.items()
+            if row["status"] not in OPEN_STATUSES
+            and row.get("cleanup_pending_at") is not None
+            and _due(row, due_before)
+        ]
+        return [self.record(pass_id) for _, pass_id in sorted(pending)[:limit]]
+
+    async def delete_old_dream_passes(
+        self, created_before: datetime, limit: int = 1000
+    ) -> int:
+        """Delete at most *limit* closed rows created before *created_before*,
+        none whose cleanup is pending."""
+        self._raise_if_down()
+        old = [
+            pass_id
+            for pass_id, row in self.rows.items()
+            if row["status"] not in OPEN_STATUSES
+            and row.get("cleanup_pending_at") is None
+            and row["created_at"] < created_before
+        ][:limit]
+        for pass_id in old:
+            del self.rows[pass_id]
+        return len(old)
 
     def seed(self, draft: DreamPassDraft, **columns: Any) -> None:
         """A row as an earlier step (another process) would have left it;
@@ -295,7 +347,7 @@ class FakeDreamDb:
 
 
 # Update fields that are not a column written as sent: the forward-only
-# columns, the generation bump and the conditions.
+# columns, the generation bump, the conditions and the columns to empty.
 _NOT_WRITTEN_AS_IS = frozenset(
     {
         "status",
@@ -304,20 +356,31 @@ _NOT_WRITTEN_AS_IS = frozenset(
         "bump_cancel_generation",
         "owner_user_id",
         "not_updated_since",
+        "clear",
+        "closed_row",
     }
 )
 
 
 def _writable(row: dict[str, Any], update: DreamPassUpdate) -> bool:
-    """Whether *update* may write *row*: open, the owner's when it names one,
-    not written after its instant when it names one."""
+    """Whether *update* may write *row*: open (closed, for a ``closed_row``
+    update), the owner's when it names one, not written after its instant
+    when it names one."""
     return (
-        row["status"] in OPEN_STATUSES
+        (row["status"] in OPEN_STATUSES) is not update.closed_row
         and update.owner_user_id in (None, row["user_id"])
         and (
             update.not_updated_since is None
             or row["updated_at"] <= update.not_updated_since
         )
+    )
+
+
+def _due(row: dict[str, Any], due_before: datetime) -> bool:
+    """Whether a marked row's cleanup is due, as the cleanup scan decides."""
+    lease = row.get("lease_expires_at")
+    return row["cleanup_pending_at"] <= due_before or (
+        lease is None or lease <= due_before
     )
 
 
@@ -390,6 +453,19 @@ def dream_pass_flag(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     flag = AsyncMock(return_value=(True, True))
     monkeypatch.setattr("backend.copilot.dream.guard.evaluate_feature_flag", flag)
     return flag
+
+
+@pytest.fixture(autouse=True)
+def batch_status(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """No Anthropic key behind a pass's cleanup, and a batch status that reads
+    ended: the cleanup's provider step never reaches the network. Tests of
+    that step set their own key, cancel and status."""
+    monkeypatch.setattr(
+        "backend.copilot.dream.provider_batch.anthropic_api_key", lambda: None
+    )
+    status = AsyncMock(return_value="ended")
+    monkeypatch.setattr("backend.copilot.dream.provider_batch.poll_batch", status)
+    return status
 
 
 @pytest.fixture(autouse=True)

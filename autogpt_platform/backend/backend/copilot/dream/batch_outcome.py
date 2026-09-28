@@ -1,12 +1,13 @@
 """How a batch dream pass ends: what it reports to the admin JobStatus row and
-to its durable DreamPass record, and the lock it gives back.
+to its durable DreamPass record, and the cleanup after it.
 
 A batch pass ends in a callback, in another process, long after it started:
 ``fail_pass`` for every failure, ``record_completion`` once apply has run.
 Either way the record gets the usage of every phase that landed, read off the
 pass's Redis state and priced in ``batch_costs.py``, unless a stop closed the
 record first: a closed record refuses the write, and that usage lives on only
-in the cost log.
+in the cost log. Either way the record is marked for the cleanup after the
+pass, which ``clean_up_after`` then does (``cleanup.py``).
 """
 
 from __future__ import annotations
@@ -18,18 +19,18 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.graphiti.scope import MemoryScope
 
-from .batch_costs import landed_usage, log_all_phase_costs
-from .batch_state import best_effort_cleanup, read_state_or_none
+from .batch_costs import landed_usage
+from .batch_state import read_state_or_none
 from .batch_submit import read_lock_token
+from .cleanup import clean_up_pass, finish_cleanup
 from .locks import release_dream_lock
 from .schemas import (
-    DreamOperations,
     DreamOperationsSnapshot,
     DreamPassResult,
     DreamPassUsage,
     IngestionDrainStatus,
 )
-from .store import record_batch_complete, record_batch_failed
+from .store import read_pass, record_batch_complete, record_batch_failed
 
 logger = logging.getLogger(__name__)
 
@@ -63,34 +64,67 @@ class BatchPass(BaseModel):
         )
 
 
-async def fail_pass(bp: BatchPass, error: str, *, holds_lock: bool = True) -> None:
-    """Close the pass errored: its admin job and its record first, then
-    charge the phases that landed, release the lock (unless the pass lost it,
-    *holds_lock* false: it is then another pass's) and clean up per-pass
-    state. Each step is best-effort on its own, so one that fails never
-    stops the ones after it.
+async def fail_pass(
+    bp: BatchPass,
+    error: str,
+    *,
+    holds_lock: bool = True,
+    provider_batch_id: str | None = None,
+) -> None:
+    """Close the pass errored: its admin job and its record first, the
+    record marked for the cleanup after it, then that cleanup
+    (``clean_up_after``): the batch *provider_batch_id* names stopped at the
+    provider, the phases that landed charged, the lock released (unless the
+    pass lost it, *holds_lock* false: it is then another pass's) and the
+    per-pass state deleted. Each step is best-effort on its own, so one that
+    fails never stops the ones after it, and leaves the row marked for the
+    reaper.
 
-    The record carries the usage of the phases that landed, read off the
-    pass's state, unless a stop already closed it; a state that cannot be
-    read leaves that usage unknown rather than the record open.
+    The record and the job's result carry the usage of the phases that
+    landed, read off the pass's state (a stop that closed the record first
+    keeps it off the record, not off the job); a state that cannot be read
+    leaves that usage unknown rather than the record open.
 
     We incurred the provider tokens for completed phases regardless of
     whether the whole pass landed, so they're recorded against the
     user's usage — matching the sync path and the documented contract in
-    ``dream/billing.py``. The idempotency gate inside
-    ``log_all_phase_costs`` keeps this at-most-once.
+    ``dream/billing.py``. The per-phase claims inside
+    ``charge_landed_phases`` keep this at-most-once.
     """
     logger.warning("Dream batch pass=%s failed: %s", bp.pass_id, error)
-    await mark_job_errored(bp.job_id, error)
     state = await read_state_or_none(bp.pass_id)
-    await record_batch_failed(
-        bp.pass_id, error, landed_usage(state, bp.phase_models, bp.pass_id)
+    usage = landed_usage(state, bp.phase_models, bp.pass_id)
+    await mark_job_errored(bp.job_id, error, result=_failed_result(bp, error, usage))
+    await record_batch_failed(bp.pass_id, error, usage)
+    await clean_up_after(bp, holds_lock=holds_lock, provider_batch_id=provider_batch_id)
+
+
+async def clean_up_after(
+    bp: BatchPass, *, holds_lock: bool = True, provider_batch_id: str | None = None
+) -> None:
+    """The cleanup after the ended pass (``cleanup.clean_up_pass``), its lock
+    released under the pass's token (``lock_token_of``), then its row's mark
+    cleared if every step finished; a step that did not, a lock the pass has
+    no token for included, leaves the mark for the reaper. Never raises: on
+    the success tail an exception would fire AFTER ``mark_complete`` and the
+    crash guard would rewrite a completed job to errored."""
+    try:
+        scope = MemoryScope.build(bp.user_id, bp.expert_id)
+    except ValueError:
+        logger.warning(
+            f"Dream pass {bp.pass_id}: invalid memory scope for user "
+            f"{bp.user_id[:12]}; its cleanup is left for the reaper"
+        )
+        return
+    cleanup = await clean_up_pass(
+        bp.pass_id,
+        scope,
+        phase_models=bp.phase_models,
+        provider_batch_id=provider_batch_id,
+        lock_token=await lock_token_of(bp.pass_id) if holds_lock else None,
+        release=holds_lock,
     )
-    if state:
-        await _charge_landed_phases(bp, state)
-    if holds_lock:
-        await release_lock(bp)
-    await best_effort_cleanup(bp.pass_id)
+    await finish_cleanup(bp.pass_id, cleanup)
 
 
 async def record_completion(
@@ -123,47 +157,23 @@ async def record_completion(
     await record_batch_complete(pass_result, usage)
 
 
-async def finalize_stuck_duplicate(bp: BatchPass, ops: DreamOperations) -> None:
-    """On a duplicate delivery, finalize the admin job row iff the first
-    delivery crashed between apply and ``mark_complete`` and left it
-    non-terminal. An already-terminal row is left untouched so the first
-    delivery's real apply stats are never overwritten.
-
-    Best-effort: a status read/write failure here must not crash the
-    duplicate tail (lock release + cleanup still need to run)."""
-    if not bp.job_id:
-        return
-    try:
-        from .job_status import mark_complete, read_status
-
-        existing = await read_status(kind="dream_pass", job_id=bp.job_id)
-        if existing is None or existing.state in ("complete", "errored"):
-            return
-        logger.warning(
-            "Duplicate dispatch found job %s stuck in state=%s — "
-            "finalizing with the clamped op counts",
-            bp.job_id[:12],
-            existing.state,
-        )
-        await mark_complete(
-            kind="dream_pass", job_id=bp.job_id, result=_attempted_result(bp, ops)
-        )
-    except Exception:
-        logger.exception(
-            "Failed to finalize stuck duplicate for job %s", bp.job_id[:12]
-        )
-
-
-async def mark_job_errored(job_id: str, error: str, *, dead_end: bool = False) -> None:
-    """Close the admin job row errored. Best-effort: status write failures
-    are logged, never raised; a *dead_end* (a payload no phase handler can
-    take) logs under its own message."""
+async def mark_job_errored(
+    job_id: str,
+    error: str,
+    *,
+    dead_end: bool = False,
+    result: DreamPassResult | None = None,
+) -> None:
+    """Close the admin job row errored, with the pass's *result* when there
+    is one (its usage). Best-effort: status write failures are logged, never
+    raised; a *dead_end* (a payload no phase handler can take) logs under its
+    own message."""
     if not job_id:
         return
     try:
         from .job_status import mark_errored
 
-        await mark_errored(kind="dream_pass", job_id=job_id, error=error)
+        await mark_errored(kind="dream_pass", job_id=job_id, error=error, result=result)
     except Exception:
         if dead_end:
             logger.exception("Failed to mark dead-end job %s errored", job_id[:12])
@@ -171,43 +181,17 @@ async def mark_job_errored(job_id: str, error: str, *, dead_end: bool = False) -
             logger.exception("Failed to mark dream pass job %s errored", job_id)
 
 
-async def _charge_landed_phases(
-    bp: BatchPass, state: dict[str, dict[str, Any]]
-) -> None:
-    """Charge the phases that landed; a failure is logged, never raised."""
-    try:
-        await log_all_phase_costs(
-            user_id=bp.user_id,
-            expert_id=bp.expert_id,
-            pass_id=bp.pass_id,
-            state=state,
-            phase_models=bp.phase_models,
-        )
-    except Exception:
-        logger.exception("Dream batch cost log failed for pass=%s", bp.pass_id)
-
-
-async def release_lock(bp: BatchPass) -> None:
-    """Release the disowned dream lock with the ownership token persisted
-    alongside the input bundle. Must run before ``delete_input_bundle`` —
-    the token rides on that key. A missing token (bundle TTL'd out,
-    malformed payload) leaves the lock for its TTL to clear rather than
-    blind-deleting what may be a newer pass's lock.
+async def release_lock(bp: BatchPass) -> bool:
+    """Release the disowned dream lock under the pass's ownership token
+    (``lock_token_of``), and say whether the lock is no longer the pass's
+    (``release_dream_lock``). Must run before ``delete_input_bundle``, whose
+    key carries the token first. With no token anywhere the lock is left
+    alone rather than blind-deleting what may be a newer pass's lock.
 
     Best-effort like ``release_dream_lock`` itself: a Redis blip on the
     token read must not propagate — on the success tail it would fire
     AFTER ``mark_complete`` and the crash guard would rewrite a completed
-    job to errored. Falls back to a token-less release (lock TTL)."""
-    token: str | None = None
-    if bp.pass_id:
-        try:
-            token = await read_lock_token(bp.pass_id)
-        except Exception:
-            logger.exception(
-                "Failed to read dream lock token for pass=%s — "
-                "leaving the lock to its TTL",
-                bp.pass_id,
-            )
+    job to errored."""
     try:
         scope = MemoryScope.build(bp.user_id, bp.expert_id)
     except ValueError:
@@ -216,8 +200,55 @@ async def release_lock(bp: BatchPass) -> None:
             "leaving it for the TTL to clear",
             bp.user_id[:12],
         )
-        return
-    await release_dream_lock(scope, token)
+        return False
+    return await release_dream_lock(scope, await lock_token_of(bp.pass_id))
+
+
+async def lock_token_of(pass_id: str) -> str | None:
+    """The token the batch pass holds its scope's lock under: the one its
+    input bundle carries, else the one its row keeps (one bounded read, for
+    a bundle that lost its token or is gone). ``None`` when neither can say:
+    the pass's ownership of the lock is then unknown, never taken for "no
+    lock", so it neither applies nor has its lock taken for released."""
+    if not pass_id:
+        return None
+    token = await _bundle_lock_token(pass_id)
+    if token is not None:
+        return token
+    token = await _row_lock_token(pass_id)
+    if token is not None:
+        logger.warning(
+            f"Dream pass {pass_id}: no lock token with its input bundle; "
+            "going by the one its row keeps"
+        )
+    return token
+
+
+async def _bundle_lock_token(pass_id: str) -> str | None:
+    """The lock token the pass's input bundle carries; ``None`` when there is
+    no bundle, it carries none, or Redis cannot say."""
+    try:
+        return await read_lock_token(pass_id)
+    except Exception:
+        logger.exception(
+            "Failed to read dream lock token for pass=%s — going by its row",
+            pass_id,
+        )
+        return None
+
+
+async def _row_lock_token(pass_id: str) -> str | None:
+    """The lease token the pass's row keeps, read once under the store's
+    deadline; ``None`` when there is none, or the store cannot say in time."""
+    try:
+        row = await read_pass(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read its row for its lock token",
+            exc_info=True,
+        )
+        return None
+    return row.lease_token if row is not None else None
 
 
 def _applied_result(
@@ -246,27 +277,17 @@ def _applied_result(
     )
 
 
-def _attempted_result(bp: BatchPass, ops: DreamOperations) -> DreamPassResult:
-    """The first delivery's per-edge outcomes (and dream session id) died
-    with it, so the counts here are the clamped *attempted* ops — annotated
-    so the admin UI doesn't present them as confirmed apply results."""
-    note = (
-        "[finalized after duplicate delivery — counts reflect attempted "
-        "operations; writes landed with the original delivery] "
-    )
+def _failed_result(
+    bp: BatchPass, error: str, usage: DreamPassUsage | None
+) -> DreamPassResult:
+    """A failed batch pass as its job reports it: the error, and what the
+    phases that landed used."""
     return DreamPassResult(
         user_id=bp.user_id,
         pass_id=bp.pass_id,
         execution_path="anthropic_batch",
-        consolidated_count=len(ops.writes),
-        proposal_count=len(ops.proposals),
-        demotion_count=len(ops.demotions),
-        entity_invalidation_count=len(ops.entity_invalidations),
-        # Batch apply never drains in-line by design; the first
-        # delivery's writes (if any) landed fire-and-forget. ``skipped``
-        # marks this as a healthy by-design skip, NOT a drain failure.
-        ingestion_drain_status=IngestionDrainStatus.skipped,
-        summary_for_user=note + (ops.summary_for_user or ""),
+        error=error,
+        usage=usage,
     )
 
 

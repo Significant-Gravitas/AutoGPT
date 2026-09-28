@@ -541,12 +541,19 @@ model DreamPass {
 
   // The provider batch of the phase in flight (batch route only).
   providerBatchId String?
-  // The dream lock's ownership token, and when the lock lapses unless renewed.
+  // The dream lock's ownership token, and when the lock lapses unless renewed:
+  // written with the row, renewed at each step, emptied when the row closes,
+  // or, for a row closed with a cleanup pending, once that cleanup is done.
   leaseToken      String?
   leaseExpiresAt  DateTime?
 
+  // Set by a close that leaves a cleanup behind (a stop from outside, a batch
+  // pass's end, the reaper's) and cleared once every step of that cleanup has
+  // finished, so the reaper resumes whatever the pass left undone.
+  cleanupPendingAt DateTime?
+
   // The pass's DreamInput, in the format the batch path already persists to
-  // Redis (batch route only).
+  // Redis (batch route only), emptied when the row closes.
   inputBundle  Json?
   // Each phase's validated output, keyed by phase.
   phaseOutputs Json?
@@ -571,6 +578,10 @@ model DreamPass {
   @@index([userId, createdAt])
   // Deleting an expert cascades here; without it that scans every pass.
   @@index([expertId])
+  // The reaper's scans: open passes whose lease lapsed, oldest first, and
+  // closed passes whose cleanup has not finished.
+  @@index([status, leaseExpiresAt])
+  @@index([status, cleanupPendingAt])
 }
 
 ////////////////////////////////////////////////////////////

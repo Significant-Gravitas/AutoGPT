@@ -16,11 +16,17 @@ statement against the row as it stands when the statement runs:
   * ``cancelGeneration`` goes up by one when the update stops the pass from
     outside, in the same statement that closes the row, so of two stops
     racing for one open row exactly one lands and bumps it;
+  * ``leaseToken``, ``leaseExpiresAt``, ``inputBundle`` and
+    ``cleanupPendingAt`` become NULL when the update names them in ``clear``
+    (a closing row drops its bundle, and its lease unless the close marks
+    it for a cleanup, whose end then clears the lease with the mark);
   * every other column takes the new value when the update gives one.
 
 Nothing is written to a row that has reached a terminal status, nor to one
 that fails the update's own conditions: another user's row when it names the
-owner, a row written since the instant it names. The statement text is
+owner, a row written since the instant it names. The one exception is the
+update marked ``closed_row`` (the cleanup after the pass finished), which
+applies to a closed row only and only clears. The statement text is
 constant; every value is a bound parameter.
 """
 
@@ -29,8 +35,21 @@ from typing import Any
 from pydantic import BaseModel
 
 from backend.copilot.dream.input_bundle import input_bundle_to_dict
-from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassUpdate
+from backend.data.dream_pass_models import (
+    CLOSED_STATUSES,
+    OPEN_STATUSES,
+    ClearableColumn,
+    DreamPassUpdate,
+)
 from backend.util.json import dumps, sanitize_json, sanitize_string
+
+# The column each clearable field names in ``TRANSITION_SQL``.
+_CLEARABLE_COLUMNS: dict[ClearableColumn, str] = {
+    "lease_token": "leaseToken",
+    "lease_expires_at": "leaseExpiresAt",
+    "input_bundle": "inputBundle",
+    "cleanup_pending_at": "cleanupPendingAt",
+}
 
 # ``{schema_prefix}`` is filled in by ``db.execute_raw_with_schema``; the
 # doubled braces are a literal empty JSON object once it has.
@@ -45,15 +64,17 @@ UPDATE {schema_prefix}"DreamPass" SET
         THEN $4::text ELSE "providerBatchId" END,
     "skipReason" = COALESCE($5::text, "skipReason"),
     "error" = COALESCE($6::text, "error"),
-    "leaseToken" = COALESCE($7::text, "leaseToken"),
-    "leaseExpiresAt" = COALESCE(
-        $8::timestamptz AT TIME ZONE 'UTC', "leaseExpiresAt"),
+    "leaseToken" = CASE WHEN 'leaseToken' = ANY($22::text[]) THEN NULL
+        ELSE COALESCE($7::text, "leaseToken") END,
+    "leaseExpiresAt" = CASE WHEN 'leaseExpiresAt' = ANY($22::text[]) THEN NULL
+        ELSE COALESCE($8::timestamptz AT TIME ZONE 'UTC', "leaseExpiresAt") END,
     "windowStart" = COALESCE($9::timestamptz AT TIME ZONE 'UTC', "windowStart"),
     "windowEnd" = COALESCE($10::timestamptz AT TIME ZONE 'UTC', "windowEnd"),
     "submittedAt" = COALESCE($11::timestamptz AT TIME ZONE 'UTC', "submittedAt"),
     "appliedAt" = COALESCE($12::timestamptz AT TIME ZONE 'UTC', "appliedAt"),
     "completedAt" = COALESCE($13::timestamptz AT TIME ZONE 'UTC', "completedAt"),
-    "inputBundle" = COALESCE($14::jsonb, "inputBundle"),
+    "inputBundle" = CASE WHEN 'inputBundle' = ANY($22::text[]) THEN NULL
+        ELSE COALESCE($14::jsonb, "inputBundle") END,
     "usage" = COALESCE($15::jsonb, "usage"),
     "phaseOutputs" = CASE WHEN $16::jsonb IS NULL THEN "phaseOutputs"
         ELSE COALESCE("phaseOutputs", '{{}}'::jsonb) || $16::jsonb END,
@@ -61,6 +82,8 @@ UPDATE {schema_prefix}"DreamPass" SET
         ELSE COALESCE("operations", '{{}}'::jsonb) || $17::jsonb END,
     "cancelGeneration" = "cancelGeneration"
         + CASE WHEN $19::boolean THEN 1 ELSE 0 END,
+    "cleanupPendingAt" = CASE WHEN 'cleanupPendingAt' = ANY($22::text[]) THEN NULL
+        ELSE COALESCE($23::timestamptz AT TIME ZONE 'UTC', "cleanupPendingAt") END,
     "updatedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
 WHERE "id" = $1 AND "status"::text = ANY($18::text[])
     AND ($20::text IS NULL OR "userId" = $20::text)
@@ -95,10 +118,15 @@ def transition_args(pass_id: str, update: DreamPassUpdate) -> list[Any]:
         _json(update.usage.model_dump(mode="json")) if update.usage else None,
         _merge_part(update.phase_outputs),
         _merge_part(update.operations),
-        [status.value for status in OPEN_STATUSES],
+        [
+            status.value
+            for status in (CLOSED_STATUSES if update.closed_row else OPEN_STATUSES)
+        ],
         update.bump_cancel_generation,
         update.owner_user_id,
         update.not_updated_since,
+        sorted(_CLEARABLE_COLUMNS[column] for column in update.clear),
+        update.cleanup_pending_at,
     ]
 
 

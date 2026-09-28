@@ -652,6 +652,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         *,
         known_fact_uuids=None,
         lock_handle=None,
+        lease=None,
     ):
         captured["ops"] = ops
         return {
@@ -720,6 +721,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         *,
         known_fact_uuids=None,
         lock_handle=None,
+        lease=None,
     ):
         captured["ops"] = ops
         return {
@@ -833,6 +835,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         *,
         known_fact_uuids=None,
         lock_handle=None,
+        lease=None,
     ):
         captured["ops"] = ops
         return {
@@ -2086,7 +2089,10 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is None and result.skipped is False
-    assert fake_dream_db.writes[0] == (
+    pass_id, draft = fake_dream_db.writes[0]
+    assert isinstance(draft, DreamPassDraft) and draft.lease_token
+    assert result.started_at is not None
+    assert (pass_id, draft) == (
         result.pass_id,
         DreamPassDraft(
             id=result.pass_id,
@@ -2095,6 +2101,9 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
             route=DreamPassRoute.SYNC,
             trigger=DreamPassTrigger.CRON,
             started_at=result.started_at,
+            lease_token=draft.lease_token,
+            lease_expires_at=result.started_at
+            + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
         ),
     )
     assert fake_dream_db.statuses(result.pass_id) == [
@@ -2125,7 +2134,9 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
     assert row["usage"] == result.usage
     assert row["completed_at"] == result.completed_at
     # The sync route keeps no input bundle: nothing resumes it from the row.
-    assert "input_bundle" not in row
+    # And a closed row holds no lease.
+    assert row.get("input_bundle") is None
+    assert (row["lease_token"], row["lease_expires_at"]) == (None, None)
 
 
 @pytest.mark.asyncio
@@ -2615,6 +2626,8 @@ async def test_a_late_submit_write_keeps_the_first_callbacks_progress(
         AsyncMock(return_value=fake_dream_redis),
     )
     _batch_route(mocker, lock_extends=True)
+    # The lock the handle stands for, which the callback renews.
+    fake_dream_redis.store[MemoryScope.for_user("u").redis_key("dream_lock")] = "tok"
     mocker.patch(
         "backend.copilot.dream.batch_handoff.persist_input_bundle",
         persist_input_bundle,
@@ -2670,11 +2683,11 @@ async def test_a_stalled_record_store_costs_each_write_only_its_deadline(
 
     assert result.error is None and result.dream_session_id == "s"
     apply_mock.assert_awaited_once()
-    # The insert, the guard's read of the scope's open passes, six updates
-    # and the four stop checks (three phases, apply), each abandoned at the
-    # deadline; neither the guard nor a check held the pass on a store that
-    # did not answer.
-    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (12, 12)
+    # The insert, the guard's read of the scope's open passes, six updates,
+    # the four stop checks and the four lease renewals (three phases, apply),
+    # each abandoned at the deadline; neither the guard nor a check nor a
+    # renewal held the pass on a store that did not answer.
+    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (16, 16)
 
 
 @pytest.mark.asyncio

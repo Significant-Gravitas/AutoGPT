@@ -10,7 +10,12 @@ from prisma.enums import (
 from pydantic import TypeAdapter
 
 from backend.copilot.dream.fetch import DreamInput
-from backend.copilot.dream.pass_record import cancelled, expired
+from backend.copilot.dream.pass_record import (
+    cancelled,
+    cleanup_finished,
+    expired,
+    reaped,
+)
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -60,6 +65,9 @@ _DREAM_PASS_METHODS = (
     "get_dream_pass_for_user",
     "list_open_dream_passes",
     "list_dream_passes",
+    "list_expired_dream_passes",
+    "list_dream_pass_cleanups",
+    "delete_old_dream_passes",
 )
 
 
@@ -111,9 +119,12 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
     for stop in (
         expired("stale", not_updated_since=now.replace(microsecond=123000)),
         cancelled("testing", owner_user_id="u1"),
+        reaped("lapsed", not_updated_since=now),
+        cleanup_finished(),
     ):
         sent = body.model_validate(to_dict({"pass_id": "p1", "update": stop}))
         assert sent.update == stop
+        assert sent.update.clear == stop.clear != frozenset()
 
     record = DreamPassRecord(
         id="p1",
@@ -129,6 +140,7 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
         provider_batch_id="msgbatch_1",
         lease_token="tok",
         lease_expires_at=now,
+        cleanup_pending_at=now,
         input_bundle=bundle,
         phase_outputs=outputs,
         operations=operations,
@@ -145,3 +157,20 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
     )
     returned = TypeAdapter(DreamPassRecord | None).validate_python(to_dict(record))
     assert returned == record
+
+
+def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None:
+    """The scheduler lists and deletes passes over this RPC: an aware cutoff
+    and a limit must arrive as they left. The endpoints are built from the
+    class's functions, as the service registers them."""
+    cutoff = datetime(2026, 9, 26, 3, 0, 0, 123000, tzinfo=timezone.utc)
+    manager = DatabaseManager()
+    for method, cutoff_name in (
+        (DatabaseManager.list_expired_dream_passes, "expired_before"),
+        (DatabaseManager.list_dream_pass_cleanups, "due_before"),
+        (DatabaseManager.delete_old_dream_passes, "created_before"),
+    ):
+        endpoint = manager._create_fastapi_endpoint(method)
+        body = inspect.signature(endpoint).parameters["body"].annotation
+        sent = body.model_validate(to_dict({cutoff_name: cutoff, "limit": 7}))
+        assert sent.model_dump() == {cutoff_name: cutoff, "limit": 7}

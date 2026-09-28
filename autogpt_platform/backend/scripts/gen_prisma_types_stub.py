@@ -41,6 +41,11 @@ def _is_safe_type_alias(node: ast.Assign) -> bool:
     - Literal types (don't cause type budget issues)
     - Simple type references (SortMode, SortOrder, etc.)
     - TypeVar definitions
+    - Unions of the above; not a Union naming a private type, which the stub
+      leaves out: each ``*OrderByInput`` union would point at types that do
+      not exist there and read as Unknown, leaving every ``find_many`` and
+      ``find_first`` partially unknown under strict checking. Collapsed like
+      the rest, it reads as ``dict[str, Any]``.
     """
     if not node.value:
         return False
@@ -55,14 +60,16 @@ def _is_safe_type_alias(node: ast.Assign) -> bool:
                 return True
             # Union types are safe (e.g. Serializable = Union[...])
             if base_name == "Union":
-                return True
+                return not _names_a_private_type(node.value.slice)
             # TypeVar is safe
             if base_name == "TypeVar":
                 return True
         elif isinstance(node.value.value, ast.Attribute):
             # Handle typing_extensions.Literal etc.
-            if node.value.value.attr in ("Literal", "Union"):
+            if node.value.value.attr == "Literal":
                 return True
+            if node.value.value.attr == "Union":
+                return not _names_a_private_type(node.value.slice)
 
     # Check if it's a simple Name reference (like SortMode = _types.SortMode)
     if isinstance(node.value, ast.Attribute):
@@ -74,6 +81,22 @@ def _is_safe_type_alias(node: ast.Assign) -> bool:
             if node.value.func.id == "TypeVar":
                 return True
 
+    return False
+
+
+def _names_a_private_type(members: ast.expr) -> bool:
+    """Whether a Union's *members* name a private type, directly or as a
+    string forward reference."""
+    for node in ast.walk(members):
+        if isinstance(node, ast.Name) and _is_private(node.id):
+            return True
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.isidentifier()
+            and _is_private(node.value)
+        ):
+            return True
     return False
 
 

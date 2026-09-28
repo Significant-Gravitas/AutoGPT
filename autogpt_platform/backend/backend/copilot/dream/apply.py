@@ -23,6 +23,7 @@ import logging
 import uuid as uuidlib
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from backend.copilot.graphiti.falkordb_driver import open_driver
 from backend.copilot.graphiti.ingest import (
@@ -60,27 +61,30 @@ from .schemas import (
     WriteSummary,
 )
 
+if TYPE_CHECKING:
+    from .lease import ApplyLease
+
 logger = logging.getLogger(__name__)
 
 # Upper bound on waiting for the per-user ingestion queue to drain before
 # apply_operations returns. Dev numbers put a single add_episode at 7-131s,
 # so a full pass (up to 30 writes + 20 proposals) can take far longer than
 # any defensible in-lock wait. The caller holds the dream lock until apply
-# returns (locks.DEFAULT_LOCK_TTL_SECONDS=1800, shared with the three LLM
-# phases budgeted at ~1320s), so 300s keeps the whole pass inside the lock
-# TTL envelope. Past the cap the enqueued episodes keep processing
-# fire-and-forget in this process: apply warns and reports ``timed_out``
-# rather than failing the pass.
+# returns, and renews it right before the drain to a budget that covers this
+# cap (``LOCK_DRAIN_RENEWAL_SECONDS``). Past the cap the enqueued episodes
+# keep processing fire-and-forget in this process: apply warns and reports
+# ``timed_out`` rather than failing the pass.
 INGESTION_DRAIN_TIMEOUT_SECONDS = 300
 
-# Fresh dream-lock TTL granted right before the ingestion drain on the sync
-# path (see ``apply_operations``' ``lock_handle``). The drain is the longest
-# non-LLM tail of the pass, and the plain lock TTL — shared with the three
-# LLM phases — can be nearly exhausted by the time apply runs. Renewing the
-# lock to this dedicated budget guarantees it cannot expire mid-write and
-# admit a concurrent pass onto the same user's graph. Sized to cover the
-# drain cap plus the demotions / entity invalidations / summary write that
-# follow it inside apply.
+# The dream-lock TTL set right before the ingestion drain on the sync path
+# (see ``apply_operations``' ``lock_handle``), sized to cover the drain cap
+# plus the demotions / entity invalidations / summary write that follow it
+# inside apply. The pass has renewed its lock before each phase and again
+# before its first write (``lease.py``); this renewal proves it still holds
+# the lock before the longest and most destructive tail, and can shorten
+# what the earlier ones granted. Like every renewal it is a timer, not a
+# storage fence: a tail that outruns this TTL writes on after the lock
+# lapsed, and a newer pass may have taken the scope by then.
 LOCK_DRAIN_RENEWAL_SECONDS = INGESTION_DRAIN_TIMEOUT_SECONDS + 180
 
 # Drain bound for the Anthropic batch path. apply runs there inside
@@ -481,10 +485,11 @@ async def _drain_ingestion(
     ``enqueue_episode`` returning True only proves the episode reached the
     in-process asyncio queue; the real write (LLM extraction + embedding in
     ``_ingestion_worker``) happens later. The caller of ``apply_operations``
-    holds the dream lock until apply returns, so draining here keeps the
-    writes inside the lock envelope — without it, a scheduler pod restart
-    silently discards queued writes while the pass stays recorded
-    successful.
+    holds the dream lock until apply returns, so draining here lands the
+    writes before the pass gives its lock back (while the lock the drain
+    renewal proved lasts: ``LOCK_DRAIN_RENEWAL_SECONDS``) — without it, a
+    scheduler pod restart silently discards queued writes while the pass
+    stays recorded successful.
 
     Scoped to ``completion`` — only the episodes THIS pass enqueued. The
     per-user queue is shared with live-chat ingestion, so a whole-queue
@@ -535,6 +540,7 @@ async def apply_operations(
     known_fact_uuids: set[str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
+    lease: ApplyLease | None = None,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
@@ -570,11 +576,20 @@ async def apply_operations(
     ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS`` (0) so it never stalls the
     shared, serial ``BatchExecutor.walk_once`` loop.
 
-    ``lock_handle`` is the sync path's held dream lock. It is renewed to a
-    fresh ``LOCK_DRAIN_RENEWAL_SECONDS`` budget right before the drain so
-    the lock cannot expire while the writes are still landing (which would
-    admit a concurrent pass onto the same graph). ``None`` on the batch
-    path — it already disowned the lock to its callback with a 24h TTL.
+    ``lock_handle`` is the sync path's held dream lock. It is renewed to
+    ``LOCK_DRAIN_RENEWAL_SECONDS`` right before the drain, failing closed,
+    so a pass that lost its lock stops before the drain and the destructive
+    writes after it. The renewal does not keep the lock through those
+    writes: a drain and tail that outrun the TTL go on writing after it
+    lapsed (``lease.py``). ``None`` on the batch path — it already disowned
+    the lock to its callback with a 24h TTL.
+
+    ``lease`` is the pass's lease, on either path: renewed once more right
+    after the session shell is created and before the first graph write,
+    failing closed (``DreamLockLostError``), so a lock that lapsed while the
+    session was created, and maybe went to a newer pass, stops the writes.
+    It narrows the window, it does not fence each write: a lease can still
+    lapse between this renewal and the writes after it (``lease.py``).
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -616,6 +631,11 @@ async def apply_operations(
     # is written AFTER the ops (see below), so a partway failure leaves an
     # empty dream rather than a 'completed' narrative with no memory.
     session_id = await _create_dream_session(scope, pass_id)
+    # Creating the session can take long enough for the lock to lapse: a pass
+    # that cannot prove it still holds it writes nothing (the shell stays, as
+    # after any partway failure).
+    if lease is not None and not await lease.renew():
+        raise DreamLockLostError(user_id)
 
     # Tracks completion of only the episodes THIS pass enqueues, so the
     # drain below waits on the dream's own writes and not on unrelated
@@ -687,17 +707,18 @@ async def apply_operations(
         )
 
     # Renew the dream lock right before the longest non-LLM tail (the
-    # ingestion drain plus the demotions / summary write that follow) so the
-    # lock cannot expire mid-write and let a second pass touch the same
-    # graph. Gated on there being any mutating work left — enqueued episodes
-    # to drain OR demotions / entity invalidations to apply, the most
-    # destructive ops in the pass, which a writes-free pass would otherwise
-    # run under a near-exhausted TTL. The batch path passes no handle (it
-    # disowned the lock to its callback). A failed renewal means the lock
-    # already expired — a newer pass may own the graph — so abort before the
-    # drain and the destructive writes below. The episodes already enqueued
-    # above keep processing fire-and-forget (they cannot be recalled), but
-    # the pass is reported errored instead of pretending exclusive ownership.
+    # ingestion drain plus the demotions / summary write that follow), to a
+    # budget sized for that tail. The renewal proves ownership at the instant
+    # it runs; it is a timer, not a fence, so a tail that outruns the TTL
+    # writes on after the lock lapsed (``lease.py``). Gated on there being
+    # any mutating work left — enqueued episodes to drain OR demotions /
+    # entity invalidations to apply, the most destructive ops in the pass.
+    # The batch path passes no handle (it disowned the lock to its callback).
+    # A failed renewal means the lock already expired — a newer pass may own
+    # the graph — so abort before the drain and the destructive writes below.
+    # The episodes already enqueued above keep processing fire-and-forget
+    # (they cannot be recalled), but the pass is reported errored instead of
+    # pretending exclusive ownership.
     if lock_handle is not None and (
         completion.registered or ops.demotions or ops.entity_invalidations
     ):

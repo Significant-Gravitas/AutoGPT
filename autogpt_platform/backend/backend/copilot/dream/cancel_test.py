@@ -139,6 +139,38 @@ class TestCancelDreamPass:
         _, update = db.update_dream_pass.await_args.args
         assert update.owner_user_id == "u2"
 
+    async def test_a_batch_it_closes_has_its_batch_in_flight_cancelled(
+        self, db, mocker
+    ):
+        provider_cancel = mocker.patch.object(
+            cancel, "cancel_provider_batch", AsyncMock()
+        )
+        db.get_dream_pass_for_user.return_value = _cancelled(
+            route=DreamPassRoute.ANTHROPIC_BATCH, provider_batch_id="msgbatch_live"
+        )
+
+        result = await cancel_dream_pass("p1", user_id="u1", reason="testing")
+
+        assert result.cancelled
+        provider_cancel.assert_awaited_once_with("msgbatch_live")
+
+    @pytest.mark.parametrize("closed", [True, False], ids=["sync", "already_ended"])
+    async def test_nothing_is_cancelled_at_the_provider_otherwise(
+        self, db, mocker, closed
+    ):
+        """A sync pass has no batch, and a pass that had already ended keeps
+        whatever it had."""
+        provider_cancel = mocker.patch.object(
+            cancel, "cancel_provider_batch", AsyncMock()
+        )
+        db.update_dream_pass.return_value = closed
+        ended = _row(status=DreamPassStatus.ERRORED, provider_batch_id="b")
+        db.get_dream_pass_for_user.return_value = _cancelled() if closed else ended
+
+        await cancel_dream_pass("p1", user_id="u1", reason="testing")
+
+        provider_cancel.assert_not_awaited()
+
     async def test_a_long_reason_is_capped_like_any_error(self, db):
         await cancel_dream_pass("p1", user_id="u1", reason="x" * (MAX_ERROR_CHARS * 2))
 
@@ -259,9 +291,11 @@ class TestTheBatchCheck:
         fail = mocker.patch.object(cancel, "fail_pass", AsyncMock())
         return provider, fail
 
-    async def test_a_stopped_pass_cancels_its_batch_and_ends_through_fail_pass(
+    async def test_a_stopped_pass_ends_through_fail_pass_which_stops_its_batch(
         self, db, ends
     ):
+        """The batch the row names is stopped by the cleanup ``fail_pass``
+        runs, so a provider that cannot confirm it keeps the row marked."""
         provider, fail = ends
         db.get_dream_pass.return_value = _cancelled(
             route=DreamPassRoute.ANTHROPIC_BATCH, provider_batch_id="msgbatch_1"
@@ -269,8 +303,10 @@ class TestTheBatchCheck:
 
         assert await end_batch_pass_if_stopped(_BATCH_PASS) is True
 
-        provider.assert_awaited_once_with("msgbatch_1")
-        fail.assert_awaited_once_with(_BATCH_PASS, "cancelled: testing")
+        provider.assert_not_awaited()
+        fail.assert_awaited_once_with(
+            _BATCH_PASS, "cancelled: testing", provider_batch_id="msgbatch_1"
+        )
 
     async def test_a_stopped_row_without_a_batch_skips_the_provider(self, db, ends):
         provider, fail = ends
@@ -279,7 +315,9 @@ class TestTheBatchCheck:
         assert await end_batch_pass_if_stopped(_BATCH_PASS) is True
 
         provider.assert_not_awaited()
-        fail.assert_awaited_once()
+        fail.assert_awaited_once_with(
+            _BATCH_PASS, "cancelled: testing", provider_batch_id=None
+        )
 
     async def test_a_pass_nobody_stopped_goes_on(self, db, ends):
         provider, fail = ends
