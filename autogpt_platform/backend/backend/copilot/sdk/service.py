@@ -4773,13 +4773,12 @@ async def _maybe_prepend_skills_update(
     return notice + query_message if notice else query_message
 
 
-async def _discard_pending_refresh(task: "asyncio.Task[str | None] | None") -> None:
-    """Cancel an in-flight refresh whose result is no longer wanted."""
-    if task is None:
-        return
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
+def _discard_pending_refresh(
+    pending: graphiti_context.PendingRefresh | None,
+) -> None:
+    """Cancel a started refresh whose result is no longer wanted."""
+    if pending is not None:
+        pending.task.cancel()
 
 
 def _start_follow_up_warm_context(
@@ -4790,38 +4789,23 @@ def _start_follow_up_warm_context(
     user_id: str | None,
     expert_id: str | None,
     current_message: str,
-) -> "asyncio.Task[str | None] | None":
-    """Kick the SECRT-2378 refresh off before the query is built.
+) -> graphiti_context.PendingRefresh | None:
+    """Start the SECRT-2378 refresh before the query is built.
 
     The refresh only needs the current message, so starting it here lets the
-    graph round-trip overlap compaction, attachment prep and builder context
-    instead of serializing into time-to-first-token. The result is joined by
-    ``_append_follow_up_warm_context`` right before injection.
+    graph round-trip overlap compaction, attachment prep and builder context.
+    ``_append_follow_up_warm_context`` joins it once the query is ready and
+    waits at most the join grace for it (``graphiti_context.join_refresh``).
 
     Returns ``None`` when the turn is not a candidate — the outer gate, or a
     message the substance gate rejects. ``was_compacted`` (the only thing that
     forces past the substance gate) is not known until the query is built, so
-    that one rare turn — a trivially short message right after a compaction —
-    still pays for a serial fetch in the joiner.
+    that one turn — a trivially short message right after a compaction —
+    starts its refresh in the joiner, where the grace is its whole budget.
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
         return None
-    if not graphiti_context.should_refresh_warm_context(current_message):
-        return None
-    task = asyncio.create_task(
-        graphiti_context.refresh_warm_context(
-            user_id, current_message, expert_id=expert_id
-        ),
-        name=f"warm-ctx-refresh-{user_id[:12]}",
-    )
-    # The event loop holds only a weak reference. Between here and the join
-    # the turn suspends at several ``yield``s, and a consumer that closes the
-    # generator there would drop the last strong ref mid-flight — the task
-    # gets collected, and "Task was destroyed but it is pending!" is all
-    # anyone sees. Same registry the other spawns in this module use.
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-    return task
+    return graphiti_context.start_refresh(user_id, current_message, expert_id=expert_id)
 
 
 async def _append_follow_up_warm_context(
@@ -4834,7 +4818,7 @@ async def _append_follow_up_warm_context(
     expert_id: str | None,
     current_message: str,
     was_compacted: bool,
-    pending: "asyncio.Task[str | None] | None" = None,
+    pending: graphiti_context.PendingRefresh | None = None,
 ) -> str:
     """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
 
@@ -4849,31 +4833,28 @@ async def _append_follow_up_warm_context(
     refresh to the same memory owner the first-turn fetch used, so an expert
     chat never refreshes from the user's personal graph.
 
-    ``pending`` is the task ``_start_follow_up_warm_context`` launched before
-    the query was built; joining it here keeps the graph round-trip off
-    time-to-first-token. Without one (the retry path, or a turn the starter
-    declined) the fetch runs inline.
+    ``pending`` is the refresh ``_start_follow_up_warm_context`` started
+    before the query was built. Without one (a retry, or a turn the starter
+    declined) the refresh starts here. Either way the turn waits at most the
+    join grace for it (``warm_context_refresh_join_grace_ms``, the most a
+    refresh may add to time-to-first-token); a refresh still running then is
+    cancelled and the query goes out without a block.
 
-    The retry reads memory again rather than reuse the first attempt's block.
-    A failed attempt's tool calls do not count as streamed output, so a retry
-    can follow one (a ``memory_forget`` among them), and the rollback takes
-    the forget out of the history the retry sends: a block rendered before it
-    would put the forgotten fact back in front of the model. So every block
-    appended here passed the recall policy's last check (``recall_recheck``)
-    when it was built for this attempt. The block goes into the query only:
-    the transcript records ``current_message``, and
-    ``_strip_ephemeral_memory_from_cli_jsonl`` removes the block from the CLI
-    session file before upload, so no later turn replays it.
+    The block goes into the query only: the transcript records
+    ``current_message``, and ``_strip_ephemeral_memory_from_cli_jsonl``
+    removes the block from the CLI session file before upload, so no later
+    turn replays it.
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
-        await _discard_pending_refresh(pending)
+        _discard_pending_refresh(pending)
         return query_message
-    if pending is not None:
-        refreshed = await pending
-    else:
-        refreshed = await graphiti_context.refresh_warm_context(
+    if pending is None:
+        pending = graphiti_context.start_refresh(
             user_id, current_message, expert_id=expert_id, force=was_compacted
         )
+    if pending is None:
+        return query_message
+    refreshed = await graphiti_context.join_refresh(pending)
     if not refreshed:
         return query_message
     # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
@@ -5770,8 +5751,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # SECRT-2378: start the follow-up warm-context refresh HERE rather
         # than at the injection point below — ``current_message`` is final
         # after the pending fold, so the graph round-trip overlaps compaction,
-        # attachment prep and builder context instead of adding its latency to
-        # time-to-first-token.
+        # attachment prep and builder context. The join below waits at most
+        # the join grace for what is left of it.
         pending_warm_ctx = _start_follow_up_warm_context(
             graphiti_enabled=graphiti_enabled,
             has_history=has_history,

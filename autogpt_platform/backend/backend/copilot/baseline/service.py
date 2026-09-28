@@ -53,7 +53,11 @@ from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.context import fetch_warm_context, refresh_warm_context
+from backend.copilot.graphiti.context import (
+    fetch_warm_context,
+    join_refresh,
+    start_refresh,
+)
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
@@ -585,9 +589,10 @@ async def _refresh_follow_up_warm_context(
     Diverges from the SDK's ``_append_follow_up_warm_context`` in two
     respects. The baseline compactor doesn't surface ``was_compacted``, so
     there is no ``force=True`` and a trivially short post-compaction turn
-    skips recall here. And the refresh is awaited here, after the fold, in
-    front of the model call rather than overlapped with the query build, so
-    a qualifying turn can wait up to ``context_refresh_timeout`` for it.
+    skips recall here. And the refresh starts here, after the fold, with
+    nothing to overlap, so the join grace (``join_refresh``,
+    ``warm_context_refresh_join_grace_ms``) is its whole budget: a refresh
+    still running then is cancelled and the turn goes on without it.
     Documented debt; SDK is the production engine. The block is appended to
     the model's input only, never to the transcript.
     """
@@ -595,7 +600,10 @@ async def _refresh_follow_up_warm_context(
         return warm_ctx
     if pre_drain_msg_count <= 1:
         return warm_ctx
-    refreshed = await refresh_warm_context(user_id, message, expert_id=expert_id)
+    pending = start_refresh(user_id, message, expert_id=expert_id)
+    if pending is None:
+        return warm_ctx
+    refreshed = await join_refresh(pending)
     return refreshed if refreshed else warm_ctx
 
 

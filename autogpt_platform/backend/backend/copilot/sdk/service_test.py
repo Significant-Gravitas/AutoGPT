@@ -2667,10 +2667,10 @@ class TestAppendFollowUpWarmContext:
         assert mock_refresh.await_args.kwargs["expert_id"] == "expert-1"
 
     @pytest.mark.asyncio
-    async def test_starter_runs_the_fetch_off_the_critical_path(self):
-        """The refresh must be in flight BEFORE the joiner is reached — that
-        is the whole point of starting it early. Pin that the joiner consumes
-        the started task rather than issuing its own second fetch."""
+    async def test_joiner_uses_the_refresh_the_starter_began(self):
+        """The refresh is in flight BEFORE the joiner is reached, so its
+        graph round-trip overlaps the query build. Pin that the joiner
+        consumes the started refresh rather than issuing a second fetch."""
         with patch(
             "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
@@ -2767,7 +2767,8 @@ class TestAppendFollowUpWarmContext:
             )
 
         assert out == "q"
-        assert pending.cancelled()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(pending.task, timeout=1)
 
     @pytest.mark.asyncio
     async def test_retry_reads_memory_again_instead_of_replaying_the_block(self):
@@ -2816,13 +2817,13 @@ class TestAppendFollowUpWarmContext:
 
     @pytest.mark.asyncio
     async def test_gated_out_first_call_still_allows_a_forced_retry_fetch(self):
-        """A trivial first attempt fetches nothing, and the post-compaction
-        retry (force=True) must still fetch — a skipped refresh must not
-        re-break the headline case this PR fixes."""
+        """A trivial first attempt starts no refresh at all, and the
+        post-compaction retry (force=True) must still fetch — a skipped
+        refresh must not re-break the headline case this PR fixes."""
         with patch(
             "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
-            side_effect=[None, "<temporal_context>forced</temporal_context>"],
+            return_value="<temporal_context>forced</temporal_context>",
         ) as mock_refresh:
             await _append_follow_up_warm_context(
                 "q1",
@@ -2845,7 +2846,7 @@ class TestAppendFollowUpWarmContext:
                 was_compacted=True,
             )
 
-        assert mock_refresh.await_count == 2
+        mock_refresh.assert_awaited_once()
         assert mock_refresh.await_args.kwargs["force"] is True
         assert out.endswith("forced</temporal_context>")
 

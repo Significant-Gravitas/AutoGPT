@@ -4,9 +4,13 @@ These tests cover ``_baseline_conversation_updater`` and ``_BaselineStreamState`
 without requiring API keys, database connections, or network access.
 """
 
+import asyncio
+import logging
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.edges import EntityEdge
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
@@ -38,6 +42,7 @@ from backend.copilot.baseline.service import (
 )
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
+from backend.copilot.graphiti import context as graphiti_context
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
@@ -2904,7 +2909,7 @@ class TestRefreshFollowUpWarmContext:
     @pytest.mark.asyncio
     async def test_refreshes_on_a_follow_up_user_turn(self):
         with patch(
-            "backend.copilot.baseline.service.refresh_warm_context",
+            "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
@@ -2919,8 +2924,9 @@ class TestRefreshFollowUpWarmContext:
             )
 
         assert out == "<temporal_context>fresh</temporal_context>"
+        # The baseline cannot tell it compacted, so it never forces.
         mock_refresh.assert_awaited_once_with(
-            "u-1", "deploy the staging environment now", expert_id=None
+            "u-1", "deploy the staging environment now", expert_id=None, force=False
         )
 
     @pytest.mark.asyncio
@@ -2948,7 +2954,7 @@ class TestRefreshFollowUpWarmContext:
         }
         base.update(kwargs)
         with patch(
-            "backend.copilot.baseline.service.refresh_warm_context",
+            "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
         ) as mock_refresh:
             out = await _refresh_follow_up_warm_context(
@@ -2964,7 +2970,7 @@ class TestRefreshFollowUpWarmContext:
         request paired with a short current send must still drive recall."""
         folded = "restart the executor\n\nok"
         with patch(
-            "backend.copilot.baseline.service.refresh_warm_context",
+            "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_refresh:
@@ -2981,9 +2987,15 @@ class TestRefreshFollowUpWarmContext:
         assert mock_refresh.await_args.args[1] == folded
 
     @pytest.mark.asyncio
-    async def test_empty_refresh_preserves_incoming_context(self):
-        """The outer gate fires but the refresh yields nothing — an inner
-        substance-gate skip on a trivial message, or an empty graph.
+    @pytest.mark.parametrize(
+        "message, reads",
+        [("ok", False), ("deploy the staging environment now", True)],
+        ids=["substance-gate", "empty-graph"],
+    )
+    async def test_empty_refresh_preserves_incoming_context(self, message, reads):
+        """The outer gate fires but the refresh yields nothing — the substance
+        gate skips a trivial message before any read, or the graph has
+        nothing for a substantive one.
 
         Returning that None straight through would WIPE context the caller
         already had, which is the opposite of this helper's contract. Benign
@@ -2992,7 +3004,7 @@ class TestRefreshFollowUpWarmContext:
         silently drop it.
         """
         with patch(
-            "backend.copilot.baseline.service.refresh_warm_context",
+            "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_refresh:
@@ -3003,11 +3015,96 @@ class TestRefreshFollowUpWarmContext:
                 expert_id=None,
                 is_user_message=True,
                 pre_drain_msg_count=4,
-                message="ok",
+                message=message,
             )
 
-        mock_refresh.assert_awaited_once()
+        assert mock_refresh.await_count == (1 if reads else 0)
         assert out == "<temporal_context>first</temporal_context>"
+
+
+_GRACE_MS = 300
+# How much later than the grace a join may return: the event loop's timer
+# granularity (about 16 ms on Windows) and the task's cancellation.
+_JOIN_SLACK_S = 0.25
+
+
+async def _search_that_never_answers(*_args, **_kwargs):
+    await asyncio.Event().wait()
+
+
+def _staging_edge() -> EntityEdge:
+    return EntityEdge(
+        uuid="edge-staging",
+        group_id="user_u-1",
+        source_node_uuid="staging",
+        target_node_uuid="k3s",
+        created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        name="runs_on",
+        fact="the staging environment runs on k3s",
+        valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        attributes={"status": "active"},
+    )
+
+
+class TestFollowUpRefreshJoinGrace:
+    """The baseline engine starts the refresh after the pending fold, with
+    nothing to overlap, so ``warm_context_refresh_join_grace_ms`` is its
+    whole budget: the most it adds to time-to-first-token. Driven through
+    the real ``refresh_warm_context`` with the graph reads stubbed."""
+
+    async def _refresh(self, search) -> tuple[str | None, float]:
+        with (
+            patch.object(
+                graphiti_context.graphiti_config,
+                "warm_context_refresh_join_grace_ms",
+                _GRACE_MS,
+            ),
+            patch.object(graphiti_context, "search_facts", new=search),
+            patch.object(
+                graphiti_context,
+                "recent_episodes",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                graphiti_context,
+                "recheck",
+                new=AsyncMock(side_effect=lambda _scope, edges, eps: (edges, eps)),
+            ),
+        ):
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            out = await _refresh_follow_up_warm_context(
+                None,
+                graphiti_enabled=True,
+                user_id="u-1",
+                expert_id=None,
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message="deploy the staging environment now",
+            )
+            return out, loop.time() - started
+
+    @pytest.mark.asyncio
+    async def test_a_hung_search_adds_at_most_the_grace(self, caplog):
+        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+
+        out, waited = await self._refresh(_search_that_never_answers)
+
+        assert out is None
+        assert _GRACE_MS / 1000 - 0.05 <= waited <= _GRACE_MS / 1000 + _JOIN_SLACK_S
+        late = [r for r in caplog.records if "refresh late, skipped" in r.message]
+        assert len(late) == 1 and late[0].levelno == logging.INFO
+
+    @pytest.mark.asyncio
+    async def test_a_fast_search_is_still_injected(self, caplog):
+        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+
+        out, waited = await self._refresh(AsyncMock(return_value=[_staging_edge()]))
+
+        assert out is not None
+        assert "the staging environment runs on k3s" in out
+        assert waited < _GRACE_MS / 1000
+        assert "refresh late" not in caplog.text
 
 
 class _StopAfterExpertsGate(Exception):

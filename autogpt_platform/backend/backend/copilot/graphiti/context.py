@@ -18,10 +18,17 @@ on the user's message, into the turn themselves:
   forces); otherwise it returns ``None`` without touching the graph. A fetch
   is one retrieval: the same search methods reranked with reciprocal rank
   fusion (one query embedding, no LLM call), the recent-episode read and the
-  last check below, bounded by ``context_refresh_timeout``, recording no
-  ratification hits. An error or a timeout returns ``None`` and the turn
-  goes ahead without a refresh. The engines decide which turns are
-  follow-ups and where the block goes: ``sdk/service.py``
+  last check below, recording no ratification hits. The engines start it as
+  a task (``start_refresh``) and, once the turn's query is ready, wait at
+  most ``warm_context_refresh_join_grace_ms`` for it (``join_refresh``):
+  that is the most it adds to time-to-first-token. The SDK engine starts it
+  before the query build, so the retrieval overlaps compaction and the rest
+  of the query's preparation; the baseline engine, the retries and a refresh
+  forced by a compaction start it at the join, so the grace is their whole
+  budget. A refresh still running at the end of the grace is cancelled; one
+  that fails or passes ``context_refresh_timeout`` returns ``None``; either
+  way the turn goes ahead without a block. The engines decide which turns
+  are follow-ups and where the block goes: ``sdk/service.py``
   (``_start_follow_up_warm_context``, ``_append_follow_up_warm_context``) and
   ``baseline/service.py`` (``_refresh_follow_up_warm_context``).
 
@@ -41,6 +48,7 @@ from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EpisodicNode
 from graphiti_core.search.search_config import EdgeReranker, SearchConfig
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
+from pydantic import BaseModel, ConfigDict
 
 from .config import graphiti_config
 from .recall import recent_episodes, search_facts
@@ -69,9 +77,10 @@ _RECENT_EPISODES = 5
 # ("restart the executor", "deploy prod now", "resume the migration" — all
 # exactly three units), so a four-unit floor would exclude the very case it
 # targets.  Three lets a stray acknowledgement through ("yes go ahead"), which
-# costs one RRF graph query — no LLM calls, and on the SDK engine the refresh
-# runs concurrently with the query build, off the time-to-first-token path.
-# A missed recall costs the user the bug in SECRT-2378; the asymmetry decides.
+# costs one RRF graph query and no LLM call, and adds at most the join grace to
+# time-to-first-token (``join_refresh``); on the SDK engine it overlaps the
+# query build. A missed recall costs the user the bug in SECRT-2378; the
+# asymmetry decides.
 WARM_CONTEXT_REFRESH_MIN_WORDS = 3
 
 
@@ -153,12 +162,10 @@ async def refresh_warm_context(
     turns (unless ``force`` — e.g. just after a compaction, where the current
     message may be short); the fetch runs the RRF recipe
     (``use_cross_encoder=False``) — graph search + embeddings only, no
-    per-candidate cross-encoder LLM prompts; and it uses the shorter
-    ``context_refresh_timeout`` budget. The SDK engine starts it before the
-    query build, so it overlaps compaction, attachments and builder context;
-    a refresh forced by a compaction, a context-overflow retry and the
-    baseline engine await it in front of the model call, which is what the
-    tighter budget caps.
+    per-candidate cross-encoder LLM prompts; and it runs for at most
+    ``context_refresh_timeout``. The engines run it through
+    ``start_refresh`` / ``join_refresh``, which bound what it adds to
+    time-to-first-token by the join grace.
 
     Returns the ``<temporal_context>`` block, or ``None`` when skipped, empty,
     failed or timed out.
@@ -174,6 +181,77 @@ async def refresh_warm_context(
         use_cross_encoder=False,
         timeout=graphiti_config.context_refresh_timeout,
     )
+
+
+class PendingRefresh(BaseModel):
+    """A follow-up refresh running as a task, and when it started."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
+
+    task: "asyncio.Task[str | None]"
+    started_at: float
+
+
+def start_refresh(
+    user_id: str | None,
+    message: str | None,
+    *,
+    expert_id: str | None = None,
+    force: bool = False,
+) -> PendingRefresh | None:
+    """Start ``refresh_warm_context`` as a task, to be joined with
+    ``join_refresh``; ``None`` when it would skip the turn anyway (no user,
+    or a message under the substance gate without ``force``).
+
+    The SDK engine starts it before the query build, so the retrieval
+    overlaps compaction, attachments and builder context; everywhere else it
+    starts at the join.
+    """
+    if not user_id or not (force or should_refresh_warm_context(message)):
+        return None
+    loop = asyncio.get_running_loop()
+    task = loop.create_task(
+        refresh_warm_context(user_id, message, expert_id=expert_id, force=force),
+        name=f"warm-ctx-refresh-{user_id[:12]}",
+    )
+    # The loop holds tasks weakly, and the caller may be a generator that is
+    # closed before it joins: keep a strong reference until the task is done.
+    _pending_refresh_tasks.add(task)
+    task.add_done_callback(_pending_refresh_tasks.discard)
+    return PendingRefresh(task=task, started_at=loop.time())
+
+
+async def join_refresh(pending: PendingRefresh) -> str | None:
+    """The refresh's block if it is done within the join grace, else ``None``.
+
+    ``warm_context_refresh_join_grace_ms`` is the most a follow-up refresh
+    may add to time-to-first-token: once the query is ready the turn waits at
+    most that long. A refresh still running then is cancelled, logged at
+    INFO ("refresh late, skipped") with how long it had run, and the turn
+    goes on without a block. A refresh started before the query build had
+    the build's time too; one started at the join has the grace alone.
+    """
+    grace_ms = graphiti_config.warm_context_refresh_join_grace_ms
+    try:
+        done, _ = await asyncio.wait({pending.task}, timeout=grace_ms / 1000)
+    except asyncio.CancelledError:
+        pending.task.cancel()
+        raise
+    if not done:
+        pending.task.cancel()
+        ran_ms = (asyncio.get_running_loop().time() - pending.started_at) * 1000
+        logger.info(
+            f"Warm context refresh late, skipped: {ran_ms:.0f} ms since it "
+            f"started, join grace {grace_ms} ms"
+        )
+        return None
+    if pending.task.cancelled():
+        return None
+    return pending.task.result()
+
+
+# Strong refs to started refreshes until they finish (``start_refresh``).
+_pending_refresh_tasks: set[asyncio.Task] = set()
 
 
 async def fetch_warm_context(

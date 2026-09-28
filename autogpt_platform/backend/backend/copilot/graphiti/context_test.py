@@ -20,8 +20,10 @@ from . import context, recall
 from .context import (
     _format_context,
     fetch_warm_context,
+    join_refresh,
     refresh_warm_context,
     should_refresh_warm_context,
+    start_refresh,
 )
 from .memory_model import MemoryEnvelope
 from .scope import MemoryScope
@@ -717,6 +719,108 @@ class TestRefreshTimeoutIsApplied:
         # The 30s first-turn budget would have hung here; the refresh budget
         # cuts it off and degrades to None like any other retrieval failure.
         assert result is None
+
+
+_BLOCK = "<temporal_context>fresh</temporal_context>"
+# How much later than the grace a join may return: the event loop's timer
+# granularity (about 16 ms on Windows) and the task's cancellation.
+_JOIN_SLACK_S = 0.25
+
+
+def _refresh_taking(seconds: float):
+    async def _refresh(*_args, **_kwargs):
+        await asyncio.sleep(seconds)
+        return _BLOCK
+
+    return _refresh
+
+
+class TestJoinGrace:
+    """``warm_context_refresh_join_grace_ms`` is the most a follow-up refresh
+    may add to time-to-first-token: the join waits at most that long."""
+
+    @pytest.mark.asyncio
+    async def test_start_skips_a_turn_the_refresh_would_skip(self) -> None:
+        with patch.object(context, "refresh_warm_context", new=AsyncMock()) as mock:
+            assert start_refresh(None, "deploy the staging environment now") is None
+            assert start_refresh("user-abc", "ok") is None
+            forced = start_refresh("user-abc", "ok", force=True)
+            assert forced is not None
+            await forced.task
+
+        mock.assert_awaited_once_with("user-abc", "ok", expert_id=None, force=True)
+
+    @pytest.mark.asyncio
+    async def test_a_refresh_done_within_the_grace_is_returned(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(
+            context.graphiti_config, "warm_context_refresh_join_grace_ms", 500
+        )
+        with patch.object(context, "refresh_warm_context", new=_refresh_taking(0)):
+            pending = start_refresh("user-abc", "deploy the staging environment now")
+            assert pending is not None
+            assert await join_refresh(pending) == _BLOCK
+
+    @pytest.mark.asyncio
+    async def test_a_late_refresh_is_cancelled_and_logged_after_the_grace(
+        self, monkeypatch, caplog
+    ) -> None:
+        monkeypatch.setattr(
+            context.graphiti_config, "warm_context_refresh_join_grace_ms", 100
+        )
+        caplog.set_level(logging.INFO, logger=context.__name__)
+        with patch.object(context, "refresh_warm_context", new=_refresh_taking(60)):
+            pending = start_refresh("user-abc", "deploy the staging environment now")
+            assert pending is not None
+            loop = asyncio.get_running_loop()
+            joined = loop.time()
+            out = await join_refresh(pending)
+            waited = loop.time() - joined
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(pending.task, timeout=1)
+
+        assert out is None
+        assert 0.05 <= waited <= 0.1 + _JOIN_SLACK_S
+        late = [r for r in caplog.records if "refresh late, skipped" in r.message]
+        assert len(late) == 1 and late[0].levelno == logging.INFO
+        assert "join grace 100 ms" in late[0].message
+
+    @pytest.mark.asyncio
+    async def test_time_before_the_join_is_the_refreshs_own(self, monkeypatch) -> None:
+        """A refresh started before the query build had the build's time as
+        well as the grace: 300 ms of work, joined 250 ms in with a 150 ms
+        grace, is on time. The same refresh started at the join is late."""
+        monkeypatch.setattr(
+            context.graphiti_config, "warm_context_refresh_join_grace_ms", 150
+        )
+        with patch.object(context, "refresh_warm_context", new=_refresh_taking(0.3)):
+            early = start_refresh("user-abc", "deploy the staging environment now")
+            assert early is not None
+            await asyncio.sleep(0.25)
+            assert await join_refresh(early) == _BLOCK
+
+            at_join = start_refresh("user-abc", "deploy the staging environment now")
+            assert at_join is not None
+            assert await join_refresh(at_join) is None
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_join_cancels_the_refresh(self, monkeypatch) -> None:
+        """The turn can be cancelled while it waits (the client went away):
+        the refresh must not outlive it."""
+        monkeypatch.setattr(
+            context.graphiti_config, "warm_context_refresh_join_grace_ms", 5000
+        )
+        with patch.object(context, "refresh_warm_context", new=_refresh_taking(60)):
+            pending = start_refresh("user-abc", "deploy the staging environment now")
+            assert pending is not None
+            join = asyncio.create_task(join_refresh(pending))
+            await asyncio.sleep(0.05)
+            join.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await join
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(pending.task, timeout=1)
 
 
 class TestFetchRecipeSelection:

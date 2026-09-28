@@ -24,14 +24,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from claude_agent_sdk import ResultMessage
+from graphiti_core.edges import EntityEdge
 
 from backend.copilot.constants import COMPACTION_TOOL_NAME
+from backend.copilot.graphiti import context as graphiti_context
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamCompactionProgress,
@@ -56,6 +59,7 @@ from .service import (
     _INJECTED_MEMORY_MARKER,
     _MAX_STREAM_ATTEMPTS,
     _build_query_message,
+    _maybe_prepend_skills_update,
     _reduce_context,
 )
 from .transcript import compact_transcript, validate_transcript
@@ -1196,9 +1200,15 @@ class TestFollowUpWarmContextCallSite:
         ]
 
     @staticmethod
-    def _clients(queries: list[str], *, fail_first: bool = False):
-        """Client factory recording every query sent; with ``fail_first``
-        the first attempt is rejected as too long before streaming."""
+    def _clients(
+        queries: list[str],
+        *,
+        fail_first: bool = False,
+        sent_at: list[float] | None = None,
+    ):
+        """Client factory recording every query sent (and, into ``sent_at``,
+        when); with ``fail_first`` the first attempt is rejected as too long
+        before streaming."""
         attempts = [0]
 
         def _factory(*args, **kwargs):
@@ -1207,6 +1217,8 @@ class TestFollowUpWarmContextCallSite:
 
             async def _query(prompt, session_id=None):
                 queries.append(prompt)
+                if sent_at is not None:
+                    sent_at.append(asyncio.get_running_loop().time())
                 if fail_first and attempt == 1:
                     raise Exception("prompt is too long (context_length_exceeded)")
 
@@ -1257,8 +1269,10 @@ class TestFollowUpWarmContextCallSite:
                 dict(new=refresh),
             ),
             (f"{_SVC}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
-            # The turn's own memory ingestion is not under test here.
-            (f"{_SVC}.enqueue_conversation_turn", dict(new=AsyncMock())),
+            # The turn's own memory ingestion is not under test here. It runs
+            # as a task the turn's finally block spawns, which can outlive
+            # these patches, so it is not spawned at all.
+            (f"{_SVC}._graphiti_ingest_allowed", dict(return_value=False)),
             *(extra or []),
         ]
         events = []
@@ -1315,11 +1329,11 @@ class TestFollowUpWarmContextCallSite:
 
     @pytest.mark.asyncio
     async def test_refresh_is_in_flight_while_the_query_is_built(self):
-        """Off the time-to-first-token path: the refresh has started before
-        the query build runs, so its round-trip overlaps compaction,
-        attachments and builder context. A refresh fetched only once the
-        query is built (the serial shape the review rejected) never starts
-        while the build waits for it here, and the turn fails."""
+        """Overlapped with the query build: the refresh has started before
+        the build runs, so its round-trip overlaps compaction, attachments
+        and builder context. A refresh fetched only once the query is built
+        (the serial shape the review rejected) never starts while the build
+        waits for it here, and the turn fails."""
         refresh_started = asyncio.Event()
         queries: list[str] = []
 
@@ -1339,6 +1353,100 @@ class TestFollowUpWarmContextCallSite:
         )
 
         assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
+
+    @staticmethod
+    def _graph(search, ready_at: list[float]) -> list[tuple[str, dict]]:
+        """The real refresh over a stubbed graph read, a 300 ms join grace,
+        and a clock on the moment the query is ready (the last step before
+        the join)."""
+
+        async def _ready(*args, **kwargs):
+            query = await _maybe_prepend_skills_update(*args, **kwargs)
+            ready_at.append(asyncio.get_running_loop().time())
+            return query
+
+        ctx = "backend.copilot.graphiti.context"
+        return [
+            (
+                f"{ctx}.graphiti_config.warm_context_refresh_join_grace_ms",
+                dict(new=300),
+            ),
+            (f"{ctx}.search_facts", dict(new=search)),
+            (f"{ctx}.recent_episodes", dict(new=AsyncMock(return_value=[]))),
+            (
+                f"{ctx}.recheck",
+                dict(new=AsyncMock(side_effect=lambda _s, edges, eps: (edges, eps))),
+            ),
+            (f"{_SVC}._maybe_prepend_skills_update", dict(new=_ready)),
+        ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "forced", [False, True], ids=["started-early", "forced-by-compaction"]
+    )
+    async def test_a_hung_search_adds_at_most_the_join_grace(self, forced, caplog):
+        """The bound on time-to-first-token: once the query is ready the turn
+        waits at most ``warm_context_refresh_join_grace_ms`` for the refresh,
+        whether it started before the query build (a substantive message) or
+        at the join (a short message a compaction forces). A search that
+        never answers costs the turn the grace, is cancelled and logged, and
+        the query goes out without a block."""
+        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+        prior = self._big_prior() if forced else None
+        ready_at: list[float] = []
+        sent_at: list[float] = []
+        queries: list[str] = []
+
+        async def _never_answers(*_args, **_kwargs):
+            await asyncio.Event().wait()
+
+        await self._run(
+            self._session("go on" if forced else "restart the executor", prior=prior),
+            graphiti_context.refresh_warm_context,
+            self._clients(queries, sent_at=sent_at),
+            extra=[
+                *(self._compacting(prior) if prior else []),
+                *self._graph(_never_answers, ready_at),
+            ],
+        )
+
+        waited = sent_at[0] - ready_at[0]
+        assert 0.25 <= waited <= 0.3 + 0.25, f"the turn waited {waited:.3f}s"
+        assert len(queries) == 1 and "temporal_context" not in queries[0]
+        late = [r for r in caplog.records if "refresh late, skipped" in r.message]
+        assert len(late) == 1 and late[0].levelno == logging.INFO
+
+    @pytest.mark.asyncio
+    async def test_a_fast_search_is_injected_without_waiting_out_the_grace(
+        self, caplog
+    ):
+        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+        edge = EntityEdge(
+            uuid="edge-executor",
+            group_id="user_test-user",
+            source_node_uuid="executor",
+            target_node_uuid="k3s",
+            created_at=datetime(2025, 6, 1, tzinfo=UTC),
+            name="runs_on",
+            fact="the executor runs on k3s",
+            valid_at=datetime(2025, 1, 1, tzinfo=UTC),
+            attributes={"status": "active"},
+        )
+        ready_at: list[float] = []
+        sent_at: list[float] = []
+        queries: list[str] = []
+
+        await self._run(
+            self._session("restart the executor"),
+            graphiti_context.refresh_warm_context,
+            self._clients(queries, sent_at=sent_at),
+            extra=self._graph(AsyncMock(return_value=[edge]), ready_at),
+        )
+
+        assert sent_at[0] - ready_at[0] < 0.3
+        assert len(queries) == 1 and "the executor runs on k3s" in queries[0]
+        assert _INJECTED_MEMORY_MARKER in queries[0]
+        assert "refresh late" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_injected_block_is_scrubbed_before_the_transcript_upload(self):

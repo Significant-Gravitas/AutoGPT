@@ -185,12 +185,22 @@ class GraphitiConfig(BaseSettings):
     context_refresh_timeout: float = Field(
         default=3.0,
         description=(
-            "Seconds before a follow-up-turn warm-context refresh (SECRT-2378) "
-            "is abandoned; the turn then goes ahead without it. Tighter than "
-            "context_timeout: the SDK engine overlaps the refresh with the query "
-            "build, but a refresh forced by a compaction, a context-overflow "
-            "retry and the baseline engine wait for it before calling the model, "
-            "so this caps what it can add to time-to-first-token."
+            "Seconds a follow-up-turn warm-context refresh (SECRT-2378) may run "
+            "in all before it is abandoned. On the SDK engine it starts before "
+            "the query build; what it may add to time-to-first-token is bounded "
+            "separately by warm_context_refresh_join_grace_ms."
+        ),
+    )
+    warm_context_refresh_join_grace_ms: int = Field(
+        default=500,
+        ge=0,
+        description=(
+            "The most a follow-up warm-context refresh (SECRT-2378) may add to "
+            "time-to-first-token, in milliseconds. Once the turn's query is "
+            "ready it waits at most this long for the refresh; a refresh still "
+            "running then is cancelled and the turn goes on without a block. "
+            "A refresh started at that point (the baseline engine, retries, a "
+            "refresh forced by a compaction) has this as its whole budget."
         ),
     )
 
