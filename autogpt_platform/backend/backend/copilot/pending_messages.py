@@ -195,7 +195,22 @@ async def claim_client_message(
 
 async def accept_client_message(session_id: str, message_id: str, owner: str) -> None:
     """Mark a claimed send as taken, so its retransmits are skipped.  Also
-    when the reservation has lapsed, unless another request holds it now."""
+    when the reservation has lapsed, unless another request holds it now.
+
+    Finishes even if the caller is cancelled midway: the send has already
+    landed, and a reservation left to lapse would let a retry send it again.
+    """
+    accept = asyncio.ensure_future(
+        _accept_client_message(session_id, message_id, owner)
+    )
+    try:
+        await asyncio.shield(accept)
+    except asyncio.CancelledError:
+        await accept
+        raise
+
+
+async def _accept_client_message(session_id: str, message_id: str, owner: str) -> None:
     try:
         redis = await get_redis_async()
         await string_compare_and_set(

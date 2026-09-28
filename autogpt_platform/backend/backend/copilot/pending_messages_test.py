@@ -930,6 +930,36 @@ async def test_lapsed_claimant_still_records_its_accepted_send(
 
 
 @pytest.mark.asyncio
+async def test_accepting_a_claim_finishes_when_the_request_is_cancelled(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The send already landed, so a cancelled request must still record it:
+    a reservation left to lapse would let a retry send it again."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    accepting = asyncio.Event()
+    finish = asyncio.Event()
+    settle = fake_redis.eval
+
+    async def slow_eval(*args: Any) -> int:
+        accepting.set()
+        await finish.wait()
+        return await settle(*args)
+
+    monkeypatch.setattr(fake_redis, "eval", slow_eval)
+    request = asyncio.create_task(accept_client_message("sess-1", "msg-a", "first"))
+    await accepting.wait()
+
+    request.cancel()
+    await asyncio.sleep(0)
+    finish.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    assert fake_redis.strings[key] == "accepted"
+
+
+@pytest.mark.asyncio
 async def test_copy_during_reservation_waits_for_acceptance(
     fake_redis: _FakeRedis, short_claim_wait: None
 ) -> None:
