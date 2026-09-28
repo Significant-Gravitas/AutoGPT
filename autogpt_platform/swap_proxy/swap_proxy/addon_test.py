@@ -291,6 +291,24 @@ async def test_a_response_that_outgrows_the_buffer_kills_the_flow(caplog):
     assert audit(caplog) == [("refused-response", "too-large-to-scrub")]
 
 
+async def test_a_response_with_data_after_its_end_is_audited_as_such(caplog):
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    addon = addon_for(flow)
+    flow.live = True
+    flow.response.headers["content-type"] = "text/plain"
+    del flow.response.headers["content-length"]
+    flow.response.headers["transfer-encoding"] = "chunked"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        stream = flow.response.stream
+        assert isinstance(stream, BufferedBody)
+        for chunk in (b"abc", b"", b"def"):
+            stream(chunk)
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "data-after-end")]
+
+
 @pytest.mark.parametrize("content_type", ["image/png", "application/zip"])
 async def test_a_binary_response_is_left_to_stream(content_type):
     flow = tflow.tflow(resp=True)

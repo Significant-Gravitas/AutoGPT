@@ -1,0 +1,58 @@
+{
+  "expert-maria": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-maria/neutral/512.png",
+    "masterSha256": "8a9862cfb827d19fc0d129183c16373aba7373e154eb4cdd25cfbc33722f8499",
+    "sha256": "9e75a1f90f86f09d4c90ecabf8a630aa0a88cdc5b2ca15fec66541ba50165847",
+    "bytes": 235501
+  },
+  "expert-mina": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-mina/neutral/512.png",
+    "masterSha256": "ba5f359652646c3c5c0285b2b7d7fdfae0086ffa6def49b759ebede5f92ada21",
+    "sha256": "08f18a664a6c9135da713e46cc4e7743791fb8c8daf00e311cba829df8074e9d",
+    "bytes": 231113
+  },
+  "expert-max": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-max/neutral/512.png",
+    "masterSha256": "093b0080617bb5c28b2f27236f59f427971fe42b3abe8df5329583f675ff4449",
+    "sha256": "9832c11abd343faf436781a57712716a18cfb3b6aeed6c42cf554c92e7250b44",
+    "bytes": 242462
+  },
+  "expert-riley": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-riley/neutral/512.png",
+    "masterSha256": "68be06ae34174b71024fb20a51b99710b09eeb310838437e8f17201159aa987a",
+    "sha256": "b5f5b22cdd760b0a0eb92b3bb58ed1f99923b4c0f0ae5eef4f63117b73cd4cd4",
+    "bytes": 237487
+  },
+  "expert-harper": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-harper/neutral/512.png",
+    "masterSha256": "8ae7c7f54868a3c85e017c93be39a74f75db6fcffd8b469d02ac445312fb8435",
+    "sha256": "601e9fd89e509833b37712a9723ee1ddebd4b5e37543c7a0250b1ce2d914023e",
+    "bytes": 243030
+  },
+  "expert-nadia": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-nadia/neutral/512.png",
+    "masterSha256": "8046e4c631665d5e34e963a369bcf1527a784d036d027952c1a47f231d977cd9",
+    "sha256": "7905d47e7ba0d7a15d7f6b978427ef8cff80c7e03646e6eaaee2331adc30ce34",
+    "bytes": 240893
+  },
+  "expert-devon": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-devon/neutral/512.png",
+    "masterSha256": "7a8b1ac8152b11f297d1b65621ed3cf0813f627ca10df8d6adeb1457b4cfc514",
+    "sha256": "74b101561dace2555812da6fa2dcebfaa713a725fcbcff2a24d8ffbef02fb500",
+    "bytes": 244519
+  },
+  "expert-general-01": {
+    "library": "2.1.0",
+    "export": "public/autogpt-characters/v2.1/expert-general-01/neutral/512.png",
+    "masterSha256": "0feafbfba02580e4806066760a528b0d5cb432b85d4eb61863eca483a1737154",
+    "sha256": "58b5528b3940fc71fa9d68aabeb9e084de67870c8014f2e60a81b167cea80242",
+    "bytes": 242352
+  }
+}

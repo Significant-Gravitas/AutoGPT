@@ -583,7 +583,11 @@ class SwapProxyAddon:
             return whole.raw_content or b""
 
         response.stream = BufferedBody(
-            MAX_BODY_BYTES, scrub_body, lambda _: refuse("too-large-to-scrub")
+            MAX_BODY_BYTES,
+            scrub_body,
+            lambda reason: refuse(
+                "too-large-to-scrub" if reason == "body-too-large" else reason
+            ),
         )
 
     async def response(self, flow: http.HTTPFlow) -> None:

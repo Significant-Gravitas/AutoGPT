@@ -194,7 +194,7 @@ describe("Marketplace expert page", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Maria" }),
     ).toBeDefined();
-    expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    expect(screen.getByText(/Marketing Strategist/)).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
     expect(
       within(screen.getByRole("region", { name: /^Workflows/ })).getByText(

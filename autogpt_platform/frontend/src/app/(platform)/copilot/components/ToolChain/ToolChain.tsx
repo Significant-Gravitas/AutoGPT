@@ -36,7 +36,9 @@ import {
   type ChainActionEntry,
 } from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
+import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import { applyHeldOutcome } from "./heldRow";
 import {
   type ChainRow,
   getChainHeading,
@@ -65,6 +67,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
+  const heldOutcomes = useContext(HeldOutcomesContext);
   const { onSend } = useCopilotChatActions();
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
@@ -167,6 +170,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         parts
           .map((part, i) => toChainRow(part, i))
           .filter((row): row is ChainRow => row !== null)
+          .map((row) => applyHeldOutcome(row, heldOutcomes))
           // Unanswered clarifying questions and setup cards render their work
           // in the card below the chain — their rows are lifted out of view.
           .map((row) =>
@@ -177,7 +181,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 : row,
           ),
       ),
-    [parts, pendingQuestions],
+    [parts, pendingQuestions, heldOutcomes],
   );
   if (rows.length === 0) return null;
 

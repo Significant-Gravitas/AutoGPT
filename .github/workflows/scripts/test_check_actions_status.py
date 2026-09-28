@@ -119,6 +119,37 @@ class ProcessCheckRunsTests(unittest.TestCase):
 
         self.assertEqual(result, (False, False))
 
+    def test_ignores_an_advisory_reviewer_that_could_not_run(self):
+        """Copilot code review concludes "failure" when Copilot itself is out
+        of quota (HTTP 402); that says nothing about the code and must not
+        block the merge."""
+        copilot = {
+            "id": 7,
+            "name": "copilot-pull-request-reviewer",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        self.assertEqual(process_check_runs([copilot]), (False, True))
+
+    def test_an_advisory_reviewer_still_running_does_not_hold_the_check(self):
+        copilot = {
+            "id": 7,
+            "name": "copilot-pull-request-reviewer",
+            "status": "in_progress",
+            "conclusion": None,
+        }
+        self.assertEqual(process_check_runs([copilot]), (False, True))
+
+    def test_a_real_failure_beside_an_advisory_one_still_fails(self):
+        copilot = {
+            "id": 7,
+            "name": "copilot-pull-request-reviewer",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        failed = {"id": 8, "name": "test", "status": "completed", "conclusion": "failure"}
+        self.assertEqual(process_check_runs([copilot, failed]), (False, False))
+
     def test_rejects_real_failure(self):
         failed_check = {**CANCELED_CHECK, "conclusion": "failure"}
 
