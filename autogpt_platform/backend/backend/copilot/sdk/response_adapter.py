@@ -46,7 +46,11 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 
-from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
+from .tool_adapter import (
+    MCP_TOOL_PREFIX,
+    pop_cancelled_tool_output,
+    pop_pending_tool_output,
+)
 from .tool_display import strip_display_token
 
 logger = logging.getLogger(__name__)
@@ -1051,7 +1055,10 @@ class SDKResponseAdapter:
 
         flushed = False
         for tool_id, tool_name, tool_input in unresolved:
-            output = pop_pending_tool_output(tool_name, tool_input)
+            # A call cut off by a stop may have said what that means for it.
+            output = pop_pending_tool_output(
+                tool_name, tool_input
+            ) or pop_cancelled_tool_output(tool_name, tool_input)
             if output is not None:
                 responses.append(
                     StreamToolOutputAvailable(

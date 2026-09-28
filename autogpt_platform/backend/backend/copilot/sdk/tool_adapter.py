@@ -53,6 +53,7 @@ from backend.copilot.tools import (
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
+from .cancelled_output import pop_cancelled_output, reset_cancelled_outputs, tool_call
 from .e2b_file_tools import (
     E2B_FILE_TOOL_NAMES,
     E2B_FILE_TOOLS,
@@ -172,6 +173,7 @@ def set_execution_context(
     _current_hidden_tools.set(hidden_tools)
     reset_consult_budget()
     _pending_tool_outputs.set({})
+    reset_cancelled_outputs()
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
 
@@ -213,6 +215,7 @@ def reset_pending_tool_outputs() -> None:
     attempt, where no tool call can be in flight.
     """
     _pending_tool_outputs.set({})
+    reset_cancelled_outputs()
 
 
 def _output_key(tool_name: str, tool_input: Any = None) -> str:
@@ -268,6 +271,14 @@ def pop_pending_tool_output(tool_name: str, tool_input: Any = None) -> str | Non
     if not queue:
         del pending[key]
     return value
+
+
+def pop_cancelled_tool_output(tool_name: str, tool_input: Any = None) -> str | None:
+    """The result a call cut off by a stop recorded for itself, if any.
+
+    Keyed like the output stash; see :mod:`.cancelled_output`.
+    """
+    return pop_cancelled_output(_output_key(tool_name, tool_input))
 
 
 def stash_pending_tool_output(
@@ -860,7 +871,10 @@ def _make_truncating_wrapper(
                     _clear_tool_failures(name)
                 return released
 
-        result = await run(args)
+        # Keyed by the model's ORIGINAL args, like the output stash below, so
+        # a stop's flush finds what this call recorded for being cut off.
+        with tool_call(_output_key(name, original_args)):
+            result = await run(args)
         truncated = truncate(result, _MCP_MAX_CHARS)
         # Registry tools were judged inside ``BaseTool.execute`` on this cap.
         if session is not None and name not in TOOL_REGISTRY:

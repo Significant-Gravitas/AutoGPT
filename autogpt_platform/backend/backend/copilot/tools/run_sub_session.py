@@ -26,6 +26,7 @@ other turn.
 import json
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any, Callable
 
 from backend.copilot.active_turns import running_turn_limit_message
@@ -56,7 +57,13 @@ from .models import (
     ToolResponseBase,
     WorkspaceFileInfoData,
 )
-from .sub_session_facts import PendingAsk, RunFacts, ask_from_tool_calls
+from .sub_session_facts import (
+    PendingAsk,
+    RunFacts,
+    ask_from_tool_calls,
+    record_stopped,
+    sub_session_link,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +267,12 @@ class RunSubSessionTool(BaseTool):
             effective_prompt = f"[System Context: {system_context.strip()}]\n\n{prompt}"
 
         cap = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
+        record_stopped(
+            actor="Subtask",
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            started_at=datetime.now(UTC),
+        )
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
@@ -320,9 +333,7 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
     running/completed/error paths, and so the frontend only has one
     contract to honour.
     """
-    if not inner_session_id:
-        return None
-    return f"/copilot?sessionId={inner_session_id}"
+    return sub_session_link(inner_session_id)
 
 
 async def list_sub_workspace_files(

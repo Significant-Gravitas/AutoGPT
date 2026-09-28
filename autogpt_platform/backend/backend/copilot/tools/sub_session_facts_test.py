@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.sdk.cancelled_output import (
+    pop_cancelled_output,
+    reset_cancelled_outputs,
+    tool_call,
+)
 from backend.copilot.sdk.session_waiter import SessionOutcome, SessionResult
 
 from .delegate_to_expert import DelegateToExpertTool
 from .get_sub_session_result import GetSubSessionResultTool
+from .models import SubSessionStatusResponse
 from .run_sub_session import response_from_outcome
 from .sub_session_facts import RunFacts
 
@@ -153,3 +160,34 @@ async def test_a_cold_poll_reads_times_from_the_persisted_turn(monkeypatch, cost
     )
     assert r.status == "completed"
     assert (r.started_at, r.finished_at, r.cost_usd) == (_ASKED, _DONE, 0.12)
+
+
+@pytest.mark.asyncio
+async def test_a_delegation_stopped_mid_wait_reads_as_cancelled(monkeypatch, costs):
+    """Stop cancels the waiting call; its transcript row must say the
+    teammate was stopped and name the thread, not read as still working."""
+    target = MagicMock(id="expert-b", role="PM", avatar_url=None, color="violet")
+    target.name = "Bea"
+    target.is_archived = False
+    target.schedules_paused_at = None
+    for name, value in {
+        "resolve_target_expert": AsyncMock(return_value=target),
+        "chain_refusal": AsyncMock(return_value=None),
+        "create_chat_session": AsyncMock(return_value=MagicMock(session_id="inner-1")),
+        "run_copilot_turn_via_queue": AsyncMock(side_effect=asyncio.CancelledError),
+    }.items():
+        monkeypatch.setattr(f"backend.copilot.tools.delegate_to_expert.{name}", value)
+    reset_cancelled_outputs()
+
+    with pytest.raises(asyncio.CancelledError), tool_call("delegate-call"):
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=_parent(), expert_id="expert-b", prompt="go"
+        )
+
+    recorded = pop_cancelled_output("delegate-call")
+    assert recorded is not None
+    stopped = SubSessionStatusResponse.model_validate_json(recorded)
+    assert (stopped.status, stopped.sub_session_id) == ("cancelled", "inner-1")
+    assert stopped.expert is not None and stopped.expert.name == "Bea"
+    assert stopped.started_at is not None
+    assert "stopped" in stopped.message

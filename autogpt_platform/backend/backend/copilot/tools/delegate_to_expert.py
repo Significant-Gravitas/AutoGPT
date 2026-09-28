@@ -62,7 +62,7 @@ from .run_sub_session import (
     list_sub_workspace_files,
     response_from_outcome,
 )
-from .sub_session_facts import run_facts
+from .sub_session_facts import record_stopped, run_facts
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,14 @@ class DelegateToExpertTool(BaseTool):
 
         caller = await self._caller_name(user_id, session.expert_id)
         started_on = datetime.now(UTC)
+        expert = _expert_info(target)
+        record_stopped(
+            actor=target.name,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            started_at=started_on,
+            expert=expert,
+        )
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
@@ -234,16 +242,7 @@ class DelegateToExpertTool(BaseTool):
             facts=await run_facts(user_id, inner_session_id, outcome, started_on),
         )
         delegated.message += await build_spawn_state_note()
-        return apply_delegated_expert(
-            delegated,
-            DelegatedExpertInfo(
-                id=target.id,
-                name=target.name,
-                role=target.role,
-                avatar_url=target.avatar_url,
-                color=target.color,
-            ),
-        )
+        return apply_delegated_expert(delegated, expert)
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
@@ -338,6 +337,16 @@ class DelegateToExpertTool(BaseTool):
             logger.warning(f"Delegating expert lookup failed: {e}")
             return "a teammate"
         return caller.name if caller else "a teammate"
+
+
+def _expert_info(target: Expert) -> DelegatedExpertInfo:
+    return DelegatedExpertInfo(
+        id=target.id,
+        name=target.name,
+        role=target.role,
+        avatar_url=target.avatar_url,
+        color=target.color,
+    )
 
 
 def _handoff_message(caller: str, system_context: str, prompt: str) -> str:

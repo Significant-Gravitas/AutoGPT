@@ -13,9 +13,12 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.model import ChatSession, PendingQuestion
+from backend.copilot.sdk.cancelled_output import record_cancelled_output
 from backend.copilot.sdk.session_waiter import SessionOutcome
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.data.db_accessors import delegation_db
+
+from .models import DelegatedExpertInfo, SubSessionStatusResponse
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,38 @@ class _AskItem(BaseModel):
 
 class _AskArgs(BaseModel):
     questions: list[_AskItem] = []
+
+
+def sub_session_link(inner_session_id: str | None) -> str | None:
+    """The CoPilot UI URL of a child session: one contract for the frontend."""
+    return f"/copilot?sessionId={inner_session_id}" if inner_session_id else None
+
+
+def record_stopped(
+    *,
+    actor: str,
+    inner_session_id: str,
+    parent_session_id: str | None,
+    started_at: datetime,
+    expert: DelegatedExpertInfo | None = None,
+) -> None:
+    """Say what this call's result is if the user stops the turn mid-wait.
+
+    Stopping the turn stops the child too (the executor cascades the cancel),
+    so the honest result names the child and says it was stopped, rather
+    than the empty one a reader takes for "still working".
+    """
+    stopped = SubSessionStatusResponse(
+        message=f"The user stopped this turn, so {actor}'s task was stopped too.",
+        session_id=parent_session_id,
+        status="cancelled",
+        sub_session_id=inner_session_id,
+        sub_autopilot_session_id=inner_session_id,
+        sub_autopilot_session_link=sub_session_link(inner_session_id),
+        started_at=started_at,
+        expert=expert,
+    )
+    record_cancelled_output(stopped.model_dump_json(exclude_none=True))
 
 
 async def sub_session_cost_usd(user_id: str, session_id: str) -> float | None:

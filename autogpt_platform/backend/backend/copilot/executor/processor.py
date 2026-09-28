@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Callable, cast
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
+from backend.copilot.delegation_cancel import cancel_delegated_children
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
@@ -237,6 +238,17 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
             )
             return
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
+
+
+async def _cascade_cancel(
+    entry: CoPilotExecutionEntry, log: CoPilotLogMetadata
+) -> None:
+    """Stop the threads this cancelled turn handed work to. Best effort: a
+    failure here must not keep the turn itself from finishing as cancelled."""
+    try:
+        await cancel_delegated_children(entry.session_id, entry.user_id)
+    except Exception as e:
+        log.warning(f"Could not cancel child threads: {e}")
 
 
 def execute_copilot_turn(
@@ -794,6 +806,8 @@ class CoPilotProcessor:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
+            if error_msg == stream_registry.CANCELLED_MESSAGE:
+                await _cascade_cancel(entry, log)
             try:
                 if credential_lease is not None:
                     try:
