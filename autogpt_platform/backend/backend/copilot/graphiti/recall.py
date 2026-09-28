@@ -14,7 +14,8 @@ A fact (a ``RELATES_TO`` edge) is live while ``expired_at`` and
 an edge with no ``status`` predates the ``MemoryFact`` edge type and counts
 as ``active``. A forgotten fact (``forgotten_fact_predicate``) is never live:
 a forget stamps ``forgotten_at``, which only a forget writes
-(``recall_forget.py``, or the legacy-forget backfill for older ones), so no
+(``recall_forget.py`` and the cascade it runs on what the dream derived
+from the fact, or a backfill for older forgets), so no
 other writer's status or reason can make it look remembered again. An
 episode is recallable while no forget has stamped ``redacted_at`` on it and
 none of the facts extracted from it is forgotten: one forgotten fact hides

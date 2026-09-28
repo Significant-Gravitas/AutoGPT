@@ -1,12 +1,15 @@
 """Forgetting under the recall policy.
 
 After ``retract`` the recall paths in ``recall.py`` return neither the
-forgotten facts nor the episode text they came from, the sentence is gone
-from the fact and from what graphiti read out of it onto entities, and the
-audit record stays; ``graphiti/AGENTS.md`` lists the limits. The chat forget
-tool and the settings page both forget through here, so a forget means the
-same thing wherever it starts. ``forgotten_at``, the policy's marker for a
-forgotten fact, is written here and, for forgets made before it existed, by
+forgotten facts nor the episode text they came from, nor what the dream
+derived from them (``recall_cascade.py``), the sentence is gone from the
+fact and from what graphiti read out of it onto entities, and the audit
+record stays; ``graphiti/AGENTS.md`` lists the limits. The chat forget tool
+and the settings page both forget through here, so a forget means the same
+thing wherever it starts. ``forgotten_at``, the policy's marker for a
+forgotten fact, is written here (for a derived fact, by the cascade this
+runs, which ``migrations/backfill_derivations.py`` also runs for forgets
+made before it) and, for forgets made before the marker existed, by
 ``migrations/backfill_legacy_forgets.py``; nothing else writes it.
 """
 
@@ -19,6 +22,7 @@ from graphiti_core.driver.driver import GraphDriver
 from .falkordb_driver import open_driver
 from .memory_model import ForgetResult, MemoryForgetFailure, MemoryStatus
 from .recall import USER_FORGET_REASON
+from .recall_cascade import cascade
 from .recall_hide import hide
 from .recall_orphans import purge
 from .scope import MemoryScope
@@ -46,10 +50,13 @@ async def retract(
     ``invalid_at`` alone: a forget retracts our record of a fact, it does
     not say the world changed (Snodgrass). ``recall_hide.hide`` then moves
     the sentence out of what graphiti reads and redacts every episode citing
-    the fact; edges and episodes stay for audit. Hard does the same first,
-    then empties and deletes what only those edges kept, the edges last
-    (``recall_orphans.purge``), so forgetting again after any failure
-    finishes the job. A failed step after the edge write is a
+    the fact; edges and episodes stay for audit. Then, under the same lock,
+    ``recall_cascade.cascade`` retracts the facts the dream derived from the
+    forgotten ones, transitively, and hides the dream episodes that did
+    (``ForgetResult.derived``). Hard does all that first, the cascade soft
+    too, then empties and deletes what only the forgotten edges kept, the
+    edges last (``recall_orphans.purge``), so forgetting again after any
+    failure finishes the job. A failed step after the edge write is a
     ``cleanup_error`` on each edge it concerned; recall hides the fact and
     its text regardless.
     """
@@ -76,6 +83,8 @@ async def _forget(
     found = await _existing_edges(driver, group_id, uuids, result)
     retracted = await _retract_edges(driver, group_id, found, reason, now, result)
     hidden = await hide(driver, group_id, retracted, now, result)
+    if hidden:
+        await cascade(driver, group_id, retracted, now, result)
     if not hard:
         result.deleted = retracted
     elif hidden:

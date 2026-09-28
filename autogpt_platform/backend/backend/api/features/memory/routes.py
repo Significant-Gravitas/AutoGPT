@@ -9,10 +9,12 @@ so these routes can never read or delete another user's memory by construction.
 Facts are listed and counted with the recall policy's live-fact test
 (``graphiti/recall.py``), and a single-fact forget is the chat forget tool's
 soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
-``retracted`` and stops being served but stays for audit, and every episode
-it came from stops being recalled. A forget whose clean-up failed answers 500,
-not success, and one that found memory busy answers 409; both retry. The
-scope erase hard-deletes every node and edge in the scope's graph.
+``retracted`` and stops being served but stays for audit, every episode it
+came from stops being recalled, and so does every fact the dream derived
+from it (counted in the response's ``derived_forgotten``). A forget whose
+clean-up failed, or that left derived facts for a second forget, answers
+500, not success, and one that found memory busy answers 409; both retry.
+The scope erase hard-deletes every node and edge in the scope's graph.
 """
 
 import logging
@@ -229,7 +231,9 @@ async def _forget_fact_impl(
             detail="Forgot this memory but could not finish cleaning up; try again",
         )
     if result.deleted:
-        return ForgetFactResponse(uuid=fact_uuid, forgotten=True)
+        return ForgetFactResponse(
+            uuid=fact_uuid, forgotten=True, derived_forgotten=len(result.derived)
+        )
     if MemoryForgetFailureCode.QUERY_ERROR in codes:
         raise HTTPException(status_code=500, detail="Could not forget this memory")
     raise HTTPException(status_code=404, detail="Memory not found")

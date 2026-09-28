@@ -237,9 +237,12 @@ class MemoryForgetConfirmTool(BaseTool):
 
         mode = "permanently deleted" if hard_delete else "retracted from memory"
         return MemoryForgetConfirmResponse(
-            message=_build_confirm_message(len(result.deleted), mode, result.failures),
+            message=_build_confirm_message(
+                len(result.deleted), mode, result.failures, len(result.derived)
+            ),
             session_id=session.session_id,
             deleted_uuids=result.deleted,
+            derived_uuids=result.derived,
             failed_uuids=[f.uuid for f in result.failures],
             failures=result.failures,
         )
@@ -259,12 +262,18 @@ async def _retract_once_more_if_busy(
 
 
 def _build_confirm_message(
-    deleted_count: int, mode: str, failures: list[MemoryForgetFailure]
+    deleted_count: int,
+    mode: str,
+    failures: list[MemoryForgetFailure],
+    derived_count: int = 0,
 ) -> str:
     """Human/model-readable summary that spells out *why* edges failed.
 
     A bare "N failed" gives the model nothing to act on (SECRT-2371); listing
     each UUID with its reason lets it retry, hard-delete, or tell the user.
+    The facts the dream had derived from the forgotten ones, retracted with
+    them (``graphiti/recall_cascade.py``), are counted so the user hears of
+    them too.
 
     Only the first ``_MAX_FAILURE_DETAIL`` reasons are inlined: a large batch
     failing wholesale (e.g. a driver outage) would otherwise push the tool
@@ -272,6 +281,11 @@ def _build_confirm_message(
     full per-UUID list stays available in the structured ``failures`` field.
     """
     summary = f"{deleted_count} memory edge(s) {mode}."
+    if derived_count:
+        summary = (
+            f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
+            "derived from them retracted too."
+        )
     if not failures:
         return summary
     shown = failures[:_MAX_FAILURE_DETAIL]

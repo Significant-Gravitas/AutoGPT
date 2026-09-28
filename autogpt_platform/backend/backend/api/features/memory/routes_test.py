@@ -182,8 +182,31 @@ class TestForgetFact:
         with patch(f"{_MOCK_MODULE}.retract", retract):
             resp = client.delete("/memory/facts/edge-1")
         assert resp.status_code == 200
-        assert resp.json() == {"uuid": "edge-1", "forgotten": True}
+        assert resp.json() == {
+            "uuid": "edge-1",
+            "forgotten": True,
+            "derived_forgotten": 0,
+        }
         retract.assert_awaited_once_with(MemoryScope.for_user(test_user_id), ["edge-1"])
+
+    def test_counts_the_facts_derived_from_it(self) -> None:
+        """The dream's facts derived from the forgotten one were retracted
+        with it (``graphiti/recall_cascade.py``); the page is told how many."""
+        result = ForgetResult(deleted=["edge-1"], derived=["d1", "d2", "d3"])
+        with patch(f"{_MOCK_MODULE}.retract", AsyncMock(return_value=result)):
+            resp = client.delete("/memory/facts/edge-1")
+        assert resp.status_code == 200
+        assert resp.json()["derived_forgotten"] == 3
+
+    def test_derived_facts_left_for_another_forget_is_500(self) -> None:
+        """The forget stopped at its bound with derived facts still live: not
+        reported as done, and forgetting again continues."""
+        failure = MemoryForgetFailure.derived_left("edge-1")
+        result = ForgetResult(deleted=["edge-1"], derived=["d1"], failures=[failure])
+        with patch(f"{_MOCK_MODULE}.retract", AsyncMock(return_value=result)):
+            resp = client.delete("/memory/facts/edge-1")
+        assert resp.status_code == 500
+        assert "try again" in resp.json()["detail"]
 
     def test_no_match_is_404(self) -> None:
         result = ForgetResult(failures=[MemoryForgetFailure.no_match("edge-unknown")])

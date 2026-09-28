@@ -19866,12 +19866,18 @@
             "type": "array",
             "title": "Source Episode Uuids",
             "description": "UUIDs of the :Episodic nodes the fact was consolidated from."
+          },
+          "source_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Fact Uuids",
+            "description": "UUIDs of the active facts (:RELATES_TO edges) the fact was consolidated from."
           }
         },
         "type": "object",
         "required": ["content", "confidence"],
         "title": "ConsolidatedFact",
-        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. Provenance always points back to the source episodes\nso apply.py can record where the consolidation came from."
+        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. It cites the episodes and active facts it was drawn from,\nso apply can record where the consolidation came from and a forget of one\nof them reaches it (``dream/citations.py``); one citing nothing the pass\nread is dropped unwritten."
       },
       "ConsolidationOutput": {
         "properties": {
@@ -21445,6 +21451,11 @@
             "title": "Entity Invalidation Count",
             "default": 0
           },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
+            "default": 0
+          },
           "protected_demotions": {
             "type": "integer",
             "title": "Protected Demotions",
@@ -21749,6 +21760,11 @@
           "dropped_forgotten": {
             "type": "integer",
             "title": "Dropped Forgotten",
+            "default": 0
+          },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
             "default": 0
           },
           "protected_demotions": {
@@ -23721,11 +23737,17 @@
       "ForgetFactResponse": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
-          "forgotten": { "type": "boolean", "title": "Forgotten" }
+          "forgotten": { "type": "boolean", "title": "Forgotten" },
+          "derived_forgotten": {
+            "type": "integer",
+            "title": "Derived Forgotten",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["uuid", "forgotten"],
-        "title": "ForgetFactResponse"
+        "title": "ForgetFactResponse",
+        "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``)."
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -26726,6 +26748,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Deleted Uuids"
+          },
+          "derived_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Derived Uuids"
           },
           "failed_uuids": {
             "items": { "type": "string" },

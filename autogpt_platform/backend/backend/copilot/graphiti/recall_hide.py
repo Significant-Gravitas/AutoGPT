@@ -150,7 +150,9 @@ SET c.summary = ''
 
 # Every episode naming one of ``$uuids`` that the recall policy now hides,
 # which after the retraction is all of them: the stamp and the read-side test
-# cannot disagree. ``coalesce`` keeps the time of the first redaction.
+# cannot disagree. ``coalesce`` keeps the time of the first redaction. ``via``
+# names the facts among ``$uuids`` it cites (the forget's cascade follows it,
+# ``recall_cascade.py``).
 REDACT_EPISODES_QUERY = (
     forgotten_facts_clause()
     + f"""
@@ -158,6 +160,6 @@ MATCH (ep:Episodic)
 WHERE any(x IN coalesce(ep.entity_edges, []) WHERE x IN $uuids)
   AND NOT ({recallable_episode_predicate("ep")})
 SET ep.redacted_at = coalesce(ep.redacted_at, $now)
-RETURN ep.uuid AS uuid
+RETURN ep.uuid AS uuid, [x IN ep.entity_edges WHERE x IN $uuids] AS via
 """
 )

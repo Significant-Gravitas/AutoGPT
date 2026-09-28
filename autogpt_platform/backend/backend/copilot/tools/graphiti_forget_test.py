@@ -144,6 +144,26 @@ class TestForgetConfirmModes:
         assert response.message == "1 memory edge(s) permanently deleted."
 
     @pytest.mark.asyncio
+    async def test_the_facts_derived_from_it_are_reported(self) -> None:
+        """The user hears of the dream's facts the forget retracted too."""
+        result = ForgetResult(deleted=["e1"], derived=["d1", "d2", "d3"])
+        session = ChatSession.new("user-abc", dry_run=False)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.retract", AsyncMock(return_value=result)),
+        ):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["e1"]
+            )
+
+        assert isinstance(response, MemoryForgetConfirmResponse)
+        assert response.derived_uuids == ["d1", "d2", "d3"]
+        assert response.message == (
+            "1 memory edge(s) retracted from memory; "
+            "3 fact(s) derived from them retracted too."
+        )
+
+    @pytest.mark.asyncio
     async def test_unavailable_graph_is_an_error_response(self) -> None:
         session = ChatSession.new("user-abc", dry_run=False)
         with (
@@ -203,6 +223,10 @@ class TestForgetFailuresAreActionable:
             [],  # scrub its sentence
             [],  # find the entities to scrub (none)
             [],  # redact its episodes
+            [],  # the cascade: no earlier try,
+            [],  # no episode citing it,
+            [],  # nothing derived from it
+            [],
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
@@ -266,6 +290,13 @@ class TestBuildConfirmMessage:
     def test_no_failures_returns_summary_only(self) -> None:
         message = _build_confirm_message(3, "retracted from memory", [])
         assert message == "3 memory edge(s) retracted from memory."
+
+    def test_the_facts_derived_from_them_are_counted(self) -> None:
+        message = _build_confirm_message(1, "permanently deleted", [], 3)
+        assert message == (
+            "1 memory edge(s) permanently deleted; "
+            "3 fact(s) derived from them retracted too."
+        )
 
     def test_caps_inlined_detail_and_notes_remainder(self) -> None:
         overflow = _MAX_FAILURE_DETAIL + 4
