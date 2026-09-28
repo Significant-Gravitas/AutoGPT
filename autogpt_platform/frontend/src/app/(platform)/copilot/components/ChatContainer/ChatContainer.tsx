@@ -24,6 +24,7 @@ import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
+import { SessionNotFound } from "./components/SessionNotFound";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
@@ -62,6 +63,7 @@ export interface ChatContainerProps {
   sessionAutopilotMode?: AutopilotMode | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
+  isSessionNotFound?: boolean;
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
@@ -134,6 +136,7 @@ export const ChatContainer = ({
   sessionAutopilotMode = null,
   isLoadingSession,
   isSessionError,
+  isSessionNotFound,
   isCreatingSession,
   isReconnecting,
   isFinishProbing,
@@ -322,7 +325,9 @@ export const ChatContainer = ({
             {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
-            {sessionId ? (
+            {sessionId && isSessionNotFound ? (
+              <SessionNotFound />
+            ) : sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
                 <div className="absolute right-0 top-0 z-30">
                   <ContextPanelToggle sessionId={sessionId} />

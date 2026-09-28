@@ -30,7 +30,7 @@ repos:
         # hashes of the assembled prompts, which read as high-entropy hex.
         # .env.default files are deliberately NOT excluded: they are public, so
         # a working value committed to one is a published secret (SECRT-2611).
-        exclude: (pnpm-lock\.yaml|copilot/eval/style/baseline\.json|frontend/public/autogpt-characters/manifest\.json)$
+        exclude: (pnpm-lock\.yaml|copilot/eval/style/baseline\.json|frontend/public/autogpt-characters/manifest\.json|experts/avatar_references/manifest\.json)$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3

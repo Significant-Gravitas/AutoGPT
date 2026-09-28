@@ -5,11 +5,16 @@ import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFi
 import {
   type ApprovalItem,
   type ChatRule,
+  type RuleScope,
   isBare,
+  isHeldRead,
   reasonLine,
+  ruleSubjectName,
 } from "../../helpers";
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
+import { HeldPassage } from "./HeldPassage";
+import { MoneyBlock } from "./MoneyBlock";
 import { useApprovalFields } from "./useApprovalFields";
 
 export type CardStatus = "idle" | "approving" | "rejecting";
@@ -18,7 +23,8 @@ interface Props {
   item: ApprovalItem;
   status: CardStatus;
   failed: boolean;
-  onApprove: (rule?: ChatRule) => void;
+  expertName: string | null;
+  onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
   onReject: () => void;
 }
 
@@ -26,19 +32,22 @@ export function ApprovalCard({
   item,
   status,
   failed,
+  expertName,
   onApprove,
   onReject,
 }: Props) {
   const fields = useApprovalFields(item);
   const reason = reasonLine(item);
+  const read = isHeldRead(item);
   const busy = status !== "idle";
 
   const actions = (
     <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
       <ApproveSplitButton
-        label="Approve"
-        subjectName={item.subject.name}
-        rules={item.chatRulesAllowed}
+        label={read ? `Release to ${item.reader}` : "Approve"}
+        subjectName={ruleSubjectName(item.subject)}
+        expertName={expertName}
+        rules={read || item.spend ? [] : item.chatRulesAllowed}
         loading={status === "approving"}
         disabled={busy}
         onApprove={onApprove}
@@ -51,7 +60,11 @@ export function ApprovalCard({
         disabled={busy}
         onClick={onReject}
       >
-        {status === "rejecting" ? "Rejecting…" : "Reject"}
+        {status === "rejecting"
+          ? "Rejecting…"
+          : read
+            ? "Keep it out"
+            : "Reject"}
       </Button>
     </div>
   );
@@ -81,13 +94,20 @@ export function ApprovalCard({
           </p>
         )}
         {reason && <p className="-mt-1 text-sm text-zinc-500">{reason}</p>}
-        <ApprovalFields
-          fields={fields.labels}
-          values={fields.values}
-          clipped={item.clipped}
-          hiddenKeys={item.headlineKeys}
-          idsWhenAlone={!item.headline.object}
-        />
+        {item.spend && <MoneyBlock spend={item.spend} />}
+        {read ? (
+          item.passage && <HeldPassage passage={item.passage} />
+        ) : (
+          <ApprovalFields
+            fields={fields.labels}
+            values={fields.values}
+            clipped={item.clipped}
+            hiddenKeys={item.headlineKeys}
+            idsWhenAlone={!item.headline.object}
+            references={item.blockId ? [] : item.references}
+            referenceTotals={item.referenceTotals}
+          />
+        )}
         {actions}
       </div>
     </article>

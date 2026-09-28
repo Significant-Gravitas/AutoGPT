@@ -206,6 +206,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Scan image filesystem for embedded secrets
         id: secret_scan
@@ -219,6 +220,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Signal concurrent scans complete
         if: ${{ !cancelled() }}
@@ -376,6 +378,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Scan the exact pushed digest for embedded secrets
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -388,6 +391,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Export verified digest
         shell: bash

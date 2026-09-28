@@ -1,0 +1,1110 @@
+[
+  {
+    "story": "Gmail Send",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_capability:45dc4fe375588da5",
+      "node_id": "copilot-node-gate-run_capability",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_capability",
+        "arguments": {
+          "to": ["dana@acme.com"],
+          "cc": ["finance@acme.com"],
+          "subject": "Q3 invoices missing PO numbers",
+          "body": "Hi Dana,\n\nThe Q3 invoice pack is in the shared Invoices folder. Three of them are still missing a PO number:\n\n- INV-2041\n- INV-2044\n- INV-2051\n\nCould you look before Friday?\n\nThanks,\nOtto"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "to",
+            "label": "To"
+          },
+          {
+            "key": "cc",
+            "label": "Cc"
+          },
+          {
+            "key": "subject",
+            "label": "Subject"
+          },
+          {
+            "key": "body",
+            "label": "Body"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_capability",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:6c27abc2-e51d-499e-a85f-5a0041ba94f0",
+          "name": "Gmail Send",
+          "effect": "external",
+          "irreversible": true,
+          "block_id": "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
+        },
+        "reason": "Runs Gmail Send, which reaches outside the platform.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Gmail Send",
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Gmail Send",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "properties": {
+        "credentials": {
+          "credentials_provider": ["google"],
+          "credentials_types": ["oauth2"],
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "provider": {
+              "const": "google",
+              "title": "Provider",
+              "type": "string"
+            },
+            "type": {
+              "const": "oauth2",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": ["id", "provider", "type"],
+          "title": "CredentialsMetaInput[Literal[<ProviderName.GOOGLE: 'google'>], Literal['oauth2']]",
+          "type": "object",
+          "credentials_scopes": ["https://www.googleapis.com/auth/gmail.send"],
+          "description": "The Google integration requires OAuth2 authentication."
+        },
+        "to": {
+          "advanced": false,
+          "description": "Recipient email addresses",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "To",
+          "type": "array"
+        },
+        "subject": {
+          "advanced": false,
+          "description": "Email subject",
+          "secret": false,
+          "title": "Subject",
+          "type": "string"
+        },
+        "body": {
+          "advanced": false,
+          "description": "Email body (plain text or HTML)",
+          "secret": false,
+          "title": "Body",
+          "type": "string"
+        },
+        "cc": {
+          "advanced": true,
+          "description": "CC recipients",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Cc",
+          "type": "array"
+        },
+        "bcc": {
+          "advanced": true,
+          "description": "BCC recipients",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Bcc",
+          "type": "array"
+        },
+        "content_type": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "enum": ["auto", "plain", "html"],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+          "secret": false,
+          "title": "Content Type"
+        },
+        "attachments": {
+          "advanced": true,
+          "description": "Files to attach",
+          "items": {
+            "format": "file",
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Attachments",
+          "type": "array"
+        }
+      },
+      "required": ["credentials", "to", "subject", "body"],
+      "title": "Input",
+      "type": "object"
+    }
+  },
+  {
+    "story": "Google Sheets Update Row",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_capability:9be621b1d86e07dd",
+      "node_id": "copilot-node-gate-run_capability",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_capability",
+        "arguments": {
+          "spreadsheet": {
+            "id": "1x9QwErTyUiOp",
+            "name": "Q3 invoices",
+            "mimeType": "application/vnd.google-apps.spreadsheet",
+            "url": "https://docs.google.com/spreadsheets/d/1x9QwErTyUiOp"
+          },
+          "sheet_name": "October",
+          "row_index": 7,
+          "values": ["INV-2044", "4,210.00", "Paid"]
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "spreadsheet",
+            "label": "Spreadsheet"
+          },
+          {
+            "key": "sheet_name",
+            "label": "Sheet name"
+          },
+          {
+            "key": "row_index",
+            "label": "Row index"
+          },
+          {
+            "key": "values",
+            "label": "Values"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_capability",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:b8a934d5-fca0-4be3-9fc2-a99bf63bd385",
+          "name": "Google Sheets Update Row",
+          "effect": "external",
+          "irreversible": false,
+          "block_id": "b8a934d5-fca0-4be3-9fc2-a99bf63bd385"
+        },
+        "reason": "Otto does not know what Google Sheets Update Row does, so he asks.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Google Sheets Update Row",
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Google Sheets Update Row",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "properties": {
+        "spreadsheet": {
+          "description": "Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth.",
+          "properties": {
+            "id": {
+              "description": "Google Drive file/folder ID",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "File/folder name",
+              "title": "Name"
+            },
+            "mimeType": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "MIME type (e.g., application/vnd.google-apps.document)",
+              "title": "Mimetype"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URL to open the file",
+              "title": "Url"
+            },
+            "iconUrl": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Icon URL",
+              "title": "Iconurl"
+            },
+            "isFolder": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Whether this is a folder",
+              "title": "Isfolder"
+            },
+            "_credentials_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Internal: credential ID for authentication",
+              "title": "Credentials Id"
+            }
+          },
+          "required": ["id"],
+          "title": "Spreadsheet",
+          "type": "object",
+          "advanced": false,
+          "auto_credentials": {
+            "kwarg_name": "credentials",
+            "provider": "google",
+            "scopes": ["https://www.googleapis.com/auth/drive.file"],
+            "type": "oauth2"
+          },
+          "default": null,
+          "format": "google-drive-picker",
+          "google_drive_picker_config": {
+            "allow_folder_selection": false,
+            "allowed_mime_types": ["application/vnd.google-apps.spreadsheet"],
+            "allowed_views": ["SPREADSHEETS"],
+            "auto_credentials": {
+              "kwarg_name": "credentials",
+              "provider": "google",
+              "scopes": ["https://www.googleapis.com/auth/drive.file"],
+              "type": "oauth2"
+            },
+            "multiselect": false,
+            "scopes": ["https://www.googleapis.com/auth/drive.file"]
+          },
+          "placeholder": "Select from Google Drive",
+          "secret": false
+        },
+        "sheet_name": {
+          "advanced": true,
+          "default": "",
+          "description": "Sheet name (optional, defaults to first sheet)",
+          "secret": false,
+          "title": "Sheet Name",
+          "type": "string"
+        },
+        "row_index": {
+          "advanced": false,
+          "description": "1-based row index to update",
+          "secret": false,
+          "title": "Row Index",
+          "type": "integer"
+        },
+        "values": {
+          "advanced": true,
+          "default": [],
+          "description": "New values for the row (in column order)",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Values",
+          "type": "array"
+        },
+        "dict_values": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "advanced": true,
+          "default": {},
+          "description": "Values as dict with column headers as keys (alternative to values)",
+          "secret": false,
+          "title": "Dict Values",
+          "type": "object"
+        }
+      },
+      "required": ["row_index"],
+      "title": "Input",
+      "type": "object"
+    }
+  },
+  {
+    "story": "Execute Code Step",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_capability:89830f14bf9fbf54",
+      "node_id": "copilot-node-gate-run_capability",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_capability",
+        "arguments": {
+          "sandbox_id": "sbx-q3",
+          "language": "python",
+          "step_code": "import pandas as pd\n\ndf = pd.read_csv('invoices.csv')\nmissing = df[df.po_number.isna()]\nprint(missing[['id', 'amount']].to_markdown())\n"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "sandbox_id",
+            "label": "Sandbox"
+          },
+          {
+            "key": "language",
+            "label": "Language"
+          },
+          {
+            "key": "step_code",
+            "label": "Step code"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_capability",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:82b59b8e-ea10-4d57-9161-8b169b0adba6",
+          "name": "Execute Code Step",
+          "effect": "shell",
+          "irreversible": false,
+          "block_id": "82b59b8e-ea10-4d57-9161-8b169b0adba6"
+        },
+        "reason": "it reads a local file of invoices and prints what it finds.",
+        "reason_kind": "supervisor",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Execute Code Step",
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Execute Code Step",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "properties": {
+        "credentials": {
+          "credentials_provider": ["e2b"],
+          "credentials_types": ["api_key"],
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "provider": {
+              "const": "e2b",
+              "title": "Provider",
+              "type": "string"
+            },
+            "type": {
+              "const": "api_key",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": ["id", "provider", "type"],
+          "title": "CredentialsMetaInput[Literal[<ProviderName.E2B: 'e2b'>], Literal['api_key']]",
+          "type": "object",
+          "description": "Enter your API key for the E2B platform. You can get it in here - https://e2b.dev/docs"
+        },
+        "sandbox_id": {
+          "advanced": false,
+          "description": "ID of the sandbox instance to execute the code in",
+          "secret": false,
+          "title": "Sandbox Id",
+          "type": "string"
+        },
+        "step_code": {
+          "advanced": false,
+          "default": "",
+          "description": "Code to execute in the sandbox",
+          "placeholder": "print('Hello, World!')",
+          "secret": false,
+          "title": "Step Code",
+          "type": "string"
+        },
+        "language": {
+          "enum": ["python", "js", "bash", "r", "java"],
+          "title": "ProgrammingLanguage",
+          "type": "string",
+          "advanced": false,
+          "default": "python",
+          "description": "Programming language to execute",
+          "secret": false
+        },
+        "dispose_sandbox": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether to dispose of the sandbox after executing this code.",
+          "secret": false,
+          "title": "Dispose Sandbox",
+          "type": "boolean"
+        }
+      },
+      "required": ["credentials", "sandbox_id"],
+      "title": "Input",
+      "type": "object"
+    }
+  },
+  {
+    "story": "Send Web Request",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_capability:f9fc2d8be8150e56",
+      "node_id": "copilot-node-gate-run_capability",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_capability",
+        "arguments": {
+          "url": "https://api.acme.com/v2/invoices/2044/status",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "[redacted]"
+          },
+          "body": {
+            "status": "paid",
+            "paid_at": "2026-09-24",
+            "lines": [1, 2, 3]
+          }
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "url",
+            "label": "Url"
+          },
+          {
+            "key": "method",
+            "label": "Method"
+          },
+          {
+            "key": "headers",
+            "label": "Headers"
+          },
+          {
+            "key": "body",
+            "label": "Body"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_capability",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:6595ae1f-b924-42cb-9a41-551a0611c4b4",
+          "name": "Send Web Request",
+          "effect": "external",
+          "irreversible": false,
+          "block_id": "6595ae1f-b924-42cb-9a41-551a0611c4b4"
+        },
+        "reason": "Runs Send Web Request, which reaches outside the platform.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Send Web Request",
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Send Web Request",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "properties": {
+        "url": {
+          "advanced": false,
+          "description": "The URL to send the request to",
+          "placeholder": "https://api.example.com",
+          "secret": false,
+          "title": "Url",
+          "type": "string"
+        },
+        "method": {
+          "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+          "title": "HttpMethod",
+          "type": "string",
+          "advanced": true,
+          "default": "POST",
+          "description": "The HTTP method to use for the request",
+          "secret": false
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "advanced": true,
+          "description": "The headers to include in the request",
+          "secret": false,
+          "title": "Headers",
+          "type": "object"
+        },
+        "json_format": {
+          "advanced": true,
+          "default": true,
+          "description": "If true, send the body as JSON (unless files are also present).",
+          "secret": false,
+          "title": "JSON format",
+          "type": "boolean"
+        },
+        "body": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields.",
+          "secret": false,
+          "title": "Body"
+        },
+        "files_name": {
+          "advanced": true,
+          "default": "file",
+          "description": "The name of the file field in the form data.",
+          "secret": false,
+          "title": "Files Name",
+          "type": "string"
+        },
+        "files": {
+          "advanced": true,
+          "description": "Mapping of *form field name* → Image url / path / base64 url.",
+          "items": {
+            "format": "file",
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Files",
+          "type": "array"
+        }
+      },
+      "required": ["url"],
+      "title": "Input",
+      "type": "object"
+    }
+  },
+  {
+    "story": "Post To X",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_capability:d50b2741a9b2406f",
+      "node_id": "copilot-node-gate-run_capability",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_capability",
+        "arguments": {
+          "post": "Q3 is closed. Thanks to everyone who got their invoices in on time.",
+          "media_urls": ["https://cdn.acme.com/q3-chart.png"],
+          "alt_text": ["Bar chart of Q3 revenue by month"],
+          "shorten_links": true
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "post",
+            "label": "Post"
+          },
+          {
+            "key": "media_urls",
+            "label": "Media urls"
+          },
+          {
+            "key": "alt_text",
+            "label": "Alt text"
+          },
+          {
+            "key": "shorten_links",
+            "label": "Shorten links"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_capability",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:9e8f844e-b4a5-4b25-80f2-9e1dd7d67625",
+          "name": "Post To X",
+          "effect": "external",
+          "irreversible": true,
+          "block_id": "9e8f844e-b4a5-4b25-80f2-9e1dd7d67625"
+        },
+        "reason": "Runs Post To X, which reaches outside the platform.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Post To X",
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Post To X",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "description": "Input schema for X / Twitter posts.",
+      "properties": {
+        "credentials": {
+          "credentials_provider": ["ayrshare"],
+          "credentials_types": ["api_key"],
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "provider": {
+              "description": "Provider name for integrations. Can be any string value, including custom provider names.",
+              "title": "Provider",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "api_key",
+                "oauth2",
+                "user_password",
+                "host_scoped",
+                "device_code"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": ["id", "provider", "type"],
+          "title": "CredentialsMetaInput",
+          "type": "object",
+          "description": "Ayrshare profile credential. AutoGPT provisions this managed credential automatically — the user does not create it. After it's in place, the user links each social account via the Ayrshare SSO popup in the Builder."
+        },
+        "post": {
+          "advanced": false,
+          "description": "The post text (max 280 chars, up to 25,000 for Premium users). Use @handle to mention users. Use \\n\\n for thread breaks.",
+          "secret": false,
+          "title": "Post",
+          "type": "string"
+        },
+        "media_urls": {
+          "advanced": false,
+          "description": "Optional list of media URLs. X supports up to 4 images or videos per tweet. Auto-preview links unless media is included.",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Media Urls",
+          "type": "array"
+        },
+        "is_video": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether the media is a video. Set to True when uploading a video so billing applies the video tier.",
+          "secret": false,
+          "title": "Is Video",
+          "type": "boolean"
+        },
+        "schedule_date": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ)",
+          "secret": false,
+          "title": "Schedule Date"
+        },
+        "disable_comments": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether to disable comments",
+          "secret": false,
+          "title": "Disable Comments",
+          "type": "boolean"
+        },
+        "shorten_links": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether to shorten links",
+          "secret": false,
+          "title": "Shorten Links",
+          "type": "boolean"
+        },
+        "unsplash": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unsplash image configuration",
+          "secret": false,
+          "title": "Unsplash"
+        },
+        "requires_approval": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether to enable approval workflow",
+          "secret": false,
+          "title": "Requires Approval",
+          "type": "boolean"
+        },
+        "random_post": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether to generate random post text",
+          "secret": false,
+          "title": "Random Post",
+          "type": "boolean"
+        },
+        "random_media_url": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether to generate random media",
+          "secret": false,
+          "title": "Random Media Url",
+          "type": "boolean"
+        },
+        "notes": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Additional notes for the post",
+          "secret": false,
+          "title": "Notes"
+        },
+        "reply_to_id": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID of the tweet to reply to",
+          "secret": false,
+          "title": "Reply To Id"
+        },
+        "quote_tweet_id": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID of the tweet to quote (low-level Tweet ID)",
+          "secret": false,
+          "title": "Quote Tweet Id"
+        },
+        "poll_options": {
+          "advanced": true,
+          "description": "Poll options (2-4 choices)",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Poll Options",
+          "type": "array"
+        },
+        "poll_duration": {
+          "advanced": true,
+          "default": 1440,
+          "description": "Poll duration in minutes (1-10080)",
+          "secret": false,
+          "title": "Poll Duration",
+          "type": "integer"
+        },
+        "alt_text": {
+          "advanced": true,
+          "description": "Alt text for each image (max 1,000 chars each, not supported for videos)",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Alt Text",
+          "type": "array"
+        },
+        "is_thread": {
+          "advanced": true,
+          "default": false,
+          "description": "Whether to automatically break post into thread based on line breaks",
+          "secret": false,
+          "title": "Is Thread",
+          "type": "boolean"
+        },
+        "thread_number": {
+          "advanced": true,
+          "default": false,
+          "description": "Add thread numbers (1/n format) to each thread post",
+          "secret": false,
+          "title": "Thread Number",
+          "type": "boolean"
+        },
+        "thread_media_urls": {
+          "advanced": true,
+          "description": "Media URLs for thread posts (one per thread, use 'null' to skip)",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Thread Media Urls",
+          "type": "array"
+        },
+        "long_post": {
+          "advanced": true,
+          "default": false,
+          "description": "Force long form post (requires Premium X account)",
+          "secret": false,
+          "title": "Long Post",
+          "type": "boolean"
+        },
+        "long_video": {
+          "advanced": true,
+          "default": false,
+          "description": "Enable long video upload (requires approval and Business/Enterprise plan)",
+          "secret": false,
+          "title": "Long Video",
+          "type": "boolean"
+        },
+        "subtitle_url": {
+          "advanced": true,
+          "default": "",
+          "description": "URL to SRT subtitle file for videos (must be HTTPS and end in .srt)",
+          "secret": false,
+          "title": "Subtitle Url",
+          "type": "string"
+        },
+        "subtitle_language": {
+          "advanced": true,
+          "default": "en",
+          "description": "Language code for subtitles (default: 'en')",
+          "secret": false,
+          "title": "Subtitle Language",
+          "type": "string"
+        },
+        "subtitle_name": {
+          "advanced": true,
+          "default": "English",
+          "description": "Name of caption track (max 150 chars, default: 'English')",
+          "secret": false,
+          "title": "Subtitle Name",
+          "type": "string"
+        }
+      },
+      "required": ["credentials", "post"],
+      "title": "Input",
+      "type": "object"
+    }
+  },
+  {
+    "story": "Workflow",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_agent:b6b37239ba4de98b",
+      "node_id": "copilot-node-gate-run_agent",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_agent",
+        "arguments": {
+          "library_agent_id": "lib-7",
+          "inputs": {
+            "topic": "Q3 invoices"
+          }
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "library_agent_id",
+            "label": "Library agent"
+          },
+          {
+            "key": "inputs",
+            "label": "Inputs"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_agent",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "workflow",
+          "key": "workflow:g-digest",
+          "name": "Morning digest",
+          "effect": "external",
+          "irreversible": true,
+          "block_id": null
+        },
+        "reason": "Runs Morning digest; its step Gmail Send reaches outside the platform.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Morning digest",
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Morning digest",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": null
+  }
+]

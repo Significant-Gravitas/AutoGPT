@@ -2082,8 +2082,51 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
         routing_source="env",
         llm_auth_provider=None,
         llm_credential_id=None,
+        langfuse_trace_id=None,
     )
     assert flushed.stamps_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_persists_the_turn_trace(
+    mocker: MockerFixture,
+) -> None:
+    """The Langfuse trace stamped at end of turn reaches the DB both on rows
+    flushed mid-turn (back-fill) and on rows inserted by this save."""
+    trace_id = "1edf31f11b1693cc6103f358c1481694"
+    flushed = ChatMessage(
+        role="assistant",
+        content="working on it",
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        langfuse_trace_id=trace_id,
+        stamps_pending_save=True,
+    )
+    unsaved = ChatMessage(
+        role="assistant",
+        content="done",
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        langfuse_trace_id=trace_id,
+    )
+    session = _make_session_with_messages(flushed, unsaved)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_stamps = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    backfill = mock_db.update_chat_message_stamps.await_args
+    assert backfill.kwargs["sequence"] == 7
+    assert backfill.kwargs["langfuse_trace_id"] == trace_id
+    (inserted,) = mock_db.add_chat_messages_batch.await_args.kwargs["messages"]
+    assert inserted["langfuse_trace_id"] == trace_id
 
 
 @pytest.mark.asyncio(loop_scope="session")
