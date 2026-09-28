@@ -16,13 +16,14 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
+import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { type ChatDelegation, getChatDelegations } from "../../delegations";
+import { isTurnedDown } from "../../delegationOutput";
 import {
-  type ChatDelegation,
   type DelegationTone,
-  getChatDelegations,
   getDelegationStatusView,
-} from "../../delegations";
+} from "../../delegationViews";
 import { useCopilotUIStore } from "../../store";
 import { useDelegationLive } from "../../useDelegationLive";
 import { getStatusLineText, retryMessage } from "./helpers";
@@ -48,12 +49,14 @@ function DelegationLine({ delegation, readOnly }: LineProps) {
   const openWorkTab = useCopilotUIStore((s) => s.openWorkTab);
   const actions = useContext(CopilotChatActionsContext);
   const view = getDelegationStatusView(live.status);
-  const text = getStatusLineText(
-    delegation,
-    live.status,
-    live.elapsedSeconds,
-    live.question,
-  );
+  const name = live.expert.name;
+  const text = getStatusLineText(delegation, {
+    name,
+    status: live.status,
+    elapsedSeconds: live.elapsedSeconds,
+    question: live.question,
+    resumed: !!live.answer,
+  });
   const tone = TONE_ICON[view.tone];
   const canRetry = live.status === "failed" && !readOnly && !!actions;
 
@@ -61,7 +64,7 @@ function DelegationLine({ delegation, readOnly }: LineProps) {
     <div
       data-testid="delegation-status-line"
       data-status={live.status}
-      className="flex h-10 items-center gap-2.5 rounded-lg pl-1 pr-2"
+      className="flex h-10 items-center gap-2.5 rounded-[10px] pl-1 pr-2"
     >
       <Icon
         icon={tone.icon}
@@ -82,7 +85,7 @@ function DelegationLine({ delegation, readOnly }: LineProps) {
           variant="secondary"
           size="xs"
           leadingIcon={ArrowReloadHorizontalIcon}
-          onClick={() => void actions.onSend(retryMessage(delegation))}
+          onClick={() => void actions.onSend(retryMessage(name))}
         >
           Retry
         </Button>
@@ -90,10 +93,11 @@ function DelegationLine({ delegation, readOnly }: LineProps) {
       <button
         type="button"
         onClick={openWorkTab}
-        className="flex shrink-0 items-center gap-1 rounded-md px-1 text-xs text-zinc-600 transition-colors hover:text-zinc-900"
+        aria-label={canRetry ? "Open" : undefined}
+        className="flex shrink-0 items-center gap-1.5 rounded-md px-1 text-xs text-zinc-600 transition-colors hover:text-zinc-900"
       >
-        Open
-        <Icon icon={ArrowRight01Icon} size={14} className="text-zinc-500" />
+        {!canRetry && "Open"}
+        <Icon icon={ArrowRight01Icon} size={16} className="text-zinc-800" />
       </button>
     </div>
   );
@@ -113,9 +117,14 @@ export function DelegationStatusLine({
   messageId,
   readOnly = false,
 }: Props) {
-  const delegations = getChatDelegations([
-    { id: messageId, role: "assistant", parts } as UIMessage,
-  ]).filter((delegation) => delegation.status !== "proposed");
+  const heldOutcomes = useContext(HeldOutcomesContext);
+  const delegations = getChatDelegations(
+    [{ id: messageId, role: "assistant", parts } as UIMessage],
+    heldOutcomes,
+  ).filter(
+    (delegation) =>
+      delegation.status !== "proposed" && !isTurnedDown(delegation),
+  );
   if (delegations.length === 0) return null;
   return (
     <div className="my-1 flex flex-col">

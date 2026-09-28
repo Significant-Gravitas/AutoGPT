@@ -13,20 +13,16 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import type { ChatDelegation } from "../../../../../delegations";
 import {
-  type ChatDelegation,
-  delegationName,
+  delegationTitle,
   getDelegationStatusView,
-} from "../../../../../delegations";
+  threadHref,
+} from "../../../../../delegationViews";
 import { useDelegationLive } from "../../../../../useDelegationLive";
 import { CopilotChatActionsContext } from "../../../../CopilotChatActionsProvider/useCopilotChatActions";
 import { retryMessage } from "../../../../DelegationStatusLine/helpers";
-import {
-  BADGE_VARIANT,
-  delegationSubtitle,
-  delegationTitle,
-  threadHref,
-} from "../helpers";
+import { BADGE_VARIANT, delegationSubtitle } from "../helpers";
 import { DelegationTimeline } from "./DelegationTimeline";
 
 interface Props {
@@ -53,7 +49,7 @@ export function DelegationDetail({ delegation, onBack }: Props) {
   const live = useDelegationLive(delegation);
   const actions = useContext(CopilotChatActionsContext);
   const view = getDelegationStatusView(live.status);
-  const name = delegationName(delegation);
+  const name = live.expert.name;
   const href = threadHref(delegation);
   const subtitle = delegationSubtitle(live.status, live.elapsedSeconds);
 
@@ -122,7 +118,7 @@ export function DelegationDetail({ delegation, onBack }: Props) {
                 variant="primary"
                 size="xs"
                 leadingIcon={ArrowReloadHorizontalIcon}
-                onClick={() => void actions.onSend(retryMessage(delegation))}
+                onClick={() => void actions.onSend(retryMessage(name))}
               >
                 Retry
               </Button>

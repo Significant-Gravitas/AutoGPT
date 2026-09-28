@@ -4,12 +4,8 @@ import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import {
-  type ChatDelegation,
-  delegationName,
-  formatElapsed,
-  getDelegationStatusView,
-} from "../../../../../delegations";
+import { type ChatDelegation, formatElapsed } from "../../../../../delegations";
+import { getDelegationStatusView } from "../../../../../delegationViews";
 import { useDelegationLive } from "../../../../../useDelegationLive";
 import { DOT_CLASS, delegationLine } from "../helpers";
 
@@ -38,7 +34,7 @@ export function DelegationRow({ delegation, onOpen }: Props) {
       )}
     >
       <ExpertAvatar
-        name={delegationName(delegation)}
+        name={live.expert.name}
         avatarUrl={delegation.expert?.avatarUrl ?? null}
         size={28}
       />
@@ -46,7 +42,7 @@ export function DelegationRow({ delegation, onOpen }: Props) {
         <span className="flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-baseline gap-1.5">
             <span className="truncate text-sm font-medium text-zinc-900">
-              {delegationName(delegation)}
+              {live.expert.name}
             </span>
             {delegation.expert?.role && (
               <span className="truncate text-xs text-zinc-500">

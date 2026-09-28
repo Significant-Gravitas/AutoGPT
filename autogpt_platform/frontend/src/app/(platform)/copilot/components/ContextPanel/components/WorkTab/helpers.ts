@@ -1,9 +1,9 @@
 import {
   type ChatDelegation,
-  type DelegationTone,
   type LiveDelegationStatus,
   formatElapsed,
 } from "../../../../delegations";
+import type { DelegationTone } from "../../../../delegationViews";
 
 export const BADGE_VARIANT: Record<
   DelegationTone,
@@ -23,13 +23,6 @@ export const DOT_CLASS: Record<DelegationTone, string> = {
   failed: "bg-red-500",
   muted: "bg-zinc-400",
 };
-
-/** The task's name in the panel: the first line of what Otto asked for. */
-export function delegationTitle(delegation: ChatDelegation): string {
-  const line = delegation.prompt?.split("\n")[0].trim();
-  if (!line) return "Task for " + (delegation.expert?.name ?? "an expert");
-  return line.length > 80 ? `${line.slice(0, 77)}…` : line;
-}
 
 /** The muted line under a row: what the teammate is doing or what came of it. */
 export function delegationLine(
@@ -81,11 +74,4 @@ export function delegationSubtitle(
     default:
       return null;
   }
-}
-
-export function threadHref(delegation: ChatDelegation): string | null {
-  if (delegation.link) return delegation.link;
-  return delegation.subSessionId
-    ? `/copilot?sessionId=${delegation.subSessionId}`
-    : null;
 }

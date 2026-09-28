@@ -39,8 +39,8 @@ describe("DelegationDock", () => {
     render(
       <DelegationDock
         messages={[
-          delegation("c1", { status: "running" }),
-          delegation("c2", { status: "queued" }),
+          delegation("c1", { status: "running", sub_session_id: "sub-1" }),
+          delegation("c2", { status: "queued", sub_session_id: "sub-2" }),
         ]}
       />,
     );
@@ -81,7 +81,12 @@ describe("getDockLine", () => {
     subSessionId: "sub-1",
     link: null,
     elapsedSeconds: null,
+    costUsd: null,
+    startedAt: null,
+    finishedAt: null,
     response: null,
+    question: null,
+    questionOptions: [],
     error: null,
     files: [],
     reviewId: null,
@@ -92,6 +97,15 @@ describe("getDockLine", () => {
       c1: "needs-input",
     });
     expect(line).toEqual({ text: "1 expert needs you", tone: "waiting" });
+  });
+
+  it("names who is being handed to before their run exists", () => {
+    const line = getDockLine(
+      [{ ...base, subSessionId: null, status: "running" }],
+      {},
+      () => "Alex",
+    );
+    expect(line).toEqual({ text: "Handing off to Alex…", tone: "working" });
   });
 
   it("puts approvals first and keeps the working count", () => {

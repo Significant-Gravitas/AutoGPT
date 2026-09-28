@@ -9,28 +9,40 @@ import {
   useLiveSubSession,
 } from "./components/ToolChain/SubSessionLive";
 import type { ChainRow } from "./components/ToolChain/helpers";
+import { useDelegationAnswerStore } from "./delegationAnswerStore";
+import {
+  askedQuestionOf,
+  pendingQuestionOf,
+  resolveLiveStatus,
+} from "./delegationLiveStatus";
 import type {
   ChatDelegation,
-  DelegationStatus,
+  DelegationExpert,
   LiveDelegationStatus,
 } from "./delegations";
+import { resolveDelegationExpert } from "./delegationViews";
+import { useExpertMap } from "./useExpertMap";
+
+const TICKING = new Set<LiveDelegationStatus>([
+  "running",
+  "queued",
+  "needs-input",
+]);
 
 export interface LiveDelegation {
   status: LiveDelegationStatus;
+  expert: DelegationExpert;
   question: string | null;
+  questionOptions: string[];
+  /** When the teammate asked, for "paused · 3m". */
+  askedAt: number | null;
+  /** What the user answered from this chat, until the teammate resumes. */
+  answer: string | null;
   elapsedSeconds: number | null;
+  response: string | null;
   session: SessionDetailResponse | null;
   steps: ChainRow[];
   latestText: string | null;
-}
-
-const IN_FLIGHT = new Set<DelegationStatus>(["running", "queued"]);
-
-function pendingQuestionOf(session: SessionDetailResponse): string | null {
-  const question = session.metadata?.pending_question;
-  return question && typeof question.text === "string" && question.text
-    ? question.text
-    : null;
 }
 
 /** Ticks once a second while `active`, so a running hand-off's elapsed time
@@ -45,42 +57,76 @@ function useNow(active: boolean) {
   return now;
 }
 
+function startOf(delegation: ChatDelegation, session: SessionDetailResponse) {
+  const started = Date.parse(delegation.startedAt ?? session.created_at);
+  return Number.isFinite(started) ? started : null;
+}
+
 export function useDelegationLive(delegation: ChatDelegation): LiveDelegation {
-  const frozenInFlight = IN_FLIGHT.has(delegation.status);
-  const shouldPoll = frozenInFlight && !!delegation.subSessionId;
+  const { expertsById } = useExpertMap();
+  const subSessionId = delegation.subSessionId;
   // A finished run is fetched once for its steps; the poll stops itself on
   // an idle session, so only an in-flight run keeps refetching.
   const { session, isError, isPaused } = useLiveSubSession(
-    delegation.subSessionId ?? "",
-    !!delegation.subSessionId,
+    subSessionId ?? "",
+    !!subSessionId,
   );
-  const live = !!session && isSessionLive(session);
-  const question = session ? pendingQuestionOf(session) : null;
-
-  let status: LiveDelegationStatus = delegation.status;
-  if (shouldPoll) {
-    if (isError || isPaused) status = "unknown";
-    else if (session && !live) status = question ? "needs-input" : "completed";
-  }
-
-  const running = status === "running" || status === "queued";
-  const now = useNow(running);
-  let elapsedSeconds = delegation.elapsedSeconds;
-  if (running && session) {
-    const startedAt = Date.parse(session.created_at);
-    if (Number.isFinite(startedAt))
-      elapsedSeconds = Math.max(0, (now - startedAt) / 1000);
-  }
-
+  const answer = useDelegationAnswerStore((s) =>
+    subSessionId ? (s.answers[subSessionId] ?? null) : null,
+  );
   const turn = session ? collectCurrentTurn(session) : null;
+  const isLive = !!session && isSessionLive(session);
+  const pending = session ? pendingQuestionOf(session) : null;
+  const asked = turn ? askedQuestionOf(turn.steps) : null;
+  const polledQuestion =
+    session && !isLive ? (pending?.text ?? asked?.text ?? null) : null;
+  const question =
+    polledQuestion ??
+    (delegation.status === "needs-input" && !session
+      ? delegation.question
+      : null);
+
+  const ticking = !!answer || !!question || TICKING.has(delegation.status);
+  const now = useNow(ticking);
+  const status = resolveLiveStatus({
+    delegation,
+    session,
+    isLive,
+    question,
+    isError,
+    isPaused,
+    answer,
+    now,
+  });
+  const running = status === "running" || status === "queued";
+
+  let elapsedSeconds = delegation.elapsedSeconds;
+  const started = session ? startOf(delegation, session) : null;
+  if (running && started !== null)
+    elapsedSeconds = Math.max(0, (now - started) / 1000);
+
   const steps = (turn?.steps ?? []).map((step, i, all) =>
-    toMiniRow(step, i, live && i === all.length - 1),
+    toMiniRow(step, i, isLive && i === all.length - 1),
   );
+  const finishedLive =
+    status === "completed" && delegation.status !== "completed";
 
   return {
     status,
+    expert: resolveDelegationExpert(delegation, expertsById),
     question: status === "needs-input" ? question : null,
+    questionOptions:
+      status === "needs-input"
+        ? asked?.options.length
+          ? asked.options
+          : delegation.questionOptions
+        : [],
+    askedAt: pending?.askedAt ?? null,
+    answer: answer && status !== "needs-input" ? answer.text : null,
     elapsedSeconds,
+    response: finishedLive
+      ? (turn?.latestText ?? delegation.response)
+      : delegation.response,
     session,
     steps,
     latestText: turn?.latestText ?? null,

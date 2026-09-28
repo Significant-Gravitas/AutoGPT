@@ -17,7 +17,9 @@ import {
   type LiveDelegationStatus,
   getChatDelegations,
 } from "../../delegations";
+import { delegationName } from "../../delegationViews";
 import { useCopilotUIStore } from "../../store";
+import { useExpertMap } from "../../useExpertMap";
 import { LiveDelegationProbes } from "../DelegationStatusLine/LiveDelegationProbes";
 import { getDockLine, type DockLine } from "./helpers";
 
@@ -42,6 +44,7 @@ interface Props {
  *  and a click that opens the Work panel. */
 export function DelegationDock({ messages, hasActiveTaskList = false }: Props) {
   const openWorkTab = useCopilotUIStore((s) => s.openWorkTab);
+  const { expertsById } = useExpertMap();
   const [statuses, setStatuses] = useState<
     Record<string, LiveDelegationStatus>
   >({});
@@ -52,7 +55,9 @@ export function DelegationDock({ messages, hasActiveTaskList = false }: Props) {
   }
   if (hasActiveTaskList) return null;
   const delegations = getChatDelegations(messages);
-  const line = getDockLine(delegations, statuses);
+  const line = getDockLine(delegations, statuses, (delegation) =>
+    delegationName(delegation, expertsById),
+  );
 
   return (
     <>

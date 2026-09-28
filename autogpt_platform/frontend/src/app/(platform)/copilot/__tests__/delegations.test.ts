@@ -21,6 +21,28 @@ function assistant(id: string, parts: unknown[]): UIMessage {
   return { id, role: "assistant", parts } as unknown as UIMessage;
 }
 
+function heldResult(
+  toolCallId: string,
+  reviewId: string,
+  outcome: string,
+  output: unknown,
+): UIMessage {
+  const body = typeof output === "string" ? output : JSON.stringify(output);
+  return {
+    id: `held-${toolCallId}`,
+    role: "user",
+    metadata: {
+      held_call: { tool_call_id: toolCallId, review_id: reviewId, outcome },
+    },
+    parts: [
+      {
+        type: "text",
+        text: `<held_call_result>\n${body}\n</held_call_result>`,
+      },
+    ],
+  } as unknown as UIMessage;
+}
+
 const ALEX = {
   id: "exp-alex",
   name: "Alex",
@@ -202,6 +224,112 @@ describe("getChatDelegations", () => {
     const statuses = getChatDelegations(messages).map((d) => d.status);
     expect(statuses).toEqual(["failed", "cancelled", "transferred", "failed"]);
     expect(getChatDelegations(messages)[0].error).toBe("Budget cap reached");
+  });
+
+  it("folds an approved hand-off's held result into the delegation", () => {
+    const messages = [
+      assistant("m1", [
+        toolPart(
+          "delegate_to_expert",
+          "call-1",
+          { expert_id: "exp-alex", prompt: "Draft the PRD" },
+          { type: "approval_required", review_id: "rev-1" },
+        ),
+      ]),
+      heldResult("call-1", "rev-1", "approved", {
+        status: "running",
+        sub_session_id: "sub-1",
+        expert: ALEX,
+        cost_usd: 0.12,
+        started_at: "2026-09-28T10:42:00Z",
+      }),
+      assistant("m2", [
+        toolPart(
+          "get_sub_session_result",
+          "call-2",
+          { sub_session_id: "sub-1" },
+          { status: "completed", sub_session_id: "sub-1", response: "Done." },
+        ),
+      ]),
+    ];
+    const [delegation] = getChatDelegations(messages);
+    expect(delegation).toMatchObject({
+      status: "completed",
+      subSessionId: "sub-1",
+      reviewId: null,
+      response: "Done.",
+      costUsd: 0.12,
+      startedAt: "2026-09-28T10:42:00Z",
+      expert: { name: "Alex" },
+    });
+  });
+
+  it("marks a turned-down hand-off as cancelled with the reason", () => {
+    const held = assistant("m1", [
+      toolPart(
+        "delegate_to_expert",
+        "call-1",
+        { expert_id: "exp-alex" },
+        { type: "approval_required", review_id: "rev-1" },
+      ),
+    ]);
+    const [rejected] = getChatDelegations([
+      held,
+      heldResult("call-1", "rev-1", "rejected", "Nothing ran"),
+    ]);
+    expect(rejected).toMatchObject({
+      status: "cancelled",
+      error: "You turned down the hand-off",
+      reviewId: null,
+    });
+    const [unknown] = getChatDelegations([
+      held,
+      heldResult("call-1", "rev-1", "unknown", ""),
+    ]);
+    expect(unknown).toMatchObject({ status: "proposed", reviewId: null });
+  });
+
+  it("reads a finished call with an empty result as stopped, not running", () => {
+    const messages = [
+      assistant("m1", [
+        toolPart("delegate_to_expert", "call-1", { expert_id: "a" }, ""),
+        {
+          type: "tool-delegate_to_expert",
+          state: "output-error",
+          toolCallId: "call-2",
+          input: {},
+          errorText: "Cancelled",
+        },
+      ]),
+    ];
+    const delegations = getChatDelegations(messages);
+    expect(delegations.map((d) => [d.status, d.error])).toEqual([
+      ["cancelled", "Stopped"],
+      ["cancelled", "Stopped"],
+    ]);
+  });
+
+  it("reads a question the expert stopped on, with its option chips", () => {
+    const [delegation] = getChatDelegations([
+      assistant("m1", [
+        toolPart(
+          "delegate_to_expert",
+          "call-1",
+          { expert_id: "exp-alex" },
+          {
+            status: "needs_input",
+            sub_session_id: "sub-1",
+            question: "Q4 or December?",
+            question_options: ["Q4", "December", 3],
+          },
+        ),
+      ]),
+    ]);
+    expect(delegation).toMatchObject({
+      status: "needs-input",
+      question: "Q4 or December?",
+      questionOptions: ["Q4", "December"],
+    });
   });
 
   it("ignores user messages and unrelated tools", () => {

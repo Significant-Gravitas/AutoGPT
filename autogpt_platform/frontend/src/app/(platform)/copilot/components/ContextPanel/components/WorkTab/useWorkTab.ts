@@ -33,7 +33,7 @@ export function useWorkTab(sessionId: string | null) {
             convertChatSessionMessagesToUiMessages(
               session.id,
               session.messages ?? [],
-              { isComplete: true },
+              { isComplete: !session.active_stream },
             ).messages,
           ).some((d) => d.status === "running" || d.status === "queued");
           return inFlight || !!session.active_stream ? POLL_MS : false;
@@ -47,7 +47,9 @@ export function useWorkTab(sessionId: string | null) {
         convertChatSessionMessagesToUiMessages(
           session.id,
           session.messages ?? [],
-          { isComplete: true },
+          // A turn still streaming has calls with no result yet; marking
+          // them complete would read a hand-off in progress as stopped.
+          { isComplete: !session.active_stream },
         ).messages,
       )
     : [];

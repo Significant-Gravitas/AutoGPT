@@ -1,9 +1,6 @@
-import {
-  type ChatDelegation,
-  type LiveDelegationStatus,
-  delegationName,
-  formatElapsed,
-} from "../../delegations";
+import type { ChatDelegation, LiveDelegationStatus } from "../../delegations";
+import { formatElapsed } from "../../delegations";
+import { FALLBACK_EXPERT_NAME, formatCost } from "../../delegationViews";
 
 export interface StatusLineText {
   /** The bold part: who and what state. */
@@ -12,37 +9,41 @@ export interface StatusLineText {
   detail: string | null;
 }
 
-function shortPrompt(prompt: string | null): string | null {
-  if (!prompt) return null;
-  const line = prompt.split("\n")[0].trim();
-  return line.length > 60 ? `${line.slice(0, 57)}…` : line;
+export interface StatusLineInput {
+  name: string;
+  status: LiveDelegationStatus;
+  elapsedSeconds: number | null;
+  question: string | null;
+  /** The user answered the teammate's question from this chat. */
+  resumed: boolean;
+}
+
+function joined(parts: (string | null | false)[]): string | null {
+  const kept = parts.filter((part): part is string => !!part);
+  return kept.length > 0 ? kept.join(" · ") : null;
 }
 
 export function getStatusLineText(
   delegation: ChatDelegation,
-  status: LiveDelegationStatus,
-  elapsedSeconds: number | null,
-  question: string | null,
+  { name, status, elapsedSeconds, question, resumed }: StatusLineInput,
 ): StatusLineText {
-  const name = delegationName(delegation);
   const elapsed = formatElapsed(elapsedSeconds);
+  const cost = formatCost(delegation.costUsd);
   switch (status) {
     case "proposed":
       return {
         headline: `${name} is waiting for your approval`,
-        detail: shortPrompt(delegation.prompt),
+        detail: null,
       };
     case "queued":
       return {
-        headline: `${name} queued`,
-        detail: "Starts as soon as they are free",
+        headline: "1 expert queued",
+        detail: `${name} starts as soon as they are free`,
       };
     case "running":
       return {
-        headline: `${name} working`,
-        detail: [shortPrompt(delegation.prompt), elapsed]
-          .filter(Boolean)
-          .join(" · "),
+        headline: "1 expert working",
+        detail: joined([name, resumed && "resumed", elapsed, cost]),
       };
     case "needs-input":
       return { headline: `${name} needs you`, detail: question };
@@ -50,20 +51,25 @@ export function getStatusLineText(
       const files = delegation.files.length;
       return {
         headline: `${name} reported back`,
-        detail: [
+        detail: joined([
           elapsed,
-          files > 0 ? `${files} file${files === 1 ? "" : "s"}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
+          cost,
+          files > 0 && `${files} file${files === 1 ? "" : "s"}`,
+        ]),
       };
     }
     case "transferred":
       return { headline: `Handed over to ${name}`, detail: null };
     case "failed":
-      return { headline: `${name} stopped`, detail: delegation.error };
+      return {
+        headline: `${name} stopped`,
+        detail: joined([delegation.error, elapsed, cost]),
+      };
     case "cancelled":
-      return { headline: `${name} was stopped`, detail: null };
+      return {
+        headline: `You stopped ${name === FALLBACK_EXPERT_NAME ? "your expert" : name}`,
+        detail: null,
+      };
     case "unknown":
       return {
         headline: `${name} · status unclear`,
@@ -72,6 +78,6 @@ export function getStatusLineText(
   }
 }
 
-export function retryMessage(delegation: ChatDelegation): string {
-  return `Please retry the hand-off to ${delegationName(delegation)}.`;
+export function retryMessage(name: string): string {
+  return `Please retry the hand-off to ${name}.`;
 }
