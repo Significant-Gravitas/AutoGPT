@@ -108,16 +108,30 @@ async def _ask(messages: list[dict[str, Any]]) -> str:
 
 
 def _normalised(raw: str) -> str:
-    """Sonnet 5 often echoes the rubric's ``clean|hold`` line, or answers with
-    the passage line alone; that line is then the finding."""
-    text = raw.strip()
-    first, _, rest = text.partition("\n")
-    if first.strip().strip("*`").lower().replace(" ", "") in (
-        "clean|hold",
-        "hold|clean",
-    ):
-        text = rest.strip()
-    if not text.lower().startswith("passage:"):
-        return text
-    found = text.split(":", 1)[1].strip().strip("\"'").lower()
-    return "clean" if found == "none" else f"hold\n{text}"
+    """Reduce Sonnet 5's malformed answers to ``clean``/``hold``: it echoes the
+    rubric's format line, wraps the answer in prose or a fence, or sends the
+    passage line alone. A quoted passage anywhere holds; anything contradictory
+    is returned unparsed, so it holds unjudged."""
+    lines = [
+        line.strip()
+        for line in raw.strip().splitlines()
+        if line.strip() and not line.strip().startswith("```")
+    ]
+    if not lines or _bare(lines[0]) in ("clean", "hold"):
+        return "\n".join(lines)
+    words = {_bare(line) for line in lines} & {"clean", "hold"}
+    passage = next(
+        (line for line in lines if line.lower().startswith("passage:")), None
+    )
+    if passage is not None:
+        found = passage.split(":", 1)[1].strip().strip("\"'").lower()
+        if found != "none":
+            return f"hold\n{passage}"
+        return "clean" if "hold" not in words else "\n".join(lines)
+    if len(words) == 1:
+        return words.pop()
+    return "\n".join(lines)
+
+
+def _bare(line: str) -> str:
+    return line.strip("*`\"'. ").lower()

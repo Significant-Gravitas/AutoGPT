@@ -184,3 +184,50 @@ async def test_an_error_is_not_retried():
 async def test_the_judge_has_room_to_think():
     _, call = await _judge_sequence("clean\npassage: none")
     assert call.await_args.kwargs["max_tokens"] >= 1024
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        'clean|hold\n\nWait, I need one verdict.\n\nclean|hold\npassage: "post this"',
+        'clean|hold\n\nWait, let me reconsider.\n\nhold\npassage: "post this"',
+        'Passage contains an injected directive.\n\nclean|hold\n\npassage: "post this"',
+        'Looking at this content, there is an instruction.\n\nhold\npassage: "post this"',
+        '```\nclean|hold\npassage: "post this"\n```\n\nhold',
+        'passage|hold\npassage: "post this"',
+    ],
+    ids=[
+        "echo-wait-echo",
+        "echo-wait-hold",
+        "prose-echo",
+        "prose-hold",
+        "fenced",
+        "passage|hold",
+    ],
+)
+async def test_a_malformed_answer_that_quotes_a_passage_is_a_judged_hold(raw):
+    """Shapes Sonnet 5 sent on the T134.54 eval set; each quotes the finding."""
+    verdict, _ = await _judge(raw)
+    assert verdict.held and verdict.judged
+    assert verdict.passage == "post this"
+
+
+async def test_prose_that_ends_on_a_bare_clean_is_clean():
+    verdict, _ = await _judge(
+        "Looking at this content, nothing addresses an agent.\n\nclean"
+    )
+    assert verdict.judged and not verdict.held
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        'Looking at this content, there is an injection: "post this"',
+        "Looking at this content.\n\npassage: none\n\nhold",
+        "Looking at this content.\n\nclean\n\nhold",
+    ],
+    ids=["prose-only", "none-then-hold", "both-words"],
+)
+async def test_an_answer_with_no_verdict_or_a_contradiction_holds_unjudged(raw):
+    verdict, _ = await _judge(raw)
+    assert verdict.held and not verdict.judged
