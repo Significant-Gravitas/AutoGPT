@@ -27,11 +27,18 @@ Event vocabulary (PostHog event name -> SQL equivalent):
 - ``expert_hired``        a user hired an expert from a template.
 - ``integration_connected`` a user connected a credential (OAuth or manual).
                           IntegrationCredential rows by createdByUserId.
+- ``credential_oauth_started`` the backend issued an OAuth login URL.  With
+                          ``integration_connected`` and the event below it gives
+                          started / connected / failed per provider.
+- ``credential_oauth_exchange_failed`` the OAuth callback returned an error, by
+                          ``failure_class``.  No SQL equivalent: nothing is stored.
 
 Every emitter is best-effort: tracking can never break the work it describes.
 """
 
 import logging
+import re
+from collections.abc import Iterable
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
@@ -58,9 +65,28 @@ class ActivationEvent(StrEnum):
     TRIGGER_FIRED = "trigger_fired"
     EXPERT_HIRED = "expert_hired"
     INTEGRATION_CONNECTED = "integration_connected"
+    CREDENTIAL_OAUTH_STARTED = "credential_oauth_started"
+    CREDENTIAL_OAUTH_EXCHANGE_FAILED = "credential_oauth_exchange_failed"
 
 
 ScheduleTarget = Literal["agent", "autopilot", "expert"]
+
+# Where an OAuth callback failed. Dashboards and alerts group on these values,
+# so renaming one breaks them.
+OAuthExchangeFailureClass = Literal[
+    "invalid_state",  # state token missing, expired or for another provider
+    "provider_unavailable",  # no OAuth handler, or client id/secret not set
+    "token_exchange",  # the provider rejected the code, or the exchange raised
+    "credential_merge",  # the new token could not be stored on an existing one
+    "other",  # anything unexpected, e.g. a database error
+]
+
+_DETAIL_MAX_CHARS = 200
+_URL_QUERY_RE = re.compile(r"(https?://[^\s?#]+)[?#]\S*")
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# Long runs with a digit look like codes, tokens or ids; words and exception
+# names do not.
+_TOKEN_RE = re.compile(r"(?=[\w~+=-]*\d)[\w~+=-]{20,}")
 
 # Triggers that mean "a person asked for this run now". Schedule and webhook
 # runs are reported as schedule_fired / trigger_fired by their own emitters,
@@ -327,3 +353,45 @@ def track_integration_connected(
             "method": method,
         },
     )
+
+
+def track_credential_oauth_started(*, user_id: str, provider: str) -> None:
+    track(
+        user_id,
+        ActivationEvent.CREDENTIAL_OAUTH_STARTED,
+        {"provider": _enum_value(provider)},
+    )
+
+
+def track_credential_oauth_exchange_failed(
+    *,
+    user_id: str,
+    provider: str,
+    failure_class: OAuthExchangeFailureClass,
+    status_code: int,
+    detail: str,
+    redact: Iterable[str] = (),
+) -> None:
+    track(
+        user_id,
+        ActivationEvent.CREDENTIAL_OAUTH_EXCHANGE_FAILED,
+        {
+            "provider": _enum_value(provider),
+            "failure_class": failure_class,
+            "status_code": status_code,
+            "detail": safe_error_detail(detail, redact),
+        },
+    )
+
+
+def safe_error_detail(detail: str, redact: Iterable[str] = ()) -> str:
+    """An error message fit for analytics: no known secrets, query strings,
+    emails or token-like strings, and at most ``_DETAIL_MAX_CHARS`` long."""
+    for secret in redact:
+        if secret:
+            detail = detail.replace(secret, "[redacted]")
+    detail = _URL_QUERY_RE.sub(r"\1?[redacted]", detail)
+    detail = _EMAIL_RE.sub("[email]", detail)
+    detail = _TOKEN_RE.sub("[redacted]", detail)
+    detail = " ".join(detail.split())
+    return detail[:_DETAIL_MAX_CHARS]

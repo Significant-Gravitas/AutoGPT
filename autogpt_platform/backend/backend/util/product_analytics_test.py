@@ -275,3 +275,73 @@ def test_trigger_fired_and_expert_hired(capture: Mock) -> None:
     assert trigger.kwargs["properties"]["target"] == "expert"
     assert hired.kwargs["event"] == "expert_hired"
     assert hired.kwargs["properties"]["template_id"] == "tmpl-1"
+
+
+def test_credential_oauth_started(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        product_analytics.settings.config, "app_env", AppEnvironment.LOCAL
+    )
+    product_analytics.track_credential_oauth_started(
+        user_id="user-1", provider="google"
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "credential_oauth_started"
+    assert properties == {
+        "environment": "local",
+        "source": "platform",
+        "provider": "google",
+    }
+
+
+def test_credential_oauth_exchange_failed(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        product_analytics.settings.config, "app_env", AppEnvironment.LOCAL
+    )
+    product_analytics.track_credential_oauth_exchange_failed(
+        user_id="user-1",
+        provider="google",
+        failure_class="token_exchange",
+        status_code=400,
+        detail="InvalidGrantError: (invalid_grant) Missing code verifier.",
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "credential_oauth_exchange_failed"
+    assert properties == {
+        "environment": "local",
+        "source": "platform",
+        "provider": "google",
+        "failure_class": "token_exchange",
+        "status_code": 400,
+        "detail": "InvalidGrantError: (invalid_grant) Missing code verifier.",
+    }
+
+
+@pytest.mark.parametrize(
+    "detail, expected",
+    [
+        (
+            "(invalid_grant) Missing code verifier.",
+            "(invalid_grant) Missing code verifier.",
+        ),
+        ("bad code the-auth-code", "bad code [redacted]"),
+        ("no access for alice.b+x@example.co.uk", "no access for [email]"),
+        (
+            "POST https://example.com/token?code=abc&secret=def failed",
+            "POST https://example.com/token?[redacted] failed",
+        ),
+        ("got ya29.a0AfH6SMBx3example9token back", "got ya29.[redacted] back"),
+        ("HTTP Error: 400 -\n  invalid_request", "HTTP Error: 400 - invalid_request"),
+    ],
+)
+def test_safe_error_detail_removes_secrets(detail: str, expected: str) -> None:
+    assert product_analytics.safe_error_detail(detail, ["the-auth-code"]) == expected
+
+
+def test_safe_error_detail_is_truncated() -> None:
+    assert len(product_analytics.safe_error_detail("word " * 100)) == 200
