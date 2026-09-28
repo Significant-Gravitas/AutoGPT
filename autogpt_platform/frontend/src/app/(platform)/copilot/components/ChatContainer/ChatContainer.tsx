@@ -24,6 +24,7 @@ import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
+import { SessionNotFound } from "./components/SessionNotFound";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
@@ -41,6 +42,9 @@ import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import type { SentFrom } from "../../sentFrom";
+import type { AutopilotMode } from "../../autopilotModeStore";
+import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
+import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -55,8 +59,11 @@ export interface ChatContainerProps {
   sessionId: string | null;
   sessionChatStatus?: string;
   sessionSentFrom?: SentFrom | null;
+  /** The approval mode stored on the session, when it has one. */
+  sessionAutopilotMode?: AutopilotMode | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
+  isSessionNotFound?: boolean;
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
@@ -109,12 +116,15 @@ export interface ChatContainerProps {
   isAdoptingExpertSession?: boolean;
   /** True until a newly hired expert's first kickoff has been handed off. */
   isKickoffStarting?: boolean;
+  /** Follow a turn the server started, e.g. after an approval card is answered. */
+  onBackendTurn?: () => void;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports; the thread header clears them. */
   hasFloatingControls?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
+const CONTINUE_AFTER_HELD_CALL = "Continue from where you left off.";
 
 export const ChatContainer = ({
   messages,
@@ -123,8 +133,10 @@ export const ChatContainer = ({
   sessionId,
   sessionChatStatus,
   sessionSentFrom,
+  sessionAutopilotMode = null,
   isLoadingSession,
   isSessionError,
+  isSessionNotFound,
   isCreatingSession,
   isReconnecting,
   isFinishProbing,
@@ -149,6 +161,7 @@ export const ChatContainer = ({
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
+  onBackendTurn,
   hasFloatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -195,6 +208,13 @@ export const ChatContainer = ({
   const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
+  const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
+  const modeSelector = isAutoModeEnabled ? (
+    <AutopilotModeSelector
+      sessionId={sessionId}
+      persistedMode={sessionAutopilotMode}
+    />
+  ) : undefined;
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
     enabled: isVoiceModeEnabled,
@@ -256,7 +276,14 @@ export const ChatContainer = ({
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastRow = [...messages].reverse().find((m) => m.role === "user");
+    // A turn an answered card started failed after the call ran: resuming it
+    // must not re-send the request that led to the call.
+    if (lastRow && isHeldCallRow(lastRow)) {
+      guardedOnSend(CONTINUE_AFTER_HELD_CALL);
+      return;
+    }
+    const lastUserMsg = lastRow;
     const lastText = lastUserMsg?.parts
       .filter(
         (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
@@ -288,14 +315,19 @@ export const ChatContainer = ({
   }, [guardedOnSend, messages]);
 
   return (
-    <CopilotChatActionsProvider onSend={guardedOnSend}>
+    <CopilotChatActionsProvider
+      onSend={guardedOnSend}
+      onBackendTurn={onBackendTurn}
+    >
       <PendingAnswerContexts messages={messages}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
             {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
-            {sessionId ? (
+            {sessionId && isSessionNotFound ? (
+              <SessionNotFound />
+            ) : sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
                 <div className="absolute right-0 top-0 z-30">
                   <ContextPanelToggle sessionId={sessionId} />
@@ -388,6 +420,7 @@ export const ChatContainer = ({
                             hasSession={!!sessionId}
                             sessionId={sessionId}
                             expertId={expertIdentity?.id ?? null}
+                            modeSelector={modeSelector}
                             expertName={expertIdentity?.name ?? null}
                             voiceToggle={
                               isVoiceModeEnabled ? (
@@ -437,6 +470,7 @@ export const ChatContainer = ({
                 isCreatingSession={isCreatingSession}
                 onCreateSession={onCreateSession}
                 onSend={guardedOnSend}
+                modeSelector={modeSelector}
                 voiceToggle={
                   isVoiceModeEnabled ? (
                     <VoiceModeButton
