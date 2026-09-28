@@ -136,3 +136,46 @@ export function insertIntegrationMention(
     caret: range.start + integration.token.length + 1,
   };
 }
+
+/** A skill the chat can run as `/name arguments`. */
+export interface SkillCommand {
+  name: string;
+  description: string;
+  /** What to type after the name, e.g. `[issue-number]`. */
+  argumentHint: string | null;
+}
+
+/** Skills matching the typed `/query`: names that start with it first, then
+ *  names or descriptions that contain it. */
+export function filterSkillCommands(
+  skills: SkillCommand[],
+  query: string,
+): SkillCommand[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return skills;
+  const startsWith = skills.filter((skill) =>
+    skill.name.toLowerCase().startsWith(q),
+  );
+  const contains = skills.filter(
+    (skill) =>
+      !skill.name.toLowerCase().startsWith(q) &&
+      (skill.name.toLowerCase().includes(q) ||
+        skill.description.toLowerCase().includes(q)),
+  );
+  return [...startsWith, ...contains];
+}
+
+/** Replaces the typed `/query` with `/name ` so the arguments come next.
+ *  Returns the new text and where the caret belongs. */
+export function insertSkillCommand(
+  value: string,
+  range: MentionRange,
+  skill: SkillCommand,
+): { value: string; caret: number } {
+  const command = `/${skill.name} `;
+  const rest = value.slice(range.end).replace(/^\s+/, "");
+  return {
+    value: value.slice(0, range.start) + command + rest,
+    caret: range.start + command.length,
+  };
+}

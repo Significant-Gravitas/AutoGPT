@@ -123,6 +123,7 @@ from backend.copilot.service import (
     strip_user_context_tags,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
+from backend.copilot.skill_invocation import inject_skill_invocation
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
@@ -2084,6 +2085,25 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # A ``/skill-name arguments`` send carries the skill's instructions into
+    # this turn and every later one; same row, and same ordering reason, as
+    # the injection above.
+    if is_user_message:
+        current_user = next(
+            (msg for msg in reversed(openai_messages) if msg["role"] == "user"), None
+        )
+        if current_user is not None and isinstance(current_user.get("content"), str):
+            invoked = await inject_skill_invocation(
+                str(current_user["content"]),
+                session_id,
+                session.messages,
+                user_id=user_id,
+                expert_id=session.expert_id,
+            )
+            if invoked is not None:
+                current_user["content"] = invoked
+                user_message_for_transcript = invoked
 
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the

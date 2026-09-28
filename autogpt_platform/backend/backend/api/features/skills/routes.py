@@ -89,6 +89,8 @@ async def list_copilot_skills(
             triggers=list(s.triggers),
             origin=s.origin,
             update=s.update,
+            argument_hint=s.extra.get("argument-hint"),
+            user_invocable=s.extra.get("user-invocable") is not False,
         )
         for s in skills
     ]

@@ -202,6 +202,13 @@ SKILLS_CONTEXT_TAG = "available_skills"
 # never persisted) telling the model to re-list. Server-injected only.
 SKILLS_UPDATE_TAG = "skills_update"
 
+# Tag name for a skill the user ran as a slash command (``/fix-issue 123``).
+# The engines prepend the skill's instructions, with the arguments filled in,
+# to that user message and persist them, so the skill stays in context for
+# later turns while the chat shows only what the user typed. Server-injected
+# only; a user-typed copy is stripped so a message cannot forge one.
+SKILL_INVOCATION_TAG = "skill_invocation"
+
 # Builder-binding tag names (``builder_context`` per-turn prefix, and
 # ``builder_session`` static system-prompt suffix) are defined in
 # ``backend.copilot.builder_context``; the system prompt below refers to
@@ -271,6 +278,7 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     SESSION_CONTEXT_TAG,
     SKILLS_CONTEXT_TAG,
     SKILLS_UPDATE_TAG,
+    SKILL_INVOCATION_TAG,
     VOICE_TURN_TAG,
     *_EXPERT_BLOCK_TAGS,
 )
@@ -406,6 +414,22 @@ def strip_injected_context_for_display(message: str) -> str:
             unknown.append(match.group(0))
         rest = rest[match.end() :]
     return "".join(unknown) + rest
+
+
+def split_leading_server_blocks(message: str) -> tuple[str, str]:
+    """Split a stored user message into its leading server-injected blocks
+    and the text after them.
+
+    The walk stops at the first block that is not in
+    :data:`SERVER_INJECTED_BLOCK_TAGS`, so an unregistered block counts as
+    the user's text, as :func:`strip_injected_context_for_display` shows it.
+    """
+    position = 0
+    while match := _LEADING_BLOCK_RE.match(message[position:]):
+        if match["tag"].lower() not in SERVER_INJECTED_BLOCK_TAGS:
+            break
+        position += match.end()
+    return message[:position], message[position:]
 
 
 # Public alias used by the SDK and baseline services to strip user-supplied
@@ -739,6 +763,21 @@ async def inject_user_context(
             + final_message
         )
 
+    return await persist_current_user_message(
+        session_id, session_messages, final_message, "inject_user_context"
+    )
+
+
+async def persist_current_user_message(
+    session_id: str,
+    session_messages: list[ChatMessage],
+    content: str,
+    log_label: str,
+) -> str | None:
+    """Store *content* as the current turn's user message.
+
+    Returns *content*, or ``None`` when the session has no user message.
+    """
     # Scan in reverse so we target the current turn's user message, not
     # an older one that may exist when pending messages have been drained.
     for session_msg in reversed(session_messages):
@@ -746,18 +785,18 @@ async def inject_user_context(
             # Only touch the DB / in-memory state when the content actually
             # needs to change — avoids an unnecessary write on the common
             # "no attacker tag, no understanding" path.
-            if session_msg.content != final_message:
-                session_msg.content = final_message
+            if session_msg.content != content:
+                session_msg.content = content
                 if session_msg.sequence is not None:
                     await chat_db().update_message_content_by_sequence(
-                        session_id, session_msg.sequence, final_message
+                        session_id, session_msg.sequence, content
                     )
                 else:
                     logger.warning(
-                        f"[inject_user_context] Cannot persist user context for session "
-                        f"{session_id}: first user message has no sequence number"
+                        f"[{log_label}] Cannot persist the user message for session "
+                        f"{session_id}: it has no sequence number"
                     )
-            return final_message
+            return content
     return None
 
 

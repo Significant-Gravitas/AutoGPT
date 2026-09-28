@@ -21,6 +21,38 @@ export const storyCredentials: CredentialsMetaResponse[] = [
 ];
 
 export const mentionStoryHandlers = [
+  http.get("*/api/skills", () =>
+    HttpResponse.json([
+      {
+        name: "fix-issue",
+        description: "Fix a GitHub issue by number",
+        triggers: [],
+        origin: "user",
+        update: null,
+        argument_hint: "[issue-number]",
+        user_invocable: true,
+      },
+      {
+        name: "incident-response",
+        description:
+          "Run the incident workflow: triage, communicate, write the postmortem",
+        triggers: [],
+        origin: "marketplace",
+        update: null,
+        argument_hint: null,
+        user_invocable: true,
+      },
+      {
+        name: "house-style",
+        description: "Background writing rules",
+        triggers: [],
+        origin: "user",
+        update: null,
+        argument_hint: null,
+        user_invocable: false,
+      },
+    ]),
+  ),
   http.get("*/api/integrations/credentials", () =>
     HttpResponse.json(storyCredentials),
   ),

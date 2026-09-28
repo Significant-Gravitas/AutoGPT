@@ -172,6 +172,7 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..skill_invocation import inject_skill_invocation
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import (
@@ -5375,6 +5376,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
+
+        # A ``/skill-name arguments`` send carries the skill's instructions
+        # into this turn and every later one. Same row as the injection
+        # above, and before pending messages are folded in for the same
+        # reason.
+        if is_user_message:
+            invoked_message = await inject_skill_invocation(
+                current_message,
+                session_id,
+                session.messages,
+                user_id=user_id,
+                expert_id=session.expert_id,
+            )
+            if invoked_message is not None:
+                current_message = invoked_message
 
         # Now that ``inject_user_context`` has wrapped + persisted the
         # ORIGINAL turn-starting send into its row, fold any pending
