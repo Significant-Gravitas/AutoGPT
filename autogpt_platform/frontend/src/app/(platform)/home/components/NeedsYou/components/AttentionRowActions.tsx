@@ -1,6 +1,7 @@
 import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Button } from "@/components/atoms/Button/Button";
+import { isHandoffApproval } from "../helpers";
 
 interface Props {
   item: HomeAttentionItem;
@@ -38,14 +39,27 @@ export function AttentionRowActions({
   return (
     <>
       {primaryAction}
-      <Button
-        variant="primary"
-        size="icon-sm"
-        leadingIcon={Tick02Icon}
-        disabled={isProcessing}
-        aria-label={`Approve: ${item.title}`}
-        onClick={onApprove}
-      />
+      {isHandoffApproval(item) ? (
+        <Button
+          variant="primary"
+          size="small"
+          className="h-8 min-w-0 px-3"
+          disabled={isProcessing}
+          aria-label={`Approve: ${item.title}`}
+          onClick={onApprove}
+        >
+          Approve
+        </Button>
+      ) : (
+        <Button
+          variant="primary"
+          size="icon-sm"
+          leadingIcon={Tick02Icon}
+          disabled={isProcessing}
+          aria-label={`Approve: ${item.title}`}
+          onClick={onApprove}
+        />
+      )}
       <Button
         variant={confirmDecline ? "destructive" : "icon"}
         size="icon-sm"
