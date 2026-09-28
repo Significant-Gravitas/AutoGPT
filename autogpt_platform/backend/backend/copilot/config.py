@@ -285,6 +285,22 @@ class ChatConfig(BaseSettings):
         description="Hard timeout for one gate classification. Expiry is not "
         "an error path — it resolves to 'ask'.",
     )
+    gate_first_stage: Literal["none", "jev"] = Field(
+        default="jev",
+        description="First stage of the action supervisor: Jev decides every "
+        "judged call and the LLM (``gate_model``) runs only on an ask, to write "
+        "the reason. Off without ``TYPESAFE_API_KEY``.",
+    )
+    gate_jev_model: str = Field(default="jev-1.13.0", description="Jev model id.")
+    gate_jev_ask_threshold: float | None = Field(
+        default=None,
+        description="Unset: Jev's allow/ask choice decides. Set: the call also "
+        "asks when Jev's must-ask probability reaches it (0.4 was measured).",
+    )
+    gate_jev_timeout_s: float = Field(
+        default=2.0,
+        description="Timeout for one Jev call; expiry falls through to the LLM.",
+    )
     content_judge_timeout_s: float = Field(
         default=15.0,
         description="Hard timeout for one content-judge call on an outside "
@@ -502,6 +518,12 @@ class ChatConfig(BaseSettings):
         "this cap). Admission reads settled spend, so a tree can overshoot by "
         "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
         "what bounds it.",
+    )
+    spend_ceiling_reset: Literal["never", "daily"] = Field(
+        default="daily",
+        description="When a chat's spend ceiling starts over: at each UTC "
+        "midnight, like the daily usage limit (the ceiling and any approved "
+        "raises reset with the day), or never within the chat.",
     )
     tree_max_nodes: int = Field(
         default=8,

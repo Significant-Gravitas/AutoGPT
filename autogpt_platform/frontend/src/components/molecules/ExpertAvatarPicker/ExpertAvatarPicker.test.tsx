@@ -25,8 +25,17 @@ test("generates a preview and only saves the selected PNG after confirmation", a
       }),
     ),
   );
-  render(<ExpertAvatarPicker name="Nova" color={null} onPick={onPick} />);
-  await userEvent.click(screen.getByRole("button", { name: "Sage" }));
+  render(
+    <ExpertAvatarPicker
+      name="Nova"
+      color={null}
+      categories={["finance"]}
+      onPick={onPick}
+    />,
+  );
+  expect(screen.getByRole("img", { name: /^Nova/ }).getAttribute("src")).toBe(
+    "/autogpt-characters/v2.1/expert-general-01/neutral/256.webp",
+  );
   await userEvent.click(
     screen.getByRole("button", { name: "Generate with AI" }),
   );
@@ -38,13 +47,10 @@ test("generates a preview and only saves the selected PNG after confirmation", a
   expect(requests).toEqual([
     {
       category: "finance",
-      shade: "standard",
       shape: "pebble",
       base: "compact",
       tilt: "level",
       inlay: "sweep",
-      accent_placement: "body",
-      accent_count: "one",
       expression: "friendly",
     },
   ]);
@@ -54,7 +60,7 @@ test("generates a preview and only saves the selected PNG after confirmation", a
   );
   expect(onPick).toHaveBeenCalledWith(
     "https://cdn.test/generated.png",
-    "green-300",
+    "amber-300",
   );
 });
 
@@ -94,14 +100,14 @@ test("a failed job keeps the current avatar and the catalog remains usable", asy
     screen.getByRole("img", { name: "Nova" }).getAttribute("src"),
   ).toContain("existing.png");
   expect(onPick).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("button", { name: "Gold" }));
+  await userEvent.click(screen.getByRole("button", { name: "General" }));
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   await userEvent.click(
     screen.getByRole("button", { name: "Use this avatar" }),
   );
   expect(onPick).toHaveBeenCalledWith(
-    "/experts/clay/v5/max-sales.png",
-    "amber-300",
+    "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp",
+    "rose-300",
   );
 });
 
@@ -149,50 +155,63 @@ test("rejects oversized uploads before making a request", async () => {
 });
 
 test.each([
-  "/experts/clay/v1/finance.png",
-  "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
-])("editing %s uses its color for generation", async (avatarUrl) => {
-  const requests: unknown[] = [];
-  server.use(
-    http.post("*/api/experts/avatars/generations", async ({ request }) => {
-      requests.push(await request.json());
-      return HttpResponse.json(
-        { detail: "Please wait before generating again." },
-        { status: 429 },
-      );
-    }),
-  );
-  render(
-    <ExpertAvatarPicker
-      name="Nova"
-      color="green-300"
-      avatarUrl={avatarUrl}
-      onPick={vi.fn()}
-    />,
-  );
-  await userEvent.click(
-    screen.getByRole("button", { name: "Generate with AI" }),
-  );
-  await screen.findByRole("alert");
-  expect(requests).toEqual([
-    {
-      category: "finance",
-      shade: "standard",
-      shape: "pebble",
-      base: "compact",
-      tilt: "level",
-      inlay: "sweep",
-      accent_placement: "body",
-      accent_count: "one",
-      expression: "friendly",
-    },
-  ]);
-  expect(
-    screen.getByRole("img", { name: /^Nova/ }).getAttribute("src"),
-  ).toContain(
-    avatarUrl.includes("expert-mina") ? "expert-mina" : "finance.png",
-  );
-});
+  ["/experts/clay/v4/mina-operations.png", ["finance", "operations"]],
+  [
+    "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
+    ["finance", "operations"],
+  ],
+  ["https://cdn.test/custom.png", ["finance"]],
+])(
+  "editing %s generates in the expert's own family and offers its saved identity",
+  async (avatarUrl, categories) => {
+    const requests: unknown[] = [];
+    server.use(
+      http.post("*/api/experts/avatars/generations", async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json(
+          { detail: "Please wait before generating again." },
+          { status: 429 },
+        );
+      }),
+    );
+    render(
+      <ExpertAvatarPicker
+        name="Nova"
+        color="green-300"
+        avatarUrl={avatarUrl}
+        categories={categories}
+        onPick={vi.fn()}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Generate with AI" }),
+    );
+    await screen.findByRole("alert");
+    expect(requests).toEqual([
+      {
+        category: "finance",
+        shape: "pebble",
+        base: "compact",
+        tilt: "level",
+        inlay: "sweep",
+        expression: "friendly",
+      },
+    ]);
+    const looks = screen.getByRole("group", { name: "Managed looks" });
+    if (avatarUrl.startsWith("https://")) {
+      expect(looks.querySelectorAll("button")).toHaveLength(1);
+      expect(
+        screen.getByRole("img", { name: /^Nova/ }).getAttribute("src"),
+      ).toContain("custom.png");
+    } else {
+      expect(screen.getByRole("button", { name: "Mina" })).not.toBeNull();
+      expect(
+        screen.getByRole("img", { name: /^Nova/ }).getAttribute("src"),
+      ).toBe("/autogpt-characters/v1.1/expert-mina/neutral/256.webp");
+    }
+    expect(screen.queryByRole("button", { name: "Maria" })).toBeNull();
+  },
+);
 
 test("a pending generation disables uploads and confirmation", async () => {
   server.use(

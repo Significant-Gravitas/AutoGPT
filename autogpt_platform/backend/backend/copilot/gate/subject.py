@@ -5,13 +5,15 @@ decides on that subject's effect, and the card's headline names it.
 """
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks._base import Block, BlockEffect
 from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
+from backend.executor.utils import block_usage_cost
 from backend.integrations.mcp_catalog import mcp_tool_effect
 
 from .effects import JUDGED_BLOCKS, block_effect, graph_effect
@@ -34,6 +36,9 @@ class Subject(BaseModel):
     # Shows "Can't be undone" and keeps the card out of approve-all; a judge
     # rule still covers it.
     irreversible: bool = False
+    # What one call is expected to cost, in microdollars; a paid read or
+    # workspace step asks once the chat has spent its ceiling.
+    estimate: int = 0
 
 
 # A schema lookup, ``validate_only``, a dry run, or a trigger workflow's details:
@@ -41,7 +46,10 @@ class Subject(BaseModel):
 NO_OP = Subject(key="", name="", effect=Effect.UNGATED)
 
 
-def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
+def block_subject(
+    block: Block, inputs: dict[str, Any], *, priced: bool = True
+) -> Subject:
+    """``priced=False`` skips the cost lookup, for a caller that prices later."""
     effect = block_effect(block, inputs)
     name = display_name(block)
     if type(block).__name__ in JUDGED_BLOCKS:
@@ -53,6 +61,9 @@ def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
         effect=_gate_effect(effect),
         reason=_reason(effect, name, culprit=None),
         irreversible=_irreversible(effect, block),
+        estimate=(
+            _priced(effect, lambda: block_usage_cost(block, inputs)[0]) if priced else 0
+        ),
     )
 
 
@@ -69,6 +80,7 @@ def workflow_subject(
         effect=_gate_effect(effect),
         reason=_reason(effect, name, culprit=decided_by),
         irreversible=_irreversible(effect, decided_by),
+        estimate=0 if schedules else _priced(effect, lambda: graph_cost_credits(graph)),
     )
     steps = _irreversible_steps(graph)
     if unreadable is not None and steps:
@@ -129,6 +141,15 @@ def mcp_subject(server_url: str, tool: str) -> Subject:
     )
 
 
+def graph_cost_credits(graph: "GraphModel") -> int:
+    """A workflow run's pre-flight estimate: every node once, sub-graphs included."""
+    return sum(
+        block_usage_cost(node.block, node.input_default)[0]
+        for each in (graph, *graph.sub_graphs)
+        for node in each.nodes
+    )
+
+
 def display_name(block: Block) -> str:
     """``GmailSendBlock`` -> ``Gmail Send``; the card drops any headline
     containing "Block", so the suffix must go."""
@@ -143,6 +164,13 @@ _EFFECTS = {
     BlockEffect.PLATFORM: Effect.PLATFORM,
     BlockEffect.EXTERNAL: Effect.EXTERNAL,
 }
+
+
+def _priced(effect: BlockEffect | None, credits: Callable[[], int]) -> int:
+    # Pure computation never consults money.
+    if effect is BlockEffect.NONE:
+        return 0
+    return credits() * MICRODOLLARS_PER_CREDIT
 
 
 def _gate_effect(effect: BlockEffect | None) -> Effect:

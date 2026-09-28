@@ -1,7 +1,12 @@
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { loadDraft, saveDraft, VOICE_SKIPPED_LABEL } from "../helpers";
@@ -81,7 +86,11 @@ async function openPicker() {
       <Toaster />
     </>,
   );
-  await screen.findByRole("group", { name: "Avatar catalog" });
+  await screen.findByRole(
+    "group",
+    { name: "Managed looks" },
+    { timeout: 5000 },
+  );
 }
 
 beforeEach(() => {
@@ -95,21 +104,20 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("previews a catalog PNG and saves it only after confirmation", async () => {
+test("starts on the General fallback and saves it only after confirmation", async () => {
   await openPicker();
-  await userEvent.click(screen.getByRole("button", { name: "Sage" }));
+  const general = "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp";
+  await userEvent.click(screen.getByRole("button", { name: "General" }));
   expect(loadDraft().avatarUrl).toBeNull();
   await userEvent.click(
     screen.getByRole("button", { name: "Use this avatar" }),
   );
-  await waitFor(() =>
-    expect(loadDraft().avatarUrl).toBe("/experts/clay/v1/finance.png"),
-  );
-  expect(loadDraft().color).toBe("green-300");
-  expect(screen.queryByRole("group", { name: "Avatar catalog" })).toBeNull();
+  await waitFor(() => expect(loadDraft().avatarUrl).toBe(general));
+  expect(loadDraft().color).toBe("violet-300");
+  expect(screen.queryByRole("group", { name: "Managed looks" })).toBeNull();
 });
 
-test("offers generation and uploads without face-part controls", async () => {
+test("offers generation and uploads, never another Expert's face or a shade or accent choice", async () => {
   await openPicker();
   expect(
     screen.getByRole("button", { name: "Generate with AI" }),
@@ -117,6 +125,13 @@ test("offers generation and uploads without face-part controls", async () => {
   expect(
     screen.getByRole("button", { name: "Upload a picture" }),
   ).toBeDefined();
+  const looks = screen.getByRole("group", { name: "Managed looks" });
+  expect(looks.querySelectorAll("button")).toHaveLength(1);
+  expect(within(looks).queryByRole("button", { name: "Maria" })).toBeNull();
+  expect(screen.queryByRole("combobox", { name: "Shade" })).toBeNull();
+  expect(
+    screen.queryByRole("combobox", { name: "Accent placement" }),
+  ).toBeNull();
   expect(screen.queryByRole("button", { name: "Next hair" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Lavender" })).toBeNull();
 });

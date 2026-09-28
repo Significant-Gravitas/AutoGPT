@@ -1,37 +1,52 @@
 import { ExpertAvatar } from "../../ExpertAvatar/ExpertAvatar";
-import { EXPERT_AVATARS } from "../../ExpertAvatar/helpers";
+import { getManagedIdentity } from "../../ExpertAvatar/helpers";
 import { cn } from "@/lib/utils";
 
 interface Props {
+  /** The managed looks this Expert may keep: its saved identity, when it has
+   *  one, and the General fallback. Never another Expert's face. */
+  urls: readonly string[];
   selectedUrl: string;
   disabled: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (url: string) => void;
 }
 
-export function AvatarCatalog({ selectedUrl, disabled, onSelect }: Props) {
+export function AvatarCatalog({
+  urls,
+  selectedUrl,
+  disabled,
+  onSelect,
+}: Props) {
   return (
     <div
       role="group"
-      aria-label="Avatar catalog"
-      className="grid w-full grid-cols-4 gap-2"
+      aria-label="Managed looks"
+      className="flex w-full flex-wrap justify-center gap-2"
     >
-      {EXPERT_AVATARS.map((avatar) => (
-        <button
-          key={avatar.id}
-          type="button"
-          aria-label={avatar.label}
-          aria-pressed={selectedUrl === avatar.url}
-          disabled={disabled}
-          onClick={() => onSelect(avatar.id)}
-          className={cn(
-            "flex flex-col items-center gap-1 rounded-lg border border-border p-2 text-xs text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-            selectedUrl === avatar.url && "border-primary bg-muted",
-          )}
-        >
-          <ExpertAvatar name={avatar.label} avatarUrl={avatar.url} size={40} />
-          {avatar.label}
-        </button>
-      ))}
+      {urls.map((url) => {
+        const identity = getManagedIdentity(url);
+        const label =
+          identity?.visual_category === "general"
+            ? "General"
+            : (identity?.name ?? "Saved look");
+        return (
+          <button
+            key={url}
+            type="button"
+            aria-label={label}
+            aria-pressed={selectedUrl === url}
+            disabled={disabled}
+            onClick={() => onSelect(url)}
+            className={cn(
+              "flex w-24 flex-col items-center gap-1 rounded-lg border border-border p-2 text-xs text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+              selectedUrl === url && "border-primary bg-muted",
+            )}
+          >
+            <ExpertAvatar name={label} avatarUrl={url} size={40} />
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }

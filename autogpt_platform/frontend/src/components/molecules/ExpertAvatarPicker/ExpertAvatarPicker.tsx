@@ -12,6 +12,7 @@ interface Props {
   name: string;
   color: string | null;
   avatarUrl?: string | null;
+  categories?: readonly string[] | null;
   onPick: (url: string, color: string) => void;
 }
 
@@ -25,34 +26,30 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         size={144}
       />
       <AvatarCatalog
+        urls={picker.catalogUrls}
         selectedUrl={picker.selectedUrl}
         disabled={picker.isBusy}
-        onSelect={picker.selectPreset}
+        onSelect={picker.selectCatalog}
       />
       <GenerationOptions
         category={picker.category}
         setCategory={picker.setCategory}
-        shade={picker.shade}
-        setShade={picker.setShade}
+        shape={picker.shape}
+        setShape={picker.setShape}
         base={picker.base}
         setBase={picker.setBase}
         tilt={picker.tilt}
         setTilt={picker.setTilt}
         inlay={picker.inlay}
         setInlay={picker.setInlay}
-        accentPlacement={picker.accentPlacement}
-        setAccentPlacement={picker.setAccentPlacement}
-        accentCount={picker.accentCount}
-        setAccentCount={picker.setAccentCount}
-        shape={picker.shape}
         expression={picker.expression}
-        isBusy={picker.isBusy}
-        setShape={picker.setShape}
         setExpression={picker.setExpression}
+        isBusy={picker.isBusy}
       />
       <p className="text-sm text-muted-foreground">
-        Choose a look above, or generate a category shade and shape. Up to five
-        generations a day, four minutes apart.
+        Keep a managed look, upload a picture, or generate a new clay figure in
+        your category&apos;s color. Up to five generations a day, four minutes
+        apart.
       </p>
       {picker.isGenerating && (
         <p role="status" className="text-sm text-muted-foreground">

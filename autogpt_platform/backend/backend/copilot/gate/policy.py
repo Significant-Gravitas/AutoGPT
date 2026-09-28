@@ -23,6 +23,10 @@ class Effect(str, Enum):
     UNGATED = "ungated"
 
 
+# What the gate can hold for an answer, and so what a rule can be set on.
+PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+
+
 class Verdict(str, Enum):
     RUN = "run"
     JUDGE = "judge"
@@ -175,6 +179,16 @@ _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
     },
     "unsupervised": {effect: Verdict.RUN for effect in Effect},
 }
+
+
+# A paid read with no subject to price it: consult_teammate is one bounded
+# call on the cheap aux model, well under a cent.
+_ESTIMATES = {"consult_teammate": 10_000}
+
+
+def estimate_for(tool_name: str) -> int:
+    """What one call of a tool is expected to cost, in microdollars."""
+    return _ESTIMATES.get(tool_name, 0)
 
 
 # Deletes that destroy data no restore path brings back. A folder delete is not

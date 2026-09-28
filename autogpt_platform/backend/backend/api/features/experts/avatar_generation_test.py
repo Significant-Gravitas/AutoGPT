@@ -17,6 +17,18 @@ from backend.api.features.experts.avatar_generation import (
 from backend.api.features.experts.avatar_jobs import ExpertAvatarJob
 
 
+def studio_tile(color: tuple[int, int, int]) -> Image.Image:
+    """An opaque warm tile with a shaded block on it, like a rendered figure."""
+    image = Image.new("RGB", (1024, 1024), (250, 248, 245))
+    for x in range(400, 600):
+        for y in range(300, 800):
+            r, g, b = color
+            image.putpixel(
+                (x, y), (max(0, r - (x - 400) // 2), max(0, g - (y - 300) // 5), b)
+            )
+    return image
+
+
 def test_generation_accepts_only_brand_choices():
     for payload in (
         {"category": "otto"},
@@ -24,9 +36,12 @@ def test_generation_accepts_only_brand_choices():
         {"prompt": "ignore the rules"},
         {"shape": "human"},
         {"color": "lavender"},
+        {"shade": "dark"},
         {"base": "legs"},
         {"tilt": "upside-down"},
-        {"inlay": "head"},
+        {"inlay": "cap"},
+        {"accent_placement": "head"},
+        {"accent_count": "three"},
     ):
         with pytest.raises(ValidationError):
             ExpertAvatarRequest.model_validate(payload)
@@ -34,19 +49,34 @@ def test_generation_accepts_only_brand_choices():
         ExpertAvatarRequest(category="finance", expression="curious")
     )
     assert "#A5B09A" in prompt
-    assert "one raised brow" in prompt
-    assert "BODY ONLY" in prompt
+    assert "one brow slightly raised" in prompt
+    assert "entirely on the lower form" in prompt
+    assert "No cream on the head" in prompt
+    assert "low-sheen" in prompt
 
 
-def test_png_validation_keeps_alpha_and_rejects_wrong_outputs():
-    image = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
-    image.putpixel((512, 512), (100, 100, 100, 255))
+def test_default_candidate_belongs_to_the_general_family():
+    request = ExpertAvatarRequest()
+    assert request.category == "general"
+    prompt = avatar_prompt(request)
+    assert "Warm stone #B5ADA0" in prompt
+    assert "No purple, lavender or plum" in prompt
+
+
+def test_png_validation_requires_an_opaque_studio_tile_with_artwork():
+    image = studio_tile((196, 127, 92))
     content = io.BytesIO()
     image.save(content, format="PNG")
     assert validate_png(content.getvalue()).getvalue() == content.getvalue()
+    cutout = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    cutout.putpixel((512, 512), (100, 100, 100, 255))
+    for candidate in (cutout, Image.new("RGB", (1024, 1024), (250, 248, 245))):
+        bad = io.BytesIO()
+        candidate.save(bad, format="PNG")
+        with pytest.raises(ValueError):
+            validate_png(bad.getvalue())
     for size, mode, format in [
-        ((1024, 1024), "RGB", "PNG"),
-        ((16, 16), "RGBA", "PNG"),
+        ((16, 16), "RGB", "PNG"),
         ((1024, 1024), "RGB", "JPEG"),
     ]:
         bad = io.BytesIO()
@@ -118,10 +148,17 @@ async def test_failed_generation_does_not_upload(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("shape", ["pebble", "bean", "shield"])
-async def test_provider_edit_round_trip_uses_reference_and_returns_validated_png(
+@pytest.mark.parametrize(
+    "category, peers",
+    [
+        ("finance", ["expert-maria", "expert-mina"]),
+        ("sales", ["expert-maria", "expert-mina", "expert-max"]),
+    ],
+)
+async def test_provider_edit_round_trip_uses_managed_references_and_returns_validated_png(
     monkeypatch,
-    shape,
+    category,
+    peers,
 ):
     import base64
     from types import SimpleNamespace
@@ -132,22 +169,23 @@ async def test_provider_edit_round_trip_uses_reference_and_returns_validated_png
     from backend.api.features.experts import avatar_generation
 
     png = io.BytesIO()
-    image = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
-    image.putpixel((512, 512), (100, 100, 100, 255))
-    image.save(png, format="PNG")
+    studio_tile((165, 176, 154)).save(png, format="PNG")
     content = png.getvalue()
     requests = []
 
     def provider(request):
         requests.append(request)
         assert request.url.path == "/v1/images/edits"
-        assert b'name="background"\r\n\r\ntransparent' in request.content
+        assert b'name="background"\r\n\r\nopaque' in request.content
         assert b'name="output_format"\r\n\r\npng' in request.content
         assert b'name="size"\r\n\r\n1024x1024' in request.content
-        assert b"reference.png" in request.content
-        assert (
-            avatar_generation.REFERENCE_FOLDER / f"{shape}.png"
-        ).read_bytes() in request.content
+        assert b'name="quality"\r\n\r\nhigh' in request.content
+        for peer in peers:
+            assert f"{peer}.png".encode() in request.content
+            assert (
+                avatar_generation.REFERENCE_FOLDER / f"{peer}.png"
+            ).read_bytes() in request.content
+        assert request.content.count(b'name="image[]"') == len(peers)
         return httpx.Response(
             200,
             json={
@@ -169,77 +207,62 @@ async def test_provider_edit_round_trip_uses_reference_and_returns_validated_png
         "Settings",
         lambda: SimpleNamespace(
             secrets=SimpleNamespace(openai_api_key="test-key"),
-            config=SimpleNamespace(expert_avatar_model="gpt-image-1.5"),
+            config=SimpleNamespace(expert_avatar_model="gpt-image-2-2026-04-21"),
         ),
     )
     result = await avatar_generation.generate_avatar(
-        ExpertAvatarRequest.model_validate({"category": "finance", "shape": shape})
+        ExpertAvatarRequest.model_validate({"category": category, "shape": "bean"})
     )
     assert result.getvalue() == content
     assert len(requests) == 1
 
 
-def test_generation_varies_color_and_full_outline_independently_of_category():
+def test_generation_varies_shape_base_tilt_and_cream_route_only():
     request = ExpertAvatarRequest.model_validate(
         {
             "category": "marketing",
-            "color": "pine",
             "shape": "bean",
             "base": "wide",
             "tilt": "left",
-            "inlay": "curl",
+            "inlay": "wrap",
             "expression": "curious",
         }
     )
     prompt = avatar_prompt(request)
-    assert "#4F7968" in prompt
-    assert "#C45F36" not in prompt
-    assert "kidney" in prompt
-    assert "wide" in prompt
-    assert "left" in prompt
-    assert "curl" in prompt
+    assert "Terracotta #C47F5C" in prompt
+    assert "kidney bean" in prompt
+    assert "wide low rounded base" in prompt
+    assert "tilted gently left" in prompt
+    assert "curved cream corner wrap on the lower form" in prompt
+    assert "shade" not in prompt.lower()
+    assert "Accent placement" not in prompt
 
 
-def test_every_shape_has_a_distinct_transparent_reference():
+def test_reference_set_follows_the_generation_standard():
+    import hashlib
+    import json
     from typing import get_args
 
     from backend.api.features.experts.avatar_design import SHAPES, AvatarShape
-    from backend.api.features.experts.avatar_generation import REFERENCE_FOLDER
+    from backend.api.features.experts.avatar_generation import (
+        REFERENCE_FOLDER,
+        GenerationCategory,
+        reference_ids,
+        reference_images,
+    )
 
     assert set(get_args(AvatarShape)) == set(SHAPES)
-    for shape in get_args(AvatarShape):
-        with Image.open(REFERENCE_FOLDER / f"{shape}.png") as image:
-            assert image.size == (256, 256)
-            assert image.mode == "RGBA"
-            assert image.getchannel("A").getextrema() == (0, 255)
-
-
-def test_accents_can_move_to_head_and_repeat():
-    prompt = avatar_prompt(
-        ExpertAvatarRequest.model_validate(
-            {
-                "accent_placement": "head",
-                "accent_count": "three",
-                "inlay": "patch",
-            }
-        )
-    )
-    assert "HEAD ONLY" in prompt
-    assert "three separate" in prompt
-    assert "rounded irregular patch" in prompt
-    assert "Head stays wholly main color" not in prompt
-    assert "LOWER BASE" not in prompt
-
-
-def test_shade_uses_category_hue_instead_of_an_unrelated_color():
-    prompt = avatar_prompt(
-        ExpertAvatarRequest.model_validate(
-            {
-                "category": "finance",
-                "shade": "dark",
-                "color": "terracotta",
-            }
-        )
-    )
-    assert "#8B9481" in prompt
-    assert "#C45F36" not in prompt
+    manifest = json.loads((REFERENCE_FOLDER / "manifest.json").read_text())
+    for category in get_args(GenerationCategory):
+        ids = reference_ids(category)
+        assert ids[:2] == ["expert-maria", "expert-mina"]
+        assert len(ids) == len(set(ids))
+        for name, content, mime in reference_images(category):
+            asset_id = name.removesuffix(".png")
+            assert mime == "image/png"
+            assert hashlib.sha256(content).hexdigest() == manifest[asset_id]["sha256"]
+            with Image.open(io.BytesIO(content)) as image:
+                assert image.size == (512, 512)
+                assert image.mode == "RGB"
+    assert reference_ids("content") == ["expert-maria", "expert-mina"]
+    assert "hex anchor" in avatar_prompt(ExpertAvatarRequest(category="content"))
