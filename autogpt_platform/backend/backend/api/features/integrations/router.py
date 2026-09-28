@@ -470,7 +470,8 @@ def _track_oauth_exchange_failed(
     try:
         if not isinstance(error, HTTPException):
             # An unexpected error's message can carry anything; keep its class.
-            failure_class, status_code = "other", 500
+            # The step it happened in stays the failure_class.
+            status_code = 500
             detail = type(error).__name__
         else:
             status_code = error.status_code

@@ -90,7 +90,10 @@ browser's analytics consent. `failure_class` says where the callback failed:
 | `provider_unavailable` | 400 / 404 / 500 / 501 | No OAuth handler for the provider, or its client id and secret are not set. |
 | `token_exchange` | 400 | The provider rejected the code, or the exchange raised. |
 | `credential_merge` | 400 | The new token could not be stored on an existing credential (username or provider mismatch, managed or system credential). |
-| `other` | 500 | Anything unexpected, such as a database error. `detail` is the exception class only. |
+
+An unexpected error (not an HTTP error we raise, e.g. a database error) keeps
+the class of the step it happened in, with `status_code` 500 and only the
+exception class as `detail`.
 
 A granted scope set narrower than the one requested is not a callback
 failure: the credential is stored and `integration_connected` fires.

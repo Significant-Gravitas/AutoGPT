@@ -248,7 +248,9 @@ class TestOAuthExchangeFailed:
 
         assert resp.status_code == 500
         failure = _only_failure(capture)
-        assert failure["failure_class"] == "other"
+        # The step that raised stays the class; only the status says it was
+        # unexpected.
+        assert failure["failure_class"] == "credential_merge"
         assert failure["status_code"] == 500
         assert failure["detail"] == "RuntimeError"
 

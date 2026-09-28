@@ -78,7 +78,6 @@ OAuthExchangeFailureClass = Literal[
     "provider_unavailable",  # no OAuth handler, or client id/secret not set
     "token_exchange",  # the provider rejected the code, or the exchange raised
     "credential_merge",  # the new token could not be stored on an existing one
-    "other",  # anything unexpected, e.g. a database error
 ]
 
 _DETAIL_MAX_CHARS = 200
