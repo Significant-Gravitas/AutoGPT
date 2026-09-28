@@ -13,6 +13,7 @@ call finds its own record. The registry dict is created per turn by
 task shares it by reference, like the output stash.
 """
 
+import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -34,12 +35,19 @@ def reset_cancelled_outputs() -> None:
 def tool_call(key: str) -> Iterator[None]:
     """Scope a tool call so what it records lands under *key*.
 
-    A call that returns normally has its real output, so its record is
-    dropped on the way out; only a call cut off mid-flight keeps one.
+    Only a call cut off by cancellation keeps its record: that is the stop the
+    record describes. A call that returns, or fails with its own error, has a
+    real result, so its record is dropped and can never stand in for it.
     """
     token = _call_key.set(key)
     try:
         yield
+    except asyncio.CancelledError:
+        raise
+    except BaseException:
+        _discard(key)
+        raise
+    else:
         _discard(key)
     finally:
         _call_key.reset(token)

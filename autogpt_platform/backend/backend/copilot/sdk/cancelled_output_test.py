@@ -89,3 +89,20 @@ async def test_the_stop_flush_writes_the_cancelled_result_not_an_empty_one():
 
     outputs = [r for r in flushed if isinstance(r, StreamToolOutputAvailable)]
     assert [o.output for o in outputs] == [_CANCELLED]
+
+
+@pytest.mark.asyncio
+async def test_a_call_that_fails_on_its_own_leaves_no_cancelled_result():
+    """A tool error is a real result; the "stopped" record must not mask it."""
+
+    async def handler(_args):
+        record_cancelled_output(_CANCELLED)
+        raise ValueError("boom")
+
+    wrapper = _make_truncating_wrapper(
+        handler, "delegate_to_expert", required_args=["expert_id", "prompt"]
+    )
+    with pytest.raises(ValueError):
+        await wrapper(dict(_ARGS))
+
+    assert pop_cancelled_tool_output("delegate_to_expert", _ARGS) is None
