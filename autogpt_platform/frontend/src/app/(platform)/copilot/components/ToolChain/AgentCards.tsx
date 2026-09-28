@@ -171,14 +171,7 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
   );
 }
 
-interface SubSessionCardProps extends OutputCardProps {
-  minimal?: boolean;
-}
-
-export function SubSessionCard({
-  output,
-  minimal = false,
-}: SubSessionCardProps) {
+export function SubSessionCard({ output }: OutputCardProps) {
   const frozenStatus = str(output, "status");
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");
@@ -210,7 +203,7 @@ export function SubSessionCard({
         {status && <StatusPill status={status} />}
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
-      {!minimal && response && (
+      {response && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-zinc-500">
           {response}
         </p>
@@ -218,7 +211,7 @@ export function SubSessionCard({
       {/* Keyed to the FROZEN status on purpose: once mounted for a running
           output, the live view stays up after completion showing the final
           steps + answer (it stops polling on its own). */}
-      {!minimal && subSessionId && (
+      {subSessionId && (
         <SubSessionLive
           subSessionId={subSessionId}
           active={["running", "queued"].includes(

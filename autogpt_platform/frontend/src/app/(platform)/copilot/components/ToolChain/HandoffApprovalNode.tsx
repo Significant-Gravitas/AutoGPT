@@ -18,7 +18,9 @@ import {
   isGateReview,
   toApprovalItem,
 } from "../ApprovalQueue/helpers";
+import { useExpertMap } from "../../useExpertMap";
 import { HeldCallDetail } from "./HeldCallRowParts";
+import { asObject, str } from "./resultHelpers";
 import type { HeldRowInfo } from "./heldRow";
 
 export const HANDOFF_TOOLS = new Set([
@@ -37,15 +39,16 @@ export function isHandoffApprovalRow(
 
 interface Props {
   held: HeldRowInfo;
+  input: unknown;
   isLast: boolean;
-  expertName?: string | null;
 }
 
-export function HandoffApprovalNode({
-  held,
-  isLast,
-  expertName = null,
-}: Props) {
+export function HandoffApprovalNode({ held, input, isLast }: Props) {
+  const { expertsById } = useExpertMap();
+  const expertId = str(asObject(input) ?? {}, "expert_id");
+  const expertName = expertId
+    ? (expertsById.get(expertId)?.name ?? null)
+    : null;
   const sessionId = useContext(ChatSessionContext);
   const actions = useContext(CopilotChatActionsContext);
   const { pendingReviews, isLoading } = usePendingReviewsForChatSession(

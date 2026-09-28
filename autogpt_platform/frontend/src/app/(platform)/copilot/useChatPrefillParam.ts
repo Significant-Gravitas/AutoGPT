@@ -1,0 +1,21 @@
+"use client";
+
+import { parseAsString, useQueryState } from "nuqs";
+import { useEffect } from "react";
+import { useCopilotUIStore } from "./store";
+
+/** `/copilot?sessionId=…&prefill=…` opens a thread with a drafted message
+ *  in its composer (an answer written for a teammate elsewhere), then drops
+ *  the param so a reload doesn't draft it again. */
+export function useChatPrefillParam() {
+  const [prefill, setPrefill] = useQueryState("prefill", parseAsString);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  useEffect(
+    function draftPrefill() {
+      if (!prefill) return;
+      setInitialPrompt(prefill);
+      void setPrefill(null, { history: "replace" });
+    },
+    [prefill, setInitialPrompt, setPrefill],
+  );
+}

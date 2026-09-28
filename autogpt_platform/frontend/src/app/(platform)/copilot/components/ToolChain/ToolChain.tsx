@@ -38,6 +38,13 @@ import {
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import type { UIMessage } from "ai";
+import {
+  getChatDelegations,
+  type LiveDelegationStatus,
+} from "../../delegations";
+import { LiveDelegationProbes } from "../DelegationStatusLine/LiveDelegationProbes";
+import { withDelegation } from "./delegationRow";
 import { applyHeldOutcome } from "./heldRow";
 import {
   type ChainRow,
@@ -164,25 +171,50 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   useCredentialFailureCounters({ entries: actionEntries });
 
-  const rows = useMemo(
-    () =>
-      markSupersededSubSessionRows(
-        parts
-          .map((part, i) => toChainRow(part, i))
-          .filter((row): row is ChainRow => row !== null)
-          .map((row) => applyHeldOutcome(row, heldOutcomes))
-          // Unanswered clarifying questions and setup cards render their work
-          // in the card below the chain — their rows are lifted out of view.
-          .map((row) =>
-            pendingQuestions?.callIds.includes(row.key)
-              ? { ...row, requiresAction: true, lifted: true }
-              : isLiftedSetupRow(row)
-                ? { ...row, lifted: true }
-                : row,
-          ),
+  const [liveStatuses, setLiveStatuses] = useState<
+    Record<string, LiveDelegationStatus>
+  >({});
+  const reportDelegationStatus = useCallback(
+    (toolCallId: string, status: LiveDelegationStatus) =>
+      setLiveStatuses((prev) =>
+        prev[toolCallId] === status ? prev : { ...prev, [toolCallId]: status },
       ),
-    [parts, pendingQuestions, heldOutcomes],
+    [],
   );
+
+  const { rows, delegations } = useMemo(() => {
+    const chainDelegations = getChatDelegations(
+      [{ id: "chain", role: "assistant", parts } as UIMessage],
+      heldOutcomes,
+    );
+    const byCallId = new Map(
+      chainDelegations.map((delegation) => [delegation.toolCallId, delegation]),
+    );
+    const chainRows = markSupersededSubSessionRows(
+      parts
+        .map((part, i) => toChainRow(part, i))
+        .filter((row): row is ChainRow => row !== null)
+        .map((row) => applyHeldOutcome(row, heldOutcomes))
+        .map((row) =>
+          withDelegation(
+            row,
+            byCallId.get(row.key),
+            liveStatuses[row.key],
+            readOnly,
+          ),
+        )
+        // Unanswered clarifying questions and setup cards render their work
+        // in the card below the chain — their rows are lifted out of view.
+        .map((row) =>
+          pendingQuestions?.callIds.includes(row.key)
+            ? { ...row, requiresAction: true, lifted: true }
+            : isLiftedSetupRow(row)
+              ? { ...row, lifted: true }
+              : row,
+        ),
+    );
+    return { rows: chainRows, delegations: chainDelegations };
+  }, [parts, pendingQuestions, heldOutcomes, liveStatuses, readOnly]);
   if (rows.length === 0) return null;
 
   const shownRows = rows.filter((row) => !row.lifted);
@@ -262,6 +294,14 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   return (
     <LazyMotion features={domAnimation} strict>
       <div className="my-2">
+        {/* A teammate who stops on a question reopens the chain with their
+            question on the wire, so the chain has to hear about it. */}
+        {!readOnly && (
+          <LiveDelegationProbes
+            delegations={delegations}
+            onStatus={reportDelegationStatus}
+          />
+        )}
         {shownRows.length > 0 && (
           <>
             <button

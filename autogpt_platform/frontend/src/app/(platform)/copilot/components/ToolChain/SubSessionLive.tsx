@@ -259,13 +259,9 @@ export function toMiniRow(
  *  SubSessionCard the moment the tool returns. */
 interface PendingCardProps {
   input: unknown;
-  minimal?: boolean;
 }
 
-export function SubSessionPendingCard({
-  input,
-  minimal = false,
-}: PendingCardProps) {
+export function SubSessionPendingCard({ input }: PendingCardProps) {
   const { expertsById } = useExpertMap();
   const args = asObject(input) ?? {};
   const inputExpertId = str(args, "expert_id");
@@ -317,14 +313,12 @@ export function SubSessionPendingCard({
           </Link>
         )}
       </div>
-      {!minimal && prompt && (
+      {prompt && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
           {prompt}
         </p>
       )}
-      {!minimal && liveSessionId && (
-        <SubSessionLive subSessionId={liveSessionId} active />
-      )}
+      {liveSessionId && <SubSessionLive subSessionId={liveSessionId} active />}
     </div>
   );
 }
@@ -372,9 +366,9 @@ function useDelegatedSessionId(expertId: string | null) {
  *  polled session and flip to completed once it goes idle.
  *
  *  Owns the poll through `useLiveSubSession` rather than piggybacking on a
- *  mounted live view: a minimal delegate card renders no live view, so this
- *  is the only thing left that can flip running → completed. On a full card
- *  it is the same query key, so the two share one poll. */
+ *  mounted live view: a delegated row renders no card at all, so this is
+ *  the only thing left that can flip its label running → completed. On a
+ *  card with a live view it is the same query key, so they share one poll. */
 export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
@@ -386,8 +380,8 @@ export function useSubSessionEffectiveStatus(
   );
   if (!stale) return status;
   // The frozen status is only trustworthy while the poll can refute it. A
-  // minimal card has no "Live updates paused" notice to fall back on, so a
-  // dead poll has to show up in the pill or it reads as fact.
+  // delegated row has no "Live updates paused" notice to fall back on, so a
+  // dead poll has to show up in its label or it reads as fact.
   if (isError || isPaused) return "unknown";
   if (!session) return status;
   return isSessionLive(session) ? status : "completed";
