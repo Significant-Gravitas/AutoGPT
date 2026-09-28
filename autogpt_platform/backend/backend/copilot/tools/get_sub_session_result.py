@@ -34,6 +34,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
+from .delegation_policy import enforce_cap
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -262,26 +263,25 @@ class GetSubSessionResultTool(BaseTool):
             if outcome == "completed"
             else None
         )
-        return apply_delegated_expert(
-            response_from_outcome(
-                outcome=outcome,
-                result=result,
-                inner_session_id=inner_session_id,
-                parent_session_id=session.session_id,
-                elapsed=elapsed,
-                workspace_files=workspace_files,
-                actor=actor,
-                facts=facts,
-                # Only a thread idle before this poll has a current parked
-                # question; the copy loaded before a wait predates the turn.
-                pending_ask=(
-                    ask_from_pending(sub.metadata.pending_question)
-                    if terminal_result is not None
-                    else None
-                ),
+        response = response_from_outcome(
+            outcome=outcome,
+            result=result,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            elapsed=elapsed,
+            workspace_files=workspace_files,
+            actor=actor,
+            facts=facts,
+            # Only a thread idle before this poll has a current parked
+            # question; the copy loaded before a wait predates the turn.
+            pending_ask=(
+                ask_from_pending(sub.metadata.pending_question)
+                if terminal_result is not None
+                else None
             ),
-            delegate,
         )
+        response = await enforce_cap(response, sub.metadata.delegation_cap_usd, actor)
+        return apply_delegated_expert(response, delegate)
 
 
 def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:

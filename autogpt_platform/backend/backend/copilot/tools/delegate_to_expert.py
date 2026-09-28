@@ -47,6 +47,7 @@ from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
+from .delegation_policy import DelegationTerms, delegation_terms, enforce_cap
 from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
@@ -183,12 +184,16 @@ class DelegateToExpertTool(BaseTool):
         refusal = await chain_refusal(user_id, session, target)
         if refusal is not None:
             return self._error(refusal, session)
+        terms = await delegation_terms(user_id, session)
+        if isinstance(terms, str):
+            return self._error(terms, session)
 
         inner_session_id = await self._resolve_session(
             user_id=user_id,
             session=session,
             target=target,
             delegated_session_id=delegated_session_id.strip(),
+            terms=terms,
         )
         if isinstance(inner_session_id, ErrorResponse):
             return inner_session_id
@@ -246,6 +251,9 @@ class DelegateToExpertTool(BaseTool):
             actor=target.name,
             facts=await run_facts(user_id, inner_session_id, outcome, started_on),
         )
+        # A resumed thread keeps the cap it was opened with; its poll checks it.
+        cap = None if delegated_session_id.strip() else terms.cap_usd
+        delegated = await enforce_cap(delegated, cap, target.name)
         delegated.message += await build_spawn_state_note()
         return apply_delegated_expert(delegated, expert)
 
@@ -283,6 +291,7 @@ class DelegateToExpertTool(BaseTool):
         session: ChatSession,
         target: Expert,
         delegated_session_id: str,
+        terms: DelegationTerms,
     ) -> str | ErrorResponse:
         """Reuse a prior delegation thread with this teammate, or open one.
 
@@ -301,7 +310,8 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_session_id=session.session_id,
                 origin=child_session_origin(session.metadata),
                 # The teammate asks the user as often as the delegator must.
-                autopilot_mode=session.metadata.autopilot_mode,
+                autopilot_mode=terms.mode,
+                delegation_cap_usd=terms.cap_usd,
             )
             return new_session.session_id
 

@@ -36,6 +36,9 @@ def _session(
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.delegated_by_session_id = None
+    sess.metadata.pending_question = None
+    sess.metadata.delegation_cap_usd = None
+    sess.metadata.autopilot_mode = None
     # Set explicitly: a bare MagicMock attribute is truthy, so an origin
     # assertion would pass even if the kwarg were dropped.
     sess.metadata.origin = origin

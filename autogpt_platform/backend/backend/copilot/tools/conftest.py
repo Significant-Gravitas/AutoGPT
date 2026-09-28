@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
+from backend.copilot.delegation_settings import DelegationSettings
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
@@ -50,7 +52,8 @@ def stub_user_lookup_in_helpers(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def stub_sub_session_costs(monkeypatch):
-    """Report no logged spend for child sessions unless a test says otherwise.
+    """Report no logged spend and default delegation settings unless a test
+    says otherwise.
 
     The sub-session tools read cost through the ``delegation_db()`` accessor,
     which falls back to the DatabaseManager RPC client when Prisma is not
@@ -58,8 +61,11 @@ def stub_sub_session_costs(monkeypatch):
     """
     client = MagicMock()
     client.get_session_costs = AsyncMock(return_value={})
-    monkeypatch.setattr(
-        "backend.copilot.tools.sub_session_facts.delegation_db",
-        MagicMock(return_value=client),
-    )
+    client.get_delegation_settings = AsyncMock(return_value=DelegationSettings())
+    client.get_delegation_spend_since = AsyncMock(return_value=0)
+    for module in ("sub_session_facts", "delegation_policy"):
+        monkeypatch.setattr(
+            f"backend.copilot.tools.{module}.delegation_db",
+            MagicMock(return_value=client),
+        )
     return client

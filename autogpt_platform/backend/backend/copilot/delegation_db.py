@@ -7,7 +7,13 @@ scoped to ``user_id`` in SQL, so another user's rows are invisible rather than
 filtered afterwards.
 """
 
+from datetime import datetime
+
+from prisma.models import User
+
+from backend.copilot.delegation_settings import DelegationSettings
 from backend.data import db
+from backend.util.json import SafeJson
 
 
 def delegated_session_sql(alias: str = "") -> str:
@@ -45,3 +51,37 @@ async def get_session_costs(user_id: str, session_ids: list[str]) -> dict[str, i
         session_ids,
     )
     return {str(row["session_id"]): int(row["total"] or 0) for row in rows}
+
+
+async def get_delegation_spend_since(user_id: str, since: datetime) -> int:
+    """Microdollars *user_id*'s delegated threads have logged since *since*."""
+    rows = await db.query_raw_with_schema(
+        'SELECT COALESCE(SUM(l."costMicrodollars"), 0)::bigint AS total '
+        'FROM {schema_prefix}"PlatformCostLog" l '
+        'JOIN {schema_prefix}"ChatSession" s ON s."id" = l."chatSessionId" '
+        'WHERE l."userId" = $1 AND s."userId" = $1 '
+        # The column holds UTC without a zone; the driver binds timestamptz.
+        "AND l.\"createdAt\" >= ($2::timestamptz AT TIME ZONE 'UTC') AND "
+        + delegated_session_sql("s."),
+        user_id,
+        since,
+    )
+    return int(rows[0]["total"] or 0) if rows else 0
+
+
+async def get_delegation_settings(user_id: str) -> DelegationSettings:
+    """The user's saved settings, or the defaults if they never saved any."""
+    user = await User.prisma().find_unique(where={"id": user_id})
+    if user is None or user.delegationSettings is None:
+        return DelegationSettings()
+    return DelegationSettings.model_validate(user.delegationSettings)
+
+
+async def update_delegation_settings(
+    user_id: str, settings: DelegationSettings
+) -> DelegationSettings:
+    await User.prisma().update(
+        where={"id": user_id},
+        data={"delegationSettings": SafeJson(settings.model_dump())},
+    )
+    return settings
