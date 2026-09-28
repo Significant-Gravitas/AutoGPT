@@ -289,6 +289,25 @@ class TestBounds:
         assert graph.facts["p"].live and graph.facts["q"].live
         assert [f.code for f in result.failures] == [_CLEANUP]
 
+    @pytest.mark.asyncio
+    async def test_a_budget_used_up_exactly_still_reports_what_is_left(
+        self,
+    ) -> None:
+        """Each round finds a fact and its dream episode, exactly the budget:
+        the next round, cut to nothing, is still reported, and each forget
+        again goes one level further."""
+        graph = _chain()
+
+        with patch.object(recall_cascade, "CASCADE_MAX_ITEMS", 2):
+            tries = [await _cascade(graph, ["f"]) for _ in range(3)]
+
+        assert [t.derived for t in tries] == [["c"], ["p"], ["q"]]
+        assert [[f.code for f in t.failures] for t in tries] == [
+            [_CLEANUP],
+            [_CLEANUP],
+            [],
+        ]
+
 
 class TestFailures:
     @pytest.mark.asyncio

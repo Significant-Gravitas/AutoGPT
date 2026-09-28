@@ -137,17 +137,19 @@ async def _run(
     now: str,
     result: ForgetResult,
 ) -> bool:
-    """Rounds until one finds nothing (True) or a bound stops them (False)."""
+    """Rounds until one finds nothing (True) or a bound stops them (False).
+    A round the budget cut short, to nothing at all once it is spent, still
+    left something behind."""
     frontier = await _resume(driver, walk, now, result)
     for _ in range(CASCADE_MAX_ROUNDS):
         found = await _derived(driver, walk, frontier)
         if not (found.facts or found.episodes):
-            return True
+            return not found.truncated
         frontier = await _retire(driver, group_id, walk, found, now, result)
         if found.truncated:
             return False
     last = await _derived(driver, walk, frontier)
-    return not (last.facts or last.episodes)
+    return not (last.facts or last.episodes or last.truncated)
 
 
 async def _resume(
