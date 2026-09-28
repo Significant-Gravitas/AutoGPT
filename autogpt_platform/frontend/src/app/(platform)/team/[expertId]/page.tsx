@@ -41,7 +41,9 @@ import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
 import { ExpertSummaryCard } from "./components/ExpertSummaryCard";
+import { ExpertHandoffsSection } from "./components/ExpertWorkSection/ExpertHandoffsSection";
 import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
+import { useExpertHandoffs } from "./components/ExpertWorkSection/useExpertHandoffs";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
@@ -94,6 +96,10 @@ export default function ExpertDetailPage() {
     expertId,
     enabled: Boolean(enabled) && ready,
   });
+  const { isWorkingForOtto } = useExpertHandoffs({
+    expertId,
+    enabled: Boolean(enabled) && ready,
+  });
 
   if (!ready || isLoading) {
     return (
@@ -130,6 +136,7 @@ export default function ExpertDetailPage() {
         <BackToTeamLink />
         <ExpertDetailHeader
           expert={expert}
+          isWorkingForOtto={isWorkingForOtto}
           onEditSoul={toggleSoul}
           onChat={toggleChat}
         />
@@ -197,11 +204,18 @@ export default function ExpertDetailPage() {
           </TabsLineContent>
 
           <TabsLineContent value="work">
-            <ExpertWorkSection
-              expertId={expert.id}
-              expertName={expert.name}
-              enabled={Boolean(enabled) && ready}
-            />
+            <div className="space-y-8">
+              <ExpertHandoffsSection
+                expertId={expert.id}
+                expertName={expert.name}
+                enabled={Boolean(enabled) && ready}
+              />
+              <ExpertWorkSection
+                expertId={expert.id}
+                expertName={expert.name}
+                enabled={Boolean(enabled) && ready}
+              />
+            </div>
           </TabsLineContent>
 
           <TabsLineContent value="schedules">

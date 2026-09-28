@@ -8,15 +8,22 @@ import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getExpertCover } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { IntegrationIcons } from "../../components/ExpertTeamCard/components/IntegrationIcons";
+import { WorkingForPill } from "../../components/DelegationList/DelegationStatusBadge";
 import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
 
 interface Props {
   expert: Expert;
+  isWorkingForOtto?: boolean;
   onEditSoul: () => void;
   onChat: () => void;
 }
 
-export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
+export function ExpertDetailHeader({
+  expert,
+  isWorkingForOtto = false,
+  onEditSoul,
+  onChat,
+}: Props) {
   const cover = getExpertCover(expert);
   const topic = expert.categories?.[0];
 
@@ -42,7 +49,14 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
               />
             }
           />
-          {topic ? <CategoryTag category={topic} className="mt-2" /> : null}
+          {topic || isWorkingForOtto ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {topic ? <CategoryTag category={topic} /> : null}
+              {isWorkingForOtto ? (
+                <WorkingForPill>Working for Otto</WorkingForPill>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
