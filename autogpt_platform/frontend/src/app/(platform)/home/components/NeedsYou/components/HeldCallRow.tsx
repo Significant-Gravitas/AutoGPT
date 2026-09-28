@@ -63,7 +63,7 @@ export function HeldCallRow({
             <button
               type="button"
               id={headlineButtonId(item.id)}
-              aria-expanded={false}
+              aria-haspopup="dialog"
               onClick={onOpen}
               className="line-clamp-2 min-w-0 rounded-md text-left text-zinc-900 [overflow-wrap:anywhere] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
             >

@@ -11,6 +11,8 @@ import type { HeldReceipt } from "../useHeldReview";
 interface Props {
   approval: ApprovalItem;
   receipt: HeldReceipt;
+  // In the review dialog the receipt stands where the card's heading was.
+  heading?: boolean;
 }
 
 const ICONS = {
@@ -19,14 +21,20 @@ const ICONS = {
   elsewhere: [InformationCircleIcon, "text-zinc-400"],
 } as const;
 
-export function HeldReceiptRow({ approval, receipt }: Props) {
+export function HeldReceiptRow({ approval, receipt, heading = false }: Props) {
   const [icon, tone] = ICONS[receipt.outcome];
   return (
     <div className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-600">
       <Icon icon={icon} size={14} className={tone} aria-hidden />
-      <span className="min-w-0 truncate">
-        <HeadlineText item={approval} />
-      </span>
+      {heading ? (
+        <h3 className="min-w-0 truncate">
+          <HeadlineText item={approval} />
+        </h3>
+      ) : (
+        <span className="min-w-0 truncate">
+          <HeadlineText item={approval} />
+        </span>
+      )}
       <span className="shrink-0 text-zinc-400">· {receipt.text}</span>
     </div>
   );

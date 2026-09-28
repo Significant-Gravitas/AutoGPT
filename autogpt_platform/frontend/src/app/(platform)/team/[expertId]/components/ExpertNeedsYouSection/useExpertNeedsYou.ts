@@ -2,6 +2,7 @@ import { useGetHomeDashboard } from "@/app/api/__generated__/endpoints/home/home
 import { okData } from "@/app/api/helpers";
 import { useAttentionDecisions } from "@/app/(platform)/home/components/NeedsYou/useAttentionDecisions";
 import { useHeldReview } from "@/app/(platform)/home/components/NeedsYou/useHeldReview";
+import { useReviewCarousel } from "@/app/(platform)/home/components/NeedsYou/useReviewCarousel";
 
 interface Args {
   expertId: string;
@@ -22,6 +23,7 @@ export function useExpertNeedsYou({ expertId, enabled }: Args) {
   });
   const items = dashboardQuery.data ?? EMPTY;
   const held = useHeldReview({ items });
+  const carousel = useReviewCarousel({ rows: held.rows, held });
 
   return {
     rows: held.rows,
@@ -29,6 +31,7 @@ export function useExpertNeedsYou({ expertId, enabled }: Args) {
     pendingIDs,
     decide,
     held,
+    carousel,
   };
 }
 

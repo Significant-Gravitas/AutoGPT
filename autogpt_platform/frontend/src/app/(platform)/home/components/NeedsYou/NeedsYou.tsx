@@ -7,6 +7,7 @@ import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AttentionRow } from "./components/AttentionRow";
 import { HeldCall } from "./components/HeldCall";
+import { HeldReviewDialog } from "./components/HeldReviewDialog";
 import { isHeldCall } from "./helpers";
 import { useNeedsYou } from "./useNeedsYou";
 
@@ -26,6 +27,7 @@ export function NeedsYou({ dashboard, className }: Props) {
     pendingIDs,
     decide,
     held,
+    carousel,
   } = useNeedsYou({ items: dashboard.attention });
 
   return (
@@ -65,12 +67,8 @@ export function NeedsYou({ dashboard, className }: Props) {
               receipt={receipt}
               status={held.statusOf(item.id)}
               failed={held.hasFailed(item.id)}
-              open={held.openId === item.id}
-              onToggle={() => held.toggle(item.id)}
-              onClose={() => held.close(item.id)}
-              onDecide={(approved, rule, scope) =>
-                held.decide([item], approved, rule, scope)
-              }
+              onOpen={() => carousel.openAt(item.id)}
+              onDecide={(approved) => held.decide([item], approved)}
             />
           ) : (
             <AttentionRow
@@ -85,6 +83,7 @@ export function NeedsYou({ dashboard, className }: Props) {
       <span className="sr-only" aria-live="polite">
         {held.announcement}
       </span>
+      <HeldReviewDialog carousel={carousel} held={held} />
     </HomeTile>
   );
 }

@@ -6,6 +6,7 @@ import {
   isHeldRead,
 } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import type { AttentionListRow } from "./useHeldReview";
 
 // A passage this short is shown whole on the row, so it can be released from there.
 export const PASSAGE_FITS = 180;
@@ -59,4 +60,15 @@ export function shortAge(createdAt: Date | string, now = new Date()) {
 
 export function headlineButtonId(itemID: string) {
   return `held-${itemID.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+// "4 released · 1 kept out · 1 answered elsewhere"
+export function reviewTally(rows: AttentionListRow[]) {
+  const counts = new Map<string, number>();
+  for (const { receipt } of rows) {
+    if (!receipt) continue;
+    const label = receipt.text.split(" · ")[0].toLowerCase();
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, n]) => `${n} ${label}`).join(" · ");
 }

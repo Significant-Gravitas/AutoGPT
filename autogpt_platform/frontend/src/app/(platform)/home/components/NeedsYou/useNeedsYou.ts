@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { useAttentionDecisions } from "./useAttentionDecisions";
 import { useHeldReview } from "./useHeldReview";
+import { useReviewCarousel } from "./useReviewCarousel";
 
 interface Args {
   items: HomeAttentionItem[];
@@ -21,6 +22,7 @@ const FILTER_LABELS: Partial<Record<AttentionFilter, string>> = {
 export function useNeedsYou({ items }: Args) {
   const { pendingIDs, decide } = useAttentionDecisions();
   const held = useHeldReview({ items });
+  const carousel = useReviewCarousel({ rows: held.rows, held });
   const [activeKind, setActiveKind] = useState<AttentionFilter>("all");
   const filterKinds = Array.from(new Set(items.map((item) => item.kind)));
   const selectedKind: AttentionFilter =
@@ -48,5 +50,6 @@ export function useNeedsYou({ items }: Args) {
     pendingIDs,
     decide,
     held,
+    carousel,
   };
 }

@@ -111,33 +111,7 @@ test.each([
   },
 );
 
-test("Review opens the chat's card in place, one at a time, and Esc closes it", async () => {
-  const user = userEvent.setup();
-  const first = homeHeldItem(mail("m1"), { session: "s1" });
-  const second = homeHeldItem(referenceCard("Delete file"), { session: "s2" });
-  renderTile([first, second]);
-
-  await user.click(
-    screen.getByRole("button", { name: `Review: ${first.title}` }),
-  );
-  const detail = screen.getByRole("group", { name: first.title });
-  expect(detail.textContent).toContain("dana@acme.com");
-  expect(
-    screen.getByRole("link", { name: "Open chat" }).getAttribute("href"),
-  ).toBe("/copilot?sessionId=s1");
-
-  await user.click(
-    screen.getByRole("button", { name: `Review: ${second.title}` }),
-  );
-  expect(screen.queryByRole("group", { name: first.title })).toBeNull();
-  expect(screen.getByRole("group", { name: second.title })).toBeDefined();
-
-  await user.keyboard("{Escape}");
-  expect(screen.queryByRole("group", { name: second.title })).toBeNull();
-  await waitFor(() => expect(document.activeElement?.id).toMatch(/^held-/));
-});
-
-test("approving with a rule from the detail sends the rule and its scope", async () => {
+test("approving with a rule from the dialog sends the rule and its scope", async () => {
   const user = userEvent.setup();
   const requests = serveAnswers();
   const item = homeHeldItem(mail());

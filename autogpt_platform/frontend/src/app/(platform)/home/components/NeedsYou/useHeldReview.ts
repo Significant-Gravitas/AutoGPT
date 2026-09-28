@@ -26,6 +26,12 @@ interface Args {
   items: HomeAttentionItem[];
 }
 
+interface DecideOptions {
+  rule?: ChatRule;
+  scope?: RuleScope;
+  focusNext?: boolean;
+}
+
 // Held calls decided here stay as receipts in place, so the list never shifts under the pointer.
 export function useHeldReview({ items }: Args) {
   const queryClient = useQueryClient();
@@ -33,7 +39,6 @@ export function useHeldReview({ items }: Args) {
   const [statuses, setStatuses] = useState<Record<string, CardStatus>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const [receipts, setReceipts] = useState<Record<string, HeldReceipt>>({});
-  const [openId, setOpenId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const seen = useRef(new Map<string, HomeAttentionItem>());
   const answeredHere = useRef(new Set<string>());
@@ -68,12 +73,12 @@ export function useHeldReview({ items }: Args) {
     for (const item of gone) answeredHere.current.add(item.id);
   }, [items]);
 
+  // Resolves to the ids that landed; the list moves focus on, the dialog advances itself.
   async function decide(
     batch: HomeAttentionItem[],
     approved: boolean,
-    rule?: ChatRule,
-    scope?: RuleScope,
-  ) {
+    { rule, scope, focusNext = true }: DecideOptions = {},
+  ): Promise<string[]> {
     const ids = batch.map((item) => item.id);
     setFailed((prev) => prev.filter((id) => !ids.includes(id)));
     setStatuses((prev) => ({
@@ -114,8 +119,7 @@ export function useHeldReview({ items }: Args) {
           ? `${done[0].title}: ${next[0].receipt.text}`
           : `${next.length} answered: ${next[0].receipt.text.split(" · ")[0]}`,
       );
-      if (done.some((item) => item.id === openId)) setOpenId(null);
-      focusNextAfter(ids);
+      if (focusNext) focusNextAfter(ids);
       done.forEach((item) =>
         trackFunnel("home_attention_actioned", {
           kind: item.kind,
@@ -129,9 +133,10 @@ export function useHeldReview({ items }: Args) {
       return next;
     });
     if (done.length > 0)
-      await queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: getGetHomeDashboardQueryKey(),
       });
+    return done.map((item) => item.id);
   }
 
   async function send(
@@ -168,25 +173,11 @@ export function useHeldReview({ items }: Args) {
     );
   }
 
-  function toggle(itemID: string | null) {
-    setOpenId((current) => (current === itemID ? null : itemID));
-  }
-
-  function close(itemID: string) {
-    setOpenId(null);
-    requestAnimationFrame(() =>
-      document.getElementById(headlineButtonId(itemID))?.focus(),
-    );
-  }
-
   return {
     rows,
     pendingCount: items.filter((item) => !receipts[item.id]).length,
     statusOf: (itemID: string): CardStatus => statuses[itemID] ?? "idle",
     hasFailed: (itemID: string) => failed.includes(itemID),
-    openId,
-    toggle,
-    close,
     decide,
     announcement,
   };
