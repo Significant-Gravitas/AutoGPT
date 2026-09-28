@@ -17,9 +17,7 @@ interface Props {
 
 export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   if (!readOnly && row.held && isHandoffApprovalRow(row.tool, row.held)) {
-    return (
-      <HandoffApprovalNode held={row.held} input={row.input} isLast={isLast} />
-    );
+    return <HandoffApprovalNode held={row.held} isLast={isLast} />;
   }
   if (row.tool && HANDOFF_TOOLS.has(row.tool)) {
     return <HandoffRowView row={row} isLast={isLast} readOnly={readOnly} />;

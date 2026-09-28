@@ -3,6 +3,7 @@ import {
   getPostV2ProcessReviewActionMockHandler200,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import {
   fireEvent,
   render,
@@ -77,9 +78,15 @@ describe("a hand-off held for approval", () => {
         ),
       ).toBeDefined();
       const node = screen.getByTestId("handoff-approval-node");
-      expect(node.textContent).toContain("Hand a task to a teammate");
+      expect(node.textContent).toContain("Hand off “Draft the PRD” to Alex");
+      expect(node.textContent).toContain("Ask First");
+      expect(node.textContent).toContain("Brief");
+      expect(node.textContent).toContain("A report in this chat");
       expect(screen.getByRole("button", { name: /reject/i })).toBeDefined();
       expect(screen.queryByText("Waiting for you")).toBeNull();
+      // The review takes no edits, so the card offers none.
+      expect(screen.queryByRole("button", { name: /edit brief/i })).toBeNull();
+      expect(screen.queryByText(/always allow/i)).toBeNull();
     },
     SLOW,
   );
@@ -114,6 +121,107 @@ describe("a hand-off held for approval", () => {
       );
       await waitFor(() => expect(onBackendTurn).toHaveBeenCalled(), {
         timeout: 8000,
+      });
+    },
+    SLOW,
+  );
+
+  it(
+    "always allows hand-offs to the expert from the card's link",
+    async () => {
+      const bodies: unknown[] = [];
+      server.use(
+        getGetV2GetPendingReviewsForChatSessionMockHandler200([
+          heldReview({
+            id: "h1",
+            tool: "delegate_to_expert",
+            args: { expert_id: "Alex", prompt: "Draft the PRD" },
+            chatRules: ["allow"],
+          }),
+        ]),
+        http.post("*/api/review/action", async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json({
+            approved_count: 1,
+            rejected_count: 0,
+            failed_count: 0,
+            error: null,
+          });
+        }),
+      );
+      render(chain(new Map()));
+
+      fireEvent.click(
+        await screen.findByRole(
+          "button",
+          { name: /always allow hand-offs to alex/i },
+          { timeout: 8000 },
+        ),
+      );
+      await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 8000 });
+      expect(bodies[0]).toMatchObject({
+        reviews: [
+          {
+            node_exec_id: REVIEW_ID,
+            approved: true,
+            chat_rule: "allow",
+            chat_rule_scope: "expert",
+          },
+        ],
+      });
+    },
+    SLOW,
+  );
+
+  it(
+    "sends an edited brief when the review accepts edits",
+    async () => {
+      const bodies: unknown[] = [];
+      server.use(
+        getGetV2GetPendingReviewsForChatSessionMockHandler200([
+          {
+            ...heldReview({
+              id: "h1",
+              tool: "delegate_to_expert",
+              args: { expert_id: "Alex", prompt: "Draft the PRD" },
+            }),
+            editable: true,
+          },
+        ]),
+        http.post("*/api/review/action", async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json({
+            approved_count: 1,
+            rejected_count: 0,
+            failed_count: 0,
+            error: null,
+          });
+        }),
+      );
+      render(chain(new Map()));
+
+      fireEvent.click(
+        await screen.findByRole(
+          "button",
+          { name: /edit brief/i },
+          { timeout: 8000 },
+        ),
+      );
+      fireEvent.change(screen.getByLabelText("Brief"), {
+        target: { value: "Draft the PRD, scope only" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+      await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 8000 });
+      expect(bodies[0]).toMatchObject({
+        reviews: [
+          {
+            approved: true,
+            reviewed_data: {
+              expert_id: "Alex",
+              prompt: "Draft the PRD, scope only",
+            },
+          },
+        ],
       });
     },
     SLOW,
