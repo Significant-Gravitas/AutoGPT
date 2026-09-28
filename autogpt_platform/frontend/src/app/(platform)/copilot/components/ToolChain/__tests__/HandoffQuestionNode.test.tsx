@@ -1,4 +1,8 @@
-import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getAnswerSessionMockHandler200,
+  getAnswerSessionMockHandler503,
+  getGetV2GetSessionMockHandler200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -9,6 +13,7 @@ import {
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
+import { useDelegationAnswerStore } from "../../../delegationAnswerStore";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { ToolChain } from "../ToolChain";
 
@@ -80,43 +85,78 @@ describe("a hand-off on the wire", () => {
   afterEach(() => {
     cleanup();
     push.mockReset();
+    useDelegationAnswerStore.setState({ answers: {} });
   });
 
   // Coverage-instrumented CI shards mount the settled chain slowly.
   const SLOW = 20_000;
 
+  async function answerTheQuestion() {
+    const node = await screen.findByTestId(
+      "handoff-question-node",
+      {},
+      { timeout: 8000 },
+    );
+    expect(node.textContent).toContain(
+      "Alex asks · paused on “Onboarding revamp PRD”",
+    );
+    expect(screen.getByText("Alex asked a question")).toBeDefined();
+    // One tag on the row, one on the card's header.
+    expect(screen.getAllByText("Needs you")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Q4" }));
+    fireEvent.change(screen.getByLabelText("Answer Alex"), {
+      target: { value: "Keep December as a stretch note" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  }
+
+  function renderWaitingHandoff() {
+    render(
+      chain([
+        delegatePart({
+          status: "completed",
+          sub_session_id: "sub-1",
+          response: "Q4 release train or December mini-launch?",
+          expert: ALEX,
+        }),
+      ]),
+    );
+  }
+
   it(
-    "hangs the teammate's question on the wire, chips and all, and sends the answer to their thread",
+    "hangs the teammate's question on the wire, chips and all, and posts the answer into their thread",
     async () => {
-      server.use(waitingSubSession());
-      render(
-        chain([
-          delegatePart({
-            status: "completed",
-            sub_session_id: "sub-1",
-            response: "Q4 release train or December mini-launch?",
-            expert: ALEX,
-          }),
-        ]),
+      const posted: { sessionId: string; body: unknown }[] = [];
+      server.use(
+        waitingSubSession(),
+        getAnswerSessionMockHandler200(async ({ request, params }) => {
+          posted.push({
+            sessionId: String(params.sessionId),
+            body: await request.json(),
+          });
+          return { session_id: "sub-1", queued: false };
+        }),
       );
+      renderWaitingHandoff();
+      await answerTheQuestion();
 
-      const node = await screen.findByTestId(
-        "handoff-question-node",
-        {},
-        { timeout: 8000 },
-      );
-      expect(node.textContent).toContain(
-        "Alex asks · paused on “Onboarding revamp PRD”",
-      );
-      expect(screen.getByText("Alex asked a question")).toBeDefined();
-      // One tag on the row, one on the card's header.
-      expect(screen.getAllByText("Needs you")).toHaveLength(2);
-
-      fireEvent.click(screen.getByRole("button", { name: "Q4" }));
-      fireEvent.change(screen.getByLabelText("Answer Alex"), {
-        target: { value: "Keep December as a stretch note" },
+      await waitFor(() => expect(posted).toHaveLength(1));
+      expect(posted[0]).toEqual({
+        sessionId: "sub-1",
+        body: { message: "Q4. Keep December as a stretch note" },
       });
-      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      expect(push).not.toHaveBeenCalled();
+    },
+    SLOW,
+  );
+
+  it(
+    "drafts the answer into the teammate's thread when posting it fails",
+    async () => {
+      server.use(waitingSubSession(), getAnswerSessionMockHandler503());
+      renderWaitingHandoff();
+      await answerTheQuestion();
 
       await waitFor(() => expect(push).toHaveBeenCalled());
       const href = new URL(push.mock.calls[0][0], "http://x");

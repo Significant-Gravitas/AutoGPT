@@ -333,6 +333,45 @@ describe("getChatDelegations", () => {
     });
   });
 
+  it("reads cost, times and the question off a needs_input tool result", () => {
+    // Field names as the backend's SubSessionStatusResponse serialises them.
+    const [delegation] = getChatDelegations([
+      assistant("m1", [
+        toolPart(
+          "delegate_to_expert",
+          "call-1",
+          { expert_id: "exp-alex", prompt: "Draft the PRD" },
+          {
+            type: "mcp_tool_output",
+            message: "Alex asked a question.",
+            status: "needs_input",
+            sub_session_id: "sub-1",
+            sub_autopilot_session_id: "sub-1",
+            sub_autopilot_session_link: "/copilot?sessionId=sub-1",
+            expert: ALEX,
+            elapsed_seconds: 134,
+            cost_usd: 0.21,
+            started_at: "2026-09-28T10:42:00Z",
+            finished_at: "2026-09-28T10:44:14Z",
+            question: "Q4 release train or December mini-launch?",
+            question_options: ["Q4", "December", "Both"],
+          },
+        ),
+      ]),
+    ]);
+    expect(delegation).toMatchObject({
+      status: "needs-input",
+      subSessionId: "sub-1",
+      elapsedSeconds: 134,
+      costUsd: 0.21,
+      startedAt: "2026-09-28T10:42:00Z",
+      finishedAt: "2026-09-28T10:44:14Z",
+      question: "Q4 release train or December mini-launch?",
+      questionOptions: ["Q4", "December", "Both"],
+      expert: { name: "Alex" },
+    });
+  });
+
   it("ignores user messages and unrelated tools", () => {
     const messages = [
       { id: "u", role: "user", parts: [{ type: "text", text: "hi" }] },
