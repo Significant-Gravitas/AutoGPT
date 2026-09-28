@@ -21,7 +21,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NotRequired, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
@@ -42,7 +42,7 @@ from claude_agent_sdk.types import SystemPromptPreset
 from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
-from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
+from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot.graphiti import context_refresh
@@ -54,6 +54,7 @@ from backend.copilot.model_router import (
 )
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.feedback_db import RATEABLE_ROLES
+from backend.copilot.cli_session_entry import rewrite_user_entry
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.context_marker import (
     INJECTED_MEMORY_NONCE,
@@ -1157,7 +1158,7 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
             survived += 1
             out.append(line)
             continue
-        rewritten = _rewrite_user_entry_memory(entry)
+        rewritten = rewrite_user_entry(entry, strip_injected_memory_text)
         if rewritten is None:
             survived += 1
             out.append(line)
@@ -1172,108 +1173,6 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
             survived,
         )
     return b"".join(out)
-
-
-def _rewrite_user_entry_memory(entry: object) -> dict[str, object] | None:
-    """Return *entry* with the injected memory block stripped, or None.
-
-    None means "no change" — the caller keeps the original line byte-for-byte,
-    so only user messages that actually carried a marked block are re-serialised
-    (untouched entries are never reformatted). Entries that aren't user messages
-    (or don't match the CLI's user-entry shape at all) fail validation and are
-    likewise left alone.
-    """
-    try:
-        parsed = _CLIUserEntry.model_validate(entry)
-    except ValidationError:
-        return None
-    rewritten = parsed.message.without_injected_memory()
-    if rewritten is None:
-        return None
-    return parsed.model_copy(update={"message": rewritten}).model_dump()
-
-
-class _CLITextBlock(BaseModel):
-    """A ``text`` content block of a CLI JSONL user message."""
-
-    model_config = ConfigDict(extra="allow")
-
-    type: Literal["text"]
-    text: str
-
-    def without_injected_memory(self) -> "_CLITextBlock | None":
-        """Return the cleaned block, or None when it must be dropped entirely.
-
-        A block that empties out is dropped rather than emitted empty, since
-        Anthropic rejects empty text blocks on ``--resume``.
-        """
-        cleaned = strip_injected_memory_text(self.text)
-        if not cleaned:
-            return None
-        return self.model_copy(update={"text": cleaned})
-
-
-class _CLIOpaqueBlock(RootModel[object]):
-    """Any other content block (image, tool_result, …) — passed through as-is."""
-
-    def without_injected_memory(self) -> "_CLIOpaqueBlock | None":
-        return self
-
-
-# Left-to-right so a well-formed text block never falls through to the opaque
-# passthrough (which validates anything).
-_CLIContentBlock = Annotated[
-    _CLITextBlock | _CLIOpaqueBlock, Field(union_mode="left_to_right")
-]
-
-
-class _CLIUserTextMessage(BaseModel):
-    """User message whose content is a bare string."""
-
-    model_config = ConfigDict(extra="allow")
-
-    role: Literal["user"]
-    content: str
-
-    def without_injected_memory(self) -> "_CLIUserTextMessage | None":
-        """Return the rewritten message, or None to keep the original as-is."""
-        cleaned = strip_injected_memory_text(self.content)
-        if cleaned == self.content or not cleaned:
-            # Unchanged, or the whole message was the injected block — keep the
-            # original rather than emit empty content that --resume rejects.
-            return None
-        return self.model_copy(update={"content": cleaned})
-
-
-class _CLIUserBlocksMessage(BaseModel):
-    """User message whose content is a list of content blocks."""
-
-    model_config = ConfigDict(extra="allow")
-
-    role: Literal["user"]
-    content: list[_CLIContentBlock]
-
-    def without_injected_memory(self) -> "_CLIUserBlocksMessage | None":
-        """Return the rewritten message, or None to keep the original as-is."""
-        kept = [
-            cleaned
-            for cleaned in (block.without_injected_memory() for block in self.content)
-            if cleaned is not None
-        ]
-        if not kept:
-            # Every block emptied out — keep the original intact.
-            return None
-        rewritten = self.model_copy(update={"content": kept})
-        return None if rewritten == self else rewritten
-
-
-class _CLIUserEntry(BaseModel):
-    """A ``{"type": "user", ...}`` line of the CLI's native session JSONL."""
-
-    model_config = ConfigDict(extra="allow")
-
-    type: Literal["user"]
-    message: _CLIUserTextMessage | _CLIUserBlocksMessage
 
 
 def _is_synthetic_reprompt_user_entry(entry: dict | None) -> bool:

@@ -2488,7 +2488,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         """A user entry whose ``content`` is a BARE STRING.
 
         The CLI emits this shape as well as the list-of-blocks one, so it
-        drives ``_CLIUserTextMessage`` rather than ``_CLIUserBlocksMessage``.
+        drives ``CLIUserTextMessage`` rather than ``CLIUserBlocksMessage``.
         """
         return (
             b'{"type":"user","message":{"role":"user","content":'
@@ -2590,7 +2590,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
 
     def test_warns_when_a_nonce_line_is_not_a_cli_user_entry(self, caplog):
         """Same fail-safe, other arm: valid JSON carrying the nonce that does
-        not match ``_CLIUserEntry`` (e.g. an assistant entry)."""
+        not match ``CLIUserEntry`` (e.g. an assistant entry)."""
         entry = {
             "type": "assistant",
             "message": {"role": "assistant", "content": INJECTED_MEMORY_MARKER},
