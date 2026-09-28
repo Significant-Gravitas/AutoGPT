@@ -179,7 +179,9 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
       action();
       return;
     }
-    void exitFullscreen().then(action);
+    void exitFullscreen().then((didExit) => {
+      if (didExit) action();
+    });
   }
 
   function handleDesktopClose() {

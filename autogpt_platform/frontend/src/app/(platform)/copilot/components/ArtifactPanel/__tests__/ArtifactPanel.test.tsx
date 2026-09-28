@@ -290,6 +290,37 @@ describe("ArtifactPanel (desktop) width clamping", () => {
     });
   });
 
+  it("keeps the artifact open when exiting fullscreen fails", async () => {
+    const fullscreenElement = vi
+      .spyOn(document, "fullscreenElement", "get")
+      .mockReturnValue(null);
+    vi.spyOn(HTMLElement.prototype, "requestFullscreen").mockImplementation(
+      async function (this: HTMLElement) {
+        fullscreenElement.mockReturnValue(this);
+        document.dispatchEvent(new Event("fullscreenchange"));
+      },
+    );
+    vi.spyOn(document, "exitFullscreen").mockRejectedValue(
+      new Error("fullscreen exit rejected"),
+    );
+
+    render(<ArtifactPanel sessionId="session-1" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Enter fullscreen" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "All files" }));
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't change fullscreen mode",
+        variant: "destructive",
+      });
+    });
+    expect(
+      useCopilotUIStore.getState().artifactPanel.activeArtifact,
+    ).not.toBeNull();
+  });
+
   it("hides fullscreen when the browser does not support it", async () => {
     vi.spyOn(document, "fullscreenEnabled", "get").mockReturnValue(false);
     render(<ArtifactPanel />);

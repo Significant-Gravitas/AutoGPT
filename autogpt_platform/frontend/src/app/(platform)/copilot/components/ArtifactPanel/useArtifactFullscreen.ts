@@ -27,14 +27,16 @@ export function useArtifactFullscreen() {
       !fullscreenRef.current ||
       document.fullscreenElement !== fullscreenRef.current
     )
-      return;
+      return true;
     try {
       await document.exitFullscreen();
+      return true;
     } catch {
       toast({
         title: "Couldn't change fullscreen mode",
         variant: "destructive",
       });
+      return false;
     }
   }
 
