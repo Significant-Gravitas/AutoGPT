@@ -420,20 +420,30 @@ class AudienceAction(Enum):
 
 class AudienceEventModel(BaseModel):
     """A MailerLite audience change, queued rather than called inline so a
-    MailerLite outage can never fail payment processing."""
+    MailerLite outage can never fail payment processing.
+
+    `email` is a plain string, not an EmailStr: it is copied from the stored
+    user record, and re-validating it here would turn any stored address the
+    validator dislikes (e.g. reserved `.test` domains) into a failure of the
+    billing webhook that queued it."""
 
     action: AudienceAction
-    email: EmailStr
+    email: str
     user_id: str
 
 
 class NotificationPreference(BaseModel):
     """The volume knob from the Briefing footer, not a checkbox list. Billing
     and account messages are service mail and are not represented here — they
-    are sent regardless of these settings."""
+    are sent regardless of these settings.
+
+    `email` is a plain string, not an EmailStr: this is a read model built
+    from the address already stored on the user record, so validating it on
+    read turns any stored address the validator dislikes (e.g. reserved
+    `.test` domains) into a 500 for every preference lookup for that user."""
 
     user_id: str
-    email: EmailStr
+    email: str
     briefing_frequency: BriefingFrequency = BriefingFrequency.WEEKLY
     alerts_enabled: bool = True
     store_verdicts_enabled: bool = True
@@ -445,6 +455,13 @@ class NotificationPreference(BaseModel):
 
 
 class NotificationPreferenceDTO(BaseModel):
+    """Write shape for the preferences endpoint. `email` stays an EmailStr:
+    this is the request-input boundary (`POST /auth/user/preferences` writes
+    it straight into `User.email`), so it must keep validating. Stored
+    addresses never flow through here: the internal paths that re-apply
+    stored preferences (`_preference_with_choice`, `unsubscribe_user_by_token`)
+    build the `NotificationPreference` read model instead."""
+
     email: EmailStr
     briefing_frequency: BriefingFrequency
     alerts_enabled: bool

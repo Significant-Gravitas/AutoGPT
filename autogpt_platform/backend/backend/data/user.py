@@ -32,7 +32,7 @@ from backend.data.model import (
     UserIntegrations,
     UserMetadata,
 )
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.notifications import NotificationPreference
 from backend.data.org_migration import ensure_personal_org
 from backend.data.subscription_trial import get_subscription_trial
 from backend.util.cache import cached
@@ -536,7 +536,7 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
 
 
 async def update_user_notification_preference(
-    user_id: str, data: NotificationPreferenceDTO
+    user_id: str, data: NotificationPreference
 ) -> NotificationPreference:
     try:
         update_data: UserUpdateInput = {
@@ -672,7 +672,8 @@ async def unsubscribe_user_by_token(token: str) -> None:
         # footer is what most people should be using instead.
         await update_user_notification_preference(
             user.id,
-            NotificationPreferenceDTO(
+            NotificationPreference(
+                user_id=user.id,
                 email=user.email,
                 briefing_frequency=BriefingFrequency.OFF,
                 alerts_enabled=False,
