@@ -4509,7 +4509,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Answer Session",
-        "description": "Post a user message into a session and start its turn, without a stream.\n\nUsed to answer a delegated expert's question from the chat that\ndelegated it. A running turn takes the message into its pending buffer\ninstead, the same as a follow-up typed mid-turn.",
+        "description": "Post a user message into a session and start its turn, without a stream.\n\nUsed to answer a delegated expert's question from the chat that\ndelegated it. A running turn takes the message into its pending buffer\ninstead, the same as a follow-up typed mid-turn. An answer to a\ndelegation's cap question raises the cap and resumes the thread, or\n(\"Stop\") leaves it stopped without starting a turn.",
         "operationId": "answer_session",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -19363,6 +19363,11 @@
             "anyOf": [{ "type": "number" }, { "type": "null" }],
             "title": "Delegation Cap Usd"
           },
+          "delegation_cap_stopped": {
+            "type": "boolean",
+            "title": "Delegation Cap Stopped",
+            "default": false
+          },
           "pending_question": {
             "anyOf": [
               { "$ref": "#/components/schemas/PendingQuestion" },
@@ -20431,7 +20436,8 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
-              "kind": "normal"
+              "kind": "normal",
+              "delegation_cap_stopped": false
             }
           },
           "expert_id": {
@@ -29774,7 +29780,8 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
-              "kind": "normal"
+              "kind": "normal",
+              "delegation_cap_stopped": false
             }
           },
           "expert_id": {
