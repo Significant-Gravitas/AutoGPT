@@ -1,10 +1,16 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { act } from "@testing-library/react";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import type { HeldOutcome } from "../../ChatMessagesContainer/heldCallRows";
 import { HeldOutcomesContext } from "../../ChatMessagesContainer/HeldOutcomesContext";
 import { ToolChain } from "../ToolChain";
+import { useHeldAnswersStore } from "../../ApprovalQueue/heldAnswersStore";
+
+afterEach(() => {
+  useHeldAnswersStore.setState({ answers: {} });
+});
 
 const HELD: MessagePart = {
   type: "tool-create_folder",
@@ -16,7 +22,7 @@ const HELD: MessagePart = {
     tool_name: "create_folder",
     reason: "Ask First is on.",
     review_id: "copilot-node-gate-create_folder:abc",
-    ask: "Create folder",
+    ask: "Create library folder",
     object: "Q3 reports",
   },
 } as MessagePart;
@@ -36,7 +42,7 @@ test("a held call's row flips from waiting to approved when its late result land
 
   expect(await screen.findByText("Waiting for you")).toBeDefined();
   expect(
-    screen.getAllByText('Create folder "Q3 reports"').length,
+    screen.getAllByText('Create library folder "Q3 reports"').length,
   ).toBeGreaterThan(0);
 
   rerender(
@@ -60,8 +66,8 @@ test("a late result for another call leaves the row waiting", async () => {
 });
 
 test.each([
-  ["rejected", "Rejected", "Didn't create folder"],
-  ["expired", "Expired", "Didn't create folder"],
+  ["rejected", "Rejected", "Didn't create library folder"],
+  ["expired", "Expired", "Didn't create library folder"],
 ] as const)("a %s call says so on its row", async (outcome, tag, label) => {
   render(chain(new Map([["call-7", { outcome, output: "" }]])));
   expect(await screen.findByText(tag)).toBeDefined();
@@ -149,7 +155,7 @@ test("a call that may have run claims neither approval nor refusal", async () =>
   expect(await screen.findByText("Unclear")).toBeDefined();
   expect(screen.queryByText("Approved")).toBeNull();
   expect(screen.queryByText(/Created folder/)).toBeNull();
-  expect(screen.queryByText(/Didn't create folder/)).toBeNull();
+  expect(screen.queryByText(/Didn't create library folder/)).toBeNull();
 });
 
 test("a held read whose release is unclear stays a read, not an action that may have run", async () => {
@@ -159,4 +165,87 @@ test("a held read whose release is unclear stays a read, not an action that may 
     screen.getAllByText('Read "docs.northwind.io/billing"').length,
   ).toBeGreaterThan(0);
   expect(screen.queryByText(/It may have run/)).toBeNull();
+});
+
+test("a row flips to Approved at the click, before the late result lands", async () => {
+  render(chain(new Map()));
+  expect(await screen.findByText("Waiting for you")).toBeDefined();
+
+  act(() =>
+    useHeldAnswersStore
+      .getState()
+      .record(["copilot-node-gate-create_folder:abc"], true),
+  );
+
+  expect(await screen.findByText("Approved")).toBeDefined();
+  expect(screen.queryByText("Waiting for you")).toBeNull();
+  // Not run yet: it still names the action, not its done label.
+  expect(
+    screen.getAllByText('Create library folder "Q3 reports"').length,
+  ).toBeGreaterThan(0);
+  expect(screen.queryByText('Created folder "Q3 reports"')).toBeNull();
+  // The open row does not fall back to showing the held marker's fields.
+  expect(screen.queryByText("copilot-node-gate-create_folder:abc")).toBeNull();
+});
+
+test("a row flips to Rejected at the click", async () => {
+  useHeldAnswersStore
+    .getState()
+    .record(["copilot-node-gate-create_folder:abc"], false);
+  render(chain(new Map()));
+  expect(await screen.findByText("Rejected")).toBeDefined();
+  expect(
+    screen.getAllByText(/Didn't create library folder/).length,
+  ).toBeGreaterThan(0);
+});
+
+test("a held read's row reads Released at the click", async () => {
+  useHeldAnswersStore
+    .getState()
+    .record(["copilot-node-gate-read-web_fetch:abc"], true);
+  render(readChain(new Map()));
+  expect(await screen.findByText("Released")).toBeDefined();
+  expect(screen.queryByText("Held")).toBeNull();
+});
+
+test("the late result wins over the click: approved but failed shows its error", async () => {
+  useHeldAnswersStore
+    .getState()
+    .record(["copilot-node-gate-create_folder:abc"], true);
+  render(
+    chain(
+      new Map([
+        [
+          "call-7",
+          {
+            outcome: "approved",
+            output: { type: "error", message: "Folder exists" },
+          },
+        ],
+      ]),
+    ),
+  );
+  expect(await screen.findByText("Approved")).toBeDefined();
+  const errorLine = screen
+    .getAllByText("Folder exists")
+    .find((el) => el.className.includes("text-red"));
+  expect(errorLine).toBeDefined();
+});
+
+test("the late result wins over the click: an approval that expired says Expired", async () => {
+  useHeldAnswersStore
+    .getState()
+    .record(["copilot-node-gate-create_folder:abc"], true);
+  render(chain(new Map([["call-7", { outcome: "expired", output: "" }]])));
+  expect(await screen.findByText("Expired")).toBeDefined();
+  expect(screen.queryByText("Approved")).toBeNull();
+});
+
+test("an answer to another card leaves the row waiting", async () => {
+  useHeldAnswersStore
+    .getState()
+    .record(["copilot-node-gate-create_folder:other"], true);
+  render(chain(new Map()));
+  expect(await screen.findByText("Waiting for you")).toBeDefined();
+  expect(screen.queryByText("Approved")).toBeNull();
 });

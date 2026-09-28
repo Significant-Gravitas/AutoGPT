@@ -317,6 +317,7 @@ class _FakeWorkspaceManager:
         info.path = path
         info.id = f"id-{path}"
         info.metadata = self.metadata.get(path, {})
+        info.checksum = hashlib.sha256(self.files[path]).hexdigest()
         return info
 
     async def delete_file(self, file_id):
@@ -362,6 +363,12 @@ class _patch_skills_path:
         fake_lock.refresh = AsyncMock(return_value=True)
         fake_lock.release = AsyncMock()
         self.lock = fake_lock
+        # The marketplace as the copy reconcile sees it: nothing published,
+        # so no copy is ever behind. Tests of the reconcile fill these in.
+        self.skill_db = MagicMock()
+        self.skill_db.get_active_versions = AsyncMock(return_value={})
+        self.skill_db.get_version_packages = AsyncMock(return_value={})
+        self.skill_db.find_version_by_hash = AsyncMock(return_value=None)
         self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
             patch(
@@ -379,6 +386,10 @@ class _patch_skills_path:
             patch(
                 "backend.copilot.tools.skills.get_redis_async",
                 new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.copilot.tools.skills.skill_db",
+                return_value=self.skill_db,
             ),
         ]
 

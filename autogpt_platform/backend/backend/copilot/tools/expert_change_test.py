@@ -49,13 +49,9 @@ _CHARTER = {
     "job_title": "Executive Assistant",
     "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
-    "avatar_category": "finance",
     "about": "You group the morning inbox and draft routine replies.",
     "boundaries": "You never send a reply yourself.",
 }
-
-
-AVATAR_KEYS = {"avatar_category"}
 
 
 class _FakeRedis:
@@ -232,25 +228,20 @@ class TestPreviewNeverWrites:
         assert resp.preview.about == _CHARTER["about"]
         assert resp.preview.boundaries == _CHARTER["boundaries"]
         assert resp.preview.color == _CHARTER["color"]
-        assert resp.preview.avatar_url == "/experts/clay/v1/finance.png"
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_defaults_to_warm_stone_without_a_palette(self):
+    async def test_raise_starts_on_the_general_fallback_appearance(self):
+        """A raised Expert never borrows a roster face or a category sheet; its
+        owner picks or generates an appearance from the Team page later."""
         with _env():
-            charter = {k: v for k, v in _CHARTER.items() if k not in AVATAR_KEYS}
-            resp = await _raise(make_session(_USER), **charter)
+            resp = await _raise(make_session(_USER), **_CHARTER)
         assert isinstance(resp, ExpertChangeProposedResponse)
-        assert resp.preview.avatar_url == "/experts/clay/v1/content.png"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_rejects_reserved_otto_palette(self):
-        with _env():
-            resp = await _raise(
-                make_session(_USER), **{**_CHARTER, "avatar_category": "otto"}
-            )
-        assert isinstance(resp, ErrorResponse)
-        assert "avatar_category" in resp.message
+        assert (
+            resp.preview.avatar_url
+            == "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp"
+        )
+        assert "avatar_category" not in RaiseExpertTool().parameters["properties"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_preview_carries_the_template_tagline(self):

@@ -13,7 +13,12 @@ import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
 type Props =
   | { graphExecId: string; graphId?: string }
-  | { chatSessionId: string; pollWhileEmpty?: boolean; refetchKey?: number };
+  | {
+      chatSessionId: string;
+      pollWhileEmpty?: boolean;
+      refetchKey?: number;
+      expertName?: string | null;
+    };
 
 /**
  * Renders the chat's pending reviews, or those of an agent run it started:
@@ -23,6 +28,7 @@ type Props =
 export function CopilotPendingReviews(props: Props) {
   const { onSend, onBackendTurn } = useCopilotChatActions();
   const graphExecId = "graphExecId" in props ? props.graphExecId : "";
+  const expertName = "expertName" in props ? props.expertName : null;
   const { pendingReviews, refetch } = useCopilotPendingReviews(props);
 
   const heldCalls = pendingReviews
@@ -66,7 +72,11 @@ export function CopilotPendingReviews(props: Props) {
 
   return (
     <div className="flex flex-col gap-2 py-2 empty:hidden">
-      <ApprovalQueue items={heldCalls} onAnswered={handleHeldCallAnswered} />
+      <ApprovalQueue
+        items={heldCalls}
+        expertName={expertName}
+        onAnswered={handleHeldCallAnswered}
+      />
       {otherReviews.length > 0 && (
         <PendingReviewsList
           reviews={otherReviews}

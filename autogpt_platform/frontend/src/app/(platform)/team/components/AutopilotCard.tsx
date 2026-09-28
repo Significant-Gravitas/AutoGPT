@@ -16,11 +16,11 @@ import {
   CHIP_SIZE,
 } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryChip";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
-/** Otto's reserved lavender, the one colour no category can take. */
-const AUTOPILOT_COVER_COLOR = "#B6A4C8";
+const AUTOPILOT_COVER_COLOR = AUTOPILOT_HEX;
 
 interface Props {
   skillCount: number;

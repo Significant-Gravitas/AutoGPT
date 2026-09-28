@@ -94,6 +94,7 @@ EXPERT_SETUP_POLL_SECONDS = 1.0
 
 def sync_fail_close_session(
     session_id: str,
+    turn_id: str,
     log: "CoPilotLogMetadata | TruncatedLogger",
     execution_loop: asyncio.AbstractEventLoop,
 ) -> None:
@@ -122,7 +123,7 @@ def sync_fail_close_session(
     async def _bounded() -> None:
         await asyncio.wait_for(
             stream_registry.mark_session_completed(
-                session_id, error_message=SHUTDOWN_ERROR_MESSAGE
+                session_id, error_message=SHUTDOWN_ERROR_MESSAGE, turn_id=turn_id
             ),
             timeout=_FAIL_CLOSE_REDIS_TIMEOUT,
         )
@@ -422,7 +423,9 @@ class CoPilotProcessor:
         try:
             self._execute(entry, cancel, cluster_lock, log)
         finally:
-            sync_fail_close_session(entry.session_id, log, self.execution_loop)
+            sync_fail_close_session(
+                entry.session_id, entry.turn_id, log, self.execution_loop
+            )
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
@@ -805,7 +808,7 @@ class CoPilotProcessor:
             finally:
                 try:
                     await stream_registry.mark_session_completed(
-                        entry.session_id, error_message=error_msg
+                        entry.session_id, error_message=error_msg, turn_id=entry.turn_id
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")

@@ -12,6 +12,7 @@ from backend.api.external.v2.mcp_server import (
     UNSCOPED_EXTERNAL_TOOLS,
     _create_tool_handler,
 )
+from backend.copilot.gate.classifier import Judgement
 from backend.copilot.tools import TOOL_REGISTRY
 
 
@@ -90,7 +91,8 @@ async def test_a_gated_tool_called_over_mcp_is_parked_for_an_approval_nobody_can
     mocker.patch("backend.copilot.gate.chat_rules.rule_for", return_value=None)
     mocker.patch("backend.copilot.gate.review_store.find_review", return_value=None)
     mocker.patch(
-        "backend.copilot.gate.classify", return_value=(False, "Nobody asked for it.")
+        "backend.copilot.gate.supervise",
+        return_value=Judgement(allowed=False, reason="Nobody asked for it."),
     )
     mocker.patch("backend.copilot.gate.held.remember", return_value=True)
     open_review = mocker.patch(

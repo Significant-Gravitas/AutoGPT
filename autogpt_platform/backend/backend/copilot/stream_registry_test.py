@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,6 +11,8 @@ from redis.exceptions import RedisError
 from backend.copilot import stream_registry
 from backend.copilot.constants import STREAM_LOCK_PREFIX
 from backend.copilot.executor.utils import get_session_lock_key
+from backend.data import redis_client
+from backend.util.testing import is_tcp_port_reachable
 
 
 def test_tool_display_roundtrips_redis_and_sse():
@@ -840,3 +843,72 @@ async def test_a_finished_turn_wakes_the_chat_for_cards_answered_during_it(
     assert wake.await_count == (1 if wakes else 0)
     if wakes:
         wake.assert_awaited_once_with("u1", "sess-1")
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="no local Redis reachable; the CAS script needs one to run",
+)
+class TestCompletionOnRealRedis:
+    """A turn's end can wake the next turn before its safety net runs."""
+
+    @pytest.fixture
+    async def session_id(self):
+        session_id = f"test-completion-{uuid.uuid4().hex}"
+        yield session_id
+        redis = await redis_client.get_redis_async()
+        await redis.delete(stream_registry.get_session_meta_key(session_id))
+
+    async def test_a_late_completion_leaves_the_next_turn_running(self, session_id):
+        await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+        await stream_registry.create_session(session_id, None, "", "", turn_id="b")
+
+        with patch.object(stream_registry, "publish_chunk", new=AsyncMock()) as publish:
+            closed = await stream_registry.mark_session_completed(
+                session_id, error_message="shut down", turn_id="a"
+            )
+
+        session = await stream_registry.get_session(session_id)
+        assert closed is False
+        assert session is not None and session.status == "running"
+        publish.assert_not_awaited()
+
+    async def test_a_turn_still_completes_itself(self, session_id):
+        await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+
+        with (
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+        ):
+            closed = await stream_registry.mark_session_completed(
+                session_id, turn_id="a"
+            )
+
+        session = await stream_registry.get_session(session_id)
+        assert closed is True
+        assert session is not None and session.status == "completed"
+
+    async def test_meta_without_a_turn_id_still_completes(self, session_id):
+        await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+        redis = await redis_client.get_redis_async()
+        await redis.hdel(stream_registry.get_session_meta_key(session_id), "turn_id")
+
+        with (
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+        ):
+            closed = await stream_registry.mark_session_completed(
+                session_id, turn_id="a"
+            )
+
+        assert closed is True

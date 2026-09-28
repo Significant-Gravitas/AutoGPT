@@ -1,12 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { delay, http, HttpResponse } from "msw";
 import { fn } from "storybook/test";
+import {
+  DEFAULT_EXPERT_AVATAR_URL,
+  MANAGED_IDENTITIES,
+} from "../ExpertAvatar/helpers";
 import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
 
 const meta = {
   title: "Molecules/ExpertAvatarPicker",
   component: ExpertAvatarPicker,
-  args: { name: "Nova", color: null, onPick: fn() },
+  args: { name: "Nova", category: "finance", onPick: fn() },
   decorators: [
     (Story) => (
       <div className="w-full max-w-lg">
@@ -28,7 +32,7 @@ const meta = {
           return HttpResponse.json({
             id: "preview",
             status: "complete",
-            avatar_url: "/experts/clay/v1/finance.png",
+            avatar_url: DEFAULT_EXPERT_AVATAR_URL,
           });
         }),
       ],
@@ -39,7 +43,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Catalog: Story = {};
+/** The raise flow: one avatar, sculpted the moment the beat opens. */
+export const Generating: Story = { args: { autoGenerate: true } };
+
+/** The team page: the expert already has a face until it is regenerated. */
 export const ExistingAvatar: Story = {
-  args: { avatarUrl: "/experts/clay/v1/marketing.png", color: "rose-300" },
+  args: { category: "marketing", avatarUrl: MANAGED_IDENTITIES[0].url },
 };

@@ -7610,6 +7610,9 @@
               }
             }
           },
+          "400": {
+            "description": "A marketplace skill is both attached and removed"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -19714,6 +19717,14 @@
             "type": "array",
             "title": "Triggers",
             "default": []
+          },
+          "origin": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin"
+          },
+          "update": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Update"
           }
         },
         "type": "object",
@@ -21944,47 +21955,11 @@
               "operations",
               "research",
               "content",
-              "development"
+              "development",
+              "general"
             ],
             "title": "Category",
-            "default": "content"
-          },
-          "color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "terracotta",
-                  "ochre",
-                  "sage",
-                  "coral",
-                  "slate",
-                  "olive",
-                  "stone",
-                  "charcoal",
-                  "rust",
-                  "rose",
-                  "seaglass",
-                  "pine",
-                  "denim",
-                  "sand",
-                  "bluegray",
-                  "redclay",
-                  "apricot",
-                  "moss",
-                  "chalk",
-                  "copper",
-                  "mist",
-                  "ink",
-                  "umber",
-                  "lagoon",
-                  "limestone",
-                  "fern"
-                ]
-              },
-              { "type": "null" }
-            ],
-            "title": "Color"
+            "default": "general"
           },
           "shape": {
             "type": "string",
@@ -22019,28 +21994,17 @@
           },
           "inlay": {
             "type": "string",
-            "enum": ["sweep", "pool", "curl", "patch", "cap", "teardrop"],
+            "enum": [
+              "sweep",
+              "field",
+              "cloud",
+              "bank",
+              "pool",
+              "inlet",
+              "wrap"
+            ],
             "title": "Inlay",
             "default": "sweep"
-          },
-          "accent_placement": {
-            "type": "string",
-            "enum": ["body", "head", "both"],
-            "title": "Accent Placement",
-            "default": "body"
-          },
-          "accent_count": {
-            "type": "string",
-            "enum": ["one", "two", "three"],
-            "title": "Accent Count",
-            "default": "one"
-          },
-          "shade": {
-            "anyOf": [
-              { "type": "string", "enum": ["standard", "light", "dark"] },
-              { "type": "null" }
-            ],
-            "title": "Shade"
           },
           "expression": {
             "type": "string",
@@ -22389,6 +22353,12 @@
             "maxItems": 150,
             "title": "Skills"
           },
+          "remove": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 150,
+            "title": "Remove"
+          },
           "marketplace_listing_ids": {
             "items": { "type": "string" },
             "type": "array",
@@ -22397,9 +22367,8 @@
           }
         },
         "type": "object",
-        "required": ["skills"],
         "title": "ExpertSkillsUpdate",
-        "description": "The full list of skill names an expert should carry. Names new to the\nexpert must be library skills (default or uploaded); names already on\nthe expert are kept as-is so marketplace skills survive a round-trip."
+        "description": "Skills to attach to an expert and skills to remove from it. Names new\nto the expert must be library skills (default or uploaded); names already\non the expert are kept as-is so marketplace skills survive a round-trip.\n\nOnly names listed in ``remove`` are removed. A skill the expert carries\nthat appears in neither list is left alone, so a client holding a stale\nlist can never delete a skill it has not seen (the expert can distil new\nones at any time).\n\nA normalized name must not appear in both ``skills`` and ``remove``;\nsuch a request is rejected with a validation error. A marketplace listing\nwhose name matches a ``remove`` entry is rejected with a 400."
       },
       "ExpertSoulUpdate": {
         "properties": {
@@ -25577,6 +25546,12 @@
             "type": "array",
             "title": "Server Url Options"
           },
+          "allow_custom_url": {
+            "type": "boolean",
+            "title": "Allow Custom Url",
+            "description": "Hosted entries only: server_url stays the default, and users may replace it with their own endpoint, such as a self-hosted instance of the service.",
+            "default": false
+          },
           "oauth_server_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Oauth Server Url"
@@ -28706,6 +28681,13 @@
             ],
             "title": "Chat Rule",
             "description": "AutoPilot cards naming a subject only: once approved, the subject runs ('allow') or goes to the supervisor ('judge') for the rest of the chat instead of asking."
+          },
+          "chat_rule_scope": {
+            "type": "string",
+            "enum": ["chat", "expert", "team"],
+            "title": "Chat Rule Scope",
+            "description": "Where chat_rule holds: this chat, every chat with this chat's Expert (or Otto), or every Expert on the user's team.",
+            "default": "chat"
           }
         },
         "type": "object",
@@ -30376,7 +30358,13 @@
       "StoreSubmissionEditRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
@@ -30434,7 +30422,13 @@
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"

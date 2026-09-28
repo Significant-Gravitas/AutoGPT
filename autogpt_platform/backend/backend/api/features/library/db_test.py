@@ -526,6 +526,10 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
         "backend.api.features.library.db.update_agent_version_in_library",
         new=mocker.AsyncMock(return_value=updated_library_agent),
     )
+    mock_clear_unowned = mocker.patch(
+        "backend.api.features.library.db.clear_unowned_auto_credentials",
+        new=mocker.AsyncMock(),
+    )
 
     result_graph, result_library_agent = await db.update_graph_in_library(
         graph,
@@ -538,6 +542,9 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
     graph_model.reassign_ids.assert_called_once_with(
         user_id="test-user", reassign_graph_id=False
     )
+    # An inactive version skips activation but still drops files picked with
+    # someone else's credentials.
+    mock_clear_unowned.assert_awaited_once_with(graph_model, "test-user")
     mock_get_library_agent.assert_awaited_once_with(
         "test-user",
         "graph-id",

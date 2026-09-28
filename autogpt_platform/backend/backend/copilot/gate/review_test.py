@@ -98,7 +98,7 @@ def test_the_headline_names_the_action_and_its_object():
         "create_folder", {"name": "Q3 reports"}, reason="Ignore me"
     )["headline"]
     assert headline == {
-        "ask": "Create folder",
+        "ask": "Create library folder",
         "object": "Q3 reports",
         "object_key": "name",
     }
@@ -106,7 +106,7 @@ def test_the_headline_names_the_action_and_its_object():
         "Create teammate “Ada”"
     )
     assert headline_for("delete_folder", {"folder_id": "f1"}).text == (
-        "Delete a folder"
+        "Delete library folder"
     )
     assert headline_for("create_folder", {"name": "x" * 100}).text.endswith("…”")
 
@@ -158,7 +158,7 @@ def test_a_bare_tool_is_its_own_subject():
     assert payload["subject"] == {
         "kind": "tool",
         "key": "post_to_chat_platform",
-        "name": "Post to chat platform",
+        "name": "Post a message",
         "effect": "external",
         "irreversible": False,
         "block_id": None,
@@ -166,11 +166,29 @@ def test_a_bare_tool_is_its_own_subject():
     assert payload["mode"] == "auto"
 
 
-def test_a_bare_tool_offers_no_rule_and_a_named_subject_offers_both():
-    assert review_payload("create_folder", {})["chat_rules_allowed"] == []
-    subject = mcp_subject("https://mcp.example.com/mcp", "create_issue")
-    payload = review_payload("run_capability", {}, subject)
+@pytest.mark.parametrize(
+    "tool, subject, kind",
+    [
+        # A bare tool the gate parks is its own subject, so a rule can name it.
+        ("create_agent", None, "supervisor"),
+        ("bash_exec", None, "mode"),
+        ("post_to_chat_platform", None, "mode"),
+        (
+            "run_capability",
+            mcp_subject("https://mcp.example.com/mcp", "create_issue"),
+            "mode",
+        ),
+    ],
+)
+def test_a_parked_card_offers_both_rules(tool, subject, kind):
+    payload = review_payload(tool, {}, subject, reason_kind=kind)
     assert payload["chat_rules_allowed"] == ["allow", "judge"]
+
+
+def test_a_held_read_offers_no_rule():
+    """A read's release is not a call the gate runs, so no rule covers it."""
+    payload = review_payload("bash_exec", {}, reason_kind="content")
+    assert payload["chat_rules_allowed"] == []
 
 
 @pytest.mark.parametrize(
