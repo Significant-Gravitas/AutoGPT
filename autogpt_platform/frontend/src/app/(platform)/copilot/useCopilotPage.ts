@@ -137,12 +137,14 @@ export function useCopilotPage() {
     oldestSequence,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     createSession,
     isCreatingSession,
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
   } = useChatSession({
     dryRun: isDryRun,
     expertId,
@@ -168,6 +170,7 @@ export function useCopilotPage() {
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
   const {
+    followBackendTurn,
     messages: currentMessages,
     setMessages,
     sendMessage,
@@ -413,6 +416,7 @@ export function useCopilotPage() {
     isUserStopping,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     isCreatingSession,
     isUploadingFiles,
     pendingSend,
@@ -439,9 +443,11 @@ export function useCopilotPage() {
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
+    followBackendTurn,
   };
 }

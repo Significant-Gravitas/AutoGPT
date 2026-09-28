@@ -47,6 +47,8 @@ interface Props {
   expertId?: string | null;
   /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
   voiceToggle?: ReactNode;
+  /** The chat's approval-mode selector. Absent when the flag is off. */
+  modeSelector?: ReactNode;
 }
 
 export function EmptySession({
@@ -60,6 +62,7 @@ export function EmptySession({
   expertName,
   expertId = null,
   voiceToggle,
+  modeSelector,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -194,6 +197,7 @@ export function EmptySession({
                   inputId="chat-input-empty"
                   stacked
                   voiceToggle={voiceToggle}
+                  modeSelector={modeSelector}
                   onSend={onSend}
                   disabled={isComposerDisabled}
                   isUploadingFiles={isUploadingFiles}

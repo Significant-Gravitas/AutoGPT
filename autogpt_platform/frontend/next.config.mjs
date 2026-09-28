@@ -4,6 +4,10 @@ import { withSentryConfig } from "@sentry/nextjs";
 // Defaults to true so Vercel/local builds are unaffected.
 const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 
+// CI's e2e image build skips lint and type checks; CI runs `pnpm lint` and
+// `pnpm types` as their own jobs.
+const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // VERCEL_ENV is server-only. Mirror it into the browser bundle so Sentry can
@@ -22,6 +26,8 @@ const nextConfig = {
     ];
   },
   productionBrowserSourceMaps: enableSourceMaps,
+  eslint: { ignoreDuringBuilds: skipBuildChecks },
+  typescript: { ignoreBuildErrors: skipBuildChecks },
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [
     "@opentelemetry/instrumentation",

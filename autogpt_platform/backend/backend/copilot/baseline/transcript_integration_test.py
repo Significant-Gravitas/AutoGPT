@@ -119,7 +119,7 @@ class TestResolveBaselineModel:
 
         assert (
             ChatConfig.model_fields["fast_advanced_model"].default
-            == "anthropic/claude-opus-5"
+            == "anthropic/claude-opus-5-5"
         )
 
     def test_standard_and_advanced_cells_differ_on_fast(self):

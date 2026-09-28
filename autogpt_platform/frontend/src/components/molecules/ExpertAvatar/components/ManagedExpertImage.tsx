@@ -8,6 +8,8 @@ interface Props {
   name: string;
   base: string;
   pixels: number;
+  /** Largest PNG the library ships; WebP goes to 2x of every size. */
+  pngMaxPixels?: number;
   size: number;
   isOtto: boolean;
   className?: string;
@@ -17,6 +19,7 @@ export function ManagedExpertImage({
   name,
   base,
   pixels,
+  pngMaxPixels = 1024,
   size,
   isOtto,
   className,
@@ -50,7 +53,11 @@ export function ManagedExpertImage({
     <picture className={classes} style={{ width: size, height: size }}>
       <source
         type={`image/${format}`}
-        srcSet={`${base}/${pixels}.${format} 1x, ${base}/${pixels * 2}.${format} 2x`}
+        srcSet={
+          format === "png" && pixels * 2 > pngMaxPixels
+            ? `${base}/${pixels}.png 1x`
+            : `${base}/${pixels}.${format} 1x, ${base}/${pixels * 2}.${format} 2x`
+        }
       />
       <Image
         src={`${base}/${pixels}.${format}`}

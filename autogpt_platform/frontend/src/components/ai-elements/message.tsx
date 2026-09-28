@@ -357,7 +357,7 @@ function ExternalLinkModal({
 const math = createMathPlugin({ singleDollarTextMath: true });
 
 export const MessageResponse = memo(
-  ({ className, children, ...props }: MessageResponseProps) => (
+  ({ className, children, components, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
@@ -381,6 +381,7 @@ export const MessageResponse = memo(
             <table {...tableProps}>{children}</table>
           </div>
         ),
+        ...components,
       }}
       plugins={{ code, mermaid, math, cjk }}
       linkSafety={{
