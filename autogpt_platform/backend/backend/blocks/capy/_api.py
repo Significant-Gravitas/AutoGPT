@@ -113,6 +113,11 @@ class CapyClient:
         data = await self._request("GET", "/projects")
         return [Project.model_validate(p) for p in data.get("items", [])]
 
+    async def get_project(self, project_id: str) -> Project:
+        return Project.model_validate(
+            await self._request("GET", f"/projects/{project_id}")
+        )
+
     # --- Threads ----------------------------------------------------------
 
     async def create_thread(

@@ -18,6 +18,7 @@ from backend.sdk import (
 from ._api import CapyClient
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, capy_credentials_field
 from ._models import billed_via
+from ._pull_requests import find_pull_request_url
 from ._testdata import TEST_IDLE_THREAD, TEST_MESSAGES, TEST_THREAD
 from ._types import ACTIVE_THREAD_STATUSES, Message, Thread
 from .threads import MAX_WAIT_SECONDS, _last_assistant, _thread_id_field
@@ -76,6 +77,13 @@ class CapyWaitForThreadBlock(Block):
                 "provider (Codex, Copilot, SuperGrok, Azure)"
             )
         )
+        pull_request_url: str = SchemaField(
+            description=(
+                "The newest GitHub pull request link in the agent's recent "
+                "replies, ready for the GitHub pull request blocks. Only "
+                "emitted when the agent has linked one."
+            )
+        )
 
     def __init__(self):
         super().__init__(
@@ -102,12 +110,14 @@ class CapyWaitForThreadBlock(Block):
                 ("last_reply", TEST_MESSAGES[-1].text),
                 ("model_id", "supergrok/grok-4.5"),
                 ("billed_via", "SuperGrok subscription"),
+                ("pull_request_url", "https://github.com/acme/app/pull/12"),
             ],
             test_mock={
                 "wait_for_thread": lambda *args, **kwargs: (
                     TEST_IDLE_THREAD,
                     TEST_MESSAGES[-1].text,
                     True,
+                    "https://github.com/acme/app/pull/12",
                 )
             },
             effect=BlockEffect.READ,
@@ -119,32 +129,21 @@ class CapyWaitForThreadBlock(Block):
         thread_id: str,
         timeout_seconds: int,
         poll_interval_seconds: int,
-    ) -> tuple[Thread, str, bool]:
-        """Return the thread's latest state, its last reply, and whether it finished."""
+    ) -> tuple[Thread, str, bool, str]:
+        """Return the thread's latest state, its last reply, whether it
+        finished, and the newest pull request link it replied with."""
         client = CapyClient(credentials)
-        deadline = time.monotonic() + timeout_seconds
-        while True:
-            thread = await client.get_thread(thread_id)
-            finished = thread.needs_you
-            if not finished and thread.status not in ACTIVE_THREAD_STATUSES:
-                page = await client.newest_messages(thread_id, limit=20)
-                # A thread reads idle for a moment after it is created or sent
-                # a message, before the agent picks the message up. The agent
-                # has only finished once something follows the last user entry.
-                finished = not page.items or page.items[-1].source != "user"
-                if finished:
-                    return _with_reply(thread, page.items, True)
-            remaining = deadline - time.monotonic()
-            if finished or remaining <= 0:
-                break
-            await asyncio.sleep(min(poll_interval_seconds, remaining))
-        page = await client.newest_messages(thread_id, limit=20)
-        return _with_reply(thread, page.items, finished)
+        thread, messages, finished = await _poll(
+            client, thread_id, timeout_seconds, poll_interval_seconds
+        )
+        thread, reply = _with_reply(thread, messages)
+        pr_url = await find_pull_request_url(client, thread.project_id, messages)
+        return thread, reply, finished, pr_url
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        thread, last_reply, finished = await self.wait_for_thread(
+        thread, last_reply, finished, pr_url = await self.wait_for_thread(
             credentials,
             input_data.thread_id,
             input_data.timeout_seconds,
@@ -157,11 +156,33 @@ class CapyWaitForThreadBlock(Block):
         yield "last_reply", last_reply
         yield "model_id", thread.last_model_id or ""
         yield "billed_via", billed_via(thread.last_model_id)
+        if pr_url:
+            yield "pull_request_url", pr_url
 
 
-def _with_reply(
-    thread: Thread, messages: list[Message], finished: bool
-) -> tuple[Thread, str, bool]:
+async def _poll(
+    client: CapyClient, thread_id: str, timeout_seconds: int, poll_interval: int
+) -> tuple[Thread, list[Message], bool]:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        thread = await client.get_thread(thread_id)
+        finished = thread.needs_you
+        if not finished and thread.status not in ACTIVE_THREAD_STATUSES:
+            page = await client.newest_messages(thread_id, limit=50)
+            # A thread reads idle for a moment after it is created or sent a
+            # message, before the agent picks the message up. The agent has
+            # only finished once something follows the last user entry.
+            if not page.items or page.items[-1].source != "user":
+                return thread, page.items, True
+        remaining = deadline - time.monotonic()
+        if finished or remaining <= 0:
+            break
+        await asyncio.sleep(min(poll_interval, remaining))
+    page = await client.newest_messages(thread_id, limit=50)
+    return thread, page.items, finished
+
+
+def _with_reply(thread: Thread, messages: list[Message]) -> tuple[Thread, str]:
     """Pair the thread with its last reply, taking the model from that reply.
 
     Capy stamps each assistant message with the model that wrote it, while the
@@ -170,7 +191,7 @@ def _with_reply(
     """
     reply = _last_assistant(messages)
     if reply is None:
-        return thread, "", finished
+        return thread, ""
     if reply.model:
         thread = thread.model_copy(update={"last_model_id": reply.model})
-    return thread, reply.text, finished
+    return thread, reply.text

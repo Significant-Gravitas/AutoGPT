@@ -33,6 +33,7 @@ Polls `GET /api/v1/threads/{id}` until the agent stops working, asks a question,
 | last_reply | The agent's most recent reply, which carries its result, its question, or the pull request link | str |
 | model_id | The model the agent last ran on, e.g. supergrok/grok-4.5 | str |
 | billed_via | Who pays for that model: the Capy balance, or the linked provider (Codex, Copilot, SuperGrok, Azure) | str |
+| pull_request_url | The newest GitHub pull request link in the agent's recent replies, ready for the GitHub pull request blocks. Only emitted when the agent has linked one. | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

@@ -13,7 +13,13 @@ import pytest
 from backend.blocks.capy import _api
 from backend.blocks.capy._api import CapyAPIError, CapyClient, _error
 from backend.blocks.capy._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.capy._types import Message, MessagePage, ReviewRound, Thread
+from backend.blocks.capy._types import (
+    Message,
+    MessagePage,
+    Project,
+    ReviewRound,
+    Thread,
+)
 from backend.blocks.capy.messages import CapyListThreadMessagesBlock
 from backend.blocks.capy.wait import CapyWaitForThreadBlock
 
@@ -225,6 +231,11 @@ class TestWaitForThread:
             ),
         )
         monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr(
+            CapyClient,
+            "get_project",
+            AsyncMock(side_effect=CapyAPIError(404, "capy/ProjectNotFound", "gone")),
+        )
         sleep = AsyncMock()
         monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", sleep)
 
@@ -304,6 +315,112 @@ class TestWaitForThread:
 
         assert out["model_id"] == "supergrok/grok-4.5"
         assert out["billed_via"] == "SuperGrok subscription"
+
+    async def test_finds_the_pr_link_in_an_earlier_reply(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        idle = Thread.model_validate(
+            {**LIVE_THREAD, "status": "idle", "needsYou": False}
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", AsyncMock(return_value=idle))
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(
+                            id="1",
+                            source="assistant",
+                            text="Opened https://github.com/acme/app/pull/7 (draft).",
+                        ),
+                        Message(
+                            id="2",
+                            source="user",
+                            text="See https://github.com/acme/app/pull/99",
+                        ),
+                        Message(
+                            id="3",
+                            source="assistant",
+                            text="Opened https://github.com/acme/app/pull/12 instead.",
+                        ),
+                        Message(id="4", source="assistant", text="CI is green."),
+                    ]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1")
+
+        assert out["pull_request_url"] == "https://github.com/acme/app/pull/12"
+        assert out["last_reply"] == "CI is green."
+
+    @pytest.mark.parametrize(
+        "repos,expected",
+        [
+            (
+                [{"repoFullName": "significant-gravitas/autogpt"}],
+                "https://github.com/significant-gravitas/autogpt/pull/14992",
+            ),
+            ([{"repoFullName": "a/one"}, {"repoFullName": "a/two"}], None),
+        ],
+    )
+    async def test_resolves_a_bare_pr_number_against_the_project(
+        self, monkeypatch: pytest.MonkeyPatch, repos: list, expected: str | None
+    ):
+        # Live Capy replies often say "PR #14992 is open" with no URL.
+        idle = Thread.model_validate(
+            {**LIVE_THREAD, "status": "idle", "needsYou": False}
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", AsyncMock(return_value=idle))
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(
+                            id="1",
+                            source="assistant",
+                            text="PR #14992 is open against `dev`.",
+                        )
+                    ]
+                )
+            ),
+        )
+        get_project = AsyncMock(
+            return_value=Project.model_validate(
+                {"id": "p", "name": "AutoGPT", "repos": repos}
+            )
+        )
+        monkeypatch.setattr(CapyClient, "get_project", get_project)
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1")
+
+        get_project.assert_awaited_once_with(LIVE_THREAD["projectId"])
+        assert out.get("pull_request_url") == expected
+
+    async def test_no_pr_link_emits_nothing(self, monkeypatch: pytest.MonkeyPatch):
+        idle = Thread.model_validate(
+            {**LIVE_THREAD, "status": "idle", "needsYou": False}
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", AsyncMock(return_value=idle))
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[Message(id="1", source="assistant", text="pong")]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1")
+
+        assert "pull_request_url" not in out
 
     async def test_stops_when_the_agent_needs_an_answer(
         self, monkeypatch: pytest.MonkeyPatch
