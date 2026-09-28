@@ -9,7 +9,10 @@ from backend.integrations.mcp_catalog import (
     MCPServerMetadata,
     get_mcp_catalog,
     get_mcp_catalog_entry_for_url,
+    get_mcp_effect_maps,
+    mcp_tool_effect,
     parse_mcp_catalog,
+    parse_mcp_effect_maps,
 )
 
 
@@ -25,11 +28,26 @@ def test_posthog_catalog_entry_uses_hosted_authentication():
     assert entry.display_name == "PostHog"
     assert entry.mcp_server.icon_id == "posthog"
     assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
     assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
     assert (
         entry.mcp_server.documentation_url
         == "https://posthog.com/docs/model-context-protocol"
     )
+
+
+def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
+    entry = get_mcp_catalog_entry_for_url("https://app.openseo.so/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_openseo"
+    assert entry.display_name == "OpenSEO"
+    assert entry.mcp_server.icon_id == "openseo"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.server_url == "https://app.openseo.so/mcp"
+    assert entry.mcp_server.allow_custom_url is True
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
 
 
 @pytest.mark.parametrize(
@@ -60,9 +78,12 @@ def test_catalog_rejects_unsafe_urls(url: str, field: str):
     [
         {"server_url": None},
         {"connection_mode": "custom"},
+        {"server_url": None, "connection_mode": "custom", "allow_custom_url": True},
     ],
 )
-def test_catalog_rejects_misleading_connection_modes(changes: dict[str, str | None]):
+def test_catalog_rejects_misleading_connection_modes(
+    changes: dict[str, str | bool | None],
+):
     data = get_mcp_catalog()[0].mcp_server.model_dump()
     data.update(changes)
     with pytest.raises(ValidationError):
@@ -191,3 +212,38 @@ def test_catalog_matches_only_complete_known_urls(url, matched):
         result = get_mcp_catalog_entry_for_url(url)
 
     assert result == (entry if matched else None)
+
+
+def test_effect_maps_load_for_catalogued_servers_only():
+    maps = get_mcp_effect_maps()
+    assert {"mcp_github", "mcp_stripe", "mcp_atlassian"} <= set(maps)
+    with pytest.raises(ValueError, match="not in the catalog"):
+        parse_mcp_effect_maps(json.dumps({"mcp_nowhere": {"source": "x"}}))
+
+
+def test_a_tool_cannot_carry_two_effects():
+    with pytest.raises(ValidationError, match="more than one"):
+        parse_mcp_effect_maps(
+            json.dumps(
+                {"mcp_github": {"source": "x", "read": ["t"], "irreversible": ["t"]}}
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "url, tool, effect",
+    [
+        ("https://api.githubcopilot.com/mcp/readonly", "issue_read", "read"),
+        ("https://api.githubcopilot.com/mcp/readonly", "create_branch", "external"),
+        ("https://api.githubcopilot.com/mcp/readonly", "issue_write", "irreversible"),
+        (
+            "https://api.githubcopilot.com/mcp/readonly",
+            "merge_pull_request",
+            "irreversible",
+        ),
+        ("https://api.githubcopilot.com/mcp/readonly", "not_published", None),
+        ("https://mcp.example.com/mcp", "get_things", None),
+    ],
+)
+def test_a_tool_takes_its_effect_from_its_servers_map(url, tool, effect):
+    assert mcp_tool_effect(url, tool) == effect

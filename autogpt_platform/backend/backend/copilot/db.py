@@ -724,6 +724,8 @@ async def add_chat_messages_batch(
                         data["llmAuthProvider"] = msg["llm_auth_provider"]
                     if msg.get("llm_credential_id") is not None:
                         data["llmCredentialId"] = msg["llm_credential_id"]
+                    if msg.get("langfuse_trace_id") is not None:
+                        data["langfuseTraceId"] = msg["langfuse_trace_id"]
 
                     # Per-row bag. The single-message path already persisted
                     # this; the batch path silently dropped it, so anything
@@ -1261,6 +1263,7 @@ async def update_chat_message_stamps(
     routing_source: str | None,
     llm_auth_provider: str | None = None,
     llm_credential_id: str | None = None,
+    langfuse_trace_id: str | None = None,
 ) -> bool:
     """Back-fill the execution stamps on an already-persisted message row.
 
@@ -1269,9 +1272,10 @@ async def update_chat_message_stamps(
     analytics columns survive in the DB. Same mechanism and authorization
     reasoning as ``update_chat_message_tool_calls``.
 
-    The route is written only when known. Passing None for it would blank a
-    row that a previous stamp already got right, which is precisely the
-    rewriting of history per-turn segments exist to prevent.
+    The route and the trace are written only when known. Passing None for
+    the route would blank a row that a previous stamp already got right,
+    which is precisely the rewriting of history per-turn segments exist to
+    prevent.
     """
     data: ChatMessageUpdateInput = {
         "model": model,
@@ -1281,6 +1285,8 @@ async def update_chat_message_stamps(
         data["llmAuthProvider"] = llm_auth_provider
     if llm_credential_id is not None:
         data["llmCredentialId"] = llm_credential_id
+    if langfuse_trace_id is not None:
+        data["langfuseTraceId"] = langfuse_trace_id
     result = await PrismaChatMessage.prisma().update(
         where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
         data=data,

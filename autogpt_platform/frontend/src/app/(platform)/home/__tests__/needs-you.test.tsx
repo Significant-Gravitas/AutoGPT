@@ -243,8 +243,8 @@ test("a held call's row sets its object in semibold, as its card does", async ()
   mockDashboard([
     {
       ...makeApproval(9),
-      title: "Create folder “Q3 reports”",
-      headline: { ask: "Create folder", object: "Q3 reports" },
+      title: "Create library folder “Q3 reports”",
+      headline: { ask: "Create library folder", object: "Q3 reports" },
     },
     makeApproval(10),
   ]);
@@ -253,8 +253,10 @@ test("a held call's row sets its object in semibold, as its card does", async ()
 
   const object = await screen.findByText("Q3 reports");
   expect(object.tagName).toBe("B");
-  expect(object.parentElement?.textContent).toBe("Create folder Q3 reports");
-  expect(screen.queryByText("Create folder “Q3 reports”")).toBeNull();
+  expect(object.parentElement?.textContent).toBe(
+    "Create library folder Q3 reports",
+  );
+  expect(screen.queryByText("Create library folder “Q3 reports”")).toBeNull();
   // A row without a headline keeps its plain title.
   expect(screen.getByText("Approve item 10")).toBeDefined();
 });
