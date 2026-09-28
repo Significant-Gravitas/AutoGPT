@@ -1,10 +1,9 @@
 "use client";
 
-import {
-  getExpertCategory,
-  getExpertTopicHex,
-} from "@/components/molecules/ExpertAvatar/colors";
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 
+import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
+import { getExpertVisualCategory } from "@/components/molecules/ExpertAvatar/helpers";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertAvatarPicker } from "@/components/molecules/ExpertAvatarPicker/ExpertAvatarPicker";
@@ -31,7 +30,11 @@ export function ExpertAvatarButton({ expert }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={96}
-          backgroundColor={getExpertTopicHex(expert.role, expert.categories)}
+          backgroundColor={getExpertTopicHex({
+            avatarUrl: expert.avatar_url,
+            categories: expert.categories,
+            role: expert.role,
+          })}
         />
       </button>
       <Dialog
@@ -43,7 +46,16 @@ export function ExpertAvatarButton({ expert }: Props) {
             <fieldset disabled={isPending} className="min-w-0">
               <ExpertAvatarPicker
                 name={expert.name}
-                category={getExpertCategory(expert.role, expert.categories)}
+                category={
+                  Object.values(ExpertAvatarRequestCategory).find(
+                    (category) =>
+                      category ===
+                      getExpertVisualCategory(
+                        expert.avatar_url,
+                        expert.categories,
+                      ),
+                  ) ?? "general"
+                }
                 avatarUrl={expert.avatar_url}
                 onPick={saveAvatar}
               />

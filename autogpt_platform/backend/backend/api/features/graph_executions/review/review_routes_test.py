@@ -1425,12 +1425,22 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("scope", ["chat", "expert", "team"])
+@pytest.mark.parametrize(
+    "tool, rule_key",
+    [
+        ("run_capability", "mcp:h/t"),
+        # A bare tool's card rules on the tool itself.
+        ("create_agent", "create_agent"),
+    ],
+)
 async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     client: httpx.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
     scope: str,
+    tool: str,
+    rule_key: str,
 ) -> None:
     """The rule lands on the subject the gate stored with the held call."""
     review = sample_pending_review.model_copy(
@@ -1438,10 +1448,10 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     )
     held_call = HeldCall(
         review_id="test_node_123",
-        tool_name="run_capability",
+        tool_name=tool,
         tool_call_id="c",
         args={},
-        rule_key="mcp:h/t",
+        rule_key=rule_key,
     )
     # The turn the answer wakes claims the held call, so it is gone afterwards.
     held_calls = {"test_node_123": held_call}
@@ -1485,11 +1495,11 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     )
 
     assert response.status_code == 200
-    set_rule.assert_awaited_once_with("s1", "mcp:h/t", "allow")
+    set_rule.assert_awaited_once_with("s1", rule_key, "allow")
     if scope == "chat":
         set_scoped_rule.assert_not_called()
     else:
         expert = "frankie" if scope == "expert" else None
         set_scoped_rule.assert_awaited_once_with(
-            scope, test_user_id, expert, "mcp:h/t", "allow"
+            scope, test_user_id, expert, rule_key, "allow"
         )

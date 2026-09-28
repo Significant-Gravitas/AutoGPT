@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
 
-const FINANCE_ARTWORK = "/experts/clay/v1/finance.png";
+import { DEFAULT_EXPERT_AVATAR_URL } from "../ExpertAvatar/helpers";
 
 function completesAs(url: string, requests: unknown[] = []) {
   return [
@@ -26,7 +26,7 @@ function completesAs(url: string, requests: unknown[] = []) {
   ];
 }
 
-test("auto-generates on mount, showing the category artwork until it lands", async () => {
+test("auto-generates on mount, showing the General artwork until it lands", async () => {
   const onPick = vi.fn();
   server.use(...completesAs("https://cdn.test/generated.png"));
   render(
@@ -39,8 +39,8 @@ test("auto-generates on mount, showing the category artwork until it lands", asy
   );
   await screen.findByRole("status");
   expect(
-    screen.getByRole("img", { name: "Nova" }).getAttribute("src"),
-  ).toContain("finance.png");
+    screen.getByRole("img", { name: "Nova, AI Expert" }).getAttribute("src"),
+  ).toContain("expert-general-01");
 
   await waitFor(() =>
     expect(
@@ -69,20 +69,17 @@ test("regenerating rolls every trait but the category", async () => {
     const body = request as Record<string, string>;
     expect(body.category).toBe("marketing");
     expect(Object.keys(body).sort()).toEqual([
-      "accent_count",
-      "accent_placement",
       "base",
       "category",
       "expression",
       "inlay",
-      "shade",
       "shape",
       "tilt",
     ]);
   }
 });
 
-test("a failed generation leaves the category artwork ready to keep", async () => {
+test("a failed generation leaves the General artwork ready to keep", async () => {
   const onPick = vi.fn();
   server.use(
     http.post("*/api/experts/avatars/generations", () =>
@@ -110,7 +107,7 @@ test("a failed generation leaves the category artwork ready to keep", async () =
   await userEvent.click(
     screen.getByRole("button", { name: "Use this avatar" }),
   );
-  expect(onPick).toHaveBeenCalledWith(FINANCE_ARTWORK);
+  expect(onPick).toHaveBeenCalledWith(DEFAULT_EXPERT_AVATAR_URL);
 });
 
 test("an existing avatar is kept until a generation replaces it", async () => {

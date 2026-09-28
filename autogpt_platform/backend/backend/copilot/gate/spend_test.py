@@ -444,6 +444,9 @@ def test_a_money_card_offers_no_chat_rule():
     sent = review_payload("t", {}, _SEND)
     assert sent["spend"] is None
     assert sent["chat_rules_allowed"] == ["allow", "judge"]
+    # A paid tool with no subject is priced by the tool itself.
+    bare = review_payload("consult_teammate", {}, None, spend, reason_kind="spend")
+    assert bare["chat_rules_allowed"] == []
 
 
 async def test_flag_on_a_root_turn_opens_its_tree_and_its_chat(ledger, chat):

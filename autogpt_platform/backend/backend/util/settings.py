@@ -601,8 +601,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     expert_avatar_model: str = Field(
-        default="gpt-image-1.5",
-        description="OpenAI model for transparent expert PNG avatars",
+        default="gpt-image-2-2026-04-21",
+        description=(
+            "OpenAI image-edit model for brand-constrained Expert avatar candidates; "
+            "the design system pins this dated snapshot"
+        ),
     )
 
     use_agent_image_generation_v2: bool = Field(

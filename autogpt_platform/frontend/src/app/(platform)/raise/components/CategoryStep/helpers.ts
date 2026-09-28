@@ -1,8 +1,9 @@
 import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
-import { EXPERT_AVATARS } from "@/components/molecules/ExpertAvatar/helpers";
+import { EXPERT_PALETTE } from "@/components/molecules/ExpertAvatar/helpers";
 
 interface CategoryDetails {
   label: string;
+  color: string;
   // Saved as the expert's role, so the intro reads "I'm Curie, your Researcher".
   role: string;
   // Seeds the name step, so suggestions fit the area the expert works in.
@@ -11,7 +12,15 @@ interface CategoryDetails {
 }
 
 const CATEGORY_DETAILS: Record<ExpertAvatarRequestCategory, CategoryDetails> = {
+  general: {
+    label: "General",
+    color: "amber-300",
+    role: "Assistant",
+    nameSuggestions: ["Otto", "Nova", "Juno"],
+    jobTitleSuggestions: ["Executive Assistant", "Personal Assistant"],
+  },
   marketing: {
+    color: "orange-300",
     label: "Marketing",
     role: "Marketer",
     nameSuggestions: ["Echo", "Reach", "Nova"],
@@ -22,6 +31,7 @@ const CATEGORY_DETAILS: Record<ExpertAvatarRequestCategory, CategoryDetails> = {
     ],
   },
   sales: {
+    color: "amber-300",
     label: "Sales",
     role: "Sales",
     nameSuggestions: ["Pitch", "Ace", "Rain"],
@@ -32,6 +42,7 @@ const CATEGORY_DETAILS: Record<ExpertAvatarRequestCategory, CategoryDetails> = {
     ],
   },
   finance: {
+    color: "green-300",
     label: "Finance",
     role: "Analyst",
     nameSuggestions: ["Tally", "Vector", "Sigma"],
@@ -42,6 +53,7 @@ const CATEGORY_DETAILS: Record<ExpertAvatarRequestCategory, CategoryDetails> = {
     ],
   },
   support: {
+    color: "rose-300",
     label: "Support",
     role: "Support",
     nameSuggestions: ["Remy", "Aide", "Piper"],
@@ -52,6 +64,7 @@ const CATEGORY_DETAILS: Record<ExpertAvatarRequestCategory, CategoryDetails> = {
     ],
   },
   operations: {
+    color: "sky-300",
     label: "Operations",
     role: "Operations",
     nameSuggestions: ["Cadence", "Clockwork", "Scout"],
@@ -62,6 +75,7 @@ const CATEGORY_DETAILS: Record<ExpertAvatarRequestCategory, CategoryDetails> = {
     ],
   },
   research: {
+    color: "lime-300",
     label: "Research",
     role: "Researcher",
     nameSuggestions: ["Kepler", "Curie", "Juno"],
@@ -72,12 +86,14 @@ const CATEGORY_DETAILS: Record<ExpertAvatarRequestCategory, CategoryDetails> = {
     ],
   },
   content: {
+    color: "amber-300",
     label: "Content",
     role: "Writer",
     nameSuggestions: ["Quill", "Hemingway", "Ink"],
     jobTitleSuggestions: ["Content Writer", "Copywriter", "Technical Writer"],
   },
   development: {
+    color: "blue-300",
     label: "Development",
     role: "Developer",
     nameSuggestions: ["Ada", "Turing", "Bit"],
@@ -113,11 +129,13 @@ export interface CategoryOption {
 
 export const CATEGORY_OPTIONS: CategoryOption[] = Object.values(
   ExpertAvatarRequestCategory,
-).map((id) => ({
-  id,
-  label: CATEGORY_DETAILS[id].label,
-  hex: EXPERT_AVATARS.find((avatar) => avatar.id === id)?.hex ?? "#B5ADA0",
-}));
+)
+  .filter((id) => id !== "general")
+  .map((id) => ({
+    id,
+    label: CATEGORY_DETAILS[id].label,
+    hex: EXPERT_PALETTE[id].hex,
+  }));
 
 export function categoryOptionsForSelection(
   selected: ExpertAvatarRequestCategory | null,
@@ -128,10 +146,7 @@ export function categoryOptionsForSelection(
 
 /** The wizard color a category answers for, used from the first beat onwards. */
 export function colorForCategory(category: ExpertAvatarRequestCategory) {
-  return (
-    EXPERT_AVATARS.find((avatar) => avatar.id === category)?.color ??
-    "amber-300"
-  );
+  return CATEGORY_DETAILS[category].color;
 }
 
 export function categoryForRole(role: string) {

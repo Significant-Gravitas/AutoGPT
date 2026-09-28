@@ -11,6 +11,7 @@ import { AttentionRow } from "../../../home/components/NeedsYou/components/Atten
 import { ApprovalQueue } from "./ApprovalQueue";
 import { toApprovalItem } from "./helpers";
 import {
+  createAgent,
   deleteFolder,
   folder,
   heldRead,
@@ -103,6 +104,9 @@ export const RuleMenu: Story = {
 };
 
 export const RuleMenuWithOtto: Story = { args: queueOf([mcpTool()]) };
+
+// A bare tool's card rules on the tool itself.
+export const RuleMenuOnATool: Story = { args: queueOf([createAgent()]) };
 
 // A paid read over the task's spend ceiling.
 export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };

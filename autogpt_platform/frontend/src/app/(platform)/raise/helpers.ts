@@ -1,6 +1,6 @@
 import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
-import { getExpertCategory } from "@/components/molecules/ExpertAvatar/colors";
+import { legacyCategoryForRole } from "./legacyCategory";
 import { creditsToUsdLabel } from "@/lib/credits";
 import {
   buildVoicePreferences,
@@ -175,7 +175,7 @@ function migrateStep(step: string | undefined): string | undefined {
 // beat, which used to follow the name, moves on to the avatar.
 function backfillCategory(draft: RaiseDraft, role: string): RaiseDraft {
   if (draft.category !== null) return draft;
-  const category = categoryForRole(role) ?? getExpertCategory(role);
+  const category = categoryForRole(role) ?? legacyCategoryForRole(role);
   return {
     ...draft,
     category,

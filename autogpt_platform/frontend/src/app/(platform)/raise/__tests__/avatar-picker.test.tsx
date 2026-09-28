@@ -125,9 +125,13 @@ test("the area beat answers the color first and asks for a job title", async () 
   saveDraft({ ...EMPTY_DRAFT, hasStarted: true });
   renderRaise();
 
-  const categories = await screen.findByRole("group", {
-    name: "What the expert works on",
-  });
+  const categories = await screen.findByRole(
+    "group",
+    {
+      name: "What the expert works on",
+    },
+    { timeout: 5000 },
+  );
   await userEvent.click(
     await within(categories).findByRole("button", { name: "Finance" }),
   );

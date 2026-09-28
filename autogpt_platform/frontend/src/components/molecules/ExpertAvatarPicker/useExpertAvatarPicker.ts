@@ -3,10 +3,7 @@ import { useMountEffect } from "@/hooks/useMountEffect";
 import { uploadSubmissionMediaDirect } from "@/lib/direct-upload";
 import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import {
-  getCategoryAvatarUrl,
-  resolveCategoryAvatarUrl,
-} from "../ExpertAvatar/helpers";
+import { resolveExpertAvatarUrl } from "../ExpertAvatar/helpers";
 import {
   ACCEPTED_AVATAR_TYPES,
   MAX_AVATAR_BYTES,
@@ -41,11 +38,7 @@ export function useExpertAvatarPicker({
   const generatedUrl =
     generation.job?.status === "complete" ? generation.job.avatar_url : null;
   const selectedUrl =
-    generatedUrl ??
-    uploadedUrl ??
-    (avatarUrl
-      ? resolveCategoryAvatarUrl(avatarUrl)
-      : getCategoryAvatarUrl(category));
+    generatedUrl ?? uploadedUrl ?? resolveExpertAvatarUrl(avatarUrl);
 
   useMountEffect(() => {
     if (autoGenerate) generate();

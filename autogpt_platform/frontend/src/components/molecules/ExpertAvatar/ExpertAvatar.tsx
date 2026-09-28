@@ -7,7 +7,7 @@ import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
 import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
-import { getManagedAvatar, resolveCategoryAvatarUrl } from "./helpers";
+import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
 
 import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
@@ -18,10 +18,14 @@ interface Props {
   status?: AvatarStatus;
   size?: number;
   className?: string;
+  /** Pastel wash behind a custom upload or generated image. A managed
+   *  identity ignores it: its opaque studio tile is the artwork. */
   backgroundColor?: string;
-  category?: string | null;
 }
 
+/** An Expert's saved appearance. The image never depends on the name, role,
+ *  category or the marketplace filter: a managed identity is served from its
+ *  versioned library path, anything else is shown exactly as saved. */
 export function ExpertAvatar({
   name,
   avatarUrl,
@@ -29,17 +33,17 @@ export function ExpertAvatar({
   size = 40,
   className,
   backgroundColor,
-  category,
 }: Props) {
-  const src = resolveCategoryAvatarUrl(avatarUrl, category);
+  const src = resolveExpertAvatarUrl(avatarUrl);
   const managed = getManagedAvatar(src, size);
-  if (managed && !backgroundColor) {
+  if (managed) {
     return (
       <ManagedExpertImage
         key={`${managed.base}:${size}`}
         name={name ?? "Expert"}
         base={managed.base}
         pixels={managed.pixels}
+        pngMaxPixels={managed.pngMaxPixels}
         size={size}
         isOtto={managed.assetID === "otto"}
         className={className}
@@ -63,11 +67,7 @@ export function ExpertAvatar({
     >
       <Avatar className="size-full rounded-[inherit]">
         <AvatarImage
-          src={
-            managed && backgroundColor
-              ? `/experts/transparent/${managed.assetID.replace("expert-", "")}.webp`
-              : src
-          }
+          src={src}
           alt={name ?? "Expert"}
           width={size}
           height={size}
