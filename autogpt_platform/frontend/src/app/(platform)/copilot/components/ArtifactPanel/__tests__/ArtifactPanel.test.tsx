@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactRef } from "../../../store";
 import {
@@ -14,6 +15,11 @@ import {
   useCopilotUIStore,
 } from "../../../store";
 import { ArtifactPanel } from "../ArtifactPanel";
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
 
 const ARTIFACT_ID = "11111111-0000-0000-0000-000000000000";
 const ARTIFACT_SOURCE_URL = `/api/proxy/api/workspace/files/${ARTIFACT_ID}/download`;
@@ -59,6 +65,7 @@ describe("ArtifactPanel (desktop) width clamping", () => {
   let offsetWidthSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.mocked(toast).mockReset();
     Object.defineProperties(document, {
       fullscreenEnabled: { configurable: true, get: () => true },
       fullscreenElement: { configurable: true, get: () => null },
@@ -168,6 +175,16 @@ describe("ArtifactPanel (desktop) width clamping", () => {
     });
   });
 
+  it("closes the docked chat panel without opening the files card", async () => {
+    render(<ArtifactPanel sessionId="session-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
+
+    expect(useCopilotUIStore.getState().artifactPanel).toMatchObject({
+      isOpen: false,
+      activeArtifact: null,
+    });
+  });
+
   it("enters and exits fullscreen without changing the saved panel width", async () => {
     vi.spyOn(document, "fullscreenEnabled", "get").mockReturnValue(true);
     const fullscreenElement = vi
@@ -191,6 +208,11 @@ describe("ArtifactPanel (desktop) width clamping", () => {
       await screen.findByRole("button", { name: "Enter fullscreen" }),
     );
     expect(requestFullscreen).toHaveBeenCalledOnce();
+    const fullscreenPanel = requestFullscreen.mock.instances[0];
+    if (!(fullscreenPanel instanceof HTMLElement)) {
+      throw new Error("fullscreen panel not rendered");
+    }
+    expect(fullscreenPanel.style.width).toBe("100%");
     fireEvent.click(
       await screen.findByRole("button", { name: "Exit fullscreen" }),
     );
@@ -198,9 +220,74 @@ describe("ArtifactPanel (desktop) width clamping", () => {
     expect(
       await screen.findByRole("button", { name: "Enter fullscreen" }),
     ).toBeDefined();
+    expect(fullscreenPanel.style.width).toContain(
+      `${DEFAULT_ARTIFACT_PANEL_WIDTH}px`,
+    );
     expect(useCopilotUIStore.getState().artifactPanelWidth).toBe(
       DEFAULT_ARTIFACT_PANEL_WIDTH,
     );
+  });
+
+  it("exits fullscreen before opening the files card", async () => {
+    const fullscreenElement = vi
+      .spyOn(document, "fullscreenElement", "get")
+      .mockReturnValue(null);
+    vi.spyOn(HTMLElement.prototype, "requestFullscreen").mockImplementation(
+      async function (this: HTMLElement) {
+        fullscreenElement.mockReturnValue(this);
+        document.dispatchEvent(new Event("fullscreenchange"));
+      },
+    );
+    let finishExit: (() => void) | undefined;
+    const exitFullscreen = vi
+      .spyOn(document, "exitFullscreen")
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishExit = () => {
+              fullscreenElement.mockReturnValue(null);
+              document.dispatchEvent(new Event("fullscreenchange"));
+              resolve();
+            };
+          }),
+      );
+
+    render(<ArtifactPanel sessionId="session-1" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Enter fullscreen" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "All files" }));
+
+    expect(exitFullscreen).toHaveBeenCalledOnce();
+    expect(
+      useCopilotUIStore.getState().artifactPanel.activeArtifact,
+    ).not.toBeNull();
+
+    await act(async () => finishExit?.());
+
+    expect(useCopilotUIStore.getState().artifactPanel).toMatchObject({
+      isOpen: true,
+      activeTab: "files",
+      activeArtifact: null,
+    });
+  });
+
+  it("shows an error toast when entering fullscreen fails", async () => {
+    vi.spyOn(HTMLElement.prototype, "requestFullscreen").mockRejectedValue(
+      new Error("fullscreen rejected"),
+    );
+
+    render(<ArtifactPanel />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Enter fullscreen" }),
+    );
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't change fullscreen mode",
+        variant: "destructive",
+      });
+    });
   });
 
   it("hides fullscreen when the browser does not support it", async () => {

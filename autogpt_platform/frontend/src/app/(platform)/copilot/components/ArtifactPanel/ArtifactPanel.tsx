@@ -28,6 +28,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
     isSourceView,
     classification,
     setIsSourceView,
+    closeArtifactPanel,
     clearArtifactPreview,
     goBackArtifact,
     showFilesTab,
@@ -40,8 +41,13 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
     isComputerOpen,
     setArtifactPanelMode,
   } = useArtifactPanel();
-  const { fullscreenRef, isFullscreen, canFullscreen, toggleFullscreen } =
-    useArtifactFullscreen();
+  const {
+    fullscreenRef,
+    isFullscreen,
+    canFullscreen,
+    toggleFullscreen,
+    exitFullscreen,
+  } = useArtifactFullscreen();
   const showComputer = !!sessionId && mode === "computer" && isComputerOpen;
 
   // Hold the last live artifact so both the mobile drawer and the desktop
@@ -160,6 +166,30 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
       ? { duration: 0 }
       : { duration: PANEL_DURATION, ease: PANEL_EASE };
 
+  function closeDesktopPanel() {
+    if (sessionId) {
+      closeArtifactPanel();
+      return;
+    }
+    clearArtifactPreview();
+  }
+
+  function runAfterFullscreenExit(action: () => void) {
+    if (document.fullscreenElement !== fullscreenRef.current) {
+      action();
+      return;
+    }
+    void exitFullscreen().then(action);
+  }
+
+  function handleDesktopClose() {
+    runAfterFullscreenExit(closeDesktopPanel);
+  }
+
+  function handleOpenFiles() {
+    runAfterFullscreenExit(showFilesTab);
+  }
+
   return (
     <AnimatePresence initial={false}>
       {showDesktopPanel && (shown || showComputer) && (
@@ -216,10 +246,10 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
                 hasSourceToggle={shown?.classification.hasSourceToggle ?? false}
                 canCopy={canCopy}
                 onBack={goBackArtifact}
-                onClose={clearArtifactPreview}
+                onClose={handleDesktopClose}
                 onCopy={handleCopy}
                 onDownload={handleDownload}
-                onOpenFiles={showFilesTab}
+                onOpenFiles={handleOpenFiles}
                 onSourceToggle={setIsSourceView}
               />
               {showComputer && sessionId ? (

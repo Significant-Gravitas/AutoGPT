@@ -22,14 +22,14 @@ export function useArtifactFullscreen() {
     };
   }, []);
 
-  async function toggleFullscreen() {
-    if (!fullscreenRef.current) return;
+  async function exitFullscreen() {
+    if (
+      !fullscreenRef.current ||
+      document.fullscreenElement !== fullscreenRef.current
+    )
+      return;
     try {
-      if (document.fullscreenElement === fullscreenRef.current) {
-        await document.exitFullscreen();
-      } else {
-        await fullscreenRef.current?.requestFullscreen();
-      }
+      await document.exitFullscreen();
     } catch {
       toast({
         title: "Couldn't change fullscreen mode",
@@ -38,5 +38,27 @@ export function useArtifactFullscreen() {
     }
   }
 
-  return { fullscreenRef, isFullscreen, canFullscreen, toggleFullscreen };
+  async function toggleFullscreen() {
+    if (!fullscreenRef.current) return;
+    if (document.fullscreenElement === fullscreenRef.current) {
+      await exitFullscreen();
+      return;
+    }
+    try {
+      await fullscreenRef.current.requestFullscreen();
+    } catch {
+      toast({
+        title: "Couldn't change fullscreen mode",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return {
+    fullscreenRef,
+    isFullscreen,
+    canFullscreen,
+    toggleFullscreen,
+    exitFullscreen,
+  };
 }
