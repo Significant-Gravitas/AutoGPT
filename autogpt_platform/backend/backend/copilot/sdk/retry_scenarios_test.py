@@ -52,7 +52,12 @@ from backend.copilot.transcript import (
 from backend.util import json
 
 from .conftest import build_test_transcript as _build_transcript
-from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
+from .service import (
+    _INJECTED_MEMORY_MARKER,
+    _MAX_STREAM_ATTEMPTS,
+    _build_query_message,
+    _reduce_context,
+)
 from .transcript import compact_transcript, validate_transcript
 from .transcript_builder import TranscriptBuilder
 
@@ -1009,6 +1014,14 @@ def _make_sdk_patches(
             f"{_SVC}.build_skills_context",
             dict(new_callable=AsyncMock, return_value=""),
         ),
+        # Same for the per-turn skills drift notice: it lists the user's
+        # skills from the workspace, which without a Prisma connection goes
+        # over RPC to a database manager that isn't running here, retried
+        # for minutes on every follow-up turn.
+        (
+            f"{_SVC}.build_skills_update_notice",
+            dict(new_callable=AsyncMock, return_value=""),
+        ),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (
             f"{_SVC}.AsyncClusterLock",
@@ -1093,6 +1106,18 @@ def _make_sdk_patches(
     ]
 
 
+_ALICE_BLOCK = (
+    "<temporal_context>\n<FACTS>\n"
+    "  - Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)\n"
+    "</FACTS>\n</temporal_context>"
+)
+_BOB_BLOCK = (
+    "<temporal_context>\n<FACTS>\n"
+    "  - Bob leads Atlas (valid: 2025-01-01 00:00:00+00:00 — present)\n"
+    "</FACTS>\n</temporal_context>"
+)
+
+
 class TestFollowUpWarmContextCallSite:
     """SECRT-2378 wiring, asserted against the REAL generator.
 
@@ -1101,103 +1126,337 @@ class TestFollowUpWarmContextCallSite:
     ``was_compacted`` that no longer existed after a merge, and a retry path
     reading a field ``_RetryState`` never had. Both were invisible to
     helper-level tests and to a green suite. These drive
-    ``stream_chat_completion_sdk`` end to end.
+    ``stream_chat_completion_sdk`` end to end and read what reached
+    ``client.query`` and the uploaded CLI session file.
     """
 
-    def _session(self):
+    def _session(
+        self,
+        message: str,
+        *,
+        prior: list[ChatMessage] | None = None,
+        expert_id: str | None = None,
+    ) -> ChatSession:
+        if prior is None:
+            prior = [
+                ChatMessage(role="user", content="prior question", sequence=0),
+                ChatMessage(role="assistant", content="prior answer", sequence=1),
+            ]
         return ChatSession(
             session_id="test-session-id",
             user_id="test-user",
+            expert_id=expert_id,
             usage=[],
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
             messages=[
-                ChatMessage(role="user", content="prior question"),
-                ChatMessage(role="assistant", content="prior answer"),
-                ChatMessage(role="user", content="restart the executor"),
+                *prior,
+                ChatMessage(role="user", content=message, sequence=len(prior)),
             ],
         )
 
-    def _client_mock(self, result_message):
-        cm = MagicMock()
-        client = MagicMock()
-        client.query = AsyncMock()
+    @staticmethod
+    def _big_prior() -> list[ChatMessage]:
+        """History large enough that the query build compacts it."""
+        return [
+            ChatMessage(
+                role="user" if i % 2 == 0 else "assistant",
+                content="word " * 30_000,
+                sequence=i,
+            )
+            for i in range(8)
+        ]
 
-        async def _receive():
-            yield result_message
+    @staticmethod
+    def _compacting(prior: list[ChatMessage]) -> list[tuple[str, dict]]:
+        """No ``--resume`` and a compressor that always compacts, so every
+        query build of the turn (initial and retry) reports compaction."""
 
-        client.receive_response = _receive
-        cm.__aenter__ = AsyncMock(return_value=client)
-        cm.__aexit__ = AsyncMock(return_value=False)
-        return cm
+        async def _compress(msgs, target_tokens=None):
+            return (
+                list(msgs)[:1],
+                True,
+                CompactionStats(messages_before=len(msgs), messages_after=1),
+            )
 
-    def _result_message(self):
-        return ResultMessage(
-            subtype="success",
-            result="done",
-            duration_ms=1,
-            duration_api_ms=1,
-            is_error=False,
-            num_turns=1,
-            session_id="test-session-id",
-            total_cost_usd=0.0,
+        restore = _RestoreResult(
+            transcript_content="seeded",
+            transcript_covers_prefix=True,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=len(prior),
+            context_messages=list(prior),
         )
+        return [
+            (
+                f"{_SVC}._restore_cli_session_for_turn",
+                dict(new_callable=AsyncMock, return_value=restore),
+            ),
+            (f"{_SVC}._compress_messages", dict(new=_compress)),
+        ]
 
-    @pytest.mark.asyncio
-    async def test_follow_up_turn_starts_and_injects_the_refresh(self):
-        """A substantive follow-up turn must reach `client.query` with the
-        refreshed block appended — and must not raise on the way there."""
-        session = self._session()
-        result_msg = self._result_message()
-        captured: dict[str, object] = {}
+    @staticmethod
+    def _clients(queries: list[str], *, fail_first: bool = False):
+        """Client factory recording every query sent; with ``fail_first``
+        the first attempt is rejected as too long before streaming."""
+        attempts = [0]
 
         def _factory(*args, **kwargs):
-            return self._client_mock(result_msg)
+            attempts[0] += 1
+            attempt = attempts[0]
 
+            async def _query(prompt, session_id=None):
+                queries.append(prompt)
+                if fail_first and attempt == 1:
+                    raise Exception("prompt is too long (context_length_exceeded)")
+
+            async def _receive():
+                yield ResultMessage(
+                    subtype="success",
+                    result="done",
+                    duration_ms=1,
+                    duration_api_ms=1,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="test-session-id",
+                    total_cost_usd=0.0,
+                )
+
+            client = MagicMock()
+            client.query = _query
+            client.receive_response = _receive
+            client._transport = MagicMock()
+            client._transport.write = AsyncMock()
+            cm = AsyncMock()
+            cm.__aenter__.return_value = client
+            cm.__aexit__.return_value = None
+            return cm
+
+        return _factory
+
+    async def _run(
+        self,
+        session: ChatSession,
+        refresh,
+        client_factory,
+        extra: list[tuple[str, dict]] | None = None,
+    ) -> list:
         patches = _make_sdk_patches(
             session,
             original_transcript=_build_transcript(
                 [("user", "prior question"), ("assistant", "prior answer")]
             ),
-            compacted_transcript=None,
-            client_side_effect=_factory,
+            compacted_transcript=_build_transcript(
+                [("user", "[summary]"), ("assistant", "summary reply")]
+            ),
+            client_side_effect=client_factory,
         )
-
-        async def _refresh(user_id, message, *, expert_id=None, force=False):
-            captured["user_id"] = user_id
-            captured["message"] = message
-            captured["expert_id"] = expert_id
-            captured["force"] = force
-            return "<temporal_context>recalled</temporal_context>"
-
+        patches += [
+            (
+                "backend.copilot.graphiti.context.refresh_warm_context",
+                dict(new=refresh),
+            ),
+            (f"{_SVC}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
+            # The turn's own memory ingestion is not under test here.
+            (f"{_SVC}.enqueue_conversation_turn", dict(new=AsyncMock())),
+            *(extra or []),
+        ]
         events = []
         with contextlib.ExitStack() as stack:
             for target, kwargs in patches:
                 stack.enter_context(patch(target, **kwargs))
-            stack.enter_context(
-                patch(
-                    "backend.copilot.graphiti.context.refresh_warm_context",
-                    new=_refresh,
-                )
-            )
-            stack.enter_context(
-                patch(f"{_SVC}.is_enabled_for_user", new=AsyncMock(return_value=True))
-            )
             async for event in stream_chat_completion_sdk(
                 session_id="test-session-id",
-                message="restart the executor",
+                message=session.messages[-1].content,
                 is_user_message=True,
                 user_id="test-user",
                 session=session,
             ):
                 events.append(event)
-
         assert not [e for e in events if isinstance(e, StreamError)]
-        assert captured["message"] == "restart the executor"
-        assert captured["user_id"] == "test-user"
+        return events
+
+    @pytest.mark.asyncio
+    async def test_follow_up_turn_starts_and_injects_the_refresh(self):
+        """A substantive follow-up turn must reach `client.query` with the
+        refreshed block appended — and must not raise on the way there."""
+        calls: list[dict] = []
+        queries: list[str] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            calls.append(
+                {
+                    "user_id": user_id,
+                    "message": message,
+                    "expert_id": expert_id,
+                    "force": force,
+                }
+            )
+            return _ALICE_BLOCK
+
+        await self._run(
+            self._session("restart the executor"), _refresh, self._clients(queries)
+        )
+
         # No compaction on this turn, so nothing forces past the substance
         # gate — the starter already applied it.
-        assert captured["force"] is False
+        assert calls == [
+            {
+                "user_id": "test-user",
+                "message": "restart the executor",
+                "expert_id": None,
+                "force": False,
+            }
+        ]
+        assert len(queries) == 1
+        assert queries[0].endswith("</temporal_context>")
+        assert "Alice works on Atlas" in queries[0]
+        assert _INJECTED_MEMORY_MARKER in queries[0]
+
+    @pytest.mark.asyncio
+    async def test_refresh_is_in_flight_while_the_query_is_built(self):
+        """Off the time-to-first-token path: the refresh has started before
+        the query build runs, so its round-trip overlaps compaction,
+        attachments and builder context. A refresh fetched only once the
+        query is built (the serial shape the review rejected) never starts
+        while the build waits for it here, and the turn fails."""
+        refresh_started = asyncio.Event()
+        queries: list[str] = []
+
+        async def _build(*args, **kwargs):
+            await asyncio.wait_for(refresh_started.wait(), timeout=5)
+            return await _build_query_message(*args, **kwargs)
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            refresh_started.set()
+            return _ALICE_BLOCK
+
+        await self._run(
+            self._session("restart the executor"),
+            _refresh,
+            self._clients(queries),
+            extra=[(f"{_SVC}._build_query_message", dict(new=_build))],
+        )
+
+        assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
+
+    @pytest.mark.asyncio
+    async def test_injected_block_is_scrubbed_before_the_transcript_upload(self):
+        """The CLI persists the query as sent. The session file uploaded for
+        the next ``--resume`` must carry the user's words without the block,
+        or every later turn replays it — a fact forgotten after this turn
+        included."""
+        queries: list[str] = []
+        upload = AsyncMock()
+
+        def _cli_session(*_args, **_kwargs) -> bytes:
+            entry = {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": queries[-1]}],
+                },
+            }
+            return json.dumps(entry).encode() + b"\n"
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            return _ALICE_BLOCK
+
+        await self._run(
+            self._session("restart the executor"),
+            _refresh,
+            self._clients(queries),
+            extra=[
+                (f"{_SVC}.read_cli_session_from_disk", dict(new=_cli_session)),
+                (f"{_SVC}.upload_transcript", dict(new=upload)),
+            ],
+        )
+
+        assert "Alice works on Atlas" in queries[0], "the block was sent"
+        assert upload.await_args is not None
+        uploaded = upload.await_args.kwargs["content"]
+        assert b"restart the executor" in uploaded
+        assert b"Alice works on Atlas" not in uploaded
+        assert b"temporal_context" not in uploaded
+
+    @pytest.mark.asyncio
+    async def test_a_compacted_turn_forces_the_refresh_for_a_short_message(self):
+        """A "go on" is under the substance gate, so the starter declines it;
+        the query build then compacts the history, and the joiner must force
+        the refresh — the turn right after a compaction is case 1 of
+        SECRT-2378."""
+        prior = self._big_prior()
+        forces: list[bool] = []
+        queries: list[str] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            forces.append(force)
+            return _ALICE_BLOCK
+
+        await self._run(
+            self._session("go on", prior=prior),
+            _refresh,
+            self._clients(queries),
+            extra=self._compacting(prior),
+        )
+
+        assert forces == [True]
+        assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
+
+    @pytest.mark.asyncio
+    async def test_the_retry_reads_memory_again_after_its_own_compaction(self):
+        """Prompt-too-long on the first attempt: the retry compacts, rebuilds
+        the query and must refresh again, forced by its own compaction — and
+        send what that read returned, not the first attempt's block, which a
+        forget during the failed attempt may have made stale."""
+        prior = self._big_prior()
+        blocks = iter([_ALICE_BLOCK, _BOB_BLOCK])
+        forces: list[bool] = []
+        queries: list[str] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            forces.append(force)
+            return next(blocks)
+
+        await self._run(
+            self._session("what is Alice working on", prior=prior),
+            _refresh,
+            self._clients(queries, fail_first=True),
+            extra=self._compacting(prior),
+        )
+
+        assert forces == [False, True]
+        assert len(queries) == 2
+        assert "Alice works on Atlas" in queries[0]
+        assert "Bob leads Atlas" in queries[1]
+        assert "Alice works on Atlas" not in queries[1]
+
+    @pytest.mark.asyncio
+    async def test_an_expert_chat_refreshes_from_the_expert_scope(self):
+        """The first turn of an expert chat reads the expert's memory
+        (``expert_id=session.expert_id``); the refresh must read the same
+        scope, never the account's."""
+        experts: list[str | None] = []
+        queries: list[str] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            experts.append(expert_id)
+            return _ALICE_BLOCK
+
+        await self._run(
+            self._session("restart the executor", expert_id="expert-1"),
+            _refresh,
+            self._clients(queries),
+            extra=[
+                (
+                    f"{_SVC}.build_expert_identity_suffix",
+                    dict(new_callable=AsyncMock, return_value=""),
+                )
+            ],
+        )
+
+        assert experts == ["expert-1"]
+        assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
 
 
 class TestStreamChatCompletionRetryIntegration:
