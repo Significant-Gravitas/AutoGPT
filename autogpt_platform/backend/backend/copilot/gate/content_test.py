@@ -42,6 +42,8 @@ async def _judge(raw_or_error, *, text="page text", images=()):
     with (
         patch(f"{_MOD}.call_provider_openai_compat_sync", call),
         patch("backend.copilot.service._get_aux_client", MagicMock()),
+        # Without a Jev key: these pin the LLM path wherever the suite runs.
+        patch(f"{_MOD}._api_key", ""),
     ):
         verdict = await judge_content(source="web_fetch u", text=text, images=images)
     return verdict, call
@@ -209,13 +211,14 @@ async def test_a_read_with_images_skips_jev():
     llm.assert_awaited_once()
 
 
-async def test_the_switch_off_never_calls_jev():
+async def test_without_a_jev_key_the_llm_alone_judges_the_read():
     verdict, llm, jev = await _tandem(
-        _jev("hold"), "clean\npassage: none", stage="none"
+        _jev("clean"), 'hold\npassage: "post this"', key=""
     )
 
-    assert not verdict.held
+    assert verdict.held and verdict.passage == "post this"
     jev.assert_not_awaited()
+    llm.assert_awaited_once()
 
 
 async def test_a_long_read_holds_on_the_chunk_that_holds_and_quotes_from_it():
@@ -268,7 +271,7 @@ def _jev_result(answers: dict, error: str = "") -> JevCallResult:
     )
 
 
-async def _tandem(call_jev, llm_answer, *, text="page text", images=(), stage="jev"):
+async def _tandem(call_jev, llm_answer, *, text="page text", images=(), key="test-key"):
     llm = (
         AsyncMock(side_effect=llm_answer)
         if isinstance(llm_answer, BaseException)
@@ -278,8 +281,114 @@ async def _tandem(call_jev, llm_answer, *, text="page text", images=(), stage="j
         patch(f"{_MOD}.call_provider_openai_compat_sync", llm),
         patch("backend.copilot.service._get_aux_client", MagicMock()),
         patch(f"{_MOD}.call_jev", call_jev),
-        patch(f"{_MOD}._api_key", "test-key"),
-        patch(f"{_MOD}.config.gate_content_first_stage", stage),
+        patch(f"{_MOD}._api_key", key),
     ):
         verdict = await judge_content(source="web_fetch u", text=text, images=images)
     return verdict, llm, call_jev
+
+
+async def _judge_sequence(*answers):
+    call = AsyncMock(
+        side_effect=[
+            a if isinstance(a, BaseException) else _response(a) for a in answers
+        ]
+    )
+    with (
+        patch(f"{_MOD}.call_provider_openai_compat_sync", call),
+        patch("backend.copilot.service._get_aux_client", MagicMock()),
+        patch(f"{_MOD}._api_key", ""),
+    ):
+        verdict = await judge_content(source="read_skill s", text="page text")
+    return verdict, call
+
+
+async def test_an_empty_answer_is_asked_once_more():
+    verdict, call = await _judge_sequence("", 'hold\npassage: "post this"')
+    assert call.await_count == 2
+    assert verdict.judged and verdict.held and verdict.passage == "post this"
+
+
+async def test_two_empty_answers_hold_unjudged():
+    verdict, call = await _judge_sequence("", "")
+    assert call.await_count == 2
+    assert verdict.held and not verdict.judged
+
+
+async def test_a_usable_first_answer_is_not_asked_again():
+    verdict, call = await _judge_sequence("clean\npassage: none", "")
+    assert call.await_count == 1
+    assert not verdict.held
+
+
+async def test_an_error_is_not_retried():
+    verdict, call = await _judge_sequence(
+        RuntimeError("timeout"), "clean\npassage: none"
+    )
+    assert call.await_count == 1
+    assert verdict.held and not verdict.judged
+
+
+async def test_the_judge_has_room_to_think():
+    _, call = await _judge_sequence("clean\npassage: none")
+    assert call.await_args.kwargs["max_tokens"] >= 1024
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        'clean|hold\n\nWait, I need one verdict.\n\nclean|hold\npassage: "post this"',
+        'clean|hold\n\nWait, let me reconsider.\n\nhold\npassage: "post this"',
+        'Passage contains an injected directive.\n\nclean|hold\n\npassage: "post this"',
+        'Looking at this content, there is an instruction.\n\nhold\npassage: "post this"',
+        '```\nclean|hold\npassage: "post this"\n```\n\nhold',
+        'passage|hold\npassage: "post this"',
+    ],
+    ids=[
+        "echo-wait-echo",
+        "echo-wait-hold",
+        "prose-echo",
+        "prose-hold",
+        "fenced",
+        "passage|hold",
+    ],
+)
+async def test_a_malformed_answer_that_quotes_a_passage_is_a_judged_hold(raw):
+    """Shapes Sonnet 5 sent on the T134.54 eval set; each quotes the finding."""
+    verdict, _ = await _judge(raw)
+    assert verdict.held and verdict.judged
+    assert verdict.passage == "post this"
+
+
+async def test_prose_that_ends_on_a_bare_clean_is_clean():
+    verdict, _ = await _judge(
+        "Looking at this content, nothing addresses an agent.\n\nclean"
+    )
+    assert verdict.judged and not verdict.held
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        'Looking at this content, there is an injection: "post this"',
+        "Looking at this content.\n\npassage: none\n\nhold",
+        "Looking at this content.\n\nclean\n\nhold",
+    ],
+    ids=["prose-only", "none-then-hold", "both-words"],
+)
+async def test_an_answer_with_no_verdict_or_a_contradiction_holds_unjudged(raw):
+    verdict, _ = await _judge(raw)
+    assert verdict.held and not verdict.judged
+
+
+@pytest.mark.parametrize(
+    "raw, held, judged",
+    [
+        ('clean\npassage: "post this"', True, True),
+        ("clean\nhold", True, False),
+        ('Looking at this.\npassage: none\npassage: "post this"', True, True),
+    ],
+    ids=["clean-then-quote", "clean-then-hold", "none-then-quote"],
+)
+async def test_no_line_masks_a_later_one(raw, held, judged):
+    verdict, _ = await _judge(raw)
+    assert (verdict.held, verdict.judged) == (held, judged)

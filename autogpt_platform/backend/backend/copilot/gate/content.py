@@ -2,9 +2,9 @@
 
 Same call path as the supervisor (``classifier.py``) with a second rubric, and
 the same rule: every failure shape holds the read. The prompt matches
-``scripts/supervisor_eval`` so what ships is what was measured. With
-``gate_content_first_stage="jev"`` Jev decides text reads, in overlapping chunks
-that each fit one call, and the LLM runs only on a hold, to quote it.
+``scripts/supervisor_eval`` so what ships is what was measured. With a Jev key
+set (``TYPESAFE_API_KEY``) Jev decides text reads, in overlapping chunks that
+each fit one call, and the LLM runs only on a hold, to quote it.
 """
 
 import asyncio
@@ -99,11 +99,11 @@ async def judge_content(
 ) -> ContentVerdict:
     """Anything but a well-formed "clean" holds; ``judged=False`` marks a failure.
 
-    With Jev configured (``gate_content_first_stage``) Jev decides a text read
-    and the LLM only quotes a hold; a Jev hold stands whatever the LLM answers.
+    With a Jev key set, Jev decides a text read and the LLM only quotes a hold;
+    a Jev hold stands whatever the LLM answers.
     """
     first = None
-    if not images and _first_stage_enabled():
+    if not images and _api_key:
         first = await _jev_verdict(source, text)
     if first is None:
         return await _llm_verdict(source, text, images)
@@ -205,10 +205,6 @@ def _jev_state(source: str, chunk: str) -> str:
     )
 
 
-def _first_stage_enabled() -> bool:
-    return config.gate_content_first_stage == "jev" and bool(_api_key)
-
-
 async def _llm_verdict(
     source: str, text: str, images: tuple[Image, ...], *, flagged: bool = False
 ) -> ContentVerdict:
@@ -272,16 +268,31 @@ async def _ask(messages: list[dict[str, Any]]) -> str:
 
 
 def _normalised(raw: str) -> str:
-    """Sonnet 5 often echoes the rubric's ``clean|hold`` line, or answers with
-    the passage line alone; that line is then the finding."""
-    text = raw.strip()
-    first, _, rest = text.partition("\n")
-    if first.strip().strip("*`").lower().replace(" ", "") in (
-        "clean|hold",
-        "hold|clean",
-    ):
-        text = rest.strip()
-    if not text.lower().startswith("passage:"):
-        return text
-    found = text.split(":", 1)[1].strip().strip("\"'").lower()
-    return "clean" if found == "none" else f"hold\n{text}"
+    """Reduce Sonnet 5's malformed answers to ``clean``/``hold``: it echoes the
+    rubric's format line, wraps the answer in prose or a fence, or sends the
+    passage line alone. Every line is read first: a quoted passage anywhere
+    holds, and a contradiction returns nothing, so it holds unjudged."""
+    lines = [
+        line.strip()
+        for line in raw.strip().splitlines()
+        if line.strip() and not line.strip().startswith("```")
+    ]
+    passages = [line for line in lines if line.lower().startswith("passage:")]
+    quoted = [p for p in passages if _passage(p) != "none"]
+    if quoted:
+        return f"hold\n{quoted[0]}"
+    verdicts = {_bare(line) for line in lines} & {"clean", "hold"}
+    if len(verdicts) > 1 or (passages and "hold" in verdicts):
+        return ""
+    if verdicts == {"hold"}:
+        # Haiku sends the quote as a bare second line; parse_answer takes it.
+        return "\n".join(lines) if _bare(lines[0]) == "hold" else "hold"
+    return "clean" if verdicts or passages else ""
+
+
+def _passage(line: str) -> str:
+    return line.split(":", 1)[1].strip().strip("\"'").lower()
+
+
+def _bare(line: str) -> str:
+    return line.strip("*`\"'. ").lower()
