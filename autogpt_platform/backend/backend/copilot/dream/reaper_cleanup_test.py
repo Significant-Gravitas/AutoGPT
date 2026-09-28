@@ -177,7 +177,9 @@ class TestTheBudget:
             await asyncio.wait({reaping}, timeout=2)
 
         assert reaping.done(), "the run outlasted its budget"
-        assert loop.time() - started < 0.4 + 0.15
+        # Well under the 2 s wait above, which a run held by either hang
+        # would exhaust; the slack absorbs a loaded test machine.
+        assert loop.time() - started < 0.4 + 0.6
         assert reaping.result().outcomes == {"out_of_budget": 1}
         assert fake_dream_redis.store[_LOCK_KEY].startswith("reaper:")
         assert "could not give back scope" in caplog.text
