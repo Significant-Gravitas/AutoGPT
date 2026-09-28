@@ -28,6 +28,11 @@ class _CapyModel(BaseModel):
         return data
 
 
+# Model new threads run on unless the caller picks another. Capy's model IDs
+# are listed at https://docs.capy.ai/models-and-pricing.
+DEFAULT_MODEL_ID = "meta/muse-spark-1.3"
+
+
 class ThreadStatus(str, Enum):
     WORKING = "working"
     WAITING = "waiting"

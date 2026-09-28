@@ -51,7 +51,7 @@ Calls `POST /api/v1/threads` with the project, the brief and optional model, rea
 | project_id | The Capy project to run in (see Capy List Projects) | str | Yes |
 | message | The task for the agent, written as you would brief an engineer: the goal, where to look, what done looks like, and whether to open a pull request | str | Yes |
 | title | Thread title. Leave empty to let Capy name it. | str | No |
-| model_id | Capy model ID, e.g. openai/gpt-6-astra. Leave empty for the project's default model. | str | No |
+| model_id | Capy model ID (see docs.capy.ai/models-and-pricing), e.g. meta/muse-spark-1.3 or openai/gpt-6-astra. Clear it to use the project's default model. | str | No |
 | reasoning | Reasoning effort for the chosen model. Needs model_id. | "" \| "none" \| "instant" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" | No |
 | machine_size | Machine size for the agent's VM. Empty uses Capy's default. | "" \| "small" \| "medium" \| "large" \| "ultra" \| "hyper" \| "bigguy" | No |
 | request_id | Idempotency key. Re-sending the same request_id returns the thread it already created instead of starting a second run. Leave empty to generate one. | str | No |

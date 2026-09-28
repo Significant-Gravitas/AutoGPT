@@ -20,6 +20,7 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, capy_credentials_
 from ._testdata import TEST_IDLE_THREAD, TEST_MESSAGES, TEST_PROJECT, TEST_THREAD
 from ._types import (
     ACTIVE_THREAD_STATUSES,
+    DEFAULT_MODEL_ID,
     MachineSize,
     Message,
     ReasoningEffort,
@@ -65,10 +66,11 @@ class CapyCreateThreadBlock(Block):
         )
         model_id: str = SchemaField(
             description=(
-                "Capy model ID, e.g. openai/gpt-6-astra. Leave empty for the "
-                "project's default model."
+                "Capy model ID (see docs.capy.ai/models-and-pricing), e.g. "
+                "meta/muse-spark-1.3 or openai/gpt-6-astra. Clear it to use "
+                "the project's default model."
             ),
-            default="",
+            default=DEFAULT_MODEL_ID,
             advanced=True,
         )
         reasoning: ReasoningEffort = SchemaField(
