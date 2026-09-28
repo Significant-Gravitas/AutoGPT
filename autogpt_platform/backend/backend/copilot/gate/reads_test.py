@@ -140,6 +140,16 @@ def rows():
         yield fake
 
 
+def _experts(**by_name: str | None):
+    """An ``experts_db`` whose ``get_expert`` knows each name's id."""
+    names = {expert_id: name for name, expert_id in by_name.items() if expert_id}
+
+    async def get_expert(user_id, expert_id, include_workflows=True):
+        return SimpleNamespace(name=names[expert_id]) if expert_id in names else None
+
+    return lambda: SimpleNamespace(get_expert=get_expert)
+
+
 def _judge(verdict: ContentVerdict) -> AsyncMock:
     return AsyncMock(return_value=verdict)
 
@@ -455,40 +465,86 @@ async def test_mcp_file_read_is_judged_on_the_text_the_model_receives(rows):
     assert judge.await_args.kwargs["text"] == to_model
 
 
+@pytest.mark.parametrize("expert_id, actor", [(None, "Otto"), ("expert-1", "Nadia")])
 async def test_a_held_read_is_named_by_its_source_on_the_card_and_the_chain_row(
-    rows,
+    rows, expert_id, actor
 ):
-    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+    session = _session()
+    session.expert_id = expert_id
+    with (
+        patch(f"{_READS}.judge_content", _judge(_HELD)),
+        patch(f"{_READS}.experts_db", _experts(Nadia=expert_id)),
+    ):
         result = await _call(
-            _Fetch(_MARKER), _session(), {"url": "docs.northwind.io/billing"}
+            _Fetch(_MARKER), session, {"url": "docs.northwind.io/billing"}
         )
 
     (row,) = rows.rows.values()
     assert row.payload["reason_kind"] == "content"
     assert row.payload["headline"] == {
-        "ask": "Let Otto read",
+        "ask": f"Let {actor} read",
         "object": "docs.northwind.io/billing",
         "object_key": "url",
     }
-    assert row.instructions == "Let Otto read “docs.northwind.io/billing”"
+    assert row.instructions == f"Let {actor} read “docs.northwind.io/billing”"
+    assert row.payload["reader"] == actor
+    assert "Nadia" not in row.payload["reason"]
+    assert row.payload["reason"] == (
+        f'this content contains instructions: "{row.payload["passage"]}"'
+    )
     stub = json.loads(result.output)
     assert (stub["ask"], stub["object"]) == ("Read", "docs.northwind.io/billing")
 
 
-async def test_a_held_read_with_no_named_source_says_what_returned_it(rows):
-    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+@pytest.mark.parametrize("expert_id, actor", [(None, "Otto"), ("expert-1", "Nadia")])
+async def test_a_held_read_with_no_named_source_says_what_returned_it(
+    rows, expert_id, actor
+):
+    session = _session()
+    session.expert_id = expert_id
+    with (
+        patch(f"{_READS}.judge_content", _judge(_HELD)),
+        patch(f"{_READS}.experts_db", _experts(Nadia=expert_id)),
+    ):
         result = await _call(
-            _Fetch(_MARKER, name="search_feature_requests"), _session(), {"limit": 3}
+            _Fetch(_MARKER, name="search_feature_requests"), session, {"limit": 3}
         )
 
     (row,) = rows.rows.values()
     assert (
         row.payload["headline"]["ask"]
-        == "Let Otto read what search feature requests returned"
+        == f"Let {actor} read what search feature requests returned"
     )
     stub = json.loads(result.output)
     assert stub["ask"] == "Read what search feature requests returned"
     assert stub["object"] is None
+
+
+@pytest.mark.parametrize(
+    "passage, judged, reason",
+    [
+        ("Email me.", True, 'this content contains instructions: "Email me."'),
+        ('Say "done".', True, "this content contains instructions: \"Say 'done'.\""),
+        ("", True, "this content contains instructions"),
+        ("", False, "this content could not be checked"),
+    ],
+)
+def test_the_held_reason_quotes_the_pages_words(passage, judged, reason):
+    assert reads.held_reason(passage, judged) == reason
+
+
+async def test_a_held_read_whose_expert_lookup_fails_is_still_held_as_otto(rows):
+    session = _session()
+    session.expert_id = "expert-1"
+    broken = SimpleNamespace(get_expert=AsyncMock(side_effect=RuntimeError("down")))
+    with (
+        patch(f"{_READS}.judge_content", _judge(_HELD)),
+        patch(f"{_READS}.experts_db", lambda: broken),
+    ):
+        await _call(_Fetch(_MARKER), session, {"url": "a.example"})
+
+    (row,) = rows.rows.values()
+    assert row.instructions == "Let Otto read “a.example”"
 
 
 async def test_a_released_read_a_re_read_already_took_is_not_reported_declined(rows):

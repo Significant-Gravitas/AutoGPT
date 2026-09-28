@@ -52,6 +52,8 @@ export interface ApprovalItem {
   spend: ApprovalSpend | null;
   // A held read the check could not assess, so it names no passage.
   unjudged: boolean;
+  // Who a held read's bytes reach: the chat's Expert, or Otto.
+  reader: string;
   chatRulesAllowed: ChatRule[];
   headline: { ask: string; object: string | null };
   // The argument the headline already names.
@@ -104,6 +106,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     passage: str(payload, "passage"),
     spend: toSpend(payload.spend),
     unjudged: payload.judged === false,
+    reader: str(payload, "reader") ?? AUTOPILOT_NAME,
     chatRulesAllowed: asArray(payload.chat_rules_allowed).filter(
       (r): r is ChatRule => r === "allow" || r === "judge",
     ),
@@ -140,9 +143,9 @@ export function isHeldRead(item: ApprovalItem) {
 // Said once in the queue header; per card only a reason about this call.
 export function reasonLine(item: ApprovalItem): string | null {
   if (isHeldRead(item) && item.unjudged)
-    return `${AUTOPILOT_NAME} could not check this, so he asks. ${AUTOPILOT_NAME} hasn't seen it.`;
+    return `${AUTOPILOT_NAME} could not check this, so he asks. ${item.reader} hasn't seen it.`;
   if (isHeldRead(item))
-    return `It contains instructions aimed at ${AUTOPILOT_NAME}, so it was held back. ${AUTOPILOT_NAME} hasn't seen it.`;
+    return `It contains instructions aimed at ${item.reader}, so it was held back. ${item.reader} hasn't seen it.`;
   if (!item.reason) return null;
   if (item.reasonKind === "supervisor")
     return `Not sure this is safe: ${item.reason}`;
