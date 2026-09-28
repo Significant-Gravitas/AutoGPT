@@ -1,4 +1,5 @@
 import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
 import { server } from "@/mocks/mock-server";
 import {
@@ -7,8 +8,11 @@ import {
   screen,
   within,
 } from "@/tests/integrations/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadHeader } from "../components/ChatMessagesContainer/components/ThreadHeader";
+import { ContextPanel } from "../components/ContextPanel/ContextPanel";
+import { ContextPanelToggle } from "../components/ContextPanel/ContextPanelToggle";
+import { useCopilotUIStore } from "../store";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -18,9 +22,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return { ...actual, useGetFlag: () => true };
 });
 
+const maria = { id: "expert-maria", name: "Maria" };
+
 const mariaIdentity = {
-  id: "expert-maria",
-  name: "Maria",
+  ...maria,
   avatarUrl: null,
   role: "Marketing Strategist",
   isArchived: false,
@@ -36,80 +41,127 @@ function credential(provider: string): ExpertCredentialRef {
   };
 }
 
-function renderHeader() {
-  return render(<ThreadHeader expertIdentity={mariaIdentity} />);
+function resetPanel() {
+  useCopilotUIStore.setState((s) => ({
+    integrationsPanelExpert: null,
+    artifactPanel: {
+      ...s.artifactPanel,
+      isOpen: false,
+      activeArtifact: null,
+      activeTab: "files",
+      mode: "artifact",
+      isComputerOpen: false,
+    },
+  }));
 }
 
-describe("expert integrations under the thread chip", () => {
-  it("lists every integration by name", async () => {
+function renderControls() {
+  return render(
+    <>
+      <ContextPanelToggle sessionId="session-1" expert={maria} />
+      <ContextPanel sessionId="session-1" />
+    </>,
+  );
+}
+
+beforeEach(() => {
+  server.use(
+    getListWorkspaceFilesMockHandler200({
+      files: [],
+      offset: 0,
+      has_more: false,
+    }),
+  );
+  resetPanel();
+});
+
+afterEach(resetPanel);
+
+describe("expert integrations in the chat controls", () => {
+  it("shows the first two logos and counts the rest", async () => {
     server.use(
       getListExpertCredentialsMockHandler([
         credential("linkedin"),
         credential("notion"),
         credential("github"),
         credential("slack"),
+        credential("gmail"),
       ]),
     );
 
-    renderHeader();
+    renderControls();
 
-    const list = await screen.findByTestId("expert-integrations");
-    expect(within(list).getAllByRole("listitem")).toHaveLength(4);
-    expect(within(list).getByText("slack account")).toBeDefined();
-    expect(within(list).getByText("linkedin account")).toBeDefined();
+    const cluster = await screen.findByTestId("expert-integrations");
+    expect(within(cluster).getAllByRole("img")).toHaveLength(2);
+    expect(within(cluster).getByText("+3")).toBeDefined();
   });
 
-  it("keeps integrations and actions out of the chip itself", async () => {
-    server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
-
-    renderHeader();
-
-    await screen.findByTestId("expert-integrations");
-    const chip = screen.getByLabelText(/^Maria — /);
-    expect(within(chip).queryByRole("img", { name: "LinkedIn" })).toBeNull();
-    expect(
-      within(screen.getByTestId("expert-thread-header")).queryByRole("button"),
-    ).toBeNull();
-  });
-
-  it("names an MCP integration after the service, not its URL", async () => {
+  it("omits the counter when everything fits", async () => {
     server.use(
       getListExpertCredentialsMockHandler([
-        {
-          credential_id: "cred-mcp",
-          provider: "mcp",
-          title: "MCP: mcp.sentry.dev",
-          type: "host_scoped",
-        },
+        credential("linkedin"),
+        credential("notion"),
       ]),
     );
 
-    renderHeader();
+    renderControls();
 
-    expect(await screen.findByText("Sentry")).toBeDefined();
-    expect(screen.queryByText("MCP: mcp.sentry.dev")).toBeNull();
+    const cluster = await screen.findByTestId("expert-integrations");
+    expect(within(cluster).getAllByRole("img")).toHaveLength(2);
+    expect(within(cluster).queryByText(/^\+/)).toBeNull();
+  });
+
+  it("opens the side panel on the expert's integrations", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        credential("linkedin"),
+        credential("notion"),
+        credential("github"),
+      ]),
+    );
+
+    renderControls();
+    fireEvent.click(await screen.findByTestId("expert-integrations"));
+
+    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(await screen.findByText("github account")).toBeDefined();
+    expect(screen.getByLabelText("Hide integrations")).toBeDefined();
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe(
+      "integrations",
+    );
   });
 
   it("keeps the integration's name when its logo fails to load", async () => {
     server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
 
-    renderHeader();
+    renderControls();
 
-    const list = await screen.findByTestId("expert-integrations");
-    const logo = within(list).getByRole("img", { name: "LinkedIn" });
-    fireEvent.error(logo);
+    const cluster = await screen.findByTestId("expert-integrations");
+    fireEvent.error(within(cluster).getByRole("img", { name: "LinkedIn" }));
 
     // The PNG is missing for plenty of providers, so the fallback glyph must
     // still announce which integration it stands for.
-    expect(within(list).getByRole("img", { name: "LinkedIn" })).toBeDefined();
+    expect(
+      within(cluster).getByRole("img", { name: "LinkedIn" }),
+    ).toBeDefined();
   });
 
   it("renders nothing when the expert reaches no integrations", async () => {
     server.use(getListExpertCredentialsMockHandler([]));
 
-    renderHeader();
+    renderControls();
 
-    expect(await screen.findByTestId("expert-thread-header")).toBeDefined();
+    expect(await screen.findByLabelText("Open files")).toBeDefined();
     expect(screen.queryByTestId("expert-integrations")).toBeNull();
+  });
+
+  it("keeps integrations and actions out of the thread chip", async () => {
+    server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
+
+    render(<ThreadHeader expertIdentity={mariaIdentity} />);
+
+    const header = await screen.findByTestId("expert-thread-header");
+    expect(within(header).queryByRole("img", { name: "LinkedIn" })).toBeNull();
+    expect(within(header).queryByRole("button")).toBeNull();
   });
 });

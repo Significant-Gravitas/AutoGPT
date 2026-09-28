@@ -136,11 +136,6 @@ interface Props {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
-  /** The host's floating workspace-files card is open, so the column
-   *  slides aside for it. Only the copilot chat mounts that card;
-   *  every other host (share viewer, memory and builder panels) leaves this
-   *  off, whatever the persisted panel state says. */
-  areFilesOpen?: boolean;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
@@ -305,7 +300,6 @@ export function ChatMessagesContainer({
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
   hasFloatingControls = false,
-  areFilesOpen = false,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -501,10 +495,9 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
             !showThreadHeader && "pt-4",
-            areFilesOpen && "xl:-translate-x-40",
           )}
           style={
             bottomContentPadding

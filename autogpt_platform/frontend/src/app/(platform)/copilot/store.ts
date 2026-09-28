@@ -99,9 +99,15 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "codex"; credentialId: string }
   | { authProvider: "microsoft_365_copilot"; credentialId: string };
 
-/** Context panel tab: "files" is the inline workspace-files card, "artifacts"
- *  the docked artifacts library. */
-export type ContextPanelTab = "files" | "artifacts";
+/** Context panel tab, each docked on the right: the chat's files, the
+ *  artifacts library, or the chat's expert's integrations. */
+export type ContextPanelTab = "files" | "artifacts" | "integrations";
+
+/** The expert whose integrations the panel lists. */
+export interface IntegrationsPanelExpert {
+  id: string;
+  name: string;
+}
 
 const isClient = typeof window !== "undefined";
 
@@ -226,6 +232,9 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
+  integrationsPanelExpert: IntegrationsPanelExpert | null;
+  /** The integrations tab for `expert`, toggled like any other tab. */
+  toggleIntegrationsPanel: (expert: IntegrationsPanelExpert) => void;
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
@@ -602,6 +611,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  integrationsPanelExpert: null,
+  toggleIntegrationsPanel: (expert) => {
+    set({ integrationsPanelExpert: expert });
+    get().toggleContextPanelTab("integrations");
+  },
   openContextPanelForFiles: () => {
     if (_autoOpenUserClosed) return;
     if (isClient) {
@@ -622,8 +636,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   },
 
   // Explicit user action (the artifact panel's files button): drops the open
-  // preview or the computer face and hands the region to the floating files
-  // card.
+  // preview or the computer face and docks the files tab.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");

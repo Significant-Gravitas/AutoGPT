@@ -1,12 +1,8 @@
 "use client";
 
 import { Download01Icon, File02Icon } from "@hugeicons/core-free-icons";
-import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
-import { useExpertIntegrations } from "../ChatMessagesContainer/components/ExpertIntegrations/useExpertIntegrations";
-import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection";
 import { SessionActivityCard } from "./components/SessionActivityCard";
 import { StackSection } from "./components/StackSection";
 import { WorkspaceFilesContent } from "./components/WorkspaceFilesContent";
@@ -14,46 +10,12 @@ import { useSessionActivity } from "./useSessionActivity";
 import { useWorkspaceFileCards } from "./useWorkspaceFileCards";
 
 interface Props {
-  sessionId: string | null;
-  /** The live expert this chat belongs to, whose integrations get a section
-   *  of their own. Null for Otto's chats and archived experts. */
-  expertId?: string | null;
-}
-
-// Matches the chat column's shift transition (see ChatMessagesContainer) so
-// the card lands as the messages finish sliding aside.
-const CARD_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const CARD_TRANSITION = { duration: 0.3, ease: CARD_EASE };
-
-/**
- * Workspace files as a floating card pinned to the chat's top right. The
- * workspace-files icon toggles ``artifactPanel.isOpen``; this grid answers it
- * inside the chat column rather than pushing a drawer over it.
- *
- * The card body — and its file-list request and transcript scans — mounts
- * only while the card is showing.
- */
-export function WorkspaceFileCards({ sessionId, expertId = null }: Props) {
-  const isOpen = useAreWorkspaceFileCardsOpen();
-  return (
-    <AnimatePresence initial={false}>
-      {isOpen && sessionId && (
-        <OpenWorkspaceFileCards
-          key="workspace-file-cards"
-          sessionId={sessionId}
-          expertId={expertId}
-        />
-      )}
-    </AnimatePresence>
-  );
-}
-
-interface OpenProps {
   sessionId: string;
-  expertId: string | null;
 }
 
-function OpenWorkspaceFileCards({ sessionId, expertId }: OpenProps) {
+/** The chat's files, then the runs and schedules it set in motion — the
+ *  files tab of the docked side panel. */
+export function WorkspaceFileCards({ sessionId }: Props) {
   const {
     files,
     isLoading,
@@ -68,22 +30,15 @@ function OpenWorkspaceFileCards({ sessionId, expertId }: OpenProps) {
     handleDownloadAll,
   } = useWorkspaceFileCards(sessionId);
 
-  // An empty-state card is noise floating over the chat — the files card only
-  // earns its space once there's something in it (or something to report).
+  // The files section only shows once there's something in it (or something
+  // to report); a chat with nothing at all gets one empty state.
   const showFilesCard = isLoading || isError || files.length > 0;
   const { runs, schedules } = useSessionActivity(sessionId);
   const hasActivity = runs.length > 0 || schedules.length > 0;
-  const { integrations } = useExpertIntegrations(expertId);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 12, scale: 0.98 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 12, scale: 0.98 }}
-      transition={CARD_TRANSITION}
-      className="absolute right-8 top-3 z-30 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3"
-    >
-      {!showFilesCard && !hasActivity && integrations.length === 0 && (
+    <div className="flex flex-col gap-3">
+      {!showFilesCard && !hasActivity && (
         <div className="rounded-3xl bg-white/90 px-4 py-3 backdrop-blur smooth-shadow-ring-sm">
           <p className="py-2 text-center text-sm text-zinc-400">
             Nothing here yet.
@@ -128,7 +83,6 @@ function OpenWorkspaceFileCards({ sessionId, expertId }: OpenProps) {
         </StackSection>
       )}
       <SessionActivityCard sessionId={sessionId} />
-      <ExpertIntegrationsSection integrations={integrations} />
-    </motion.div>
+    </div>
   );
 }

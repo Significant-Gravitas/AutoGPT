@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -22,7 +21,6 @@ import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
-import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
 import { SharedChatNotice } from "./components/SharedChatNotice";
@@ -40,7 +38,6 @@ import type { ExpertIdentity } from "../../useExpertMap";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
-import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import type { SentFrom } from "../../sentFrom";
 import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
@@ -165,9 +162,6 @@ export const ChatContainer = ({
   hasFloatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // The composer and the message column only slide aside while the floating
-  // files card is shown; this host is the one that mounts the card.
-  const areFilesOpen = useAreWorkspaceFileCardsOpen();
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -330,16 +324,15 @@ export const ChatContainer = ({
             ) : sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
                 <div className="absolute right-0 top-0 z-30">
-                  <ContextPanelToggle sessionId={sessionId} />
+                  <ContextPanelToggle
+                    sessionId={sessionId}
+                    expert={
+                      expertIdentity && !expertIdentity.isArchived
+                        ? { id: expertIdentity.id, name: expertIdentity.name }
+                        : null
+                    }
+                  />
                 </div>
-                <WorkspaceFileCards
-                  sessionId={sessionId}
-                  expertId={
-                    expertIdentity && !expertIdentity.isArchived
-                      ? expertIdentity.id
-                      : null
-                  }
-                />
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -362,7 +355,6 @@ export const ChatContainer = ({
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
                   hasFloatingControls={hasFloatingControls}
-                  areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
                   <ArchivedExpertNotice
@@ -374,10 +366,7 @@ export const ChatContainer = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.3 }}
-                    className={cn(
-                      "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
-                      areFilesOpen && "xl:-translate-x-40",
-                    )}
+                    className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
                   >
                     {isLimitReached && (
                       <div

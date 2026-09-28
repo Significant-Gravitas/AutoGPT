@@ -12,7 +12,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { ExpertIdentity } from "../../../useExpertMap";
 import { ExpertAvatar } from "./ExpertAvatar/ExpertAvatar";
-import { ExpertIntegrations } from "./ExpertIntegrations/ExpertIntegrations";
 
 // Otto's product-facing title when a session carries no expert identity.
 const DEFAULT_EXPERT_ROLE = "Head of AI";
@@ -30,8 +29,7 @@ interface Props {
  *  zero-height wrapper keeps it out of the flex flow so messages scroll
  *  underneath. An expert session wears the expert's identity and every other
  *  session is Otto's, so the thread is never anonymous. The chip is a passive
- *  label; the expert's integrations are listed beneath it where the gutter
- *  has room for them. */
+ *  label; the expert's integrations live in the top-right controls. */
 export function ThreadHeader({
   expertIdentity,
   isResolvingExpertIdentity = false,
@@ -44,13 +42,12 @@ export function ThreadHeader({
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
   const jobTitle = expertIdentity?.jobTitle;
   const roleLabel = jobTitle || getExpertRoleLabel(role);
-  const showIntegrations = expertIdentity != null && !expertIdentity.isArchived;
 
   return (
     <div data-testid="expert-thread-header" className="relative z-20 h-0">
       <div
         className={cn(
-          "pointer-events-none absolute inset-x-0 top-3 flex flex-col items-start gap-2 px-4",
+          "pointer-events-none absolute inset-x-0 top-3 flex justify-start px-4",
           hasFloatingControls && "max-md:pl-28 md:max-lg:pl-20",
         )}
       >
@@ -97,9 +94,6 @@ export function ThreadHeader({
             )}
           </Tooltip>
         </TooltipProvider>
-        {showIntegrations && (
-          <ExpertIntegrations expertId={expertIdentity.id} />
-        )}
       </div>
     </div>
   );
