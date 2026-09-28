@@ -4880,8 +4880,9 @@ async def _append_follow_up_warm_context(
     if not refreshed:
         return query_message
     # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
-    # can scrub THIS block from the persisted transcript without touching a
-    # ``<temporal_context>`` tag the user may have typed.
+    # can scrub THIS block from the persisted transcript. A
+    # ``<temporal_context>`` tag the user typed is left alone unless it
+    # carries this process's nonce (see ``_mark_injected_memory_block``).
     return f"{query_message}\n\n{_mark_injected_memory_block(refreshed)}"
 
 
