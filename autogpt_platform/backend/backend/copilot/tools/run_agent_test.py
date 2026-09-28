@@ -1799,6 +1799,28 @@ async def test_wet_run_omits_node_trace_dry_run_inlines_it(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_only_a_real_run_reports_agent_run_success(mocker, dry_run):
+    _completed_run_mocks(mocker, outputs={"result": ["ok"]}, node_executions=[])
+    mocker.patch("backend.copilot.tools.run_agent.charge_credits", AsyncMock())
+    tracked = mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+
+    await _run_waited(mocker, dry_run=dry_run)
+
+    if dry_run:
+        tracked.assert_not_called()
+    else:
+        tracked.assert_called_once_with(
+            "user-1",
+            mocker.ANY,
+            "agent_run_success",
+            graph_id="graph-1",
+            execution_id="exec-1",
+            library_agent_id="lib-1",
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_detailed_fetch_failure_degrades_to_summary(mocker):
     """When the per-node trace fetch raises, the run response still returns
     (summary only) instead of crashing."""

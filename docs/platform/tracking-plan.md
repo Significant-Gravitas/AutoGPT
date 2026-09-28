@@ -186,7 +186,7 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `agent_run_started` | backend | live | `graph_id`, `graph_exec_id`, `via` (`manual`, `api`, `copilot`), `via_ref`, `preset_id`; an expert's workflow run adds `expert_id` and `kind: workflow_run` | A person starts an agent run. |
-| `chat_message_sent` | backend | live | `chat_session_id`, `origin` (`web`, or the bot platform: `slack`, `discord`, ...), `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
+| `chat_message_sent` | backend | live | `chat_session_id`, `origin` (`web`, or the bot platform the chat was opened from: `slack`, `discord`, ...), `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
 | `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `via`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. Deduplicated on `graph_exec_id`, so a requeue or resume that finishes the same run again sends no second event. |
 | `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `chat_session_id` | Any schedule is registered, from any surface. |
 | `chat_tool_called` | backend | live | `chat_session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
