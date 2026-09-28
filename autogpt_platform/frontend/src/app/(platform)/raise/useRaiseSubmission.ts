@@ -4,6 +4,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { roleFor } from "./components/CategoryStep/helpers";
 import {
   failedAttachmentMessage,
   toRaiseAttachments,
@@ -33,7 +34,7 @@ export function useRaiseSubmission() {
       const response = await createRaisedExpert({
         data: {
           name: draft.name,
-          role: draft.role,
+          role: draft.legacyRole ?? roleFor(draft.category),
           job_title: draft.jobTitle || null,
           color: draft.color,
           avatar_url: draft.avatarUrl || null,
