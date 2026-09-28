@@ -6,11 +6,7 @@ from typing import Any
 from prisma.enums import ReviewStatus
 
 from backend.blocks import get_block
-from backend.copilot.constants import (
-    COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
-    parse_node_id_from_exec_id,
-)
+from backend.copilot.constants import COPILOT_NODE_PREFIX, parse_node_id_from_exec_id
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.db_accessors import review_db
@@ -87,8 +83,7 @@ class ContinueRunBlockTool(BaseTool):
             )
 
         # Validate the review belongs to this session
-        expected_graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
-        if review.graph_exec_id != expected_graph_exec_id:
+        if review.session_id != session_id:
             return ErrorResponse(
                 message="Review does not belong to this session.",
                 session_id=session_id,

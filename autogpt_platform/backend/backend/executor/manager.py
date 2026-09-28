@@ -175,6 +175,12 @@ KNOWN_GRAPH_EXECUTION_ERRORS = (
     UserPaywalledError,
 )
 
+# The statuses a node skipped for missing optional credentials goes through.
+# It never runs, but COMPLETED can only be reached from RUNNING
+# (VALID_STATUS_TRANSITIONS); a direct QUEUED -> COMPLETED write is rejected
+# and leaves the node QUEUED after its run has finished.
+SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
+
 
 def _propagate_node_failure(
     graph_stats: GraphExecutionStats,
@@ -1241,11 +1247,12 @@ class ExecutionProcessor:
                     )
                     # Mark the node as completed without executing
                     # No outputs will be produced, so downstream nodes won't trigger
-                    update_node_execution_status(
-                        db_client=db_client,
-                        exec_id=queued_node_exec.node_exec_id,
-                        status=ExecutionStatus.COMPLETED,
-                    )
+                    for status in SKIPPED_NODE_STATUSES:
+                        update_node_execution_status(
+                            db_client=db_client,
+                            exec_id=queued_node_exec.node_exec_id,
+                            status=status,
+                        )
                     continue
 
                 log_metadata.debug(

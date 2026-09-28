@@ -18,6 +18,8 @@ import {
   type PlanDef,
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
+import { getEligibleTrialOffer } from "@/components/organisms/SubscriptionPlans/helpers";
+import { useTrialCard } from "@/components/organisms/TrialCard/useTrialCard";
 import {
   getSubscriptionValue,
   trackAdsConversion,
@@ -96,6 +98,12 @@ export function usePaywallModal() {
     subscription?.tier_costs,
     subscription?.tier_costs_yearly,
   );
+
+  // Trial checkout returns to /settings/billing, which renders the trial
+  // confirmation. By then the enrollment has set a real tier, so the gate
+  // lifts and the user lands on their active trial rather than back here.
+  const trial = useTrialCard("billing");
+  const trialOffer = getEligibleTrialOffer(trial, plans);
 
   const hasActiveStripeSubscription = Boolean(
     subscription?.has_active_stripe_subscription,
@@ -204,7 +212,6 @@ export function usePaywallModal() {
     retryLoadPlans,
     isRetryingPlans: isFetching,
     country,
-    isYearly,
     selectedCycle,
     setSelectedCycle,
     handleSelectPlan,
@@ -215,5 +222,7 @@ export function usePaywallModal() {
     confirmPendingTier,
     cancelPendingTier,
     handleLogout,
+    trial,
+    trialOffer,
   };
 }

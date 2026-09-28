@@ -31,7 +31,7 @@ def make_mock_block(
     mock.name = name
     mock.block_type = block_type
     mock.disabled = disabled
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.input_schema = MagicMock()
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
     mock.input_schema.get_credentials_fields_info.return_value = {}
@@ -57,7 +57,7 @@ def make_mock_block_with_schema(
     mock.name = name
     mock.block_type = BlockType.STANDARD
     mock.disabled = False
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.description = f"Test block: {name}"
 
     input_schema = {
@@ -847,7 +847,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(True, input_data)
         )
@@ -894,7 +894,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -949,7 +949,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["url"],
         )
-        mock_block.is_sensitive_action = False
+        mock_block.is_irreversible_action = False
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -1717,7 +1717,7 @@ class TestSpendApproval:
 
         assert isinstance(response, ReviewRequiredResponse)
         assert response.review_id == "copilot-node-expert-spend:expert-1:abcd1234"
-        assert response.graph_exec_id.startswith("copilot-session-")
+        assert "graph_exec_id" not in response.model_dump()
         assert not block.executed
         gate.spend_approval_required.assert_awaited_once_with(_TEST_USER_ID, "expert-1")
         assert (
