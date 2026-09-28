@@ -12,6 +12,7 @@ import {
 import {
   folder,
   heldRead,
+  mail,
 } from "../../copilot/components/ApprovalQueue/__tests__/fixtures";
 import { NeedsYou } from "../components/NeedsYou/NeedsYou";
 import { ada, homeHeldItem, leo, makeDashboard } from "./heldItems";
@@ -309,4 +310,40 @@ test("a long held passage scrolls inside the body while the footer keeps the dec
   expect(
     within(footer).getByRole("button", { name: "Keep it out" }),
   ).toBeDefined();
+});
+
+test("a rule scope picked on one call does not carry to the next", async () => {
+  const user = userEvent.setup();
+  const first = homeHeldItem(mail("m1"), { expert: ada, session: "m1" });
+  const second = homeHeldItem(mail("m2"), { expert: ada, session: "m2" });
+  renderTile([first, second]);
+
+  await user.click(
+    screen.getAllByRole("button", { name: `Review: ${first.title}` })[0],
+  );
+  const dialog = await screen.findByRole("dialog");
+  await user.click(
+    within(dialog).getByRole("button", { name: "More ways to approve" }),
+  );
+  await user.click(
+    await screen.findByRole("menuitemradio", { name: "This chat" }),
+  );
+  expect(
+    screen
+      .getByRole("menuitemradio", { name: "This chat" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+  await user.click(within(dialog).getByRole("button", { name: "Next" }));
+  await user.click(
+    within(dialog).getByRole("button", { name: "More ways to approve" }),
+  );
+
+  expect(
+    (
+      await screen.findByRole("menuitemradio", { name: "Ada, every chat" })
+    ).getAttribute("aria-checked"),
+  ).toBe("true");
 });

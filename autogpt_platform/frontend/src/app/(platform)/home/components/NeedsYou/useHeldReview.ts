@@ -42,6 +42,7 @@ export function useHeldReview({ items }: Args) {
   const [announcement, setAnnouncement] = useState("");
   const seen = useRef(new Map<string, HomeAttentionItem>());
   const answeredHere = useRef(new Set<string>());
+  const left = useRef(new Set<string>());
   const order = useRef<string[]>([]);
 
   const rows = orderRows(order.current, items, seen.current, receipts);
@@ -53,6 +54,21 @@ export function useHeldReview({ items }: Args) {
   // A held call that leaves the feed without an answer from here was answered in its chat.
   useEffect(() => {
     const current = new Set(items.map((item) => item.id));
+    // The gate deletes a decided row, so the same call asked again returns under the same id.
+    const back = [...left.current].filter((id) => current.has(id));
+    if (back.length > 0) {
+      setReceipts((prev) => {
+        const next = { ...prev };
+        back.forEach((id) => delete next[id]);
+        return next;
+      });
+      back.forEach((id) => {
+        left.current.delete(id);
+        answeredHere.current.delete(id);
+      });
+    }
+    for (const id of seen.current.keys())
+      if (!current.has(id)) left.current.add(id);
     const gone = [...seen.current.values()].filter(
       (item) => !current.has(item.id) && !answeredHere.current.has(item.id),
     );

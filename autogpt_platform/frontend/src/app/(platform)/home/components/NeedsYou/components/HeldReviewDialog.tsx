@@ -160,6 +160,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
             ) : current && approval && !current.receipt ? (
               <PaneFooter>
                 <ApprovalActions
+                  key={current.item.id}
                   item={approval}
                   status={held.statusOf(current.item.id)}
                   expertName={current.item.expert?.name ?? null}

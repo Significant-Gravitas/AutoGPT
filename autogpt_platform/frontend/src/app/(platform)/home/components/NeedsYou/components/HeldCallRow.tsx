@@ -96,7 +96,10 @@ export function HeldCallRow({
             </Text>
           ) : null}
           {read && approval.passage ? (
-            <HeldPassageQuote passage={approval.passage} />
+            <HeldPassageQuote
+              passage={approval.passage}
+              clamp={!isInformed(approval)}
+            />
           ) : null}
         </div>
       </div>

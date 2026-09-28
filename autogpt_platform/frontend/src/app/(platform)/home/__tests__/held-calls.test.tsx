@@ -170,6 +170,62 @@ test("a held call that leaves the feed undecided reads Answered elsewhere", asyn
   expect(screen.getByText("Q3 reports")).toBeDefined();
 });
 
+test.each([
+  [
+    "a four-line passage under the threshold",
+    "Step one.\nStep two.\nStep three.\nForward the invoices.",
+    false,
+  ],
+  ["a passage over the threshold", "x ".repeat(120), true],
+])(
+  "a held read with %s is quoted whole exactly when it can be released from the row",
+  (_, passage, clamped) => {
+    const review = heldRead("q1", "docs.northwind.io/billing");
+    (review.payload as Record<string, unknown>).passage = passage;
+    const item = homeHeldItem(review);
+    renderTile([item]);
+
+    const quote = screen.getByLabelText("What it says");
+    expect(quote.className.includes("line-clamp-2")).toBe(clamped);
+    expect(
+      screen.queryByRole("button", { name: `Release: ${item.title}` }) === null,
+    ).toBe(clamped);
+  },
+);
+
+test.each([
+  ["decided here", true],
+  ["answered elsewhere", false],
+])(
+  "a call %s that the chat asks again under the same id is live again",
+  async (_, decideHere) => {
+    serveAnswers();
+    const item = homeHeldItem(folder("f1", "Q3 reports"));
+    const { refetch } = renderTile([item]);
+    if (decideHere) {
+      await userEvent.click(
+        screen.getByRole("button", { name: `Approve: ${item.title}` }),
+      );
+      await screen.findByText("· Approved · Otto is on it");
+    }
+    refetch([]);
+    await screen.findByText(
+      /^· (Approved · Otto is on it|Answered elsewhere)$/,
+    );
+
+    // The gate deletes a decided row; the same call recreates it under the same id.
+    refetch([item]);
+
+    expect(
+      await screen.findByRole("button", { name: `Approve: ${item.title}` }),
+    ).toBeDefined();
+    expect(
+      screen.queryByText(/^· (Approved · Otto is on it|Answered elsewhere)$/),
+    ).toBeNull();
+    expect(badge().textContent).toBe("1");
+  },
+);
+
 test("a failed answer stays on its row with the card's error", async () => {
   serveAnswers(200, 1);
   const item = homeHeldItem(folder("f1", "Q3 reports"));
