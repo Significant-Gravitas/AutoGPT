@@ -16,7 +16,7 @@ from prometheus_client import Counter
 from pydantic import BaseModel, ConfigDict
 from typesafe_sdk import Choice, Noul, Score
 
-from backend.blocks.typesafe._budget import prepare_state
+from backend.blocks.typesafe._budget import MAX_REQUEST_BYTES, prepare_state
 from backend.blocks.typesafe._client import call_jev
 from backend.copilot.config import ChatConfig
 from backend.util.llm.providers import call_provider_openai_compat_sync
@@ -42,6 +42,10 @@ _FLAG_LINE = (
 # at 200 it used all of it on instruction-shaped reads and answered nothing.
 _MAX_TOKENS = 1024
 _CHUNK_OVERLAP = 2_000
+# Past this a read goes to the LLM whole: a 70k-character read of three-byte text
+# takes 9, so only an uncapped read (the baseline engine's) reaches the cap.
+_MAX_JEV_CHUNKS = 10
+_JEV_CONCURRENCY = 4
 _JEV_NOULS = ("must_hold", "q1", "q2", "q3")
 JEV_QUESTIONS: dict[str, Choice | Score | Noul] = {
     "verdict": Choice(
@@ -74,7 +78,8 @@ JEV_QUESTIONS: dict[str, Choice | Score | Noul] = {
 
 FIRST_STAGE = Counter(
     "copilot_gate_content_first_stage_total",
-    "Content-judge first-stage outcomes: clean, hold, or why it fell through",
+    "Content-judge first-stage outcomes: clean, hold, or why it fell through"
+    " (timeout, error, unparseable, too_long)",
     ["outcome"],
 )
 
@@ -125,7 +130,19 @@ async def _jev_verdict(source: str, text: str) -> JevContentVerdict | None:
     """Hold when any chunk holds; None (fall through to the LLM) when no chunk
     holds and any chunk could not be judged."""
     chunks = _chunks(source, text)
-    results = await asyncio.gather(*(_jev_chunk(source, c) for c in chunks))
+    if len(chunks) > _MAX_JEV_CHUNKS:
+        FIRST_STAGE.labels(outcome="too_long").inc()
+        logger.info(
+            f"Content first stage skipped a {len(text)}-char read: {source[:80]}"
+        )
+        return None
+    slots = asyncio.Semaphore(_JEV_CONCURRENCY)
+
+    async def bounded(chunk: str) -> tuple[bool, dict[str, float]] | None:
+        async with slots:
+            return await _jev_chunk(source, chunk)
+
+    results = await asyncio.gather(*(bounded(c) for c in chunks))
     for chunk, result in zip(chunks, results):
         if result is not None and result[0]:
             FIRST_STAGE.labels(outcome="hold").inc()
@@ -177,10 +194,12 @@ async def _jev_chunk(source: str, chunk: str) -> tuple[bool, dict[str, float]] |
 
 def _chunks(source: str, text: str) -> list[str]:
     """Overlapping pieces of ``text``, each the longest that fits one Jev call,
-    so a passage cut at one boundary is whole in the next piece."""
+    so a passage cut at one boundary is whole in the next piece. Stops one past
+    ``_MAX_JEV_CHUNKS``, so a huge read costs no more than the cap to split."""
     chunks, start = [], 0
-    while True:
-        low, high = start + 1, len(text)
+    while len(chunks) <= _MAX_JEV_CHUNKS:
+        # A character is at least one byte, so no chunk is longer than the budget.
+        low, high = start + 1, min(len(text), start + MAX_REQUEST_BYTES)
         while low < high:
             middle = (low + high + 1) // 2
             if _fits(source, text[start:middle]):
@@ -191,6 +210,7 @@ def _chunks(source: str, text: str) -> list[str]:
         if low >= len(text):
             return chunks
         start = max(low - _CHUNK_OVERLAP, start + 1)
+    return chunks
 
 
 def _fits(source: str, chunk: str) -> bool:

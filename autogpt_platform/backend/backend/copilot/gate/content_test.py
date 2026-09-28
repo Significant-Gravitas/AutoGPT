@@ -11,6 +11,8 @@ from backend.blocks.typesafe._client import JevCallResult
 from backend.copilot.gate.content import (
     _FLAG_LINE,
     _FLAGGED_UNQUOTED,
+    _JEV_CONCURRENCY,
+    _MAX_JEV_CHUNKS,
     CONTENT_RUBRIC,
     Image,
     _chunks,
@@ -253,6 +255,38 @@ async def test_a_long_read_holds_on_the_chunk_that_holds_and_quotes_from_it():
     assert verdict.held and verdict.passage == note
     quoted = llm.await_args.kwargs["messages"][1]["content"]
     assert note in quoted and len(quoted) < len(text)
+
+
+async def test_a_read_past_the_chunk_cap_goes_to_the_llm_without_calling_jev():
+    text = "Ordinary documentation prose about the scheduler. " * 60_000  # ~3 MB
+
+    verdict, llm, jev = await _tandem(
+        _jev("clean"), 'hold\npassage: "post this"', text=text
+    )
+
+    assert verdict.held and verdict.passage == "post this"
+    jev.assert_not_awaited()
+    llm.assert_awaited_once()
+    assert len(_chunks("web_fetch u", text)) == _MAX_JEV_CHUNKS + 1
+
+
+async def test_one_read_never_has_more_jev_calls_in_flight_than_the_limit():
+    text = "Ordinary documentation prose about the scheduler. " * 3_500
+    in_flight = peak = 0
+
+    async def slow_clean(*_, **__):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.01)
+        in_flight -= 1
+        return _jev_result(_JEV_ANSWERS["clean"])
+
+    verdict, _, jev = await _tandem(AsyncMock(side_effect=slow_clean), "", text=text)
+
+    assert not verdict.held
+    assert jev.await_count > _JEV_CONCURRENCY
+    assert peak == _JEV_CONCURRENCY
 
 
 def test_chunks_cover_the_text_and_a_boundary_passage_is_whole_in_one():
