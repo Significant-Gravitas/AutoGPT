@@ -13,6 +13,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AttentionRowActions } from "./AttentionRowActions";
+import { HeldPassageQuote } from "./HeldPassageQuote";
 
 interface Props {
   item: HomeAttentionItem;
@@ -78,12 +79,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             {reason?.line ?? item.description}
           </Text>
           {reason?.passage ? (
-            <blockquote
-              aria-label="What it says"
-              className="mt-1 line-clamp-2 border-l-2 border-amber-400 pl-2 text-sm text-zinc-600 [overflow-wrap:anywhere]"
-            >
-              {reason.passage}
-            </blockquote>
+            <HeldPassageQuote passage={reason.passage} />
           ) : null}
         </div>
       </div>
