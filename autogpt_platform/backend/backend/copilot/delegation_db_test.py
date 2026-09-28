@@ -14,6 +14,8 @@ from .delegation_db import (
     get_delegation_spend_since,
     get_expert_hired_at,
     get_session_costs,
+    raise_delegation_cap,
+    stop_delegation_at_cap,
     update_delegation_settings,
 )
 from .delegation_settings import DelegationSettings
@@ -138,3 +140,22 @@ async def test_hire_date_is_only_the_owners_to_read(users):
     assert hired is not None
     assert datetime.now(UTC) - hired < timedelta(minutes=5)
     assert await get_expert_hired_at(bob, bea) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_cap_is_raised_and_stopped_for_the_owner_only(users):
+    alice, bob = users
+    thread = await _session(alice, {"delegation_cap_usd": 2.0, "purpose": "keep"})
+
+    assert await raise_delegation_cap(thread, alice, 5.0) == 7.0
+    assert await raise_delegation_cap(thread, bob, 100.0) == 0.0
+    await stop_delegation_at_cap(thread, bob)
+    row = await PrismaChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None and row.metadata == {
+        "delegation_cap_usd": 7.0,
+        "purpose": "keep",
+    }
+
+    await stop_delegation_at_cap(thread, alice)
+    row = await PrismaChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None and row.metadata["delegation_cap_stopped"] is True

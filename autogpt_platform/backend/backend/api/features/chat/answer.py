@@ -23,6 +23,7 @@ from backend.copilot.active_turns import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.db import clear_session_pending_question
+from backend.copilot.delegation_cap import apply_cap_answer, parse_cap_answer
 from backend.copilot.executor.utils import schedule_chat_turn
 from backend.copilot.model import (
     ChatSessionInfo,
@@ -95,15 +96,22 @@ async def answer_session(
 
     Used to answer a delegated expert's question from the chat that
     delegated it. A running turn takes the message into its pending buffer
-    instead, the same as a follow-up typed mid-turn.
+    instead, the same as a follow-up typed mid-turn. An answer to a
+    delegation's cap question raises the cap and resumes the thread, or
+    ("Stop") leaves it stopped without starting a turn.
     """
     session = await _writable_session(session_id, user_id)
+    message = await _cap_answer(session, user_id, request.message)
+    if message is None:
+        # "Stop" at a delegation cap: the thread stays stopped, nothing runs.
+        await _resolve_question(session_id, user_id)
+        return AnswerSessionResponse(session_id=session_id, queued=False)
     await _admit(session, user_id)
     if await _in_flight(session_id):
         await queue_pending_for_http(
             session_id=session_id,
             user_id=user_id,
-            message=request.message,
+            message=message,
             context=None,
             file_ids=None,
             folder_ids=None,
@@ -111,9 +119,20 @@ async def answer_session(
         )
         queued = True
     else:
-        queued = await _start_turn(session, user_id, request.message)
+        queued = await _start_turn(session, user_id, message)
     await _resolve_question(session_id, user_id)
     return AnswerSessionResponse(session_id=session_id, queued=queued)
+
+
+async def _cap_answer(
+    session: ChatSessionInfo, user_id: str, message: str
+) -> str | None:
+    """The message to post: *message*, or for an answer to a delegation's cap
+    question, the resume note after the raise, or None after "Stop"."""
+    answer = parse_cap_answer(session.metadata.pending_question, message)
+    if answer is None:
+        return message
+    return await apply_cap_answer(session.session_id, user_id, answer)
 
 
 async def _writable_session(session_id: str, user_id: str) -> ChatSessionInfo:

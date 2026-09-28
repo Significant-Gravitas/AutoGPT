@@ -93,3 +93,35 @@ async def get_expert_hired_at(user_id: str, expert_id: str) -> datetime | None:
         where={"id": expert_id, "ownerUserId": user_id}
     )
     return expert.createdAt if expert else None
+
+
+async def raise_delegation_cap(session_id: str, user_id: str, by_usd: float) -> float:
+    """Lift a delegated thread's cap by *by_usd*; the new cap.
+
+    Writes the one key, like ``set_session_pending_question``: a turn in
+    flight must not round-trip a stale copy of the metadata over it.
+    """
+    rows = await db.query_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = jsonb_set('
+        "COALESCE(\"metadata\", '{{}}'::jsonb), '{{delegation_cap_usd}}', "
+        "to_jsonb(COALESCE((\"metadata\" ->> 'delegation_cap_usd')::float, 0) "
+        "+ $3::float)) "
+        'WHERE "id" = $1 AND "userId" = $2 '
+        "RETURNING (\"metadata\" ->> 'delegation_cap_usd')::float AS cap",
+        session_id,
+        user_id,
+        max(0.0, by_usd),
+    )
+    return float(rows[0]["cap"]) if rows else 0.0
+
+
+async def stop_delegation_at_cap(session_id: str, user_id: str) -> None:
+    """Record that the user chose to stop a thread at its cap."""
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object('delegation_cap_stopped', true) "
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+    )

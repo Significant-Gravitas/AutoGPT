@@ -24,7 +24,11 @@ from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
-from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    get_chat_session,
+    get_chat_session_metadata,
+)
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
@@ -34,7 +38,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .delegation_policy import enforce_cap
+from .delegation_policy import CapState, cap_state, enforce_cap
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -284,7 +288,9 @@ class GetSubSessionResultTool(BaseTool):
                 else None
             ),
         )
-        response = await enforce_cap(response, sub.metadata.delegation_cap_usd, actor)
+        response = await enforce_cap(
+            response, await _cap_state(sub, inner_session_id), actor, user_id
+        )
         return apply_delegated_expert(response, delegate)
 
 
@@ -387,6 +393,18 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
             )
         )
     return result
+
+
+async def _cap_state(sub: ChatSession, inner_session_id: str) -> CapState:
+    """The thread's cap as its row holds it now.
+
+    Read past the session cache: a raise or a parked cap question is written
+    to the row alone, and the cancelled turn can re-cache an older copy.
+    """
+    if sub.metadata.delegation_cap_usd is None:
+        return CapState(cap_usd=None)
+    fresh = await get_chat_session_metadata(inner_session_id)
+    return cap_state(fresh.metadata if fresh else sub.metadata)
 
 
 def _parked_on_question(sub: ChatSession) -> SessionResult | None:

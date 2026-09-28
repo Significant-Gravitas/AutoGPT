@@ -13,9 +13,15 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 
+from backend.copilot.delegation_cap import (
+    CAP_OPTIONS,
+    cap_question,
+    is_cap_question,
+    park_at_cap,
+)
 from backend.copilot.delegation_settings import DelegationSettings, start_of_utc_day
 from backend.copilot.executor.utils import enqueue_cancel_task
-from backend.copilot.model import AutopilotMode, ChatSession
+from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.data.db_accessors import delegation_db
 
 from .models import SubSessionStatusResponse
@@ -75,30 +81,89 @@ async def _hired_lately(user_id: str, expert_id: str) -> bool:
     return hired_at is None or datetime.now(UTC) - hired_at < NEW_HIRE_WINDOW
 
 
+class CapState(BaseModel):
+    """A delegated thread's cap, as read fresh from its row."""
+
+    cap_usd: float | None
+    # The user answered the cap question with "Stop".
+    stopped: bool = False
+    # The thread is already parked on the cap question.
+    parked: bool = False
+
+
+def cap_state(meta: ChatSessionMetadata) -> CapState:
+    return CapState(
+        cap_usd=meta.delegation_cap_usd,
+        stopped=meta.delegation_cap_stopped,
+        parked=is_cap_question(meta.pending_question),
+    )
+
+
 async def enforce_cap(
-    response: SubSessionStatusResponse, cap_usd: float | None, actor: str
+    response: SubSessionStatusResponse, state: CapState, actor: str, user_id: str
 ) -> SubSessionStatusResponse:
     """Stop a still-working thread that has spent its cap, and say so.
 
-    A finished thread keeps its result: there is nothing left to stop, and
-    discarding work already paid for helps nobody.
+    With ``ask_before_over_cap`` on, the thread is parked on a question (raise
+    the cap, or stop) and reads ``needs_input`` until the user answers; off,
+    or once they answered "Stop", it reads ``error`` / "cap reached". A
+    thread that finished within its run keeps its result: there is nothing
+    left to stop, and discarding work already paid for helps nobody.
     """
-    if (
-        cap_usd is None
-        or response.status not in ("running", "queued")
-        or response.cost_usd is None
-        or response.cost_usd < cap_usd
-    ):
+    cap = state.cap_usd
+    if cap is None or response.cost_usd is None or response.cost_usd < cap:
         return response
-    await enqueue_cancel_task(response.sub_session_id)
+    working = response.status in ("running", "queued")
+    if not (working or state.parked or state.stopped):
+        return response
+    if working:
+        await enqueue_cancel_task(response.sub_session_id)
+    if not state.stopped and await _asks_over_cap(user_id):
+        if not state.parked:
+            await park_at_cap(response.sub_session_id, user_id, cap)
+        return _awaiting_raise(response, cap, actor)
+    return _cap_reached(response, cap, actor)
+
+
+async def _asks_over_cap(user_id: str) -> bool:
+    """Unreadable settings ask: a question costs less than a lost thread."""
+    try:
+        settings = await delegation_db().get_delegation_settings(user_id)
+    except Exception:
+        logger.warning(f"Delegation settings unreadable for {user_id}", exc_info=True)
+        return True
+    return settings.ask_before_over_cap
+
+
+def _awaiting_raise(
+    response: SubSessionStatusResponse, cap: float, actor: str
+) -> SubSessionStatusResponse:
+    return response.model_copy(
+        update={
+            "status": "needs_input",
+            "question": cap_question(cap),
+            "question_options": list(CAP_OPTIONS),
+            "message": (
+                f"{actor} reached the ${cap:.2f} per-delegation cap and is paused "
+                "until the user raises it or stops the task. Tell the user and "
+                "wait; do not answer it yourself."
+            ),
+        }
+    )
+
+
+def _cap_reached(
+    response: SubSessionStatusResponse, cap: float, actor: str
+) -> SubSessionStatusResponse:
+    spent = response.cost_usd or 0.0
     return response.model_copy(
         update={
             "status": "error",
             "error": CAP_REACHED,
             "message": (
-                f"{actor} reached the ${cap_usd:.2f} per-delegation cap after "
-                f"${response.cost_usd:.2f} and was stopped. Tell the user; they "
-                "can raise the cap in Otto's settings and ask again."
+                f"{actor} reached the ${cap:.2f} per-delegation cap after "
+                f"${spent:.2f} and was stopped. Tell the user; they can raise the "
+                "cap in Otto's settings and ask again."
             ),
         }
     )

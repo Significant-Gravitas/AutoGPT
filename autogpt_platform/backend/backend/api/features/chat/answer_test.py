@@ -1,5 +1,6 @@
 """POST /sessions/{id}/messages: answer a thread without opening its stream."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -9,6 +10,8 @@ import pytest_mock
 
 from backend.api.features.chat import answer
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.delegation_cap import CAP_OPTIONS, CapAnswer, cap_question
+from backend.copilot.model import PendingQuestion
 from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
 from backend.util.exceptions import NotFoundError
 
@@ -39,6 +42,7 @@ def seams(mocker: pytest_mock.MockerFixture):
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
     session.metadata.origin = "interactive"
+    session.metadata.pending_question = None
     mocks = {
         "session": session,
         "meta": mocker.patch.object(
@@ -66,6 +70,7 @@ def seams(mocker: pytest_mock.MockerFixture):
         "invalidate": mocker.patch.object(
             answer, "invalidate_session_cache", AsyncMock()
         ),
+        "apply_cap": mocker.patch.object(answer, "apply_cap_answer", AsyncMock()),
     }
     mocker.patch.object(answer, "enforce_payment_paywall", AsyncMock())
     mocker.patch.object(
@@ -123,3 +128,46 @@ def test_an_empty_answer_is_rejected(seams):
     response = client.post("/sessions/sub-1/messages", json={"message": "  "})
 
     assert response.status_code == 422
+
+
+def _parked_on_cap(seams) -> None:
+    seams["session"].metadata.pending_question = PendingQuestion(
+        text=cap_question(2.0), asked_at=datetime.now(UTC), options=CAP_OPTIONS
+    )
+
+
+def test_raising_the_cap_resumes_the_thread(seams, test_user_id):
+    _parked_on_cap(seams)
+    seams["apply_cap"].return_value = "[The user raised this hand-off's budget]"
+
+    response = client.post("/sessions/sub-1/messages", json={"message": "Raise by $5"})
+
+    assert response.json() == {"session_id": "sub-1", "queued": False}
+    seams["apply_cap"].assert_awaited_once_with(
+        "sub-1", test_user_id, CapAnswer(raise_usd=5.0)
+    )
+    assert (
+        seams["schedule"].await_args.kwargs["message"]
+        == "[The user raised this hand-off's budget]"
+    )
+
+
+def test_stopping_at_the_cap_starts_nothing(seams, test_user_id):
+    _parked_on_cap(seams)
+    seams["apply_cap"].return_value = None
+
+    response = client.post("/sessions/sub-1/messages", json={"message": "Stop"})
+
+    assert response.json() == {"session_id": "sub-1", "queued": False}
+    seams["schedule"].assert_not_awaited()
+    seams["queue_pending"].assert_not_awaited()
+    seams["clear"].assert_awaited_once_with("sub-1", test_user_id)
+
+
+def test_free_text_to_the_cap_question_is_an_ordinary_answer(seams):
+    _parked_on_cap(seams)
+
+    client.post("/sessions/sub-1/messages", json={"message": "What did it cost?"})
+
+    seams["apply_cap"].assert_not_awaited()
+    assert seams["schedule"].await_args.kwargs["message"] == "What did it cost?"

@@ -159,6 +159,9 @@ class ChatSessionMetadata(BaseModel):
     # Set by ``delegate_to_expert`` from the user's delegation settings: what
     # this delegated thread may spend before a poll stops it.
     delegation_cap_usd: float | None = None
+    # The user answered the cap question with "Stop": the thread stays stopped
+    # at its cap rather than being asked about it again.
+    delegation_cap_stopped: bool = False
 
     # Set by ``ask_question`` when a turn ends waiting on the user, cleared
     # when they reply. Drives the Home "Needs You" question item; one per

@@ -84,6 +84,7 @@ async def test_a_cold_poll_reads_the_parked_question(monkeypatch):
     the persisted last message may be plain text with no tool call."""
     sub = MagicMock(user_id="alice", expert_id=None)
     sub.metadata.delegated_by_session_id = None
+    sub.metadata.delegation_cap_usd = None
     sub.metadata.pending_question = PendingQuestion(
         text="Which release?", asked_at=datetime.now(UTC), options=["Q4"]
     )

@@ -141,6 +141,7 @@ class TestDelegateReportsCostAndTimes:
 async def test_a_cold_poll_reads_times_from_the_persisted_turn(monkeypatch, costs):
     sub = MagicMock(user_id="alice", expert_id=None)
     sub.metadata.delegated_by_session_id = None
+    sub.metadata.delegation_cap_usd = None
     sub.metadata.pending_question = None
     sub.messages = [_message("user", _ASKED), _message("assistant", _DONE, "done")]
     monkeypatch.setattr(
