@@ -63,8 +63,8 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   const isArtifactsOpen = isOpen && activeTab === "artifacts";
   // An open artifact preview and the artifacts tab are both the document
   // face of the right sidebar, so the toggle reads active for either and is
-  // the one control that closes them — the panel carries no close button.
-  // With the computer face on top, the artifact underneath is not showing.
+  // another control that closes them alongside the panel header. With the
+  // computer face on top, the artifact underneath is not showing.
   const isDocumentOpen = !isComputerOpen && (hasArtifact || isArtifactsOpen);
   const isRightSidebarOpen = isDocumentOpen || isComputerOpen;
   // The mobile sheet has no computer face to open.

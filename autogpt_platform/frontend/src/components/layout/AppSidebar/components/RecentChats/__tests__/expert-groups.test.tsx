@@ -223,7 +223,9 @@ describe("RecentChats — expert groups", () => {
     const avatar = expertGroup.querySelector("img");
     expect(avatar?.getAttribute("width")).toBe("32");
     expect(avatar?.getAttribute("height")).toBe("32");
-    expect(avatar?.getAttribute("src")).toContain("content.png");
+    expect(avatar?.getAttribute("src")).toBe(
+      "/autogpt-characters/v2.1/expert-general-01/neutral/32.webp",
+    );
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {

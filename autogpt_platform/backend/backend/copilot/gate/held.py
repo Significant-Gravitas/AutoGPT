@@ -27,6 +27,7 @@ from backend.util.encryption import JSONCryptor
 
 from . import chat_rules
 from . import review as review_store
+from .policy import PARKABLE, effect_for
 
 if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
@@ -65,6 +66,8 @@ class HeldCall(BaseModel):
     tool_name: str
     tool_call_id: str
     args: dict[str, Any]
+    # What a rejection sets to ask for the rest of the chat; the tool when None.
+    rule_key: str | None = None
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # Rebuilt from a card whose stored copy of the arguments no longer binds.
     lost: bool = False
@@ -90,6 +93,35 @@ async def remember(session_id: str, call: HeldCall) -> bool:
             f"Gate could not store held call {call.review_id}", exc_info=True
         )
         return False
+
+
+async def rule_key(session_id: str, review_id: str, tool_name: str) -> str:
+    """What a rejection of this card sets to ask: its subject, else its tool."""
+    call = (await _held(session_id)).get(review_id)
+    return (call.rule_key if call else None) or tool_name
+
+
+async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]:
+    """The key each held card can set a rule on; a held read or a money card
+    has none."""
+    if not review_ids:
+        return {}
+    try:
+        held = await _held(session_id)
+    except Exception:
+        # The approval still lands; only the rule is lost.
+        logger.warning(
+            f"Held calls unreadable for session {session_id}; approving without a rule",
+            exc_info=True,
+        )
+        return {}
+    return {
+        review_id: call.rule_key
+        for review_id in review_ids
+        if (call := held.get(review_id))
+        and call.rule_key
+        and (call.rule_key != call.tool_name or effect_for(call.tool_name) in PARKABLE)
+    }
 
 
 async def forget(session_id: str, review_id: str) -> None:
@@ -308,7 +340,12 @@ async def _outcome(
         return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
         await review_store.consume(call.review_id, user_id)
-        await chat_rules.set_ask(session.session_id, call.tool_name)
+        await chat_rules.set_ask(
+            session.session_id,
+            call.rule_key or call.tool_name,
+            user_id,
+            session.expert_id,
+        )
         return "rejected", (
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."

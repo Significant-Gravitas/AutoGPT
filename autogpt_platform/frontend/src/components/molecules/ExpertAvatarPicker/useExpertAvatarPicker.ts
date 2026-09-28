@@ -1,63 +1,56 @@
-import type { ExpertAvatarRequestAccentPlacement } from "@/app/api/__generated__/models/expertAvatarRequestAccentPlacement";
-import type { ExpertAvatarRequestAccentCount } from "@/app/api/__generated__/models/expertAvatarRequestAccentCount";
-import { uploadSubmissionMediaDirect } from "@/lib/direct-upload";
-import { useMutation } from "@tanstack/react-query";
 import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
-import type { ExpertAvatarRequestShade } from "@/app/api/__generated__/models/expertAvatarRequestShade";
 import type { ExpertAvatarRequestBase } from "@/app/api/__generated__/models/expertAvatarRequestBase";
-import type { ExpertAvatarRequestTilt } from "@/app/api/__generated__/models/expertAvatarRequestTilt";
+import type { ExpertAvatarRequestExpression } from "@/app/api/__generated__/models/expertAvatarRequestExpression";
 import type { ExpertAvatarRequestInlay } from "@/app/api/__generated__/models/expertAvatarRequestInlay";
 import type { ExpertAvatarRequestShape } from "@/app/api/__generated__/models/expertAvatarRequestShape";
-import type { ExpertAvatarRequestExpression } from "@/app/api/__generated__/models/expertAvatarRequestExpression";
-import { ACCEPTED_AVATAR_TYPES, MAX_AVATAR_BYTES } from "./helpers";
-import {
-  EXPERT_AVATARS,
-  BUILTIN_EXPERT_AVATARS,
-  resolveCategoryAvatarUrl,
-  getManagedAvatar,
-} from "../ExpertAvatar/helpers";
+import type { ExpertAvatarRequestTilt } from "@/app/api/__generated__/models/expertAvatarRequestTilt";
+import { uploadSubmissionMediaDirect } from "@/lib/direct-upload";
+import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import {
+  DEFAULT_EXPERT_AVATAR_URL,
+  getExpertVisualCategory,
+  getManagedIdentity,
+  resolveExpertAvatarUrl,
+} from "../ExpertAvatar/helpers";
+import { ACCEPTED_AVATAR_TYPES, MAX_AVATAR_BYTES } from "./helpers";
 import { useAvatarGeneration } from "./useAvatarGeneration";
 
 interface Args {
   avatarUrl?: string | null;
+  categories?: readonly string[] | null;
   color: string | null;
   onPick: (url: string, color: string) => void;
 }
 
-export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
-  const [selectedUrl, setSelectedUrl] = useState(() =>
-    resolveCategoryAvatarUrl(avatarUrl),
+function toGenerationCategory(value: string): ExpertAvatarRequestCategory {
+  return (
+    Object.values(ExpertAvatarRequestCategory).find((c) => c === value) ??
+    "general"
   );
-  const [category, setCategory] = useState<ExpertAvatarRequestCategory>(() => {
-    const preset = EXPERT_AVATARS.find(
-      (avatar) => avatar.url === resolveCategoryAvatarUrl(avatarUrl),
-    );
-    const managed = getManagedAvatar(resolveCategoryAvatarUrl(avatarUrl), 128);
-    if (managed?.assetID === "expert-mina") return "finance";
-    if (managed?.assetID === "expert-maria") return "marketing";
-    const builtin = BUILTIN_EXPERT_AVATARS.find(
-      (avatar) => avatar.url === resolveCategoryAvatarUrl(avatarUrl),
-    );
-    return (
-      Object.values(ExpertAvatarRequestCategory).find(
-        (value) => value === (builtin?.primary_category ?? preset?.id),
-      ) ?? "content"
-    );
-  });
-  const [shade, setShade] =
-    useState<NonNullable<ExpertAvatarRequestShade>>("standard");
+}
+
+export function useExpertAvatarPicker({
+  avatarUrl,
+  categories,
+  color,
+  onPick,
+}: Args) {
+  const [selectedUrl, setSelectedUrl] = useState(() =>
+    resolveExpertAvatarUrl(avatarUrl),
+  );
+  // The saved identity, when this Expert has one, so the picker can offer it
+  // back after a look at the alternatives.
+  const savedIdentity = getManagedIdentity(avatarUrl);
+  const [category, setCategory] = useState<ExpertAvatarRequestCategory>(() =>
+    toGenerationCategory(getExpertVisualCategory(avatarUrl, categories)),
+  );
+  const [shape, setShape] = useState<ExpertAvatarRequestShape>("pebble");
   const [base, setBase] = useState<ExpertAvatarRequestBase>("compact");
   const [tilt, setTilt] = useState<ExpertAvatarRequestTilt>("level");
   const [inlay, setInlay] = useState<ExpertAvatarRequestInlay>("sweep");
-  const [accentPlacement, setAccentPlacement] =
-    useState<ExpertAvatarRequestAccentPlacement>("body");
-  const [accentCount, setAccentCount] =
-    useState<ExpertAvatarRequestAccentCount>("one");
-  const [shape, setShape] = useState<ExpertAvatarRequestShape>("pebble");
   const [expression, setExpression] =
     useState<ExpertAvatarRequestExpression>("friendly");
-  const [selectedColor, setSelectedColor] = useState(color ?? "amber-300");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handledJob = useRef("");
@@ -79,23 +72,19 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
       return;
     handledJob.current = job.id;
     setSelectedUrl(job.avatar_url);
-    setSelectedColor(
-      EXPERT_AVATARS.find((avatar) => avatar.id === category)?.color ??
-        "amber-300",
-    );
-  }, [generation.job, category]);
+  }, [generation.job]);
 
-  function selectPreset(id: string) {
-    const preset = EXPERT_AVATARS.find((avatar) => avatar.id === id);
-    const category = Object.values(ExpertAvatarRequestCategory).find(
-      (value) => value === id,
-    );
-    if (!preset || !category) return;
+  const catalogUrls = [
+    ...(savedIdentity && savedIdentity.url !== DEFAULT_EXPERT_AVATAR_URL
+      ? [savedIdentity.url]
+      : []),
+    DEFAULT_EXPERT_AVATAR_URL,
+  ];
+
+  function selectCatalog(url: string) {
+    if (!catalogUrls.includes(url)) return;
     generation.reset();
-    setCategory(category);
-    setShade("standard");
-    setSelectedUrl(preset.url);
-    setSelectedColor(preset.color);
+    setSelectedUrl(url);
     setUploadError(null);
   }
 
@@ -117,24 +106,21 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
       setSelectedUrl(response.trim());
     } catch {
       setUploadError(
-        "Could not upload that picture. Try again or choose a catalog avatar.",
+        "Could not upload that picture. Try again or keep a managed look.",
       );
     }
   }
 
   function confirm() {
-    onPick(selectedUrl, selectedColor);
+    onPick(selectedUrl, color ?? "amber-300");
   }
   function generate() {
     void generation.generate({
       category,
-      shade,
       shape,
       base,
       tilt,
       inlay,
-      accent_placement: accentPlacement,
-      accent_count: accentCount,
       expression,
     });
   }
@@ -144,25 +130,20 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
 
   return {
     selectedUrl,
+    catalogUrls,
     category,
+    setCategory,
     shape,
     setShape,
-    shade,
-    setShade,
-    setCategory,
     base,
     setBase,
     tilt,
     setTilt,
     inlay,
     setInlay,
-    accentPlacement,
-    setAccentPlacement,
-    accentCount,
-    setAccentCount,
     expression,
     setExpression,
-    selectPreset,
+    selectCatalog,
     confirm,
     generate,
     openFilePicker,

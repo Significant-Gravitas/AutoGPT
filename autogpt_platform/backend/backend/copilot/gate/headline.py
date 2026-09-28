@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .references import Reference
+
 # Tool -> (the action, the arguments that name its object, first match wins).
 # Every tool the gate can hold; built from our registry, never from the reason.
 _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -17,11 +19,11 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "edit_agent": ("Edit an agent", ()),
     "fix_agent_graph": ("Fix an agent", ()),
     "enter_agent_building_mode": ("Start building an agent", ()),
-    "create_folder": ("Create folder", ("name",)),
-    "update_folder": ("Update folder", ("name",)),
-    "move_folder": ("Move a folder", ()),
-    "delete_folder": ("Delete a folder", ()),
-    "move_agents_to_folder": ("Move agents into a folder", ()),
+    "create_folder": ("Create library folder", ("name",)),
+    "update_folder": ("Update library folder", ("name",)),
+    "move_folder": ("Move library folder", ()),
+    "delete_folder": ("Delete library folder", ()),
+    "move_agents_to_folder": ("Move agents into library folder", ()),
     "update_preset": ("Update preset", ("name",)),
     "delete_preset": ("Delete a preset", ()),
     "schedule_followup": ("Schedule a follow-up", ("name",)),
@@ -46,8 +48,36 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "message_session": ("Message another chat", ()),
     "run_sub_session": ("Start a subtask", ()),
     "delete_skill": ("Delete skill", ("name",)),
-    "delete_workspace_file": ("Delete file", ("path",)),
+    "delete_workspace_file": ("Delete workspace file", ("path",)),
     "memory_forget_confirm": ("Forget memories", ()),
+    # The card names the block or workflow from the call's subject instead.
+    "run_capability": ("Run a block", ()),
+    "run_agent": ("Run a workflow", ()),
+}
+# Tool -> the id whose resolved name is the object when no argument names one.
+_OBJECT_ID: dict[str, str] = {
+    "edit_agent": "agent_id",
+    "update_folder": "folder_id",
+    "move_folder": "folder_id",
+    "delete_folder": "folder_id",
+    "move_agents_to_folder": "folder_id",
+    "update_preset": "preset_id",
+    "delete_preset": "preset_id",
+    "schedule_routine": "routine_id",
+    "pause_schedule": "schedule_id",
+    "resume_schedule": "schedule_id",
+    "delete_schedule": "schedule_id",
+    "update_expert": "expert_id",
+    "confirm_expert_change": "confirmation_id",
+    "confirm_expert_soul_update": "confirmation_id",
+    "install_expert_workflow": "library_agent_id",
+    "remove_expert_workflow": "workflow_id",
+    "grant_expert_credential": "credential_id",
+    "revoke_expert_credential": "credential_id",
+    "delegate_to_expert": "expert_id",
+    "handoff_to_expert": "expert_id",
+    "message_session": "session_id",
+    "run_sub_session": "sub_autopilot_session_id",
 }
 _MAX_OBJECT_CHARS = 60
 
@@ -63,9 +93,20 @@ class Headline(BaseModel):
         return f"{self.ask} “{self.object}”" if self.object else self.ask
 
 
-def headline_for(tool_name: str, args: dict[str, Any]) -> Headline:
+def headline_for(
+    tool_name: str,
+    args: dict[str, Any],
+    references: list[Reference] | None = None,
+) -> Headline:
     ask, keys = _ASK.get(tool_name, (f"Run {tool_name.replace('_', ' ')}", ()))
-    return named(ask, keys, args)
+    headline = named(ask, keys, args)
+    if headline.object:
+        return headline
+    id_key = _OBJECT_ID.get(tool_name)
+    for ref in references or []:
+        if ref.key == id_key and ref.name:
+            return _named(ask, ref.key, ref.name)
+    return headline
 
 
 def named(ask: str, keys: tuple[str, ...], args: dict[str, Any]) -> Headline:
@@ -73,16 +114,17 @@ def named(ask: str, keys: tuple[str, ...], args: dict[str, Any]) -> Headline:
     for key in keys:
         value = args.get(key)
         if isinstance(value, str) and value.strip():
-            name = " ".join(value.split())
-            if len(name) > _MAX_OBJECT_CHARS:
-                name = name[: _MAX_OBJECT_CHARS - 1] + "…"
-            # The card hides the argument only when the headline shows all of it.
-            shown_whole = name == value
-            return Headline(
-                ask=ask, object=name, object_key=key if shown_whole else None
-            )
+            return _named(ask, key, value)
     return Headline(ask=ask)
 
 
 def gated_tools() -> frozenset[str]:
     return frozenset(_ASK)
+
+
+def _named(ask: str, key: str, value: str) -> Headline:
+    name = " ".join(value.split())
+    if len(name) > _MAX_OBJECT_CHARS:
+        name = name[: _MAX_OBJECT_CHARS - 1] + "…"
+    # The card hides the argument only when the headline shows all of it.
+    return Headline(ask=ask, object=name, object_key=key if name == value else None)

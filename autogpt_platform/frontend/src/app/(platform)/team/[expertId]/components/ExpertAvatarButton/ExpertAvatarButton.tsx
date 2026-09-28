@@ -28,7 +28,11 @@ export function ExpertAvatarButton({ expert }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={96}
-          backgroundColor={getExpertTopicHex(expert.role, expert.categories)}
+          backgroundColor={getExpertTopicHex({
+            avatarUrl: expert.avatar_url,
+            categories: expert.categories,
+            role: expert.role,
+          })}
         />
       </button>
       <Dialog
@@ -42,6 +46,7 @@ export function ExpertAvatarButton({ expert }: Props) {
                 name={expert.name}
                 color={expert.color ?? null}
                 avatarUrl={expert.avatar_url}
+                categories={expert.categories}
                 onPick={saveAvatar}
               />
             </fieldset>

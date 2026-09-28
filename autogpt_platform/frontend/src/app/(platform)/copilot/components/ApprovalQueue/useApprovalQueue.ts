@@ -2,7 +2,12 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import type { CardStatus } from "./components/ApprovalCard/ApprovalCard";
-import { type ApprovalItem, type ChatRule, isHeldRead } from "./helpers";
+import {
+  type ApprovalItem,
+  type ChatRule,
+  type RuleScope,
+  isHeldRead,
+} from "./helpers";
 
 export interface Receipt {
   item: ApprovalItem;
@@ -45,6 +50,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
     batch: ApprovalItem[],
     approved: boolean,
     rule?: ChatRule,
+    scope?: RuleScope,
   ) {
     const ids = batch.map((item) => item.reviewId);
     setFailed((prev) => prev.filter((id) => !ids.includes(id)));
@@ -61,9 +67,8 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
         batch.map((item) => ({
           node_exec_id: item.reviewId,
           approved,
-          // The chat-scoped rule rides the approval; the gate reads it once it records rules.
-          auto_approve_future: approved && !!rule,
-          message: rule,
+          chat_rule: approved ? (rule ?? null) : null,
+          ...(approved && rule && scope ? { chat_rule_scope: scope } : {}),
         })),
         batch.map((item) => item.scope),
       );

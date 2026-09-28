@@ -1,6 +1,11 @@
 from urllib.parse import quote
 
-from backend.blocks._base import BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.settings import BehaveAs, Settings
 
@@ -40,6 +45,7 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
                     "pagination": {"totalPages": 1},
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -136,6 +142,7 @@ class Slant3DCancelOrderBlock(Slant3DBlockBase):
                 }
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -181,6 +188,7 @@ class Slant3DProcessOrderBlock(Slant3DBlockBase):
                 }
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
