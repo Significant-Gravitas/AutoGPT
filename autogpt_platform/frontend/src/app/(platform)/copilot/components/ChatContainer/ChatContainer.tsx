@@ -22,7 +22,8 @@ import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { DelegationDock } from "../DelegationDock/DelegationDock";
-import { DelegatedThreadNotice } from "./components/DelegatedThreadNotice";
+import { DelegatedThreadNotice } from "./components/DelegatedThreadNotice/DelegatedThreadNotice";
+import { getOpeningText } from "./components/DelegatedThreadNotice/helpers";
 import { hasRunningTaskList } from "../DelegationDock/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
@@ -339,7 +340,9 @@ export const ChatContainer = ({
                 {sessionSentFrom && !archivedExpertIdentity && (
                   <DelegatedThreadNotice
                     sentFrom={sessionSentFrom}
-                    expertName={expertIdentity?.name ?? null}
+                    sessionId={sessionId}
+                    expert={expertIdentity ?? null}
+                    openingText={getOpeningText(messages)}
                   />
                 )}
                 <ChatMessagesContainer
