@@ -295,9 +295,7 @@ class TestLLMStatsTracking:
 
         with patch("secrets.token_hex", return_value="test123456"):
             with pytest.raises(RuntimeError, match="retry budget exhausted"):
-                async for _ in block.run(
-                    input_data, credentials=llm.TEST_CREDENTIALS
-                ):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
         # The third attempt never runs: the shared 0.5s budget is spent.
