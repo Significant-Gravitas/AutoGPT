@@ -487,6 +487,7 @@ async def test_a_held_read_is_named_by_its_source_on_the_card_and_the_chain_row(
         "object_key": "url",
     }
     assert row.instructions == f"Let {actor} read “docs.northwind.io/billing”"
+    assert row.payload["reader"] == actor
     assert "Nadia" not in row.payload["reason"]
     stub = json.loads(result.output)
     assert (stub["ask"], stub["object"]) == ("Read", "docs.northwind.io/billing")

@@ -327,7 +327,8 @@ async def _hold(
         if judged
         else "this content could not be checked"
     )
-    headline = read_headline(tool_name, call.args, await _actor(user_id, session))
+    reader = await _actor(user_id, session)
+    headline = read_headline(tool_name, call.args, reader)
     payload = {
         **review_store.review_payload(
             tool_name,
@@ -340,6 +341,8 @@ async def _hold(
         ),
         "source": source,
         "headline": headline.model_dump(),
+        # Who the bytes reach: the card's copy names it, never the supervisor.
+        "reader": reader,
         "passage": passage,
         "judged": judged,
         "success": success,
