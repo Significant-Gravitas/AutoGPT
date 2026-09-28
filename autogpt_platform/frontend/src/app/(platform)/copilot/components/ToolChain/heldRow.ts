@@ -1,4 +1,5 @@
 import type { HeldOutcome } from "../ChatMessagesContainer/heldCallRows";
+import type { HeldAnswer } from "../ApprovalQueue/heldAnswersStore";
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { fallbackAsk } from "../ApprovalQueue/helpers";
 import type { ChainRow } from "./helpers";
@@ -25,6 +26,7 @@ export interface HeldRowInfo {
 export function applyHeldOutcome(
   row: ChainRow,
   outcomes: ReadonlyMap<string, HeldOutcome>,
+  answers: Readonly<Record<string, HeldAnswer>> = {},
 ): ChainRow {
   const data = asObject(row.output);
   if (!row.tool || data?.type !== "approval_required") return row;
@@ -42,6 +44,13 @@ export function applyHeldOutcome(
     );
   }
   const outcome = outcomes.get(row.key);
+  // Answered here and not yet run: the tag flips now, the result lands later.
+  const answer = outcome ? undefined : answers[reviewId];
+  if (answer === "rejected") return settle(row, didnt, answer, reviewId, read);
+  // Approved but not run: nothing to show until its result lands.
+  if (answer === "approved") {
+    return { ...settle(row, ask, answer, reviewId, read), output: undefined };
+  }
   if (!outcome) {
     return {
       ...row,

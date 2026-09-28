@@ -3,6 +3,7 @@
 import { useContext, useState } from "react";
 import { usePendingReviewsForChatSession } from "@/hooks/usePendingReviews";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
+import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import { ChatSessionContext } from "../ChatContainer/components/ChatSessionContext";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import type { CardStatus } from "../ApprovalQueue/components/ApprovalCard/ApprovalCard";
@@ -26,6 +27,7 @@ export function useHandoffApproval(held: HeldRowInfo) {
     sessionId ?? "",
   );
   const { processReviews } = useProcessReviews();
+  const recordAnswers = useHeldAnswersStore((state) => state.record);
   const [status, setStatus] = useState<CardStatus>("idle");
   const [failed, setFailed] = useState(false);
   const review = pendingReviews.find(
@@ -61,8 +63,11 @@ export function useHandoffApproval(held: HeldRowInfo) {
       ok = false;
     }
     setStatus("idle");
-    if (ok) actions?.onBackendTurn?.();
-    else setFailed(true);
+    if (ok) {
+      // The row flips to the answer now; the persisted result lands later.
+      recordAnswers([item.reviewId], approved);
+      actions?.onBackendTurn?.();
+    } else setFailed(true);
   }
 
   return { review, item, isLoading, status, failed, answer };

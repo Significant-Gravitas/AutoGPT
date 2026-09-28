@@ -13,6 +13,7 @@ import {
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { heldReview } from "../../ApprovalQueue/__tests__/fixtures";
+import { useHeldAnswersStore } from "../../ApprovalQueue/heldAnswersStore";
 import { ChatSessionContext } from "../../ChatContainer/components/ChatSessionContext";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import type { HeldOutcome } from "../../ChatMessagesContainer/heldCallRows";
@@ -51,6 +52,8 @@ function chain(outcomes: Map<string, HeldOutcome>, onBackendTurn = vi.fn()) {
 
 describe("a hand-off held for approval", () => {
   afterEach(cleanup);
+  // Answers are keyed by review id across the page; each test starts unanswered.
+  afterEach(() => useHeldAnswersStore.setState({ answers: {} }));
 
   // Coverage-instrumented CI shards mount the settled chain slowly.
   const SLOW = 20_000;

@@ -1,91 +1,56 @@
-import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
-import type { ExpertAvatarRequestBase } from "@/app/api/__generated__/models/expertAvatarRequestBase";
-import type { ExpertAvatarRequestExpression } from "@/app/api/__generated__/models/expertAvatarRequestExpression";
-import type { ExpertAvatarRequestInlay } from "@/app/api/__generated__/models/expertAvatarRequestInlay";
-import type { ExpertAvatarRequestShape } from "@/app/api/__generated__/models/expertAvatarRequestShape";
-import type { ExpertAvatarRequestTilt } from "@/app/api/__generated__/models/expertAvatarRequestTilt";
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { uploadSubmissionMediaDirect } from "@/lib/direct-upload";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { resolveExpertAvatarUrl } from "../ExpertAvatar/helpers";
 import {
-  DEFAULT_EXPERT_AVATAR_URL,
-  getExpertVisualCategory,
-  getManagedIdentity,
-  resolveExpertAvatarUrl,
-} from "../ExpertAvatar/helpers";
-import { ACCEPTED_AVATAR_TYPES, MAX_AVATAR_BYTES } from "./helpers";
+  ACCEPTED_AVATAR_TYPES,
+  MAX_AVATAR_BYTES,
+  randomAvatarRequest,
+} from "./helpers";
 import { useAvatarGeneration } from "./useAvatarGeneration";
 
 interface Args {
+  category: ExpertAvatarRequestCategory;
   avatarUrl?: string | null;
-  categories?: readonly string[] | null;
-  color: string | null;
-  onPick: (url: string, color: string) => void;
-}
-
-function toGenerationCategory(value: string): ExpertAvatarRequestCategory {
-  return (
-    Object.values(ExpertAvatarRequestCategory).find((c) => c === value) ??
-    "general"
-  );
+  autoGenerate?: boolean;
+  onPick: (url: string) => void;
 }
 
 export function useExpertAvatarPicker({
+  category,
   avatarUrl,
-  categories,
-  color,
+  autoGenerate,
   onPick,
 }: Args) {
-  const [selectedUrl, setSelectedUrl] = useState(() =>
-    resolveExpertAvatarUrl(avatarUrl),
-  );
-  // The saved identity, when this Expert has one, so the picker can offer it
-  // back after a look at the alternatives.
-  const savedIdentity = getManagedIdentity(avatarUrl);
-  const [category, setCategory] = useState<ExpertAvatarRequestCategory>(() =>
-    toGenerationCategory(getExpertVisualCategory(avatarUrl, categories)),
-  );
-  const [shape, setShape] = useState<ExpertAvatarRequestShape>("pebble");
-  const [base, setBase] = useState<ExpertAvatarRequestBase>("compact");
-  const [tilt, setTilt] = useState<ExpertAvatarRequestTilt>("level");
-  const [inlay, setInlay] = useState<ExpertAvatarRequestInlay>("sweep");
-  const [expression, setExpression] =
-    useState<ExpertAvatarRequestExpression>("friendly");
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const handledJob = useRef("");
   const generation = useAvatarGeneration();
   const upload = useMutation({
     mutationFn: (file: File) =>
       uploadSubmissionMediaDirect(file, "expert-avatar"),
   });
-  const isBusy = generation.isGenerating || upload.isPending;
 
-  useEffect(() => {
-    const job = generation.job;
-    if (
-      job?.status !== "complete" ||
-      !job.id ||
-      !job.avatar_url ||
-      handledJob.current === job.id
-    )
-      return;
-    handledJob.current = job.id;
-    setSelectedUrl(job.avatar_url);
-  }, [generation.job]);
+  // Generating resets the upload and uploading resets the generation, so the
+  // two never both hold a result and the preview needs no synchronising.
+  const generatedUrl =
+    generation.job?.status === "complete" ? generation.job.avatar_url : null;
+  const selectedUrl =
+    generatedUrl ?? uploadedUrl ?? resolveExpertAvatarUrl(avatarUrl);
 
-  const catalogUrls = [
-    ...(savedIdentity && savedIdentity.url !== DEFAULT_EXPERT_AVATAR_URL
-      ? [savedIdentity.url]
-      : []),
-    DEFAULT_EXPERT_AVATAR_URL,
-  ];
+  useMountEffect(() => {
+    if (!autoGenerate) return;
+    // Let StrictMode finish its cleanup before attaching a mutation observer.
+    const timeout = setTimeout(generate, 0);
+    return () => clearTimeout(timeout);
+  });
 
-  function selectCatalog(url: string) {
-    if (!catalogUrls.includes(url)) return;
-    generation.reset();
-    setSelectedUrl(url);
+  function generate() {
+    setUploadedUrl(null);
     setUploadError(null);
+    generation.generate(randomAvatarRequest(category));
   }
 
   async function uploadFile(file: File | undefined) {
@@ -103,53 +68,28 @@ export function useExpertAvatarPicker({
       if (typeof response !== "string" || !response.trim())
         throw new Error("No image URL");
       generation.reset();
-      setSelectedUrl(response.trim());
+      setUploadedUrl(response.trim());
     } catch {
-      setUploadError(
-        "Could not upload that picture. Try again or keep a managed look.",
-      );
+      setUploadError("Could not upload that picture. Try again or regenerate.");
     }
   }
 
   function confirm() {
-    onPick(selectedUrl, color ?? "amber-300");
+    onPick(selectedUrl);
   }
-  function generate() {
-    void generation.generate({
-      category,
-      shape,
-      base,
-      tilt,
-      inlay,
-      expression,
-    });
-  }
+
   function openFilePicker() {
     fileInputRef.current?.click();
   }
 
   return {
     selectedUrl,
-    catalogUrls,
-    category,
-    setCategory,
-    shape,
-    setShape,
-    base,
-    setBase,
-    tilt,
-    setTilt,
-    inlay,
-    setInlay,
-    expression,
-    setExpression,
-    selectCatalog,
     confirm,
     generate,
     openFilePicker,
     fileInputRef,
     uploadFile,
-    isBusy,
+    isBusy: generation.isGenerating || upload.isPending,
     isGenerating: generation.isGenerating,
     error: uploadError ?? generation.error,
   };

@@ -46,6 +46,7 @@ import {
 import { LiveDelegationProbes } from "../DelegationStatusLine/LiveDelegationProbes";
 import { withDelegation } from "./delegationRow";
 import { applyHeldOutcome } from "./heldRow";
+import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
   type ChainRow,
   getChainHeading,
@@ -75,6 +76,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   const pendingQuestions = useContext(PendingQuestionsContext);
   const heldOutcomes = useContext(HeldOutcomesContext);
+  const heldAnswers = useHeldAnswersStore((state) => state.answers);
   const { onSend } = useCopilotChatActions();
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
@@ -194,7 +196,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       parts
         .map((part, i) => toChainRow(part, i))
         .filter((row): row is ChainRow => row !== null)
-        .map((row) => applyHeldOutcome(row, heldOutcomes))
+        .map((row) => applyHeldOutcome(row, heldOutcomes, heldAnswers))
         .map((row) =>
           withDelegation(
             row,
@@ -214,7 +216,14 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         ),
     );
     return { rows: chainRows, delegations: chainDelegations };
-  }, [parts, pendingQuestions, heldOutcomes, liveStatuses, readOnly]);
+  }, [
+    parts,
+    pendingQuestions,
+    heldOutcomes,
+    heldAnswers,
+    liveStatuses,
+    readOnly,
+  ]);
   if (rows.length === 0) return null;
 
   const shownRows = rows.filter((row) => !row.lifted);

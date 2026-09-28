@@ -10,6 +10,7 @@ import { toChainRow } from "../ToolChain/helpers";
 import { AttentionRow } from "../../../home/components/NeedsYou/components/AttentionRow";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { toApprovalItem } from "./helpers";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import {
   createAgent,
   deleteFolder,
@@ -282,6 +283,25 @@ export const ChainRows: StoryObj = {
             isLast={i === rows.length - 1}
           />
         ))}
+      </div>
+    );
+  },
+};
+
+// Approve the card: the row above it shows the answer at the click.
+export const RowFlipsAtTheClick: StoryObj = {
+  parameters: { msw: { handlers: [answerAfter(0)] } },
+  render: function Render() {
+    const answers = useHeldAnswersStore((state) => state.answers);
+    const row = applyHeldOutcome(
+      toChainRow(HELD_PART("a", "Q3 reports"), 0)!,
+      new Map(),
+      answers,
+    );
+    return (
+      <div className="flex flex-col gap-4">
+        <ChainRowView row={row} isLast />
+        <ApprovalQueue {...queueOf([folder("a", "Q3 reports")])} />
       </div>
     );
   },
