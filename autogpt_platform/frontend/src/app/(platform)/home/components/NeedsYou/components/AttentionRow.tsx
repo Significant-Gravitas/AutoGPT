@@ -10,6 +10,7 @@ import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AttentionRowActions } from "./AttentionRowActions";
 
@@ -29,6 +30,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
 
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
+  const reason = attentionReason(item.review);
 
   function handleDecline() {
     if (!confirmDecline) {
@@ -73,8 +75,16 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             tone="secondary"
             className="text-pretty break-words"
           >
-            {item.description}
+            {reason?.line ?? item.description}
           </Text>
+          {reason?.passage ? (
+            <blockquote
+              aria-label="What it says"
+              className="mt-1 line-clamp-2 border-l-2 border-amber-400 pl-2 text-sm text-zinc-600 [overflow-wrap:anywhere]"
+            >
+              {reason.passage}
+            </blockquote>
+          ) : null}
         </div>
       </div>
 

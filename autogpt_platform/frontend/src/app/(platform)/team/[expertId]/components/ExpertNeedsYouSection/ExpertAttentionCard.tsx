@@ -1,6 +1,7 @@
 "use client";
 
 import { AttentionRowActions } from "@/app/(platform)/home/components/NeedsYou/components/AttentionRowActions";
+import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -84,7 +85,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             as="span"
             className="break-words !text-zinc-400"
           >
-            {item.description}
+            {attentionReason(item.review)?.line ?? item.description}
           </Text>
         </div>
       </div>

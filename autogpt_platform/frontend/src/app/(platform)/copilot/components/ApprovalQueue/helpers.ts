@@ -151,6 +151,18 @@ export function reasonLine(item: ApprovalItem): string | null {
   return null;
 }
 
+// Home and an expert's page say a held call's reason in its card's words.
+export function attentionReason(
+  review: PendingHumanReviewModel | null | undefined,
+) {
+  if (!review || !isGateReview(review)) return null;
+  const item = toApprovalItem(review);
+  return {
+    line: reasonLine(item),
+    passage: isHeldRead(item) ? item.passage : null,
+  };
+}
+
 export function modeLabel(mode: string | null) {
   if (mode === "ask_first") return "Ask First";
   if (mode === "unsupervised") return "Unsupervised";
