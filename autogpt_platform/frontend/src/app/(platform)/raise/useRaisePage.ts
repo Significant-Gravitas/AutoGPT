@@ -25,7 +25,6 @@ import {
   type RaiseKit,
 } from "./helpers";
 import { colorForCategory } from "./components/CategoryStep/helpers";
-import { suggestedCategoryFor } from "./components/RoleStep/helpers";
 import { useFlowProgress } from "./useFlowProgress";
 import { useRaiseSubmission } from "./useRaiseSubmission";
 import { useSkillsAvailability } from "./useSkillsAvailability";
@@ -33,7 +32,7 @@ import { useSkillsAvailability } from "./useSkillsAvailability";
 export function useRaisePage() {
   const searchParams = useSearchParams();
   // Seeded in the initialiser rather than an effect: an effect would render
-  // the role question first and then snatch it away.
+  // the area question first and then snatch it away.
   const [draft, setDraft] = useState<RaiseDraft>(() =>
     draftWithPrefilledRole(loadDraft(), searchParams.get("role")),
   );
@@ -62,8 +61,8 @@ export function useRaisePage() {
     progress.reset();
   }
 
-  function pickRole(roleId: string) {
-    update({ role: roleId, step: "jobTitle" });
+  function pickCategory(category: ExpertAvatarRequestCategory) {
+    update({ category, color: colorForCategory(category), step: "jobTitle" });
   }
 
   function submitJobTitle(value: string) {
@@ -79,11 +78,7 @@ export function useRaisePage() {
   function submitName(value: string) {
     const trimmed = value.trim();
     if (!trimmed) return;
-    update({ name: trimmed, step: "category" });
-  }
-
-  function pickCategory(category: ExpertAvatarRequestCategory) {
-    update({ category, color: colorForCategory(category), step: "avatar" });
+    update({ name: trimmed, step: "avatar" });
   }
 
   function pickAvatar(avatarUrl: string) {
@@ -174,10 +169,8 @@ export function useRaisePage() {
   return {
     step: draft.step,
     hasStarted: draft.hasStarted,
-    role: draft.role,
     jobTitle: draft.jobTitle,
     category: draft.category,
-    suggestedCategory: suggestedCategoryFor(draft.role),
     color: draft.color,
     avatarUrl: draft.avatarUrl,
     about: draft.about,
@@ -194,11 +187,10 @@ export function useRaisePage() {
     startRaising,
     restart,
     revealStep: (beat: BeatKey) => progress.revealStep(beat),
-    pickRole,
+    pickCategory,
     submitJobTitle,
     skipJobTitle,
     submitName,
-    pickCategory,
     pickAvatar,
     submitAbout,
     skipAbout,

@@ -63,13 +63,12 @@ afterEach(() => {
 
 test("renders restored conversation messages instantly after reload", async () => {
   saveDraft({
-    step: "category",
+    step: "name",
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     jobTitle: "Marketing Manager",
-    name: "Nova",
-    category: null,
-    color: null,
+    name: "",
     avatarUrl: null,
     about: null,
     voicePreferences: "",
@@ -99,7 +98,7 @@ test("renders restored conversation messages instantly after reload", async () =
   ).toBe(true);
   expect(
     visible.some((text) =>
-      text.includes("First — what should your expert do for you?"),
+      text.includes("First — which area should your expert work in?"),
     ),
   ).toBe(true);
   expect(
@@ -108,6 +107,6 @@ test("renders restored conversation messages instantly after reload", async () =
     ),
   ).toBe(true);
   expect(
-    visible.some((text) => text.includes("Which area does Nova work in?")),
+    visible.some((text) => text.includes("And what's their job title?")),
   ).toBe(true);
 });

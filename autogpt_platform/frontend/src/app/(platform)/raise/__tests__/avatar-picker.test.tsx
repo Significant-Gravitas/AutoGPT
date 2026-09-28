@@ -86,19 +86,15 @@ function generationHandlers(requests: unknown[] = []) {
   ];
 }
 
-function seedAt(
-  step: "category" | "avatar",
-  category: ExpertAvatarRequestCategory | null = null,
-) {
+function seedAtAvatar(category: ExpertAvatarRequestCategory) {
   saveDraft({
     ...EMPTY_DRAFT,
-    step,
+    step: "avatar",
     hasStarted: true,
-    role: "marketer",
-    jobTitle: "Marketing Manager",
-    name: "Maria",
     category,
-    color: category ? "green-300" : null,
+    color: "green-300",
+    jobTitle: "Financial Analyst",
+    name: "Maria",
     voiceLabel: VOICE_SKIPPED_LABEL,
   });
 }
@@ -123,23 +119,40 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("the category beat answers the color before any avatar is drawn", async () => {
+test("the area beat answers the color first and asks for a job title", async () => {
   const requests: unknown[] = [];
   server.use(...generationHandlers(requests));
-  seedAt("category");
+  saveDraft({ ...EMPTY_DRAFT, hasStarted: true });
   renderRaise();
 
   const categories = await screen.findByRole("group", {
     name: "What the expert works on",
   });
-  expect(requests).toHaveLength(0);
   await userEvent.click(
     await within(categories).findByRole("button", { name: "Finance" }),
   );
 
-  await waitFor(() => expect(loadDraft().category).toBe("finance"));
-  expect(loadDraft().color).toBe("green-300");
-  expect(loadDraft().avatarUrl).toBeNull();
+  const titles = await screen.findByRole(
+    "group",
+    { name: "Suggested job titles" },
+    { timeout: 5000 },
+  );
+  expect(
+    within(titles).getByRole("button", { name: "Financial Analyst" }),
+  ).toBeDefined();
+  expect(loadDraft()).toMatchObject({
+    category: "finance",
+    color: "green-300",
+    step: "jobTitle",
+  });
+  expect(requests).toHaveLength(0);
+});
+
+test("the avatar is generated in the area picked at the start", async () => {
+  const requests: unknown[] = [];
+  server.use(...generationHandlers(requests));
+  seedAtAvatar("finance");
+  renderRaise();
 
   await waitFor(() => expect(requests).toHaveLength(1));
   expect(requests[0]).toMatchObject({ category: "finance" });
@@ -147,7 +160,7 @@ test("the category beat answers the color before any avatar is drawn", async () 
 
 test("the generated avatar is saved only after confirmation", async () => {
   server.use(...generationHandlers());
-  seedAt("avatar", "finance");
+  seedAtAvatar("finance");
   renderRaise();
 
   await waitFor(() =>
@@ -169,7 +182,7 @@ test("the generated avatar is saved only after confirmation", async () => {
 test("regenerating asks for another avatar in the same category", async () => {
   const requests: unknown[] = [];
   server.use(...generationHandlers(requests));
-  seedAt("avatar", "finance");
+  seedAtAvatar("finance");
   renderRaise();
 
   await waitFor(() => expect(requests).toHaveLength(1));
@@ -182,7 +195,7 @@ test("regenerating asks for another avatar in the same category", async () => {
 
 test("the picker offers upload and no face-part controls", async () => {
   server.use(...generationHandlers());
-  seedAt("avatar", "finance");
+  seedAtAvatar("finance");
   renderRaise();
 
   expect(

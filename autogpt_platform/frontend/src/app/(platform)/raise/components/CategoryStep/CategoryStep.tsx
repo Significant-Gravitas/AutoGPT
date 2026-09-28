@@ -7,17 +7,11 @@ import { categoryOptionsForSelection } from "./helpers";
 
 interface Props {
   selectedCategory: ExpertAvatarRequestCategory | null;
-  suggested: ExpertAvatarRequestCategory;
   color: string | null;
   onPick: (category: ExpertAvatarRequestCategory) => void;
 }
 
-export function CategoryStep({
-  selectedCategory,
-  suggested,
-  color,
-  onPick,
-}: Props) {
+export function CategoryStep({ selectedCategory, color, onPick }: Props) {
   const options = categoryOptionsForSelection(selectedCategory);
 
   return (
@@ -38,7 +32,6 @@ export function CategoryStep({
             selectedCategory
               ? (bubbleClassFor(color) ?? "border-accent bg-accent/5")
               : "border-border bg-background hover:border-accent hover:bg-accent/5",
-            !selectedCategory && option.id === suggested && "border-accent",
           )}
         >
           <span

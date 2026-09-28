@@ -64,7 +64,7 @@ const raisedExpert = {
   id: "raised-1",
   name: "Otto",
   avatar_url: null,
-  role: "marketer",
+  role: "Marketer",
   tagline: null,
   bio: null,
   skills: [],
@@ -125,11 +125,10 @@ function seedAtBudget(name = "Otto") {
   saveDraft({
     step: "budget",
     hasStarted: true,
-    role: "marketer",
-    jobTitle: "Marketing Manager",
-    name,
     category: "marketing",
     color: "rose-300",
+    jobTitle: "Marketing Manager",
+    name,
     avatarUrl: "",
     about: "",
     voicePreferences: "",
@@ -147,11 +146,10 @@ function seedAtSkills(
   saveDraft({
     step: "skills",
     hasStarted: true,
-    role: "marketer",
-    jobTitle: "Marketing Manager",
-    name,
     category: "marketing",
     color: "rose-300",
+    jobTitle: "Marketing Manager",
+    name,
     avatarUrl: "",
     about: "",
     voicePreferences: "",
@@ -207,7 +205,7 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
   await waitFor(() => expect(captured).not.toBeNull());
   expect(captured).toMatchObject({
     name: "Otto",
-    role: "marketer",
+    role: "Marketer",
     job_title: "Marketing Manager",
     weekly_budget: null,
     attachments: [],
@@ -381,7 +379,8 @@ test("picking a job title records it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -410,7 +409,8 @@ test("typing a job title trims it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "Custom role",
+    category: "research",
+    color: "lime-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -437,7 +437,8 @@ test("skipping a job title records it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -589,7 +590,7 @@ test("back returns to the previous step and the draft survives", async () => {
   expect(draft.voiceLabel).toBeNull();
   expect(draft).toMatchObject({
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
     jobTitle: "Marketing Manager",
     name: "Otto",
     color: "rose-300",
