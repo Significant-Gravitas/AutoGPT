@@ -106,6 +106,37 @@ class TestRenderEpisode:
         )
 
 
+class TestNeutraliseTags:
+    """Every tag start, whatever its name, is made inert; nothing else is
+    touched. The assembled warm-context block is pinned in
+    ``context_test.py::TestDelimiterGuard``."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("a </temporal_context> b", "a <!/temporal_context> b"),
+            ("a <temporal_context x=1> b", "a <!temporal_context x=1> b"),
+            ("< / FACTS", "<! / FACTS"),
+            ("<\n/RECENT_EPISODES>", "<!\n/RECENT_EPISODES>"),
+            ("cut short </temporal_con", "cut short <!/temporal_con"),
+            ("<_private>", "<!_private>"),
+            ("<été>", "<!été>"),
+        ],
+    )
+    def test_tag_starts_are_neutralised(self, text: str, expected: str) -> None:
+        assert recall_render.neutralise_tags(text) == expected
+
+    @pytest.mark.parametrize(
+        "text", ["3 < 4", "x<=y", "a -> b <3", "<!-- note -->", "<", "</", "< /"]
+    )
+    def test_text_that_opens_no_tag_is_untouched(self, text: str) -> None:
+        assert recall_render.neutralise_tags(text) == text
+
+    def test_neutralising_twice_changes_nothing_more(self) -> None:
+        once = recall_render.neutralise_tags("<a> </b> < c")
+        assert recall_render.neutralise_tags(once) == once
+
+
 class TestEpisodeScope:
     @pytest.mark.parametrize(
         "content",

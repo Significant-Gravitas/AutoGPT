@@ -29,14 +29,13 @@ Both read through the recall policy (``recall.py``) the same way: live facts
 only, recallable episodes only, one last check of both by uuid right before
 rendering (``recall_recheck.recheck``), written out by ``recall_render.py``.
 A fact forgotten between two turns, and every episode it came from, is
-therefore not in the next turn's refresh. Everything rendered into the block
-is neutralised so stored text can neither close nor open it
-(``_neutralise_context_tags``).
+therefore not in the next turn's refresh. Every tag start in the rendered
+memory is neutralised, after truncation, so stored text can neither open,
+close nor complete the block's delimiters (``recall_render.neutralise_tags``).
 """
 
 import asyncio
 import logging
-import re
 
 from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EpisodicNode
@@ -46,7 +45,13 @@ from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_
 from .config import graphiti_config
 from .recall import recent_episodes, search_facts
 from .recall_recheck import recheck
-from .recall_render import GLOBAL_SCOPE, episode_scope, render, render_episode
+from .recall_render import (
+    GLOBAL_SCOPE,
+    episode_scope,
+    neutralise_tags,
+    render,
+    render_episode,
+)
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
@@ -334,38 +339,10 @@ def _spawn_ratification_hits(scope: MemoryScope, edges: list[EntityEdge]) -> Non
     task.add_done_callback(_on_hit_task_done)
 
 
-# Retrieved memory is user/tool/web-authored. A fact containing the literal
-# ``</temporal_context>`` would close the block early: everything after it
-# reads as the user's own words (a self-scoped prompt-injection breakout),
-# and the SDK transcript scrub — which matches up to the first closing tag —
-# would leave the remainder of the block in the persisted transcript to
-# replay on --resume. Neutralising the sequence at build time fixes every
-# consumer at once rather than each reader separately.
-#
-# Matched by pattern, not exact string: an LLM parses XML fuzzily, so
-# ``</temporal_context >``, ``</Temporal_Context>``, ``</ temporal_context>``
-# and ``</temporal_context ignore>`` all read as a closing tag to the model
-# even though none equals the literal. An exact-string replace would
-# neutralise the tidy spelling and let every variant through — and the tidy
-# spelling is the one an attacker would never use. ``[^>]*`` therefore
-# absorbs trailing junk, and ``\b`` keeps ``</temporal_contextual>`` (a
-# different word) untouched.
-#
-# BOTH directions are neutralised. A bare ``<temporal_context …>`` open tag
-# inside retrieved text can't end the block, but it can plant nested
-# structure the model mis-scopes — and only the builder is entitled to emit
-# the delimiter in either direction.
-# The delimiter name itself, exported so the SDK engine's scrub patterns key
+# The block's delimiter, exported so the SDK engine's transcript scrub keys
 # off the same constant instead of re-spelling the tag (a rename must not be
 # able to leave one module matching and another not).
 CONTEXT_TAG_NAME = "temporal_context"
-_CONTEXT_TAG_RE = re.compile(
-    r"<\s*(/?)\s*" + CONTEXT_TAG_NAME + r"\b[^>]*>", re.IGNORECASE
-)
-
-
-def _neutralise_context_tags(text: str) -> str:
-    return _CONTEXT_TAG_RE.sub(lambda m: f"<!{m.group(1)}{CONTEXT_TAG_NAME}>", text)
 
 
 def _format_context(
@@ -373,18 +350,19 @@ def _format_context(
 ) -> str | None:
     sections: list[str] = []
 
-    # Each line is neutralised whole, after ``recall_render`` wrote it: a
-    # fact's text and validity stamps, and an episode's timestamp and body,
-    # all come off the same untrusted memory, so nothing interpolated here
-    # may carry the delimiter.
+    # Every line is neutralised whole (``recall_render.neutralise_tags``)
+    # after it was rendered and, for an episode, cut to display length: the
+    # fact's text and validity stamps, and the episode's timestamp and body,
+    # all come off the same untrusted memory, so no line may open, close or
+    # complete a tag, the block's own delimiters and sections included.
     if edges:
-        fact_lines = [f"  - {_neutralise_context_tags(render(edge))}" for edge in edges]
+        fact_lines = [f"  - {neutralise_tags(render(edge))}" for edge in edges]
         sections.append("<FACTS>\n" + "\n".join(fact_lines) + "\n</FACTS>")
 
     # Warm context is scope-agnostic, so a project- or book-scoped memory
     # stays out of it.
     ep_lines = [
-        f"  - {_neutralise_context_tags(render_episode(ep))}"
+        f"  - {neutralise_tags(render_episode(ep))}"
         for ep in episodes
         if episode_scope(ep) == GLOBAL_SCOPE
     ]
