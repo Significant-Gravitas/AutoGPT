@@ -46,6 +46,12 @@ from backend.copilot.graphiti.context_marker import (
     INJECTED_MEMORY_MARKER,
     strip_injected_memory_text,
 )
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    BUDGET_BLOCK,
+    bucket_storage,
+    legacy_first_message,
+    session_file,
+)
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamCompactionProgress,
@@ -62,6 +68,7 @@ from backend.copilot.transcript import (
     _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
+    download_transcript,
 )
 from backend.util import json
 
@@ -2019,6 +2026,59 @@ class TestFirstTurnWarmContextIsEphemeral:
         assert len(queries_two) == 1
         assert "Alice works on Atlas" not in queries_two[0]
         assert "temporal_context" not in queries_two[0]
+
+    @pytest.mark.asyncio
+    async def test_an_old_session_resumes_without_its_stored_block(self):
+        """A session whose first turn ran before this change, and that the
+        backfill has not reached: its stored first message and the first
+        entry of its uploaded CLI session file both hold the block, and the
+        user has since forgotten a fact in it. Turn 2 restores the file
+        through the real ``download_transcript``: the fact is in neither what
+        the CLI resumes from nor the query, and the file turn 2 uploads no
+        longer holds it."""
+        old_first = legacy_first_message(_nova_block(forgotten=False))
+        storage = bucket_storage(
+            session_file(("user", BUDGET_BLOCK + old_first), ("assistant", "done"))
+        )
+        resumed_from: list[str] = []
+
+        def _restore(cli_restore, *_args, **_kwargs):
+            content = cli_restore.content.decode()
+            resumed_from.append(content)
+            return content, True
+
+        queries: list[str] = []
+
+        def _read_back(*_args, **_kwargs) -> bytes:
+            """The CLI's file after the turn: the session it resumed from,
+            plus the query it was sent."""
+            return self._cli_file(queries, prior=resumed_from[-1].encode())()
+
+        upload = AsyncMock()
+        await self._run(
+            self._second_turn(old_first, "what do you know about Nova now"),
+            TestFollowUpWarmContextCallSite._clients(queries),
+            first_block=None,
+            refresh=self._no_refresh,
+            extra=[
+                (f"{_SVC}.download_transcript", dict(new=download_transcript)),
+                (
+                    "backend.copilot.transcript.get_workspace_storage",
+                    dict(new=AsyncMock(return_value=storage)),
+                ),
+                (f"{_SVC}.process_cli_restore", dict(new=_restore)),
+                (f"{_SVC}.read_cli_session_from_disk", dict(new=_read_back)),
+                (f"{_SVC}.upload_transcript", dict(new=upload)),
+            ],
+        )
+
+        assert len(resumed_from) == 1 and len(queries) == 1
+        assert "what is Alice working on" in resumed_from[0]
+        assert "memory_context" not in resumed_from[0]
+        assert upload.await_args is not None
+        uploaded = upload.await_args.kwargs["content"].decode()
+        for text in (resumed_from[0], queries[0], uploaded):
+            assert "violet-913" not in text
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

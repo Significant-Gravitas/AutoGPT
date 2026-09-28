@@ -2,47 +2,24 @@
 
 Until warm context became query-only (``graphiti/context_marker.py``), the SDK
 engine wrote a session's first-turn Graphiti warm context into the session's
-first user message (``inject_user_context(warm_ctx=...)``, since #12790),
-right after the skill index::
+first user message, wrapped in ``<memory_context>`` (see
+``legacy_first_turn_memory.py`` for the exact structure). Every later turn read
+it back wherever history is rebuilt from the database (a turn without
+``--resume``, a context-overflow retry, a baseline turn, the transcript seeded
+from it), and so did the dream's recent-session bodies: a fact the user forgot
+mid-session stayed in front of the model. This script removes that block from
+the rows that still hold it. The CLI session files uploaded for those sessions
+hold a copy too; ``download_transcript`` removes that one on every restore.
 
-    <memory_context>
-    <temporal_context>
-    <FACTS>
-      - ...
-    </FACTS>
-
-    <RECENT_EPISODES>
-      - ...
-    </RECENT_EPISODES>
-    </temporal_context>
-    </memory_context>
-
-followed by a blank line and the rest of the stored message. Every later turn
-read it back: from the CLI session file on ``--resume`` (not reached here, see
-below), and from this row wherever history is rebuilt from the database (a
-turn without ``--resume``, a context-overflow retry, a baseline turn, the
-transcript seeded from it), as did the dream's recent-session bodies. So a
-fact the user forgot mid-session stayed in front of the model. This script
-removes that block from the rows that still hold it.
-
-It strips exactly what the platform wrote, where it wrote it:
-
-- only a session's first message, and only a ``user`` row
-  (``inject_user_context`` wrote no other row);
-- only a block at the very start of that message, or right after the
-  platform's ``<available_skills>`` block;
-- only the exact structure ``graphiti/context.py`` rendered: both wrapping
-  tags on lines of their own, one or both sections in that order, each item a
-  ``  - `` line, and the blank line after the block;
-- only when nothing after the block holds a ``<memory_context>`` or
-  ``</memory_context>`` tag. ``inject_user_context`` stripped every such tag
-  from the user's words before writing the row, so one there means the row is
-  not the platform's own (a first turn that never reached injection keeps the
-  user's raw text), or that stored memory forged an early close. Either way
-  the row is counted ``left`` and not touched.
-
-A ``<memory_context>`` tag anywhere else is left alone. The chat view has
-always hidden a leading ``<memory_context>`` block on any user message
+It strips exactly what the platform wrote, where it wrote it, with the matcher
+the restore uses (``legacy_first_turn_memory.strip_first_turn_memory``): only a
+session's first message, only a ``user`` row (``inject_user_context`` wrote no
+other), only the exact structure at the start of the message or right after
+the platform's ``<available_skills>`` block, and only when nothing after it
+holds a ``<memory_context>`` tag. A row that holds the tag but not exactly that
+block is counted ``left`` and not touched. A ``<memory_context>`` tag anywhere
+else is left alone. The chat view has always hidden a leading
+``<memory_context>`` block on any user message
 (``strip_injected_context_for_display``), and still does.
 
 A row is written only while its session is idle, and only if it still holds
@@ -57,15 +34,10 @@ Every step is idempotent, so a re-run only picks up what is left.
 
 What it does not reach:
 
-- CLI session files already uploaded for ``--resume``. An old session's file
-  still holds the block in its first user entry, and the next upload does not
-  rewrite it: the upload scrub removes only blocks carrying the current
-  process's mark. An old session resumed on the SDK engine keeps reading the
-  block until the CLI compacts that part of its history away or the file is
-  replaced.
 - Text derived from the block before it was removed: compaction summaries,
   the assistant's own replies and tool results in the session, Langfuse
-  traces.
+  traces, and a copy of the first message embedded in a later query's
+  rebuilt ``<conversation_history>`` and recorded in a CLI session file.
 - A request that loaded an idle session before its row was written and saves
   it after the run's final eviction: it caches the old first message again.
 
@@ -82,14 +54,12 @@ Usage:
 import argparse
 import asyncio
 import logging
-import re
 import sys
 
 from pydantic import BaseModel
 
-from backend.copilot.graphiti.context import CONTEXT_TAG_NAME
+from backend.copilot.legacy_first_turn_memory import strip_first_turn_memory
 from backend.copilot.model import CHAT_SESSION_CACHE_PREFIX
-from backend.copilot.service import MEMORY_CONTEXT_TAG, SKILLS_CONTEXT_TAG
 from backend.data.db import (
     connect,
     disconnect,
@@ -102,34 +72,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BATCH_SIZE = 200
 
-# One or more ``  - `` items, as ``context._format_context`` renders a
-# section. An item's text may span lines.
-_ITEMS = r"  - .*?"
-_FACTS = rf"<FACTS>\n{_ITEMS}\n</FACTS>"
-_EPISODES = rf"<RECENT_EPISODES>\n{_ITEMS}\n</RECENT_EPISODES>"
-_PLATFORM_BLOCK_RE = re.compile(
-    rf"(?P<skills><{SKILLS_CONTEXT_TAG}>\n.*?\n</{SKILLS_CONTEXT_TAG}>\n\n)?"
-    rf"<{MEMORY_CONTEXT_TAG}>\n<{CONTEXT_TAG_NAME}>\n"
-    rf"(?:{_FACTS}(?:\n\n{_EPISODES})?|{_EPISODES})"
-    rf"\n</{CONTEXT_TAG_NAME}>\n</{MEMORY_CONTEXT_TAG}>\n\n",
-    re.DOTALL,
-)
-# The tags the inbound sanitizer removes from a user's words
-# (``service.strip_server_injected_tags``).
-_MEMORY_TAG_RE = re.compile(rf"</?{MEMORY_CONTEXT_TAG}>", re.IGNORECASE)
-
-
-def strip_first_turn_memory(content: str) -> str | None:
-    """``content`` without the platform's first-turn memory block, or ``None``
-    when it does not hold exactly that block where the platform wrote it (see
-    the module docstring)."""
-    match = _PLATFORM_BLOCK_RE.match(content)
-    if match is None:
-        return None
-    rest = content[match.end() :]
-    if _MEMORY_TAG_RE.search(rest):
-        return None
-    return (match["skills"] or "") + rest
+# What the scan looks for before matching exactly.
+_MEMORY_OPEN_TAG = "<memory_context>"
 
 
 class BackfillCounts(BaseModel):
@@ -211,7 +155,7 @@ async def _first_messages(
     """The next ``limit`` first messages, by id after ``after``, that hold a
     ``<memory_context>`` tag."""
     rows = await query_raw_with_schema(
-        _FIRST_MESSAGES_QUERY, after, limit, f"<{MEMORY_CONTEXT_TAG}>", session_id
+        _FIRST_MESSAGES_QUERY, after, limit, _MEMORY_OPEN_TAG, session_id
     )
     return [_FirstMessage.model_validate(row) for row in rows]
 
@@ -290,7 +234,7 @@ async def main(args: argparse.Namespace) -> int:
     verb = "stripped" if args.apply else "would strip (dry run)"
     print(
         f"{verb} the first-turn memory block from {counts.stripped} of "
-        f"{counts.scanned} first messages holding <{MEMORY_CONTEXT_TAG}>; "
+        f"{counts.scanned} first messages holding {_MEMORY_OPEN_TAG}; "
         f"left {counts.left} that do not hold exactly the platform's block"
     )
     if not (counts.busy or counts.failed):

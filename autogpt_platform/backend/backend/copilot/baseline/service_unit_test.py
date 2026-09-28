@@ -51,6 +51,12 @@ from backend.copilot.graphiti.context_marker import (
     INJECTED_MEMORY_BLOCK_RE,
     INJECTED_MEMORY_MARKER,
 )
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    BUDGET_BLOCK,
+    bucket_storage,
+    legacy_first_message,
+    session_file,
+)
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
@@ -3502,14 +3508,28 @@ async def _run_baseline_turn(
     first_block: str | None,
     refresh,
     download: TranscriptDownload | None = None,
+    storage: MagicMock | None = None,
 ) -> _BaselineTurn:
-    """Drive one baseline turn to completion, the model answering "done"."""
+    """Drive one baseline turn to completion, the model answering "done".
+    Its prior transcript is ``download``; with ``storage``, the real
+    ``download_transcript`` restores it from that bucket instead."""
     turn = _BaselineTurn()
 
     async def _llm(messages, tools, *, state):
         turn.sent.append(copy.deepcopy(messages))
         return LLMLoopResponse(response_text="done", tool_calls=[], raw_response=None)
 
+    restore = (
+        (
+            "backend.copilot.transcript.get_workspace_storage",
+            dict(new=AsyncMock(return_value=storage)),
+        )
+        if storage is not None
+        else (
+            f"{_BASELINE}.download_transcript",
+            dict(new=AsyncMock(return_value=download)),
+        )
+    )
     patches: list[tuple[str, dict[str, Any]]] = [
         (f"{_BASELINE}._baseline_llm_caller", dict(new=_llm)),
         (
@@ -3520,10 +3540,7 @@ async def _run_baseline_turn(
             "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             dict(new=refresh),
         ),
-        (
-            f"{_BASELINE}.download_transcript",
-            dict(new=AsyncMock(return_value=download)),
-        ),
+        restore,
         (f"{_BASELINE}.upload_transcript", dict(new=turn.upload)),
         ("backend.copilot.service.chat_db", dict(return_value=turn.db)),
         (
@@ -3709,3 +3726,28 @@ class TestBaselineFirstTurnWarmContextIsEphemeral:
         assert "what is Alice working on" in read
         assert _ALICE not in read
         assert "temporal_context" not in read
+
+    @pytest.mark.asyncio
+    async def test_an_old_sdk_session_continued_here_reads_no_stored_block(self):
+        """A session the SDK engine began before this change, and that the
+        backfill has not reached, continues on this engine. The real
+        ``download_transcript`` restores its CLI session file without the
+        block the file's first entry stored, so the fact the user forgot
+        since is in nothing this turn sends the model, nor in its upload."""
+        old_first = legacy_first_message(_block(_NOVA_FORGOTTEN, _NOVA_KEPT))
+        storage = bucket_storage(
+            session_file(("user", BUDGET_BLOCK + old_first), ("assistant", "done"))
+        )
+
+        turn = await _run_baseline_turn(
+            _baseline_session(old_first, "done", "what do you know about Nova now"),
+            first_block=None,
+            refresh=_refresh_nothing,
+            storage=storage,
+        )
+
+        read = turn.model_input()
+        assert "what is Alice working on" in read
+        assert "violet-913" not in read
+        assert "memory_context" not in read
+        assert b"violet-913" not in turn.uploaded()

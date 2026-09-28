@@ -29,6 +29,7 @@ from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .legacy_first_turn_memory import strip_first_turn_memory_from_session
 from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -756,8 +757,13 @@ async def download_transcript(
     Pure GCS operation — no disk I/O.  The caller is responsible for writing
     content to disk if --resume is needed.
 
-    Returns a TranscriptDownload with the raw content, message_count watermark,
-    and mode on success, or None if not available (first turn or upload failed).
+    Returns a TranscriptDownload with the content as stored, message_count
+    watermark, and mode on success, or None if not available (first turn or
+    upload failed). One thing is taken out: the first-turn memory block an
+    older session stored in its first user entry
+    (``legacy_first_turn_memory.py``). Every restore, on either engine,
+    comes through here, so no turn reads that block again and the session's
+    next upload no longer carries it.
     """
     storage = await get_workspace_storage()
     path = _build_path_from_parts(
@@ -814,7 +820,12 @@ async def download_transcript(
         message_count,
         mode,
     )
-    return TranscriptDownload(content=content, message_count=message_count, mode=mode)
+    scrubbed = strip_first_turn_memory_from_session(content)
+    if scrubbed is not content:
+        logger.info(
+            "%s Removed the first-turn memory block the session stored", log_prefix
+        )
+    return TranscriptDownload(content=scrubbed, message_count=message_count, mode=mode)
 
 
 def next_uncovered_sequence(session_messages: list[ChatMessage]) -> int:
