@@ -13,8 +13,10 @@ import json
 import sys
 
 import sentry_sdk
+from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
 from sentry_sdk.serializer import serialize
+from sentry_sdk.transport import Transport
 from sentry_sdk.utils import event_from_exception, json_dumps
 
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
@@ -432,3 +434,36 @@ def test_sentry_init_never_hooks_or_opens_a_launchdarkly_client(monkeypatch) -> 
     integration_names = {type(i).__name__ for i in calls[0]["integrations"]}
     assert "LaunchDarklyIntegration" not in integration_names
     assert ld_inits == []
+
+
+class _DiscardTransport(Transport):
+    def capture_envelope(self, envelope) -> None:
+        pass
+
+
+def test_sentry_sdk_setup_from_sentry_init_hooks_no_launchdarkly(monkeypatch) -> None:
+    """The test above stops at the arguments sentry_init() passes. This builds a
+    real SDK client from them, with sentry-sdk's default and auto-enabling
+    integrations, and checks that SDK setup neither enables the LaunchDarkly
+    integration nor constructs an LD client."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
+    monkeypatch.setattr(feature_flag, "_init_attempted", False)
+    ld_clients: list[str] = []
+
+    def _refuse_ld_client(self, *args, **kwargs) -> None:
+        ld_clients.append("created")
+        raise RuntimeError("Sentry setup constructed a LaunchDarkly client")
+
+    monkeypatch.setattr(LDClient, "__init__", _refuse_ld_client)
+
+    metrics.sentry_init()
+    client = sentry_sdk.Client(**calls[0], transport=_DiscardTransport)
+    try:
+        assert "fastapi" in client.integrations
+        assert "launchdarkly" not in client.integrations
+    finally:
+        client.close()
+    assert ld_clients == []
