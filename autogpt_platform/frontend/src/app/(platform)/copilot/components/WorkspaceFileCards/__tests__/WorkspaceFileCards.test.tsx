@@ -1,3 +1,4 @@
+import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getDeleteWorkspaceFileMockHandler200,
   getListWorkspaceFilesMockHandler200,
@@ -301,6 +302,24 @@ describe("WorkspaceFileCards", () => {
     expect(screen.getByText("Daily Digest")).toBeDefined();
     expect(screen.getByText(/^Schedules \(1\)/)).toBeDefined();
     expect(screen.getByText("Morning brief")).toBeDefined();
+  });
+
+  it("lists the expert's integrations under the files", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        {
+          credential_id: "cred-linkedin",
+          provider: "linkedin",
+          title: "linkedin account",
+          type: "oauth2",
+        },
+      ]),
+    );
+    render(<WorkspaceFileCards sessionId={SESSION} expertId="expert-maria" />);
+
+    expect(await screen.findByText(/^Integrations \(1\)/)).toBeDefined();
+    expect(screen.getByText("linkedin account")).toBeDefined();
+    expect(screen.getByRole("img", { name: "LinkedIn" })).toBeDefined();
   });
 
   it("downloads a single file on click", async () => {

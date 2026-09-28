@@ -7,7 +7,6 @@ import {
   screen,
   within,
 } from "@/tests/integrations/test-utils";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadHeader } from "../components/ChatMessagesContainer/components/ThreadHeader";
 
@@ -38,46 +37,11 @@ function credential(provider: string): ExpertCredentialRef {
 }
 
 function renderHeader() {
-  return render(
-    <ThreadHeader expertIdentity={mariaIdentity} readOnly={false} />,
-  );
+  return render(<ThreadHeader expertIdentity={mariaIdentity} />);
 }
 
-describe("expert integrations in the thread header", () => {
-  it("shows the first three logos and counts the rest", async () => {
-    server.use(
-      getListExpertCredentialsMockHandler([
-        credential("linkedin"),
-        credential("notion"),
-        credential("github"),
-        credential("slack"),
-        credential("gmail"),
-      ]),
-    );
-
-    renderHeader();
-
-    const cluster = await screen.findByTestId("expert-integrations");
-    expect(within(cluster).getAllByRole("img")).toHaveLength(3);
-    expect(within(cluster).getByText("+2")).toBeDefined();
-  });
-
-  it("omits the counter when everything fits", async () => {
-    server.use(
-      getListExpertCredentialsMockHandler([
-        credential("linkedin"),
-        credential("notion"),
-      ]),
-    );
-
-    renderHeader();
-
-    const cluster = await screen.findByTestId("expert-integrations");
-    expect(within(cluster).getAllByRole("img")).toHaveLength(2);
-    expect(within(cluster).queryByText(/^\+/)).toBeNull();
-  });
-
-  it("lists every integration by name once opened", async () => {
+describe("expert integrations under the thread chip", () => {
+  it("lists every integration by name", async () => {
     server.use(
       getListExpertCredentialsMockHandler([
         credential("linkedin"),
@@ -88,13 +52,24 @@ describe("expert integrations in the thread header", () => {
     );
 
     renderHeader();
-    await userEvent.click(await screen.findByTestId("expert-integrations"));
 
-    expect(await screen.findByText("slack account")).toBeDefined();
-    expect(screen.getByText("linkedin account")).toBeDefined();
+    const list = await screen.findByTestId("expert-integrations");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(4);
+    expect(within(list).getByText("slack account")).toBeDefined();
+    expect(within(list).getByText("linkedin account")).toBeDefined();
+  });
+
+  it("keeps integrations and actions out of the chip itself", async () => {
+    server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
+
+    renderHeader();
+
+    await screen.findByTestId("expert-integrations");
+    const chip = screen.getByLabelText(/^Maria — /);
+    expect(within(chip).queryByRole("img", { name: "LinkedIn" })).toBeNull();
     expect(
-      screen.getByRole("link", { name: /Manage what Maria can access/ }),
-    ).toBeDefined();
+      within(screen.getByTestId("expert-thread-header")).queryByRole("button"),
+    ).toBeNull();
   });
 
   it("names an MCP integration after the service, not its URL", async () => {
@@ -110,7 +85,6 @@ describe("expert integrations in the thread header", () => {
     );
 
     renderHeader();
-    await userEvent.click(await screen.findByTestId("expert-integrations"));
 
     expect(await screen.findByText("Sentry")).toBeDefined();
     expect(screen.queryByText("MCP: mcp.sentry.dev")).toBeNull();
@@ -121,15 +95,13 @@ describe("expert integrations in the thread header", () => {
 
     renderHeader();
 
-    const cluster = await screen.findByTestId("expert-integrations");
-    const logo = within(cluster).getByRole("img", { name: "LinkedIn" });
+    const list = await screen.findByTestId("expert-integrations");
+    const logo = within(list).getByRole("img", { name: "LinkedIn" });
     fireEvent.error(logo);
 
     // The PNG is missing for plenty of providers, so the fallback glyph must
     // still announce which integration it stands for.
-    expect(
-      within(cluster).getByRole("img", { name: "LinkedIn" }),
-    ).toBeDefined();
+    expect(within(list).getByRole("img", { name: "LinkedIn" })).toBeDefined();
   });
 
   it("renders nothing when the expert reaches no integrations", async () => {

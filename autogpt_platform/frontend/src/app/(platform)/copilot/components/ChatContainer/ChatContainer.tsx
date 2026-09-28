@@ -328,11 +328,18 @@ export const ChatContainer = ({
             {sessionId && isSessionNotFound ? (
               <SessionNotFound />
             ) : sessionId ? (
-              <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+              <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
                 <div className="absolute right-0 top-0 z-30">
                   <ContextPanelToggle sessionId={sessionId} />
                 </div>
-                <WorkspaceFileCards sessionId={sessionId} />
+                <WorkspaceFileCards
+                  sessionId={sessionId}
+                  expertId={
+                    expertIdentity && !expertIdentity.isArchived
+                      ? expertIdentity.id
+                      : null
+                  }
+                />
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -355,7 +362,6 @@ export const ChatContainer = ({
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
                   hasFloatingControls={hasFloatingControls}
-                  canOpenActivity
                   areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
@@ -381,9 +387,9 @@ export const ChatContainer = ({
                         <div
                           aria-hidden="true"
                           data-testid="usage-limit-backdrop"
-                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                         >
-                          <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
+                          <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
                           <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                         </div>
                         <div className="pointer-events-auto relative px-3">

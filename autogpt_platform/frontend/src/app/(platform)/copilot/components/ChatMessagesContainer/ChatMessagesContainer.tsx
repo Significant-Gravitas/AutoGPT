@@ -136,9 +136,6 @@ interface Props {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
-  /** Set by the host that mounts the session activity card, so the thread
-   *  chip only becomes clickable where that card exists. */
-  canOpenActivity?: boolean;
   /** The host's floating workspace-files card is open, so the column
    *  slides aside for it. Only the copilot chat mounts that card;
    *  every other host (share viewer, memory and builder panels) leaves this
@@ -308,7 +305,6 @@ export function ChatMessagesContainer({
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
   hasFloatingControls = false,
-  canOpenActivity = false,
   areFilesOpen = false,
   variant = "default",
   showThreadHeader = true,
@@ -489,10 +485,7 @@ export function ChatMessagesContainer({
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          readOnly={readOnly}
-          sessionId={sessionID}
           hasFloatingControls={hasFloatingControls}
-          canOpenActivity={canOpenActivity}
         />
       )}
       {!isCompact && <ChatMinimap messages={messages} />}

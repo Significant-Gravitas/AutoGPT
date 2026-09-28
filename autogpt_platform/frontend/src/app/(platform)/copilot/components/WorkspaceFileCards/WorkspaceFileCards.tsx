@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
+import { useExpertIntegrations } from "../ChatMessagesContainer/components/ExpertIntegrations/useExpertIntegrations";
+import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection";
 import { SessionActivityCard } from "./components/SessionActivityCard";
 import { StackSection } from "./components/StackSection";
 import { WorkspaceFilesContent } from "./components/WorkspaceFilesContent";
@@ -13,6 +15,9 @@ import { useWorkspaceFileCards } from "./useWorkspaceFileCards";
 
 interface Props {
   sessionId: string | null;
+  /** The live expert this chat belongs to, whose integrations get a section
+   *  of their own. Null for Otto's chats and archived experts. */
+  expertId?: string | null;
 }
 
 // Matches the chat column's shift transition (see ChatMessagesContainer) so
@@ -28,7 +33,7 @@ const CARD_TRANSITION = { duration: 0.3, ease: CARD_EASE };
  * The card body — and its file-list request and transcript scans — mounts
  * only while the card is showing.
  */
-export function WorkspaceFileCards({ sessionId }: Props) {
+export function WorkspaceFileCards({ sessionId, expertId = null }: Props) {
   const isOpen = useAreWorkspaceFileCardsOpen();
   return (
     <AnimatePresence initial={false}>
@@ -36,13 +41,19 @@ export function WorkspaceFileCards({ sessionId }: Props) {
         <OpenWorkspaceFileCards
           key="workspace-file-cards"
           sessionId={sessionId}
+          expertId={expertId}
         />
       )}
     </AnimatePresence>
   );
 }
 
-function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
+interface OpenProps {
+  sessionId: string;
+  expertId: string | null;
+}
+
+function OpenWorkspaceFileCards({ sessionId, expertId }: OpenProps) {
   const {
     files,
     isLoading,
@@ -62,6 +73,7 @@ function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
   const showFilesCard = isLoading || isError || files.length > 0;
   const { runs, schedules } = useSessionActivity(sessionId);
   const hasActivity = runs.length > 0 || schedules.length > 0;
+  const { integrations } = useExpertIntegrations(expertId);
 
   return (
     <motion.div
@@ -71,7 +83,7 @@ function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
       transition={CARD_TRANSITION}
       className="absolute right-8 top-3 z-30 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3"
     >
-      {!showFilesCard && !hasActivity && (
+      {!showFilesCard && !hasActivity && integrations.length === 0 && (
         <div className="rounded-3xl bg-white/90 px-4 py-3 backdrop-blur smooth-shadow-ring-sm">
           <p className="py-2 text-center text-sm text-zinc-400">
             Nothing here yet.
@@ -116,6 +128,7 @@ function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
         </StackSection>
       )}
       <SessionActivityCard sessionId={sessionId} />
+      <ExpertIntegrationsSection integrations={integrations} />
     </motion.div>
   );
 }
