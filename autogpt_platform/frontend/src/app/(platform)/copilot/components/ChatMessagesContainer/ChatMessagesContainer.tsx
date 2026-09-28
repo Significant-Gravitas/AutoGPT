@@ -48,6 +48,7 @@ import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { ChainMessageParts } from "./components/ChainMessageParts";
+import { DelegationStatusLine } from "../DelegationStatusLine/DelegationStatusLine";
 import { withToolDisplayNames } from "../../helpers/toolDisplay";
 import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
@@ -677,17 +678,24 @@ export function ChatMessagesContainer({
                   )}
                 >
                   {isAssistant ? (
-                    <ChainMessageParts
-                      parts={renderableParts}
-                      messageID={message.id}
-                      isCurrentlyStreaming={isCurrentlyStreaming}
-                      onRetry={isLastAssistant ? onRetry : undefined}
-                      fileUrlBuilder={fileUrlBuilder}
-                      readOnly={readOnly}
-                      compactionPhase={compactionPhase}
-                      liveCompactionCallId={liveCompactionCallId}
-                      liveCompactionStats={liveCompactionStats}
-                    />
+                    <>
+                      <ChainMessageParts
+                        parts={renderableParts}
+                        messageID={message.id}
+                        isCurrentlyStreaming={isCurrentlyStreaming}
+                        onRetry={isLastAssistant ? onRetry : undefined}
+                        fileUrlBuilder={fileUrlBuilder}
+                        readOnly={readOnly}
+                        compactionPhase={compactionPhase}
+                        liveCompactionCallId={liveCompactionCallId}
+                        liveCompactionStats={liveCompactionStats}
+                      />
+                      <DelegationStatusLine
+                        parts={renderableParts}
+                        messageId={message.id}
+                        readOnly={readOnly}
+                      />
+                    </>
                   ) : (
                     <UserMessageClamp
                       trailing={

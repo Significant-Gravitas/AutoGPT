@@ -11,6 +11,10 @@ import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 import { SwapText } from "./SwapText";
 import { HeldTag } from "./HeldCallRowParts";
+import {
+  HandoffApprovalNode,
+  isHandoffApprovalRow,
+} from "./HandoffApprovalNode";
 import { getCatalogLabel } from "./toolCatalog";
 import { ToolResult } from "./ToolResult";
 import { ToolStatusBadge } from "./ToolStatusBadge";
@@ -74,6 +78,13 @@ function isLiveSubSessionRow(row: ChainRow): boolean {
 }
 
 export function ChainRowView({ row, isLast, readOnly = false }: Props) {
+  if (!readOnly && row.held && isHandoffApprovalRow(row.tool, row.held)) {
+    return <HandoffApprovalNode held={row.held} isLast={isLast} />;
+  }
+  return <ChainRowBody row={row} isLast={isLast} readOnly={readOnly} />;
+}
+
+function ChainRowBody({ row, isLast, readOnly = false }: Props) {
   const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
