@@ -1,6 +1,8 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { expect, test } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { afterEach, expect, test, vi } from "vitest";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
@@ -299,4 +301,54 @@ test("a mode-held call wears its mode and no reason; a subject-held call the rev
   expect(modedRow.textContent).not.toContain("waiting for your approval");
   expect(subjectRow.textContent).not.toContain("Ask First");
   expect(subjectRow.textContent).toContain("Deleting a file can't be undone.");
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+// Receipts keep the list steady, so a burst of decisions needs one dashboard refetch, not one each.
+function countDashboardRefetches() {
+  const home = JSON.stringify(getGetHomeDashboardQueryKey());
+  const spy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+  spy.mockClear();
+  return () =>
+    spy.mock.calls.filter(
+      ([filters]) => JSON.stringify(filters?.queryKey) === home,
+    ).length;
+}
+
+test("a burst of decisions refetches the dashboard once", async () => {
+  const user = userEvent.setup();
+  serveAnswers();
+  const items = ["a", "b", "c"].map((id) =>
+    homeHeldItem(folder(id, `Folder ${id}`), { session: id }),
+  );
+  const refetches = countDashboardRefetches();
+  renderTile(items);
+
+  for (const item of items)
+    await user.click(
+      screen.getByRole("button", { name: `Approve: ${item.title}` }),
+    );
+
+  await waitFor(() =>
+    expect(screen.getAllByText("· Approved · Otto is on it")).toHaveLength(3),
+  );
+  await waitFor(() => expect(refetches()).toBe(1));
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  expect(refetches()).toBe(1);
+});
+
+test("a lone decision refetches the dashboard within a second", async () => {
+  serveAnswers();
+  const item = homeHeldItem(folder("solo", "Solo"));
+  const refetches = countDashboardRefetches();
+  renderTile([item]);
+
+  await userEvent.click(
+    screen.getByRole("button", { name: `Approve: ${item.title}` }),
+  );
+
+  await waitFor(() => expect(refetches()).toBe(1), { timeout: 1000 });
 });

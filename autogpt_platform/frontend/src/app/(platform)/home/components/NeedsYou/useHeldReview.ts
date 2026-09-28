@@ -26,6 +26,8 @@ interface Args {
   items: HomeAttentionItem[];
 }
 
+const REFRESH_AFTER_MS = 400;
+
 interface DecideOptions {
   rule?: ChatRule;
   scope?: RuleScope;
@@ -43,6 +45,7 @@ export function useHeldReview({ items }: Args) {
   const seen = useRef(new Map<string, HomeAttentionItem>());
   const answeredHere = useRef(new Set<string>());
   const left = useRef(new Set<string>());
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const order = useRef<string[]>([]);
 
   const rows = orderRows(order.current, items, seen.current, receipts);
@@ -50,6 +53,17 @@ export function useHeldReview({ items }: Args) {
   useEffect(() => {
     order.current = rows.map((row) => row.item.id);
   });
+
+  // Leaving the page with a refresh pending still refreshes.
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) {
+        clearTimeout(refreshTimer.current);
+        refresh();
+      }
+    },
+    [],
+  );
 
   // A held call that leaves the feed without an answer from here was answered in its chat.
   useEffect(() => {
@@ -148,11 +162,21 @@ export function useHeldReview({ items }: Args) {
       ids.forEach((id) => delete next[id]);
       return next;
     });
-    if (done.length > 0)
-      void queryClient.invalidateQueries({
-        queryKey: getGetHomeDashboardQueryKey(),
-      });
+    if (done.length > 0) refreshSoon();
     return done.map((item) => item.id);
+  }
+
+  // One dashboard refetch per burst of decisions; receipts keep the list steady meanwhile.
+  function refreshSoon() {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(refresh, REFRESH_AFTER_MS);
+  }
+
+  function refresh() {
+    refreshTimer.current = null;
+    void queryClient.invalidateQueries({
+      queryKey: getGetHomeDashboardQueryKey(),
+    });
   }
 
   async function send(
