@@ -156,6 +156,20 @@ export function ConnectorRow({ row }: Props) {
     (credential) => credential.id === row.selected?.id,
   );
   const hasChoice = !expertGrant && !row.selected && pickable.length > 1;
+  // No saved account fits, and there are several that a fresh sign-in could
+  // widen. Signing in without naming one requests only this card's scopes,
+  // which the backend cannot merge into an account that holds others, so it
+  // stored yet another credential beside them. The user names the account
+  // instead; with exactly one, `upgradableCredentialID` already does. Only
+  // where the row takes an OAuth credential at all: a card asking for an API
+  // key runs no sign-in to aim, so naming an account there picks one the key
+  // form then ignores.
+  const updatable =
+    expertGrant ||
+    pickable.length > 0 ||
+    !(row.schema.credentials_types ?? []).includes("oauth2")
+      ? []
+      : updatableAccounts(row, allProviders);
 
   async function pick(credential: Grantable): Promise<boolean> {
     row.select({
@@ -266,7 +280,16 @@ export function ConnectorRow({ row }: Props) {
                   error: null,
                   purpose: "choose",
                 }
-              : undefined
+              : updatable.length > 1
+                ? {
+                    credentials: updatable,
+                    // The dialog runs the sign-in itself for this purpose.
+                    onUse: async () => false,
+                    isPending: false,
+                    error: null,
+                    purpose: "update",
+                  }
+                : undefined
         }
         open={isDialogOpen}
         onClose={() => setDialogOpen(false)}
@@ -354,6 +377,33 @@ function newlyConnectedCredential(
   return account ? { grantable, account } : null;
 }
 
+/** The user's own OAuth accounts for a provider: the ones a fresh sign-in can
+ *  widen. API keys have nothing to re-authorise, and managed and system
+ *  credentials are refused by the backend. The one-click upgrade and the
+ *  account picker must agree on this set, or a provider counted one way and
+ *  offered the other leaves the user with no path that upgrades in place. */
+function updatableCredentials(
+  provider: string,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  return filterSystemCredentials(
+    allProviders?.[provider]?.savedCredentials ?? [],
+  ).filter(
+    (credential) => credential.type === "oauth2" && !credential.is_managed,
+  );
+}
+
+function updatableAccounts(
+  row: Row,
+  allProviders: CredentialsProvidersContextType | null,
+): Grantable[] {
+  return updatableCredentials(row.provider, allProviders).map((credential) => ({
+    id: credential.id,
+    title: credential.title ?? credential.username ?? row.displayName,
+    type: credential.type,
+  }));
+}
+
 /** The account a re-auth should upgrade in place. Signing in without it can
  *  grant narrower scopes than the user already had and leave a second row for
  *  the same provider, which no ConnectorRow can ever resolve. Only safe when
@@ -364,10 +414,6 @@ function upgradableCredentialID(
   provider: string,
   allProviders: CredentialsProvidersContextType | null,
 ) {
-  const oauthCredentials = filterSystemCredentials(
-    allProviders?.[provider]?.savedCredentials ?? [],
-  ).filter(
-    (credential) => credential.type === "oauth2" && !credential.is_managed,
-  );
+  const oauthCredentials = updatableCredentials(provider, allProviders);
   return oauthCredentials.length === 1 ? oauthCredentials[0].id : undefined;
 }

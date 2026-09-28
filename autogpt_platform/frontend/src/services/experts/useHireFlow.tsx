@@ -22,9 +22,10 @@ import { useRef, useState } from "react";
 function celebrate(result: HireResult) {
   toast({
     title: `${result.expert.name} joined your team`,
-    description: result.failed_preloads.length
-      ? `Couldn't attach: ${result.failed_preloads.join(", ")}`
-      : undefined,
+    description:
+      result.expert.setup_status === "installing"
+        ? "Their skills and workflows are installing."
+        : undefined,
     variant: "success",
     action: (
       <Button

@@ -17,6 +17,7 @@ import asyncio
 import logging
 import os
 
+from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump.models import (
     ExpertRecommendations,
@@ -58,7 +59,10 @@ RAISE_ROLES = frozenset(
 # transcript, or when the model that would have read it failed.
 FALLBACK_DIAGNOSIS = "Here's a first team based on your role and what slows you down."
 
-_PROMPT = """You are Otto, this user's built-in Head of AI. They \
+_PROMPT = (
+    EXPERT_COPY_POLICY
+    + "\n\n"
+    + """You are Otto, this user's built-in Head of AI. They \
 just recorded a brain dump about their work, and your job is to come back \
 like a consultant would: name the problems you heard, then propose the \
 first hires that take those problems off their plate.
@@ -96,6 +100,7 @@ Signup answers:
 Transcript:
 {transcript}
 """
+)
 
 
 async def generate_expert_recommendations(

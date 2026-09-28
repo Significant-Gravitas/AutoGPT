@@ -513,4 +513,40 @@ describe("ConnectCredentialDialog with existing accounts", () => {
       "true",
     );
   });
+
+  it("signs in to the account the user chose to update, not a fresh one", () => {
+    const existing = { ...offer(), purpose: "update" as const };
+    renderDialog({ existing });
+
+    expect(screen.getByText("Update a GitHub account")).toBeDefined();
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio.getAttribute("aria-checked")).toBe("false");
+    }
+    expect(
+      screen.getByText("Update this account").closest("button")?.disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByText("Personal GitHub"));
+    fireEvent.click(screen.getByText("Update this account"));
+
+    // The list gives way to the sign-in, aimed at that account, so the
+    // backend widens it in place instead of storing another beside it.
+    expect(screen.getByTestId("connect-method-view")).toBeDefined();
+    const flow = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(flow.credentialID).toBe("cred-2");
+    expect(existing.onUse).not.toHaveBeenCalled();
+  });
+
+  it("adds a new account when the user asks for one instead of updating", () => {
+    renderDialog({ existing: { ...offer(), purpose: "update" as const } });
+
+    fireEvent.click(screen.getByText("Add new"));
+
+    const flow = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(flow.credentialID).toBeUndefined();
+  });
 });

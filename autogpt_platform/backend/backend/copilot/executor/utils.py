@@ -285,6 +285,11 @@ class CoPilotExecutionEntry(BaseModel):
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
 
+    message_metadata: dict[str, Any] | None = None
+    """Persisted on the user message row (e.g. ``from_session_id`` /
+    ``from_expert_id`` provenance for a delegated or handed-off task) so the
+    thread can render where the message came from."""
+
     organization_id: str | None = None
     """Active organization for tenant-scoped execution"""
 
@@ -345,6 +350,7 @@ async def enqueue_copilot_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    message_metadata: dict[str, Any] | None = None,
     *,
     envelope: TurnEnvelope,
 ) -> None:
@@ -388,6 +394,7 @@ async def enqueue_copilot_turn(
         llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
+        message_metadata=message_metadata,
         envelope=envelope,
     )
 
@@ -418,6 +425,7 @@ async def schedule_turn(
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
+    message_metadata: dict[str, Any] | None = None,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -484,6 +492,7 @@ async def schedule_turn(
             permissions=permissions,
             request_arrival_at=request_arrival_at,
             spawn=spawn,
+            message_metadata=message_metadata,
         )
 
 
@@ -507,6 +516,7 @@ async def dispatch_turn(
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
+    message_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -532,7 +542,9 @@ async def dispatch_turn(
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
-    envelope = await _admitted_turn_envelope(turn_id, user_id, permissions, spawn)
+    envelope = await _admitted_turn_envelope(
+        turn_id, session_id, user_id, permissions, spawn
+    )
 
     # Everything after the admit above runs inside the try: the tree's node
     # counter is already incremented, so an exception from ``create_session``
@@ -574,6 +586,7 @@ async def dispatch_turn(
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            message_metadata=message_metadata,
             envelope=envelope,
         )
         slot.keep()
@@ -594,6 +607,7 @@ async def dispatch_turn(
 
 async def _admitted_turn_envelope(
     turn_id: str,
+    session_id: str,
     user_id: str | None,
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
@@ -619,7 +633,7 @@ async def _admitted_turn_envelope(
             "over. Start it again from the top."
         )
     if spawner is None:
-        envelope = root_envelope(turn_id)
+        envelope = root_envelope(turn_id, session_id=session_id)
     else:
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions

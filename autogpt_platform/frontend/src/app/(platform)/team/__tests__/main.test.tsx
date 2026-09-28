@@ -231,7 +231,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const raise = await screen.findByRole("link", { name: "Raise expert" });
+    const raise = await screen.findByRole("link", { name: "Create an Expert" });
     expect(raise.getAttribute("href")).toBe("/raise");
     expect(
       screen.getByRole("link", { name: "Hire expert" }).getAttribute("href"),
@@ -246,7 +246,8 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     expect(await screen.findByText("Maria")).toBeDefined();
-    expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    // The job title now rides the name line, after a bullet.
+    expect(screen.getByText(/Marketing Strategist/)).toBeDefined();
     const card = screen.getByRole("link", { name: "View Maria" });
     expect(within(card).queryByText("Idle")).toBeNull();
     expect(getStatValue(card, "Workflows")).toBe("2");
@@ -382,7 +383,7 @@ describe("TeamPage", () => {
     });
   });
 
-  test("shows the seeded cover art for Max and none for the rest", async () => {
+  test("uses plain covers for built-in experts", async () => {
     server.use(
       getListExpertsMockHandler([
         hiredMaria,
@@ -400,13 +401,11 @@ describe("TeamPage", () => {
     const max = await screen.findByRole("link", { name: "View Max" });
     expect(
       max.querySelector('img[src="/experts/covers/max-1.jpg"]'),
-    ).not.toBeNull();
+    ).toBeNull();
     const maria = screen.getByRole("link", { name: "View Maria" });
     expect(maria.querySelector('img[src^="/experts/covers/"]')).toBeNull();
-    // No colour of her own and no seeded art, so the palette fills in.
-    expect(maria.querySelector('[class*="-200"]')?.className).toMatch(
-      /bg-[a-z]+-200/,
-    );
+    const otto = screen.getByRole("link", { name: "View Otto" });
+    expect(otto.querySelector('img[src^="/experts/covers/"]')).toBeNull();
   });
 
   test("shows no integrations item on a card with none granted", async () => {
@@ -1010,9 +1009,11 @@ describe("TeamPage", () => {
       name: "Browse the marketplace",
     });
     expect(link.getAttribute("href")).toBe("/marketplace");
-    expect(
-      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
-    ).toBe("/raise");
+    for (const createLink of screen.getAllByRole("link", {
+      name: "Create an Expert",
+    })) {
+      expect(createLink.getAttribute("href")).toBe("/raise");
+    }
   });
 
   test("shows an error card and retries when loading experts fails", async () => {
@@ -1409,5 +1410,78 @@ describe("TeamPage - setup needed card", () => {
     );
     expect(within(dialog).getByRole("button", { name: "Back" })).toBeDefined();
     expect(within(dialog).getAllByText(/Notion/).length).toBeGreaterThan(0);
+  });
+
+  test("follows a fresh hire's setup until its skills land", async () => {
+    let reads = 0;
+    server.use(
+      getListExpertsMockHandler(() => {
+        reads += 1;
+        return reads === 1
+          ? [{ ...hiredMaria, setup_status: "installing", skills: [] }]
+          : [{ ...hiredMaria, setup_status: "ready", skills: ["a", "b"] }];
+      }),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Setting up Maria's skills and workflows…"),
+    ).toBeDefined();
+    const card = screen.getByRole("link", { name: "View Maria" });
+    await waitFor(() => expect(getStatValue(card, "Skills")).toBe("2"), {
+      timeout: 5_000,
+    });
+    expect(
+      screen.queryByText("Setting up Maria's skills and workflows…"),
+    ).toBeNull();
+  });
+
+  test("a failed setup offers a retry that re-hires the template", async () => {
+    const hires: unknown[] = [];
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          source_template_id: "template-maria",
+          setup_status: "failed",
+          setup_failures: ["SEO Audit"],
+        },
+      ]),
+      http.post("/api/proxy/api/experts", async ({ request }) => {
+        hires.push(await request.json());
+        return HttpResponse.json({ expert: hiredMaria });
+      }),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Couldn't install: SEO Audit"),
+    ).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Retry setup" }));
+    await waitFor(() =>
+      expect(hires).toEqual([{ template_id: "template-maria" }]),
+    );
+  });
+
+  test("a failed setup with no template offers no retry", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          source_template_id: null,
+          setup_status: "failed",
+          setup_failures: ["SEO Audit"],
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Couldn't install: SEO Audit"),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Retry setup" })).toBeNull();
   });
 });

@@ -2,7 +2,7 @@ import {
   PLANS,
   YEARLY_PRICE_FACTOR,
 } from "@/components/molecules/PlanCard/plans";
-import { consent } from "@/services/consent/cookies";
+import { hasConsentFor } from "@/services/consent/consent";
 import { environment } from "@/services/environment";
 import { gtag } from "./gtag";
 
@@ -54,13 +54,13 @@ export function trackAdsConversion(
 
 // An unanswered banner is not a yes. Outside the EEA/UK/CH the Consent Mode
 // default is `granted`, but that gate lives in the tag's `region` parameter and
-// Google resolves it by IP — the browser has no region signal of its own. So
-// treating "no answer" as consent would hand Google an email it was told to
-// redact for every unanswered visitor in a denied-by-default region, which is
-// the vendor dependency this gate exists to remove.
+// Google resolves it by IP. So treating "no answer" as consent would hand
+// Google an email it was told to redact for every unanswered visitor in a
+// denied-by-default region, which is the vendor dependency this gate exists to
+// remove. Cookiebot's own answer (including "no consent required here") is
+// what counts.
 function mayReportIdentifiers(): boolean {
-  const preferences = consent.load();
-  return preferences.hasConsented && preferences.advertising;
+  return hasConsentFor("advertising");
 }
 
 // The labels come from a build-time env var; parse once per distinct value so

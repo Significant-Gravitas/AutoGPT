@@ -817,6 +817,23 @@
     }
   },
   {
+    "name": "mcp_openseo",
+    "display_name": "OpenSEO",
+    "description": "Research keywords, SERPs, backlinks and competitor domains, run site audits, track rankings, and build SEO reports.",
+    "mcp_server": {
+      "server_url": "https://app.openseo.so/mcp",
+      "documentation_url": "https://openseo.so/docs/mcp",
+      "setup_instructions": "Sign in to OpenSEO, or use an OpenSEO API key. OpenSEO's cloud service requires an active subscription; keyword, SERP, backlink, local SEO and rank tracking tools spend OpenSEO credits. Self-hosting OpenSEO on Cloudflare? Replace the server URL with your instance's /mcp URL and sign in; turn on Managed OAuth in its Cloudflare Access application first.",
+      "connection_mode": "hosted",
+      "allow_custom_url": true,
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "openseo"
+    }
+  },
+  {
     "name": "mcp_opsera",
     "display_name": "Opsera",
     "description": "Use DevSecOps investigation, architecture, compliance, and security tools.",
@@ -869,6 +886,22 @@
         "offline_access"
       ],
       "icon_id": "plain"
+    }
+  },
+  {
+    "name": "mcp_posthog",
+    "display_name": "PostHog",
+    "description": "Query product analytics and insights, investigate errors, and manage feature flags and experiments.",
+    "mcp_server": {
+      "server_url": "https://mcp.posthog.com/mcp",
+      "documentation_url": "https://posthog.com/docs/model-context-protocol",
+      "setup_instructions": "Sign in to PostHog; your account determines the US or EU data region. Alternatively, use a personal API key with the MCP Server preset. Review the requested permissions and active project before making changes. AI-powered tools require AI data processing to be enabled and may incur PostHog AI charges.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "posthog"
     }
   },
   {
@@ -1073,6 +1106,22 @@
         "oauth"
       ],
       "icon_id": "wonder"
+    }
+  },
+  {
+    "name": "mcp_zapier",
+    "display_name": "Zapier",
+    "description": "Trigger and run actions across 8,000+ apps Zapier connects to, using natural language through Zapier's official MCP server.",
+    "mcp_server": {
+      "server_url": "https://mcp.zapier.com/api/v1/connect",
+      "documentation_url": "https://docs.zapier.com/mcp/home",
+      "setup_instructions": "Sign in with your Zapier account via OAuth to use the apps and Zaps already connected in your Zapier workspace. If your setup isn't on Zapier's supported OAuth client list, create a connection token at mcp.zapier.com instead and use it as a bearer token.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "zapier"
     }
   }
 ]

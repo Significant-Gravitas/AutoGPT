@@ -88,9 +88,12 @@ export function SelectionBar({
       </div>
       {isMoveOpen && (
         <MoveToFolderDialog
-          fileIds={selectedFiles.map((file) => file.id)}
+          move={{
+            kind: "files",
+            fileIds: selectedFiles.map((file) => file.id),
+            currentFolderId: sharedFolderId,
+          }}
           subject={moveSubject}
-          currentFolderId={sharedFolderId}
           canMoveToRoot={selectedFiles.some((file) => file.folder_id != null)}
           isOpen={isMoveOpen}
           setIsOpen={setIsMoveOpen}

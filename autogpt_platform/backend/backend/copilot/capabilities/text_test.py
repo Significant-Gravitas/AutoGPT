@@ -36,5 +36,15 @@ def test_query_groups_expand_synonyms_once_per_concept():
     assert groups[2] == [stem("code")]
 
 
+def test_query_groups_link_save_store_and_write():
+    """Saving, storing and writing are one intent across three entries
+    (FileStoreBlock, write_workspace_file, memory_store); a query using any
+    of the verbs must reach the entries described with the others."""
+    for verb in ("save", "store", "write"):
+        (group,) = query_groups(verb)
+        assert group[0] == stem(verb)
+        assert {stem("save"), stem("store"), stem("write")} <= set(group)
+
+
 def test_normalize_name():
     assert normalize_name("Orchestrator Block") == "orchestratorblock"

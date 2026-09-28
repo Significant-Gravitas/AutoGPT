@@ -36,6 +36,11 @@ from .runner import (
     summarize_expert,
     wrong_spec_rows,
 )
+
+try:
+    roster_experts()
+except Exception as exc:  # the catalog is a separate repo; no roster, no eval
+    pytest.skip(f"skills catalog roster unavailable: {exc}", allow_module_level=True)
 from .scorer import response_score
 
 _RUNNER = "backend.copilot.eval.style.runner"
@@ -362,7 +367,12 @@ async def test_run_scores_every_prompt_and_reads_it_against_the_baseline(
     assert result.cost_usd == pytest.approx(0.054)
     (comparison,) = result.comparison
     assert comparison.expert == "Max"
-    assert comparison.shared_prompts == 24, "the baseline's three unscored prompts"
+    assert comparison.shared_prompts == 23, (
+        "Max's stored baseline scores 23 of its 27 prompts: four turns hit the "
+        "round cap and are stored as errors. Regenerating baseline.json moves this "
+        "number, so read Max's by_prompt length off the new file and update it "
+        "here. No extra paid run."
+    )
     save_baseline.assert_not_called()
     written = json.loads(out.read_text())
     assert written["fingerprint"] == result.fingerprint

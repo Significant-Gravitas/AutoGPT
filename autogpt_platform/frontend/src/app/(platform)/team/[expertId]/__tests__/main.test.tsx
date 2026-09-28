@@ -27,6 +27,7 @@ import {
   getGetV1ListExecutionSchedulesForAUserMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertSkillsUpdate } from "@/app/api/__generated__/models/expertSkillsUpdate";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
   getGetV2GetSessionMockHandler200,
@@ -107,12 +108,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
           ? skillsHubFlag
           : actual.useFlagStatus(flag as never),
   };
-});
-
-const { uploadAvatarSpy } = vi.hoisted(() => ({ uploadAvatarSpy: vi.fn() }));
-vi.mock("@/lib/direct-upload", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/direct-upload")>();
-  return { ...actual, uploadSubmissionMediaDirect: uploadAvatarSpy };
 });
 
 const { notFoundMock, pushMock } = vi.hoisted(() => ({
@@ -325,7 +320,7 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
-    expect(screen.getByText("Marketing Manager")).toBeDefined();
+    expect(screen.getByText(/Marketing Manager/)).toBeDefined();
     expect(screen.queryByText("Marketing Strategist")).toBeNull();
     expect(screen.getAllByText(maria.tagline!)).toHaveLength(1);
     expect(
@@ -690,7 +685,7 @@ describe("ExpertDetailPage", () => {
 
   test("lists the expert's skills with library details and adds one", async () => {
     const user = userEvent.setup();
-    const puts: string[][] = [];
+    const puts: ExpertSkillsUpdate[] = [];
     let skills = ["Content strategy"];
     server.use(
       getGetExpertMockHandler(() => ({ ...maria, skills })),
@@ -703,9 +698,12 @@ describe("ExpertDetailPage", () => {
         { name: "Deep Research", description: "Research anything thoroughly" },
       ]),
       getUpdateExpertSkillsMockHandler200(async ({ request }) => {
-        const body = (await request.json()) as { skills: string[] };
-        puts.push(body.skills);
-        skills = body.skills;
+        const body = (await request.json()) as ExpertSkillsUpdate;
+        puts.push(body);
+        skills = [
+          ...skills.filter((name) => !body.remove?.includes(name)),
+          ...(body.skills ?? []),
+        ];
         return { ...maria, skills };
       }),
     );
@@ -725,7 +723,7 @@ describe("ExpertDetailPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
-      expect(puts).toEqual([["Content strategy", "Deep Research"]]);
+      expect(puts).toEqual([{ skills: ["Deep Research"] }]);
     });
     expect(await within(list).findByText("Deep Research")).toBeDefined();
   });
@@ -815,15 +813,18 @@ describe("ExpertDetailPage", () => {
 
   test("removes a skill from the expert", async () => {
     const user = userEvent.setup();
-    const puts: string[][] = [];
+    const puts: ExpertSkillsUpdate[] = [];
     let skills = ["Content strategy"];
     server.use(
       getGetExpertMockHandler(() => ({ ...maria, skills })),
       getListCopilotSkillsMockHandler200([]),
       getUpdateExpertSkillsMockHandler200(async ({ request }) => {
-        const body = (await request.json()) as { skills: string[] };
-        puts.push(body.skills);
-        skills = body.skills;
+        const body = (await request.json()) as ExpertSkillsUpdate;
+        puts.push(body);
+        skills = [
+          ...skills.filter((name) => !body.remove?.includes(name)),
+          ...(body.skills ?? []),
+        ];
         return { ...maria, skills };
       }),
     );
@@ -835,7 +836,7 @@ describe("ExpertDetailPage", () => {
     );
 
     await waitFor(() => {
-      expect(puts).toEqual([[]]);
+      expect(puts).toEqual([{ remove: ["Content strategy"] }]);
     });
     expect(await screen.findByText(/No skills yet/)).toBeDefined();
   });
@@ -1053,62 +1054,74 @@ describe("ExpertDetailPage", () => {
     expect(attempts).toBe(2);
   });
 
-  test("uploads a new photo from the header avatar", async () => {
+  test("previews an uploaded avatar and saves it after confirmation", async () => {
     const updateSpy = vi.fn((info: { request: Request }) => info.request);
-    uploadAvatarSpy.mockResolvedValueOnce("https://cdn.example.com/maria.png");
     server.use(
+      http.post("*/api/store/submissions/media", () =>
+        HttpResponse.json("https://cdn.example.com/maria.png"),
+      ),
       getUpdateExpertAvatarMockHandler(async (info) => {
         updateSpy(info);
-        return {
-          ...maria,
-          avatar_url: "https://cdn.example.com/maria.png",
-        };
+        return { ...maria, avatar_url: "https://cdn.example.com/maria.png" };
       }),
     );
-
     render(<ExpertDetailPage />);
-
-    const button = await screen.findByRole("button", {
-      name: "Change Maria's photo",
-    });
-    const fileInput = screen.getByLabelText("Upload Maria photo");
-    expect(button.contains(fileInput)).toBe(false);
-    const pickerClick = vi.spyOn(fileInput, "click");
-    fireEvent.click(button);
-    expect(pickerClick).toHaveBeenCalledTimes(1);
-    pickerClick.mockRestore();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Change Maria's appearance" }),
+    );
     const file = new File(["x"], "maria.png", { type: "image/png" });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
+    await userEvent.upload(await screen.findByLabelText("Upload avatar"), file);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Use this avatar" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(updateSpy).not.toHaveBeenCalled();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use this avatar" }),
+    );
     await waitFor(() => expect(updateSpy).toHaveBeenCalled());
-    expect(uploadAvatarSpy).toHaveBeenCalledWith(file);
     const body = await updateSpy.mock.results[0].value.json();
     expect(body).toEqual({ avatar_url: "https://cdn.example.com/maria.png" });
   });
 
-  test("a failed photo upload leaves the expert untouched", async () => {
-    uploadAvatarSpy.mockRejectedValueOnce(new Error("Unauthorized"));
+  test("the avatar dialog offers one regenerate control and no catalog", async () => {
+    render(<ExpertDetailPage />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Change Maria's appearance" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Regenerate" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("group", { name: "Avatar catalog" })).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  test("a failed avatar upload leaves the expert untouched", async () => {
     const updateSpy = vi.fn();
     server.use(
+      http.post("*/api/store/submissions/media", () =>
+        HttpResponse.json({ detail: "Upload failed" }, { status: 500 }),
+      ),
       getUpdateExpertAvatarMockHandler(() => {
         updateSpy();
         return maria;
       }),
     );
-
     render(<ExpertDetailPage />);
-
-    const button = await screen.findByRole("button", {
-      name: "Change Maria's photo",
-    });
-    const fileInput = screen.getByLabelText("Upload Maria photo");
-    expect(button.contains(fileInput)).toBe(false);
-    fireEvent.change(fileInput, {
-      target: { files: [new File(["x"], "maria.png", { type: "image/png" })] },
-    });
-
-    await waitFor(() => expect(uploadAvatarSpy).toHaveBeenCalled());
-    await waitFor(() => expect(button).not.toHaveProperty("disabled", true));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Change Maria's appearance" }),
+    );
+    await userEvent.upload(
+      await screen.findByLabelText("Upload avatar"),
+      new File(["x"], "maria.png", { type: "image/png" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not upload",
+    );
     expect(updateSpy).not.toHaveBeenCalled();
   });
 
@@ -1562,3 +1575,8 @@ describe("ExpertDetailPage", () => {
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 });
+
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getWebSocketToken: async () => ({ token: "test-token" }),
+}));

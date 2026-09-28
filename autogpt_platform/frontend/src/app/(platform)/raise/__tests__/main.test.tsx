@@ -64,11 +64,12 @@ const raisedExpert = {
   id: "raised-1",
   name: "Otto",
   avatar_url: null,
-  role: "marketer",
+  role: "Marketer",
   tagline: null,
   bio: null,
   skills: [],
-  identity: "I'm Otto, raised by you. I learn how you work and grow with you.",
+  identity:
+    "I'm Otto, an AI Expert created by you. I use your instructions to help with your work.",
   voice_preferences: "",
   boundaries: "",
   protected_soul_rules: [],
@@ -124,10 +125,10 @@ function seedAtBudget(name = "Otto") {
   saveDraft({
     step: "budget",
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     jobTitle: "Marketing Manager",
     name,
-    color: "rose-300",
     avatarUrl: "",
     about: "",
     voicePreferences: "",
@@ -145,10 +146,10 @@ function seedAtSkills(
   saveDraft({
     step: "skills",
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     jobTitle: "Marketing Manager",
     name,
-    color: "rose-300",
     avatarUrl: "",
     about: "",
     voicePreferences: "",
@@ -173,6 +174,43 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks();
 });
+
+test.each([null, "finance"])(
+  "preserves a legacy custom role on submission with stored category %s",
+  async (category) => {
+    let captured: unknown = null;
+    server.use(
+      getCreateRaisedExpertMockHandler(async (info) => {
+        captured = await info.request.json();
+        return raiseResult();
+      }),
+    );
+    seedAtSkills("Tally");
+    window.sessionStorage.setItem(
+      "raise-expert-draft",
+      JSON.stringify({
+        ...loadDraft(),
+        category,
+        role: "Invoice chaser",
+        jobTitle: "Accounts Receivable Specialist",
+      }),
+    );
+    saveDraft(loadDraft());
+    renderRaise();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+    );
+
+    await waitFor(() =>
+      expect(captured).toMatchObject({
+        name: "Tally",
+        role: "Invoice chaser",
+        job_title: "Accounts Receivable Specialist",
+      }),
+    );
+  },
+);
 
 test("calls notFound when the experts feature is disabled", () => {
   setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
@@ -204,7 +242,7 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
   await waitFor(() => expect(captured).not.toBeNull());
   expect(captured).toMatchObject({
     name: "Otto",
-    role: "marketer",
+    role: "Marketer",
     job_title: "Marketing Manager",
     weekly_budget: null,
     attachments: [],
@@ -296,7 +334,7 @@ test("unlocks finish after a raise POST fails so the user can retry", async () =
   seedAtSkills();
   renderRaise();
   await userEvent.click(await screen.findByRole("button", { name: /life/ }));
-  expect(await screen.findByText("Couldn't raise Otto")).toBeDefined();
+  expect(await screen.findByText("Couldn't create Otto")).toBeDefined();
   await waitFor(() => expect(postCount).toBe(1));
 
   const retry = screen.getByRole("button", { name: /Bring Otto to life/ });
@@ -323,7 +361,7 @@ test("shows a friendly limit message on 409", async () => {
   expect(pushMock).not.toHaveBeenCalled();
 });
 
-test("distinguishes the lifetime raised-expert limit", async () => {
+test("distinguishes the lifetime limit for created Experts", async () => {
   server.use(
     http.post("/api/proxy/api/experts/raise", () =>
       HttpResponse.json(
@@ -378,7 +416,8 @@ test("picking a job title records it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -407,7 +446,8 @@ test("typing a job title trims it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "Custom role",
+    category: "research",
+    color: "lime-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -434,7 +474,8 @@ test("skipping a job title records it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -586,7 +627,7 @@ test("back returns to the previous step and the draft survives", async () => {
   expect(draft.voiceLabel).toBeNull();
   expect(draft).toMatchObject({
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
     jobTitle: "Marketing Manager",
     name: "Otto",
     color: "rose-300",
@@ -607,3 +648,35 @@ test("a refresh resumes the draft from session storage", async () => {
     await screen.findByRole("button", { name: /Bring Nova to life/ }),
   ).toBeDefined();
 });
+
+test.each([400, 422, 503])(
+  "keeps the draft and displays the recovery message when creation fails (%s)",
+  async (status) => {
+    server.use(
+      http.post("*/api/experts/raise", () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Upload this image again through the appearance picker so it can be reviewed.",
+          },
+          { status },
+        ),
+      ),
+    );
+    seedAtSkills();
+    const draft = loadDraft();
+    renderRaise();
+    const finish = await screen.findByRole("button", {
+      name: /Bring Otto to life/,
+    });
+    await userEvent.click(finish);
+    expect(
+      await screen.findByText(
+        "Upload this image again through the appearance picker so it can be reviewed.",
+      ),
+    ).toBeDefined();
+    expect(loadDraft()).toEqual(draft);
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(finish.hasAttribute("disabled")).toBe(false);
+  },
+);

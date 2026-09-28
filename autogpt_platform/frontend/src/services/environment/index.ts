@@ -100,6 +100,14 @@ function getGoogleAdsConversionLabels() {
   return process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS || "";
 }
 
+function getCookiebotCBID() {
+  return process.env.NEXT_PUBLIC_COOKIEBOT_CBID?.trim() || "";
+}
+
+function getCookiebotGeoRegions() {
+  return process.env.NEXT_PUBLIC_COOKIEBOT_GEOREGIONS?.trim() || "";
+}
+
 function isProductionBuild() {
   return process.env.NODE_ENV === "production";
 }
@@ -172,6 +180,8 @@ export const environment = {
   getLaunchDarklyClientId,
   getGoogleAdsID,
   getGoogleAdsConversionLabels,
+  getCookiebotCBID,
+  getCookiebotGeoRegions,
   // Assertions
   isServerSide,
   isClientSide,

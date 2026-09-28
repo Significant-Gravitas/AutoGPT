@@ -17,6 +17,13 @@ from typing import Literal, Mapping, Optional
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 from pydantic import BaseModel
 
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
+
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
 WORKSPACE_PATH = "/home/user/workspace"
@@ -100,16 +107,18 @@ class DesktopSession:
         volume_mounts: Optional[Mapping[str, str]] = None,
         template: str = DESKTOP_TEMPLATE,
         metadata: Optional[Mapping[str, str]] = None,
+        *,
+        owner: EgressOwner,
     ) -> tuple["DesktopSession", PersistenceInfo]:
         """Create a desktop sandbox.
 
         *volume_mounts* maps mount paths to durable volume names (see
         ``workspace_volume_mounts``); *metadata* is stamped on the sandbox so
         its owner can find it again through the E2B API if the cached id is
-        lost.
+        lost; *owner* is who the egress proxy sees the box as.
         """
         sandbox, persistence = await _create_sandbox_with_volumes(
-            volume_mounts, api_key, timeout_seconds, template, metadata
+            volume_mounts, api_key, timeout_seconds, template, metadata, owner=owner
         )
         session = cls(sandbox)
         try:
@@ -127,19 +136,26 @@ class DesktopSession:
             # rather than leak a sandbox that would bill until timeout and
             # then sit paused forever.
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(sandbox.kill(), timeout=_KILL_TIMEOUT_SECONDS)
+                await asyncio.wait_for(
+                    kill_sandbox(sandbox), timeout=_KILL_TIMEOUT_SECONDS
+                )
             raise
         return session, persistence
 
     @classmethod
     async def connect(
-        cls, sandbox_id: str, api_key: str, timeout_seconds: Optional[int] = None
+        cls,
+        sandbox_id: str,
+        api_key: str,
+        timeout_seconds: Optional[int] = None,
+        *,
+        owner: EgressOwner,
     ) -> "DesktopSession":
         """Reattach to a desktop; *timeout_seconds* re-arms its running-time
         limit, otherwise the SDK's 300 s default would pause a resumed desktop
         under the user long before a freshly created one."""
-        sandbox = await AsyncSandbox.connect(
-            sandbox_id, api_key=api_key, timeout=timeout_seconds
+        sandbox = await connect_sandbox(
+            AsyncSandbox, sandbox_id, owner, api_key=api_key, timeout=timeout_seconds
         )
         return cls(sandbox)
 
@@ -281,7 +297,7 @@ class DesktopSession:
         await self.sandbox.pause()
 
     async def kill(self) -> None:
-        await self.sandbox.kill()
+        await kill_sandbox(self.sandbox)
 
     async def stop_stream(self) -> None:
         """Stop serving the screen; the display itself stays up.
@@ -378,11 +394,14 @@ async def _create_sandbox_with_volumes(
     timeout_seconds: int,
     template: str = DESKTOP_TEMPLATE,
     metadata: Optional[Mapping[str, str]] = None,
+    *,
+    owner: EgressOwner,
 ) -> tuple[AsyncSandbox, PersistenceInfo]:
     kwargs = _sandbox_create_kwargs(api_key, timeout_seconds, template, metadata)
     if not volume_mounts:
         sandbox = await asyncio.wait_for(
-            AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+            create_sandbox(AsyncSandbox, owner, **kwargs),
+            timeout=CREATE_TIMEOUT_SECONDS,
         )
         return sandbox, PersistenceInfo()
 
@@ -395,7 +414,7 @@ async def _create_sandbox_with_volumes(
     for attempt in range(1, MOUNTED_CREATE_ATTEMPTS + 1):
         try:
             sandbox = await asyncio.wait_for(
-                AsyncSandbox.create(**kwargs, volume_mounts=mounts),
+                create_sandbox(AsyncSandbox, owner, **kwargs, volume_mounts=mounts),
                 timeout=CREATE_TIMEOUT_SECONDS,
             )
         except Exception as exc:
@@ -415,7 +434,7 @@ async def _create_sandbox_with_volumes(
     if kwargs.get("metadata"):
         kwargs["metadata"] = {**kwargs["metadata"], "autogpt_mounts": "none"}
     sandbox = await asyncio.wait_for(
-        AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+        create_sandbox(AsyncSandbox, owner, **kwargs), timeout=CREATE_TIMEOUT_SECONDS
     )
     return sandbox, PersistenceInfo(
         warning=(

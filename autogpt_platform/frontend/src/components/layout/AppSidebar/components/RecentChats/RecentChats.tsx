@@ -15,7 +15,6 @@ import { getNewChatHref, groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
-  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const { expertsById, activeExpertIds } = useExpertMap();
@@ -71,7 +70,6 @@ export function RecentChats() {
         onCancelRename={cancelRename}
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
-        chatSharingEnabled={chatSharingEnabled}
         chatPinningEnabled={chatPinningEnabled}
         onPin={togglePin}
         onRename={startRename}

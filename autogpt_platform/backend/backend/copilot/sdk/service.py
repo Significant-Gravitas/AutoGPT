@@ -4,6 +4,7 @@
 
 import asyncio
 import contextlib
+import contextvars
 import base64
 import functools
 from copy import copy
@@ -51,6 +52,7 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -66,6 +68,8 @@ from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUs
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
+from backend.copilot.gate import active_mode
+from backend.copilot.gate.held import resolve_answered
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
@@ -119,6 +123,7 @@ from ..permissions import (
     denied_tool_names,
 )
 from ..prompting import (
+    approval_mode_supplement,
     get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
@@ -209,6 +214,7 @@ from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
+    cap_late_tool_result,
     MCP_TOOL_PREFIX,
     create_copilot_mcp_server,
     get_copilot_tool_names,
@@ -707,13 +713,10 @@ async def _consume_sdk_until_done(
         measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
         compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
         if compact_result.events:
-            # Compaction events end with StreamFinishStep, which maps to
-            # Vercel AI SDK's "finish-step" — that clears activeTextParts.
-            # Close any open text block BEFORE the compaction events so
-            # the text-end arrives before finish-step, preventing
-            # "text-end for missing text part" errors on the frontend.
+            # Compaction events end with StreamFinishStep; open blocks must
+            # close before it (see ``SDKResponseAdapter.end_open_blocks``).
             pre_close: list[StreamBaseResponse] = []
-            state.adapter._end_text_if_open(pre_close)
+            state.adapter.end_open_blocks(pre_close)
             # Compaction events bypass the adapter, so sync step state
             # when a StreamFinishStep is present — otherwise the adapter
             # will skip StreamStartStep on the next AssistantMessage.
@@ -1717,6 +1720,7 @@ async def _apply_building_mode_restart(
     oversight_supplement: str,
     team_building_supplement: str,
     graphiti_supplement: str,
+    auto_mode_supplement: str,
     use_e2b: bool,
     session_id: str,
     message_id: str,
@@ -1758,12 +1762,13 @@ async def _apply_building_mode_restart(
     # of the turn.
     system_prompt = (
         base_system_prompt
-        + get_sdk_supplement(use_e2b=use_e2b)
+        + get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
         + get_chat_platform_supplement(session.metadata.source_platform)
         + graphiti_supplement
+        + auto_mode_supplement
         + building_suffix
         + expert_session_suffix
     )
@@ -2087,12 +2092,21 @@ async def _iter_sdk_messages(
     timeout.  On timeout we yield a heartbeat sentinel but keep the Task
     alive so it can deliver the next message.
 
+    Every fetch Task runs in one context, copied once up front.  The
+    langsmith tracing wrapper around ``receive_response()`` stores the
+    ``claude.conversation`` run in a ContextVar during the first fetch and
+    parents each reply's ``claude.assistant.turn`` span on it; a Task given
+    a fresh copy of the caller's context per message never sees that run,
+    so every reply after the first message would drop out of the trace.
+    Only one fetch is in flight at a time, so sharing the context is safe.
+
     Yields `None` on heartbeat timeout (caller should refresh locks and
     emit heartbeat events).  Yields the raw SDK message otherwise.
     On stream end (`StopAsyncIteration`), the generator returns normally.
     Any other exception from the SDK propagates to the caller.
     """
     msg_iter = client.receive_response().__aiter__()
+    fetch_context = contextvars.copy_context()
     pending_task: asyncio.Task[Any] | None = None
     wake_tasks: dict[asyncio.Task[bool], asyncio.Event] = {}
 
@@ -2103,7 +2117,7 @@ async def _iter_sdk_messages(
     try:
         while True:
             if pending_task is None:
-                pending_task = asyncio.create_task(_next_msg())
+                pending_task = asyncio.create_task(_next_msg(), context=fetch_context)
             waiters: set[asyncio.Task[Any]] = {pending_task}
             for event in (wake, tool_display_wake):
                 if event is not None and event not in wake_tasks.values():
@@ -4231,7 +4245,7 @@ async def _run_stream_attempt(
             ctx.log_prefix,
         )
         closing_responses: list[StreamBaseResponse] = []
-        state.adapter._end_text_if_open(closing_responses)
+        state.adapter.end_open_blocks(closing_responses)
         for r in closing_responses:
             yield r
         notice_block_id = str(uuid.uuid4())
@@ -4531,6 +4545,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     organization_id: str | None = None,
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4623,7 +4638,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message
+        session, message, is_user_message, message_metadata
     )
     if _user_message_appended and is_user_message:
         track_user_message(
@@ -4875,6 +4890,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        auto_mode_supplement = approval_mode_supplement(
+            await active_mode(user_id, session)
+        )
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the
         # tool-hiding site below so the delegation rules can be gated on the
@@ -4910,12 +4928,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         session.guide_in_system_prompt = bool(builder_session_suffix)
         system_prompt = (
             base_system_prompt
-            + get_sdk_supplement(use_e2b=use_e2b)
+            + get_sdk_supplement(
+                use_e2b=use_e2b, expert_session=bool(session.expert_id)
+            )
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
             + chat_platform_supplement
             + graphiti_supplement
+            + auto_mode_supplement
             + builder_session_suffix
             + expert_session_suffix
         )
@@ -5267,7 +5288,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # SDK client spawns.
         yield StreamStatus(message="Preparing conversation context…")
 
-        pending_messages = await drain_pending_safe(session_id, log_prefix)
+        # Answered cards first: their results ride the same fold as pending.
+        pending_messages = await resolve_answered(
+            user_id, session, cap=cap_late_tool_result
+        ) + await drain_pending_safe(session_id, log_prefix)
         if pending_messages:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",
@@ -5737,6 +5761,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     oversight_supplement=oversight_supplement,
                     team_building_supplement=team_building_supplement,
                     graphiti_supplement=graphiti_supplement,
+                    auto_mode_supplement=auto_mode_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
                     message_id=message_id,
@@ -5896,7 +5921,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
-                    state.adapter._end_text_if_open(cleanup_events)
+                    state.adapter.end_open_blocks(cleanup_events)
                 cleanup_events.extend(
                     interrupted.finalize(
                         session,
@@ -6242,6 +6267,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 requested_model=sdk_model,
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
+            )
+            _stamp_turn_trace_id(
+                session.messages,
+                start_index=pre_turn_message_count,
+                trace_id=langfuse_trace_id,
             )
             # What this turn ran on, recorded on the turn rather than read
             # back off the session later, so a route change cannot rewrite it.
@@ -6647,4 +6677,28 @@ def _stamp_turn_messages(
                 # Row already flushed to the DB mid-turn — flag it so the
                 # save path back-fills the columns (insert only covers
                 # unsequenced rows).
+                msg.stamps_pending_save = True
+
+
+def _stamp_turn_trace_id(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    trace_id: str | None,
+) -> None:
+    """Record the turn's Langfuse trace on the reply rows it wrote.
+
+    A thumbs up/down on the reply is scored against this trace (see
+    ``backend.copilot.feedback``). Every rateable role is stamped: the UI
+    names a reply bubble after its last assistant *or* reasoning row, and a
+    rating of either must find the trace. Bounded to the turn and never
+    overwriting, exactly like ``_stamp_turn_messages``; rows flushed mid-turn
+    ride the same stamps back-fill.
+    """
+    if not trace_id:
+        return
+    for msg in messages[start_index:]:
+        if msg.role in RATEABLE_ROLES and msg.langfuse_trace_id is None:
+            msg.langfuse_trace_id = trace_id
+            if msg.sequence is not None:
                 msg.stamps_pending_save = True

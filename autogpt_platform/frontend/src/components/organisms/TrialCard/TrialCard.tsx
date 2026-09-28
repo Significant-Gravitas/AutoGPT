@@ -13,6 +13,14 @@ interface Props {
 }
 
 export function TrialCard({ returnTo = "billing" }: Props) {
+  const controller = useTrialCard(returnTo);
+  return <TrialCardContent returnTo={returnTo} controller={controller} />;
+}
+
+export function TrialCardContent({
+  returnTo = "billing",
+  controller,
+}: Props & { controller: ReturnType<typeof useTrialCard> }) {
   const {
     userID,
     trial,
@@ -24,7 +32,7 @@ export function TrialCard({ returnTo = "billing" }: Props) {
     isCanceling,
     startTrial,
     cancelTrial,
-  } = useTrialCard(returnTo);
+  } = controller;
   const isBilling = returnTo === "billing";
   if (isLoading)
     return (

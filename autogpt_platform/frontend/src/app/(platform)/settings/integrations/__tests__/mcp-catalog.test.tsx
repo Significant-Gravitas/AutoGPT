@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
+import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import {
   fireEvent,
   render,
@@ -46,6 +49,71 @@ async function openPicker() {
 }
 
 describe("SettingsIntegrationsPage — MCP catalogue", () => {
+  test("shows PostHog branding and connection options from the shipped catalog", async () => {
+    const catalog: ProviderMetadata[] = JSON.parse(
+      readFileSync(
+        resolve("../backend/backend/integrations/mcp_catalog.json"),
+        "utf8",
+      ),
+    );
+    const posthog = catalog.find((entry) => entry.name === "mcp_posthog");
+    expect(posthog).toBeDefined();
+    server.use(getGetV1ListProvidersMockHandler([posthog!]));
+
+    render(<SettingsIntegrationsPage />);
+    const row = await screen.findByRole("button", { name: /posthog.*mcp/i });
+    expect(row.querySelector("img")?.getAttribute("src")).toBe(
+      "/integrations/posthog.png",
+    );
+    fireEvent.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      (await within(dialog).findByAltText("PostHog logo")).getAttribute("src"),
+    ).toBe("/integrations/posthog.png");
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://mcp.posthog.com/mcp");
+    expect(input.readOnly).toBe(true);
+    expect(within(dialog).getByRole("tab", { name: /sign in/i })).toBeDefined();
+    expect(
+      within(dialog).getByRole("tab", { name: /api token/i }),
+    ).toBeDefined();
+  });
+
+  test("opens OpenSEO on its cloud server and lets self-hosters change the URL", async () => {
+    const catalog: ProviderMetadata[] = JSON.parse(
+      readFileSync(
+        resolve("../backend/backend/integrations/mcp_catalog.json"),
+        "utf8",
+      ),
+    );
+    const openseo = catalog.find((entry) => entry.name === "mcp_openseo");
+    expect(openseo).toBeDefined();
+    server.use(getGetV1ListProvidersMockHandler([openseo!]));
+
+    render(<SettingsIntegrationsPage />);
+    const row = await screen.findByRole("button", { name: /openseo.*mcp/i });
+    expect(within(row).queryByText("Setup required")).toBeNull();
+    fireEvent.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://app.openseo.so/mcp");
+    expect(input.readOnly).toBe(false);
+    fireEvent.change(input, {
+      target: { value: "https://openseo.example.workers.dev/mcp" },
+    });
+    expect(input.value).toBe("https://openseo.example.workers.dev/mcp");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
+    await waitFor(() => {
+      expect(oauthRequest).toHaveBeenCalledWith({
+        server_url: "https://openseo.example.workers.dev/mcp",
+      });
+    });
+  });
+
   test("lists native providers and branded MCP entries together", async () => {
     render(<SettingsIntegrationsPage />);
     expect(

@@ -4,9 +4,8 @@ search index never carries schemas."""
 import logging
 from typing import Any
 
-from backend.copilot.capabilities.models import CapabilityEntry
-from backend.copilot.capabilities.registry import configured_tool, get_registry
-from backend.copilot.capabilities.resolve import resolve_entry
+from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
+from backend.copilot.capabilities.registry import configured_tool
 from backend.copilot.capabilities.schema_trim import collapse_large_enums
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.model import ChatSession
@@ -23,13 +22,17 @@ from .models import (
 )
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
+from .session_registry import resolve_session_entry
 
 logger = logging.getLogger(__name__)
 
 UNKNOWN_ID_HINT = (
     "Unknown capability id. Use the exact 'id' from a find_capability result "
-    "(tool:<name>, block:<uuid>, mcp:<host>)."
+    "(tool:<name>, block:<uuid>, mcp:<host>, skill:<name>)."
 )
+
+# A skill takes no input: running it is loading it.
+NO_INPUT: dict[str, Any] = {"type": "object", "properties": {}}
 
 # Input shape for run_capability on an MCP server entry.
 MCP_RUN_PARAMETERS: dict[str, Any] = {
@@ -97,7 +100,7 @@ class DescribeCapabilityTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
             )
-        entry = resolve_entry(get_registry(), id)
+        entry = await resolve_session_entry(user_id, session, id)
         if entry is None:
             return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
         # Describing answers to the gate that running does. An MCP
@@ -108,6 +111,10 @@ class DescribeCapabilityTool(BaseTool):
             if gate_denied(BLOCK_GATE):
                 return gate_denied_error("blocks", session_id)
             return await _describe_block(entry, user_id, session, expand)
+        if entry.kind == "skill":
+            if gate_denied(SKILL_TOOL):
+                return gate_denied_error(SKILL_TOOL, session_id)
+            return describe_skill(entry, session_id)
         if entry.kind == "tool":
             name = entry.implementations[0].ref
             if gate_denied(name):
@@ -139,6 +146,21 @@ async def _describe_block(
             result.block.inputs = collapse_large_enums(result.block.inputs)
             result.block.outputs = collapse_large_enums(result.block.outputs)
     return result
+
+
+def describe_skill(entry: CapabilityEntry, session_id: str) -> ToolResponseBase:
+    """What a skill is for.  Its body is not repeated here: running the
+    capability loads it, package files included."""
+    return CapabilityDetailsResponse(
+        message=(
+            f"Skill '{entry.name}': {entry.description} Load it with "
+            f"run_capability(id='{entry.id}', input={{}}) and read the body "
+            "before acting on the task it covers."
+        ),
+        capability=entry.listing(),
+        parameters=NO_INPUT,
+        session_id=session_id,
+    )
 
 
 def _describe_tool(

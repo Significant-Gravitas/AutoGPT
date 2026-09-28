@@ -9,6 +9,7 @@ import type { CreateSessionRequest } from "@/app/api/__generated__/models/create
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,10 +20,12 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
+import { useAutopilotModeStore } from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
 
@@ -61,6 +64,8 @@ export function useChatSession({
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
+      retry: (failureCount, error) =>
+        !isDefinitiveSessionFailure(error) && failureCount < 3,
     },
   });
 
@@ -314,6 +319,7 @@ export function useChatSession({
       useCopilotStreamStore
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
+      useAutopilotModeStore.getState().bindNewChatToSession(response.data.id);
       setSessionId(response.data.id);
       if (expertId) {
         trackFunnel("expert_thread_created", { expert_id: expertId });
@@ -391,6 +397,16 @@ export function useChatSession({
       ? (sessionQuery.data.data.expert_id ?? null)
       : null;
 
+  const sessionAutopilotMode =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.metadata?.autopilot_mode ?? null)
+      : null;
+
+  const sessionSentFrom =
+    sessionQuery.data?.status === 200
+      ? getSessionSentFrom(sessionQuery.data.data.metadata)
+      : null;
+
   return {
     sessionId,
     setSessionId,
@@ -412,10 +428,20 @@ export function useChatSession({
     // flips back to ``true`` mid-refetch, silently dropping the message.
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
+    // Another account's session and a missing one are the same 404 by design.
+    isSessionNotFound: isDefinitiveSessionFailure(sessionQuery.error),
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
   };
+}
+
+function isDefinitiveSessionFailure(error: unknown) {
+  return (
+    error instanceof ApiError && (error.status === 403 || error.status === 404)
+  );
 }

@@ -829,7 +829,9 @@ def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockerF
         json={"message": "hello"},
     )
     assert response.status_code == 429
-    assert "daily" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert "daily" in detail["message"].lower()
+    assert detail["kind"] == "usage_limit"
 
 
 def test_stream_chat_codex_skips_platform_paywall_and_cost_limit(
@@ -902,9 +904,10 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
         json={"message": "hello"},
     )
     assert response.status_code == 429
-    detail = response.json()["detail"].lower()
-    assert "weekly" in detail
-    assert "resets in" in detail
+    detail = response.json()["detail"]
+    message = detail["message"].lower()
+    assert "weekly" in message
+    assert "resets in" in message
 
 
 def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
@@ -927,8 +930,41 @@ def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
     )
     assert response.status_code == 429
     detail = response.json()["detail"]
-    assert "2h" in detail
-    assert "Resets in" in detail
+    assert "2h" in detail["message"]
+    assert "Resets in" in detail["message"]
+
+
+def test_stream_chat_429_carries_provider_failure_envelope_for_switch_connection(
+    mocker: pytest_mock.MockerFixture,
+):
+    """The platform usage-cap 429 must be a structured ProviderFailure, not a
+    bare string, so the frontend can offer "switch to another connection"
+    (e.g. a connected BYOSUB/Codex credential) instead of only "upgrade your
+    plan". A plain string here silently drops that UI even though the
+    frontend already supports it end-to-end.
+    """
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    _mock_stream_internals(mocker)
+    mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
+    resets_at = datetime.now(UTC) + timedelta(hours=1)
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitExceeded("daily", resets_at),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["kind"] == "usage_limit"
+    assert detail["authProvider"] == "platform"
+    assert detail["resetsAt"] == int(resets_at.timestamp())
 
 
 def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(
@@ -3200,7 +3236,54 @@ def test_cancel_session_timeout_completes_as_cancelled_not_as_an_error(
         mock_registry.mark_session_completed.await_args.kwargs.get("skip_error_publish")
         is True
     ), "a user cancel must not be published to the stream as an error"
+    assert mock_registry.mark_session_completed.await_args.kwargs["turn_id"] == "turn-1"
     assert response.json()["reason"] == "cancel_published_not_confirmed"
+
+
+def test_cancel_confirms_once_the_next_turn_holds_the_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The cancelled turn's end can wake the next turn; the poll must not
+    force-complete that one as the user's cancel."""
+    from backend.copilot.stream_registry import ActiveSession
+
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+
+    def turn(turn_id: str) -> ActiveSession:
+        return ActiveSession(
+            session_id="sess-1",
+            user_id=TEST_USER_ID,
+            tool_call_id="chat_stream",
+            tool_name="chat",
+            turn_id=turn_id,
+            status="running",
+        )
+
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(turn("turn-1"), "1-0"))
+    mock_registry.get_session = AsyncMock(return_value=turn("turn-2"))
+    mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    mocker.patch(
+        "backend.api.features.chat.routes.enqueue_cancel_task",
+        new_callable=AsyncMock,
+    )
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.02)
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS", 0.01)
+    clear_pending = mocker.patch.object(
+        chat_routes, "_clear_pending_best_effort", new_callable=AsyncMock
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.json()["cancelled"] is True
+    mock_registry.mark_session_completed.assert_not_awaited()
+    # Only the up-front clear; the next turn's follow-ups stay queued.
+    clear_pending.assert_awaited_once()
 
 
 def test_cancel_session_clears_pending_buffer(

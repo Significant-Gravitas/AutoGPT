@@ -9,7 +9,6 @@ account.
 
 from apscheduler.triggers.cron import CronTrigger
 
-from backend.api.features.experts import seed
 from backend.api.features.experts.routine_jobs import spread_cron
 from backend.api.features.experts.routines import _session_mode
 from backend.copilot.permissions import (
@@ -24,38 +23,74 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the roster entry — so adding one is a deliberate edit to this set, never a
 # silent roster change.
 EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
-    ("Maria", "content-pipeline-check"),
-    ("Jules", "repurposing-queue-check"),
-    ("Nadia", "competitor-brief"),
-    ("Remy", "lifecycle-performance-read"),
-    ("Max", "weekday-prospecting-batch"),
-    ("Max", "monday-list-top-up"),
-    ("Max", "friday-pipeline-recap"),
+    ("Alex", "competitor-watch"),
+    ("Alex", "voice-of-customer-pulse"),
+    ("Alex", "weekly-product-review"),
+    ("Anika", "alliance-sensing-brief"),
+    ("Anika", "delivery-risk-watch"),
+    ("Anika", "executive-council-countdown"),
+    ("Anika", "partner-portfolio-review"),
+    ("Anika", "partner-qbr-countdown"),
+    ("Anika", "weekly-partner-pulse"),
+    ("Daniel", "friday-variance-and-close-watch"),
+    ("Daniel", "monday-budget-pace-check"),
+    ("Daniel", "monthly-board-pack-reminder"),
+    ("Daniel", "wednesday-cash-and-commitment-scan"),
     ("Frankie", "day-ahead-brief"),
     ("Frankie", "week-ahead-review"),
+    ("James", "ops-capacity-and-controls-check"),
+    ("James", "ops-vendor-renewal-watch"),
+    ("James", "ops-weekly-review"),
+    ("Jules", "repurposing-queue-check"),
+    ("Maria", "content-pipeline-check"),
+    ("Max", "friday-pipeline-recap"),
+    ("Max", "monday-team-pipeline-inspection"),
+    ("Max", "monthly-win-loss-review"),
+    ("Max", "monday-list-top-up"),
+    ("Max", "weekday-prospecting-batch"),
+    ("Max", "wednesday-forecast-and-deal-inspection"),
+    ("Maya", "marketing-competitor-watch"),
+    ("Maya", "marketing-content-pipeline-check"),
+    ("Maya", "marketing-weekly-read"),
+    ("Nadia", "competitor-brief"),
+    ("Remy", "lifecycle-performance-read"),
+    ("Robin", "callback-and-queue-sweep"),
+    ("Robin", "escalation-and-sla-watch"),
+    ("Robin", "knowledge-and-staffing-pulse"),
+    ("Robin", "open-case-sweep"),
+    ("Robin", "quality-and-voc-pulse"),
+    ("Robin", "resolution-follow-up-pulse"),
+    ("Sofia", "daily-candidate-batch"),
+    ("Sofia", "daily-hiring-brief"),
+    ("Sofia", "evening-interview-prep"),
+    ("Sofia", "urgent-thread-check"),
+    ("Sofia", "weekly-pipeline-review"),
+    ("Zara", "competitor-brief"),
+    ("Zara", "launch-readiness-check"),
+    ("Zara", "weekly-gtm-scorecard"),
 }
 
 VALID_SESSION_MODES = {"FRESH", "PINNED", "THREAD"}
 
 
-def test_roster_routines_are_declared():
+def test_roster_routines_are_declared(real_roster):
     assert {
         (entry["name"], routine["key"])
-        for entry in seed.ROSTER
+        for entry in real_roster
         for routine in entry["routines"]
     } == EXPECTED_ROSTER_ROUTINES
 
 
-def test_roster_routine_keys_are_unique_per_expert():
+def test_roster_routine_keys_are_unique_per_expert(real_roster):
     """``ExpertRoutine`` is unique on (expertId, key), so a duplicate key would
     make the second row silently overwrite the first at seed time."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         keys = [routine["key"] for routine in entry["routines"]]
         assert len(keys) == len(set(keys)), entry["name"]
 
 
-def test_roster_routines_ship_a_cadence_and_a_valid_mode():
-    for entry in seed.ROSTER:
+def test_roster_routines_ship_a_cadence_and_a_valid_mode(real_roster):
+    for entry in real_roster:
         for routine in entry["routines"]:
             assert routine["crons"], (entry["name"], routine["key"])
             assert routine["session_mode"] in VALID_SESSION_MODES, (
@@ -64,10 +99,10 @@ def test_roster_routines_ship_a_cadence_and_a_valid_mode():
             )
 
 
-def test_roster_routine_crons_resolve_to_something_apscheduler_accepts():
+def test_roster_routine_crons_resolve_to_something_apscheduler_accepts(real_roster):
     """A malformed cron — or an ``H`` nobody resolved — would only surface when
     somebody switched the routine on, which is the worst place to find out."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             for index, cron in enumerate(routine["crons"]):
                 assert len(cron.split()) == 5, (entry["name"], routine["key"], cron)
@@ -75,11 +110,11 @@ def test_roster_routine_crons_resolve_to_something_apscheduler_accepts():
                 CronTrigger.from_crontab(resolved, timezone="UTC")
 
 
-def test_roster_routines_spread_their_hour():
+def test_roster_routines_spread_their_hour(real_roster):
     """Every one of these is "at its scheduled hour" from its source package, so
     the minute is an artefact of writing it on the hour. Left literal, the five
     that say 9am would land on one account together."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             for cron in routine["crons"]:
                 assert cron.startswith("H "), (entry["name"], routine["key"], cron)
@@ -185,19 +220,19 @@ def test_an_ungranted_routine_does_not_get_a_shell():
     assert "bash_exec" not in routine_disabled_tools(granted=True)
 
 
-def test_roster_routines_ask_before_they_run():
+def test_roster_routines_ask_before_they_run(real_roster):
     """Every seeded routine is a proposal written for everybody, so each one has
     to name what it needs from this owner. A routine with no asks would schedule
     straight off the template, against guesses, unattended."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             assert routine["asks"], (entry["name"], routine["key"])
 
 
-def test_roster_routines_ask_for_a_timezone():
+def test_roster_routines_ask_for_a_timezone(real_roster):
     """Crons resolve in the owner's timezone and the suggested hour is a guess,
     so every routine has to settle when it actually runs."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             asks = " ".join(routine["asks"]).lower()
             assert "timezone" in asks, (entry["name"], routine["key"])

@@ -61,6 +61,7 @@ def world():
         )
     )
     experts.add_expert_skill_name = AsyncMock()
+    experts.add_expert_skill_names = AsyncMock()
     experts.remove_expert_skill_name = AsyncMock()
     with (
         _patch_skills_path(fake),
@@ -225,7 +226,7 @@ async def test_a_row_conflict_reaches_the_expert_as_a_retryable_error(world, too
     passes its message through and must not log it as an exception."""
     _, experts = world
     conflict = ConflictError("Changed at the same time. Try again.")
-    experts.add_expert_skill_name = AsyncMock(side_effect=conflict)
+    experts.add_expert_skill_names = AsyncMock(side_effect=conflict)
     experts.remove_expert_skill_name = AsyncMock(side_effect=conflict)
 
     with patch.object(skills.logger, "exception") as logged:
@@ -359,8 +360,8 @@ async def test_expert_creates_and_deletes_skills_in_its_own_folder(world):
     )
     assert isinstance(stored, StoreSkillResponse) and stored.expert_id == "expert-a"
     assert "/experts/expert-a/skills/learned/SKILL.md" in fake.files
-    experts.add_expert_skill_name.assert_awaited_once_with(
-        "user-1", "expert-a", "learned"
+    experts.add_expert_skill_names.assert_awaited_once_with(
+        "user-1", "expert-a", ["learned"]
     )
 
     deleted = await DeleteSkillTool()._execute(
@@ -410,7 +411,9 @@ async def test_copy_gives_expert_its_own_copy_of_an_autopilot_skill(world):
     assert "/experts/expert-a/skills/mine/SKILL.md" in fake.files
     assert fake.files["/experts/expert-a/skills/mine/references/notes.md"] == b"notes"
     assert AUTOPILOT in fake.files
-    experts.add_expert_skill_name.assert_awaited_once_with("user-1", "expert-a", "mine")
+    experts.add_expert_skill_names.assert_awaited_once_with(
+        "user-1", "expert-a", ["mine"]
+    )
     assert await copy_skill_to_expert("user-1", "expert-a", "nope") is None
 
 

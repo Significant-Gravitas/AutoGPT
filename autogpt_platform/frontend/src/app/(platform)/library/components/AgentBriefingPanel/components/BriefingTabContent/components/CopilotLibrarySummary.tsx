@@ -6,11 +6,6 @@ import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 
 export function CopilotLibrarySummary() {
-  // Discoverability is already gated by AGENT_BRIEFING at the parent
-  // panel — this pill renders only inside AgentBriefingPanel, which is
-  // itself flag-gated.  No second flag here because the count-based
-  // hide below already keeps the pill quiet for users who don't use
-  // the feature.
   const { data: skillsRes } = useListCopilotSkills(undefined, {
     query: { staleTime: 30_000 },
   });

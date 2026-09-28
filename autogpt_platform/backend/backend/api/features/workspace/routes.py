@@ -20,6 +20,7 @@ from backend.api.features.store.exceptions import VirusDetectedError, VirusScanE
 from backend.api.features.workspace.preview import build_preview_response
 from backend.copilot.db import get_chat_session_expert_ids
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
+from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
     count_workspace_files,
@@ -282,7 +283,7 @@ async def delete_workspace_file(
     operation_id="renameWorkspaceFile",
     responses={
         404: {"description": "File not found"},
-        409: {"description": "A file with this name already exists here"},
+        409: {"description": "File name conflict or skill capacity reached"},
     },
 )
 async def rename_workspace_file_route(
@@ -300,6 +301,8 @@ async def rename_workspace_file_route(
         raise fastapi.HTTPException(
             status_code=409, detail="A file with this name already exists here"
         )
+    except SkillLimitError as exc:
+        raise fastapi.HTTPException(status_code=409, detail=str(exc))
     if renamed is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
     expert_by_session = await _expert_ids_by_session(user_id, [renamed])
@@ -507,8 +510,17 @@ async def list_workspace_files(
         default=None,
         min_length=1,
         description=(
-            "Only return files from this hired expert's conversations. "
-            "Cannot be combined with session_id, folder_id or root_only."
+            "Only return files from this hired expert's own conversations. "
+            "Combines with folder_id, root_only and include_user_files; "
+            "cannot be combined with session_id."
+        ),
+    ),
+    include_user_files: bool = Query(
+        default=False,
+        description=(
+            "With expert_id, also return the user's own files — everything "
+            "outside /sessions/, /experts/ and /skills/ — which the expert "
+            "may read but which are not its own. Requires expert_id."
         ),
     ),
 ) -> ListFilesResponse:
@@ -527,9 +539,17 @@ async def list_workspace_files(
     ``root_only`` likewise conflict; passing conflicting filters returns a 400
     rather than silently yielding an empty list.
 
-    ``expert_id`` narrows the listing to files from that hired expert's own
-    conversations. It excludes the other axes for the same reason. An expert
-    the caller does not own (or no longer has) yields an empty list.
+    ``expert_id`` narrows the listing to that hired expert's own
+    conversations. It conflicts with ``session_id`` — both name which
+    conversations to show — but composes with the folder filters, which select
+    across the whole workspace. An expert the caller does not own (or no
+    longer has) yields an empty list.
+
+    ``include_user_files`` widens an ``expert_id`` listing with the user's own
+    files, which an expert may read but which are nobody's conversation. It is
+    opt-in so that a view already filtered to one expert keeps showing that
+    expert's files and nothing else; the composer's picker sends it when its
+    "only this expert" filter is switched off.
     """
     # Treat empty-string session_id the same as omitted — an empty value
     # would otherwise silently list files across every session instead of
@@ -551,12 +571,17 @@ async def list_workspace_files(
             status_code=400,
             detail="folder_id and root_only are mutually exclusive",
         )
-    if expert_id is not None and (
-        session_id is not None or folder_id is not None or root_only
-    ):
+    if expert_id is not None and session_id is not None:
         raise fastapi.HTTPException(
             status_code=400,
-            detail="expert_id cannot be combined with session_id, folder_id or root_only",
+            detail="expert_id cannot be combined with session_id",
+        )
+    if include_user_files and expert_id is None:
+        # Without an expert there is no scope to widen: an unscoped listing
+        # already spans the whole workspace, so this could only mislead.
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="include_user_files requires expert_id",
         )
 
     workspace = await get_or_create_workspace(user_id)
@@ -590,12 +615,15 @@ async def list_workspace_files(
         root_only=root_only,
     )
     if expert_id is not None:
-        # Fails closed: an unowned or archived expert resolves to no sessions,
-        # and an empty prefix list matches nothing.
+        # Fails closed: an unowned or archived expert resolves to no sessions
+        # and no user-file grant, so every branch of the filter matches nothing.
         scope = await resolve_expert_workspace_scope(user_id, expert_id)
         list_kwargs["allowed_path_prefixes"] = [
             session_path_prefix(sid) for sid in scope.session_ids
         ]
+        list_kwargs["include_user_files"] = (
+            include_user_files and scope.reads_user_files
+        )
     files = await manager.list_files(**list_kwargs)
     has_more = len(files) > limit
     page = files[:limit]

@@ -22,6 +22,8 @@
   ],
   "role": "Marketing Specialist",
   "schedules_paused_at": null,
+  "setup_failures": [],
+  "setup_status": "ready",
   "skills": [],
   "source_template_id": "template-1",
   "tagline": "Grows your audience",

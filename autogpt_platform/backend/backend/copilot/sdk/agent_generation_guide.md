@@ -12,7 +12,8 @@ data source, trigger, or a choice between candidate blocks.
 Discover the platform's real options first (e.g. `find_capability`), then
 call `ask_question` listing those options ("The platform supports
 Gmail, Slack, and Google Docs — which for delivery?") and **wait for
-the answer**.
+the answer**. Set `allow_multiple` on a question whose options combine
+("which of these should it post to?") rather than compete.
 
 **Skip** when the goal already specifies every dimension (e.g. "scrape
 prices from Amazon and email me daily"). Data-shape questions are usually

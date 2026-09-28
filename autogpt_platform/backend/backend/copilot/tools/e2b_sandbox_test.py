@@ -144,6 +144,14 @@ def _patch_redis(redis: AsyncMock):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _no_proxy_credentials():
+    """Pause and kill revoke the box's proxy credential (``e2b_network``),
+    which has its own Redis handle; ``TestProxyCredentialIsRevoked`` covers it."""
+    with patch("backend.copilot.tools.e2b_sandbox.forget_sandbox", AsyncMock()):
+        yield
+
+
 class TestTryReconnect:
     def test_reconnect_refuses_a_box_stamped_for_someone_else(self):
         """A cached id that resolves to another owner's box is dropped, not used."""
@@ -1200,6 +1208,33 @@ class TestConnectOwned:
         )
 
     @pytest.mark.parametrize(
+        "reconnecting, pinned_for",
+        [("user-a", "user-a"), ("user-b", None), (None, None)],
+        ids=["its own user", "another user", "nobody"],
+    )
+    def test_a_box_is_pinned_only_for_the_user_it_was_created_for(
+        self, reconnecting, pinned_for
+    ):
+        """Its creator's processes may still be running in it: re-pinned for
+        whoever reconnects, they would get to act with that user's accounts.
+        A mismatch keeps the box's egress and swaps nothing in."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        sb = MagicMock()
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=sb),
+            ) as connect,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(connect_owned("sb-1", owner, _API_KEY, user_id=reconnecting))
+        egress_owner = connect.await_args.args[2]
+        assert egress_owner.user_id == pinned_for
+        assert egress_owner.label == f"expert:{_EXPERT_ID}"
+
+    @pytest.mark.parametrize(
         "stamp",
         [
             {"autogpt_owner": "expert:someone-else", "autogpt_kind": "shell"},
@@ -1855,3 +1890,54 @@ class TestExpertBoxRecovery:
             )
         assert ok is False
         sb.pause.assert_not_awaited()
+
+
+class TestProxyCredentialIsRevoked:
+    """A box that is paused or killed will not present its proxy credential
+    again; left alone, the record would keep naming its owner to the proxy."""
+
+    _FORGET = "backend.copilot.tools.e2b_sandbox.forget_sandbox"
+
+    def test_on_kill(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is True
+        forget.assert_awaited_once_with(_SANDBOX_ID)
+
+    def test_on_pause(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY)) is True
+        forget.assert_awaited_once_with(_SANDBOX_ID)
+
+    def test_on_the_turn_end_pause(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_redis(_mock_redis()),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            assert asyncio.run(pause_sandbox_direct(sb, _SESSION_ID)) is True
+        forget.assert_awaited_once_with(sb.sandbox_id)
+
+    def test_not_when_the_kill_failed(self):
+        """The box is still there and may yet egress: keep its credential."""
+        sb = _mock_sandbox()
+        sb.kill = AsyncMock(side_effect=RuntimeError("e2b error"))
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is False
+        forget.assert_not_awaited()

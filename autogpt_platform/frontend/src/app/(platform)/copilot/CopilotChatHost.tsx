@@ -42,22 +42,28 @@ export function CopilotChatHost({
     queuedMessages,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     hasMoreMessages,
     isLoadingMore,
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting,
+    followBackendTurn,
   } = useCopilotPage();
 
   return (
@@ -78,8 +84,11 @@ export function CopilotChatHost({
           error={error}
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
+          sessionSentFrom={sessionSentFrom}
+          sessionAutopilotMode={sessionAutopilotMode}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
+          isSessionNotFound={isSessionNotFound}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
           isFinishProbing={isFinishProbing}
@@ -93,6 +102,7 @@ export function CopilotChatHost({
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
           isUploadingFiles={isUploadingFiles}
+          pendingSend={pendingSend}
           hasMoreMessages={hasMoreMessages}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
@@ -103,11 +113,14 @@ export function CopilotChatHost({
           isResolvingExpertIdentity={isResolvingExpertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
+          onBackendTurn={followBackendTurn}
           hasFloatingControls={hasFloatingControls}
         />
       </div>
       <RateLimitGate
         rateLimitMessage={rateLimitMessage}
+        failure={platformLimitFailure}
+        sessionId={sessionId}
         onDismiss={dismissRateLimit}
       />
       <ProviderLimitDialog

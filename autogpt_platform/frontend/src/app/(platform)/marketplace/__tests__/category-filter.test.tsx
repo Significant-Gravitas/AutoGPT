@@ -144,7 +144,7 @@ describe("Marketplace category filter", () => {
     expect(await findCategoryChip("Sales")).toBeDefined();
     // The legacy free-text options are gone.
     const chips = within(
-      await screen.findByRole("group", { name: "Browse by category" }),
+      await screen.findByRole("group", { name: "Browse experts by category" }),
     );
     expect(chips.queryByRole("button", { name: "Productivity" })).toBeNull();
     expect(chips.queryByRole("button", { name: /Writing/ })).toBeNull();
@@ -154,7 +154,7 @@ describe("Marketplace category filter", () => {
 /** The hero has its own chip row with overlapping labels, so scope to ours. */
 async function findCategoryChip(name: string) {
   const group = await screen.findByRole("group", {
-    name: "Browse by category",
+    name: "Browse experts by category",
   });
   return within(group).findByRole("button", { name });
 }

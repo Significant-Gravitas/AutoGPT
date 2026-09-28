@@ -461,6 +461,22 @@ class TestTransfer:
         assert mock_turn.await_args.kwargs["timeout"] == 0
 
     @pytest.mark.asyncio
+    async def test_handed_off_message_carries_sender_provenance(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s-parent", expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the weekly summary",
+        )
+        assert mock_turn.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": "expert-a",
+            "from_expert_name": "Ari",
+        }
+
+    @pytest.mark.asyncio
     async def test_framing_transfers_ownership(self, roster, mock_turn, mock_sessions):
         await HandoffToExpertTool()._execute(
             user_id="alice",

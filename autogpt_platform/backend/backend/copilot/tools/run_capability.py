@@ -1,33 +1,39 @@
-"""Run one capability by id: a block, a platform tool or an MCP server.
+"""Run one capability by id: a block, a platform tool, an MCP server or a
+skill.
 
 Dispatches to the existing implementations (``RunBlockTool``,
-``RunMCPToolTool``, the tool's own ``_execute``) so credential resolution,
-pickers, human review, spend approval, dry-run and error hints all keep
-working; this module only adds the id resolution and the per-kind gates.
+``RunMCPToolTool``, ``ReadSkillTool``, the tool's own ``_execute``) so
+credential resolution, pickers, human review, spend approval, dry-run and
+error hints all keep working; this module only adds the id resolution and
+the per-kind gates.
 """
 
 import logging
 from typing import Any
 from urllib.parse import urlsplit
 
+from backend.blocks import get_block
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
     needs_review,
     open_mcp_review,
 )
-from backend.copilot.capabilities.models import CapabilityEntry
+from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
+from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
+from backend.copilot.gate import METERED, gate_active
+from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.activity_event import ActivityEventDraft
 
-from .base import BaseTool
+from .base import GATE_APPROVED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT
+from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
+from .helpers import required_input_keys, resolve_block_credentials
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
@@ -36,12 +42,15 @@ from .models import (
 )
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
+from .session_registry import resolve_session_entry
+from .skills import ReadSkillTool
 
 logger = logging.getLogger(__name__)
 
 
 class RunCapabilityTool(BaseTool):
     digest_large_output = True
+    has_gate_subject = True
 
     @property
     def name(self) -> str:
@@ -51,7 +60,8 @@ class RunCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Run a capability by id with its input (blocks: the block's inputs; "
-            "MCP servers: {tool, arguments}; platform tools: their parameters). "
+            "MCP servers: {tool, arguments}; platform tools: their parameters; "
+            "skills: {}). "
             "Never guess ids: take them from find_capability. An unconnected "
             "capability returns a sign-in card: show it and stop. review_required "
             "means wait for approval, then resume_capability(review_id). "
@@ -84,6 +94,45 @@ class RunCapabilityTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> Subject | None:
+        """The block or MCP tool this call runs, or NO_OP where nothing would run."""
+        capability_id = str(args.get("id") or "")
+        payload = args.get("input")
+        if args.get("validate_only") or session.dry_run:
+            return NO_OP
+        if skill_name(capability_id) is not None or not isinstance(payload or {}, dict):
+            return NO_OP
+        entry = await resolve_session_entry(user_id, session, capability_id)
+        if entry is None and capability_id.strip().lower().startswith("https://"):
+            return _mcp_subject(capability_id.strip(), payload or {})
+        if entry is None:
+            return NO_OP
+        if entry.kind == "mcp_server":
+            return _mcp_subject(entry.implementations[0].ref, payload or {})
+        if entry.kind != "block":
+            return NO_OP
+        block_id = next(
+            (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
+        )
+        block = get_block(block_id)
+        if block is None:
+            return NO_OP
+        if not required_input_keys(block) <= set(payload or {}):
+            return NO_OP  # a schema lookup: run_block answers with the schema
+        # Priced once, below, with the credentials the run bills with.
+        subject = block_subject(block, payload or {}, priced=False)
+        if subject.effect not in METERED:
+            return subject
+        # Most cost tables filter on the credentials, which the run injects.
+        matched, _ = await resolve_block_credentials(
+            user_id, block, dict(payload or {}), session.expert_id, session.session_id
+        )
+        creds = {field: meta.model_dump() for field, meta in matched.items()}
+        # The run bills with the resolved credentials, whatever the model passed.
+        return block_subject(block, {**(payload or {}), **creds})
+
     def activity_event(
         self, session: ChatSession, result: ToolResponseBase, **kwargs
     ) -> ActivityEventDraft | None:
@@ -107,6 +156,7 @@ class RunCapabilityTool(BaseTool):
         validate_only: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
+        approved = bool(kwargs.pop(GATE_APPROVED, False))
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
@@ -117,7 +167,7 @@ class RunCapabilityTool(BaseTool):
                 message="input must be an object", session_id=session_id
             )
         payload: dict[str, Any] = dict(input or {})
-        entry = resolve_entry(get_registry(), id)
+        entry = await resolve_session_entry(user_id, session, id)
         if entry is None and id.strip().lower().startswith("https://"):
             # Open world: a server URL the catalog does not know.  The MCP
             # path validates the host; writes pause for review.
@@ -138,9 +188,13 @@ class RunCapabilityTool(BaseTool):
         if entry is None:
             return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
         if entry.kind == "block":
-            return await _run_block(entry, user_id, session, payload, validate_only)
+            return await _run_block(
+                entry, user_id, session, payload, validate_only, approved
+            )
         if entry.kind == "tool":
             return await _describe_tool(entry, session)
+        if entry.kind == "skill":
+            return await _run_skill(entry, user_id, session, validate_only)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
             if not server_url:
@@ -163,6 +217,7 @@ async def _run_block(
     session: ChatSession,
     payload: dict[str, Any],
     validate_only: bool,
+    approved: bool,
 ) -> ToolResponseBase:
     if gate_denied(BLOCK_GATE):
         return gate_denied_error("blocks", session.session_id)
@@ -175,7 +230,17 @@ async def _run_block(
         block_id=block_id,
         input_data=payload,
         validate_only=validate_only,
+        gate_approved=approved,
     )
+
+
+def _mcp_subject(server_url: str, payload: dict[str, Any]) -> Subject:
+    """Listing a server's tools runs none of them, and a catalogued server
+    that needs its URL answers with setup help."""
+    tool = str(payload.get("tool") or "").strip()
+    if not tool or not server_url:
+        return NO_OP
+    return mcp_subject(server_url, tool)
 
 
 async def _describe_tool(
@@ -198,6 +263,24 @@ async def _describe_tool(
         capability=entry.listing(),
         parameters=tool.parameters,
         session_id=session.session_id,
+    )
+
+
+async def _run_skill(
+    entry: CapabilityEntry, user_id: str, session: ChatSession, validate_only: bool
+) -> ToolResponseBase:
+    """Load a skill: running one is reading it.
+
+    The engines resolve the dispatch into the ``read_skill`` call it is
+    (``capabilities/dispatch.py``) and run that through the one tool path,
+    so this answers ``validate_only`` and any engine that did not.
+    """
+    if gate_denied(SKILL_TOOL):
+        return gate_denied_error(SKILL_TOOL, session.session_id)
+    if validate_only:
+        return describe_skill(entry, session.session_id)
+    return await ReadSkillTool()._execute(
+        user_id, session, name=entry.implementations[0].ref
     )
 
 
@@ -231,10 +314,13 @@ async def _run_mcp(
             session_id=session.session_id,
         )
     host = urlsplit(server_url).hostname or server_url
+    # With the gate on it has already decided this call on the server's
+    # effect map; the verb heuristic is the flag-off path only.
     if (
         tool_name
         and not session.dry_run
         and needs_review(tool_name, catalog_server=entry is not None)
+        and not await gate_active(user_id, session)
     ):
         review = MCPReviewPayload(
             server_url=server_url, tool=tool_name, arguments=dict(arguments or {})
@@ -257,7 +343,6 @@ async def _run_mcp(
             block_id=entry.id if entry else server_url,
             block_name=f"{host}/{tool_name}",
             review_id=review_id,
-            graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
             input_data=review.model_dump(),
         )
     if tool_name:

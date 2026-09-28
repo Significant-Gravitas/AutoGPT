@@ -114,6 +114,25 @@ describe("handleStreamError", () => {
     expect(arg.title).toBe("Your expert ran into a problem");
   });
 
+  it("keeps a turn budget error distinct from account admission limits", () => {
+    const onRateLimit = vi.fn();
+    const onReconnect = vi.fn();
+    handleStreamError({
+      error: new Error(
+        "[code:max_budget_exhausted] Send a follow-up. If your account usage limit is also reached, wait for its reset.",
+      ),
+      onRateLimit,
+      onReconnect,
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Turn budget reached" }),
+    );
+    expect(onRateLimit).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
   it("uses fallbackDescription when the backend message is empty", () => {
     handleStreamError({
       error: new Error("[code:tool_stalled]"),
@@ -231,6 +250,7 @@ describe("handleStreamError — telling the two usage limits apart", () => {
     expect(onRateLimit.mock.calls[0][1]).toEqual(
       expect.objectContaining({ kind: "usage_limit", authProvider: "codex" }),
     );
+    expect(onRateLimit.mock.calls[0][2]).toBe("provider");
   });
 
   it("still routes our own limit the same way, so the composer text survives", () => {
@@ -247,5 +267,122 @@ describe("handleStreamError — telling the two usage limits apart", () => {
     expect(onRateLimit).toHaveBeenCalledTimes(1);
     expect(onRateLimit.mock.calls[0][1]?.authProvider).toBe("platform");
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("names a streamed envelope on the platform route as the provider's refusal", () => {
+    // A self-host runs its own OpenRouter or local gateway on the "platform"
+    // route, so its upstream 429 carries the same authProvider as our
+    // admission cap. What tells them apart is that it came mid-turn, on the
+    // stream: our cap never gets that far. Routing it as our cap would tell
+    // a self-host to upgrade a plan we do not bill them for.
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error("boom"),
+      providerFailure: limit("platform"),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit.mock.calls[0][2]).toBe("provider");
+  });
+});
+
+describe("handleStreamError — structured detail from a pre-stream 429/etc.", () => {
+  beforeEach(() => {
+    mockToast.mockClear();
+  });
+
+  it("recovers a ProviderFailure from an object `detail` and opens the switch-connection path", () => {
+    // The platform usage-cap 429 raises before streaming starts, so it
+    // never rides the live-stream envelope `handleStreamError` normally gets
+    // — it only reaches the client as FastAPI's `{"detail": ...}` body. If
+    // `detail` is an object (the structured envelope) rather than a string,
+    // it must still be recognised, not silently dropped to string-guessing.
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error(
+        JSON.stringify({
+          detail: {
+            kind: "usage_limit",
+            message: "You've reached your daily usage limit. Resets in 1h 0m.",
+            authProvider: "platform",
+            credentialId: null,
+            resetsAt: 1999999999,
+            retryable: false,
+            reconnectFixesIt: false,
+          },
+        }),
+      ),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit).toHaveBeenCalledTimes(1);
+    expect(onRateLimit.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        kind: "usage_limit",
+        authProvider: "platform",
+      }),
+    );
+    // An envelope in the HTTP body means the turn was refused before the
+    // stream opened, which only our own cap does. The caller keeps the plan
+    // dialog for it and merely adds the switch offer.
+    expect(onRateLimit.mock.calls[0][2]).toBe("admission");
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("prefers the streamed envelope, and its origin, when both are in hand", () => {
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error(
+        JSON.stringify({
+          detail: {
+            kind: "usage_limit",
+            message: "admission",
+            authProvider: "platform",
+          },
+        }),
+      ),
+      providerFailure: {
+        kind: "usage_limit",
+        message: "streamed",
+        authProvider: "codex",
+        credentialId: "cred-1",
+        resetsAt: null,
+        retryable: false,
+        reconnectFixesIt: false,
+      },
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit.mock.calls[0][1]?.message).toBe("streamed");
+    expect(onRateLimit.mock.calls[0][2]).toBe("provider");
+  });
+
+  it("still handles a plain string `detail` the old way (backward compat)", () => {
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error(
+        '{"detail":"You\'ve reached your daily usage limit. Resets in 1h."}',
+      ),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit).toHaveBeenCalledTimes(1);
+    // No structured envelope was recoverable, so the second arg is undefined
+    // — same behaviour as before this fix, for every backend that still
+    // sends a bare string.
+    expect(onRateLimit.mock.calls[0][1]).toBeUndefined();
+    expect(onRateLimit.mock.calls[0][2]).toBeUndefined();
   });
 });

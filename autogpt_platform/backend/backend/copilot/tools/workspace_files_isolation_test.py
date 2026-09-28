@@ -32,8 +32,14 @@ def db():
     db.count_workspace_files = AsyncMock(return_value=0)
     db.soft_delete_workspace_file = AsyncMock()
     manager = WorkspaceManager("user-1", "ws-1", "expert-a", scope=SCOPE)
+    folders = MagicMock()
+    folders.list_workspace_folders = AsyncMock(return_value=[])
     with (
         patch("backend.util.workspace.workspace_db", return_value=db),
+        patch(
+            "backend.util.workspace.workspace_folder_db",
+            return_value=folders,
+        ),
         patch(
             "backend.copilot.tools.workspace_files.get_workspace_manager",
             new=AsyncMock(return_value=manager),
@@ -95,3 +101,72 @@ async def test_delete_by_foreign_file_id_is_denied(db):
     assert isinstance(result, ErrorResponse)
     assert result.error == "access_denied"
     db.soft_delete_workspace_file.assert_not_awaited()
+
+
+# The grant a live hired expert resolves to: its own conversations plus read
+# access to the owner's own files.
+USER_FILES_SCOPE = WorkspaceScope(
+    expert_id="expert-a", session_ids=["expert-a"], reads_user_files=True
+)
+
+
+def _storage():
+    storage = AsyncMock()
+    storage.retrieve.return_value = b"allowed"
+    return storage
+
+
+@pytest.fixture
+def user_files_db():
+    db = MagicMock()
+    db.get_workspace_file = AsyncMock(
+        return_value=_make_workspace_file(path="/quarterly-report.pdf")
+    )
+    db.list_workspace_files = AsyncMock(return_value=[])
+    db.count_workspace_files = AsyncMock(return_value=0)
+    manager = WorkspaceManager("user-1", "ws-1", "expert-a", scope=USER_FILES_SCOPE)
+    folders = MagicMock()
+    folders.list_workspace_folders = AsyncMock(return_value=[])
+    with (
+        patch("backend.util.workspace.workspace_db", return_value=db),
+        patch(
+            "backend.util.workspace.workspace_folder_db",
+            return_value=folders,
+        ),
+        patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            new=AsyncMock(return_value=manager),
+        ),
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            new=AsyncMock(return_value=_storage()),
+        ),
+    ):
+        yield db
+
+
+async def test_expert_reads_a_root_upload_by_id(user_files_db):
+    result = await ReadWorkspaceFileTool()._execute(
+        "user-1", _session(), file_id="root-upload"
+    )
+    assert not isinstance(result, ErrorResponse)
+
+
+async def test_expert_still_cannot_read_another_experts_file(user_files_db):
+    user_files_db.get_workspace_file = AsyncMock(
+        return_value=_make_workspace_file(path="/sessions/expert-b/private.txt")
+    )
+    result = await ReadWorkspaceFileTool()._execute(
+        "user-1", _session(), file_id="foreign"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "access_denied"
+
+
+async def test_expert_listing_widens_to_user_files(user_files_db):
+    await ListWorkspaceFilesTool()._execute(
+        "user-1", _session(), include_all_sessions=True
+    )
+    kwargs = user_files_db.list_workspace_files.call_args.kwargs
+    assert kwargs["include_user_files"] is True
+    assert kwargs["allowed_path_prefixes"] == USER_FILES_SCOPE.read_prefixes

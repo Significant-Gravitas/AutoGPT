@@ -33,6 +33,13 @@ type VoiceModeEvent =
   | "voice_first_sound_latency_ms"
   // The mic reopened after a reply finished playing: a full loop closed.
   | "voice_turn_completed"
+  // The user asked for a failed transcription to be tried again. Against
+  // `voice_turn_dropped{reason:transcribe_failed}` this says how many of those
+  // dropped turns the user actually got back.
+  | "voice_transcribe_retried"
+  // Gave up on transcription and took the audio instead. Rare by design: a
+  // run of these means retrying is not working.
+  | "voice_recording_downloaded"
   | "voice_mode_permission_denied"
   // Synthesis or the VAD failed. `stage` says which.
   | "voice_mode_error";

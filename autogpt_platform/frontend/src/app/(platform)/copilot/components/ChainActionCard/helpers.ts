@@ -4,15 +4,18 @@ import { formatProviderName } from "@/components/contextual/IntegrationsPanel/he
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { RJSFSchema } from "@rjsf/utils";
 import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
-import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import type {
+  ClarifyingQuestion,
+  QuestionAnswer,
+} from "../../tools/clarifying-questions";
 
 /** One question card's ask. The card owns the inputs; the asking component
  *  keeps the answers so it can still build its own message. */
 export interface QuestionRequest {
   id: string;
   questions: ClarifyingQuestion[];
-  answers: Record<string, string>;
-  onAnswer: (keyword: string, value: string) => void;
+  answers: Record<string, QuestionAnswer>;
+  onAnswer: (keyword: string, value: QuestionAnswer) => void;
   onSkip: () => void;
 }
 

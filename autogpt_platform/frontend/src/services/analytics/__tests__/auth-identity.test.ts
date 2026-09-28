@@ -1,5 +1,10 @@
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureFirstLanding,
@@ -40,11 +45,14 @@ beforeEach(() => {
 
 afterEach(() => {
   useAuthStore.setState({ user: null });
+  removeCookiebot();
   vi.unstubAllEnvs();
 });
 
 describe("analytics identity on account transitions", () => {
   it("rotates the visitor and landing on logout without an initialized PostHog client", () => {
+    configureCookiebot();
+    installCookiebot({ statistics: true });
     window.localStorage.setItem(
       "ph_phc_test_posthog",
       JSON.stringify({ $device_id: "old-device" }),
@@ -57,7 +65,22 @@ describe("analytics identity on account transitions", () => {
 
     expect(getAnonymousID()).not.toBe("old-device");
     expect(readFirstLanding()).toBeNull();
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+      getAnonymousID(),
+    );
     expect(posthog.reset).not.toHaveBeenCalled();
+  });
+
+  it("rotates the visitor on logout without storing it when analytics is declined", () => {
+    configureCookiebot();
+    installCookiebot({ statistics: false });
+    const previous = getAnonymousID();
+    useAuthStore.setState({ user: userA });
+
+    useAuthStore.setState({ user: null });
+
+    expect(getAnonymousID()).not.toBe(previous);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
   });
 
   it.each([null, userB])(

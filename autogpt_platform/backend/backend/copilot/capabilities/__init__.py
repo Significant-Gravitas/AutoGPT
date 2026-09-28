@@ -1,6 +1,6 @@
-"""Unified capability registry for the copilot: tools, blocks and MCP servers
-behind one index, searched by ``find_capability`` and executed by
-``run_capability`` (both added in the follow-up change)."""
+"""Unified capability registry for the copilot: tools, blocks, MCP servers
+and the session owner's skills behind one index, searched by
+``find_capability`` and executed by ``run_capability``."""
 
 from .index import CapabilityIndex, SearchHit, SearchResult
 from .models import CapabilityEntry, Connection, Implementation

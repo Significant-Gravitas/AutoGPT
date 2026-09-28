@@ -169,11 +169,11 @@ class AutoPilotBlock(Block):
             default=None,
             credential_reference_only=True,
             discriminator="transport",
-            # `platform` is deliberately absent: it needs no credential at all,
-            # and an unmapped discriminator value makes the credential input
-            # hide itself rather than asking for something that does not exist.
             discriminator_mapping={
                 AutoPilotTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
+            },
+            credential_free_discriminator_values={
+                AutoPilotTransport.PLATFORM.value,
             },
             json_schema_extra={
                 "secret": True,
@@ -879,7 +879,7 @@ async def _enqueue_for_recovery(
                 # is what an AutoPilotBlock turn already gets, the graph
                 # executor being a separate process.
                 # TODO(#14244-f5): revisit together with run_agent's tree reset.
-                envelope=root_envelope(recovery_turn_id),
+                envelope=root_envelope(recovery_turn_id, session_id=session_id),
             ),
             timeout=10,
         )

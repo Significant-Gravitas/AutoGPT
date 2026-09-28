@@ -56,7 +56,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Text variant="body-medium" tone="primary" className="text-pretty">
-              {item.title}
+              <AttentionTitle item={item} />
             </Text>
             {item.priority === "high" ? (
               <Text
@@ -71,7 +71,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           <Text
             variant="body"
             tone="secondary"
-            className="line-clamp-2 text-pretty"
+            className="text-pretty break-words"
           >
             {item.description}
           </Text>
@@ -92,5 +92,19 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         {confirmDecline ? `Press again to decline ${item.title}` : ""}
       </span>
     </article>
+  );
+}
+
+// A held call's object is set in semibold, as on its card in the chat.
+function AttentionTitle({ item }: { item: HomeAttentionItem }) {
+  const headline = item.headline;
+  if (!headline?.object) return <>{item.title}</>;
+  return (
+    <>
+      {headline.ask}{" "}
+      <b className="font-semibold" translate="no">
+        {headline.object}
+      </b>
+    </>
   );
 }

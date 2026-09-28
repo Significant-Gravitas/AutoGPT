@@ -3,6 +3,9 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useEffect, useState } from "react";
+import { ReviewInputFields } from "./components/ReviewInputFields/ReviewInputFields";
+import { reviewFields } from "./components/ReviewInputFields/helpers";
+import { useReviewBlockSchema } from "./components/ReviewInputFields/useReviewBlockSchema";
 
 type ReviewPayload = PendingHumanReviewModel["payload"];
 
@@ -27,13 +30,12 @@ export function PendingReviewCard({
 }: PendingReviewCardProps) {
   const isDataEditable = review.editable;
 
-  let instructions = review.instructions;
-
-  const isHITLBlock = instructions && !instructions.includes("Block");
-
-  if (instructions && !isHITLBlock) {
-    instructions = undefined;
-  }
+  // A block's review names the block in `action`; a human-in-the-loop block's
+  // instructions are the author's own words, shown above its data.
+  const instructions = review.action ? undefined : review.instructions;
+  const { schema, isLoading: isSchemaLoading } = useReviewBlockSchema(
+    review.block_id,
+  );
 
   // Render the payload as stored: it is exactly what the reviewer's decision
   // sends back as the block's input, so unwrapping any key here would show
@@ -53,6 +55,18 @@ export function PendingReviewCard({
     setCurrentData(newValue);
     onReviewDataChange(review.node_exec_id, JSON.stringify(newValue, null, 2));
   }
+
+  const renderFields = (readOnly: boolean) => {
+    if (!isPlainObject(currentData) || isSchemaLoading) return null;
+    return (
+      <ReviewInputFields
+        fields={reviewFields(currentData, schema)}
+        values={currentData}
+        onChange={(values) => handleDataChange(values as ReviewPayload)}
+        readOnly={readOnly}
+      />
+    );
+  };
 
   const renderDataInput = () => {
     const data = currentData;
@@ -140,7 +154,9 @@ export function PendingReviewCard({
           </Text>
         )}
 
-        {isDataEditable && !autoApproveFuture ? (
+        {isPlainObject(currentData) ? (
+          renderFields(!isDataEditable || autoApproveFuture)
+        ) : isDataEditable && !autoApproveFuture ? (
           renderDataInput()
         ) : (
           <div className="rounded-lg border border-gray-200 bg-white p-3">
@@ -175,4 +191,8 @@ export function PendingReviewCard({
       )}
     </div>
   );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

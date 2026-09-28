@@ -18,13 +18,16 @@ interface Props {
 }
 
 function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
-  if (generated.length === 0) return null;
-  return generated.reduce((latest, file) =>
-    new Date(file.item.created_at).getTime() >
-    new Date(latest.item.created_at).getTime()
-      ? file
-      : latest,
-  );
+  let latest: SessionFile | null = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+  for (const file of generated) {
+    const time = new Date(file.item.created_at).getTime();
+    if (latest === null || time > latestTime) {
+      latest = file;
+      latestTime = time;
+    }
+  }
+  return latest;
 }
 
 /** The chat's top-right controls: the Computer toggle and the artifacts
@@ -54,14 +57,14 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   const closeComputer = useCopilotUIStore((s) => s.closeComputer);
   const setArtifactPanelMode = useCopilotUIStore((s) => s.setArtifactPanelMode);
   const isMobile = useIsMobile();
-  const { generated } = useSessionFiles(sessionId);
-  const lastGenerated = getLastGeneratedFile(generated);
+  const { deliverables } = useSessionFiles(sessionId);
+  const lastGenerated = getLastGeneratedFile(deliverables);
   const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
   const isArtifactsOpen = isOpen && activeTab === "artifacts";
   // An open artifact preview and the artifacts tab are both the document
   // face of the right sidebar, so the toggle reads active for either and is
-  // the one control that closes them — the panel carries no close button.
-  // With the computer face on top, the artifact underneath is not showing.
+  // another control that closes them alongside the panel header. With the
+  // computer face on top, the artifact underneath is not showing.
   const isDocumentOpen = !isComputerOpen && (hasArtifact || isArtifactsOpen);
   const isRightSidebarOpen = isDocumentOpen || isComputerOpen;
   // The mobile sheet has no computer face to open.

@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -12,6 +13,10 @@ import { McpConnectPanel } from "../McpConnectPanel";
 vi.mock("@/lib/oauth-popup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/oauth-popup")>()),
   openOAuthPopup: vi.fn(),
+  // Defaults to null — the browser-blocked case — so every cell that does not
+  // care about the sign-in window behaves as it did before the window was
+  // pre-opened at all.
+  preOpenOAuthPopup: vi.fn(() => null),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
@@ -103,6 +108,195 @@ describe("McpConnectPanel", () => {
       target: { value: "https://mcp.example.com" },
     });
     expect((connectButton as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  // #14532: the sign-in window has to be opened inside the tap, before the
+  // initiate request is awaited. iOS Safari discards the gesture context at the
+  // first async break and then blocks window.open() outright — including the
+  // new-tab fallback — so on mobile nothing opened at all.
+  describe("user activation (#14532)", () => {
+    async function mockInitiateOk(record?: string[]) {
+      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+        "@/app/api/__generated__/endpoints/mcp/mcp"
+      );
+      vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
+        async () => {
+          record?.push("initiate");
+          return {
+            status: 200,
+            data: {
+              login_url: "https://login.example.com",
+              state_token: "tok",
+            },
+            headers: new Headers(),
+          } as never;
+        },
+      );
+    }
+
+    function clickConnect() {
+      fireEvent.change(screen.getByLabelText(/server url/i), {
+        target: { value: "https://mcp.example.com" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    }
+
+    it("opens the window before the initiate await and hands it to openOAuthPopup", async () => {
+      const callOrder: string[] = [];
+      const fakeWindow = { closed: false, close: vi.fn() };
+      const { openOAuthPopup, preOpenOAuthPopup } = await import(
+        "@/lib/oauth-popup"
+      );
+      vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
+        callOrder.push("preOpen");
+        return fakeWindow as unknown as Window;
+      });
+      vi.mocked(openOAuthPopup).mockReturnValue({
+        promise: new Promise(() => {}),
+        cleanup: { abort: vi.fn() },
+      } as never);
+      await mockInitiateOk(callOrder);
+
+      render(<McpConnectPanel onSuccess={() => {}} />);
+      clickConnect();
+
+      await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
+      // The ordering IS the fix. Asserting only that preOpenOAuthPopup was
+      // called would pass on a version that called it after the await, which
+      // is the bug.
+      expect(callOrder).toEqual(["preOpen", "initiate"]);
+      expect(vi.mocked(openOAuthPopup)).toHaveBeenCalledWith(
+        "https://login.example.com",
+        expect.objectContaining({
+          stateToken: "tok",
+          preOpenedWindow: fakeWindow,
+          useCrossOriginListeners: true,
+        }),
+      );
+      // Ownership moved to the helper, which closes it on abort.
+      expect(fakeWindow.close).not.toHaveBeenCalled();
+    });
+
+    it("closes the window when the server turns out not to support OAuth", async () => {
+      const fakeWindow = { closed: false, close: vi.fn() };
+      const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+      vi.mocked(preOpenOAuthPopup).mockReturnValue(
+        fakeWindow as unknown as Window,
+      );
+      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+        "@/app/api/__generated__/endpoints/mcp/mcp"
+      );
+      vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
+        makeApiError(400, noOAuthDetail.detail),
+      );
+
+      render(<McpConnectPanel onSuccess={() => {}} />);
+      clickConnect();
+
+      // The 400 returns early from inside the try, before openOAuthPopup ever
+      // runs — an about:blank window would otherwise sit there for good.
+      await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
+      expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
+    });
+
+    it("closes the window when the initiate request fails outright", async () => {
+      const fakeWindow = { closed: false, close: vi.fn() };
+      const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+      vi.mocked(preOpenOAuthPopup).mockReturnValue(
+        fakeWindow as unknown as Window,
+      );
+      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+        "@/app/api/__generated__/endpoints/mcp/mcp"
+      );
+      vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
+        makeApiError(500, "server exploded"),
+      );
+
+      render(<McpConnectPanel onSuccess={() => {}} />);
+      clickConnect();
+
+      await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
+    });
+
+    it("closes the window when the panel unmounts mid-initiation", async () => {
+      const fakeWindow = { closed: false, close: vi.fn() };
+      const { openOAuthPopup, preOpenOAuthPopup } = await import(
+        "@/lib/oauth-popup"
+      );
+      vi.mocked(preOpenOAuthPopup).mockReturnValue(
+        fakeWindow as unknown as Window,
+      );
+      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+        "@/app/api/__generated__/endpoints/mcp/mcp"
+      );
+      let release: (() => void) | undefined;
+      vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve({
+                status: 200,
+                data: {
+                  login_url: "https://login.example.com",
+                  state_token: "tok",
+                },
+                headers: new Headers(),
+              } as never);
+          }),
+      );
+
+      const { unmount } = render(<McpConnectPanel onSuccess={() => {}} />);
+      clickConnect();
+      await waitFor(() =>
+        expect(vi.mocked(preOpenOAuthPopup)).toHaveBeenCalled(),
+      );
+
+      // The dialog closes while the login URL is still in flight. Nothing has
+      // registered an abort yet, so the unmount cleanup is the only thing that
+      // can reach this window.
+      unmount();
+      expect(fakeWindow.close).toHaveBeenCalled();
+
+      release?.();
+      await Promise.resolve();
+      // And the continuation must not adopt a window that is already gone.
+      expect(vi.mocked(openOAuthPopup)).not.toHaveBeenCalled();
+    });
+
+    it("a double tap starts one flow, not two", async () => {
+      const fakeWindow = { closed: false, close: vi.fn() };
+      const { openOAuthPopup, preOpenOAuthPopup } = await import(
+        "@/lib/oauth-popup"
+      );
+      vi.mocked(preOpenOAuthPopup).mockReturnValue(
+        fakeWindow as unknown as Window,
+      );
+      vi.mocked(openOAuthPopup).mockReturnValue({
+        promise: new Promise(() => {}),
+        cleanup: { abort: vi.fn() },
+      } as never);
+      await mockInitiateOk();
+
+      render(<McpConnectPanel onSuccess={() => {}} />);
+      fireEvent.change(screen.getByLabelText(/server url/i), {
+        target: { value: "https://mcp.example.com" },
+      });
+      const button = screen.getByRole("button", { name: /connect/i });
+      // Both taps inside ONE act() batch. fireEvent flushes React state
+      // between events, so two fireEvent.click calls let the second one see
+      // `isSubmitting === true` and the disabled-button guard already holds —
+      // which is exactly the flush a real double-tap inside one frame does not
+      // get. Dispatching both before the flush is what reproduces it.
+      await act(async () => {
+        button.click();
+        button.click();
+      });
+
+      await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
+      // Two windows would mean the second flow overwrote the first's handle
+      // and the first one could never be closed.
+      expect(vi.mocked(preOpenOAuthPopup)).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("allows manual authentication without first attempting OAuth", async () => {

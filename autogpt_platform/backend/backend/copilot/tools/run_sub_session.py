@@ -47,6 +47,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.copilot.tree import SpawnRequest
 
 from .base import BaseTool
+from .expert_delegation import sent_from_metadata
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -270,6 +271,7 @@ class RunSubSessionTool(BaseTool):
             # write to it; depth bounds how far it may spawn onward.
             spawn=SpawnRequest(may_spawn=True, shares_memory=True),
             allow_queue=False,
+            message_metadata=sent_from_metadata(session),
         )
         elapsed = time.monotonic() - started_at
         discarded = opened_here and await discard_unused_sub_session(

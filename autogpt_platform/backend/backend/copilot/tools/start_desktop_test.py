@@ -140,6 +140,9 @@ class TestStartDesktop:
         assert "Screen is on" in result.message
         assert "same machine" in result.message
         assert WORKSPACE_PATH in result.message
+        # browser_* runs outside the box, so it is never on this screen.
+        assert "DISPLAY=:0" in result.message
+        assert "browser_* tools run elsewhere" in result.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_stored_result_carries_the_owner_link_not_the_password(self):
