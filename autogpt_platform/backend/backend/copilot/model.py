@@ -162,6 +162,9 @@ class ChatSessionMetadata(BaseModel):
     # The user answered the cap question with "Stop": the thread stays stopped
     # at its cap rather than being asked about it again.
     delegation_cap_stopped: bool = False
+    # The cap question (its asked_at) whose raise was applied, so a retried
+    # answer does not raise the cap twice.
+    delegation_cap_raised_for: str | None = None
 
     # Set by ``ask_question`` when a turn ends waiting on the user, cleared
     # when they reply. Drives the Home "Needs You" question item; one per

@@ -163,14 +163,18 @@ async def test_the_cap_is_raised_and_stopped_for_the_owner_only(users):
     alice, bob = users
     thread = await _session(alice, {"delegation_cap_usd": 2.0, "purpose": "keep"})
 
-    assert await raise_delegation_cap(thread, alice, 5.0) == 7.0
-    assert await raise_delegation_cap(thread, bob, 100.0) == 0.0
+    assert await raise_delegation_cap(thread, alice, 5.0, "q1") == 7.0
+    # A retried answer to the same question raises nothing twice.
+    assert await raise_delegation_cap(thread, alice, 5.0, "q1") == 7.0
+    assert await raise_delegation_cap(thread, bob, 100.0, "q2") == 0.0
     await stop_delegation_at_cap(thread, bob)
     row = await PrismaChatSession.prisma().find_unique(where={"id": thread})
     assert row is not None and row.metadata == {
         "delegation_cap_usd": 7.0,
+        "delegation_cap_raised_for": "q1",
         "purpose": "keep",
     }
+    assert await raise_delegation_cap(thread, alice, 1.0, "q2") == 8.0
 
     await stop_delegation_at_cap(thread, alice)
     row = await PrismaChatSession.prisma().find_unique(where={"id": thread})

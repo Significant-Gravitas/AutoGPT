@@ -23,7 +23,7 @@ from backend.copilot.active_turns import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.db import clear_session_pending_question
-from backend.copilot.delegation_cap import apply_cap_answer, parse_cap_answer
+from backend.copilot.delegation_cap import parse_cap_answer, raise_cap, stop_at_cap
 from backend.copilot.executor.utils import schedule_chat_turn
 from backend.copilot.model import (
     ChatSessionInfo,
@@ -101,12 +101,19 @@ async def answer_session(
     ("Stop") leaves it stopped without starting a turn.
     """
     session = await _writable_session(session_id, user_id)
-    message = await _cap_answer(session, user_id, request.message)
-    if message is None:
-        # "Stop" at a delegation cap: the thread stays stopped, nothing runs.
+    pending = session.metadata.pending_question
+    cap_answer = parse_cap_answer(pending, request.message)
+    if cap_answer is not None and cap_answer.raise_usd is None:
+        # "Stop" at a delegation cap: the thread stays stopped, nothing runs,
+        # so nothing needs admitting.
+        await stop_at_cap(session_id, user_id)
         await _resolve_question(session_id, user_id)
         return AnswerSessionResponse(session_id=session_id, queued=False)
     await _admit(session, user_id)
+    message = request.message
+    if cap_answer is not None and cap_answer.raise_usd is not None and pending:
+        # Only once the turn may run, and once per question on a retry.
+        message = await raise_cap(session_id, user_id, cap_answer.raise_usd, pending)
     if await _in_flight(session_id):
         await queue_pending_for_http(
             session_id=session_id,
@@ -122,17 +129,6 @@ async def answer_session(
         queued = await _start_turn(session, user_id, message)
     await _resolve_question(session_id, user_id)
     return AnswerSessionResponse(session_id=session_id, queued=queued)
-
-
-async def _cap_answer(
-    session: ChatSessionInfo, user_id: str, message: str
-) -> str | None:
-    """The message to post: *message*, or for an answer to a delegation's cap
-    question, the resume note after the raise, or None after "Stop"."""
-    answer = parse_cap_answer(session.metadata.pending_question, message)
-    if answer is None:
-        return message
-    return await apply_cap_answer(session.session_id, user_id, answer)
 
 
 async def _writable_session(session_id: str, user_id: str) -> ChatSessionInfo:

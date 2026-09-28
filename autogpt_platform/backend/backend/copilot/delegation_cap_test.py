@@ -59,24 +59,24 @@ def seams(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_raise_lifts_the_cap_and_resumes(seams):
+async def test_a_raise_lifts_the_cap_once_per_question_and_resumes(seams):
     db, cancel = seams
+    question = _parked()
 
-    message = await delegation_cap.apply_cap_answer("t1", "u1", CapAnswer(raise_usd=1))
+    message = await delegation_cap.raise_cap("t1", "u1", 1.0, question)
 
-    db.raise_delegation_cap.assert_awaited_once_with("t1", "u1", 1)
-    assert message is not None and "$3.00" in message and "Carry on" in message
+    db.raise_delegation_cap.assert_awaited_once_with(
+        "t1", "u1", 1.0, question.asked_at.isoformat()
+    )
+    assert "$3.00" in message and "Carry on" in message
     cancel.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_stop_records_it_and_sends_nothing(seams):
+async def test_stop_records_it_and_cancels_any_turn(seams):
     db, cancel = seams
 
-    message = await delegation_cap.apply_cap_answer(
-        "t1", "u1", CapAnswer(raise_usd=None)
-    )
+    await delegation_cap.stop_at_cap("t1", "u1")
 
-    assert message is None
     db.stop_delegation_at_cap.assert_awaited_once_with("t1", "u1")
     cancel.assert_awaited_once_with("t1")

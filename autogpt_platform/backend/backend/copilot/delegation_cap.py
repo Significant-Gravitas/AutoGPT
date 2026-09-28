@@ -60,19 +60,24 @@ async def park_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
     )
 
 
-async def apply_cap_answer(
-    session_id: str, user_id: str, answer: CapAnswer
-) -> str | None:
-    """Raise the thread's cap and return the message that resumes it, or stop
-    the thread and return None (nothing to send)."""
-    if answer.raise_usd is None:
-        await delegation_db().stop_delegation_at_cap(session_id, user_id)
-        await enqueue_cancel_task(session_id)
-        return None
+async def stop_at_cap(session_id: str, user_id: str) -> None:
+    """The user chose "Stop": record it, and make sure nothing still runs."""
+    await delegation_db().stop_delegation_at_cap(session_id, user_id)
+    await enqueue_cancel_task(session_id)
+
+
+async def raise_cap(
+    session_id: str, user_id: str, by_usd: float, question: PendingQuestion
+) -> str:
+    """Lift the thread's cap once per question; the message that resumes it.
+
+    The raise is keyed to the question it answers, so a retried answer (the
+    turn could not start, the client sent it again) raises nothing twice.
+    """
     cap = await delegation_db().raise_delegation_cap(
-        session_id, user_id, answer.raise_usd
+        session_id, user_id, by_usd, question.asked_at.isoformat()
     )
     return (
-        f"[The user raised this hand-off's budget by ${answer.raise_usd:.2f} to "
+        f"[The user raised this hand-off's budget by ${by_usd:.2f} to "
         f"${cap:.2f}. Carry on with the task where you left off.]"
     )

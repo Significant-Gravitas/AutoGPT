@@ -95,24 +95,37 @@ async def get_expert_hired_at(user_id: str, expert_id: str) -> datetime | None:
     return expert.createdAt if expert else None
 
 
-async def raise_delegation_cap(session_id: str, user_id: str, by_usd: float) -> float:
-    """Lift a delegated thread's cap by *by_usd*; the new cap.
+async def raise_delegation_cap(
+    session_id: str, user_id: str, by_usd: float, question_key: str
+) -> float:
+    """Lift a delegated thread's cap by *by_usd*, once per *question_key*;
+    the cap after the call.
 
-    Writes the one key, like ``set_session_pending_question``: a turn in
-    flight must not round-trip a stale copy of the metadata over it.
+    ``question_key`` names the cap question being answered: a second raise for
+    the same question (a retried answer) leaves the cap as it is. Writes only
+    those keys, like ``set_session_pending_question``, so a turn in flight
+    cannot round-trip a stale copy of the metadata over them.
     """
-    rows = await db.query_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = jsonb_set('
-        "COALESCE(\"metadata\", '{{}}'::jsonb), '{{delegation_cap_usd}}', "
-        "to_jsonb(COALESCE((\"metadata\" ->> 'delegation_cap_usd')::float, 0) "
-        "+ $3::float)) "
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || jsonb_build_object("
+        "'delegation_cap_usd', "
+        "COALESCE((\"metadata\" ->> 'delegation_cap_usd')::float, 0) + $3::float, "
+        "'delegation_cap_raised_for', $4::text) "
         'WHERE "id" = $1 AND "userId" = $2 '
-        "RETURNING (\"metadata\" ->> 'delegation_cap_usd')::float AS cap",
+        "AND (\"metadata\" ->> 'delegation_cap_raised_for') IS DISTINCT FROM $4",
         session_id,
         user_id,
         max(0.0, by_usd),
+        question_key,
     )
-    return float(rows[0]["cap"]) if rows else 0.0
+    rows = await db.query_raw_with_schema(
+        "SELECT (\"metadata\" ->> 'delegation_cap_usd')::float AS cap "
+        'FROM {schema_prefix}"ChatSession" WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+    )
+    return float(rows[0]["cap"] or 0.0) if rows else 0.0
 
 
 async def stop_delegation_at_cap(session_id: str, user_id: str) -> None:
