@@ -66,6 +66,28 @@ def test_is_client_rendered_shell_false_for_normal_content():
     assert _is_client_rendered_shell(html, text) is False
 
 
+def test_is_client_rendered_shell_false_for_short_page_with_script():
+    html = (
+        "<html><head><script>/* 3.5kb analytics payload */\n"
+        + ("ga('send', 'pageview');\n" * 150)
+        + "</script></head>"
+        "<body><h1>Opening Hours</h1><p>Mon-Fri: 9am - 5pm. Sat: 10am - 2pm. Closed Sundays.</p></body></html>"
+    )
+    text = "Opening Hours\n\nMon-Fri: 9am - 5pm. Sat: 10am - 2pm. Closed Sundays."
+    assert _is_client_rendered_shell(html, text) is False
+
+
+def test_is_client_rendered_shell_false_for_content_exceeding_threshold_in_app_div():
+    html = (
+        '<html><body><div id="app"><h1>Changelog</h1><p>'
+        + ("Version update details and notes. " * 15)
+        + "</p></div></body></html>"
+    )
+    text = "Changelog\n\n" + ("Version update details and notes. " * 15)
+    assert len(text.strip()) > 200
+    assert _is_client_rendered_shell(html, text) is False
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_execute_returns_page_metadata_and_truncation():
     response = MagicMock()
@@ -242,3 +264,4 @@ async def test_execute_handles_text_truncation_only():
     assert result.truncated is True
     assert f"truncated to {_MAX_TEXT_CHARS:,} chars" in result.message
     assert f"limit of {_MAX_TEXT_CHARS:,} characters reached" in result.content
+    assert len(result.content) < _MAX_TEXT_CHARS + 200

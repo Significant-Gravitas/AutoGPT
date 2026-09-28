@@ -1,5 +1,6 @@
 """Web fetch tool — safely retrieve public web page content."""
 
+import asyncio
 import logging
 import re
 from html import escape, unescape
@@ -18,7 +19,9 @@ from .models import ErrorResponse, ToolResponseBase, WebFetchResponse
 logger = logging.getLogger(__name__)
 
 # Limits
-_MAX_DOWNLOAD_BYTES = 2_097_152  # 2 MB response body cap to avoid OOM / stream DOS
+_MAX_DOWNLOAD_BYTES = (
+    2_097_152  # 2 MB of the response body is decoded and converted to text
+)
 _MAX_TEXT_CHARS = 100_000  # 100K characters text budget for the model
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
@@ -49,7 +52,11 @@ _SPA_FALLBACK_TEXT = "you need to enable javascript to run this app"
 
 
 class _HTMLCleaner(HTMLParser):
-    """Filter out script, style, noscript, and svg elements from HTML before text extraction."""
+    """Filter out non-content elements (script, style, noscript, svg) before text extraction.
+
+    While html2text ignores script and style contents natively, this cleaner additionally
+    drops noscript and svg elements and strips non-content tags before markdown conversion.
+    """
 
     _DROP_TAGS = frozenset({"script", "style", "noscript", "svg"})
 
@@ -138,19 +145,12 @@ def _extract_title(html: str) -> str | None:
 
 
 def _is_client_rendered_shell(raw_html: str, extracted_text: str) -> bool:
-    """Detect whether a page returned only an empty shell requiring JavaScript."""
-    if len(extracted_text.strip()) >= 600:
+    """Near-empty readable text on a page that carries an SPA mount point or noscript fallback."""
+    if len(extracted_text.strip()) >= 200:
         return False
-    html_lower = raw_html.lower()
-    has_spa_marker = bool(_SPA_SHELL_PATTERNS.search(raw_html)) or (
-        _SPA_FALLBACK_TEXT in html_lower
+    return bool(_SPA_SHELL_PATTERNS.search(raw_html)) or (
+        _SPA_FALLBACK_TEXT in raw_html.lower()
     )
-    has_script_payload = (
-        len(raw_html) > 2048
-        and len(extracted_text.strip()) < 300
-        and "<script" in html_lower
-    )
-    return has_spa_marker or has_script_payload
 
 
 class WebFetchTool(BaseTool):
@@ -241,7 +241,7 @@ class WebFetchTool(BaseTool):
         if is_html:
             title = _extract_title(raw_text)
             if extract_text:
-                text = _html_to_text(raw_text)
+                text = await asyncio.to_thread(_html_to_text, raw_text)
             else:
                 text = raw_text
         else:
