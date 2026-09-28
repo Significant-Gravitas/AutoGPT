@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -68,6 +69,29 @@ describe("ContextPanel", () => {
     expect(
       screen.getByRole("tab", { name: "Work" }).getAttribute("aria-selected"),
     ).toBe("true");
+  });
+
+  test("opens the Work tab in the mobile sheet when the status line or dock asks", async () => {
+    server.use(
+      getGetV2GetSessionMockHandler200({
+        id: "session-1",
+        created_at: "2026-09-28T00:00:00Z",
+        updated_at: "2026-09-28T00:00:00Z",
+        user_id: "u-1",
+        chat_status: "idle",
+        messages: [],
+      }),
+    );
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, isOpen: false },
+    }));
+    render(<ContextPanel sessionId="session-1" mobile />);
+    expect(screen.queryByText("Nothing delegated yet")).toBeNull();
+
+    act(() => useCopilotUIStore.getState().openWorkTab());
+
+    expect(await screen.findByText("Nothing delegated yet")).toBeDefined();
+    expect(screen.getByRole("dialog").textContent).toContain("Work");
   });
 
   test("switches between the artifacts and work tabs from the panel header", async () => {
