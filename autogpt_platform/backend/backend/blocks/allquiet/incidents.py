@@ -6,6 +6,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -120,6 +121,7 @@ class AllQuietCreateIncidentBlock(Block):
             ],
             test_mock={"create_incident": lambda *args, **kwargs: TEST_INCIDENT},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

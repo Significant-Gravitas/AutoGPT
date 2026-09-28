@@ -11,7 +11,6 @@ import {
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { CategoryFilter } from "../CategoryFilter/CategoryFilter";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
-import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { SkillsList } from "../SkillsList/SkillsList";
@@ -27,7 +26,6 @@ export const MainMarkeplacePage = () => {
   const {
     featuredAgents,
     topAgents,
-    featuredCreators,
     category,
     setCategory,
     isLoading,
@@ -119,11 +117,6 @@ export const MainMarkeplacePage = () => {
               </div>
             )}
           </>
-        )}
-        {featuredCreators && (
-          <div className="mb-4">
-            <FeaturedCreators featuredCreators={featuredCreators.creators} />
-          </div>
         )}
         {/* The expert layout invites publishing from under the workflows
             shelf instead, where it cannot outshout the shelf itself. */}

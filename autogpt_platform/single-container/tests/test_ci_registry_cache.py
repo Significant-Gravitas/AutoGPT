@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import unittest
 from pathlib import Path
 
@@ -46,6 +47,18 @@ class RegistryCacheTests(unittest.TestCase):
             self.settings("workflow_dispatch", "refs/heads/one"),
             self.settings("workflow_dispatch", "refs/heads/two"),
         )
+
+    def test_every_bake_target_reads_the_validation_cache(self):
+        bake = (
+            SCRIPT.parents[2] / "autogpt_platform/single-container/docker-bake.hcl"
+        ).read_text(encoding="utf-8")
+        targets = re.findall(r'^target "([^"]+)"', bake, re.MULTILINE)
+        self.assertIn("backend-server-base", targets)
+        settings = self.settings("push")
+        for target in targets:
+            self.assertIn(
+                f"{target}.cache-from=type=registry,ref={IMAGE}:v4-amd64", settings
+            )
 
     def test_validation_cache_reads_are_architecture_scoped(self):
         settings = self.settings("release", "refs/tags/v1")

@@ -13,6 +13,8 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
 
 from backend.copilot.constants import parse_node_id_from_exec_id
+from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
+from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.data.execution import (
     ExecutionContext,
@@ -84,6 +86,15 @@ async def process_reviews(
     if graph_exec_id is not None:
         await _assert_awaiting_review(user_id, graph_exec_id)
 
+    # Read before the answer lands: a turn it wakes claims the held calls.
+    chat_rule_keys = (
+        await held_subject_keys(
+            chat_session_id, [r.node_exec_id for r in reviews if r.chat_rule]
+        )
+        if chat_session_id is not None
+        else {}
+    )
+
     # An auto-approved review takes the original data: approving future runs of
     # a block is not the place to also edit this one's payload.
     updated_reviews = await process_all_reviews_for_execution(
@@ -104,6 +115,16 @@ async def process_reviews(
         updated_reviews,
         graph_exec_id,
     )
+
+    if chat_session_id is not None and chat_rule_keys:
+        await set_chat_rules(
+            chat_session_id,
+            user_id,
+            updated_reviews,
+            {review.node_exec_id: review.chat_rule for review in reviews},
+            chat_rule_keys,
+            {review.node_exec_id: review.chat_rule_scope for review in reviews},
+        )
 
     # A held call finishes on its own: the answer starts the chat's next turn.
     if chat_session_id is not None and updated_reviews:

@@ -1,20 +1,26 @@
 "use client";
 
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { ExpertAvatarPicker } from "@/components/molecules/ExpertAvatarPicker/ExpertAvatarPicker";
 import { cn } from "@/lib/utils";
-import Image from "next/image";
 import { bubbleClassFor } from "../ColorStep/helpers";
-import { NotionAvatarPicker } from "./components/NotionAvatarPicker/NotionAvatarPicker";
 
 interface Props {
   name: string;
+  category: ExpertAvatarRequestCategory;
   color: string | null;
   avatarUrl: string | null;
-  onPick: (avatarUrl: string, colorId: string) => void;
+  onPick: (avatarUrl: string) => void;
 }
 
-// The face and the colour are one answer, and the step opens straight onto the
-// picker: there is no version of an expert without a face.
-export function AvatarStep({ name, color, avatarUrl, onPick }: Props) {
+export function AvatarStep({
+  name,
+  category,
+  color,
+  avatarUrl,
+  onPick,
+}: Props) {
   if (avatarUrl) {
     return (
       <div
@@ -23,20 +29,24 @@ export function AvatarStep({ name, color, avatarUrl, onPick }: Props) {
           bubbleClassFor(color) ?? "border-accent bg-accent/5",
         )}
       >
-        <Image
-          src={avatarUrl}
-          alt={`${name || "Your expert"}'s picture`}
-          width={40}
-          height={40}
-          className="size-10 rounded-full object-cover"
-          unoptimized
+        <ExpertAvatar
+          name={name || "Your expert"}
+          avatarUrl={avatarUrl}
+          size={40}
         />
         <span className="text-sm font-medium text-foreground">
-          {name ? `${name} has a face` : "Picture set"}
+          {name ? `${name} has an avatar` : "Picture set"}
         </span>
       </div>
     );
   }
 
-  return <NotionAvatarPicker name={name} color={color} onPick={onPick} />;
+  return (
+    <ExpertAvatarPicker
+      name={name}
+      category={category}
+      autoGenerate
+      onPick={onPick}
+    />
+  );
 }

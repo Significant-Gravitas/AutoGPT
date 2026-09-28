@@ -168,9 +168,7 @@ function MainArea({
         </FileDropZone>
       </div>
       {!isMobile && sessionId && <ContextPanel sessionId={sessionId} />}
-      {!isMobile && sessionId && (
-        <ArtifactPanel hasExternalClose sessionId={sessionId} />
-      )}
+      {!isMobile && sessionId && <ArtifactPanel sessionId={sessionId} />}
     </div>
   );
 }

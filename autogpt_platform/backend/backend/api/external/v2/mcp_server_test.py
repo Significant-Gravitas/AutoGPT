@@ -21,6 +21,7 @@ from backend.api.external.v2.mcp_server import (
     create_mcp_server,
     protected_resource_metadata,
 )
+from backend.copilot.gate.classifier import Judgement
 from backend.copilot.tools import TOOL_REGISTRY
 
 
@@ -133,12 +134,20 @@ def test_no_tool_is_exposed_unscoped_without_a_stated_reason():
     )
 
 
+@pytest.mark.parametrize(
+    "tool_name, args",
+    [
+        ("delete_folder", {"folder_id": "folder-1"}),
+        # Decided by the workflow it runs; one nobody can read asks.
+        ("run_agent", {"library_agent_id": "agent-1"}),
+    ],
+)
 async def test_a_gated_tool_called_over_mcp_is_parked_for_an_approval_nobody_can_give(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, tool_name: str, args: dict
 ):
     # Pins today's behaviour, pending a design decision: the MCP session is
     # "interactive", so under copilot-auto-mode the gate parks the call.
-    tool = TOOL_REGISTRY["delete_folder"]
+    tool = TOOL_REGISTRY[tool_name]
     _, scopes = tool.allow_external_use
     mocker.patch(
         "backend.api.external.v2.mcp_server.get_access_token",
@@ -147,19 +156,21 @@ async def test_a_gated_tool_called_over_mcp_is_parked_for_an_approval_nobody_can
         ),
     )
     mocker.patch("backend.copilot.gate.is_feature_enabled", return_value=True)
-    mocker.patch("backend.copilot.gate.chat_rules.ask_reason", return_value=None)
-    mocker.patch("backend.copilot.gate.review_store.find_decision", return_value=None)
+    mocker.patch("backend.copilot.gate.chat_rules.rule_for", return_value=None)
+    mocker.patch("backend.copilot.gate.review_store.find_review", return_value=None)
     mocker.patch(
-        "backend.copilot.gate.classify", return_value=(False, "Nobody asked for it.")
+        "backend.copilot.gate.supervise",
+        return_value=Judgement(allowed=False, reason="Nobody asked for it."),
     )
     mocker.patch("backend.copilot.gate.held.remember", return_value=True)
     open_review = mocker.patch(
         "backend.copilot.gate.review_store.open_review", return_value=True
     )
+    mocker.patch.object(type(tool), "gate_subject", return_value=None)
     run = mocker.patch.object(type(tool), "_execute")
 
     output = await _create_tool_handler(tool, [str(s) for s in scopes or []])(
-        ctx=MagicMock(), folder_id="folder-1"
+        ctx=MagicMock(), **args
     )
 
     run.assert_not_called()
