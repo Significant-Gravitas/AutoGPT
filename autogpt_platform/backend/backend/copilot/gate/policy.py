@@ -23,6 +23,10 @@ class Effect(str, Enum):
     UNGATED = "ungated"
 
 
+# What the gate can hold for an answer, and so what a rule can be set on.
+PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+
+
 class Verdict(str, Enum):
     RUN = "run"
     JUDGE = "judge"

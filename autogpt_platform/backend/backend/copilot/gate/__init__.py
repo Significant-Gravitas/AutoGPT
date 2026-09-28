@@ -29,6 +29,7 @@ from .classifier import DecidedBy, supervise
 from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
+    PARKABLE,
     AutopilotMode,
     Effect,
     Verdict,
@@ -58,7 +59,6 @@ _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval.
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
-_PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
 METERED = frozenset({Effect.READ, Effect.WORKSPACE})
 # The user's own word on the subject in this chat outranks the mode's rule.
@@ -123,7 +123,7 @@ async def check_action(
     # Reads, workspace work and the ungated tools run in every mode and can
     # never have been parked, so they skip the review and rule lookups; a paid
     # step can be parked over the ceiling, so it cannot.
-    if effect_for(tool_name) not in _PARKABLE and not estimate_for(tool_name):
+    if effect_for(tool_name) not in PARKABLE and not estimate_for(tool_name):
         return ALLOW
 
     session_id = session.session_id
@@ -160,7 +160,7 @@ async def check_action(
     # workspace work skip the Redis round trip.
     hit = (
         await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
-        if effect in _PARKABLE
+        if effect in PARKABLE
         else None
     )
     rule = hit.rule if hit else None

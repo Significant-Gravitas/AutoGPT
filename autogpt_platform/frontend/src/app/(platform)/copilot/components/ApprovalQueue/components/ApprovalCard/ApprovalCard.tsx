@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
 import {
   type ApprovalItem,
@@ -10,6 +9,7 @@ import {
   isBare,
   isHeldRead,
   reasonLine,
+  ruleSubjectName,
 } from "../../helpers";
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
@@ -44,8 +44,8 @@ export function ApprovalCard({
   const actions = (
     <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
       <ApproveSplitButton
-        label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
-        subjectName={item.subject.name}
+        label={read ? `Release to ${item.reader}` : "Approve"}
+        subjectName={ruleSubjectName(item.subject)}
         expertName={expertName}
         rules={read || item.spend ? [] : item.chatRulesAllowed}
         loading={status === "approving"}

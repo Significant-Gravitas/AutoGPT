@@ -30,7 +30,7 @@ from backend.data.db_accessors import review_db
 
 from .classifier import DecidedBy
 from .headline import Headline, headline_for
-from .policy import DEFAULT_MODE, effect_for, is_irreversible
+from .policy import DEFAULT_MODE, PARKABLE, effect_for, is_irreversible
 from .references import Reference, listed_ids, resolve_references
 
 if TYPE_CHECKING:
@@ -81,7 +81,7 @@ class GateReviewPayload(BaseModel):
     reason_kind: ReasonKind = "mode"
     # Which supervisor stage decided a ``supervisor`` card.
     decided_by: DecidedBy | None = None
-    # Only a card naming a subject can set a rule on it.
+    # The rules this card can set on its subject, a bare tool included.
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
     headline: Headline
     # A money card's estimate, spend so far and ceiling.
@@ -158,9 +158,10 @@ def review_payload(
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
         decided_by=decided_by,
-        # A money card rules on nothing: reads never consult a chat rule.
         chat_rules_allowed=(
-            ["allow", "judge"] if subject is not None and spend is None else []
+            ["allow", "judge"]
+            if _offers_rules(tool_name, subject, spend, reason_kind)
+            else []
         ),
         headline=(
             Headline(ask="Run", object=subject.name)
@@ -307,13 +308,27 @@ def payload_headline(payload: dict[str, Any]) -> str:
     return Headline.model_validate(payload["headline"]).text
 
 
+def _offers_rules(
+    tool_name: str,
+    subject: "GateSubject | None",
+    spend: dict[str, int] | None,
+    reason_kind: ReasonKind,
+) -> bool:
+    # A money card or a held read rules on nothing: neither consults a rule.
+    if spend is not None or reason_kind == "content":
+        return False
+    return (subject.effect if subject else effect_for(tool_name)) in PARKABLE
+
+
 def _payload_subject(
     tool_name: str, args: dict[str, Any], subject: "GateSubject | None"
 ) -> Subject:
     if subject is None:
+        # A rule on a bare tool covers every call of it, so it is named by the
+        # tool's action rather than this call's object.
         return Subject(
             key=tool_name,
-            name=_label(tool_name),
+            name=headline_for(tool_name, {}).ask,
             effect=effect_for(tool_name).value,
             irreversible=is_irreversible(tool_name, args),
         )
@@ -327,11 +342,6 @@ def _payload_subject(
         irreversible=subject.irreversible,
         block_id=ident if kind == "block" else None,
     )
-
-
-def _label(tool_name: str) -> str:
-    label = tool_name.replace("_", " ")
-    return label[:1].upper() + label[1:]
 
 
 def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:

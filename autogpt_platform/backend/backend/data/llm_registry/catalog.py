@@ -80,6 +80,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="unbiased", display_name="Unbiased"),
             CatalogCreator(name="v0", display_name="v0 by Vercel"),
             CatalogCreator(name="xai", display_name="xAI"),
+            CatalogCreator(name="xiaomi", display_name="Xiaomi"),
             CatalogCreator(name="z.ai", display_name="Z.ai"),
         ],
         models=[
@@ -525,8 +526,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=48.0,
-                    output_credits_per_1m=133.5,
+                    input_credits_per_1m=38.61,
+                    output_credits_per_1m=154.305,
                 ),
             ),
             CatalogModel(
@@ -551,14 +552,15 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-25: $0.14/$0.42 per 1M,
-                # cache read $0.0042/1M. OpenRouter reprices this route
-                # continuously (by design); this is the latest snapshot
-                # at PR time, re-checked immediately before merge.
+                # Live OpenRouter rate as of 2026-09-26: $0.30/$1.20 per 1M
+                # (OpenRouter raised this route from $0.14/$0.42). OpenRouter
+                # reprices this route continuously (by design); this is the
+                # latest snapshot at PR time, re-checked immediately before
+                # merge. Flagged by scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=21.0,
-                    output_credits_per_1m=63.0,
+                    input_credits_per_1m=45.0,
+                    output_credits_per_1m=180.0,
                     cache_read_credits_per_1m=0.63,
                 ),
             ),
@@ -895,8 +897,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=2,
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=142.5,
-                    output_credits_per_1m=600.0,
+                    input_credits_per_1m=97.5,
+                    output_credits_per_1m=511.5,
                 ),
             ),
             CatalogModel(
@@ -1192,6 +1194,46 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=1,
                     input_credits_per_1m=30.0,
                     output_credits_per_1m=225.0,
+                ),
+            ),
+            CatalogModel(
+                slug="xiaomi/mimo-v2.6-pro",
+                display_name="MiMo-V2.6-Pro",
+                provider="open_router",
+                creator="xiaomi",
+                supports_tools=True,
+                supports_json_output=True,
+                context_window=1050000,
+                max_output_tokens=131072,
+                price_tier=1,
+                # Live OpenRouter rate as of 2026-09-28: $0.435/$0.87 per 1M,
+                # cache read $0.0036/1M. Xiaomi's flagship MiMo-V2.6 reasoning
+                # model, released 2026-09-22 (unpriced change from V2.5-Pro).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=65.25,
+                    output_credits_per_1m=130.5,
+                    cache_read_credits_per_1m=0.54,
+                ),
+            ),
+            CatalogModel(
+                slug="xiaomi/mimo-v2.6-flash",
+                display_name="MiMo-V2.6-Flash",
+                provider="open_router",
+                creator="xiaomi",
+                supports_tools=True,
+                supports_json_output=True,
+                context_window=1048576,
+                max_output_tokens=131072,
+                price_tier=1,
+                # Live OpenRouter rate as of 2026-09-28: $0.14/$0.28 per 1M,
+                # cache read $0.0028/1M. Xiaomi's cheap high-frequency MiMo-V2.6
+                # tier, released 2026-09-22 (unpriced change from V2.5).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=21.0,
+                    output_credits_per_1m=42.0,
+                    cache_read_credits_per_1m=0.42,
                 ),
             ),
             CatalogModel(
@@ -1878,7 +1920,11 @@ def _build_catalog() -> CatalogPayload:
         routing={
             "copilot_codex": {
                 "fast": {
-                    "standard": "gpt-5.6-luna",
+                    # gpt-6-luna supersedes gpt-5.6-luna as the fast/standard
+                    # default (2026-09). gpt-5.6-luna stays in the catalog
+                    # (still selectable, still billed) -- only the default
+                    # moved.
+                    "standard": "gpt-6-luna",
                     "advanced": "gpt-6-astra",
                 },
                 "thinking": {
