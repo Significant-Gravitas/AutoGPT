@@ -1,5 +1,6 @@
 "use client";
 
+import { PlugSocketIcon } from "@hugeicons/core-free-icons";
 import { groupExpertIntegrations } from "@/app/(platform)/team/[expertId]/components/ExpertIntegrationsSection/ExpertIntegrationGroups";
 import {
   Tooltip,
@@ -7,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
 import {
@@ -23,8 +25,9 @@ interface Props {
 }
 
 /** The services the chat's expert can reach, as a stack of logos: the first
- *  two name themselves on hover and "+N" names the rest. Clicking opens the
- *  integrations tab of the side panel. */
+ *  two name themselves on hover and "+N" names the rest. With none yet, a
+ *  plug icon stands in so the panel's add actions stay one click away.
+ *  Clicking opens the integrations tab of the side panel. */
 export function IntegrationsToggle({ expert, className }: Props) {
   const { integrations } = useExpertIntegrations(expert.id);
   const toggleIntegrationsPanel = useCopilotUIStore(
@@ -39,7 +42,30 @@ export function IntegrationsToggle({ expert, className }: Props) {
   );
 
   const services = groupExpertIntegrations(integrations);
-  if (services.length === 0) return null;
+
+  if (services.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={() => toggleIntegrationsPanel(expert)}
+        aria-label={
+          isActive ? "Hide integrations" : `${expert.name}'s integrations`
+        }
+        aria-pressed={isActive}
+        data-testid="expert-integrations-empty"
+        className={cn(
+          className,
+          "flex size-8 items-center justify-center",
+          isActive && "bg-zinc-100",
+        )}
+      >
+        <Icon
+          icon={PlugSocketIcon}
+          className="!size-4 text-sidebar-foreground/90"
+        />
+      </button>
+    );
+  }
 
   const shown = services.slice(0, VISIBLE_LOGOS);
   const hidden = services.slice(VISIBLE_LOGOS);

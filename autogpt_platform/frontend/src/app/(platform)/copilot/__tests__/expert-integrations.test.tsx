@@ -146,13 +146,17 @@ describe("expert integrations in the chat controls", () => {
     ).toBeDefined();
   });
 
-  it("renders nothing when the expert reaches no integrations", async () => {
+  it("shows a placeholder that still opens the panel when there are none", async () => {
     server.use(getListExpertCredentialsMockHandler([]));
 
     renderControls();
 
-    expect(await screen.findByLabelText("Open files")).toBeDefined();
+    const placeholder = await screen.findByTestId("expert-integrations-empty");
     expect(screen.queryByTestId("expert-integrations")).toBeNull();
+    fireEvent.click(placeholder);
+
+    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(screen.getByLabelText("Hide integrations")).toBeDefined();
   });
 
   it("keeps integrations and actions out of the thread chip", async () => {
