@@ -46,3 +46,20 @@ def stub_user_lookup_in_helpers(monkeypatch):
     client.get_user_by_id = AsyncMock(return_value=user)
     stub = MagicMock(return_value=client)
     monkeypatch.setattr("backend.copilot.tools.helpers.user_db", stub)
+
+
+@pytest.fixture(autouse=True)
+def stub_sub_session_costs(monkeypatch):
+    """Report no logged spend for child sessions unless a test says otherwise.
+
+    The sub-session tools read cost through the ``delegation_db()`` accessor,
+    which falls back to the DatabaseManager RPC client when Prisma is not
+    connected; without a stub every spawn/poll test would wait on that RPC.
+    """
+    client = MagicMock()
+    client.get_session_costs = AsyncMock(return_value={})
+    monkeypatch.setattr(
+        "backend.copilot.tools.sub_session_facts.delegation_db",
+        MagicMock(return_value=client),
+    )
+    return client

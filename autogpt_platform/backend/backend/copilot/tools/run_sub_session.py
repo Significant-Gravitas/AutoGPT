@@ -26,7 +26,7 @@ other turn.
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Callable
 
 from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
@@ -51,10 +51,12 @@ from .expert_delegation import sent_from_metadata
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
+    SubSessionStatus,
     SubSessionStatusResponse,
     ToolResponseBase,
     WorkspaceFileInfoData,
 )
+from .sub_session_facts import RunFacts
 
 logger = logging.getLogger(__name__)
 
@@ -474,6 +476,7 @@ def response_from_outcome(
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
     actor: str = "Subtask",
+    facts: RunFacts | None = None,
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
@@ -483,6 +486,9 @@ def response_from_outcome(
     when the caller already knows it (e.g. ``delegate_to_expert``), so the
     message is built correctly once instead of via a post-hoc string
     substitution against this function's own wording.
+
+    ``facts`` (cost so far, turn start and end) ride on every outcome alike,
+    so a card can show "$0.12 · 2m 14s" whatever state the child is in.
 
     ``completed`` surfaces the aggregated response text, plus a manifest of
     any workspace files the sub wrote (SECRT-2377). Pass ``workspace_files``
@@ -495,79 +501,65 @@ def response_from_outcome(
     the existing turn on its next drain.
     """
     link = _sub_session_link(inner_session_id)
+    run = facts or RunFacts()
+
+    def status(
+        state: SubSessionStatus, message: str, **extra: Any
+    ) -> SubSessionStatusResponse:
+        return SubSessionStatusResponse(
+            message=message,
+            session_id=parent_session_id,
+            status=state,
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+            cost_usd=run.cost_usd,
+            started_at=run.started_at,
+            finished_at=run.finished_at,
+            **extra,
+        )
+
     if outcome == "queued":
-        return SubSessionStatusResponse(
-            message=(
-                f"Target session already had a turn in flight; the message "
-                f"was queued ({result.pending_buffer_length} now pending) and "
-                "will be processed by the existing turn on its next drain. "
-                f"Call tool:get_sub_session_result to poll progress"
-                f"{f' or watch live at {link}' if link else ''}."
-            ),
-            session_id=parent_session_id,
-            status="queued",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
+        return status(
+            "queued",
+            f"Target session already had a turn in flight; the message "
+            f"was queued ({result.pending_buffer_length} now pending) and "
+            "will be processed by the existing turn on its next drain. "
+            f"Call tool:get_sub_session_result to poll progress"
+            f"{f' or watch live at {link}' if link else ''}.",
         )
-
     if outcome == "running":
-        return SubSessionStatusResponse(
-            message=(
-                f"{actor} is still running after {elapsed:.0f}s."
-                f"{f' Watch live at {link}.' if link else ''} "
-                "Call tool:get_sub_session_result (optionally with "
-                "include_progress=true) to wait, poll, or inspect progress."
-            ),
-            session_id=parent_session_id,
-            status="running",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
+        return status(
+            "running",
+            f"{actor} is still running after {elapsed:.0f}s."
+            f"{f' Watch live at {link}.' if link else ''} "
+            "Call tool:get_sub_session_result (optionally with "
+            "include_progress=true) to wait, poll, or inspect progress.",
         )
-
     if outcome == "refused":
         # The turn never started; the tree or the target said why.
-        return SubSessionStatusResponse(
-            message=result.refusal or f"{actor} could not start this task.",
-            session_id=parent_session_id,
-            status="error",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        )
-
+        return status("error", result.refusal or f"{actor} could not start this task.")
     if outcome == "rejected_concurrent_turn_cap":
         # No sub-session record / transcript exists yet — the per-user
         # concurrent-turn cap rejected before ``create_session`` ran.
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
-        return SubSessionStatusResponse(
-            message=running_turn_limit_message(),
-            session_id=parent_session_id,
-            status="error",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        )
-
+        return status("error", running_turn_limit_message())
     if outcome == "failed":
-        return SubSessionStatusResponse(
-            message=f"{actor} failed. See the sub's transcript for details.",
-            session_id=parent_session_id,
-            status="error",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        )
+        return status("error", f"{actor} failed. See the sub's transcript for details.")
+    return _completed(status, result, workspace_files, actor, link)
 
-    # completed — prefer the authoritative listing supplied by the caller;
-    # fall back to mining the tool-call log when it's unavailable.
+
+def _completed(
+    status: Callable[..., SubSessionStatusResponse],
+    result: SessionResult,
+    workspace_files: list[WorkspaceFileInfoData] | None,
+    actor: str,
+    link: str | None,
+) -> SubSessionStatusResponse:
+    """Prefer the authoritative listing supplied by the caller; fall back to
+    mining the tool-call log when it's unavailable."""
     if workspace_files is None:
         workspace_files = _workspace_files_from_tool_calls(result.tool_calls)
     message = f"{actor} completed.{f' View at {link}.' if link else ''}"
@@ -579,15 +571,10 @@ def response_from_outcome(
             f" It wrote {len(workspace_files)} workspace file(s); read them via "
             "read_workspace_file(path=<read_path>) — see sub_workspace_files."
         )
-    return SubSessionStatusResponse(
-        message=message,
-        session_id=parent_session_id,
-        status="completed",
-        sub_session_id=inner_session_id,
-        sub_autopilot_session_id=inner_session_id,
-        sub_autopilot_session_link=link,
+    return status(
+        "completed",
+        message,
         response=result.response_text,
         sub_tool_call_count=len(result.tool_calls),
         sub_workspace_files=workspace_files or None,
-        elapsed_seconds=round(elapsed, 2),
     )

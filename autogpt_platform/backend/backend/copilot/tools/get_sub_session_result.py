@@ -48,6 +48,7 @@ from .run_sub_session import (
     list_sub_workspace_files,
     response_from_outcome,
 )
+from .sub_session_facts import run_facts, turn_finished_at, turn_started_at
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,12 @@ class GetSubSessionResultTool(BaseTool):
             outcome, result = "running", SessionResult()
 
         elapsed = time.monotonic() - started_at
+        facts = await run_facts(
+            user_id, inner_session_id, outcome, turn_started_at(sub)
+        )
+        if terminal_result is not None:
+            # The turn ended before this poll: its end is on record.
+            facts = facts.model_copy(update={"finished_at": turn_finished_at(sub)})
 
         if outcome == "running" and include_progress and not borrowed:
             # Running + caller wants progress — hand-assemble the response
@@ -234,6 +241,8 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_id=inner_session_id,
                     sub_autopilot_session_link=link,
                     elapsed_seconds=round(elapsed, 2),
+                    cost_usd=facts.cost_usd,
+                    started_at=facts.started_at,
                     progress=progress,
                 ),
                 delegate,
@@ -257,6 +266,7 @@ class GetSubSessionResultTool(BaseTool):
                 elapsed=elapsed,
                 workspace_files=workspace_files,
                 actor=actor,
+                facts=facts,
             ),
             delegate,
         )

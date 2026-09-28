@@ -430,6 +430,17 @@ class DelegatedExpertInfo(BaseModel):
     color: str = ""
 
 
+SubSessionStatus = Literal[
+    "running",
+    "completed",
+    "cancelled",
+    "error",
+    "queued",
+    "transferred",
+    "needs_input",
+]
+
+
 class SubSessionStatusResponse(ToolResponseBase):
     """Status / result of a child session started by ``run_sub_session``.
 
@@ -439,9 +450,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     """
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
-    status: Literal[
-        "running", "completed", "cancelled", "error", "queued", "transferred"
-    ] = Field(
+    status: SubSessionStatus = Field(
         description=(
             "Current state of the child session.  ``queued`` means the "
             "target session already had a turn in flight, so the message was "
@@ -449,7 +458,9 @@ class SubSessionStatusResponse(ToolResponseBase):
             "existing turn on its next drain.  ``transferred`` is terminal "
             "for the caller: ``handoff_to_expert`` gave the task away, so no "
             "result is coming back and there is nothing to poll — the "
-            "receiving expert now owns it and reports to the user directly."
+            "receiving expert now owns it and reports to the user directly.  "
+            "``needs_input`` means the child's turn ended on ``ask_question``: "
+            "it is waiting for the user's answer (see ``question``)."
         ),
     )
     sub_session_id: str = Field(
@@ -510,6 +521,29 @@ class SubSessionStatusResponse(ToolResponseBase):
     elapsed_seconds: float | None = Field(
         default=None,
         description="How long the child session has been running (or took).",
+    )
+    cost_usd: float | None = Field(
+        default=None,
+        description=(
+            "What the child session has cost so far, in USD, from the "
+            "platform cost log. None when it could not be read."
+        ),
+    )
+    started_at: datetime | None = Field(
+        default=None,
+        description="When the child's current turn started (UTC).",
+    )
+    finished_at: datetime | None = Field(
+        default=None,
+        description="When the child's turn ended (UTC); None while it runs.",
+    )
+    question: str | None = Field(
+        default=None,
+        description="What the child asked the user, when status=needs_input.",
+    )
+    question_options: list[str] | None = Field(
+        default=None,
+        description="Suggested answers to the first question, when status=needs_input.",
     )
     progress: SubSessionProgressSnapshot | None = Field(
         default=None,

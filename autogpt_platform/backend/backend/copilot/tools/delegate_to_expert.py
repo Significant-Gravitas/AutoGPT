@@ -30,6 +30,7 @@ expert handing work back to one already waiting on it
 
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.api.features.experts.models import Expert
@@ -61,6 +62,7 @@ from .run_sub_session import (
     list_sub_workspace_files,
     response_from_outcome,
 )
+from .sub_session_facts import run_facts
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +188,7 @@ class DelegateToExpertTool(BaseTool):
             return inner_session_id
 
         caller = await self._caller_name(user_id, session.expert_id)
+        started_on = datetime.now(UTC)
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
@@ -227,6 +230,7 @@ class DelegateToExpertTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
             actor=target.name,
+            facts=await run_facts(user_id, inner_session_id, outcome, started_on),
         )
         delegated.message += await build_spawn_state_note()
         return apply_delegated_expert(
