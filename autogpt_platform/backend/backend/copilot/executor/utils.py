@@ -679,6 +679,7 @@ async def schedule_chat_turn(
     is_user_message: bool = True,
     expert_id: str | None = None,
     session_origin: str | None = None,
+    session_source_platform: str | None = None,
     context: dict[str, str] | None = None,
     voice: bool = False,
     file_ids: list[str] | None = None,
@@ -749,6 +750,7 @@ async def schedule_chat_turn(
                     message_length=raw_message_length,
                     expert_id=expert_id,
                     origin=session_origin,
+                    source_platform=session_source_platform,
                 )
 
         if is_duplicate:

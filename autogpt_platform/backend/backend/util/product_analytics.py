@@ -16,10 +16,10 @@ product analytics plan:
                           (``expert_id`` set).  ChatMessage role='user' on a
                           session with interactive origin.
 - ``agent_run_finished``  terminal run outcome (``status``: completed | failed),
-                          with ``trigger`` so failures can be split by how they
-                          started. Includes subgraph and automated runs; filter
-                          to human triggers when comparing outcomes with
-                          run-start events. A top-level expert run is
+                          with ``via`` (the run's triggerSource) so failures can
+                          be split by how they started. Includes subgraph and
+                          automated runs; filter to human triggers when
+                          comparing outcomes with run-start events. A top-level expert run is
                           ``expert_id`` set and ``is_subgraph_run`` false.
 - ``schedule_created``    a schedule was registered (``target``: agent | autopilot |
                           expert).  ActivityEvent category SCHEDULE / schedule.created.
@@ -34,7 +34,7 @@ product analytics plan:
 
 ``agent_run_started`` is not the same as a "task": the ``analytics.*`` views
 count a copilot-started run through the chat turn that asked for it, so a
-task is ``agent_run_started`` with ``trigger`` other than ``copilot``, plus
+task is ``agent_run_started`` with ``via`` other than ``copilot``, plus
 every ``chat_message_sent``. Event names live in
 ``backend.util.posthog_events``; the full list and the task filter are in
 ``docs/platform/tracking-plan.md``.
