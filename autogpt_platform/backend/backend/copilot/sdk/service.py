@@ -4834,7 +4834,6 @@ async def _append_follow_up_warm_context(
     expert_id: str | None,
     current_message: str,
     was_compacted: bool,
-    block_cache: dict[str, str] | None = None,
     pending: "asyncio.Task[str | None] | None" = None,
 ) -> str:
     """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
@@ -4850,41 +4849,37 @@ async def _append_follow_up_warm_context(
     refresh to the same memory owner the first-turn fetch used, so an expert
     chat never refreshes from the user's personal graph.
 
-    ``block_cache`` (a per-stream dict) reuses a block already fetched for the
-    same message on the retry path, so a recompaction retry doesn't pay a
-    second graph round-trip for an identical query. Only POPULATED results are
-    cached: a first call that the substance gate skipped stores nothing, so a
-    retry with ``was_compacted=True`` still performs its forced fetch.
-
     ``pending`` is the task ``_start_follow_up_warm_context`` launched before
     the query was built; joining it here keeps the graph round-trip off
     time-to-first-token. Without one (the retry path, or a turn the starter
-    declined) the fetch runs inline as before.
+    declined) the fetch runs inline.
+
+    The retry reads memory again rather than reuse the first attempt's block.
+    A failed attempt's tool calls do not count as streamed output, so a retry
+    can follow one (a ``memory_forget`` among them), and the rollback takes
+    the forget out of the history the retry sends: a block rendered before it
+    would put the forgotten fact back in front of the model. So every block
+    appended here passed the recall policy's last check (``recall_recheck``)
+    when it was built for this attempt. The block goes into the query only:
+    the transcript records ``current_message``, and
+    ``_strip_ephemeral_memory_from_cli_jsonl`` removes the block from the CLI
+    session file before upload, so no later turn replays it.
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
         await _discard_pending_refresh(pending)
         return query_message
-    cached = block_cache.get(current_message) if block_cache is not None else None
-    if cached:
-        await _discard_pending_refresh(pending)
-        return f"{query_message}\n\n{cached}"
     if pending is not None:
         refreshed = await pending
     else:
         refreshed = await graphiti_context.refresh_warm_context(
             user_id, current_message, expert_id=expert_id, force=was_compacted
         )
-    if refreshed:
-        # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
-        # can scrub THIS block from the persisted transcript without touching a
-        # ``<temporal_context>`` tag the user may have typed. Marked once and
-        # reused: the cached copy and the returned copy MUST be the same string,
-        # or a retry would serve a block the scrub can no longer match.
-        marked = _mark_injected_memory_block(refreshed)
-        if block_cache is not None:
-            block_cache[current_message] = marked
-        return f"{query_message}\n\n{marked}"
-    return query_message
+    if not refreshed:
+        return query_message
+    # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
+    # can scrub THIS block from the persisted transcript without touching a
+    # ``<temporal_context>`` tag the user may have typed.
+    return f"{query_message}\n\n{_mark_injected_memory_block(refreshed)}"
 
 
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
@@ -5865,7 +5860,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # query build here and the retry-time rebuild below, so a follow-up
         # turn that trips prompt-too-long and re-compacts still re-injects
         # memory on its recovery attempt.
-        warm_ctx_block_cache: dict[str, str] = {}
         query_message = await _append_follow_up_warm_context(
             query_message,
             graphiti_enabled=graphiti_enabled,
@@ -5875,7 +5869,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             expert_id=session.expert_id,
             current_message=current_message,
             was_compacted=was_compacted,
-            block_cache=warm_ctx_block_cache,
             pending=pending_warm_ctx,
         )
 
@@ -6072,7 +6065,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # otherwise a follow-up turn that recovers via retry-time
                 # compaction would drop deterministic recall on exactly the
                 # path where it matters most. The force flag comes off this
-                # attempt's own ``state.compaction_stats``.
+                # attempt's own ``state.compaction_stats``, and memory is read
+                # again rather than the first attempt's block reused: the
+                # failed attempt may have run a forget the rollback hides.
                 state.query_message = await _append_follow_up_warm_context(
                     state.query_message,
                     graphiti_enabled=graphiti_enabled,
@@ -6082,7 +6077,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     expert_id=session.expert_id,
                     current_message=current_message,
                     was_compacted=state.compaction_stats is not None,
-                    block_cache=warm_ctx_block_cache,
                 )
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot + guide as the initial attempt.

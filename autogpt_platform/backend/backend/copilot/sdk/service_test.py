@@ -2731,9 +2731,9 @@ class TestAppendFollowUpWarmContext:
 
     @pytest.mark.asyncio
     async def test_unused_pending_refresh_is_cancelled(self):
-        """A started refresh the joiner does not need (cache hit on the retry
-        path, or a gate that closed in between) must be cancelled — a dangling
-        task would outlive the turn and write nothing anyone reads."""
+        """A started refresh the joiner does not use (a gate that closed in
+        between) must be cancelled — a dangling task would outlive the turn
+        and write nothing anyone reads."""
         started = asyncio.Event()
 
         async def _never_finishes(*_args, **_kwargs):
@@ -2756,31 +2756,34 @@ class TestAppendFollowUpWarmContext:
             await started.wait()
             out = await _append_follow_up_warm_context(
                 "q",
-                graphiti_enabled=True,
+                graphiti_enabled=False,
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
                 expert_id=None,
                 current_message="a substantive follow-up request here",
                 was_compacted=False,
-                block_cache={
-                    "a substantive follow-up request here": "<temporal_context>cached</temporal_context>"
-                },
                 pending=pending,
             )
 
-        assert out.endswith("<temporal_context>cached</temporal_context>")
+        assert out == "q"
         assert pending.cancelled()
 
     @pytest.mark.asyncio
-    async def test_retry_reuses_the_cached_block_without_a_second_fetch(self):
+    async def test_retry_reads_memory_again_instead_of_replaying_the_block(self):
         """The retry path rebuilds the query and calls this again for the
-        same message; one graph round-trip should serve both."""
-        cache: dict[str, str] = {}
+        same message, and must read memory again. The failed attempt's tool
+        calls ran before the retry without counting as streamed output, and
+        its rollback takes a ``memory_forget`` among them out of the history
+        the retry sends: replaying the first block would hand the model the
+        fact the user just had forgotten."""
         with patch(
             "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
-            return_value="<temporal_context>fresh</temporal_context>",
+            side_effect=[
+                "<temporal_context>Alice works on Atlas</temporal_context>",
+                "<temporal_context>Bob leads Atlas</temporal_context>",
+            ],
         ) as mock_refresh:
             first = await _append_follow_up_warm_context(
                 "q1",
@@ -2791,7 +2794,6 @@ class TestAppendFollowUpWarmContext:
                 expert_id=None,
                 current_message="what is Sarah working on this week",
                 was_compacted=False,
-                block_cache=cache,
             )
             second = await _append_follow_up_warm_context(
                 "q2",
@@ -2802,20 +2804,21 @@ class TestAppendFollowUpWarmContext:
                 expert_id=None,
                 current_message="what is Sarah working on this week",
                 was_compacted=True,
-                block_cache=cache,
             )
 
-        assert mock_refresh.await_count == 1
-        assert first.endswith("fresh</temporal_context>")
+        assert mock_refresh.await_count == 2
+        assert mock_refresh.await_args.kwargs["force"] is True
+        assert "Alice works on Atlas" in first
         assert second.startswith("q2")
+        assert "Alice works on Atlas" not in second
+        assert "Bob leads Atlas" in second
         assert _INJECTED_MEMORY_MARKER in second
 
     @pytest.mark.asyncio
     async def test_gated_out_first_call_still_allows_a_forced_retry_fetch(self):
-        """A trivial first turn caches NOTHING, so the post-compaction retry
-        (force=True) must still fetch — caching a miss would re-break the
-        headline case this PR fixes."""
-        cache: dict[str, str] = {}
+        """A trivial first attempt fetches nothing, and the post-compaction
+        retry (force=True) must still fetch — a skipped refresh must not
+        re-break the headline case this PR fixes."""
         with patch(
             "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
@@ -2830,7 +2833,6 @@ class TestAppendFollowUpWarmContext:
                 expert_id=None,
                 current_message="continue",
                 was_compacted=False,
-                block_cache=cache,
             )
             out = await _append_follow_up_warm_context(
                 "q2",
@@ -2841,7 +2843,6 @@ class TestAppendFollowUpWarmContext:
                 expert_id=None,
                 current_message="continue",
                 was_compacted=True,
-                block_cache=cache,
             )
 
         assert mock_refresh.await_count == 2
