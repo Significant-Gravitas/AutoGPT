@@ -3253,8 +3253,10 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
     """The helper is proven in isolation above; this pins the CALL SITE — the
     argument wiring in the turn loop, which is where SECRT-2378 actually lived.
     A helper that gates correctly on arguments the loop never passes it would
-    leave every follow-up turn without recall and all the unit tests green."""
-    session = ChatSession.new("user-1", dry_run=False)
+    leave every follow-up turn without recall and all the unit tests green.
+    An expert chat, so the scope the refresh reads is the expert's, as the
+    first turn's was."""
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
     session.title = "already titled"
     session.messages = [
         ChatMessage(role="user", content="first question"),
@@ -3288,8 +3290,11 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
             "backend.copilot.baseline.service.normalize_model_for_transport",
             new=MagicMock(side_effect=lambda model, cfg=None: model),
         ),
+        # Where the turn loop looks it up: patched at its source module it
+        # would still run, and with an E2B key configured locally it would
+        # reach E2B for the expert's box.
         patch(
-            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            "backend.copilot.baseline.service.get_or_create_sandbox",
             new=AsyncMock(return_value=None),
         ),
         patch(
@@ -3325,7 +3330,7 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
 
     assert seen["graphiti_enabled"] is True
     assert seen["user_id"] == "user-1"
-    assert seen["expert_id"] == session.expert_id
+    assert seen["expert_id"] == "expert-1"
     assert seen["is_user_message"] is True
     # The pre-drain count is what distinguishes turn 1 (already loaded warm
     # context with the precise recipe) from later turns (this refresh): two
