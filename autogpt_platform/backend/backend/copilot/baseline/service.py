@@ -54,6 +54,7 @@ from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context_marker import append_injected_memory_block
 from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.local_context_probe import (
@@ -2188,8 +2189,10 @@ async def stream_chat_completion_baseline(
 
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.
-    # warm_ctx is already wrapped in <temporal_context>.
-    # Appended AFTER user_context so <user_context> stays at the very start.
+    # warm_ctx is already wrapped in <temporal_context>: the first turn's
+    # fetch, or a follow-up's refresh. Appended AFTER user_context so
+    # <user_context> stays at the very start, and stamped with the injection
+    # mark the SDK engine's blocks carry (``graphiti/context_marker.py``).
     # Reverse scan so we update the current turn's user message, not the
     # oldest one when pending messages were drained.
     if warm_ctx:
@@ -2197,10 +2200,11 @@ async def stream_chat_completion_baseline(
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
-                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                    msg["content"] = append_injected_memory_block(existing, warm_ctx)
                 break
-        # Do NOT append warm_ctx to user_message_for_transcript — it would
-        # persist stale temporal context into the transcript for future turns.
+        # Model input only: NOT the stored user message (``inject_user_context``
+        # never takes it) nor ``user_message_for_transcript``, so no later
+        # turn reads it again, a fact forgotten after this turn included.
 
     # Inject the per-turn ``<builder_context>`` prefix when the session is
     # bound to a graph via ``metadata.builder_graph_id``.  Runs on every
@@ -2209,9 +2213,9 @@ async def stream_chat_completion_baseline(
     # carries the updated nodes/links. Only version + nodes + links here;
     # the static guide + graph id live in the system prompt via
     # ``build_builder_system_prompt_suffix`` (session-stable, prompt-cached).
-    # Prepended AFTER any <user_context>/<memory_context>/<env_context> blocks
-    # — same trust tier as those server-injected prefixes. Not persisted to
-    # the transcript: the snapshot is stale-by-definition after the turn ends.
+    # Prepended AFTER any <user_context>/<env_context> blocks — same trust
+    # tier as those server-injected prefixes. Not persisted to the
+    # transcript: the snapshot is stale-by-definition after the turn ends.
     if is_user_message and session.metadata.builder_graph_id:
         builder_block = await build_builder_context_turn_prefix(session, user_id)
         if builder_block:

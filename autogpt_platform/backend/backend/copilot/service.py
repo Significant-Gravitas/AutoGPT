@@ -160,9 +160,14 @@ def _get_langfuse():
 # (which writes the tag). Keeping both in sync prevents drift.
 USER_CONTEXT_TAG = "user_context"
 
-# Tag name for the Graphiti warm-context block prepended on first turn.
-# Like USER_CONTEXT_TAG, this is server-injected — user-supplied occurrences
-# must be stripped before the message reaches the LLM.
+# Tag name the SDK engine wrapped the first turn's Graphiti warm context in
+# when it still stored that block in the first user message. Warm context now
+# goes into each turn's model input only, as a marked ``<temporal_context>``
+# block (``graphiti/context_marker.py``), and nothing writes this tag any
+# more. It stays server-only: user-supplied occurrences are stripped before
+# the message reaches the LLM, and the display strip hides it on messages
+# stored before the change (``copilot/first_turn_memory_backfill.py`` removes
+# it from them).
 MEMORY_CONTEXT_TAG = "memory_context"
 
 # Tag name for the environment context block prepended on first turn.
@@ -558,7 +563,6 @@ async def inject_user_context(
     message: str,
     session_id: str,
     session_messages: list[ChatMessage],
-    warm_ctx: str = "",
     env_ctx: str = "",
     budget_ctx: str = "",
     session_ctx: str = "",
@@ -569,11 +573,19 @@ async def inject_user_context(
     """Prepend trusted context blocks to the first user message.
 
     Builds the first-turn message in this order (all optional):
-    ``<memory_context>`` → ``<env_context>`` → ``<user_context>`` → sanitised user text.
+    ``<available_skills>`` → expert blocks → ``<session_context>`` →
+    ``<budget_context>`` → ``<env_context>`` → ``<user_context>`` → sanitised
+    user text.
 
     Updates the in-memory session_messages list and persists the prefixed
     content to the DB so resumed sessions and page reloads retain
     personalisation.
+
+    Warm context (Graphiti memory) is deliberately not among these blocks.
+    Everything here is stored and replayed on every later turn, and a fact the
+    user forgets later in the session must not be: the engines append each
+    turn's memory block to that turn's model input only
+    (``graphiti/context_marker.py``).
 
     A hire's kickoff turn (the server-written message that opens the
     onboarding card) gets neither ``<user_context>`` nor the teammate roster.
@@ -599,11 +611,6 @@ async def inject_user_context(
         message: The raw user-supplied message text (may contain attacker tags).
         session_id: Used as the DB key for persisting the updated content.
         session_messages: The in-memory message list for the current session.
-        warm_ctx: Trusted Graphiti warm-context string to inject as a
-            ``<memory_context>`` block before the ``<user_context>`` prefix.
-            Passed as server-side data — never sanitised (caller is responsible
-            for ensuring the value is not user-supplied).  Empty string → block
-            is omitted.
         env_ctx: Trusted environment context string to inject as an
             ``<env_context>`` block (e.g. working directory).  Prepended AFTER
             ``sanitize_user_supplied_context`` runs so the server-injected block
@@ -695,11 +702,10 @@ async def inject_user_context(
             f"<{BUDGET_CONTEXT_TAG}>\n{budget_ctx}\n</{BUDGET_CONTEXT_TAG}>\n\n"
             + final_message
         )
-    # Prepend the per-session follow-up awareness block.  Sits between
-    # budget_context and memory_context so memory still ends up at the very
-    # top of the message (highest-priority context).  Like env/budget, this
-    # is server-injected so the sanitizer ran before this prepend; user-typed
-    # ``<session_context>`` blocks were stripped above.
+    # Prepend the per-session follow-up awareness block, above
+    # budget_context.  Like env/budget, this is server-injected so the
+    # sanitizer ran before this prepend; user-typed ``<session_context>``
+    # blocks were stripped above.
     if session_ctx:
         final_message = (
             f"<{SESSION_CONTEXT_TAG}>\n{session_ctx}\n</{SESSION_CONTEXT_TAG}>\n\n"
@@ -715,24 +721,12 @@ async def inject_user_context(
     )
     if expert_ctx:
         final_message = expert_ctx + final_message
-    # Prepend Graphiti warm context as a <memory_context> block AFTER
-    # sanitization so the trusted server-injected block is never stripped by
-    # ``sanitize_user_supplied_context``.  Memory must land BELOW
-    # ``<available_skills>`` in the final message because Graphiti
-    # recomputes the warm context every turn via a similarity search keyed
-    # on the current message — if it sat in the cached prefix it would
-    # defeat the per-user skill cache below.
-    if warm_ctx:
-        final_message = (
-            f"<{MEMORY_CONTEXT_TAG}>\n{warm_ctx}\n</{MEMORY_CONTEXT_TAG}>\n\n"
-            + final_message
-        )
     # Prepend the per-user skill index as the OUTERMOST <available_skills>
     # block.  The cache breakpoint regex matches at
     # ``</available_skills>\n\n`` so ONLY the skill index sits on the
-    # cached side; memory_context / session_context / budget_context /
-    # env_context / user_context / user text all land on the variable side
-    # (correct — they're per-turn dynamic).
+    # cached side; session_context / budget_context / env_context /
+    # user_context / user text all land on the variable side (correct —
+    # they're per-turn dynamic).
     if skills_ctx:
         final_message = (
             f"<{SKILLS_CONTEXT_TAG}>\n{skills_ctx}\n</{SKILLS_CONTEXT_TAG}>\n\n"

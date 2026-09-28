@@ -41,6 +41,11 @@ from graphiti_core.edges import EntityEdge
 
 from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.graphiti import context_refresh
+from backend.copilot.graphiti.context_marker import (
+    INJECTED_MEMORY_BLOCK_RE,
+    INJECTED_MEMORY_MARKER,
+    strip_injected_memory_text,
+)
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamCompactionProgress,
@@ -62,13 +67,10 @@ from backend.util import json
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
-    _INJECTED_MEMORY_BLOCK_RE,
-    _INJECTED_MEMORY_MARKER,
     _MAX_STREAM_ATTEMPTS,
     _build_query_message,
     _maybe_prepend_skills_update,
     _reduce_context,
-    _strip_injected_memory_text,
 )
 from .transcript import compact_transcript, validate_transcript
 from .transcript_builder import TranscriptBuilder
@@ -1333,7 +1335,7 @@ class TestFollowUpWarmContextCallSite:
         assert len(queries) == 1
         assert queries[0].endswith("</temporal_context>")
         assert "Alice works on Atlas" in queries[0]
-        assert _INJECTED_MEMORY_MARKER in queries[0]
+        assert INJECTED_MEMORY_MARKER in queries[0]
 
     @pytest.mark.asyncio
     async def test_refresh_is_in_flight_while_the_query_is_built(self):
@@ -1454,7 +1456,7 @@ class TestFollowUpWarmContextCallSite:
 
         assert sent_at[0] - ready_at[0] < 0.3
         assert len(queries) == 1 and "the executor runs on k3s" in queries[0]
-        assert _INJECTED_MEMORY_MARKER in queries[0]
+        assert INJECTED_MEMORY_MARKER in queries[0]
         assert "refresh late" not in caplog.text
 
     @pytest.mark.asyncio
@@ -1644,10 +1646,10 @@ class TestFollowUpWarmContextCallSite:
         assert "violet-913" in first
         assert "violet-913" not in retry
         assert "Hector supervises the Nova recovery" in retry
-        assert len(_INJECTED_MEMORY_BLOCK_RE.findall(retry)) == 1
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(retry)) == 1
         assert retry.count("<temporal_context") == 1
-        asked = _strip_injected_memory_text(retry)
-        assert asked == _strip_injected_memory_text(first)
+        asked = strip_injected_memory_text(retry)
+        assert asked == strip_injected_memory_text(first)
         assert "retrieve the Nova recovery details" in asked
 
     @pytest.mark.asyncio
@@ -1676,6 +1678,411 @@ class TestFollowUpWarmContextCallSite:
 
         assert experts == ["expert-1"]
         assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
+
+
+_NOVA_FORGOTTEN = "the Nova recovery password is violet-913"
+_NOVA_KEPT = "Hector supervises the Nova recovery"
+
+
+def _nova_block(*, forgotten: bool) -> str:
+    """Warm context as graphiti renders it; once the forget has run, the
+    recall policy no longer returns the forgotten fact."""
+    facts = [_NOVA_KEPT] if forgotten else [_NOVA_FORGOTTEN, _NOVA_KEPT]
+    lines = "".join(f"  - {fact}\n" for fact in facts)
+    return f"<temporal_context>\n<FACTS>\n{lines}</FACTS>\n</temporal_context>"
+
+
+class TestFirstTurnWarmContextIsEphemeral:
+    """The first turn's warm context, driven through the REAL generator.
+
+    The first turn's block used to be written, unmarked, into the stored
+    first user message and so into the CLI session file: every later turn
+    read it again, a fact forgotten mid-session included. It now reaches the
+    model input only, marked like a follow-up refresh. These pin every place
+    it could still land: the stored message, the query, the uploaded CLI
+    session file, the next turn's resume and its history rebuilt from the
+    database, and a retry of the first turn.
+    """
+
+    @staticmethod
+    def _first_turn(message: str) -> ChatSession:
+        return ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            # Titled, so the turn does not generate a title over the network.
+            title="already titled",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[ChatMessage(role="user", content=message, sequence=0)],
+        )
+
+    @staticmethod
+    def _second_turn(first_content: str, message: str) -> ChatSession:
+        """Turn 2 of the same session, as the database holds it after turn 1."""
+        return ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            title="already titled",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[
+                ChatMessage(role="user", content=first_content, sequence=0),
+                ChatMessage(role="assistant", content="done", sequence=1),
+                ChatMessage(role="user", content=message, sequence=2),
+            ],
+        )
+
+    @staticmethod
+    def _cli_file(queries: list[str], prior: bytes = b""):
+        """``read_cli_session_from_disk`` as the CLI leaves it: the session it
+        resumed from, plus the query it was last sent, recorded as sent."""
+
+        def _read(*_args, **_kwargs) -> bytes:
+            entry = {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": queries[-1]}],
+                },
+            }
+            return prior + json.dumps(entry).encode() + b"\n"
+
+        return _read
+
+    async def _run(
+        self,
+        session: ChatSession,
+        client_factory,
+        *,
+        first_block: str | None,
+        refresh,
+        extra: list[tuple[str, dict]] | None = None,
+    ) -> MagicMock:
+        """Drive one turn. Returns the ``chat_db`` stand-in that saw every
+        write ``inject_user_context`` made to a stored message's content."""
+        db = MagicMock()
+        db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=None,
+            client_side_effect=client_factory,
+        )
+        patches += [
+            (
+                "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+                dict(new=refresh),
+            ),
+            # The first turn's setup fetch (``_fetch_graphiti_context``).
+            (
+                f"{_SVC}.fetch_warm_context",
+                dict(new=AsyncMock(return_value=first_block)),
+            ),
+            (f"{_SVC}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
+            (f"{_SVC}._graphiti_ingest_allowed", dict(return_value=False)),
+            # The rest of the first turn's prefix, without its network reads.
+            (
+                f"{_SVC}.build_session_context",
+                dict(
+                    new=AsyncMock(
+                        return_value="session_id: test-session-id; pending_followups: 0"
+                    )
+                ),
+            ),
+            (
+                "backend.copilot.service.build_expert_context",
+                dict(new=AsyncMock(return_value="")),
+            ),
+            ("backend.copilot.service.chat_db", dict(return_value=db)),
+            *(extra or []),
+        ]
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message=session.messages[-1].content,
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+        assert not [e for e in events if isinstance(e, StreamError)]
+        return db
+
+    @staticmethod
+    async def _no_refresh(user_id, message, *, expert_id=None, force=False):
+        return None
+
+    @staticmethod
+    def _stored(db: MagicMock) -> list[str]:
+        """Every content ``inject_user_context`` wrote to a stored message."""
+        return [
+            call.args[2]
+            for call in db.update_message_content_by_sequence.call_args_list
+        ]
+
+    @pytest.mark.asyncio
+    async def test_the_first_block_reaches_the_model_input_only(self):
+        """Turn 1: the block is in the query, once and marked; it is in
+        neither the stored first message nor the uploaded CLI session file."""
+        session = self._first_turn("what is Alice working on")
+        queries: list[str] = []
+        upload = AsyncMock()
+
+        db = await self._run(
+            session,
+            TestFollowUpWarmContextCallSite._clients(queries),
+            first_block=_ALICE_BLOCK,
+            refresh=self._no_refresh,
+            extra=[
+                (
+                    f"{_SVC}.read_cli_session_from_disk",
+                    dict(new=self._cli_file(queries)),
+                ),
+                (f"{_SVC}.upload_transcript", dict(new=upload)),
+            ],
+        )
+
+        assert len(queries) == 1
+        sent = queries[0]
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(sent)) == 1
+        assert sent.count("<temporal_context") == 1
+        assert INJECTED_MEMORY_MARKER in sent
+        assert "Alice works on Atlas" in sent
+        assert "memory_context" not in sent
+
+        stored = self._stored(db)
+        assert stored, "the first turn persisted its prefixed message"
+        for content in [*stored, session.messages[0].content or ""]:
+            assert "what is Alice working on" in content
+            assert "Alice works on Atlas" not in content
+            assert "temporal_context" not in content
+            assert "memory_context" not in content
+
+        assert upload.await_args is not None
+        uploaded = upload.await_args.kwargs["content"]
+        assert b"what is Alice working on" in uploaded
+        assert b"Alice works on Atlas" not in uploaded
+        assert b"temporal_context" not in uploaded
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("resume", [True, False], ids=["resume", "rebuilt"])
+    async def test_a_forget_between_turns_leaves_no_copy_for_turn_two(self, resume):
+        """Turn 1 recalls a fact, the user forgets it, turn 2 runs. Whether
+        turn 2 resumes the CLI session turn 1 uploaded or rebuilds its
+        history from the database, the forgotten fact is nowhere the model
+        reads: not in what it resumes from, not in the query, and not in the
+        session file turn 2 uploads. The unrelated fact still comes back
+        through turn 2's own refresh."""
+        forgotten: list[bool] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            return _nova_block(forgotten=bool(forgotten))
+
+        turn_one = self._first_turn("retrieve the Nova recovery details")
+        queries_one: list[str] = []
+        upload_one = AsyncMock()
+        db = await self._run(
+            turn_one,
+            TestFollowUpWarmContextCallSite._clients(queries_one),
+            first_block=_nova_block(forgotten=False),
+            refresh=_refresh,
+            extra=[
+                (
+                    f"{_SVC}.read_cli_session_from_disk",
+                    dict(new=self._cli_file(queries_one)),
+                ),
+                (f"{_SVC}.upload_transcript", dict(new=upload_one)),
+            ],
+        )
+        assert _NOVA_FORGOTTEN in queries_one[0]
+        assert upload_one.await_args is not None
+        uploaded_one = upload_one.await_args.kwargs["content"]
+
+        forgotten.append(True)
+
+        turn_two = self._second_turn(
+            turn_one.messages[0].content or "", "what do you know about Nova now"
+        )
+        resumed_from: list[str] = []
+
+        def _restore(cli_restore, *_args, **_kwargs):
+            content = cli_restore.content.decode()
+            resumed_from.append(content)
+            return content, True
+
+        download = (
+            TranscriptDownload(content=uploaded_one, message_count=2, mode="sdk")
+            if resume
+            else None
+        )
+        queries_two: list[str] = []
+        upload_two = AsyncMock()
+        await self._run(
+            turn_two,
+            TestFollowUpWarmContextCallSite._clients(queries_two),
+            first_block=None,
+            refresh=_refresh,
+            extra=[
+                (
+                    f"{_SVC}.download_transcript",
+                    dict(new=AsyncMock(return_value=download)),
+                ),
+                (f"{_SVC}.process_cli_restore", dict(new=_restore)),
+                (
+                    f"{_SVC}.read_cli_session_from_disk",
+                    dict(new=self._cli_file(queries_two, prior=uploaded_one)),
+                ),
+                (f"{_SVC}.upload_transcript", dict(new=upload_two)),
+            ],
+        )
+
+        assert len(resumed_from) == (1 if resume else 0)
+        assert len(queries_two) == 1
+        sent = queries_two[0]
+        if not resume:
+            # The rebuilt history carries turn 1's stored message.
+            assert "retrieve the Nova recovery details" in sent
+        read_on_turn_two = [
+            *resumed_from,
+            sent,
+            *(m.content or "" for m in turn_two.messages),
+        ]
+        for text in read_on_turn_two:
+            assert "violet-913" not in text
+        assert _NOVA_KEPT in sent
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(sent)) == 1
+        assert upload_two.await_args is not None
+        assert b"violet-913" not in upload_two.await_args.kwargs["content"]
+        for content in self._stored(db):
+            assert "violet-913" not in content
+
+    @pytest.mark.asyncio
+    async def test_the_next_turn_does_not_see_the_first_block(self):
+        """Turn 2 resumes the session file turn 1 uploaded and recalls
+        nothing itself: the first turn's fact reaches it from nowhere."""
+        turn_one = self._first_turn("what is Alice working on")
+        queries_one: list[str] = []
+        upload_one = AsyncMock()
+        await self._run(
+            turn_one,
+            TestFollowUpWarmContextCallSite._clients(queries_one),
+            first_block=_ALICE_BLOCK,
+            refresh=self._no_refresh,
+            extra=[
+                (
+                    f"{_SVC}.read_cli_session_from_disk",
+                    dict(new=self._cli_file(queries_one)),
+                ),
+                (f"{_SVC}.upload_transcript", dict(new=upload_one)),
+            ],
+        )
+        assert upload_one.await_args is not None
+        uploaded_one = upload_one.await_args.kwargs["content"]
+        resumed_from: list[str] = []
+
+        def _restore(cli_restore, *_args, **_kwargs):
+            content = cli_restore.content.decode()
+            resumed_from.append(content)
+            return content, True
+
+        turn_two = self._second_turn(turn_one.messages[0].content or "", "thanks")
+        queries_two: list[str] = []
+        await self._run(
+            turn_two,
+            TestFollowUpWarmContextCallSite._clients(queries_two),
+            first_block=None,
+            refresh=self._no_refresh,
+            extra=[
+                (
+                    f"{_SVC}.download_transcript",
+                    dict(
+                        new=AsyncMock(
+                            return_value=TranscriptDownload(
+                                content=uploaded_one, message_count=2, mode="sdk"
+                            )
+                        )
+                    ),
+                ),
+                (f"{_SVC}.process_cli_restore", dict(new=_restore)),
+            ],
+        )
+
+        assert resumed_from and "what is Alice working on" in resumed_from[0]
+        assert "Alice works on Atlas" not in resumed_from[0]
+        assert len(queries_two) == 1
+        assert "Alice works on Atlas" not in queries_two[0]
+        assert "temporal_context" not in queries_two[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure", ["raised", "reported"], ids=["ECONNRESET", "rate-limit"]
+    )
+    async def test_a_first_turn_retry_reads_memory_again_after_a_forget(self, failure):
+        """The first send carries the first turn's block; the attempt runs a
+        ``memory_forget`` and fails transiently; the retry must read memory
+        again rather than resend the first block, even for a message the
+        substance gate would skip (a first turn always recalls)."""
+        forgotten: list[bool] = []
+        forces: list[bool] = []
+        queries: list[str] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            forces.append(force)
+            return _nova_block(forgotten=bool(forgotten))
+
+        await self._run(
+            self._first_turn("nova recovery"),
+            TestFollowUpWarmContextCallSite._forget_then_fail(
+                queries, forgotten, failure
+            ),
+            first_block=_nova_block(forgotten=False),
+            refresh=_refresh,
+            extra=[(f"{_SVC}._compute_transient_backoff", dict(return_value=0))],
+        )
+
+        assert forgotten and len(queries) == 2
+        first, retry = queries
+        assert _NOVA_FORGOTTEN in first
+        assert forces == [True]
+        assert _NOVA_FORGOTTEN not in retry
+        assert _NOVA_KEPT in retry
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(retry)) == 1
+        assert retry.count("<temporal_context") == 1
+        assert strip_injected_memory_text(retry) == strip_injected_memory_text(first)
+        assert "nova recovery" in strip_injected_memory_text(retry)
+
+    @pytest.mark.asyncio
+    async def test_a_first_turn_overflow_retry_reads_memory_again(self):
+        """Prompt too long on the first send: the rebuilt query gets a block
+        read for it (forced, as the first turn's own read), not the first
+        send's."""
+        forces: list[bool] = []
+        queries: list[str] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            forces.append(force)
+            return _BOB_BLOCK
+
+        await self._run(
+            self._first_turn("hi"),
+            TestFollowUpWarmContextCallSite._clients(queries, fail_first=True),
+            first_block=_ALICE_BLOCK,
+            refresh=_refresh,
+        )
+
+        assert forces == [True]
+        assert len(queries) == 2
+        assert "Alice works on Atlas" in queries[0]
+        assert "Bob leads Atlas" in queries[1]
+        assert "Alice works on Atlas" not in queries[1]
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(queries[1])) == 1
 
 
 class TestStreamChatCompletionRetryIntegration:

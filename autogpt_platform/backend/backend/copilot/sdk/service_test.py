@@ -14,6 +14,12 @@ import pytest
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.graphiti.context_marker import (
+    INJECTED_MEMORY_MARKER,
+    INJECTED_MEMORY_NONCE,
+    append_injected_memory_block,
+    mark_injected_memory_block,
+)
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
@@ -23,18 +29,15 @@ from .compaction import CompactionStats
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
-    _INJECTED_MEMORY_MARKER,
-    _INJECTED_MEMORY_NONCE,
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
-    _append_follow_up_warm_context,
+    _append_warm_context,
     _build_system_prompt_value,
     _close_codex_gateway_for_finally,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
-    _mark_injected_memory_block,
     _normalize_model_name,
     _prepare_file_attachments,
     _raise_deferred_codex_cleanup_error,
@@ -2353,7 +2356,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
 
     def test_strips_marked_injected_block(self):
         # The injector stamps the sentinel; the stripper must remove exactly it.
-        block = _mark_injected_memory_block(
+        block = mark_injected_memory_block(
             "<temporal_context>\n<FACTS>\n  - stale fact\n</FACTS>\n</temporal_context>"
         )
         line = self._user_line(f"deploy staging now\n\n{block}")
@@ -2384,7 +2387,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
     def test_preserves_block_marked_with_a_foreign_nonce(self):
         # Only THIS process's nonce is scrubbed — a stamp from anywhere else
         # (another process, a replayed transcript) is treated as user content.
-        foreign = _INJECTED_MEMORY_MARKER.replace(_INJECTED_MEMORY_NONCE, "deadbeef")
+        foreign = INJECTED_MEMORY_MARKER.replace(INJECTED_MEMORY_NONCE, "deadbeef")
         block = f"<temporal_context {foreign}>stale</temporal_context>"
         line = self._user_line(f"the user turn\n\n{block}")
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
@@ -2394,10 +2397,10 @@ class TestStripEphemeralMemoryFromCliJsonl:
         # emits attributes or padding, an exact-string stamp would silently
         # no-op — and an unstamped block is never scrubbed, so stale memory
         # replays on --resume. Match the tag by name so that can't happen.
-        block = _mark_injected_memory_block(
+        block = mark_injected_memory_block(
             '<temporal_context role="memory">\n  - stale fact\n</temporal_context>'
         )
-        assert _INJECTED_MEMORY_MARKER in block
+        assert INJECTED_MEMORY_MARKER in block
         assert 'role="memory"' in block, "producer attributes must survive"
 
         line = self._user_line(f"deploy staging now\n\n{block}")
@@ -2405,30 +2408,33 @@ class TestStripEphemeralMemoryFromCliJsonl:
         assert b"stale fact" not in result
         assert b"deploy staging now" in result
 
-    def test_unstampable_block_is_logged_rather_than_passed_silently(self, caplog):
-        # Belt and braces: if the tag NAME itself ever changes, the block is
-        # returned unharmed (memory must never break chat) but an operator
-        # gets a signal instead of silent transcript growth.
+    def test_unstampable_block_is_dropped_and_logged(self, caplog):
+        # Belt and braces: if the tag NAME itself ever changes, the block
+        # cannot carry the mark, so nothing could scrub it from the uploaded
+        # transcript, where it would replay a forgotten fact on every later
+        # turn. The turn goes on without it (memory must never break chat)
+        # and an operator gets a signal.
         block = "<memory_context>x</memory_context>"
         with caplog.at_level(logging.WARNING):
-            assert _mark_injected_memory_block(block) == block
+            assert mark_injected_memory_block(block) is None
+            assert append_injected_memory_block("the query", block) == "the query"
         assert "temporal_context" in caplog.text
 
     def test_a_user_block_carrying_this_process_nonce_is_scrubbed(self):
         # The nonce is not a proof of authorship: the model reads it in the
         # prompt, and a block carrying it is removed whoever wrote it. The
-        # documented limit of the scrub (``_INJECTED_MEMORY_NONCE``).
-        pasted = f"<temporal_context {_INJECTED_MEMORY_MARKER}>mine</temporal_context>"
+        # documented limit of the scrub (``INJECTED_MEMORY_NONCE``).
+        pasted = f"<temporal_context {INJECTED_MEMORY_MARKER}>mine</temporal_context>"
         line = self._user_line(f"my notes\n\n{pasted}")
         result = _strip_ephemeral_memory_from_cli_jsonl(line)
         assert b"mine" not in result
         assert b"my notes" in result
 
     def test_marker_carries_a_random_nonce(self):
-        assert _INJECTED_MEMORY_NONCE not in ("", "1")
-        assert len(_INJECTED_MEMORY_NONCE) >= 16
-        assert _INJECTED_MEMORY_MARKER == (
-            f'data-agpt-injected="{_INJECTED_MEMORY_NONCE}"'
+        assert INJECTED_MEMORY_NONCE not in ("", "1")
+        assert len(INJECTED_MEMORY_NONCE) >= 16
+        assert INJECTED_MEMORY_MARKER == (
+            f'data-agpt-injected="{INJECTED_MEMORY_NONCE}"'
         )
 
     def test_untouched_entry_is_byte_identical(self):
@@ -2442,8 +2448,8 @@ class TestStripEphemeralMemoryFromCliJsonl:
         # and intentional blank-line runs must survive untouched — only the
         # block plus the "\n\n" separator the injector added is removed.
         user_text = "  indented\n\n\n\nkeep blanks  "
-        block = _mark_injected_memory_block("<temporal_context>x</temporal_context>")
-        # Exactly how _append_follow_up_warm_context builds it: text + "\n\n" + block.
+        block = mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        # Exactly how _append_warm_context builds it: text + "\n\n" + block.
         line = self._user_line(f"{user_text}\n\n{block}")
         result = _strip_ephemeral_memory_from_cli_jsonl(line)
         assert b"temporal_context" not in result
@@ -2451,7 +2457,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         assert restored == user_text
 
     def test_drops_now_empty_text_block_keeps_siblings(self):
-        block = _mark_injected_memory_block(
+        block = mark_injected_memory_block(
             "<temporal_context>only memory</temporal_context>"
         )
         content = [
@@ -2472,7 +2478,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
     def test_message_that_is_only_injected_block_is_left_intact(self):
         # Stripping would empty the content — Anthropic rejects that on resume,
         # so the original line is kept verbatim rather than emitted empty.
-        block = _mark_injected_memory_block(
+        block = mark_injected_memory_block(
             "<temporal_context>only memory</temporal_context>"
         )
         line = self._user_line(block)
@@ -2494,7 +2500,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         # The string-content branch is a real CLI shape but every other test
         # here uses list-form blocks, so this path could strand injected
         # memory in the transcript with the whole suite green.
-        block = _mark_injected_memory_block(
+        block = mark_injected_memory_block(
             "<temporal_context>\n  - stale fact\n</temporal_context>"
         )
         line = self._user_line_str(f"deploy staging now\n\n{block}")
@@ -2508,15 +2514,15 @@ class TestStripEphemeralMemoryFromCliJsonl:
     def test_bare_string_that_is_only_the_block_is_left_intact(self):
         # Emptying the content is what --resume rejects, so this fails safe
         # by keeping the line rather than emitting "".
-        block = _mark_injected_memory_block(
+        block = mark_injected_memory_block(
             "<temporal_context>only memory</temporal_context>"
         )
         line = self._user_line_str(block)
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
 
     def test_round_trips_with_the_injector(self):
-        # What _append_follow_up_warm_context stamps, the stripper removes.
-        query_with_block = "the user turn\n\n" + _mark_injected_memory_block(
+        # What _append_warm_context stamps, the stripper removes.
+        query_with_block = "the user turn\n\n" + mark_injected_memory_block(
             "<temporal_context>fresh</temporal_context>"
         )
         line = self._user_line(query_with_block)
@@ -2527,7 +2533,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
     def test_rewrite_preserves_every_other_field(self):
         # Rewritten lines are re-serialised through typed models, so unknown
         # CLI fields (entry-, message- and block-level) must survive.
-        block = _mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        block = mark_injected_memory_block("<temporal_context>x</temporal_context>")
         entry = {
             "parentUuid": "p1",
             "type": "user",
@@ -2576,7 +2582,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         not parse. It must survive byte-identical (never eat user text) AND
         warn — the warning is the only signal that the transcript is growing
         and will replay stale memory on --resume."""
-        line = b'{"type":"user","message":' + _INJECTED_MEMORY_NONCE.encode() + b"\n"
+        line = b'{"type":"user","message":' + INJECTED_MEMORY_NONCE.encode() + b"\n"
         with caplog.at_level(logging.WARNING):
             result = _strip_ephemeral_memory_from_cli_jsonl(line)
         assert result == line
@@ -2587,7 +2593,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         not match ``_CLIUserEntry`` (e.g. an assistant entry)."""
         entry = {
             "type": "assistant",
-            "message": {"role": "assistant", "content": _INJECTED_MEMORY_MARKER},
+            "message": {"role": "assistant", "content": INJECTED_MEMORY_MARKER},
         }
         line = json.dumps(entry).encode() + b"\n"
         with caplog.at_level(logging.WARNING):
@@ -2600,7 +2606,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         re-validating every prior line on every turn. Pin that the other lines
         come back byte-identical, not merely semantically equal — a reformat
         would rewrite the whole transcript each turn."""
-        block = _mark_injected_memory_block(
+        block = mark_injected_memory_block(
             "<temporal_context>\n  - stale fact\n</temporal_context>"
         )
         prior = [
@@ -2667,8 +2673,15 @@ class TestResendWithFreshWarmContext:
         append.assert_not_awaited()
 
 
-# SECRT-2378: the follow-up-turn wiring — the branch where the bug lived.
-class TestAppendFollowUpWarmContext:
+_FIRST_BLOCK = (
+    "<temporal_context>\n<FACTS>\n"
+    "  - Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)\n"
+    "</FACTS>\n</temporal_context>"
+)
+
+
+# SECRT-2378: the per-send wiring — the branch where the bug lived.
+class TestAppendWarmContext:
     @pytest.mark.asyncio
     async def test_appends_on_follow_up_user_turn(self):
         with patch(
@@ -2676,7 +2689,7 @@ class TestAppendFollowUpWarmContext:
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
-            out = await _append_follow_up_warm_context(
+            out = await _append_warm_context(
                 "the query",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2689,7 +2702,7 @@ class TestAppendFollowUpWarmContext:
         assert out.startswith("the query")
         # The appended block is stamped with the strip sentinel.
         assert out.endswith("fresh</temporal_context>")
-        assert _INJECTED_MEMORY_MARKER in out
+        assert INJECTED_MEMORY_MARKER in out
         assert mock_refresh.await_args.kwargs["force"] is False
 
     @pytest.mark.asyncio
@@ -2699,7 +2712,7 @@ class TestAppendFollowUpWarmContext:
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
-            await _append_follow_up_warm_context(
+            await _append_warm_context(
                 "q",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2721,7 +2734,7 @@ class TestAppendFollowUpWarmContext:
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
-            await _append_follow_up_warm_context(
+            await _append_warm_context(
                 "q",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2752,7 +2765,7 @@ class TestAppendFollowUpWarmContext:
                 current_message="what is Sarah working on this week",
             )
             assert pending is not None
-            out = await _append_follow_up_warm_context(
+            out = await _append_warm_context(
                 "the query",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2765,7 +2778,7 @@ class TestAppendFollowUpWarmContext:
             )
 
         assert out.startswith("the query")
-        assert _INJECTED_MEMORY_MARKER in out
+        assert INJECTED_MEMORY_MARKER in out
         mock_refresh.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -2821,7 +2834,7 @@ class TestAppendFollowUpWarmContext:
             )
             assert pending is not None
             await started.wait()
-            out = await _append_follow_up_warm_context(
+            out = await _append_warm_context(
                 "q",
                 graphiti_enabled=False,
                 has_history=True,
@@ -2853,7 +2866,7 @@ class TestAppendFollowUpWarmContext:
                 "<temporal_context>Bob leads Atlas</temporal_context>",
             ],
         ) as mock_refresh:
-            first = await _append_follow_up_warm_context(
+            first = await _append_warm_context(
                 "q1",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2863,7 +2876,7 @@ class TestAppendFollowUpWarmContext:
                 current_message="what is Sarah working on this week",
                 was_compacted=False,
             )
-            second = await _append_follow_up_warm_context(
+            second = await _append_warm_context(
                 "q2",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2880,7 +2893,7 @@ class TestAppendFollowUpWarmContext:
         assert second.startswith("q2")
         assert "Alice works on Atlas" not in second
         assert "Bob leads Atlas" in second
-        assert _INJECTED_MEMORY_MARKER in second
+        assert INJECTED_MEMORY_MARKER in second
 
     @pytest.mark.asyncio
     async def test_gated_out_first_call_still_allows_a_forced_retry_fetch(self):
@@ -2892,7 +2905,7 @@ class TestAppendFollowUpWarmContext:
             new_callable=AsyncMock,
             return_value="<temporal_context>forced</temporal_context>",
         ) as mock_refresh:
-            await _append_follow_up_warm_context(
+            await _append_warm_context(
                 "q1",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2902,7 +2915,7 @@ class TestAppendFollowUpWarmContext:
                 current_message="continue",
                 was_compacted=False,
             )
-            out = await _append_follow_up_warm_context(
+            out = await _append_warm_context(
                 "q2",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2927,7 +2940,7 @@ class TestAppendFollowUpWarmContext:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            out = await _append_follow_up_warm_context(
+            out = await _append_warm_context(
                 "the query",
                 graphiti_enabled=True,
                 has_history=True,
@@ -2938,30 +2951,109 @@ class TestAppendFollowUpWarmContext:
                 was_compacted=False,
             )
         assert out == "the query"
-        assert _INJECTED_MEMORY_MARKER not in out
+        assert INJECTED_MEMORY_MARKER not in out
 
     @pytest.mark.asyncio
-    async def test_noop_on_first_turn_or_non_user_or_disabled(self):
+    @pytest.mark.parametrize("first_turn_block", [None, _FIRST_BLOCK])
+    async def test_noop_on_non_user_or_disabled(self, first_turn_block):
         with patch(
             "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
         ) as mock_refresh:
             for override in (
-                {"has_history": False},  # first turn
                 {"is_user_message": False},  # tool-result submission
                 {"graphiti_enabled": False},  # memory off
                 {"user_id": None},  # anonymous
             ):
                 base = {
                     "graphiti_enabled": True,
-                    "has_history": True,
+                    "has_history": first_turn_block is None,
                     "is_user_message": True,
                     "user_id": "u1",
                     "expert_id": None,
                     "current_message": "a substantive follow-up request here",
                     "was_compacted": False,
+                    "first_turn_block": first_turn_block,
                 }
                 base.update(override)
-                out = await _append_follow_up_warm_context("q", **base)
+                out = await _append_warm_context("q", **base)
                 assert out == "q"
             mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_first_send_of_a_first_turn_carries_its_fetch_marked(self):
+        """The first turn's block, read during setup, goes into the query
+        only, stamped like a refresh's so the upload scrub removes it; it is
+        not read again."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="hi",
+                was_compacted=False,
+                first_turn_block=_FIRST_BLOCK,
+            )
+
+        mock_refresh.assert_not_awaited()
+        assert out.startswith("the query\n\n<temporal_context ")
+        assert out.count("<temporal_context") == 1
+        assert INJECTED_MEMORY_MARKER in out
+        assert "Alice works on Atlas" in out
+
+    @pytest.mark.asyncio
+    async def test_a_first_turn_with_nothing_recalled_sends_the_query_as_is(self):
+        """An empty first-turn fetch is final for that send: no block, no
+        mark and no second read."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Alice working on",
+                was_compacted=False,
+                first_turn_block="",
+            )
+
+        mock_refresh.assert_not_awaited()
+        assert out == "the query"
+
+    @pytest.mark.asyncio
+    async def test_a_first_turn_retry_reads_memory_again_whatever_the_message(self):
+        """A retry of a first turn has no block of its own any more (the
+        first one was never part of the user's message), so it reads memory
+        again, forced like the first turn's own read: a first turn recalls
+        whatever the message's length."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id="expert-1",
+                current_message="hi",
+                was_compacted=False,
+            )
+
+        mock_refresh.assert_awaited_once_with(
+            "u1", "hi", expert_id="expert-1", force=True
+        )
+        assert out.endswith("fresh</temporal_context>")
+        assert INJECTED_MEMORY_MARKER in out
