@@ -287,7 +287,7 @@ async def get_graphiti_client(group_id: str):
 
 
 async def _build_cached_client(state: _LoopState, group_id: str):
-    from .falkordb_driver import build_off_loop
+    from .falkordb_connect import build_off_loop
 
     client = await build_off_loop(functools.partial(_new_graphiti_client, group_id))
     state.cache[group_id] = client
@@ -297,12 +297,13 @@ async def _build_cached_client(state: _LoopState, group_id: str):
 def _new_graphiti_client(group_id: str):
     """The group's client on the default LLM tier, built on the calling
     thread. Blocking: its FalkorDB client probes the server
-    (``falkordb_driver.new_falkordb_client``) and each OpenAI client loads
+    (``falkordb_connect.new_falkordb_client``) and each OpenAI client loads
     its TLS roots, hundreds of milliseconds between them. Made off the loop,
     the driver schedules no index build, which its default skips anyway."""
     from graphiti_core.llm_client import OpenAIClient
 
-    from .falkordb_driver import AutoGPTFalkorDriver, new_falkordb_client
+    from .falkordb_connect import new_falkordb_client
+    from .falkordb_driver import AutoGPTFalkorDriver
 
     driver = AutoGPTFalkorDriver(falkor_db=new_falkordb_client(), database=group_id)
     return _build_graphiti(

@@ -58,7 +58,7 @@ class GraphitiConfig(BaseSettings):
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
     # Transport deadlines on every FalkorDB connection this package opens
-    # (``falkordb_driver.new_falkordb_client``). Neither bounds how long anyone
+    # (``falkordb_connect.new_falkordb_client``). Neither bounds how long anyone
     # waits: interactive reads are bounded by their asyncio budgets
     # (``context_timeout``; ``context_refresh_timeout`` and
     # ``warm_context_refresh_join_grace_ms``), which cancel them. The deadlines
