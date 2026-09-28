@@ -125,10 +125,13 @@ def new_falkordb_client(
     synchronous INFO, so this does network I/O on the calling thread: call
     it off the event loop (``build_off_loop``, ``DeferredFalkorDB``).
     ``falkordb_socket_connect_timeout`` bounds opening each connection and
-    ``falkordb_socket_timeout`` each reply, the probe's included. They end a
-    thread whose await was given up and a connection to a server that
-    stopped answering; the callers' asyncio budgets bound how long anyone
-    waits. ``host``, ``port`` and ``password`` default to graphiti config.
+    ``falkordb_socket_timeout`` each reply, for every command on the client,
+    the probe included: a command whose reply comes later fails with a
+    timeout, and a write that fails that way may already have committed.
+    They also end a thread whose await was given up and a connection to a
+    server that stopped answering. The chat's asyncio budgets are separate
+    and shorter. ``host``, ``port`` and ``password`` default to graphiti
+    config.
     """
     return FalkorDB(
         host=graphiti_config.falkordb_host if host is None else host,

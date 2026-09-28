@@ -58,12 +58,13 @@ class GraphitiConfig(BaseSettings):
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
     # Transport deadlines on every FalkorDB connection this package opens
-    # (``falkordb_connect.new_falkordb_client``). Neither bounds how long anyone
-    # waits: interactive reads are bounded by their asyncio budgets
+    # (``falkordb_connect.new_falkordb_client``), for every operation on it,
+    # reads and writes alike. They are separate from the chat's asyncio budgets
     # (``context_timeout``; ``context_refresh_timeout`` and
-    # ``warm_context_refresh_join_grace_ms``), which cancel them. The deadlines
-    # end what cancellation cannot reach: a worker thread still building a
-    # client (falkordb's constructor probes the server synchronously) and a
+    # ``warm_context_refresh_join_grace_ms``), which are shorter and cancel an
+    # interactive read before a deadline would. The deadlines also end what
+    # cancellation cannot reach: a worker thread still building a client
+    # (falkordb's constructor probes the server synchronously) and a
     # connection to a server that stopped answering.
     falkordb_socket_connect_timeout: float = Field(
         default=1.0,
@@ -78,13 +79,17 @@ class GraphitiConfig(BaseSettings):
         default=30.0,
         gt=0,
         description=(
-            "Seconds a FalkorDB connection waits for any single reply before "
-            "it is dropped, on every connection the memory code opens. Not a "
-            "latency bound: interactive reads end at their asyncio budgets "
-            "(context_timeout; context_refresh_timeout and the join grace). It "
-            "ends worker threads a cancelled await left behind and connections "
-            "to a server that stopped answering, and is long enough for a slow "
-            "write (ingestion, the dream, a forget) on a large graph to finish."
+            "Seconds any single FalkorDB reply may take before its command "
+            "fails with a timeout: a deadline per reply, on every operation the "
+            "memory code runs (reads, writes, and the probe a client build "
+            "sends). A write whose reply times out may already have been "
+            "committed, so its outcome is unknown to the caller. Separate from "
+            "the chat's asyncio budgets (context_timeout; "
+            "context_refresh_timeout and the join grace), which are shorter and "
+            "end an interactive read first. Long by default so that a slow "
+            "write (ingestion, the dream, a forget) on a large graph normally "
+            "completes; it also ends worker threads a cancelled await left "
+            "behind and connections to a server that stopped answering."
         ),
     )
 
