@@ -274,10 +274,12 @@ async def try_ratify_on_hit(scope: MemoryScope, edge_uuids: list[str]) -> int:
     for uuid in edge_uuids:
         await record_memory_hit(scope, uuid)
 
-    # Step 2: targeted Cypher promotion. We open our own driver here
-    # because callers are warm-context retrieval call sites that have
-    # a higher-level graphiti client but no raw driver — and we want
-    # the brief write-lock semantics to be local to this function.
+    # Steps 2 and 3: the recall stamp, then targeted Cypher promotion, on a
+    # driver of our own: callers are warm-context retrieval call sites that
+    # have a higher-level graphiti client but no raw driver. Neither step
+    # takes the graph's write lock (``scope_lock.py``). Each is one statement
+    # that writes only over a live edge: the stamp only its usage properties,
+    # the promotion only a still-tentative edge's status and ``ratified_at``.
     promoted_count = 0
     driver = open_driver(scope)
     try:

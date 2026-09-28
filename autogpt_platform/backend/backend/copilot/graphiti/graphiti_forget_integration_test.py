@@ -122,9 +122,11 @@ async def test_invalidate_entity_direct_neighbors_is_single_hop(
         gid=group_id,
     )
 
-    demoted = await invalidate_entity_direct_neighbors(
-        driver, group_id=group_id, entity_uuid="B", reason="dead_client"
-    )
+    demoted = (
+        await invalidate_entity_direct_neighbors(
+            driver, group_id=group_id, entity_uuid="B", reason="dead_client"
+        )
+    ).changed
 
     assert set(demoted) == {
         "AB",
@@ -172,9 +174,11 @@ async def test_invalidate_entity_direct_neighbors_handles_both_edge_directions(
         gid=group_id,
     )
 
-    demoted = await invalidate_entity_direct_neighbors(
-        driver, group_id=group_id, entity_uuid="B", reason="x"
-    )
+    demoted = (
+        await invalidate_entity_direct_neighbors(
+            driver, group_id=group_id, entity_uuid="B", reason="x"
+        )
+    ).changed
     assert set(demoted) == {"AB", "CB"}
 
 
@@ -205,9 +209,11 @@ async def test_invalidate_entity_does_not_affect_other_users(
         g2=other_group,
     )
 
-    demoted = await invalidate_entity_direct_neighbors(
-        driver, group_id=group_id, entity_uuid="shared", reason="test"
-    )
+    demoted = (
+        await invalidate_entity_direct_neighbors(
+            driver, group_id=group_id, entity_uuid="shared", reason="test"
+        )
+    ).changed
     assert demoted == ["e_self"]
 
     other_row = await _select_edge(driver, "e_other")

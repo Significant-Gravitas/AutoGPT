@@ -702,12 +702,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=0,
         le=3650,
         description=(
-            "Days after a fact was last recalled during which the dream pass "
-            "leaves it alone: a staleness demotion of it is dropped, and a "
-            "contradiction or the user's own retraction still demotes it. "
-            "0 turns the protection off. The default of 30 is a floor, not a "
-            "tuned value: long enough that a few weeks away never makes a "
-            "relied-on memory look unused, to be tuned from the eval driver's "
+            "The dream pass's deterministic recall guard: days after a fact "
+            "was last recalled during which its demotion writes leave it "
+            "alone, unless the demotion is a contradiction or the user's own "
+            "retraction. 0 turns this guard off; it does not change the "
+            "sanitize prompt's own, stricter rule against demoting recalled "
+            "facts for staleness. The default of 30 is a floor, not a tuned "
+            "value: long enough that a few weeks away never makes a relied-on "
+            "memory look unused, to be tuned from the eval driver's "
             "demotion-damage data (0-3650 days)"
         ),
     )

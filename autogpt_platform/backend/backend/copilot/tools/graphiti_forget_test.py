@@ -20,15 +20,19 @@ from backend.copilot.graphiti.memory_model import (
 )
 from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
+from backend.copilot.graphiti.recall_stamp import RecallProtection, spared_by_recall
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
     _MAX_FAILURE_DETAIL,
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
+    NeighbourWrites,
+    WriteOutcome,
     _build_confirm_message,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
+    supersede_unless_recalled,
 )
 from backend.copilot.tools.models import (
     MemoryForgetCandidatesResponse,
@@ -410,14 +414,15 @@ class TestMarkEdgesSuperseded:
 
 
 class TestInvalidateEntityDirectNeighbors:
-    """Single-hop demotion. The instinct to write [r:RELATES_TO*1..N] is
-    exactly the runaway-demotion bug. This test pins single-hop discipline."""
+    """Single-hop demotion. The instinct to write [r:RELATES_TO*1..N] is exactly
+    the runaway-demotion bug. This test pins single-hop discipline, and the
+    recall guard tested per neighbour in the same statement."""
 
     @pytest.mark.asyncio
     async def test_single_hop_pattern_in_cypher(self) -> None:
         driver = AsyncMock()
         driver.execute_query.return_value = (
-            [{"edge_uuid": "e1"}, {"edge_uuid": "e2"}],
+            [{"uuid": "e1", "spared": False}, {"uuid": "e2", "spared": False}],
             None,
             None,
         )
@@ -426,7 +431,7 @@ class TestInvalidateEntityDirectNeighbors:
             driver, group_id="user_x", entity_uuid="entity-1", reason="dead_client"
         )
 
-        assert result == ["e1", "e2"]
+        assert result == NeighbourWrites(changed=["e1", "e2"])
         query = driver.execute_query.call_args.args[0]
         # MUST be single-hop: bare relationship, no quantifier
         assert "[r:RELATES_TO]" in query
@@ -441,19 +446,71 @@ class TestInvalidateEntityDirectNeighbors:
         assert "forgotten_at =" not in query
 
     @pytest.mark.asyncio
-    async def test_returns_distinct_edge_uuids(self) -> None:
+    async def test_the_recall_guard_is_in_the_writing_statement(self) -> None:
+        """The guard and the write are one statement: no neighbour recalled
+        before it runs can be demoted without an override."""
+        driver = AsyncMock()
+        driver.execute_query.return_value = (
+            [{"uuid": "old", "spared": False}, {"uuid": "recent", "spared": True}],
+            None,
+            None,
+        )
+        protection = RecallProtection(
+            recalled_since="2026-08-29T03:00:00.000000+00:00",
+            override=True,
+            cited="c",
+        )
+
+        result = await invalidate_entity_direct_neighbors(
+            driver,
+            group_id="user_x",
+            entity_uuid="entity-1",
+            reason="contradicted_by:c",
+            protection=protection,
+        )
+
+        assert result == NeighbourWrites(changed=["old"], spared=["recent"])
+        query = driver.execute_query.call_args.args[0]
+        params = driver.execute_query.call_args.kwargs
+        assert f"WITH r, {spared_by_recall('r')} AS spared" in query
+        assert "FOREACH (_ IN CASE WHEN spared THEN [] ELSE [1] END |" in query
+        assert query.rstrip().endswith("RETURN r.uuid AS uuid, spared")
+        assert {k: params[k] for k in protection.params()} == protection.params()
+
+    @pytest.mark.asyncio
+    async def test_no_protection_spares_nothing(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)
+
+        await invalidate_entity_direct_neighbors(
+            driver, group_id="user_x", entity_uuid="entity-1", reason="x"
+        )
+
+        params = driver.execute_query.call_args.kwargs
+        assert (params["recalled_since"], params["override"], params["cited"]) == (
+            None,
+            False,
+            None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_each_edge_is_written_once(self) -> None:
         """The undirected -[r]- pattern can yield the same edge from both
         traversal directions; without DISTINCT the duplicate uuids inflate
         the demotion counts in DreamPassResult / the admin UI."""
         driver = AsyncMock()
-        driver.execute_query.return_value = ([{"edge_uuid": "e1"}], None, None)
+        driver.execute_query.return_value = (
+            [{"uuid": "e1", "spared": False}],
+            None,
+            None,
+        )
 
         await invalidate_entity_direct_neighbors(
             driver, group_id="user_x", entity_uuid="entity-1", reason="dup_check"
         )
 
         query = driver.execute_query.call_args.args[0]
-        assert "RETURN DISTINCT r.uuid AS edge_uuid" in query
+        assert "WITH DISTINCT r" in query
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_error(self) -> None:
@@ -463,4 +520,90 @@ class TestInvalidateEntityDirectNeighbors:
         result = await invalidate_entity_direct_neighbors(
             driver, group_id="user_x", entity_uuid="entity-1", reason="x"
         )
-        assert result == []
+        assert result == NeighbourWrites()
+
+
+class TestSupersedeUnlessRecalled:
+    """The dream's demotions: one statement per edge that tests the recall
+    guard and writes, and one outcome per requested uuid, in order."""
+
+    @pytest.mark.asyncio
+    async def test_one_outcome_per_uuid_in_order(self) -> None:
+        answers = {
+            "changed": [{"uuid": "changed", "spared": False}],
+            "spared": [{"uuid": "spared", "spared": True}],
+            "gone": [],
+        }
+
+        async def execute(query: str, **params: object):
+            return (answers[str(params["uuid"])], None, None)
+
+        driver = AsyncMock()
+        driver.execute_query.side_effect = execute
+
+        outcomes = await supersede_unless_recalled(
+            driver,
+            ["changed", "spared", "gone", "changed"],
+            reason="stale_fact",
+            new_status="superseded",
+            group_id="user_x",
+            protection=RecallProtection(
+                recalled_since="2026-08-29T03:00:00.000000+00:00"
+            ),
+        )
+
+        assert outcomes == [
+            WriteOutcome.CHANGED,
+            WriteOutcome.SPARED,
+            WriteOutcome.FAILED,
+            WriteOutcome.CHANGED,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_the_guard_and_the_write_are_one_statement(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = (
+            [{"uuid": "a", "spared": False}],
+            None,
+            None,
+        )
+        protection = RecallProtection(
+            recalled_since="2026-08-29T03:00:00.000000+00:00", override=True
+        )
+
+        await supersede_unless_recalled(
+            driver,
+            ["a"],
+            reason="user_signal",
+            new_status="contradicted",
+            group_id="user_x",
+            protection=protection,
+        )
+
+        query = driver.execute_query.call_args.args[0]
+        params = driver.execute_query.call_args.kwargs
+        assert "MATCH ()-[e:RELATES_TO {uuid: $uuid, group_id: $group_id}]->()" in query
+        assert f"WHERE {live_fact_predicate('e')}" in query
+        assert f"WITH e, {spared_by_recall('e')} AS spared" in query
+        assert "FOREACH (_ IN CASE WHEN spared THEN [] ELSE [1] END |" in query
+        assert "e.expiration_reason = $reason" in query
+        assert query.rstrip().endswith("RETURN e.uuid AS uuid, spared")
+        assert params["new_status"] == "contradicted"
+        assert params["group_id"] == "user_x"
+        assert {k: params[k] for k in protection.params()} == protection.params()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_write_is_logged_and_reported_failed(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.side_effect = RuntimeError("falkordb down")
+
+        outcomes = await supersede_unless_recalled(
+            driver,
+            ["a", "b"],
+            reason="stale_fact",
+            new_status="superseded",
+            group_id="user_x",
+            protection=RecallProtection(),
+        )
+
+        assert outcomes == [WriteOutcome.FAILED, WriteOutcome.FAILED]

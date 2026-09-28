@@ -9,16 +9,19 @@ return, and a confirmed forget is ``recall_forget.retract``, with the
 guarantees and limits ``graphiti/AGENTS.md`` lists.
 
 The demotion helpers below are the dream's writers. They write only over
-live facts, so a demotion can never overwrite a user's forget.
+live facts, so a demotion can never overwrite a user's forget, and the
+dream's own demotions leave alone, in the same statement, a fact the user
+recalled within the protection window (``graphiti/recall_stamp.py``).
 """
 
 import asyncio
 import logging
-from collections.abc import Collection
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Literal
 
 from graphiti_core.edges import EntityEdge
+from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.memory_model import (
@@ -29,6 +32,7 @@ from backend.copilot.graphiti.memory_model import (
 from backend.copilot.graphiti.recall import live_fact_predicate, search_facts
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
+from backend.copilot.graphiti.recall_stamp import RecallProtection, spared_by_recall
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
@@ -322,11 +326,12 @@ async def mark_edges_superseded(
 ) -> tuple[list[str], list[str]]:
     """Retract edges AND set the custom audit-trail ``status`` property.
 
-    Intended for the dream pass (P0.3 stale-fact deprecation): retire
-    the edge (``expired_at``; ``invalid_at`` is left alone) and
+    Retire the edge (``expired_at``; ``invalid_at`` is left alone) and
     stamp ``status='superseded'`` (or ``'contradicted'``) plus
     ``expiration_reason=<reason>`` so the demotion is queryable from
-    search (``WHERE e.status = 'superseded'``).
+    search (``WHERE e.status = 'superseded'``). Ratification supersedes an
+    unratified proposal with it; the dream pass's own demotions go through
+    ``supersede_unless_recalled``, which adds the recall guard.
 
     ``group_id`` adds defense-in-depth: the driver is normally opened
     against the per-user FalkorDB database, but when provided the
@@ -396,48 +401,116 @@ def _supersede_query(*, scoped: bool, guarded: bool) -> str:
                 """
 
 
+class WriteOutcome(str, Enum):
+    """What one of the dream's guarded demotions did to one fact."""
+
+    CHANGED = "changed"
+    # Live, but the user recalled it within the protection window and the
+    # demotion does not override that: left as it was.
+    SPARED = "spared"
+    # No longer live (or missing), or the write failed (logged).
+    FAILED = "failed"
+
+
+class NeighbourWrites(BaseModel):
+    """What an entity invalidation did: the live neighbours it demoted, and
+    those it left alone because the user recalled them within the protection
+    window."""
+
+    changed: list[str] = Field(default_factory=list)
+    spared: list[str] = Field(default_factory=list)
+
+
+class _GuardedRow(BaseModel):
+    """A row a guarded write returns: an edge it reached, and whether the
+    recall guard spared it."""
+
+    uuid: str
+    spared: bool
+
+
+async def supersede_unless_recalled(
+    driver,
+    uuids: list[str],
+    *,
+    reason: str,
+    new_status: Literal["superseded", "contradicted"],
+    group_id: str,
+    protection: RecallProtection,
+    user_id: str | None = None,
+) -> list[WriteOutcome]:
+    """``mark_edges_superseded`` for the dream's demotions, with the recall
+    guard in each edge's own statement (``recall_stamp.spared_by_recall``): a
+    live fact the user recalled within the protection window is left alone
+    unless *protection* overrides it. The test and the write are one
+    statement, so a recall stamped before it runs cannot be missed.
+
+    One outcome per uuid, in order: an edge no longer live, a missing one and
+    a write that failed (logged) are ``FAILED``, as before recall stamps.
+    """
+    params = {
+        "reason": reason,
+        "new_status": new_status,
+        "group_id": group_id,
+        **protection.params(),
+    }
+    return [await _supersede_one(driver, uuid, params, user_id) for uuid in uuids]
+
+
+async def _supersede_one(
+    driver, uuid: str, params: dict[str, Any], user_id: str | None
+) -> WriteOutcome:
+    try:
+        records, _, _ = await driver.execute_query(
+            _GUARDED_SUPERSEDE_QUERY, uuid=uuid, now=_now_iso(), **params
+        )
+        rows = [_GuardedRow.model_validate(r) for r in records]
+    except Exception:
+        logger.warning(
+            "Failed to mark edge %s superseded for user %s",
+            uuid,
+            (user_id or "?")[:12],
+            exc_info=True,
+        )
+        return WriteOutcome.FAILED
+    if not rows:
+        return WriteOutcome.FAILED
+    return WriteOutcome.SPARED if rows[0].spared else WriteOutcome.CHANGED
+
+
 async def invalidate_entity_direct_neighbors(
     driver,
     group_id: str,
     entity_uuid: str,
     reason: str,
     *,
-    skip: Collection[str] = (),
-) -> list[str]:
-    """Demote every live ``:RELATES_TO`` edge directly attached to an entity.
+    protection: RecallProtection = RecallProtection(),
+) -> NeighbourWrites:
+    """Demote every live ``:RELATES_TO`` edge directly attached to an entity,
+    but for those *protection* spares.
 
     **Single-hop only** — does NOT propagate to neighbors-of-neighbors.
     The instinct to write ``[r:RELATES_TO*1..N]`` is exactly the
     runaway-demotion bug we are protecting against (P0.3b in the dream
     spec). Only live neighbours (``recall.live_fact_predicate``) are touched,
-    and none named in ``skip``: the dream's apply names the ones the user
-    recalled within its protection window (``dream/recall_guard.py``).
+    and the recall guard (``recall_stamp.spared_by_recall``) is tested per
+    neighbour in the same statement that demotes it.
 
-    Returns the list of edge UUIDs that were demoted. ``DISTINCT``
-    matters: the undirected ``-[r]-`` pattern can yield the same edge
-    from both traversal directions, and duplicate uuids inflate the
-    demotion counts reported in ``DreamPassResult`` / the admin UI
-    (the ``SET`` itself is idempotent).
-    """
-    query = f"""
-    MATCH (e:Entity {{uuid: $entity_uuid, group_id: $group_id}})
-    MATCH (e)-[r:RELATES_TO]-(other)
-    WHERE {live_fact_predicate("r")} AND NOT (r.uuid IN $skip)
-    SET r.expired_at = $now,
-        r.status = 'superseded',
-        r.expiration_reason = $reason
-    RETURN DISTINCT r.uuid AS edge_uuid
+    ``DISTINCT`` matters: the undirected ``-[r]-`` pattern can yield the same
+    edge from both traversal directions, and duplicate uuids inflate the
+    demotion counts reported in ``DreamPassResult`` / the admin UI.
+    A write that fails is logged and reported as touching nothing.
     """
     try:
         records, _, _ = await driver.execute_query(
-            query,
+            _GUARDED_NEIGHBOURS_QUERY,
             entity_uuid=entity_uuid,
             group_id=group_id,
             reason=reason,
             now=_now_iso(),
-            skip=sorted(skip),
+            **protection.params(),
         )
-        return [r["edge_uuid"] for r in records]
+        rows = [_GuardedRow.model_validate(r) for r in records]
     except Exception:
         logger.warning(
             "Failed to invalidate direct neighbors of entity %s in group %s",
@@ -445,4 +518,36 @@ async def invalidate_entity_direct_neighbors(
             group_id,
             exc_info=True,
         )
-        return []
+        return NeighbourWrites()
+    return NeighbourWrites(
+        changed=[row.uuid for row in rows if not row.spared],
+        spared=[row.uuid for row in rows if row.spared],
+    )
+
+
+# The recall guard and the write are one statement: FOREACH over an empty
+# list skips the SET for a spared edge, and the row still comes back so the
+# caller can count it.
+_GUARDED_SUPERSEDE_QUERY = f"""
+MATCH ()-[e:RELATES_TO {{uuid: $uuid, group_id: $group_id}}]->()
+WHERE {live_fact_predicate("e")}
+WITH e, {spared_by_recall("e")} AS spared
+FOREACH (_ IN CASE WHEN spared THEN [] ELSE [1] END |
+    SET e.expired_at = $now,
+        e.status = $new_status,
+        e.expiration_reason = $reason)
+RETURN e.uuid AS uuid, spared
+"""
+
+_GUARDED_NEIGHBOURS_QUERY = f"""
+MATCH (e:Entity {{uuid: $entity_uuid, group_id: $group_id}})
+MATCH (e)-[r:RELATES_TO]-(other)
+WHERE {live_fact_predicate("r")}
+WITH DISTINCT r
+WITH r, {spared_by_recall("r")} AS spared
+FOREACH (_ IN CASE WHEN spared THEN [] ELSE [1] END |
+    SET r.expired_at = $now,
+        r.status = 'superseded',
+        r.expiration_reason = $reason)
+RETURN r.uuid AS uuid, spared
+"""

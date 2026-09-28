@@ -1,4 +1,5 @@
-"""Recall stamps: the usage a recall leaves on the facts it returned.
+"""Recall stamps: the usage a recall leaves on the facts it returned, and the
+test the dream's destructive writes make of it.
 
 Warm context (``dream.ratification.try_ratify_on_hit``) and ``memory_search``
 (``record_recall``) stamp every live fact (``RELATES_TO`` edge) they return,
@@ -11,9 +12,11 @@ recalled, so no edge needs a backfill. Each scope's hooks stamp its own graph,
 an expert's included.
 
 Recall history is evidence that a memory is relied on, never that it has gone
-stale: the dream pass reads the stamps (``dream/fetch.py``) only to leave a
-recently recalled fact alone (``dream/recall_guard.py``), and retrieval order
-ignores them.
+stale: the dream shows it to its model (``dream/prompts.py``), and each of its
+destructive writes carries ``spared_by_recall`` in its own statement, so a
+fact recalled within the protection window is left alone
+(``RecallProtection``, ``dream/recall_guard.py``). Retrieval order ignores the
+stamps.
 
 A stamp takes no graph write lock (``scope_lock.py``) and never waits for one.
 That is safe because it writes only the three usage properties, never the
@@ -25,17 +28,17 @@ saves its older copy after it (graphiti's ``SET e = edge``) and so puts the
 older usage values back: one recall is lost, which leaves the dream pass no
 more destructive than if that recall had never happened.
 
-Every stamp time is written by ``stamp_time``: UTC with microseconds, so all
-stamps have one width and the dedupe's string comparison is chronological.
+Every stamp time is written by ``stamp_time``: a UTC string of one width, so
+stamps compare by time as plain strings in Cypher, in the dedupe below and in
+``spared_by_recall``.
 """
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .falkordb_driver import open_driver
 from .recall import live_fact_predicate, record_hit
@@ -49,12 +52,42 @@ RECALL_DEDUPE_INTERVAL = timedelta(hours=24)
 
 
 class RecallStamp(BaseModel):
-    """A fact's recall stamps; ``None`` where it has none (never recalled)."""
+    """A fact's recall stamps as ``recall_stamp_columns`` reads them; ``None``
+    where it has none (never recalled)."""
 
     uuid: str
     recall_count: int | None = None
     last_recalled_at: str | None = None
     prev_recalled_at: str | None = None
+
+
+class RecallProtection(BaseModel):
+    """What a destructive dream write leaves alone, tested in its own
+    statement (``spared_by_recall``): a live fact last recalled at or after
+    ``recalled_since``, unless ``override`` (the write says the fact is
+    wrong, not stale), which never reaches ``cited``, the fact the write
+    cites, so a fact cannot contradict itself. ``recalled_since=None``
+    protects nothing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    recalled_since: str | None = None
+    override: bool = False
+    cited: str | None = None
+
+    def params(self) -> dict[str, str | bool | None]:
+        """The statement parameters ``spared_by_recall`` reads."""
+        return {
+            "recalled_since": self.recalled_since,
+            "override": self.override,
+            "cited": self.cited,
+        }
+
+
+class _StampedRow(BaseModel):
+    """The row ``_STAMP_QUERY`` returns."""
+
+    stamped: int = 0
 
 
 def stamp_time(moment: datetime) -> str:
@@ -76,7 +109,7 @@ def parse_stamp(raw: str | None) -> datetime | None:
 
 
 def recall_stamp_columns(alias: str = "e") -> str:
-    """The stamp columns ``stamp_fields`` reads, for a query binding the edge
+    """The stamp columns ``RecallStamp`` holds, for a query binding the edge
     as *alias*. ``toString`` keeps a stamp time a string whatever type it was
     written as."""
     return (
@@ -86,14 +119,18 @@ def recall_stamp_columns(alias: str = "e") -> str:
     )
 
 
-def stamp_fields(row: Mapping[str, Any]) -> dict[str, Any]:
-    """A row's stamp columns as ``RecallStamp`` holds them: a count that is
-    not a number, or a time that is not a string, reads as absent."""
-    return {
-        "recall_count": _count(row.get("recall_count")),
-        "last_recalled_at": _text(row.get("last_recalled_at")),
-        "prev_recalled_at": _text(row.get("prev_recalled_at")),
-    }
+def spared_by_recall(alias: str) -> str:
+    """The Cypher test ``RecallProtection`` puts in a destructive write's own
+    statement: edge *alias* was last recalled at or after ``$recalled_since``
+    and the write's ``$override`` does not reach it. Tested in the statement
+    that writes, so a recall stamped before the statement runs is always
+    seen, and one stamped after it finds the fact no longer live."""
+    return (
+        f"($recalled_since IS NOT NULL"
+        f" AND {alias}.last_recalled_at IS NOT NULL"
+        f" AND {alias}.last_recalled_at >= $recalled_since"
+        f" AND NOT ($override AND ($cited IS NULL OR {alias}.uuid <> $cited)))"
+    )
 
 
 async def stamp_recalls(
@@ -115,15 +152,14 @@ async def stamp_recalls(
             now=stamp_time(now),
             dedupe_cutoff=stamp_time(now - RECALL_DEDUPE_INTERVAL),
         )
+        rows = result[0] if result else []
+        return _StampedRow.model_validate(rows[0]).stamped if rows else 0
     except Exception:
         logger.warning(
             f"Recall stamp failed for {owner[:12]} ({len(uuids)} fact(s))",
             exc_info=True,
         )
         return 0
-    rows = result[0] if result else []
-    stamped = rows[0].get("stamped") if rows else None
-    return stamped if isinstance(stamped, int) else 0
 
 
 async def stamp_recalls_in_scope(scope: MemoryScope, edge_uuids: Sequence[str]) -> int:
@@ -152,65 +188,11 @@ async def record_recall(scope: MemoryScope, edge_uuids: list[str]) -> None:
     await stamp_recalls_in_scope(scope, edge_uuids)
 
 
-async def read_recall_stamps(
-    driver: GraphDriver, group_id: str, uuids: Sequence[str]
-) -> list[RecallStamp] | None:
-    """The stamps of the live facts among *uuids*, read now; ``None`` when
-    the read fails. A fact no longer live is left out."""
-    wanted = list(dict.fromkeys(uuids))
-    if not wanted:
-        return []
-    return await _read(
-        driver, _READ_STAMPS_QUERY, what=group_id, uuids=wanted, group_id=group_id
-    )
-
-
-async def read_neighbour_stamps(
-    driver: GraphDriver, group_id: str, entity_uuid: str
-) -> list[RecallStamp] | None:
-    """The stamps of every live fact on entity *entity_uuid*: the neighbours
-    ``invalidate_entity_direct_neighbors`` would demote. ``None`` when the
-    read fails."""
-    return await _read(
-        driver,
-        _NEIGHBOUR_STAMPS_QUERY,
-        what=entity_uuid,
-        entity_uuid=entity_uuid,
-        group_id=group_id,
-    )
-
-
-async def _read(
-    driver: GraphDriver, query: str, *, what: str, **params: Any
-) -> list[RecallStamp] | None:
-    try:
-        result = await driver.execute_query(query, **params)
-    except Exception:
-        logger.warning(f"Reading recall stamps for {what[:24]} failed", exc_info=True)
-        return None
-    rows = result[0] if result else []
-    return [
-        RecallStamp(uuid=str(row["uuid"]), **stamp_fields(row))
-        for row in rows
-        if row.get("uuid")
-    ]
-
-
 async def _close(driver: GraphDriver) -> None:
     try:
         await driver.close()
     except Exception:
         logger.debug("Closing the recall stamp driver failed", exc_info=True)
-
-
-def _count(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return int(value)
-
-
-def _text(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
 
 
 # INVARIANT: ``e.last_recalled_at < $dedupe_cutoff`` compares strings, which
@@ -225,18 +207,4 @@ SET e.recall_count = coalesce(e.recall_count, 0) + 1,
     e.prev_recalled_at = e.last_recalled_at,
     e.last_recalled_at = $now
 RETURN count(e) AS stamped
-"""
-
-_READ_STAMPS_QUERY = f"""
-UNWIND $uuids AS target_uuid
-MATCH ()-[e:RELATES_TO]->()
-WHERE e.uuid = target_uuid AND e.group_id = $group_id
-  AND {live_fact_predicate("e")}
-RETURN e.uuid AS uuid, {recall_stamp_columns("e")}
-"""
-
-_NEIGHBOUR_STAMPS_QUERY = f"""
-MATCH (n:Entity {{uuid: $entity_uuid, group_id: $group_id}})-[e:RELATES_TO]-()
-WHERE {live_fact_predicate("e")}
-RETURN DISTINCT e.uuid AS uuid, {recall_stamp_columns("e")}
 """

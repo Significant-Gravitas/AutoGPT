@@ -176,7 +176,7 @@ class DreamDemotion(BaseModel):
 class EntityInvalidation(BaseModel):
     """Demote every :RELATES_TO edge directly attached to an entity.
 
-    Single-hop only — apply.py calls ``invalidate_entity_direct_neighbors``
+    Single-hop only — demotions.py calls ``invalidate_entity_direct_neighbors``
     which clamps to ``[r:RELATES_TO]-(other)``; never expands to
     neighbors-of-neighbors.
     """
@@ -243,8 +243,13 @@ class DemotionSummary(BaseModel):
     reason: str
     new_status: Literal["superseded", "contradicted"]
     applied: bool = True
-    """False when the underlying Cypher reported zero rows touched —
-    typically because the edge uuid was stale by the time apply.py ran."""
+    """False when the write changed nothing: the edge was no longer live
+    (typically stale by the time apply ran) or the write failed, or the
+    recall guard spared it (``protected``)."""
+    protected: bool = False
+    """True when the write left a live fact alone because the user recalled
+    it within the protection window (``recall_guard.py``); ``applied`` is
+    then False. Counted in ``protected_demotions``."""
 
 
 class EntityInvalidationSummary(BaseModel):
@@ -253,8 +258,9 @@ class EntityInvalidationSummary(BaseModel):
     entity_uuid: str
     reason: str
     edges_touched: list[str] = Field(default_factory=list)
-    # Neighbours left alone: the user recalled them within the protection
-    # window (``recall_guard.py``). Counted in ``protected_demotions``.
+    # Live neighbours the invalidation's write left alone: the user recalled
+    # them within the protection window (``recall_guard.py``). Counted in
+    # ``protected_demotions``.
     edges_protected: list[str] = Field(default_factory=list)
 
 
@@ -342,9 +348,9 @@ class DreamPassResult(BaseModel):
     # forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
-    # Demotions the recall guard dropped (``recall_guard.py``): the user
-    # recalled the fact within the protection window, at clamp time or when
-    # apply read the stamps again, entity invalidations' neighbours included.
+    # Demotions the recall guard's writes left alone (``recall_guard.py``):
+    # the user recalled the fact within the protection window. One per spared
+    # demotion and one per neighbour an entity invalidation spared.
     protected_demotions: int = 0
 
     summary_for_user: str = ""

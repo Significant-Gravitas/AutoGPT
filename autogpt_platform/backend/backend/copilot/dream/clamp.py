@@ -4,9 +4,10 @@ emitted.
 The phase 3 prompt asks for these caps, but the model can still over-emit, so
 both routes clamp its ``DreamOperations`` in code before apply runs: the sync
 orchestrator and the batch callbacks call ``clamp_pass_operations``. On the way
-it drops each demotion of a fact the user recalled within the protection
-window (``recall_guard.py``), drops "transient intent" (questions captured as
-facts) and collapses near-duplicate writes (``dedup.py``).
+it drops "transient intent" (questions captured as facts) and collapses
+near-duplicate writes (``dedup.py``). Recall usage plays no part in what it
+selects: a demotion of a recently recalled fact keeps its slot, and the write
+spares the fact (``demotions.py``).
 """
 
 from __future__ import annotations
@@ -16,12 +17,9 @@ import re
 from collections.abc import Sequence
 from typing import TypeVar
 
-from pydantic import BaseModel
-
 from .dedup import dedupe_near_duplicate_writes
 from .fetch import DreamInput
 from .prompts import MAX_DEMOTIONS_PER_PASS, MAX_PROPOSALS_PER_PASS, MAX_WRITES_PER_PASS
-from .recall_guard import guard_at_clamp
 from .schemas import ConsolidatedFact, DreamOperations, ProposedFinding
 
 logger = logging.getLogger(__name__)
@@ -116,32 +114,21 @@ def _drop_transient_intent(
     return kept, len(items) - len(kept)
 
 
-class ClampedOperations(BaseModel):
-    """What a pass hands apply: its clamped operations, and how many
-    demotions the recall guard dropped on the way (apply reports them in its
-    ``protected_demotions``)."""
-
-    ops: DreamOperations
-    protected_demotions: int = 0
-
-
 def clamp_pass_operations(
     ops: DreamOperations, input_bundle: DreamInput
-) -> ClampedOperations:
-    """``clamp_operations`` on a pass's own input, after the recall guard has
-    dropped each demotion of a fact the user recalled within the protection
-    window, unless its reason overrides the protection
-    (``recall_guard.guard_at_clamp``). Dropped before the cap slice, so a
-    protected demotion never takes the slot of one that apply would write."""
-    demotions, protected = guard_at_clamp(
-        ops.demotions, input_bundle.facts, input_bundle.known_fact_uuids
-    )
-    clamped = clamp_operations(
-        ops.model_copy(update={"demotions": demotions}),
+) -> DreamOperations:
+    """``clamp_operations`` on a pass's own input, for both routes.
+
+    It reads the input's fact count and fact uuids, never its recall stamps:
+    usage data must not change which operations a pass attempts. Dropping a
+    protected demotion here would hand its cap slot to another target, and
+    the pass could then demote more than it would without usage data; the
+    writes spare a protected fact instead (``demotions.py``)."""
+    return clamp_operations(
+        ops,
         len(input_bundle.facts),
         known_fact_uuids=input_bundle.known_fact_uuids,
     )
-    return ClampedOperations(ops=clamped, protected_demotions=protected)
 
 
 def clamp_operations(

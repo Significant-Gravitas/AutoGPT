@@ -1,6 +1,7 @@
 """Recall stamps against a live FalkorDB: the dedupe, the shift of the
 previous stamp, the live-only rule (a forget then a recall never stamps the
-forgotten fact again), and the reads the dream makes of them.
+forgotten fact again), and the dream's gather of them. The protection the
+dream's writes derive from them is ``recall_guard_integration_test.py``.
 
 The unit tests (``recall_stamp_test.py``) can only pin the Cypher's text; a
 wrong comparison, a missing ``IS NULL`` branch or a mis-shifted property
@@ -21,19 +22,12 @@ import pytest
 
 from backend.copilot.dream import ratification
 from backend.copilot.dream.fetch import _fetch_active_facts
-from backend.copilot.tools.graphiti_forget import invalidate_entity_direct_neighbors
 
 from . import context
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall_forget import retract
 from .recall_integration_fixtures import ALICE, ingest_facts, patch_recall_boundaries
-from .recall_stamp import (
-    RECALL_DEDUPE_INTERVAL,
-    read_neighbour_stamps,
-    read_recall_stamps,
-    stamp_recalls,
-    stamp_time,
-)
+from .recall_stamp import RECALL_DEDUPE_INTERVAL, stamp_recalls, stamp_time
 
 _OWNER = "u-stamp-integration"
 
@@ -193,7 +187,7 @@ async def test_a_forget_then_a_recall_never_stamps_the_forgotten_fact(
 ) -> None:
     """A fact warm context stamped, then forgotten: a recall hook that still
     names it (a search that began before the forget) writes nothing on it,
-    and the dream's re-read of the stamps no longer sees it."""
+    and the dream's gather no longer sees it."""
     driver, scope = scope_graph
     patch_recall_boundaries(mocker, driver, stub_graphiti_client)
     mocker.patch.object(ratification, "record_memory_hit", AsyncMock())
@@ -216,12 +210,13 @@ async def test_a_forget_then_a_recall_never_stamps_the_forgotten_fact(
     after = await _stamps(driver, fact)
     assert after["recall_count"] == 1
     assert after["prev_recalled_at"] is None
-    assert await read_recall_stamps(driver, scope.group_id, [fact]) == []
+    gathered = await _fetch_active_facts(driver, scope.group_id, 50)
+    assert fact not in {f.uuid for f in gathered}
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_the_dream_reads_the_stamps_it_gathers_and_rereads(
+async def test_the_dream_gathers_each_live_facts_stamps(
     clean_graph,
 ) -> None:
     driver, group_id = clean_graph
@@ -237,7 +232,6 @@ async def test_the_dream_reads_the_stamps_it_gathers_and_rereads(
     await _edge(driver, group_id, "gone", recall_count=5, forgotten_at=_ago(days=1))
 
     facts = {f.uuid: f for f in await _fetch_active_facts(driver, group_id, 50)}
-    reread = await read_recall_stamps(driver, group_id, ["never", "used", "gone"])
 
     assert set(facts) == {"never", "used"}
     never = facts["never"]
@@ -249,41 +243,4 @@ async def test_the_dream_reads_the_stamps_it_gathers_and_rereads(
     used = facts["used"]
     assert used.recall_count == 2
     assert used.last_recalled_at == (await _stamps(driver, "used"))["last_recalled_at"]
-    assert {s.uuid: s.recall_count for s in reread or []} == {"never": None, "used": 2}
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_an_entity_invalidation_leaves_the_skipped_neighbours_alone(
-    clean_graph,
-) -> None:
-    driver, group_id = clean_graph
-    await driver.execute_query(
-        """
-        CREATE (hub:Entity {uuid: 'hub', name: 'Hub', group_id: $g}),
-               (a:Entity {uuid: 'a', name: 'A', group_id: $g}),
-               (b:Entity {uuid: 'b', name: 'B', group_id: $g}),
-               (hub)-[:RELATES_TO {uuid: 'kept', group_id: $g, status: 'active',
-                                   last_recalled_at: $recent}]->(a),
-               (b)-[:RELATES_TO {uuid: 'dropped', group_id: $g,
-                                 status: 'active'}]->(hub)
-        """,
-        g=group_id,
-        recent=_ago(hours=3),
-    )
-
-    neighbours = await read_neighbour_stamps(driver, group_id, "hub")
-    demoted = await invalidate_entity_direct_neighbors(
-        driver,
-        group_id=group_id,
-        entity_uuid="hub",
-        reason="dead_client",
-        skip={"kept"},
-    )
-    everything = await invalidate_entity_direct_neighbors(
-        driver, group_id=group_id, entity_uuid="hub", reason="dead_client"
-    )
-
-    assert {s.uuid for s in neighbours or []} == {"kept", "dropped"}
-    assert demoted == ["dropped"]
-    assert everything == ["kept"], "an empty skip leaves nothing out"
+    assert used.prev_recalled_at == (await _stamps(driver, "used"))["prev_recalled_at"]

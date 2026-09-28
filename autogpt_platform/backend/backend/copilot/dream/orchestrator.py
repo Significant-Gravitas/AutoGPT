@@ -635,8 +635,7 @@ async def _apply(
     input_bundle: DreamInput,
 ) -> DreamPassResult:
     """Clamp the operations, make the last checks, apply and stamp the marker."""
-    clamped = clamp_pass_operations(sanitized, input_bundle)
-    ops = clamped.ops
+    ops = clamp_pass_operations(sanitized, input_bundle)
     await record_applying(run.pass_id, ops)
     lease = await admit_sync_apply(run, scope, lock_handle)
     apply_stats = await apply_operations(
@@ -647,7 +646,6 @@ async def _apply(
         known_episode_uuids=input_bundle.known_episode_uuids,
         lock_handle=lock_handle,
         lease=lease,
-        protected_demotions=clamped.protected_demotions,
     )
     # Apply succeeded (even as a no-op) — stamp the marker so the next nightly
     # pass can skip when nothing new has landed. Stamped with the gather-window

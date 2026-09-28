@@ -1,6 +1,8 @@
 """Recall stamps against a mocked driver: the one batched write each recall
-hook makes, what it may touch, and that a failing stamp never fails a turn.
-``recall_stamp_integration_test.py`` runs the same Cypher on FalkorDB."""
+hook makes, what it may touch, and that a failing stamp never fails a turn;
+and the protection test the dream's destructive writes carry.
+``recall_stamp_integration_test.py`` and ``recall_guard_integration_test.py``
+run the same Cypher on FalkorDB."""
 
 import logging
 from datetime import datetime, timedelta, timezone
@@ -14,12 +16,10 @@ from . import recall_stamp
 from .recall import live_fact_predicate
 from .recall_stamp import (
     RECALL_DEDUPE_INTERVAL,
-    RecallStamp,
+    RecallProtection,
     parse_stamp,
-    read_neighbour_stamps,
-    read_recall_stamps,
     record_recall,
-    stamp_fields,
+    spared_by_recall,
     stamp_recalls,
     stamp_recalls_in_scope,
     stamp_time,
@@ -29,12 +29,15 @@ from .scope import MemoryScope
 _SCOPE = MemoryScope.for_user("user-1")
 
 
-def _driver(rows: list[dict] | Exception) -> AsyncMock:
+def _driver(rows: list[dict]) -> AsyncMock:
     driver = AsyncMock()
-    if isinstance(rows, Exception):
-        driver.execute_query.side_effect = rows
-    else:
-        driver.execute_query.return_value = (rows, None, None)
+    driver.execute_query.return_value = (rows, None, None)
+    return driver
+
+
+def _failing_driver(error: Exception) -> AsyncMock:
+    driver = AsyncMock()
+    driver.execute_query.side_effect = error
     return driver
 
 
@@ -108,7 +111,7 @@ class TestTheStampWrite:
     async def test_a_failing_stamp_is_logged_and_never_raises(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        driver = _driver(RuntimeError("falkordb down"))
+        driver = _failing_driver(RuntimeError("falkordb down"))
 
         with caplog.at_level(logging.WARNING, logger=recall_stamp.__name__):
             assert await stamp_recalls(driver, ["e1"], owner="user-1") == 0
@@ -118,7 +121,8 @@ class TestTheStampWrite:
     @pytest.mark.asyncio
     async def test_an_unreadable_answer_counts_as_nothing_stamped(self) -> None:
         assert await stamp_recalls(_driver([]), ["e1"], owner="u") == 0
-        assert await stamp_recalls(_driver([{"stamped": "2"}]), ["e1"], owner="u") == 0
+        malformed = _driver([{"stamped": "not a count"}])
+        assert await stamp_recalls(malformed, ["e1"], owner="u") == 0
 
 
 class TestTheHooks:
@@ -207,66 +211,41 @@ class TestTheHooks:
         assert await stamp_recalls_in_scope(_SCOPE, ["e1"]) == 1
 
 
-class TestReadingTheStamps:
-    @pytest.mark.asyncio
-    async def test_the_targets_are_read_live_and_in_the_pass_graph_only(
+class TestTheProtectionTest:
+    """``spared_by_recall``: the Cypher each destructive dream write carries in
+    its own statement. ``recall_guard_integration_test.py`` runs it."""
+
+    def test_a_recent_recall_spares_unless_the_override_reaches_the_edge(
         self,
     ) -> None:
-        driver = _driver(
-            [
-                {
-                    "uuid": "e1",
-                    "recall_count": 4,
-                    "last_recalled_at": "2026-09-27T10:00:00.000000+00:00",
-                    "prev_recalled_at": None,
-                }
-            ]
+        test = spared_by_recall("r")
+
+        assert test == (
+            "($recalled_since IS NOT NULL"
+            " AND r.last_recalled_at IS NOT NULL"
+            " AND r.last_recalled_at >= $recalled_since"
+            " AND NOT ($override AND ($cited IS NULL OR r.uuid <> $cited)))"
         )
 
-        stamps = await read_recall_stamps(driver, "user_g", ["e1", "e2", "e1"])
+    def test_the_protection_carries_its_statement_parameters(self) -> None:
+        protection = RecallProtection(
+            recalled_since="2026-08-29T03:00:00.000000+00:00",
+            override=True,
+            cited="c",
+        )
 
-        assert stamps == [
-            RecallStamp(
-                uuid="e1",
-                recall_count=4,
-                last_recalled_at="2026-09-27T10:00:00.000000+00:00",
-            )
-        ]
-        query = driver.execute_query.await_args.args[0]
-        params = driver.execute_query.await_args.kwargs
-        assert params == {"uuids": ["e1", "e2"], "group_id": "user_g"}
-        assert "e.group_id = $group_id" in query
-        assert live_fact_predicate("e") in query
-        assert "toString(e.last_recalled_at) AS last_recalled_at" in query
+        assert protection.params() == {
+            "recalled_since": "2026-08-29T03:00:00.000000+00:00",
+            "override": True,
+            "cited": "c",
+        }
 
-    @pytest.mark.asyncio
-    async def test_the_neighbours_read_matches_the_invalidations_neighbours(
-        self,
-    ) -> None:
-        driver = _driver([{"uuid": "e1"}, {"uuid": "e2", "recall_count": 1}])
-
-        stamps = await read_neighbour_stamps(driver, "user_g", "entity-1")
-
-        assert [s.uuid for s in stamps or []] == ["e1", "e2"]
-        query = driver.execute_query.await_args.args[0]
-        assert "(n:Entity {uuid: $entity_uuid, group_id: $group_id})" in query
-        assert "-[e:RELATES_TO]-()" in query, "both directions, single hop"
-        assert f"WHERE {live_fact_predicate('e')}" in query
-        assert "RETURN DISTINCT e.uuid AS uuid" in query
-
-    @pytest.mark.asyncio
-    async def test_a_failed_read_says_so_rather_than_no_stamps(self) -> None:
-        driver = _driver(RuntimeError("falkordb down"))
-
-        assert await read_recall_stamps(driver, "user_g", ["e1"]) is None
-        assert await read_neighbour_stamps(driver, "user_g", "entity-1") is None
-
-    @pytest.mark.asyncio
-    async def test_no_targets_need_no_read(self) -> None:
-        driver = _driver([])
-
-        assert await read_recall_stamps(driver, "user_g", []) == []
-        driver.execute_query.assert_not_awaited()
+    def test_no_protection_is_the_default(self) -> None:
+        assert RecallProtection().params() == {
+            "recalled_since": None,
+            "override": False,
+            "cited": None,
+        }
 
 
 class TestStampValues:
@@ -294,17 +273,3 @@ class TestStampValues:
             assert parsed is None
         else:
             assert parsed == expected.replace(tzinfo=timezone.utc)
-
-    def test_a_row_without_stamps_reads_as_never_recalled(self) -> None:
-        assert stamp_fields({}) == {
-            "recall_count": None,
-            "last_recalled_at": None,
-            "prev_recalled_at": None,
-        }
-
-    def test_malformed_stamp_values_read_as_absent(self) -> None:
-        assert stamp_fields(
-            {"recall_count": "7", "last_recalled_at": 5, "prev_recalled_at": ""}
-        ) == {"recall_count": None, "last_recalled_at": None, "prev_recalled_at": None}
-        assert stamp_fields({"recall_count": 3.0})["recall_count"] == 3
-        assert stamp_fields({"recall_count": True})["recall_count"] is None

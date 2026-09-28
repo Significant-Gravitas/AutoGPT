@@ -246,6 +246,10 @@ SANITIZE_SYSTEM = (
     "stale). For each candidate, demote only when general knowledge or "
     "a phase-1 consolidated fact contradicts it. When in doubt, "
     "preserve.\n"
+    # Deliberately stricter than the deterministic guard (recall_guard.py):
+    # the model is asked to leave any recalled fact alone for staleness,
+    # however old the recall. Config.dream_demotion_protect_days does not
+    # reach this rule; setting it to 0 turns off only the guard in the writes.
     " * RECALL HISTORY: right after its confidence (after its score, among "
     "the stale-fact candidates) each fact carries its recall history in "
     "parentheses: `(recalls=N, last=YYYY-MM-DD)`, how many separate times "

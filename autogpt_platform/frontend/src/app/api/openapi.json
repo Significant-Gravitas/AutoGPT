@@ -21002,7 +21002,12 @@
             "enum": ["superseded", "contradicted"],
             "title": "New Status"
           },
-          "applied": { "type": "boolean", "title": "Applied", "default": true }
+          "applied": { "type": "boolean", "title": "Applied", "default": true },
+          "protected": {
+            "type": "boolean",
+            "title": "Protected",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["edge_uuid", "reason", "new_status"],
@@ -21923,7 +21928,7 @@
         "type": "object",
         "required": ["entity_uuid", "reason"],
         "title": "EntityInvalidation",
-        "description": "Demote every :RELATES_TO edge directly attached to an entity.\n\nSingle-hop only — apply.py calls ``invalidate_entity_direct_neighbors``\nwhich clamps to ``[r:RELATES_TO]-(other)``; never expands to\nneighbors-of-neighbors."
+        "description": "Demote every :RELATES_TO edge directly attached to an entity.\n\nSingle-hop only — demotions.py calls ``invalidate_entity_direct_neighbors``\nwhich clamps to ``[r:RELATES_TO]-(other)``; never expands to\nneighbors-of-neighbors."
       },
       "EntityInvalidationSummary": {
         "properties": {

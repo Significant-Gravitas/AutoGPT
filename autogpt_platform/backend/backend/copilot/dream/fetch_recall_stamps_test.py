@@ -137,8 +137,8 @@ def test_a_bundle_written_before_the_stamps_reads_as_never_recalled() -> None:
 
 @pytest.mark.asyncio
 async def test_the_batch_path_keeps_the_stamps_across_its_redis_copy() -> None:
-    """The batch callbacks rebuild their prompts and run the clamp-time
-    guard from this copy, hours after the gather."""
+    """The batch callbacks rebuild their prompts from this copy, hours
+    after the gather."""
     await persist_input_bundle("p-stamps", _bundle(_USED, _NEVER))
 
     restored = await read_input_bundle("p-stamps")
@@ -149,7 +149,7 @@ async def test_the_batch_path_keeps_the_stamps_across_its_redis_copy() -> None:
 
 def test_the_pass_record_keeps_the_stamps() -> None:
     args = transition_args("p1", DreamPassUpdate(input_bundle=_bundle(_USED)))
-    [column] = [a for a in args if isinstance(a, str) and '"known_fact_uuids"' in a]
+    [column] = [a for a in args if '"known_fact_uuids"' in str(a)]
 
     stored = input_bundle_from_dict(json.loads(column))
 

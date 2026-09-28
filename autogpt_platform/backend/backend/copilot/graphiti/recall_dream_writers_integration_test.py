@@ -19,14 +19,18 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.dream import apply
+from backend.copilot.dream import demotions
 from backend.copilot.dream.fetch import _fetch_recent_episodes
 from backend.copilot.dream.hidden_sessions import hidden_session_ids
-from backend.copilot.dream.schemas import DreamDemotion, EntityInvalidation
+from backend.copilot.dream.schemas import (
+    DreamDemotion,
+    DreamOperations,
+    EntityInvalidation,
+)
 
 from . import recall_hide
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -54,16 +58,21 @@ def boundaries(mocker, scope_graph, stub_graphiti_client):
 async def _dream_write(
     scope: MemoryScope, writer: str, edge_uuid: str, entity_uuid: str
 ) -> int:
-    """The dream's write, as ``apply`` makes it; how many edges it changed."""
+    """The dream's write, as its destructive stage (``demotions.py``) makes
+    it; how many edges it changed."""
     if writer == "supersede":
-        succeeded, _, _ = await apply._apply_demotions(
-            scope, [DreamDemotion(edge_uuid=edge_uuid, reason="stale_fact")]
+        ops = DreamOperations(
+            demotions=[DreamDemotion(edge_uuid=edge_uuid, reason="stale_fact")]
         )
-        return succeeded
-    touched, _ = await apply._apply_entity_invalidations(
-        scope, [EntityInvalidation(entity_uuid=entity_uuid, reason="dead_client")]
-    )
-    return touched
+    else:
+        ops = DreamOperations(
+            entity_invalidations=[
+                EntityInvalidation(entity_uuid=entity_uuid, reason="dead_client")
+            ]
+        )
+    with patch.object(demotions, "is_feature_enabled", AsyncMock(return_value=True)):
+        results = await demotions.apply_demotions(scope, "p-writers", ops, {edge_uuid})
+    return results.demoted + results.entity_edges
 
 
 async def _forget(
