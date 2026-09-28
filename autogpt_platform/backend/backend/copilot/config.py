@@ -301,6 +301,13 @@ class ChatConfig(BaseSettings):
         default=2.0,
         description="Timeout for one Jev call; expiry falls through to the LLM.",
     )
+    gate_content_first_stage: Literal["none", "jev"] = Field(
+        default="none",
+        description="First stage of the content judge: Jev decides clean or "
+        "hold on every text read and the LLM (``gate_content_model``) runs only "
+        "on a hold, to quote the passage. Reads with images skip it. Off without "
+        "``TYPESAFE_API_KEY``.",
+    )
     content_judge_timeout_s: float = Field(
         default=15.0,
         description="Hard timeout for one content-judge call on an outside "
