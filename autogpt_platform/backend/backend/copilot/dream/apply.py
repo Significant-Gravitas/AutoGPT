@@ -471,7 +471,11 @@ async def apply_operations(
     The demotions and entity invalidations (``demotions.py``) each carry the
     recall guard in their own statement: a live fact the user recalled within
     the protection window is left alone unless the write overrides it, and
-    ``protected_demotions`` counts the distinct facts it kept live.
+    ``protected_demotions`` counts the distinct facts it kept live, as one
+    read after the last write finds them. A write that raised may have
+    committed: it is counted in ``indeterminate_demotion_writes``, not as a
+    failure, and ``demotion_accounting_complete`` is False if that read
+    failed.
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -505,6 +509,8 @@ async def apply_operations(
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
             "protected_demotions": 0,
+            "indeterminate_demotion_writes": 0,
+            "demotion_accounting_complete": True,
             # Vacuously drained — the pass enqueued nothing.
             "ingestion_drain_status": IngestionDrainStatus.drained,
             "snapshot": DreamOperationsSnapshot(),
@@ -631,7 +637,8 @@ async def apply_operations(
     logger.info(
         "Dream pass %s applied for user %s: "
         "writes=%d proposals=%d dropped_forgotten=%d demoted=%d (failed=%d) "
-        "protected=%d entity_edges=%d ingestion_drain_status=%s",
+        "protected=%d entity_edges=%d indeterminate=%d accounting_complete=%s "
+        "ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
         written,
@@ -641,6 +648,8 @@ async def apply_operations(
         destroyed.failed,
         destroyed.protected,
         destroyed.entity_edges,
+        destroyed.indeterminate,
+        destroyed.accounting_complete,
         ingestion_drain_status.value,
     )
 
@@ -663,6 +672,10 @@ async def apply_operations(
         "dropped_forgotten": completion.dropped_forgotten,
         # Distinct facts the recall guard kept live through the pass.
         "protected_demotions": destroyed.protected,
+        # Destructive writes that raised: each may have committed.
+        "indeterminate_demotion_writes": destroyed.indeterminate,
+        # False when the read that confirms the protected count failed.
+        "demotion_accounting_complete": destroyed.accounting_complete,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }

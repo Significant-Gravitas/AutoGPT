@@ -233,6 +233,10 @@ async def _process_edge(
         result.superseded_count += 1
     elif outcome is WriteOutcome.SPARED:
         result.protected_count += 1
+    elif outcome is WriteOutcome.UNKNOWN:
+        # The write raised and may have committed: neither superseded nor
+        # failed as far as the sweep knows.
+        result.per_edge_errors.append(f"{edge_uuid}: supersede_outcome_unknown")
     else:
         # Surface non-matches too: an edge without a group_id property (legacy
         # write) matches nothing under the group-scoped predicate and would

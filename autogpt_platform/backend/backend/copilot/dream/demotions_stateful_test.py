@@ -10,9 +10,13 @@ unless the write's protection spares it; anything else is left as it is).
 Operations run in order on that state: an edge demoted once is not demoted
 again, an expired neighbour is not changed, a target a forget took between
 gather and apply fails, and duplicates, direct/entity overlaps and overrides
-are all generated. The real clamp and apply run each generated case twice:
-with the recall stamps, and in the world before them (no stamps anywhere,
-recalls stamping nothing). What the statements themselves do is held to the
+are all generated, as are writes that commit but whose acknowledgement is
+lost and a final liveness read that fails. The real clamp and apply run each
+generated case twice: with the recall stamps, and in the world before them
+(no stamps anywhere, recalls stamping nothing). The pass's account is held
+to what it can know: acknowledged changes, the writes whose outcome it
+cannot know, and the facts protection kept live, confirmed by the final read
+or reported as provisional. What the statements themselves do is held to the
 same rule on FalkorDB by ``graphiti/recall_guard_integration_test.py``.
 """
 
@@ -67,22 +71,24 @@ class Edge(BaseModel):
 
 
 class Write(BaseModel):
-    """One live edge a guarded write reached, as the graph stood then."""
+    """One live edge a guarded write reached, as the graph stood then, and
+    whether the write's reply reached the pass."""
 
     edge: str
     reason: str
     changed: bool
     last_recalled_at: datetime | None
+    acknowledged: bool = True
 
 
 class Graph:
     """The simulated graph behind the stage's two writers."""
 
-    def __init__(
-        self, edges: list[Edge], recalls: dict[int, list[str]], usage: bool
-    ) -> None:
-        self.edges = {e.uuid: e.model_copy() for e in edges}
-        self.recalls = recalls
+    def __init__(self, case: "Case", usage: bool) -> None:
+        self.edges = {e.uuid: e.model_copy() for e in case.edges}
+        self.recalls = case.recalls
+        self.lost_acks = set(case.lost_acks)
+        self.read_fails = case.read_fails
         self.usage = usage
         self.statements = 0
         self.writes: list[Write] = []
@@ -109,48 +115,76 @@ class Graph:
         reason: str,
         protection: RecallProtection,
     ) -> NeighbourWrites:
-        self._statement()
+        acknowledged = self._statement()
         writes = NeighbourWrites()
         for edge in self.edges.values():
             if entity_uuid in edge.ends and edge.live:
                 bucket = (
                     writes.changed
-                    if self._write(edge, reason, protection)
+                    if self._write(edge, reason, protection, acknowledged)
                     else writes.spared
                 )
                 bucket.append(edge.uuid)
-        return writes
+        return writes if acknowledged else NeighbourWrites(unknown=True)
+
+    async def live_uuids(
+        self, driver: object, group_id: str, uuids: list[str]
+    ) -> set[str]:
+        """The stage's final liveness read."""
+        if self.read_fails:
+            raise TimeoutError("the liveness read's reply was lost")
+        return {uuid for uuid in uuids if self.edges[uuid].live}
 
     def changed(self) -> set[str]:
+        """Every fact a write changed, acknowledged or not."""
         return {w.edge for w in self.writes if w.changed}
 
+    def acknowledged(self, *, changed: bool) -> set[str]:
+        """The facts an acknowledged write changed, or spared."""
+        return {w.edge for w in self.writes if w.acknowledged and w.changed is changed}
+
     def kept_live(self) -> int:
-        """The distinct facts some write spared that are still live when the
-        pass ends."""
+        """The distinct facts an acknowledged write spared that are still live
+        when the pass ends."""
         return len(
-            {w.edge for w in self.writes if not w.changed and self.edges[w.edge].live}
+            {edge for edge in self.acknowledged(changed=False) if self.edges[edge].live}
         )
+
+    def indeterminate(self) -> int:
+        """The statements that ran and lost their acknowledgement."""
+        return len({k for k in self.lost_acks if k < self.statements})
 
     def _supersede_one(
         self, uuid: str, reason: str, protection: RecallProtection
     ) -> WriteOutcome:
-        self._statement()
+        acknowledged = self._statement()
         edge = self.edges.get(uuid)
         if edge is None or not edge.live:
-            return WriteOutcome.FAILED
-        if self._write(edge, reason, protection):
-            return WriteOutcome.CHANGED
-        return WriteOutcome.SPARED
+            outcome = WriteOutcome.UNMATCHED
+        elif self._write(edge, reason, protection, acknowledged):
+            outcome = WriteOutcome.CHANGED
+        else:
+            outcome = WriteOutcome.SPARED
+        return outcome if acknowledged else WriteOutcome.UNKNOWN
 
-    def _statement(self) -> None:
-        """Recalls that complete right before this statement runs."""
-        for uuid in self.recalls.get(self.statements, []):
+    def _statement(self) -> bool:
+        """Recalls that complete right before this statement runs; whether
+        the statement's reply will reach the pass."""
+        k = self.statements
+        for uuid in self.recalls.get(k, []):
             edge = self.edges.get(uuid)
             if self.usage and edge is not None and edge.live:
                 edge.last_recalled_at = datetime.now(timezone.utc)
         self.statements += 1
+        return k not in self.lost_acks
 
-    def _write(self, edge: Edge, reason: str, protection: RecallProtection) -> bool:
+    def _write(
+        self,
+        edge: Edge,
+        reason: str,
+        protection: RecallProtection,
+        acknowledged: bool,
+    ) -> bool:
         """The guarded statement's rule on one live edge; whether it changed."""
         spared = (
             protection.recalled_since is not None
@@ -167,6 +201,7 @@ class Graph:
                 reason=reason,
                 changed=not spared,
                 last_recalled_at=edge.last_recalled_at,
+                acknowledged=acknowledged,
             )
         )
         edge.live = edge.live and spared
@@ -175,14 +210,17 @@ class Graph:
 
 class Case(BaseModel):
     """One generated pass: the graph as gathered, what changed between
-    gather and apply, the recalls that land during apply, and the fixed
-    proposals."""
+    gather and apply, the recalls that land during apply, the statements
+    whose acknowledgement is lost, whether the final read fails, and the
+    fixed proposals."""
 
     edges: list[Edge]
     forgotten_after_gather: list[str]
     recalled_after_gather: list[str]
     recalls: dict[int, list[str]]
     ops: DreamOperations
+    lost_acks: list[int] = []
+    read_fails: bool = False
 
     def gathered(self) -> list[Edge]:
         return [e for e in self.edges if e.live]
@@ -200,6 +238,9 @@ def world(mocker) -> SimpleNamespace:
     async def invalidate(*args, **kwargs):
         return await holder.graph.invalidate(*args, **kwargs)
 
+    async def live_uuids(*args, **kwargs):
+        return await holder.graph.live_uuids(*args, **kwargs)
+
     driver = MagicMock()
     driver.close = AsyncMock()
     mocker.patch.object(demotions_mod, "open_driver", return_value=driver)
@@ -210,6 +251,9 @@ def world(mocker) -> SimpleNamespace:
         demotions_mod,
         "invalidate_entity_direct_neighbors",
         AsyncMock(side_effect=invalidate),
+    )
+    mocker.patch.object(
+        demotions_mod, "live_fact_uuids", AsyncMock(side_effect=live_uuids)
     )
     mocker.patch.object(
         demotions_mod, "is_feature_enabled", AsyncMock(return_value=True)
@@ -237,7 +281,9 @@ def _stamp(rng: random.Random, history: str, now: datetime) -> datetime | None:
 
 def _case(rng: random.Random, scenario: str) -> Case:
     now = datetime.now(timezone.utc)
+    lossy = scenario in ("lost_acknowledgements", "failed_read", "any")
     history = scenario if scenario in (*_HISTORIES, "any") else "never"
+    history = "any" if lossy else history
     edges = [
         Edge(
             uuid=f"f{i}",
@@ -250,6 +296,9 @@ def _case(rng: random.Random, scenario: str) -> Case:
     gathered = [e.uuid for e in edges if e.live]
     late = scenario in ("recalled_after_gather", "any")
     during = scenario in ("recalled_during_apply", "any")
+    ops = _proposals(rng, edges, gathered)
+    if lossy and gathered and rng.random() < 0.7:
+        _spare_then_override(rng, edges, gathered, ops, now)
     return Case(
         edges=edges,
         forgotten_after_gather=[u for u in gathered if rng.random() < 0.1],
@@ -259,7 +308,29 @@ def _case(rng: random.Random, scenario: str) -> Case:
             for k in range(30)
             if during and rng.random() < 0.3
         },
-        ops=_proposals(rng, edges, gathered),
+        ops=ops,
+        lost_acks=[k for k in range(30) if lossy and rng.random() < 0.3],
+        read_fails=scenario == "failed_read"
+        or (scenario == "any" and rng.random() < 0.2),
+    )
+
+
+def _spare_then_override(
+    rng: random.Random,
+    edges: list[Edge],
+    gathered: list[str],
+    ops: DreamOperations,
+    now: datetime,
+) -> None:
+    """Codex's lost-acknowledgement shape: a recently recalled fact the first
+    direct write spares, then the user's retraction through one of its
+    entities, whose reply may be lost after it committed."""
+    chosen = rng.choice(gathered)
+    target = next(e for e in edges if e.uuid == chosen)
+    target.last_recalled_at = now - timedelta(days=1)
+    ops.demotions.insert(0, DreamDemotion(edge_uuid=target.uuid, reason="stale_fact"))
+    ops.entity_invalidations.insert(
+        0, EntityInvalidation(entity_uuid=target.ends[0], reason="user_signal")
     )
 
 
@@ -290,7 +361,7 @@ def _proposals(
 
 async def _run(world: SimpleNamespace, case: Case, usage: bool) -> tuple[Graph, dict]:
     """The real clamp and apply on *case*, with or without usage data."""
-    graph = Graph(case.edges, case.recalls, usage)
+    graph = Graph(case, usage)
     now = datetime.now(timezone.utc)
     for edge in graph.edges.values():
         if not usage:
@@ -352,6 +423,25 @@ def _check_every_write(graph: Graph, known: set[str]) -> None:
         assert write.changed is not protected, write
 
 
+def _check_the_account(graph: Graph, stats: dict, case: Case) -> None:
+    """The pass reports what it can know and never a false protected count:
+    acknowledged changes; the writes whose outcome it cannot know; and the
+    facts protection kept live, confirmed by the final read, or provisional
+    (spared minus acknowledged changes) and marked incomplete when that read
+    failed."""
+    changed = graph.acknowledged(changed=True)
+    reported = int(stats["demotion_count"]) + int(stats["entity_invalidation_count"])
+    assert reported == len(changed), case
+    assert stats["indeterminate_demotion_writes"] == graph.indeterminate(), case
+    spared = graph.acknowledged(changed=False)
+    if case.read_fails and spared:
+        assert stats["demotion_accounting_complete"] is False, case
+        assert stats["protected_demotions"] == len(spared - changed), case
+        return
+    assert stats["demotion_accounting_complete"] is True, case
+    assert stats["protected_demotions"] == graph.kept_live(), case
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario",
@@ -363,6 +453,8 @@ def _check_every_write(graph: Graph, known: set[str]) -> None:
         "away_90_days",
         "recalled_after_gather",
         "recalled_during_apply",
+        "lost_acknowledgements",
+        "failed_read",
         "any",
     ],
 )
@@ -382,11 +474,7 @@ async def test_usage_never_demotes_more_and_protects_at_every_write(
         if scenario in ("never", "away_40_days", "away_90_days"):
             assert with_usage.changed() == without.changed(), case
         _check_every_write(with_usage, known)
-        reported = int(stats["demotion_count"]) + int(
-            stats["entity_invalidation_count"]
-        )
-        assert reported == len(with_usage.changed()), case
-        assert stats["protected_demotions"] == with_usage.kept_live(), case
+        _check_the_account(with_usage, stats, case)
 
 
 @pytest.mark.asyncio

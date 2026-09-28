@@ -83,6 +83,11 @@ class DreamPassApplied(BaseModel):
     # Distinct facts the recall guard kept live through the pass; a row
     # written before it reads 0.
     protected_demotions: int = 0
+    # Demotion writes whose outcome is unknown (they raised), and whether
+    # the protected count was confirmed by its final read; a row written
+    # before them reads 0 and True.
+    indeterminate_demotion_writes: int = 0
+    demotion_accounting_complete: bool = True
     summary_for_user: str = ""
     dream_session_id: str | None = None
     ingestion_drain_status: IngestionDrainStatus = IngestionDrainStatus.drained

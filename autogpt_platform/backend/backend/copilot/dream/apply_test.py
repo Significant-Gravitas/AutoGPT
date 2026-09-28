@@ -30,6 +30,7 @@ from .schemas import (
     ConsolidatedFact,
     DreamDemotion,
     DreamOperations,
+    DreamOperationsSnapshot,
     EntityInvalidation,
     IngestionDrainStatus,
     ProposedFinding,
@@ -77,6 +78,13 @@ def _stub_boundaries(mocker):
         demotions_mod,
         "invalidate_entity_direct_neighbors",
         AsyncMock(return_value=NeighbourWrites(changed=["e1", "e2"])),
+    )
+    # The read that settles the protected count: every spared fact is still
+    # live unless a test says otherwise.
+    mocker.patch.object(
+        demotions_mod,
+        "live_fact_uuids",
+        AsyncMock(side_effect=lambda driver, group_id, uuids: set(uuids)),
     )
     # ChatSession + ChatMessage writes — apply.py imports them lazily inside
     # ``_create_dream_session`` / ``_write_dream_summary_message`` to avoid a
@@ -916,7 +924,7 @@ async def test_apply_operations_demotion_summary_marks_applied_false_on_miss(moc
     mocker.patch.object(
         demotions_mod,
         "supersede_unless_recalled",
-        AsyncMock(return_value=[WriteOutcome.FAILED]),
+        AsyncMock(return_value=[WriteOutcome.UNMATCHED]),
     )
     ops = DreamOperations(
         demotions=[
@@ -941,9 +949,9 @@ async def test_apply_operations_demotion_summary_marks_applied_false_on_miss(moc
 async def test_what_the_guarded_writes_spared_reaches_the_stats_and_snapshot(
     mocker,
 ):
-    """``protected_demotions`` is one per spared demotion plus one per spared
-    neighbour, straight from the writes' own results; a spared demotion is
-    neither applied nor failed."""
+    """``protected_demotions`` is the distinct facts the writes spared, less
+    any the final read finds no longer live (here all are); a spared demotion
+    is neither applied nor failed."""
     mocker.patch.object(
         demotions_mod,
         "supersede_unless_recalled",
@@ -972,11 +980,58 @@ async def test_what_the_guarded_writes_spared_reaches_the_stats_and_snapshot(
         stats["demotion_failed_count"],
         stats["entity_invalidation_count"],
         stats["protected_demotions"],
-    ) == (1, 0, 1, 3)
+        stats["indeterminate_demotion_writes"],
+        stats["demotion_accounting_complete"],
+    ) == (1, 0, 1, 3, 0, True)
     snap = stats["snapshot"]
+    assert isinstance(snap, DreamOperationsSnapshot)
     assert [(d.edge_uuid, d.applied, d.protected) for d in snap.demotions] == [
         ("hot", False, True),
         ("cold", True, False),
     ]
     assert snap.entity_invalidations[0].edges_touched == ["n1"]
     assert snap.entity_invalidations[0].edges_protected == ["n2", "n3"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_writes_and_a_failed_read_reach_the_stats(mocker):
+    """A write whose reply was lost and a neighbour statement that raised
+    are indeterminate, not failures; with the liveness read failing too, the
+    protected count is provisional and marked so."""
+    mocker.patch.object(
+        demotions_mod,
+        "supersede_unless_recalled",
+        AsyncMock(return_value=[WriteOutcome.SPARED, WriteOutcome.UNKNOWN]),
+    )
+    mocker.patch.object(
+        demotions_mod,
+        "invalidate_entity_direct_neighbors",
+        AsyncMock(return_value=NeighbourWrites(unknown=True)),
+    )
+    mocker.patch.object(
+        demotions_mod, "live_fact_uuids", AsyncMock(side_effect=TimeoutError)
+    )
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="gone", reason="stale_fact"),
+        ],
+        entity_invalidations=[EntityInvalidation(entity_uuid="ent", reason="gone")],
+        summary_for_user="ok",
+    )
+
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-unknown"), pass_id="p-unknown", ops=ops
+    )
+
+    assert (
+        stats["demotion_count"],
+        stats["demotion_failed_count"],
+        stats["indeterminate_demotion_writes"],
+        stats["protected_demotions"],
+        stats["demotion_accounting_complete"],
+    ) == (0, 0, 2, 1, False)
+    snap = stats["snapshot"]
+    assert isinstance(snap, DreamOperationsSnapshot)
+    assert [d.indeterminate for d in snap.demotions] == [False, True]
+    assert snap.entity_invalidations[0].indeterminate is True

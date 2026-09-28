@@ -2,26 +2,35 @@
 and the account of what they did.
 
 Demotions targeting a fact the pass never read are dropped first: the model
-may invent a uuid, or be steered to one. The rest are written grouped by
-status and reason, in the order the pass proposed them, then each entity
-invalidation. Usage data plays no part in which of them are attempted.
+may invent a uuid, or be steered to one. The rest are written in
+``(status, reason)`` buckets, in the order each bucket first appears and in
+proposal order within it, then each entity invalidation. Usage data plays
+no part in which of them are attempted, or in their order.
 
 Every write carries the recall guard in its own statement
 (``graphiti/guarded_writes.py``, with the protection ``recall_guard.py``
 builds for its reason): a live fact the user recalled within the protection
 window is left alone unless the write's reason overrides it, and the
-statement returns the facts it changed and those it spared. Nothing is read
-beforehand to decide. ``protected_demotions`` counts the distinct facts
-protection kept live through the pass: spared by a write and changed by no
-later one. A fact spared twice (a duplicated demotion, or a demotion and an
-invalidation) counts once; a fact spared by one write and then changed by a
-later one whose reason overrides the guard counts only as changed. Each
-operation's own summary still records what its write did. A write that
-fails is logged and changes nothing, as before recall stamps existed.
+statement reports the facts it changed and those it spared. Nothing is read
+beforehand to decide.
+
+A write that raises has an unknown outcome: it may have committed before
+its acknowledgement was lost. It is counted in ``indeterminate``, and its
+facts are neither counted as changed nor assumed untouched.
+``protected_demotions`` counts the distinct facts an acknowledged write
+spared that are still live once every write has run, which one final read
+of just those facts decides (``_count_kept_live``). That read writes
+nothing and changes no write. A fact spared twice (a duplicated demotion,
+or a demotion and an invalidation) counts once, and a fact spared and then
+changed by a later write whose reason overrides the guard, acknowledged or
+not, is not counted. Each operation's own summary still records what its
+write reported. If the read fails, the count is provisional (spared minus
+acknowledged changes) and ``accounting_complete`` is False.
 
 Entity invalidation single-hop demotes every live edge around the entity,
-the most destructive op in the pass, so it stays behind its own LD flag for
-staged rollout, independent of the dream pass being enabled.
+with no degree cap, the most destructive op in the pass, so it stays behind
+its own LD flag for staged rollout, independent of the dream pass being
+enabled.
 """
 
 from __future__ import annotations
@@ -36,6 +45,7 @@ from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_d
 from backend.copilot.graphiti.guarded_writes import (
     WriteOutcome,
     invalidate_entity_direct_neighbors,
+    live_fact_uuids,
     supersede_unless_recalled,
 )
 from backend.copilot.graphiti.scope import MemoryScope
@@ -57,10 +67,17 @@ DemotionStatus = Literal["superseded", "contradicted"]
 
 
 class DemotionResults(BaseModel):
-    """What the destructive stage did, one summary per operation."""
+    """What the destructive stage did: one summary per operation, as each
+    write reported it, and the facts protection kept live."""
 
     demotions: list[DemotionSummary] = Field(default_factory=list)
     entity_invalidations: list[EntityInvalidationSummary] = Field(default_factory=list)
+    # Distinct facts an acknowledged write spared that are still live after
+    # every write (``_count_kept_live``).
+    protected: int = 0
+    # False when the final liveness read failed: ``protected`` is then the
+    # provisional count, spared minus acknowledged changes.
+    accounting_complete: bool = True
 
     @property
     def demoted(self) -> int:
@@ -68,24 +85,33 @@ class DemotionResults(BaseModel):
 
     @property
     def failed(self) -> int:
-        return sum(not d.applied and not d.protected for d in self.demotions)
+        """Demotions whose statement ran and matched no live fact."""
+        return sum(
+            not (d.applied or d.protected or d.indeterminate) for d in self.demotions
+        )
 
     @property
     def entity_edges(self) -> int:
         return sum(len(s.edges_touched) for s in self.entity_invalidations)
 
     @property
-    def protected(self) -> int:
-        """The distinct facts protection kept live: spared by a write of the
-        stage and changed by no later one. A fact is changed at most once, so
-        one both spared and changed was changed after it was spared."""
-        spared = {d.edge_uuid for d in self.demotions if d.protected} | {
+    def indeterminate(self) -> int:
+        """Writes that raised: each may have committed."""
+        return sum(d.indeterminate for d in self.demotions) + sum(
+            s.indeterminate for s in self.entity_invalidations
+        )
+
+    def spared_uuids(self) -> set[str]:
+        """The distinct facts an acknowledged write spared."""
+        return {d.edge_uuid for d in self.demotions if d.protected} | {
             uuid for s in self.entity_invalidations for uuid in s.edges_protected
         }
-        changed = {d.edge_uuid for d in self.demotions if d.applied} | {
+
+    def changed_uuids(self) -> set[str]:
+        """The distinct facts an acknowledged write changed."""
+        return {d.edge_uuid for d in self.demotions if d.applied} | {
             uuid for s in self.entity_invalidations for uuid in s.edges_touched
         }
-        return len(spared - changed)
 
 
 async def apply_demotions(
@@ -107,14 +133,46 @@ async def apply_demotions(
     guard = DemotionGuard.at(datetime.now(timezone.utc), known)
     driver = open_driver(scope)
     try:
-        return DemotionResults(
+        results = DemotionResults(
             demotions=await _demote(driver, scope, demotions, guard),
             entity_invalidations=[
                 await _invalidate(driver, scope, inv, guard) for inv in invalidations
             ],
         )
+        return await _count_kept_live(driver, scope, pass_id, results)
     finally:
         await driver.close()
+
+
+async def _count_kept_live(
+    driver: AutoGPTFalkorDriver,
+    scope: MemoryScope,
+    pass_id: str,
+    results: DemotionResults,
+) -> DemotionResults:
+    """*results* with ``protected`` set: of the facts an acknowledged write
+    spared, those still live now that every write has run, read in one
+    statement over just those facts. Accounting only: the read writes nothing
+    and changes no write. It also sees what a write whose acknowledgement was
+    lost did. If it fails, the count stays provisional (spared minus
+    acknowledged changes, which such a write may have overtaken) and
+    ``accounting_complete`` is False."""
+    spared = results.spared_uuids()
+    if not spared:
+        return results
+    try:
+        live = await live_fact_uuids(driver, scope.group_id, sorted(spared))
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: the liveness read of {len(spared)} spared "
+            "fact(s) failed; protected_demotions is provisional",
+            exc_info=True,
+        )
+        provisional = len(spared - results.changed_uuids())
+        return results.model_copy(
+            update={"protected": provisional, "accounting_complete": False}
+        )
+    return results.model_copy(update={"protected": len(spared & live)})
 
 
 async def _demote(
@@ -123,8 +181,9 @@ async def _demote(
     demotions: list[DreamDemotion],
     guard: DemotionGuard,
 ) -> list[DemotionSummary]:
-    """One guarded write per (status, reason) bucket, one summary per
-    demotion: the k-th demotion of a bucket gets the k-th outcome."""
+    """One writer call per (status, reason) bucket, which makes one guarded
+    statement per edge, and one summary per demotion: the k-th demotion of a
+    bucket gets the k-th outcome."""
     buckets: dict[tuple[DemotionStatus, str], list[str]] = {}
     for d in demotions:
         buckets.setdefault((d.new_status, d.reason), []).append(d.edge_uuid)
@@ -155,6 +214,7 @@ def _summary(demotion: DreamDemotion, outcome: WriteOutcome) -> DemotionSummary:
         new_status=demotion.new_status,
         applied=outcome is WriteOutcome.CHANGED,
         protected=outcome is WriteOutcome.SPARED,
+        indeterminate=outcome is WriteOutcome.UNKNOWN,
     )
 
 
@@ -178,6 +238,7 @@ async def _invalidate(
         reason=inv.reason,
         edges_touched=writes.changed,
         edges_protected=writes.spared,
+        indeterminate=writes.unknown,
     )
 
 

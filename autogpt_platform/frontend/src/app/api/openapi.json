@@ -21007,6 +21007,11 @@
             "type": "boolean",
             "title": "Protected",
             "default": false
+          },
+          "indeterminate": {
+            "type": "boolean",
+            "title": "Indeterminate",
+            "default": false
           }
         },
         "type": "object",
@@ -21445,6 +21450,16 @@
             "title": "Protected Demotions",
             "default": 0
           },
+          "indeterminate_demotion_writes": {
+            "type": "integer",
+            "title": "Indeterminate Demotion Writes",
+            "default": 0
+          },
+          "demotion_accounting_complete": {
+            "type": "boolean",
+            "title": "Demotion Accounting Complete",
+            "default": true
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",
@@ -21741,6 +21756,16 @@
             "title": "Protected Demotions",
             "default": 0
           },
+          "indeterminate_demotion_writes": {
+            "type": "integer",
+            "title": "Indeterminate Demotion Writes",
+            "default": 0
+          },
+          "demotion_accounting_complete": {
+            "type": "boolean",
+            "title": "Demotion Accounting Complete",
+            "default": true
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",
@@ -21943,6 +21968,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Edges Protected"
+          },
+          "indeterminate": {
+            "type": "boolean",
+            "title": "Indeterminate",
+            "default": false
           }
         },
         "type": "object",

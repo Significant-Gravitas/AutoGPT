@@ -10,7 +10,10 @@ file runs those statements; proves the stamps order by time as the strings
 ``stamp_time`` writes them; and keeps the live regressions from Codex's first
 validation of this PR: two passes that demoted more with usage data than
 without it (cases A and B), and a recall stamped between the pass's read of
-the graph and its write, on each writer.
+the graph and its write, on each writer. Its second validation added the
+rest: a hub above FalkorDB's 10,000-row result limit is accounted in full,
+and a write whose acknowledgement is lost after it committed is reported
+indeterminate and never leaves a false protected count.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -44,7 +47,8 @@ from .recall_integration_fixtures import edge_row, rows
 from .recall_stamp import RecallProtection, parse_stamp, stamp_recalls, stamp_time
 
 _OWNER = "u-guard-integration"
-CHANGED, SPARED, FAILED = WriteOutcome.CHANGED, WriteOutcome.SPARED, WriteOutcome.FAILED
+CHANGED, SPARED = WriteOutcome.CHANGED, WriteOutcome.SPARED
+UNMATCHED, UNKNOWN = WriteOutcome.UNMATCHED, WriteOutcome.UNKNOWN
 _UTC_PLUS_10 = timezone(timedelta(hours=10))
 _UTC_MINUS_5 = timezone(timedelta(hours=-5))
 # Each digit rollover of a stamp, and two local times whose own ISO strings
@@ -189,8 +193,8 @@ async def test_a_fact_no_longer_live_fails_and_is_left_as_it_is(
     await _edge(driver, group_id, "gone", last_recalled_at=_ago(days=90), **props)
     before = await edge_row(driver, "gone")
 
-    assert await _supersede(driver, group_id, "gone", _window()) == FAILED
-    assert await _supersede(driver, group_id, "missing", _window()) == FAILED
+    assert await _supersede(driver, group_id, "gone", _window()) == UNMATCHED
+    assert await _supersede(driver, group_id, "missing", _window()) == UNMATCHED
 
     assert await edge_row(driver, "gone") == before
 
@@ -202,7 +206,7 @@ async def test_a_fact_no_longer_live_fails_and_is_left_as_it_is(
     [
         ("tentative", None, CHANGED, "superseded"),
         ("tentative", 1, SPARED, "tentative"),
-        ("active", None, FAILED, "active"),
+        ("active", None, UNMATCHED, "active"),
     ],
     ids=["tentative", "tentative-recalled", "promoted-since-the-listing"],
 )
@@ -345,20 +349,39 @@ async def test_stamps_order_by_time_across_every_rollover_and_zone(clean_graph) 
     }
 
 
-class _StampBeforeWrite:
-    """The pass's driver; with *marker*, a real recall of ``A`` is stamped
-    just before the first query whose Cypher contains it runs: after the
-    pass read the graph, before its write."""
+class _Boundary:
+    """The pass's driver, and what a real server or network can do to it.
 
-    def __init__(self, driver: AutoGPTFalkorDriver, marker: str | None) -> None:
+    With *stamp_before*, a real recall of ``A`` is stamped just before the
+    first query whose Cypher contains it runs: after the pass read the
+    graph, before its write. With *lose_reason*, a write made for that
+    reason commits and then raises, as if its reply were lost. With
+    *fail_read*, the stage's final liveness read raises."""
+
+    def __init__(
+        self,
+        driver: AutoGPTFalkorDriver,
+        stamp_before: str | None = None,
+        lose_reason: str | None = None,
+        fail_read: bool = False,
+    ) -> None:
         self.driver = driver
-        self.marker = marker
+        self.stamp_before = stamp_before
+        self.lose_reason = lose_reason
+        self.fail_read = fail_read
         self.stamped = 0
+        self.lost_replies = 0
 
     async def execute_query(self, query: str, **params: Any) -> Any:
-        if self.marker and self.marker in query and not self.stamped:
+        if self.fail_read and "AS live" in query:
+            raise TimeoutError("the liveness read's reply was lost")
+        if self.stamp_before and self.stamp_before in query and not self.stamped:
             self.stamped = await stamp_recalls(self.driver, ["A"], owner=_OWNER)
-        return await self.driver.execute_query(query, **params)
+        reply = await self.driver.execute_query(query, **params)
+        if self.lose_reason and params.get("reason") == self.lose_reason:
+            self.lost_replies += 1
+            raise TimeoutError("committed, but the reply was lost")
+        return reply
 
     async def close(self) -> None:
         """The fixture closes the driver."""
@@ -374,8 +397,8 @@ def live_pass(mocker, scope_graph) -> SimpleNamespace:
     mocker.patch.object(demotions, "is_feature_enabled", return_value=True)
     state = SimpleNamespace(driver=driver, scope=scope, boundary=None)
 
-    async def run(ops: DreamOperations, stamp_before: str | None = None) -> dict:
-        state.boundary = _StampBeforeWrite(driver, stamp_before)
+    async def run(ops: DreamOperations, **boundary: Any) -> dict:
+        state.boundary = _Boundary(driver, **boundary)
         mocker.patch.object(demotions, "open_driver", return_value=state.boundary)
         facts = await _fetch_active_facts(driver, scope.group_id, 100)
         now = datetime.now(timezone.utc)
@@ -511,3 +534,208 @@ async def test_a_recall_stamped_between_the_read_and_the_write_protects(
     assert live_pass.boundary.stamped == 1, "the stamp landed before the write"
     assert (_changed(stats), stats["protected_demotions"]) == (0, 1)
     assert await _statuses(driver, ["A", "B"]) == {"A": "active", "B": "active"}
+
+
+# FalkorDB answers a statement with at most RESULTSET_SIZE rows (10,000 by
+# default); the hub below has more neighbours than that.
+_HUB_SIZE = 12_000
+
+
+async def _hub(
+    driver: AutoGPTFalkorDriver, group_id: str, size: int, recalled: int
+) -> None:
+    """Entity ``hub`` with *size* live facts ``edge-0`` ... on their own
+    leaves, the first *recalled* of them recalled a moment ago."""
+    await driver.execute_query(
+        """
+        CREATE (h:Entity {uuid: 'hub', name: 'hub', group_id: $g})
+        WITH h
+        UNWIND range(0, $size - 1) AS i
+        CREATE (h)-[:RELATES_TO {uuid: 'edge-' + toString(i), group_id: $g,
+                                 name: 'knows', fact: 'hub fact',
+                                 status: 'active', created_at: $created}]->
+               (:Entity {uuid: 'leaf-' + toString(i), name: 'leaf',
+                         group_id: $g})
+        """,
+        g=group_id,
+        size=size,
+        created=_ago(days=100),
+    )
+    await driver.execute_query(
+        """
+        MATCH (:Entity {uuid: 'hub'})-[r:RELATES_TO]->()
+        WHERE toInteger(substring(r.uuid, 5)) < $recalled
+        SET r.last_recalled_at = $now, r.recall_count = 1
+        """,
+        recalled=recalled,
+        now=stamp_time(datetime.now(timezone.utc)),
+    )
+
+
+async def _status_counts(driver: AutoGPTFalkorDriver) -> dict[str, int]:
+    found = await rows(
+        driver,
+        "MATCH ()-[r:RELATES_TO]->() RETURN r.status AS status, count(r) AS n",
+    )
+    return {row["status"]: row["n"] for row in found}
+
+
+async def _stage(
+    mocker, scope, ops: DreamOperations, known: set[str], boundary: _Boundary
+):
+    """The destructive stage alone, on the live graph behind *boundary*."""
+    mocker.patch.object(demotions, "open_driver", return_value=boundary)
+    mocker.patch.object(demotions, "is_feature_enabled", return_value=True)
+    return await demotions.apply_demotions(scope, "p-stage", ops, known)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "recalled", [_HUB_SIZE, _HUB_SIZE // 2], ids=["all-protected", "half-and-half"]
+)
+async def test_a_hub_above_the_row_limit_is_accounted_in_full(
+    mocker, scope_graph, recalled: int
+) -> None:
+    """Every one of the hub's 12,000 outcomes comes back, in one aggregate
+    row, and the final read confirms every protected fact, in one row too.
+    One row per neighbour would have stopped at the server's limit."""
+    driver, scope = scope_graph
+    await _hub(driver, scope.group_id, _HUB_SIZE, recalled)
+    per_row = await rows(driver, "MATCH ()-[r:RELATES_TO]->() RETURN r.uuid AS uuid")
+    assert len(per_row) < _HUB_SIZE, "the server's row limit truncates this"
+
+    results = await _stage(
+        mocker,
+        scope,
+        DreamOperations(
+            entity_invalidations=[
+                EntityInvalidation(entity_uuid="hub", reason="stale_fact")
+            ]
+        ),
+        set(),
+        _Boundary(driver),
+    )
+
+    [summary] = results.entity_invalidations
+    changed = _HUB_SIZE - recalled
+    assert (len(summary.edges_protected), len(summary.edges_touched)) == (
+        recalled,
+        changed,
+    )
+    assert len(set(summary.edges_protected) | set(summary.edges_touched)) == _HUB_SIZE
+    assert (results.protected, results.accounting_complete) == (recalled, True)
+    expected = {"active": recalled, "superseded": changed}
+    assert await _status_counts(driver) == {k: v for k, v in expected.items() if v}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_fact_spared_then_overridden_through_a_big_hub_is_not_protected(
+    mocker, scope_graph
+) -> None:
+    """Codex's case: a fact beyond the first 10,000 neighbours is spared by a
+    direct stale demotion, then the user's retraction through its hub
+    demotes all 12,000. None is kept live, and the pass says so."""
+    driver, scope = scope_graph
+    await _hub(driver, scope.group_id, _HUB_SIZE, _HUB_SIZE)
+    target = f"edge-{_HUB_SIZE - 1}"
+
+    results = await _stage(
+        mocker,
+        scope,
+        DreamOperations(
+            demotions=_stale(target),
+            entity_invalidations=[
+                EntityInvalidation(entity_uuid="hub", reason="user_signal")
+            ],
+        ),
+        {target},
+        _Boundary(driver),
+    )
+
+    assert results.demotions[0].protected is True
+    assert (results.entity_edges, results.protected) == (_HUB_SIZE, 0)
+    assert await _status_counts(driver) == {"superseded": _HUB_SIZE}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ops",
+    [
+        DreamOperations(
+            demotions=[
+                *_stale("A"),
+                DreamDemotion(edge_uuid="A", reason="user_signal"),
+            ]
+        ),
+        DreamOperations(
+            demotions=_stale("A"),
+            entity_invalidations=[
+                EntityInvalidation(entity_uuid="hub", reason="user_signal")
+            ],
+        ),
+    ],
+    ids=["direct", "neighbour"],
+)
+async def test_a_lost_acknowledgement_is_indeterminate_never_protected(
+    mocker, scope_graph, ops: DreamOperations
+) -> None:
+    """Codex's reproductions: A, recalled, is spared by a stale demotion; the
+    user's retraction of it then commits, directly or through its entity,
+    and its reply is lost. The write is indeterminate, not failed or empty,
+    and the final read finds A gone, so it is not counted as kept."""
+    driver, scope = scope_graph
+    await _edge(driver, scope.group_id, "A", source="hub")
+    assert await stamp_recalls(driver, ["A"], owner=_OWNER) == 1
+    boundary = _Boundary(driver, lose_reason="user_signal")
+
+    results = await _stage(mocker, scope, ops, {"A"}, boundary)
+
+    assert boundary.lost_replies == 1
+    assert results.demotions[0].protected is True
+    assert (results.demoted, results.failed, results.indeterminate) == (0, 0, 1)
+    assert (results.protected, results.accounting_complete) == (0, True)
+    assert await _statuses(driver, ["A"]) == {"A": "superseded"}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fail_read, protected, complete",
+    [(False, 1, True), (True, 2, False)],
+    ids=["read-answers", "read-fails"],
+)
+async def test_a_full_pass_with_a_lost_acknowledgement_reports_the_truth(
+    live_pass, fail_read: bool, protected: int, complete: bool
+) -> None:
+    """Codex's full-apply reproduction: A and B recalled, stale proposals
+    ``[A, A, B]`` and the user's retraction of B, whose reply is lost after
+    it committed. A alone is kept live, and the pass reports exactly that;
+    if the final read fails too, it reports the provisional count and says it
+    is incomplete, never a false count as if it were confirmed."""
+    driver, scope = live_pass.driver, live_pass.scope
+    for uuid in ["A", "B", *(f"filler-{i}" for i in range(98))]:
+        await _edge(driver, scope.group_id, uuid)
+    assert await stamp_recalls(driver, ["A", "B"], owner=_OWNER) == 2
+
+    stats = await live_pass.run(
+        DreamOperations(
+            demotions=[
+                *_stale("A", "A", "B"),
+                DreamDemotion(edge_uuid="B", reason="user_signal"),
+            ]
+        ),
+        lose_reason="user_signal",
+        fail_read=fail_read,
+    )
+
+    assert (
+        stats["demotion_count"],
+        stats["demotion_failed_count"],
+        stats["indeterminate_demotion_writes"],
+        stats["protected_demotions"],
+        stats["demotion_accounting_complete"],
+    ) == (0, 0, 1, protected, complete)
+    assert await _statuses(driver, ["A", "B"]) == {"A": "active", "B": "superseded"}

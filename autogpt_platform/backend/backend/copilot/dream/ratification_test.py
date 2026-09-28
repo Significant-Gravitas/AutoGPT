@@ -210,10 +210,21 @@ async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
 
 
 @pytest.mark.asyncio
-async def test_supersede_failure_is_reported_not_silently_dropped(mocker, fake_redis):
+@pytest.mark.parametrize(
+    "outcome, error",
+    [
+        (WriteOutcome.UNMATCHED, "supersede_failed"),
+        (WriteOutcome.UNKNOWN, "supersede_outcome_unknown"),
+    ],
+    ids=["unmatched", "unknown"],
+)
+async def test_supersede_failure_is_reported_not_silently_dropped(
+    mocker, fake_redis, outcome: WriteOutcome, error: str
+):
     """An edge the group-scoped supersede can't match (legacy write without a
-    group_id property, or a query error) must land in per_edge_errors —
-    otherwise it is silently re-examined by every future sweep forever."""
+    group_id property) must land in per_edge_errors — otherwise it is silently
+    re-examined by every future sweep forever. A write that raised may have
+    committed, so it is reported as unknown, never as superseded or failed."""
     edge = {
         "uuid": "edge-legacy",
         "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
@@ -223,15 +234,13 @@ async def test_supersede_failure_is_reported_not_silently_dropped(mocker, fake_r
     mocker.patch.object(
         ratification_mod,
         "supersede_unless_recalled",
-        AsyncMock(return_value=[WriteOutcome.FAILED]),
+        AsyncMock(return_value=[outcome]),
     )
 
     result = await run_ratification_pass("u-legacy")
 
-    assert result.superseded_count == 0
-    assert len(result.per_edge_errors) == 1
-    assert "edge-legacy" in result.per_edge_errors[0]
-    assert "supersede_failed" in result.per_edge_errors[0]
+    assert (result.superseded_count, result.protected_count) == (0, 0)
+    assert result.per_edge_errors == [f"edge-legacy: {error}"]
 
 
 @pytest.mark.asyncio

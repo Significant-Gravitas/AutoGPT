@@ -21,7 +21,7 @@ runaway-demotion footgun.
 
 import pytest
 
-from .guarded_writes import invalidate_entity_direct_neighbors
+from .guarded_writes import NeighbourWrites, invalidate_entity_direct_neighbors
 
 
 async def _select_edge(driver, uuid: str) -> dict | None:
@@ -171,3 +171,23 @@ async def test_invalidate_entity_does_not_affect_other_users(
     other_row = await _select_edge(driver, "e_other")
     assert other_row is not None
     assert other_row["expired_at"] is None, "other user's edge must not be touched"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entity", ["nobody", "lonely"], ids=["missing", "no-facts"])
+async def test_an_entity_with_no_live_neighbour_is_an_acknowledged_empty_set(
+    clean_graph, entity: str
+) -> None:
+    """The aggregate statement still answers, with an empty set: known to
+    have changed nothing, unlike a statement that raised."""
+    driver, group_id = clean_graph
+    await driver.execute_query(
+        "CREATE (:Entity {uuid: 'lonely', name: 'lonely', group_id: $g})", g=group_id
+    )
+
+    writes = await invalidate_entity_direct_neighbors(
+        driver, group_id=group_id, entity_uuid=entity, reason="stale_fact"
+    )
+
+    assert writes == NeighbourWrites()

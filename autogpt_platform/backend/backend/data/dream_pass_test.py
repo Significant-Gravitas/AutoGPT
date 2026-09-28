@@ -20,8 +20,11 @@ from backend.copilot.dream.input_bundle import input_bundle_to_dict
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
+    DemotionSummary,
     DreamOperations,
+    DreamOperationsSnapshot,
     DreamPassUsage,
+    EntityInvalidationSummary,
     PhaseUsage,
     RecombinationOutput,
 )
@@ -141,7 +144,27 @@ async def test_phase_outputs_and_operations_merge_one_field_at_a_time(make_user)
     )
     planned = DreamOperations(summary_for_user="clamped")
     applied = DreamPassApplied(
-        consolidated_count=1, protected_demotions=2, dream_session_id="s1"
+        consolidated_count=1,
+        protected_demotions=2,
+        indeterminate_demotion_writes=1,
+        demotion_accounting_complete=False,
+        dream_session_id="s1",
+        snapshot=DreamOperationsSnapshot(
+            demotions=[
+                DemotionSummary(
+                    edge_uuid="a",
+                    reason="user_signal",
+                    new_status="superseded",
+                    applied=False,
+                    indeterminate=True,
+                )
+            ],
+            entity_invalidations=[
+                EntityInvalidationSummary(
+                    entity_uuid="hub", reason="stale_fact", indeterminate=True
+                )
+            ],
+        ),
     )
 
     for update in (

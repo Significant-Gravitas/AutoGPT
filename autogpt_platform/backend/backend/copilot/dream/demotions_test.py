@@ -1,6 +1,7 @@
-"""The destructive stage (``demotions.py``) with its two guarded writers
-mocked: the protection each write carries for its reason, and that what the
-pass reports is what the writes returned. What the statements do is tested
+"""The destructive stage (``demotions.py``) with its two guarded writers and
+its liveness read mocked: the protection each write carries for its reason,
+that what the pass reports is what the writes returned (an unknown outcome
+included), and that ``protected`` is what the final read finds still live. What the statements do is tested
 with the writers and on FalkorDB (``graphiti/recall_guard_integration_test.py``);
 that usage never raises the count is ``demotions_stateful_test.py``."""
 
@@ -26,14 +27,16 @@ from .schemas import (
 )
 
 _SCOPE = MemoryScope.for_user("u-stage")
-C, S, F = WriteOutcome.CHANGED, WriteOutcome.SPARED, WriteOutcome.FAILED
+C, S = WriteOutcome.CHANGED, WriteOutcome.SPARED
+M, U = WriteOutcome.UNMATCHED, WriteOutcome.UNKNOWN
 
 
 @pytest.fixture
 def stage(mocker) -> SimpleNamespace:
     """The stage's boundaries: its driver, the flag (on), no bundle, a
-    30-day window, and the two writers (every demotion lands, nothing
-    spared) unless a test says otherwise."""
+    30-day window, the two writers (every demotion lands, nothing spared) and
+    the liveness read (every fact it is asked about is still live), unless a
+    test says otherwise."""
     driver = MagicMock()
     driver.close = AsyncMock()
     state = SimpleNamespace(
@@ -50,6 +53,11 @@ def stage(mocker) -> SimpleNamespace:
             demotions_mod,
             "invalidate_entity_direct_neighbors",
             AsyncMock(return_value=NeighbourWrites()),
+        ),
+        live=mocker.patch.object(
+            demotions_mod,
+            "live_fact_uuids",
+            AsyncMock(side_effect=lambda driver, group_id, uuids: set(uuids)),
         ),
     )
     mocker.patch.object(
@@ -121,7 +129,7 @@ async def test_each_write_carries_the_protection_for_its_reason(stage) -> None:
 @pytest.mark.asyncio
 async def test_what_the_pass_reports_is_what_the_writes_did(stage) -> None:
     stage.supersede.side_effect = None
-    stage.supersede.return_value = [C, S, F]
+    stage.supersede.return_value = [C, S, M]
     stage.invalidate.return_value = NeighbourWrites(changed=["x"], spared=["y", "z"])
     ops = DreamOperations(
         demotions=[_demote("a"), _demote("b"), _demote("c")],
@@ -191,6 +199,8 @@ async def test_a_fact_a_later_write_changes_is_not_counted_as_protected(
         ],
     )
 
+    stage.live.side_effect = lambda driver, group_id, uuids: set()
+
     results = await apply_demotions(_SCOPE, "p-9", ops, {"a"})
 
     assert results.demotions[0].protected is True
@@ -202,7 +212,7 @@ async def test_a_fact_a_later_write_changes_is_not_counted_as_protected(
 async def test_each_demotion_gets_its_own_outcome_in_bucket_order(stage) -> None:
     """Grouped by status and reason as before; a duplicate target and a
     demotion from another bucket keep their own outcomes."""
-    outcomes = {"stale_fact": [C, S, F], "user_signal": [C]}
+    outcomes = {"stale_fact": [C, S, M], "user_signal": [C]}
     stage.supersede.side_effect = lambda driver, uuids, **kw: outcomes[kw["reason"]]
     ops = DreamOperations(
         demotions=[
@@ -229,18 +239,109 @@ async def test_each_demotion_gets_its_own_outcome_in_bucket_order(stage) -> None
 
 @pytest.mark.asyncio
 async def test_nothing_is_read_before_the_writes(stage) -> None:
-    """The protection is in the writes: the stage itself sends the graph
-    nothing, so no read of stamps can fail open or go stale."""
+    """The protection is in the writes, so no read of stamps comes before
+    them to fail open or go stale. The one read, of just the spared facts,
+    comes after every write, for the count alone."""
+    calls: list[str] = []
+    stage.supersede.side_effect = lambda driver, uuids, **kw: (
+        calls.append("demote") or [S] * len(uuids)
+    )
+    stage.invalidate.side_effect = lambda driver, **kw: (
+        calls.append("invalidate") or NeighbourWrites(spared=["x"])
+    )
+    stage.live.side_effect = lambda driver, group_id, uuids: (
+        calls.append("read") or set(uuids)
+    )
     ops = DreamOperations(
         demotions=[_demote("a")],
         entity_invalidations=[EntityInvalidation(entity_uuid="hub", reason="gone")],
     )
 
-    await apply_demotions(_SCOPE, "p-4", ops, {"a"})
+    results = await apply_demotions(_SCOPE, "p-4", ops, {"a"})
 
+    assert calls == ["demote", "invalidate", "read"]
+    assert stage.live.await_args.args[1:] == (_SCOPE.group_id, ["a", "x"])
+    assert (results.protected, results.accounting_complete) == (2, True)
     stage.driver.execute_query.assert_not_called()
     stage.open_driver.assert_called_once_with(_SCOPE)
     stage.driver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_pass_that_spared_nothing_reads_nothing(stage) -> None:
+    ops = DreamOperations(demotions=[_demote("a")])
+
+    results = await apply_demotions(_SCOPE, "p-10", ops, {"a"})
+
+    stage.live.assert_not_awaited()
+    assert (results.protected, results.accounting_complete) == (0, True)
+
+
+@pytest.mark.asyncio
+async def test_a_lost_acknowledgement_is_indeterminate_not_protected(stage) -> None:
+    """Codex's direct reproduction: the stale demotion spares ``a``, the
+    user's retraction of ``a`` commits but its reply is lost. The write is
+    counted as indeterminate, and the final read, which sees ``a`` gone,
+    keeps it out of ``protected``."""
+    outcomes = {"stale_fact": [S], "user_signal": [U]}
+    stage.supersede.side_effect = lambda driver, uuids, **kw: outcomes[kw["reason"]]
+    stage.live.side_effect = lambda driver, group_id, uuids: set()
+    ops = DreamOperations(demotions=[_demote("a"), _demote("a", "user_signal")])
+
+    results = await apply_demotions(_SCOPE, "p-11", ops, {"a"})
+
+    assert [(d.applied, d.protected, d.indeterminate) for d in results.demotions] == [
+        (False, True, False),
+        (False, False, True),
+    ]
+    assert (results.demoted, results.failed, results.indeterminate) == (0, 0, 1)
+    assert (results.protected, results.accounting_complete) == (0, True)
+
+
+@pytest.mark.asyncio
+async def test_a_neighbour_statement_that_raised_is_indeterminate(stage) -> None:
+    """Codex's neighbour reproduction: an unknown set, not an empty one."""
+    stage.supersede.side_effect = lambda driver, uuids, **kw: [S] * len(uuids)
+    stage.invalidate.return_value = NeighbourWrites(unknown=True)
+    stage.live.side_effect = lambda driver, group_id, uuids: set()
+    ops = DreamOperations(
+        demotions=[_demote("a")],
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="hub", reason="user_signal")
+        ],
+    )
+
+    results = await apply_demotions(_SCOPE, "p-12", ops, {"a"})
+
+    assert results.entity_invalidations == [
+        EntityInvalidationSummary(
+            entity_uuid="hub", reason="user_signal", indeterminate=True
+        )
+    ]
+    assert (results.entity_edges, results.indeterminate, results.protected) == (
+        0,
+        1,
+        0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_failed_liveness_read_leaves_a_provisional_count(stage) -> None:
+    """Spared ``a`` and ``b``; a later acknowledged write changed ``b``. The
+    read fails, so the count is the provisional one, and it says so."""
+    stage.supersede.side_effect = lambda driver, uuids, **kw: [S] * len(uuids)
+    stage.invalidate.return_value = NeighbourWrites(changed=["b"])
+    stage.live.side_effect = TimeoutError("reply lost")
+    ops = DreamOperations(
+        demotions=[_demote("a"), _demote("b")],
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="hub", reason="user_signal")
+        ],
+    )
+
+    results = await apply_demotions(_SCOPE, "p-13", ops, {"a", "b"})
+
+    assert (results.protected, results.accounting_complete) == (1, False)
 
 
 @pytest.mark.asyncio

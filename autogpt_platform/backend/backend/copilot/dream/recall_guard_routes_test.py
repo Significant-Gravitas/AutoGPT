@@ -4,10 +4,14 @@ only after it (between the gather and the write), and one never recalled. The
 pass plans all three, exactly as it would with no usage data at all; the
 writes leave the two recalled facts alone and demote the third, and the two
 facts they spared reach ``protected_demotions`` in the result, the durable
-record and the admin job status. Only the LLM, the graph's guarded writer (a
-small stateful stand-in applying the statement's rule) and the chat store are
-stubbed; the lock, lease, record and job status run on the in-memory Redis and
-DreamPass store from ``conftest.py``."""
+record and the admin job status. In a second pass the user's retraction of
+the late fact commits but its acknowledgement is lost (Codex's full-apply
+reproduction): the write is reported indeterminate, and the final liveness
+read keeps the fact it demoted out of the protected count. Only the LLM, the
+graph's guarded writer and liveness read (a small stateful stand-in applying
+the statement's rule) and the chat store are stubbed; the lock, lease,
+record and job status run on the in-memory Redis and DreamPass store from
+``conftest.py``."""
 
 import asyncio
 import json
@@ -22,6 +26,7 @@ from prisma.enums import (
     DreamPassStatus,
     DreamPassTrigger,
 )
+from pydantic import BaseModel
 
 from backend.copilot.graphiti.guarded_writes import WriteOutcome
 from backend.copilot.graphiti.recall_stamp import RecallProtection, stamp_time
@@ -101,6 +106,39 @@ _SANITIZED = DreamOperations(
 )
 
 
+class Scenario(BaseModel):
+    """What the sanitizer proposed, whose writes lose their acknowledgement
+    after committing, and what every surface must then report: demotions,
+    protected facts, indeterminate writes, and whether the count is
+    confirmed."""
+
+    ops: DreamOperations
+    lost: set[tuple[str, str]] = set()
+    changed: list[str]
+    counts: tuple[int, int, int, bool]
+
+
+_ACKNOWLEDGED = Scenario(ops=_SANITIZED, changed=["cold"], counts=(1, 2, 0, True))
+_LOST_ACKNOWLEDGEMENT = Scenario(
+    ops=_SANITIZED.model_copy(
+        update={
+            "demotions": [
+                *_SANITIZED.demotions,
+                DreamDemotion(edge_uuid="late", reason="user_signal"),
+            ]
+        }
+    ),
+    lost={("late", "user_signal")},
+    changed=["cold", "late"],
+    counts=(1, 1, 1, True),
+)
+_SCENARIOS = pytest.mark.parametrize(
+    "scenario",
+    [_ACKNOWLEDGED, _LOST_ACKNOWLEDGEMENT],
+    ids=["acknowledged", "lost-acknowledgement"],
+)
+
+
 @pytest.fixture
 def graph(mocker) -> SimpleNamespace:
     """The graph as the demotion writes find it, and apply's chat store.
@@ -111,12 +149,19 @@ def graph(mocker) -> SimpleNamespace:
             "late": stamp_time(datetime.now(timezone.utc)),
             "cold": None,
         },
+        live={"held", "late", "cold"},
+        lost=set(),
         changed=[],
         spared=[],
     )
 
-    async def supersede(driver, uuids, *, protection: RecallProtection, **kwargs):
-        return [_write(state, uuid, protection) for uuid in uuids]
+    async def supersede(
+        driver, uuids, *, reason: str, protection: RecallProtection, **kwargs
+    ):
+        return [_write(state, uuid, reason, protection) for uuid in uuids]
+
+    async def live_fact_uuids(driver, group_id, uuids):
+        return {uuid for uuid in uuids if uuid in state.live}
 
     driver = MagicMock()
     driver.close = AsyncMock()
@@ -124,6 +169,7 @@ def graph(mocker) -> SimpleNamespace:
     mocker.patch.object(
         demotions_mod, "supersede_unless_recalled", side_effect=supersede
     )
+    mocker.patch.object(demotions_mod, "live_fact_uuids", side_effect=live_fact_uuids)
     database = MagicMock()
     database.create_chat_session = AsyncMock()
     database.update_chat_session_title = AsyncMock()
@@ -137,10 +183,14 @@ def graph(mocker) -> SimpleNamespace:
 
 
 def _write(
-    state: SimpleNamespace, uuid: str, protection: RecallProtection
+    state: SimpleNamespace, uuid: str, reason: str, protection: RecallProtection
 ) -> WriteOutcome:
-    """The guarded statement on one live edge: spared when its stamp is at or
-    after the window start and no override reaches it."""
+    """The guarded statement on one edge: nothing to write unless live;
+    spared when its stamp is at or after the window start and no override
+    reaches it; and, for a write in ``state.lost``, committed but reported
+    unknown because its reply was lost."""
+    if uuid not in state.live:
+        return WriteOutcome.UNMATCHED
     last = state.stamps[uuid]
     overridden = protection.override and (
         protection.cited is None or uuid != protection.cited
@@ -148,9 +198,12 @@ def _write(
     since = protection.recalled_since
     if since is not None and last is not None and last >= since and not overridden:
         state.spared.append(uuid)
-        return WriteOutcome.SPARED
-    state.changed.append(uuid)
-    return WriteOutcome.CHANGED
+        outcome = WriteOutcome.SPARED
+    else:
+        state.changed.append(uuid)
+        state.live.discard(uuid)
+        outcome = WriteOutcome.CHANGED
+    return WriteOutcome.UNKNOWN if (uuid, reason) in state.lost else outcome
 
 
 def _answer(value) -> StructuredCompletion:
@@ -191,17 +244,30 @@ def scheduler_loop(mocker):
     loop.close()
 
 
-def _planned_as_without_usage(planned: DreamOperations, user_id: str) -> None:
+def _planned_as_without_usage(
+    planned: DreamOperations, ops: DreamOperations, user_id: str
+) -> None:
     """The pass attempted exactly what it would have without usage data."""
-    assert [d.edge_uuid for d in planned.demotions] == ["held", "late", "cold"]
-    assert planned == clamp_pass_operations(_SANITIZED, _bundle(user_id, usage=False))
+    assert planned.demotions == ops.demotions
+    assert planned == clamp_pass_operations(ops, _bundle(user_id, usage=False))
 
 
+def _reported(result: DreamPassResult) -> tuple[int, int, int, bool]:
+    return (
+        result.demotion_count,
+        result.protected_demotions,
+        result.indeterminate_demotion_writes,
+        result.demotion_accounting_complete,
+    )
+
+
+@_SCENARIOS
 def test_the_sync_route_reports_what_the_writes_spared_everywhere(
-    mocker, graph, fake_dream_db, scheduler_loop
+    mocker, graph, fake_dream_db, scheduler_loop, scenario: Scenario
 ) -> None:
     """Driven through the scheduler's own admin wrapper, which writes the
     pass's result to its job status."""
+    graph.lost = scenario.lost
     mocker.patch.object(orchestrator_mod, "resolve_route", side_effect=_route)
     mocker.patch.object(
         orchestrator_mod, "resolve_dream_execution_path", return_value="sync_baseline"
@@ -229,7 +295,7 @@ def test_the_sync_route_reports_what_the_writes_spared_everywhere(
             side_effect=[
                 _answer(ConsolidationOutput(facts=[])),
                 _answer(RecombinationOutput(proposals=[])),
-                _answer(_SANITIZED),
+                _answer(scenario.ops),
             ]
         ),
     )
@@ -240,13 +306,20 @@ def test_the_sync_route_reports_what_the_writes_spared_everywhere(
     execute_dream_pass_with_status("u-sync", "j-sync")
 
     job = scheduler_loop.run_until_complete(_job_result("j-sync"))
-    assert (graph.changed, graph.spared) == (["cold"], ["held", "late"])
-    assert (job.error, job.demotion_count, job.protected_demotions) == (None, 1, 2)
+    assert (graph.changed, graph.spared) == (scenario.changed, ["held", "late"])
+    assert job.error is None
+    assert _reported(job) == scenario.counts
     row = fake_dream_db.rows[job.pass_id]
-    _planned_as_without_usage(row["operations"]["planned"], "u-sync")
-    assert row["operations"]["applied"].protected_demotions == 2
+    _planned_as_without_usage(row["operations"]["planned"], scenario.ops, "u-sync")
+    applied = row["operations"]["applied"]
+    assert (
+        applied.demotion_count,
+        applied.protected_demotions,
+        applied.indeterminate_demotion_writes,
+        applied.demotion_accounting_complete,
+    ) == scenario.counts
     record = dream_pass_result_from_row(fake_dream_db.record(job.pass_id))
-    assert record.protected_demotions == 2
+    assert _reported(record) == scenario.counts
 
 
 def _entry(phase: str) -> PendingEntry:
@@ -281,11 +354,13 @@ def _row(phase: str, content: str) -> BatchResultRow:
 
 
 @pytest.mark.asyncio
+@_SCENARIOS
 async def test_the_batch_route_tests_the_stamps_the_graph_holds_at_write_time(
-    mocker, graph, fake_dream_db, fake_dream_redis
+    mocker, graph, fake_dream_db, fake_dream_redis, scenario: Scenario
 ) -> None:
     """The batch pass applies hours after its gather: ``late``'s recall came
     in between, and only the write sees it."""
+    graph.lost = scenario.lost
     scope = MemoryScope.for_user("u-batch")
     fake_dream_redis.store[scope.redis_key("dream_lock")] = "tok-batch"
     await persist_input_bundle("p-batch", _bundle("u-batch"), lock_token="tok-batch")
@@ -320,15 +395,21 @@ async def test_the_batch_route_tests_the_stamps_the_graph_holds_at_write_time(
     for phase, content in (
         ("consolidate", '{"facts": []}'),
         ("recombine", '{"proposals": []}'),
-        ("sanitize", json.dumps(_SANITIZED.model_dump())),
+        ("sanitize", json.dumps(scenario.ops.model_dump())),
     ):
         await handle_dream_batch_result(_entry(phase), [_row(phase, content)])
 
-    assert (graph.changed, graph.spared) == (["cold"], ["held", "late"])
+    assert (graph.changed, graph.spared) == (scenario.changed, ["held", "late"])
     row = fake_dream_db.rows["p-batch"]
     assert row["status"] is DreamPassStatus.COMPLETE
-    _planned_as_without_usage(row["operations"]["planned"], "u-batch")
-    assert row["operations"]["applied"].protected_demotions == 2
+    _planned_as_without_usage(row["operations"]["planned"], scenario.ops, "u-batch")
+    applied = row["operations"]["applied"]
+    assert (
+        applied.demotion_count,
+        applied.protected_demotions,
+        applied.indeterminate_demotion_writes,
+        applied.demotion_accounting_complete,
+    ) == scenario.counts
     result = dream_pass_result_from_row(fake_dream_db.record("p-batch"))
-    assert (result.demotion_count, result.protected_demotions) == (1, 2)
-    assert (await _job_result("j-batch")).protected_demotions == 2
+    assert _reported(result) == scenario.counts
+    assert _reported(await _job_result("j-batch")) == scenario.counts

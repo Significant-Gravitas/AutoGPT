@@ -681,6 +681,11 @@ def _applied_result(
         entity_invalidation_count=_as_int("entity_invalidation_count"),
         dropped_forgotten=_as_int("dropped_forgotten"),
         protected_demotions=_as_int("protected_demotions"),
+        indeterminate_demotion_writes=_as_int("indeterminate_demotion_writes"),
+        # Only apply's own False marks the count unconfirmed.
+        demotion_accounting_complete=(
+            apply_stats.get("demotion_accounting_complete") is not False
+        ),
         summary_for_user=ops.summary_for_user,
         # Fail-closed: a missing/malformed drain flag reads as
         # ``timed_out`` (writes at risk), never a confirmed drain.
