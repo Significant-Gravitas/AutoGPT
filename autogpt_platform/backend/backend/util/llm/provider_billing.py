@@ -13,6 +13,7 @@ balance and must keep telling the user so; nothing here matches their text.
 """
 
 import logging
+import re
 
 import anthropic
 import openai
@@ -50,13 +51,12 @@ _BILLING_ERROR_PATTERNS = (
     "credit balance is too low",
     # OpenRouter
     "requires more credits",
-    "can only afford",
     "openrouter.ai/settings/credits",
-    # A bare 402 as the OpenAI SDK, the Claude CLI and httpx render it
-    "error code: 402",
-    "api error: 402",
-    "status code 402",
-    "402 payment required",
+)
+
+# A bare 402 as the OpenAI SDK, the Claude CLI and httpx render it.
+_BARE_402_RE = re.compile(
+    r"(?:error code:|api error:|status code)\s*402\b|\b402 payment required\b"
 )
 
 
@@ -83,7 +83,9 @@ def _body_names_billing(body: object) -> bool:
 
 def _text_matches(text: str) -> bool:
     lower = text.lower()
-    return any(pattern in lower for pattern in _BILLING_ERROR_PATTERNS)
+    return bool(_BARE_402_RE.search(lower)) or any(
+        pattern in lower for pattern in _BILLING_ERROR_PATTERNS
+    )
 
 
 def report_provider_out_of_credits(

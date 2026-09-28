@@ -108,6 +108,11 @@ def test_provider_billing_refusals_are_recognised(error):
             id="plain-rate-limit",
         ),
         pytest.param(_openai_error(500, None, "Error code: 500"), id="server-error"),
+        pytest.param(
+            "Tool output: at this price you can only afford two seats",
+            id="unrelated-can-only-afford",
+        ),
+        pytest.param("Error code: 4029 - unknown", id="longer-number-than-402"),
         pytest.param(None, id="none"),
     ],
 )
