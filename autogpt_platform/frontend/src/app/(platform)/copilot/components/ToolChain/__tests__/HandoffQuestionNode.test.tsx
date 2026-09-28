@@ -168,6 +168,44 @@ describe("a hand-off on the wire", () => {
     SLOW,
   );
 
+  it(
+    "sends a typed answer on Enter, and a chip picked twice is dropped",
+    async () => {
+      const posted: unknown[] = [];
+      server.use(
+        waitingSubSession(),
+        getAnswerSessionMockHandler200(async ({ request }) => {
+          posted.push(await request.json());
+          return { session_id: "sub-1", queued: false };
+        }),
+      );
+      render(
+        chain([
+          delegatePart({
+            status: "needs_input",
+            sub_session_id: "sub-1",
+            question: "Q4 release train or December mini-launch?",
+            question_options: ["Q4", "December"],
+            expert: ALEX,
+          }),
+        ]),
+      );
+      await screen.findByTestId("handoff-question-node", {}, { timeout: 8000 });
+      const chip = screen.getByRole("button", { name: "Q4" });
+      fireEvent.click(chip);
+      fireEvent.click(chip);
+      expect(chip.getAttribute("aria-pressed")).toBe("false");
+      const input = screen.getByLabelText("Answer Alex");
+      fireEvent.keyDown(input, { key: "Enter" });
+      fireEvent.change(input, { target: { value: "December" } });
+      fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+      expect(posted).toHaveLength(0);
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(posted).toEqual([{ message: "December" }]));
+    },
+    SLOW,
+  );
+
   it("says the user stopped the hand-off once a stopped turn reloads", () => {
     render(chain([delegatePart("")]));
     fireEvent.click(screen.getByRole("button", { expanded: false }));

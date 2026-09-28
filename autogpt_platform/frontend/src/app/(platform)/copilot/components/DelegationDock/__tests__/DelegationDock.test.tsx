@@ -100,6 +100,35 @@ describe("getDockLine", () => {
     expect(line).toEqual({ text: "1 expert needs you", tone: "waiting" });
   });
 
+  it("counts several hand-offs on their way next to the working ones", () => {
+    const line = getDockLine(
+      [
+        { ...base, toolCallId: "c1", subSessionId: null, status: "running" },
+        { ...base, toolCallId: "c2", subSessionId: null, status: "running" },
+        { ...base, toolCallId: "c3", status: "running" },
+      ],
+      {},
+    );
+    expect(line).toEqual({
+      text: "Handing off to 2 experts… · 1 expert working",
+      tone: "working",
+    });
+  });
+
+  it("reads an unclear poll as still working and a failure as stopped", () => {
+    expect(
+      getDockLine([{ ...base, status: "running" }], { c1: "unknown" }),
+    ).toEqual({
+      text: "1 expert working",
+      tone: "working",
+    });
+    expect(getDockLine([{ ...base, status: "failed" }], {})).toEqual({
+      text: "1 expert stopped",
+      tone: "failed",
+    });
+    expect(getDockLine([{ ...base, status: "cancelled" }], {})).toBeNull();
+  });
+
   it("names who is being handed to before their run exists", () => {
     const line = getDockLine(
       [{ ...base, subSessionId: null, status: "running" }],
