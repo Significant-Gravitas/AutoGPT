@@ -30,7 +30,13 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import ResultMessage
+from claude_agent_sdk import (
+    AssistantMessage,
+    ResultMessage,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
 from graphiti_core.edges import EntityEdge
 
 from backend.copilot.constants import COMPACTION_TOOL_NAME
@@ -56,11 +62,13 @@ from backend.util import json
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
+    _INJECTED_MEMORY_BLOCK_RE,
     _INJECTED_MEMORY_MARKER,
     _MAX_STREAM_ATTEMPTS,
     _build_query_message,
     _maybe_prepend_skills_update,
     _reduce_context,
+    _strip_injected_memory_text,
 )
 from .transcript import compact_transcript, validate_transcript
 from .transcript_builder import TranscriptBuilder
@@ -1538,6 +1546,108 @@ class TestFollowUpWarmContextCallSite:
         assert "Alice works on Atlas" in queries[0]
         assert "Bob leads Atlas" in queries[1]
         assert "Alice works on Atlas" not in queries[1]
+
+    @staticmethod
+    def _forget_then_fail(queries: list[str], forgotten: list[bool], failure: str):
+        """Client factory recording every query sent: the first attempt runs
+        a ``memory_forget`` tool call to completion and then fails
+        transiently, raised (``ECONNRESET``) or reported by the SDK
+        (``rate_limit``); the retry succeeds."""
+        attempts = [0]
+
+        def _factory(*args, **kwargs):
+            attempts[0] += 1
+            attempt = attempts[0]
+
+            async def _query(prompt, session_id=None):
+                queries.append(prompt)
+
+            async def _receive():
+                if attempt == 1:
+                    yield AssistantMessage(
+                        content=[
+                            ToolUseBlock(
+                                id="forget-1",
+                                name="mcp__copilot__memory_forget",
+                                input={"query": "violet-913"},
+                            )
+                        ],
+                        model="claude-sonnet-4-6",
+                    )
+                    forgotten.append(True)
+                    yield UserMessage(
+                        content=[
+                            ToolResultBlock(
+                                tool_use_id="forget-1", content="Forgot 1 memory"
+                            )
+                        ]
+                    )
+                    if failure == "raised":
+                        raise Exception("ECONNRESET socket connection reset")
+                    yield AssistantMessage(
+                        content=[], model="claude-sonnet-4-6", error="rate_limit"
+                    )
+                    return
+                yield ResultMessage(
+                    subtype="success",
+                    result="done",
+                    duration_ms=1,
+                    duration_api_ms=1,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="test-session-id",
+                    total_cost_usd=0.0,
+                )
+
+            client = MagicMock()
+            client.query = _query
+            client.receive_response = _receive
+            client._transport = MagicMock()
+            client._transport.write = AsyncMock()
+            cm = AsyncMock()
+            cm.__aenter__.return_value = client
+            cm.__aexit__.return_value = None
+            return cm
+
+        return _factory
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure", ["raised", "reported"], ids=["ECONNRESET", "rate-limit"]
+    )
+    async def test_a_transient_retry_reads_memory_again_after_a_forget(self, failure):
+        """Forget, transient failure, retry. The failed attempt's tool calls
+        are not streamed output, so the error retries the attempt, and the
+        rollback takes the forget out of the history the retry sends. The
+        retry must read memory again: the user's text byte for byte, exactly
+        one block, the unrelated fact in it and the forgotten one not."""
+        forgotten: list[bool] = []
+        queries: list[str] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            facts = ["Hector supervises the Nova recovery"]
+            if not forgotten:
+                facts.insert(0, "the Nova recovery password is violet-913")
+            lines = "".join(f"  - {fact}\n" for fact in facts)
+            return f"<temporal_context>\n<FACTS>\n{lines}</FACTS>\n</temporal_context>"
+
+        await self._run(
+            self._session("retrieve the Nova recovery details"),
+            _refresh,
+            self._forget_then_fail(queries, forgotten, failure),
+            extra=[(f"{_SVC}._compute_transient_backoff", dict(return_value=0))],
+        )
+
+        assert forgotten and len(queries) == 2
+        first, retry = queries
+        assert "violet-913" in first
+        assert "violet-913" not in retry
+        assert "Hector supervises the Nova recovery" in retry
+        assert len(_INJECTED_MEMORY_BLOCK_RE.findall(retry)) == 1
+        assert retry.count("<temporal_context") == 1
+        asked = _strip_injected_memory_text(retry)
+        assert asked == _strip_injected_memory_text(first)
+        assert "retrieve the Nova recovery details" in asked
 
     @pytest.mark.asyncio
     async def test_an_expert_chat_refreshes_from_the_expert_scope(self):

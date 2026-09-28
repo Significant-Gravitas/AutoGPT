@@ -19,6 +19,7 @@ from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
+from .compaction import CompactionStats
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
@@ -38,13 +39,16 @@ from .service import (
     _prepare_file_attachments,
     _raise_deferred_codex_cleanup_error,
     _redact_cli_stderr,
+    _resend_with_fresh_warm_context,
     _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
+    _RetryState,
     _safe_close_sdk_client,
     _start_follow_up_warm_context,
     _strip_ephemeral_memory_from_cli_jsonl,
     _strip_synthetic_reprompt_from_cli_jsonl,
+    _TokenUsage,
 )
 
 
@@ -2598,6 +2602,57 @@ class TestStripEphemeralMemoryFromCliJsonl:
         assert result.startswith(b"".join(prior)), "untouched lines must be verbatim"
         assert b"stale fact" not in result
         assert b"deploy staging now" in result
+
+
+class TestResendWithFreshWarmContext:
+    """Every retry of the turn's query sends the query as built plus one
+    block read for that send (the generator-level cases are in
+    ``retry_scenarios_test.py``)."""
+
+    @staticmethod
+    def _state(query_message: str, base: str | None) -> _RetryState:
+        return _RetryState(
+            options=MagicMock(),
+            query_message=query_message,
+            compaction_stats=None,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=MagicMock(),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+            warm_context_base=base,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("compacted", [False, True])
+    async def test_each_retry_replaces_the_block_instead_of_stacking(self, compacted):
+        base = "  the user's words\n\n\nkept exactly  "
+        state = self._state(f"{base}\n\n<old block>", base)
+        if compacted:
+            state.compaction_stats = CompactionStats(
+                messages_before=9, messages_after=2
+            )
+        append = AsyncMock(side_effect=lambda query, **_: f"{query}\n\n<fresh>")
+
+        await _resend_with_fresh_warm_context(state, append)
+        await _resend_with_fresh_warm_context(state, append)
+
+        assert state.query_message == f"{base}\n\n<fresh>"
+        assert append.await_args is not None
+        assert append.await_args.kwargs == {"was_compacted": compacted}
+
+    @pytest.mark.asyncio
+    async def test_a_continuation_is_resent_as_it_is(self):
+        """The building-mode restart sends a continuation, not the turn's
+        query: it has no base and carries no block of its own."""
+        state = self._state("continue building", None)
+        append = AsyncMock()
+
+        await _resend_with_fresh_warm_context(state, append)
+
+        assert state.query_message == "continue building"
+        append.assert_not_awaited()
 
 
 # SECRT-2378: the follow-up-turn wiring — the branch where the bug lived.
