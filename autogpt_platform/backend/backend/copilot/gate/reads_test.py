@@ -478,13 +478,16 @@ async def test_a_held_read_is_named_by_its_source_on_the_card_and_the_chain_row(
 async def test_a_held_read_with_no_named_source_says_what_returned_it(rows):
     with patch(f"{_READS}.judge_content", _judge(_HELD)):
         result = await _call(
-            _Fetch(_MARKER, name="memory_search"), _session(), {"limit": 3}
+            _Fetch(_MARKER, name="search_feature_requests"), _session(), {"limit": 3}
         )
 
     (row,) = rows.rows.values()
-    assert row.payload["headline"]["ask"] == "Let Otto read what memory search returned"
+    assert (
+        row.payload["headline"]["ask"]
+        == "Let Otto read what search feature requests returned"
+    )
     stub = json.loads(result.output)
-    assert stub["ask"] == "Read what memory search returned"
+    assert stub["ask"] == "Read what search feature requests returned"
     assert stub["object"] is None
 
 
@@ -602,3 +605,99 @@ async def test_an_expired_release_already_delivered_reports_it_was_delivered(row
     outcome, _ = await reads.answered_read("user-1", review)
 
     assert outcome == "closed"
+
+
+class _OpenedFile(ToolResponseBase):
+    type: ResponseType = ResponseType.WORKSPACE_FILE_CONTENT
+    path: str
+    mime_type: str = "text/markdown"
+    content_base64: str = base64.b64encode(_MARKER.encode()).decode()
+
+
+class _WorkspaceRead(_Fetch):
+    """A workspace read whose row sits at ``opened``, whatever it was asked."""
+
+    def __init__(self, opened: str):
+        super().__init__("", name="read_workspace_file")
+        self.opened = opened
+
+    async def _execute(self, user_id, session, **kwargs):
+        return _OpenedFile(message="file", path=self.opened)
+
+
+@pytest.mark.parametrize(
+    "tool, args",
+    [
+        ("memory_search", {"query": "business goals"}),
+        ("memory_forget_search", {"query": "old plan"}),
+        ("read_skill", {"name": "Quarterly-Report "}),
+    ],
+)
+async def test_memories_and_installed_skills_are_not_judged(rows, tool, args):
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge):
+        result = await _call(_Fetch(_MARKER, name=tool), _session(), args)
+    judge.assert_not_awaited()
+    assert result.success and _MARKER in result.output and rows.rows == {}
+
+
+async def test_a_skill_name_that_is_not_a_slug_is_judged(rows):
+    """``read_skill`` joins the name into a path, so ``..`` leaves the skills."""
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        result = await _call(
+            _Fetch(_MARKER, name="read_skill"), _session(), {"name": "../uploads/x"}
+        )
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+@pytest.mark.parametrize(
+    "opened", ["/skills/report/SKILL.md", "/experts/e1/skills/report/refs/a.md"]
+)
+async def test_a_workspace_read_of_an_installed_skill_is_not_judged(rows, opened):
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge):
+        result = await _call(_WorkspaceRead(opened), _session(), {"path": opened})
+    judge.assert_not_awaited()
+    assert result.success and rows.rows == {}
+
+
+@pytest.mark.parametrize(
+    "opened",
+    [
+        "/sessions/session-1/uploads/a.md",
+        "/uploads/a.md",
+        "/skills/../uploads/a.md",
+        "/experts/e1/notes.md",
+        "/experts//skills/a.md",
+        "/skillset/a.md",
+    ],
+)
+async def test_a_workspace_read_outside_the_skill_folders_is_judged(rows, opened):
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        result = await _call(_WorkspaceRead(opened), _session(), {"path": opened})
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_a_skill_path_argument_does_not_unlock_the_file_it_opened(rows):
+    """Trust follows the row the reader opened, not the path it was asked for."""
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        result = await _call(
+            _WorkspaceRead("/sessions/session-1/skills/x/SKILL.md"),
+            _session(),
+            {"path": "/skills/x/SKILL.md"},
+        )
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_a_skills_copy_in_the_sandbox_is_still_judged(rows):
+    """The working-directory copy is writable by the model's own shell."""
+
+    async def read_file(args):
+        return {"content": [{"type": "text", "text": _MARKER}], "isError": False}
+
+    session = _session()
+    set_execution_context("user-1", session)
+    wrapper = _make_truncating_wrapper(read_file, "read_file", required_args=["path"])
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        result = await wrapper({"path": "/home/user/skills/report/SKILL.md"})
+    assert _MARKER not in json.dumps(result) and len(rows.rows) == 1
