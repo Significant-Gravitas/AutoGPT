@@ -1,15 +1,16 @@
 """The recall guard in the dream's destructive writes, on a live FalkorDB.
 
-Each write tests the recall stamps in the statement that writes
-(``recall_stamp.spared_by_recall``): ``supersede_unless_recalled`` for a
-demotion and ``invalidate_entity_direct_neighbors`` for an entity's
-neighbours change a live fact unless it was recalled within the window and
-the write's override does not reach it, and return what they changed and
-what they spared. This file runs those statements; proves the stamps order by
-time as the strings ``stamp_time`` writes them; and keeps the live
-regressions from Codex's first validation of this PR: two passes that
-demoted more with usage data than without it (cases A and B), and a recall
-stamped between the pass's read of the graph and its write, on each writer.
+Each write (``guarded_writes.py``) tests the recall stamps in the statement
+that writes (``recall_stamp.spared_by_recall``): ``supersede_unless_recalled``
+for a demotion or the ratification sweep's supersession, and
+``invalidate_entity_direct_neighbors`` for an entity's neighbours, change a
+live fact unless it was recalled within the window and the write's override
+does not reach it, and return what they changed and what they spared. This
+file runs those statements; proves the stamps order by time as the strings
+``stamp_time`` writes them; and keeps the live regressions from Codex's first
+validation of this PR: two passes that demoted more with usage data than
+without it (cases A and B), and a recall stamped between the pass's read of
+the graph and its write, on each writer.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -32,13 +33,13 @@ from backend.copilot.dream.schemas import (
     DreamOperations,
     EntityInvalidation,
 )
-from backend.copilot.tools.graphiti_forget import (
+
+from .falkordb_driver import AutoGPTFalkorDriver
+from .guarded_writes import (
     WriteOutcome,
     invalidate_entity_direct_neighbors,
     supersede_unless_recalled,
 )
-
-from .falkordb_driver import AutoGPTFalkorDriver
 from .recall_integration_fixtures import edge_row, rows
 from .recall_stamp import RecallProtection, parse_stamp, stamp_recalls, stamp_time
 
@@ -192,6 +193,47 @@ async def test_a_fact_no_longer_live_fails_and_is_left_as_it_is(
     assert await _supersede(driver, group_id, "missing", _window()) == FAILED
 
     assert await edge_row(driver, "gone") == before
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status, recalled_days, outcome, after",
+    [
+        ("tentative", None, CHANGED, "superseded"),
+        ("tentative", 1, SPARED, "tentative"),
+        ("active", None, FAILED, "active"),
+    ],
+    ids=["tentative", "tentative-recalled", "promoted-since-the-listing"],
+)
+async def test_the_ratification_write_supersedes_only_a_still_tentative_fact(
+    clean_graph,
+    status: str,
+    recalled_days: float | None,
+    outcome: WriteOutcome,
+    after: str,
+) -> None:
+    """The sweep's supersession: ``expected_status`` keeps it off a proposal
+    promoted since the sweep listed it, and with no override a recent recall
+    spares a proposal whose Redis hit count was lost."""
+    driver, group_id = clean_graph
+    stamps = (
+        {} if recalled_days is None else {"last_recalled_at": _ago(days=recalled_days)}
+    )
+    await _edge(driver, group_id, "proposal", status=status, **stamps)
+
+    [written] = await supersede_unless_recalled(
+        driver,
+        ["proposal"],
+        reason="unratified",
+        new_status="superseded",
+        group_id=group_id,
+        protection=_window(),
+        expected_status="tentative",
+    )
+
+    assert written == outcome
+    assert await _statuses(driver, ["proposal"]) == {"proposal": after}
 
 
 @pytest.mark.integration
@@ -368,7 +410,7 @@ def _changed(stats: dict) -> int:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "recalled, changed, protected, a_status",
-    [(False, 1, 0, "superseded"), (True, 0, 2, "active")],
+    [(False, 1, 0, "superseded"), (True, 0, 1, "active")],
     ids=["no-usage", "with-usage"],
 )
 async def test_case_a_a_recalled_fact_keeps_its_cap_slots(
@@ -376,9 +418,9 @@ async def test_case_a_a_recalled_fact_keeps_its_cap_slots(
 ) -> None:
     """Forty facts, a cap of two, stale proposals ``[A, A, B, C]``. Without
     usage the first write demotes A and the second finds it gone; with A
-    recalled both writes spare it. B and C are attempted in neither world:
-    the first redo of this PR dropped A's proposals at the cap and demoted
-    B and C instead (1 -> 2)."""
+    recalled both writes spare it, and it counts once as protected. B and C
+    are attempted in neither world: the first redo of this PR dropped A's
+    proposals at the cap and demoted B and C instead (1 -> 2)."""
     driver, scope = live_pass.driver, live_pass.scope
     for uuid in ["A", "B", "C", *(f"filler-{i}" for i in range(37))]:
         await _edge(driver, scope.group_id, uuid)

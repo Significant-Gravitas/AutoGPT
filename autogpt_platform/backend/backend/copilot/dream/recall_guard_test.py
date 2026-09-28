@@ -1,6 +1,6 @@
 """The recall guard's policy: where its window comes from, and which reasons
 still demote a recently recalled fact. The statements that apply it are
-tested with the writers (``tools/graphiti_forget_test.py``) and on FalkorDB
+tested with the writers (``graphiti/guarded_writes_test.py``) and on FalkorDB
 (``graphiti/recall_guard_integration_test.py``)."""
 
 from datetime import datetime, timedelta, timezone

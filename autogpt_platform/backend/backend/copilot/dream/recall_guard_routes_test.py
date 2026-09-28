@@ -23,11 +23,11 @@ from prisma.enums import (
     DreamPassTrigger,
 )
 
+from backend.copilot.graphiti.guarded_writes import WriteOutcome
 from backend.copilot.graphiti.recall_stamp import RecallProtection, stamp_time
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import InferenceUsage, RouteDecision
-from backend.copilot.tools.graphiti_forget import WriteOutcome
 from backend.data.dream_pass_models import DreamPassDraft
 from backend.executor.batch_executor import PendingEntry
 from backend.executor.scheduler import execute_dream_pass_with_status

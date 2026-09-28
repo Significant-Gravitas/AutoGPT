@@ -10,9 +10,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.graphiti.guarded_writes import NeighbourWrites, WriteOutcome
 from backend.copilot.graphiti.recall_stamp import RecallProtection, parse_stamp
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.copilot.tools.graphiti_forget import NeighbourWrites, WriteOutcome
 
 from . import demotions as demotions_mod
 from . import recall_guard
@@ -153,6 +153,25 @@ async def test_what_the_pass_reports_is_what_the_writes_did(stage) -> None:
     ]
     assert (results.demoted, results.failed, results.entity_edges) == (1, 1, 1)
     assert results.protected == 3, "one spared demotion and two spared neighbours"
+
+
+@pytest.mark.asyncio
+async def test_a_fact_spared_by_several_writes_counts_once(stage) -> None:
+    """``[a, a]`` spared twice, and ``a`` spared again as a neighbour: one
+    protected fact, plus the other neighbour."""
+    stage.supersede.side_effect = None
+    stage.supersede.return_value = [S, S]
+    stage.invalidate.return_value = NeighbourWrites(spared=["a", "b"])
+    ops = DreamOperations(
+        demotions=[_demote("a"), _demote("a")],
+        entity_invalidations=[EntityInvalidation(entity_uuid="hub", reason="gone")],
+    )
+
+    results = await apply_demotions(_SCOPE, "p-8", ops, {"a"})
+
+    assert [d.protected for d in results.demotions] == [True, True]
+    assert results.entity_invalidations[0].edges_protected == ["a", "b"]
+    assert results.protected == 2
 
 
 @pytest.mark.asyncio

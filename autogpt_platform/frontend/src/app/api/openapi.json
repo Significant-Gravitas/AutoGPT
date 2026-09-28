@@ -29093,6 +29093,11 @@
             "title": "Superseded Count",
             "default": 0
           },
+          "protected_count": {
+            "type": "integer",
+            "title": "Protected Count",
+            "default": 0
+          },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"

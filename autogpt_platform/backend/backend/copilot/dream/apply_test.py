@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.graphiti.guarded_writes import NeighbourWrites, WriteOutcome
 from backend.copilot.graphiti.ingest import IngestionCompletion
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.copilot.tools.graphiti_forget import NeighbourWrites, WriteOutcome
 
 from . import apply as apply_mod
 from . import demotions as demotions_mod

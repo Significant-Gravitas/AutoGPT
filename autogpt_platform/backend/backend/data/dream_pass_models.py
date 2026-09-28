@@ -80,8 +80,8 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
-    # Demotions and neighbours the recall guard's writes spared; a row
-    # written before it reads 0.
+    # Distinct facts the recall guard's writes spared; a row written
+    # before it reads 0.
     protected_demotions: int = 0
     summary_for_user: str = ""
     dream_session_id: str | None = None

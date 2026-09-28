@@ -24,9 +24,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import BaseModel
 
+from backend.copilot.graphiti.guarded_writes import NeighbourWrites, WriteOutcome
 from backend.copilot.graphiti.recall_stamp import RecallProtection, stamp_time
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.copilot.tools.graphiti_forget import NeighbourWrites, WriteOutcome
 
 from . import apply as apply_mod
 from . import demotions as demotions_mod
@@ -125,7 +125,8 @@ class Graph:
         return {w.edge for w in self.writes if w.changed}
 
     def spared(self) -> int:
-        return sum(not w.changed for w in self.writes)
+        """The distinct facts some write spared."""
+        return len({w.edge for w in self.writes if not w.changed})
 
     def _supersede_one(
         self, uuid: str, reason: str, protection: RecallProtection

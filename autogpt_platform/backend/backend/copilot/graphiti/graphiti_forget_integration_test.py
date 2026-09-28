@@ -1,11 +1,13 @@
-"""Integration tests for the P-1.3 demotion helpers, against live FalkorDB.
+"""Integration tests for the P-1.3 demotion helpers, against live FalkorDB:
+``mark_edges_superseded`` (``tools/graphiti_forget.py``) and the dream's
+single-hop ``invalidate_entity_direct_neighbors`` (``guarded_writes.py``).
 
-The unit-test sibling (``backend/copilot/tools/graphiti_forget_test.py``)
-pins the Cypher strings and call signatures via mock drivers; those run
-fast but don't catch Cypher that's syntactically valid yet semantically
-wrong on FalkorDB (different graph engines have slightly different
-behavior around relationship variable scoping, ``MATCH`` semantics with
-property-only patterns, etc.).
+The unit-test siblings (``backend/copilot/tools/graphiti_forget_test.py``,
+``guarded_writes_test.py``) pin the Cypher strings and call signatures via
+mock drivers; those run fast but don't catch Cypher that's syntactically
+valid yet semantically wrong on FalkorDB (different graph engines have
+slightly different behavior around relationship variable scoping,
+``MATCH`` semantics with property-only patterns, etc.).
 
 This file is the regression net that catches those. For every P-1.3
 behavior, seed a known graph, run the helper, query the resulting
@@ -19,10 +21,9 @@ runaway-demotion footgun.
 
 import pytest
 
-from backend.copilot.tools.graphiti_forget import (
-    invalidate_entity_direct_neighbors,
-    mark_edges_superseded,
-)
+from backend.copilot.tools.graphiti_forget import mark_edges_superseded
+
+from .guarded_writes import invalidate_entity_direct_neighbors
 
 
 async def _select_edge(driver, uuid: str) -> dict | None:

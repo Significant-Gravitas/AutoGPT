@@ -4,7 +4,10 @@ A tentative MemoryFact edge written by ``apply.py`` is on probation:
 either warm-context retrieval proves it useful within a grace period
 (at which point we promote it to ``status='active'``), or the grace
 period elapses with zero hits and the edge is superseded with
-``reason='unratified'``.
+``reason='unratified'``. The supersession carries the recall guard in its
+own statement (``graphiti/guarded_writes.py``, no override): a proposal the
+user recalled within the protection window stays tentative even when its
+Redis hit count was lost, and is counted in ``protected_count``.
 
 This module owns the pass logic itself. The Redis hit tracker lives
 in ``ratification_hits.py`` so this file stays focused on the
@@ -24,9 +27,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
-from backend.copilot.graphiti.recall_stamp import stamp_recalls
+from backend.copilot.graphiti.guarded_writes import (
+    WriteOutcome,
+    supersede_unless_recalled,
+)
+from backend.copilot.graphiti.recall_stamp import RecallProtection, stamp_recalls
 from backend.copilot.graphiti.scope import HIT_TRACKER_KEY_PREFIX, MemoryScope
-from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 
 from .ratification_hits import (
     RATIFICATION_GRACE_PERIOD,
@@ -34,8 +40,11 @@ from .ratification_hits import (
     parse_created_at,
     record_memory_hit,
 )
+from .recall_guard import DemotionGuard
 
 logger = logging.getLogger(__name__)
+
+UNRATIFIED_REASON = "unratified"
 
 # Re-export so callers (scheduler wrapper, warm-context retrieval, the
 # nightly batch fan-out) only have to know one module name.
@@ -62,6 +71,9 @@ class RatificationResult(BaseModel):
     examined_count: int = 0
     ratified_count: int = 0
     superseded_count: int = 0
+    # Past the grace period with no hits, but recalled within the protection
+    # window: the sweep's guarded write left the proposal tentative.
+    protected_count: int = 0
     error: str | None = None
     skipped: bool = False
     skip_reason: str | None = None
@@ -117,6 +129,7 @@ async def run_ratification_pass(
             return result
 
         now = datetime.now(timezone.utc)
+        protection = DemotionGuard.at(now, ()).protection(UNRATIFIED_REASON)
         for edge in tentatives:
             try:
                 await _process_edge(
@@ -124,6 +137,7 @@ async def run_ratification_pass(
                     driver=driver,
                     edge=edge,
                     now=now,
+                    protection=protection,
                     result=result,
                 )
             except Exception as exc:
@@ -143,11 +157,13 @@ async def run_ratification_pass(
 
     result.completed_at = datetime.now(timezone.utc)
     logger.info(
-        "Ratification complete for user %s: examined=%d ratified=%d superseded=%d errors=%d",
+        "Ratification complete for user %s: examined=%d ratified=%d superseded=%d "
+        "protected=%d errors=%d",
         user_id[:12],
         result.examined_count,
         result.ratified_count,
         result.superseded_count,
+        result.protected_count,
         len(result.per_edge_errors),
     )
     return result
@@ -164,13 +180,17 @@ async def _process_edge(
     driver: AutoGPTFalkorDriver,
     edge: dict[str, Any],
     now: datetime,
+    protection: RecallProtection,
     result: RatificationResult,
 ) -> None:
     """Promote, supersede, or leave alone one tentative edge.
 
     Decision table (spec §5):
       * hits >= 1                 → promote to ``status='active'``
-      * hits == 0 and past grace  → supersede with ``reason='unratified'``
+      * hits == 0 and past grace  → supersede with ``reason='unratified'``,
+        unless *protection* spares it: the user recalled it within the
+        window (its stamp is on the edge, so it holds when the Redis hit
+        count was lost) → left tentative, counted in ``protected_count``
       * hits == 0 within grace    → no-op (still earning its keep)
 
     Both writes apply only while the edge is still an unexpired tentative
@@ -199,22 +219,25 @@ async def _process_edge(
     if now - created_at <= RATIFICATION_GRACE_PERIOD:
         return
 
-    succeeded, failed = await mark_edges_superseded(
+    [outcome] = await supersede_unless_recalled(
         driver,
         [edge_uuid],
-        reason="unratified",
+        reason=UNRATIFIED_REASON,
         new_status="superseded",
-        user_id=scope.owner_user_id,
         group_id=scope.group_id,
+        protection=protection,
+        user_id=scope.owner_user_id,
         expected_status="tentative",
     )
-    if succeeded:
+    if outcome is WriteOutcome.CHANGED:
         result.superseded_count += 1
-    # Surface non-matches too: an edge without a group_id property (legacy
-    # write) matches nothing under the group-scoped predicate and would
-    # otherwise be silently re-examined by every future sweep.
-    for failed_uuid in failed:
-        result.per_edge_errors.append(f"{failed_uuid}: supersede_failed")
+    elif outcome is WriteOutcome.SPARED:
+        result.protected_count += 1
+    else:
+        # Surface non-matches too: an edge without a group_id property (legacy
+        # write) matches nothing under the group-scoped predicate and would
+        # otherwise be silently re-examined by every future sweep.
+        result.per_edge_errors.append(f"{edge_uuid}: supersede_failed")
 
 
 async def _list_tentative_edges(

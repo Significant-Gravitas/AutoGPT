@@ -7,12 +7,16 @@ status and reason, in the order the pass proposed them, then each entity
 invalidation. Usage data plays no part in which of them are attempted.
 
 Every write carries the recall guard in its own statement
-(``recall_guard.py``): a live fact the user recalled within the protection
+(``graphiti/guarded_writes.py``, with the protection ``recall_guard.py``
+builds for its reason): a live fact the user recalled within the protection
 window is left alone unless the write's reason overrides it, and the
 statement returns the facts it changed and those it spared. Nothing is read
-beforehand to decide. ``protected_demotions`` counts the spared ones: one per
-spared demotion and one per neighbour an invalidation spared. A write that
-fails is logged and changes nothing, as before recall stamps existed.
+beforehand to decide. ``protected_demotions`` counts the distinct facts the
+writes spared: a fact spared twice (a duplicated demotion, or a demotion and
+an invalidation) counts once, and a fact spared by one write and changed by
+a later one that overrides the guard counts as spared and as changed. A
+write that fails is logged and changes nothing, as before recall stamps
+existed.
 
 Entity invalidation single-hop demotes every live edge around the entity,
 the most destructive op in the pass, so it stays behind its own LD flag for
@@ -28,12 +32,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
-from backend.copilot.graphiti.scope import MemoryScope
-from backend.copilot.tools.graphiti_forget import (
+from backend.copilot.graphiti.guarded_writes import (
     WriteOutcome,
     invalidate_entity_direct_neighbors,
     supersede_unless_recalled,
 )
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
@@ -71,8 +75,11 @@ class DemotionResults(BaseModel):
 
     @property
     def protected(self) -> int:
-        spared = sum(len(s.edges_protected) for s in self.entity_invalidations)
-        return sum(d.protected for d in self.demotions) + spared
+        """The distinct facts any write of the stage spared."""
+        return len(
+            {d.edge_uuid for d in self.demotions if d.protected}
+            | {uuid for s in self.entity_invalidations for uuid in s.edges_protected}
+        )
 
 
 async def apply_demotions(

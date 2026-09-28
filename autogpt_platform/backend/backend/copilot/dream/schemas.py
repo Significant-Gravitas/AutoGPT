@@ -348,9 +348,9 @@ class DreamPassResult(BaseModel):
     # forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
-    # Demotions the recall guard's writes left alone (``recall_guard.py``):
-    # the user recalled the fact within the protection window. One per spared
-    # demotion and one per neighbour an entity invalidation spared.
+    # Distinct facts the recall guard's writes left alone
+    # (``recall_guard.py``): the user recalled them within the protection
+    # window. A fact spared by two writes counts once.
     protected_demotions: int = 0
 
     summary_for_user: str = ""

@@ -1,8 +1,9 @@
 """The dream's writers against a user's forget, on a live FalkorDB.
 
 A dream reads the graph, asks a model, then writes: supersessions
-(``mark_edges_superseded``) and single-hop neighbour invalidations
-(``invalidate_entity_direct_neighbors``). A user can forget a fact in
+(``supersede_unless_recalled``) and single-hop neighbour invalidations
+(``invalidate_entity_direct_neighbors``), both in ``guarded_writes.py``. A
+user can forget a fact in
 between. Both writers only write over a live fact, and a forget's
 ``forgotten_at`` is written by nothing but ``recall_forget``, so wherever the
 dream's write lands (between the forget's edge write and the rest of the
