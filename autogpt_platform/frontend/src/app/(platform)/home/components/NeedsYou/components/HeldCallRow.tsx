@@ -14,6 +14,7 @@ import {
 } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { headlineButtonId, isInformed, shortAge } from "../helpers";
 import { HeldAvatar } from "./HeldAvatar";
+import { HeldPassageQuote } from "./HeldPassageQuote";
 
 interface Props {
   item: HomeAttentionItem;
@@ -95,12 +96,7 @@ export function HeldCallRow({
             </Text>
           ) : null}
           {read && approval.passage ? (
-            <blockquote
-              aria-label="What it says"
-              className="mt-1 line-clamp-2 border-l-2 border-amber-400 pl-2 text-sm text-zinc-600 [overflow-wrap:anywhere]"
-            >
-              {approval.passage}
-            </blockquote>
+            <HeldPassageQuote passage={approval.passage} />
           ) : null}
         </div>
       </div>
