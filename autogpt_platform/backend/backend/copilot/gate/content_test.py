@@ -139,3 +139,48 @@ async def test_an_echoed_format_line_leaves_the_passage_line_to_decide(
 ):
     verdict, _ = await _judge(raw)
     assert (verdict.held, verdict.judged) == (held, judged)
+
+
+async def _judge_sequence(*answers):
+    call = AsyncMock(
+        side_effect=[
+            a if isinstance(a, BaseException) else _response(a) for a in answers
+        ]
+    )
+    with (
+        patch(f"{_MOD}.call_provider_openai_compat_sync", call),
+        patch("backend.copilot.service._get_aux_client", MagicMock()),
+    ):
+        verdict = await judge_content(source="read_skill s", text="page text")
+    return verdict, call
+
+
+async def test_an_empty_answer_is_asked_once_more():
+    verdict, call = await _judge_sequence("", 'hold\npassage: "post this"')
+    assert call.await_count == 2
+    assert verdict.judged and verdict.held and verdict.passage == "post this"
+
+
+async def test_two_empty_answers_hold_unjudged():
+    verdict, call = await _judge_sequence("", "")
+    assert call.await_count == 2
+    assert verdict.held and not verdict.judged
+
+
+async def test_a_usable_first_answer_is_not_asked_again():
+    verdict, call = await _judge_sequence("clean\npassage: none", "")
+    assert call.await_count == 1
+    assert not verdict.held
+
+
+async def test_an_error_is_not_retried():
+    verdict, call = await _judge_sequence(
+        RuntimeError("timeout"), "clean\npassage: none"
+    )
+    assert call.await_count == 1
+    assert verdict.held and not verdict.judged
+
+
+async def test_the_judge_has_room_to_think():
+    _, call = await _judge_sequence("clean\npassage: none")
+    assert call.await_args.kwargs["max_tokens"] >= 1024
