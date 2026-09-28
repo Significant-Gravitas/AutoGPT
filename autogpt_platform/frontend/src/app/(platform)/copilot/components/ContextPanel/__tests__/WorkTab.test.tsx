@@ -1,6 +1,12 @@
 import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkTab } from "../components/WorkTab/WorkTab";
@@ -12,6 +18,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return { ...actual, useGetFlag: () => false };
 });
+
+const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
 
 const ALEX = {
   id: "exp-alex",
@@ -119,6 +127,81 @@ describe("WorkTab", () => {
 
     fireEvent.click(screen.getByText("All work"));
     expect(await screen.findByTestId("delegation-row")).toBeDefined();
+  });
+
+  it("marks a teammate who stopped on a question as needing you", async () => {
+    const parentMessages = [
+      delegateCall("call-1", "Write the launch checklist"),
+      toolOutput("call-1", {
+        status: "running",
+        sub_session_id: "sub-asking",
+        sub_autopilot_session_link: "/copilot?sessionId=sub-asking",
+        expert: ALEX,
+      }),
+    ];
+    server.use(
+      http.get(SESSION_ROUTE, ({ params }) => {
+        if (params.sessionId === "sub-asking") {
+          return HttpResponse.json({
+            id: "sub-asking",
+            created_at: "2026-09-28T00:00:00Z",
+            updated_at: "2026-09-28T00:05:00Z",
+            user_id: "u-1",
+            chat_status: "idle",
+            expert_id: "exp-alex",
+            metadata: {
+              pending_question: {
+                text: "Q4 release train or December mini-launch?",
+                asked_at: "2026-09-28T00:05:00Z",
+              },
+            },
+            messages: [
+              {
+                role: "assistant",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "s1",
+                    function: {
+                      name: "web_search",
+                      arguments: JSON.stringify({ query: "launch plan" }),
+                    },
+                  },
+                ],
+              },
+              {
+                role: "assistant",
+                content: "Q4 release train or December mini-launch?",
+              },
+            ],
+          });
+        }
+        return HttpResponse.json({
+          id: "chat-1",
+          created_at: "2026-09-28T00:00:00Z",
+          updated_at: "2026-09-28T00:00:00Z",
+          user_id: "u-1",
+          chat_status: "idle",
+          messages: parentMessages,
+        });
+      }),
+    );
+    render(<WorkTab sessionId="chat-1" />);
+
+    const row = await screen.findByTestId("delegation-row");
+    await waitFor(() =>
+      expect(row.getAttribute("data-status")).toBe("needs-input"),
+    );
+    expect(screen.getByText("Needs you")).toBeDefined();
+
+    fireEvent.click(row);
+    expect(await screen.findByText("Alex asks")).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: /answer in alex's thread/i })
+        .getAttribute("href"),
+    ).toBe("/copilot?sessionId=sub-asking");
+    expect(await screen.findByText(/Searched the web/)).toBeDefined();
   });
 
   it("shows a stopped hand-off with its error", async () => {
