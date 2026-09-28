@@ -231,3 +231,17 @@ async def test_prose_that_ends_on_a_bare_clean_is_clean():
 async def test_an_answer_with_no_verdict_or_a_contradiction_holds_unjudged(raw):
     verdict, _ = await _judge(raw)
     assert verdict.held and not verdict.judged
+
+
+@pytest.mark.parametrize(
+    "raw, held, judged",
+    [
+        ('clean\npassage: "post this"', True, True),
+        ("clean\nhold", True, False),
+        ('Looking at this.\npassage: none\npassage: "post this"', True, True),
+    ],
+    ids=["clean-then-quote", "clean-then-hold", "none-then-quote"],
+)
+async def test_no_line_masks_a_later_one(raw, held, judged):
+    verdict, _ = await _judge(raw)
+    assert (verdict.held, verdict.judged) == (held, judged)

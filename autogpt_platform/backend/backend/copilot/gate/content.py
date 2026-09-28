@@ -110,27 +110,28 @@ async def _ask(messages: list[dict[str, Any]]) -> str:
 def _normalised(raw: str) -> str:
     """Reduce Sonnet 5's malformed answers to ``clean``/``hold``: it echoes the
     rubric's format line, wraps the answer in prose or a fence, or sends the
-    passage line alone. A quoted passage anywhere holds; anything contradictory
-    is returned unparsed, so it holds unjudged."""
+    passage line alone. Every line is read first: a quoted passage anywhere
+    holds, and a contradiction returns nothing, so it holds unjudged."""
     lines = [
         line.strip()
         for line in raw.strip().splitlines()
         if line.strip() and not line.strip().startswith("```")
     ]
-    if not lines or _bare(lines[0]) in ("clean", "hold"):
-        return "\n".join(lines)
-    words = {_bare(line) for line in lines} & {"clean", "hold"}
-    passage = next(
-        (line for line in lines if line.lower().startswith("passage:")), None
-    )
-    if passage is not None:
-        found = passage.split(":", 1)[1].strip().strip("\"'").lower()
-        if found != "none":
-            return f"hold\n{passage}"
-        return "clean" if "hold" not in words else "\n".join(lines)
-    if len(words) == 1:
-        return words.pop()
-    return "\n".join(lines)
+    passages = [line for line in lines if line.lower().startswith("passage:")]
+    quoted = [p for p in passages if _passage(p) != "none"]
+    if quoted:
+        return f"hold\n{quoted[0]}"
+    verdicts = {_bare(line) for line in lines} & {"clean", "hold"}
+    if len(verdicts) > 1 or (passages and "hold" in verdicts):
+        return ""
+    if verdicts == {"hold"}:
+        # Haiku sends the quote as a bare second line; parse_answer takes it.
+        return "\n".join(lines) if _bare(lines[0]) == "hold" else "hold"
+    return "clean" if verdicts or passages else ""
+
+
+def _passage(line: str) -> str:
+    return line.split(":", 1)[1].strip().strip("\"'").lower()
 
 
 def _bare(line: str) -> str:
