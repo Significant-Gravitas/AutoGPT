@@ -9,6 +9,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { WorkTab } from "../components/WorkTab/WorkTab";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -96,7 +97,10 @@ describe("WorkTab", () => {
     expect(screen.getByText("Product Manager")).toBeDefined();
     expect(screen.getByText("Reported back · 1 file")).toBeDefined();
     expect(screen.getByText("6m 40s")).toBeDefined();
-    expect(screen.getByText("Otto → 1 hand-off")).toBeDefined();
+    expect(screen.getByText("Otto → 1 expert")).toBeDefined();
+    expect(screen.getByText("Totals")).toBeDefined();
+    expect(screen.getByText("Spent")).toBeDefined();
+    expect(screen.queryByText("Cap")).toBeNull();
   });
 
   it("opens a hand-off's detail and returns to the list", async () => {
@@ -196,12 +200,73 @@ describe("WorkTab", () => {
 
     fireEvent.click(row);
     expect(await screen.findByText("Alex asks")).toBeDefined();
-    expect(
-      screen
-        .getByRole("link", { name: /answer in alex's thread/i })
-        .getAttribute("href"),
-    ).toBe("/copilot?sessionId=sub-asking");
+    expect(screen.getByRole("button", { name: /send to alex/i })).toBeDefined();
     expect(await screen.findByText(/Searched the web/)).toBeDefined();
+  });
+
+  it("cancels a working teammate from the detail", async () => {
+    const cancelled: string[] = [];
+    server.use(
+      http.get(SESSION_ROUTE, ({ params }) =>
+        HttpResponse.json({
+          id: String(params.sessionId),
+          created_at: "2026-09-28T00:00:00Z",
+          updated_at: "2026-09-28T00:00:00Z",
+          user_id: "u-1",
+          chat_status: params.sessionId === "sub-1" ? "running" : "idle",
+          messages:
+            params.sessionId === "sub-1"
+              ? []
+              : [
+                  delegateCall("call-1", "Draft the PRD"),
+                  toolOutput("call-1", {
+                    status: "running",
+                    sub_session_id: "sub-1",
+                    cost_usd: 0.12,
+                    expert: ALEX,
+                  }),
+                ],
+        }),
+      ),
+      http.post(`${SESSION_ROUTE}/cancel`, ({ params }) => {
+        cancelled.push(String(params.sessionId));
+        return HttpResponse.json({ cancelled: true, reason: "ok" });
+      }),
+    );
+    render(<WorkTab sessionId="chat-1" />);
+
+    fireEvent.click(await screen.findByTestId("delegation-row"));
+    expect(await screen.findByText("Controls")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(cancelled).toEqual(["sub-1"]));
+  });
+
+  it("offers raising the budget when the cap stopped the teammate", async () => {
+    const onSend = vi.fn();
+    server.use(
+      chatSession([
+        delegateCall("call-1", "Draft the PRD"),
+        toolOutput("call-1", {
+          type: "error",
+          error: "Weekly budget cap reached",
+          expert: ALEX,
+        }),
+      ]),
+    );
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <WorkTab sessionId="chat-1" />
+      </CopilotChatActionsProvider>,
+    );
+
+    fireEvent.click(await screen.findByTestId("delegation-row"));
+    expect(await screen.findByText("What to do")).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: /raise budget and retry/i }),
+    );
+    expect(onSend).toHaveBeenCalledWith(
+      "Raise the cap and retry the hand-off to Alex.",
+    );
   });
 
   it("shows a stopped hand-off with its error", async () => {

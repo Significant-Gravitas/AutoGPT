@@ -5,7 +5,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { type ChatDelegation, formatElapsed } from "../../../../../delegations";
-import { getDelegationStatusView } from "../../../../../delegationViews";
+import {
+  formatCost,
+  getDelegationStatusView,
+} from "../../../../../delegationViews";
 import { useDelegationLive } from "../../../../../useDelegationLive";
 import { DOT_CLASS, delegationLine } from "../helpers";
 
@@ -18,6 +21,7 @@ export function DelegationRow({ delegation, onOpen }: Props) {
   const live = useDelegationLive(delegation);
   const view = getDelegationStatusView(live.status);
   const elapsed = formatElapsed(live.elapsedSeconds);
+  const cost = formatCost(delegation.costUsd);
   const waiting = view.tone === "waiting";
 
   return (
@@ -35,7 +39,8 @@ export function DelegationRow({ delegation, onOpen }: Props) {
     >
       <ExpertAvatar
         name={live.expert.name}
-        avatarUrl={delegation.expert?.avatarUrl ?? null}
+        avatarUrl={live.expert.avatarUrl}
+        color={live.expert.color}
         size={28}
       />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -44,9 +49,9 @@ export function DelegationRow({ delegation, onOpen }: Props) {
             <span className="truncate text-sm font-medium text-zinc-900">
               {live.expert.name}
             </span>
-            {delegation.expert?.role && (
-              <span className="truncate text-xs text-zinc-500">
-                {delegation.expert.role}
+            {live.expert.role && (
+              <span className="truncate text-xs text-zinc-600">
+                {live.expert.role}
               </span>
             )}
           </span>
@@ -66,8 +71,9 @@ export function DelegationRow({ delegation, onOpen }: Props) {
             live.latestText,
           )}
         </span>
-        <span className="flex items-center gap-2.5 text-xs text-zinc-400">
+        <span className="flex items-center gap-2.5 text-xs text-zinc-500">
           {elapsed && <span>{elapsed}</span>}
+          {cost && <span>{cost}</span>}
           <span className="flex-1" />
           <Icon icon={ArrowRight01Icon} size={14} />
         </span>

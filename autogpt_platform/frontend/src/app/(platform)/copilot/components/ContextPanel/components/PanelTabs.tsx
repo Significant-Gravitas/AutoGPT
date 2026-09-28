@@ -5,15 +5,20 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { type ContextPanelTab, useCopilotUIStore } from "../../../store";
+import { WorkBadge } from "./WorkBadge";
 
 const TABS: { tab: ContextPanelTab; label: string; icon: IconSvgElement }[] = [
   { tab: "artifacts", label: "Artifacts", icon: LicenseDraftIcon },
   { tab: "work", label: "Work", icon: UserGroupIcon },
 ];
 
+interface Props {
+  sessionId: string | null;
+}
+
 /** The docked panel's two faces: what this chat produced, and what it
  *  handed to experts. */
-export function PanelTabs() {
+export function PanelTabs({ sessionId }: Props) {
   const activeTab = useCopilotUIStore((s) => s.artifactPanel.activeTab);
   const openWorkTab = useCopilotUIStore((s) => s.openWorkTab);
   const toggleContextPanelTab = useCopilotUIStore(
@@ -49,6 +54,7 @@ export function PanelTabs() {
           >
             <Icon icon={icon} size={16} />
             {label}
+            {tab === "work" && <WorkBadge sessionId={sessionId} />}
           </button>
         );
       })}

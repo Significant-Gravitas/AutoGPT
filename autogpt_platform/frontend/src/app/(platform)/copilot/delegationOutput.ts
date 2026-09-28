@@ -164,14 +164,15 @@ export function applyHeldOutcome(
     };
   }
   const output = asObject(outcome.output);
+  const approved = { ...delegation, approved: true };
   if (output)
     return applyOutput(
-      delegation,
+      approved,
       { type: `tool-${delegation.tool}`, state: "output-available", output },
       output,
     );
   const text = typeof outcome.output === "string" ? outcome.output.trim() : "";
   return text
-    ? { ...delegation, status: "completed", reviewId: null, response: text }
-    : { ...delegation, status: "cancelled", reviewId: null, error: STOPPED };
+    ? { ...approved, status: "completed", reviewId: null, response: text }
+    : { ...approved, status: "cancelled", reviewId: null, error: STOPPED };
 }

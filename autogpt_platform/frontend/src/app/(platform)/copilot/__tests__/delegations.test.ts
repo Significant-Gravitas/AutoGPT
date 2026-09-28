@@ -260,6 +260,7 @@ describe("getChatDelegations", () => {
       response: "Done.",
       costUsd: 0.12,
       startedAt: "2026-09-28T10:42:00Z",
+      approved: true,
       expert: { name: "Alex" },
     });
   });

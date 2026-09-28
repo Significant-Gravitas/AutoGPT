@@ -62,6 +62,8 @@ export interface ChatDelegation {
   files: DelegationFile[];
   /** The gate's review id while the hand-off waits for the user's approval. */
   reviewId: string | null;
+  /** The user approved it at the gate (Ask First) before it ran. */
+  approved: boolean;
 }
 
 const START_TOOLS = new Set(["delegate_to_expert", "handoff_to_expert"]);
@@ -97,6 +99,7 @@ function openDelegation(
       error: null,
       files: [],
       reviewId: null,
+      approved: false,
     },
     toolPart,
     asObject(toolPart.output),

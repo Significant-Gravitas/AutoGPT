@@ -90,6 +90,7 @@ describe("getDockLine", () => {
     error: null,
     files: [],
     reviewId: null,
+    approved: false,
   };
 
   it("counts a teammate's question as needing you", () => {

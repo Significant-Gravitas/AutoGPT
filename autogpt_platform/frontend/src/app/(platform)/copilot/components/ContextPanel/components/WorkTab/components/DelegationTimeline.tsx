@@ -1,51 +1,76 @@
 "use client";
 
+import {
+  CheckmarkCircle02Icon,
+  FlashIcon,
+  BulbIcon,
+  MessageQuestionIcon,
+  Message01Icon,
+  Alert02Icon,
+  File02Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
-import type { ChainRow } from "../../../../ToolChain/helpers";
-import { RowIcon } from "../../../../ToolChain/RowIcon";
-import { SwapText } from "../../../../ToolChain/SwapText";
+import { ShimmerText } from "../../../../ToolChain/ShimmerText";
+import {
+  formatClock,
+  type TimelineEntry,
+  type TimelineKind,
+} from "../timeline";
 
 interface Props {
-  steps: ChainRow[];
-  latestText: string | null;
+  entries: TimelineEntry[];
 }
 
-const MAX_STEPS = 6;
+const KIND_ICON: Record<TimelineKind, IconSvgElement> = {
+  Approved: CheckmarkCircle02Icon,
+  Action: FlashIcon,
+  Thought: BulbIcon,
+  Question: MessageQuestionIcon,
+  "You answered": Message01Icon,
+  Response: File02Icon,
+  Error: Alert02Icon,
+};
 
-/** The teammate's recent steps, drawn like the chat's own chain in
- *  miniature, with their latest words underneath. */
-export function DelegationTimeline({ steps, latestText }: Props) {
-  const recent = steps.slice(-MAX_STEPS);
-  if (recent.length === 0 && !latestText) {
+const MAX_ENTRIES = 12;
+
+/** The teammate's run step by step: what kind of step, when, and what. */
+export function DelegationTimeline({ entries }: Props) {
+  const recent = entries.slice(-MAX_ENTRIES);
+  if (recent.length === 0)
     return <p className="text-sm text-zinc-500">Nothing to show yet.</p>;
-  }
   return (
-    <div className="flex flex-col">
-      {recent.map((row, i) => {
-        const isLast = i === recent.length - 1;
-        return (
-          <div key={row.key} className="flex items-stretch gap-2.5">
-            <div className="flex w-6 flex-col items-center">
-              <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-                <RowIcon row={row} />
-              </div>
-              {!isLast && <div className="w-px flex-1 bg-zinc-200" />}
-            </div>
-            <div className={cn("min-w-0 flex-1 pt-[2px]", !isLast && "pb-2.5")}>
-              <SwapText
-                text={row.text}
-                shimmer={row.state === "running"}
-                className="max-w-full text-sm leading-5 text-zinc-600"
-              />
-            </div>
-          </div>
-        );
-      })}
-      {latestText && (
-        <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-zinc-600">
-          {latestText}
-        </p>
-      )}
-    </div>
+    <ol className="flex flex-col gap-3" data-testid="delegation-timeline">
+      {recent.map((entry) => (
+        <li key={entry.key} className="flex items-start gap-2.5">
+          <span
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-full border",
+              entry.kind === "Error"
+                ? "border-red-200 text-red-500"
+                : "border-zinc-200 text-zinc-600",
+            )}
+          >
+            <Icon icon={KIND_ICON[entry.kind]} size={14} />
+          </span>
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="flex items-baseline gap-2 text-xs">
+              <span className="font-medium text-zinc-900">{entry.kind}</span>
+              {formatClock(entry.at) && (
+                <span className="text-zinc-500">{formatClock(entry.at)}</span>
+              )}
+            </span>
+            {entry.live ? (
+              <ShimmerText text={entry.text} className="text-sm" />
+            ) : (
+              <span className="line-clamp-3 text-sm text-zinc-700">
+                {entry.text}
+              </span>
+            )}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }

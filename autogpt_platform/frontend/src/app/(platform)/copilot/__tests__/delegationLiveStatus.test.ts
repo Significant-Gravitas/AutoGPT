@@ -23,6 +23,7 @@ function delegation(status: DelegationStatus): ChatDelegation {
     error: null,
     files: [],
     reviewId: null,
+    approved: false,
   };
 }
 

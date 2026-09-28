@@ -45,7 +45,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const isPanelTab = activeTab === "artifacts" || activeTab === "work";
   const library = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PanelTabs />
+      <PanelTabs sessionId={sessionId} />
       {activeTab === "work" ? (
         <WorkTab sessionId={sessionId} />
       ) : (
