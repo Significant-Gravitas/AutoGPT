@@ -32,7 +32,12 @@ class JevCallResult(BaseModel):
 
 
 async def call_jev(
-    api_key: str, state: Any, questions: dict[str, Choice | Score | Noul]
+    api_key: str,
+    state: Any,
+    questions: dict[str, Choice | Score | Noul],
+    *,
+    model: str | None = None,
+    timeout: float | None = None,
 ) -> JevCallResult:
     prepared = prepare_state(state, questions)
     async with AsyncTypeSafeClient(
@@ -42,7 +47,10 @@ async def call_jev(
             started = perf_counter()
             try:
                 result = await client.system_one(
-                    state=prepared.state, questions=questions
+                    state=prepared.state,
+                    questions=questions,
+                    model=model,
+                    timeout=timeout,
                 )
             except TypeSafeAPIResponseValidationError as error:
                 return _failure(

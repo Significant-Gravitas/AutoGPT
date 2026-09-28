@@ -6,6 +6,7 @@ from typing import Any
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -75,6 +76,7 @@ class AIVideoGeneratorBlock(Block):
                 # Use data URI to avoid HTTP requests during tests
                 "generate_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA"
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     def _get_headers(self, api_key: str) -> dict[str, str]:

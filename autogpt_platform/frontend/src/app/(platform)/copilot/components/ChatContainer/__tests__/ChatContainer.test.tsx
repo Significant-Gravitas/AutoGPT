@@ -295,6 +295,39 @@ describe("ChatContainer", () => {
     );
   });
 
+  it("resumes a failed turn an answered card started instead of re-sending a request", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "ask",
+            role: "user",
+            parts: [{ type: "text", text: "make two folders" }],
+          },
+          {
+            id: "result",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "<held_call_result>made</held_call_result>",
+              },
+            ],
+            metadata: { held_call: { review_id: "r1" } },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend.mock.calls[0][0]).toBe("Continue from where you left off.");
+  });
+
   it("does not render the shared-chat notice for unshared chats", async () => {
     render(<ChatContainer {...baseProps} />);
 
