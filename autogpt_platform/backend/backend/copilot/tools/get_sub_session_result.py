@@ -206,7 +206,11 @@ class GetSubSessionResultTool(BaseTool):
         turn_in_flight = registry_session is not None and (
             getattr(registry_session, "status", "") == "running"
         )
-        terminal_result = None if turn_in_flight else _already_terminal_result(sub)
+        terminal_result = (
+            None
+            if turn_in_flight
+            else _already_terminal_result(sub) or _parked_on_question(sub)
+        )
         outcome: SessionOutcome
         result: SessionResult
         if terminal_result is not None:
@@ -383,6 +387,12 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
             )
         )
     return result
+
+
+def _parked_on_question(sub: ChatSession) -> SessionResult | None:
+    """An idle thread waiting on the user's answer is settled even when its
+    last row is the question's tool result rather than closing text."""
+    return SessionResult() if sub.metadata.pending_question is not None else None
 
 
 async def _build_progress_snapshot(
