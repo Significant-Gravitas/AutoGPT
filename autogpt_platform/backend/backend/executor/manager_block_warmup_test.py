@@ -26,11 +26,11 @@ def test_run_loads_blocks_before_taking_runs() -> None:
     manager._run_thread.start.side_effect = lambda: order.append("run_thread")
 
     def load_blocks() -> dict:
-        order.append("get_blocks")
+        order.append("load_blocks")
         return {}
 
     with (
-        patch("backend.executor.manager.get_blocks", side_effect=load_blocks),
+        patch("backend.blocks.load_all_blocks", side_effect=load_blocks),
         patch("backend.executor.manager.start_http_server"),
         patch.object(ExecutionManager, "_update_prompt_metrics"),
         patch("backend.executor.manager.time.sleep", side_effect=_StopRunLoop),
@@ -38,4 +38,4 @@ def test_run_loads_blocks_before_taking_runs() -> None:
     ):
         manager.run()
 
-    assert order == ["get_blocks", "cancel_thread", "run_thread"]
+    assert order == ["load_blocks", "cancel_thread", "run_thread"]
