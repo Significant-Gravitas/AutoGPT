@@ -295,6 +295,8 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 origin=child_session_origin(session.metadata),
+                # The teammate asks the user as often as the delegator must.
+                autopilot_mode=session.metadata.autopilot_mode,
             )
             return new_session.session_id
 

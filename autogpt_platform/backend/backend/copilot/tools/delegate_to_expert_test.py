@@ -950,3 +950,25 @@ class TestRefusedDelegationCleanup:
         )
 
         deleted.assert_not_awaited()
+
+
+class TestDelegatedModeInheritance:
+    """A teammate working for Otto asks the user as often as Otto was told
+    to: the delegated thread starts in the delegating chat's approval mode."""
+
+    @pytest.mark.asyncio
+    async def test_the_thread_starts_in_the_parents_mode(
+        self, roster, mock_turn, monkeypatch
+    ):
+        create = AsyncMock(return_value=MagicMock(session_id="inner-1"))
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.create_chat_session", create
+        )
+        parent = _session()
+        parent.metadata.autopilot_mode = "ask_first"
+
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="hi"
+        )
+
+        assert create.await_args.kwargs["autopilot_mode"] == "ask_first"
