@@ -118,6 +118,11 @@ class DelegateToExpertTool(BaseTool):
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
                 },
+                "reason": {
+                    "type": "string",
+                    "description": "One line: why this teammate. Shown to the user.",
+                    "default": "",
+                },
                 "delegated_session_id": {
                     "type": "string",
                     "description": (

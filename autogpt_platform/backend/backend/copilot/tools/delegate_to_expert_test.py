@@ -972,3 +972,11 @@ class TestDelegatedModeInheritance:
         )
 
         assert create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_the_model_can_say_why_this_teammate():
+    """The approval card shows the model's reason; it is optional."""
+    params = DelegateToExpertTool().parameters
+
+    assert params["properties"]["reason"]["type"] == "string"
+    assert "reason" not in params["required"]

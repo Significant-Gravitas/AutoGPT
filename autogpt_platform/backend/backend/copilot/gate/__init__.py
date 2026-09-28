@@ -26,6 +26,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from . import chat_rules, held
 from . import review as review_store
 from .classifier import DecidedBy, supervise
+from .handoff import is_approved_edit
 from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
@@ -128,6 +129,9 @@ async def check_action(
 
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
+    if is_approved_edit(review_id):
+        # The user approved this call as they edited it on its card.
+        return Decision(allowed=True, approved=True)
 
     review = await review_store.find_review(review_id, user_id, session_id)
     if review is not None and review.status == ReviewStatus.APPROVED:

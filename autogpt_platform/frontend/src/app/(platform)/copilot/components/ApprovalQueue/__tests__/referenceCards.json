@@ -79,7 +79,8 @@
           "object": "Q3 reports",
           "object_key": "folder_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "delete_folder",
       "editable": false,
@@ -320,7 +321,8 @@
           "object": "Archive",
           "object_key": "folder_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "move_agents_to_folder",
       "editable": false,
@@ -407,7 +409,8 @@
           "object": "Daily digest",
           "object_key": "schedule_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "pause_schedule",
       "editable": false,
@@ -492,7 +495,8 @@
           "object": "Ada",
           "object_key": "name"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "hire_expert",
       "editable": false,
@@ -578,7 +582,8 @@
           "object": "Q3 planning",
           "object_key": "session_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "message_session",
       "editable": false,
@@ -686,7 +691,8 @@
           "object": "GitHub (work)",
           "object_key": "credential_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "grant_expert_credential",
       "editable": false,
@@ -773,7 +779,8 @@
           "object": "Morning digest",
           "object_key": "agent_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "edit_agent",
       "editable": false,
@@ -848,7 +855,8 @@
           "object": "Weekly digest",
           "object_key": "preset_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "update_preset",
       "editable": false,
@@ -923,7 +931,8 @@
           "object": "New invoice email",
           "object_key": "preset_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -998,7 +1007,8 @@
           "object": "Month-end close",
           "object_key": "routine_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "schedule_routine",
       "editable": false,
@@ -1089,8 +1099,8 @@
           }
         ],
         "reference_totals": {
-          "expert_id": 1,
-          "store_listing_version_id": 1
+          "store_listing_version_id": 1,
+          "expert_id": 1
         },
         "tool_call_id": "call-install_expert_workflow",
         "turn": 1,
@@ -1112,7 +1122,8 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "install_expert_workflow",
       "editable": false,
@@ -1180,7 +1191,8 @@
           "object": "Receipt matcher",
           "object_key": "workflow_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "remove_expert_workflow",
       "editable": false,
@@ -1261,7 +1273,8 @@
           "object": "Grace",
           "object_key": "confirmation_id"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "confirm_expert_change",
       "editable": false,
@@ -1359,7 +1372,8 @@
           "object": "/reports/q3-report.pdf",
           "object_key": "path"
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "delete_workspace_file",
       "editable": false,
@@ -1427,7 +1441,8 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "delete_preset",
       "editable": false,
