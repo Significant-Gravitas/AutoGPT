@@ -2370,8 +2370,8 @@ class TestStripEphemeralMemoryFromCliJsonl:
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
 
     def test_preserves_user_block_with_forged_marker(self):
-        # A user can type the marker attribute, but not the unguessable nonce,
-        # so their own text must survive the upload scrub verbatim.
+        # A user can type the marker attribute, but not this process's random
+        # nonce, so their own text must survive the upload scrub verbatim.
         forged = (
             '<temporal_context data-agpt-injected="1">my own notes'
             "</temporal_context>"
@@ -2412,7 +2412,17 @@ class TestStripEphemeralMemoryFromCliJsonl:
             assert _mark_injected_memory_block(block) == block
         assert "temporal_context" in caplog.text
 
-    def test_marker_carries_an_unguessable_nonce(self):
+    def test_a_user_block_carrying_this_process_nonce_is_scrubbed(self):
+        # The nonce is not a proof of authorship: the model reads it in the
+        # prompt, and a block carrying it is removed whoever wrote it. The
+        # documented limit of the scrub (``_INJECTED_MEMORY_NONCE``).
+        pasted = f"<temporal_context {_INJECTED_MEMORY_MARKER}>mine</temporal_context>"
+        line = self._user_line(f"my notes\n\n{pasted}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"mine" not in result
+        assert b"my notes" in result
+
+    def test_marker_carries_a_random_nonce(self):
         assert _INJECTED_MEMORY_NONCE not in ("", "1")
         assert len(_INJECTED_MEMORY_NONCE) >= 16
         assert _INJECTED_MEMORY_MARKER == (

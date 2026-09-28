@@ -1105,8 +1105,12 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
 # Provenance nonce stamped onto the server-injected follow-up warm-context
 # block (see ``_append_follow_up_warm_context``). Only blocks carrying THIS
 # process's nonce are scrubbed from the persisted transcript. The nonce is
-# unguessable, so a user who types (or pastes) a ``<temporal_context
-# data-agpt-injected="1">`` tag cannot get their own text deleted on upload.
+# random, so a ``<temporal_context data-agpt-injected="...">`` tag a user types
+# with any other value is left alone. It is not a secret, and not a proof of
+# authorship: the model reads it in the prompt, so a user who gets it from the
+# model and pastes a block carrying it into a later message served by the same
+# process has that block removed from the uploaded CLI session like an
+# injected one (their own session only; the stored message keeps it).
 #
 # Per-process scope is sufficient: a block is injected and scrubbed inside a
 # single ``stream_chat_completion_sdk`` call — the CLI session file is
@@ -1184,8 +1188,9 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     ``--resume`` (a fact the user later retracted keeps re-appearing). The
     block is keyed on a single turn's message, so strip it here; the next turn
     re-injects a fresh one. Only blocks carrying this process's provenance
-    nonce are removed — a ``<temporal_context>`` tag the user typed (even one
-    carrying a forged marker attribute) is left intact.
+    nonce are removed: a ``<temporal_context>`` tag the user typed is left
+    intact unless it carries that nonce, which a user would have to get from
+    the model, since it reads it in the prompt (see ``_INJECTED_MEMORY_NONCE``).
     """
     if not content:
         return content
@@ -4810,6 +4815,12 @@ def _start_follow_up_warm_context(
     forces past the substance gate) is not known until the query is built, so
     that one turn — a trivially short message right after a compaction —
     starts its refresh in the joiner, where the grace is its whole budget.
+
+    The cost of starting early: the refresh's last check of what it read
+    (``recall_recheck``) can finish well before the query is ready, since a
+    compaction in the build can take seconds, so a forget that lands after
+    the check (from the settings page, or another chat) can still be in the
+    block this send carries.
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
         return None
