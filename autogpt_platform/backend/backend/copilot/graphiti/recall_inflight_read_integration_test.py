@@ -119,12 +119,16 @@ async def test_warm_context_paused_at_its_reranker_shows_nothing_forgotten(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "use_cross_encoder", [True, False], ids=["first-turn", "follow-up-refresh"]
+)
 async def test_warm_context_after_its_fact_check_passed_shows_nothing_forgotten(
-    scope_graph, stub_graphiti_client
+    scope_graph, stub_graphiti_client, use_cross_encoder: bool
 ) -> None:
     """The fact check has kept Alice's fact, a forget answers, then the rest
     of the read runs: its one last statement finds neither her fact nor her
-    episode."""
+    episode. The same holds for a follow-up turn's refresh (SECRT-2378),
+    which reads through the same ``_fetch`` with the RRF-reranked recipe."""
     driver, scope = scope_graph
     alice = await _alice_and_bob(driver, scope, stub_graphiti_client)
     live_now = recall.live_now
@@ -143,7 +147,12 @@ async def test_warm_context_after_its_fact_check_passed_shows_nothing_forgotten(
         return patch.object(recall, "live_now", checked)
 
     shown = await _forget_while_paused(
-        scope, alice, lambda: context._fetch(scope, "Alice Bob Atlas"), pause
+        scope,
+        alice,
+        lambda: context._fetch(
+            scope, "Alice Bob Atlas", use_cross_encoder=use_cross_encoder
+        ),
+        pause,
     )
 
     assert ALICE[2] in passed, "the fact check passed before the forget"
