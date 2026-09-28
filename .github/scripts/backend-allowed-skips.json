@@ -141,5 +141,10 @@
     "3.11": [],
     "3.12": [],
     "3.13": []
+  },
+  "secret_gated": {
+    "OPENAI_API_KEY": [
+      "backend.copilot.tools.run_agent_test.test_run_agent_with_llm_credentials"
+    ]
   }
 }

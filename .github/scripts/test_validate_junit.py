@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -146,6 +147,44 @@ class ValidateJUnitTests(unittest.TestCase):
             output = "".join(call.args[0] for call in stderr.write.call_args_list)
             self.assertIn(str(allowlist), output)
             self.assertIn("do not allowlist a regression", output)
+
+    def test_secret_gated_skip_needs_its_variable_absent_or_empty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "skipped.xml"
+            allowlist = Path(directory) / "allowed.json"
+            root = report_xml(skipped=1)
+            for case in root.iter("testcase"):
+                case.set("classname", "backend.example")
+            ElementTree.ElementTree(root).write(report)
+            allowlist.write_text(
+                json.dumps(
+                    {
+                        "common": [],
+                        "python_versions": {"3.13": []},
+                        "secret_gated": {
+                            "EXAMPLE_API_KEY": ["backend.example.skipped-0"]
+                        },
+                    }
+                )
+            )
+            args = [
+                "--allow-skips-from",
+                str(allowlist),
+                "--python-version",
+                "3.13",
+                str(report),
+            ]
+            # A fork run renders an unset secret as the empty string rather than
+            # dropping the variable, so both spellings have to be tolerated.
+            for value, expected in (({}, 0), ({"EXAMPLE_API_KEY": ""}, 0)):
+                with self.subTest(environment=value):
+                    with patch.dict(os.environ, value, clear=True):
+                        self.assertEqual(main(args), expected)
+            with patch.dict(os.environ, {"EXAMPLE_API_KEY": "present"}, clear=True):
+                with patch("sys.stderr") as stderr:
+                    self.assertEqual(main(args), 1)
+            output = "".join(call.args[0] for call in stderr.write.call_args_list)
+            self.assertIn("backend.example.skipped-0", output)
 
     def test_skip_allowlist_must_be_a_valid_list_of_exact_ids(self):
         self._check_invalid_allowlists()

@@ -23,6 +23,7 @@ from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
     _normalize_private_expert_session_tenancy,
+    _wait_for_expert_setup,
     sync_fail_close_session,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
@@ -279,6 +280,7 @@ class TestExecuteAsyncAclose:
         expert_store.resolve_private_expert_tenancy = AsyncMock(
             return_value=("current-personal-org", "current-personal-team")
         )
+        expert_store.expert_setup_status = AsyncMock(return_value="ready")
 
         async def persist(value, *, persist_tenancy: bool = False):
             assert persist_tenancy is True
@@ -400,8 +402,10 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
     expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("current-personal-org", "current-personal-team")
     )
+    expert_store.expert_setup_status = AsyncMock(return_value="ready")
     session_db = MagicMock()
     session_db.get_next_sequence = AsyncMock(return_value=1)
+    session_db.get_chat_session_metadata = AsyncMock(return_value=None)
     published = _TrackedStream(events=[])
 
     with (
@@ -491,6 +495,35 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
         "user-1", "expert-1"
     )
     upsert.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "statuses, expected_reads",
+    [
+        (["ready"], 1),
+        (["installing", "installing", "ready"], 3),
+        # A setup that never finishes: poll until the deadline, then run.
+        (["installing"] * 50, None),
+    ],
+)
+@pytest.mark.asyncio
+async def test_expert_turn_waits_for_hire_setup(statuses, expected_reads) -> None:
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    expert_store = MagicMock()
+    expert_store.expert_setup_status = AsyncMock(side_effect=statuses)
+
+    with (
+        patch("backend.data.db_accessors.experts_db", return_value=expert_store),
+        patch("backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS", 0.05),
+        patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0.005),
+    ):
+        await _wait_for_expert_setup(session)
+
+    reads = expert_store.expert_setup_status.await_count
+    if expected_reads is None:
+        assert 1 < reads < len(statuses)
+    else:
+        assert reads == expected_reads
 
 
 @pytest.mark.asyncio
@@ -618,7 +651,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
     sdk_engine.assert_not_called()
     upsert.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
-        "sess-1", error_message="expert is not owned by user"
+        "sess-1", error_message="expert is not owned by user", turn_id="turn-1"
     )
 
 
@@ -691,7 +724,9 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     dummy_engine.assert_not_called()
     baseline_engine.assert_not_called()
     sdk_engine.assert_not_called()
-    mark_completed.assert_awaited_once_with("sess-1", error_message=expected_message)
+    mark_completed.assert_awaited_once_with(
+        "sess-1", error_message=expected_message, turn_id="turn-1"
+    )
 
 
 def _codex_entry(
@@ -928,6 +963,7 @@ async def test_codex_release_failure_does_not_fail_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message=None,
+        turn_id="turn-codex",
     )
 
 
@@ -981,6 +1017,7 @@ async def test_codex_checkpoint_failure_fails_closed_after_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_checkpoint_failed",
+        turn_id="turn-codex",
     )
 
 
@@ -1015,6 +1052,7 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_session_route_mismatch",
+        turn_id="turn-codex",
     )
 
 
@@ -1056,6 +1094,7 @@ async def test_codex_entitlement_is_checked_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="Max plan required",
+        turn_id="turn-codex",
     )
 
 
@@ -1103,6 +1142,7 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_busy",
+        turn_id="turn-codex",
     )
 
 
@@ -1138,12 +1178,13 @@ class TestSyncFailCloseSession:
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             new=mock_mark,
         ):
-            sync_fail_close_session("sess-1", _make_log(), exec_loop)
+            sync_fail_close_session("sess-1", "turn-1", _make_log(), exec_loop)
 
         mock_mark.assert_awaited_once()
         assert mock_mark.await_args is not None
         assert mock_mark.await_args.args[0] == "sess-1"
         assert "shut down" in mock_mark.await_args.kwargs["error_message"].lower()
+        assert mock_mark.await_args.kwargs["turn_id"] == "turn-1"
 
     def test_swallows_redis_error(self, exec_loop) -> None:
         # Raising from the mock ensures the helper catches the exception
@@ -1153,7 +1194,9 @@ class TestSyncFailCloseSession:
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             new=mock_mark,
         ):
-            sync_fail_close_session("sess-2", _make_log(), exec_loop)  # must not raise
+            sync_fail_close_session(
+                "sess-2", "turn-2", _make_log(), exec_loop
+            )  # must not raise
 
         mock_mark.assert_awaited_once()
 
@@ -1170,7 +1213,9 @@ class TestSyncFailCloseSession:
             new=mock_mark,
         ):
             # Must not raise even though the loop is closed
-            sync_fail_close_session("sess-closed-loop", _make_log(), dead_loop)
+            sync_fail_close_session(
+                "sess-closed-loop", "turn-3", _make_log(), dead_loop
+            )
 
         # mark_session_completed was never scheduled because the loop was dead
         mock_mark.assert_not_awaited()
@@ -1196,7 +1241,7 @@ class TestSyncFailCloseSession:
         ):
             start = _time.monotonic()
             sync_fail_close_session(
-                "sess-hang", _make_log(), exec_loop
+                "sess-hang", "turn-4", _make_log(), exec_loop
             )  # must not raise
             elapsed = _time.monotonic() - start
 

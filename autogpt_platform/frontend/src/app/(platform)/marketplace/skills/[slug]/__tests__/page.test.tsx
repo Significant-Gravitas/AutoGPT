@@ -13,7 +13,8 @@ vi.mock("next/navigation", () => ({
 
 const outreach = {
   slug: "outreach-playbook",
-  name: "Outreach playbook",
+  name: "outreach-playbook",
+  title: "Outreach playbook",
   description: "Run cold outreach that gets replies.",
   categories: ["sales"],
   required_providers: ["google"],

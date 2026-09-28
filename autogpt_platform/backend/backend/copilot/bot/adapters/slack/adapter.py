@@ -24,12 +24,14 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
-from backend.copilot.bot import threads
+from backend.copilot.bot import choices, threads
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -49,13 +51,18 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
-from . import commands, config, history, oauth, signing
+from . import choice_ui, commands, config, history, oauth, signing
 from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
 
 EVENTS_PATH = "/api/copilot-webhooks/slack/events"
 COMMANDS_PATH = "/api/copilot-webhooks/slack/commands"
+INTERACTIVE_PATH = "/api/copilot-webhooks/slack/interactive"
+_EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 # Slack lifecycle events that end a workspace's install — revoke its token.
 _UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
@@ -137,6 +144,9 @@ class SlackAdapter(WebhookAdapter):
     def register_routes(self, app: FastAPI) -> None:
         app.add_api_route(EVENTS_PATH, self._handle_event_request, methods=["POST"])
         app.add_api_route(COMMANDS_PATH, self._handle_command_request, methods=["POST"])
+        app.add_api_route(
+            INTERACTIVE_PATH, self._handle_interactive_request, methods=["POST"]
+        )
         # Multi-workspace "Add to Slack" install + OAuth callback (no-op unless
         # the app's client id/secret are configured). A (re)install replaces the
         # workspace's token, so it must drop this replica's cached client.
@@ -224,6 +234,97 @@ class SlackAdapter(WebhookAdapter):
             k: v for k, v in form_data.items() if isinstance(v, str)
         }
         return await commands.handle(self._api, form)
+
+    async def _handle_interactive_request(self, request: Request) -> Response:
+        # Same body-then-form sequence as _handle_command_request: Slack's
+        # interactivity payload is also form-encoded (a JSON `payload` field).
+        if await read_verified_webhook_body(request, _verify_signature) is None:
+            return unauthorized_webhook_response()
+        form_data = await request.form()
+        raw_payload = form_data.get("payload")
+        if not isinstance(raw_payload, str):
+            return PlainTextResponse("ok")
+        payload = json.loads(raw_payload)
+        if payload.get("type") == "block_actions":
+            # Fire-and-forget so we ACK within Slack's 3s window.
+            task = asyncio.create_task(self._dispatch_block_action(payload))
+            self._event_tasks.add(task)
+            task.add_done_callback(self._event_tasks.discard)
+        return PlainTextResponse("ok")
+
+    async def _dispatch_block_action(self, payload: dict[str, Any]) -> None:
+        """Resolve a clicked ask_question choice button and feed the answer
+        back through the normal message pipeline, exactly like a typed
+        reply."""
+        actions = payload.get("actions") or []
+        if not actions:
+            return
+        parsed = choice_ui.parse_action_id(actions[0].get("action_id") or "")
+        if parsed is None:
+            return
+        token, index = parsed
+        team_id = (payload.get("team") or {}).get("id") or ""
+        channel_id = (payload.get("channel") or {}).get("id")
+        client = await self._client_for(team_id)
+        clicker_id = (payload.get("user") or {}).get("id", "")
+        resolved = await choices.resolve_choice("slack", token, index, clicker_id)
+        if resolved.text is None:
+            if client and channel_id:
+                await client.chat_postEphemeral(
+                    channel=channel_id,
+                    user=clicker_id,
+                    text=(_NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE),
+                )
+            return
+        option = resolved.text
+        message_ts = (payload.get("container") or {}).get("message_ts")
+        if client and channel_id and message_ts:
+            # `resolve_choice` already consumed the token, so the answer now
+            # exists only in this call. The ack is cosmetic and the turn is
+            # not: a `message_not_found`/`ratelimited` here must not abort
+            # the dispatch and lose the answer with nothing logged.
+            try:
+                await client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    # The option text is model-authored, so it goes through
+                    # the same escaper as every other Slack send — otherwise
+                    # an option containing `<!channel>` pings the workspace,
+                    # bypassing the mentionable_users allowlist.
+                    text=self.localize_markup(f"✅ You answered: {option}"),
+                    blocks=[],
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to acknowledge Slack choice click; continuing the turn"
+                )
+        if self._on_message_callback is None:
+            return
+        ctx = await self._context_from_block_action(payload, option)
+        if ctx is not None:
+            await self._on_message_callback(ctx, self)
+
+    async def _context_from_block_action(
+        self, payload: dict[str, Any], option: str
+    ) -> Optional[MessageContext]:
+        channel = (payload.get("channel") or {}).get("id")
+        team = (payload.get("team") or {}).get("id")
+        user = (payload.get("user") or {}).get("id")
+        ts = (payload.get("container") or {}).get("message_ts")
+        if not (channel and team and user and ts):
+            return None
+        event = {
+            "channel": channel,
+            "ts": ts,
+            "user": user,
+            "text": option,
+            "team": team,
+            "thread_ts": (payload.get("message") or {}).get("thread_ts"),
+        }
+        # Slack channel IDs are prefixed by kind; "D" is a 1:1 DM.
+        return await self._build_context(
+            event, team, bot_mentioned=True, is_dm=channel.startswith("D")
+        )
 
     async def _dispatch_event(
         self, event: dict[str, Any], team_id: Optional[str] = None
@@ -345,7 +446,7 @@ class SlackAdapter(WebhookAdapter):
             text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
             thread_history=thread_history,
-            mentionable_users=await self._collect_mentionable_users(team, text),
+            mentionable_users=await self._collect_mentionable_users(team, text, user),
             attachments=attachments,
             skipped_attachments=skipped,
         )
@@ -513,6 +614,35 @@ class SlackAdapter(WebhookAdapter):
             blocks=_link_blocks(rendered, link_label, link_url),
         )
 
+    @property
+    def max_choice_label_length(self) -> int:
+        return 75
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        team, channel, thread_ts = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return False
+        rendered = self.localize_markup(text)
+        await client.chat_postMessage(
+            channel=channel,
+            text=rendered,
+            thread_ts=thread_ts,
+            blocks=choice_ui.choice_blocks(rendered, token, options),
+        )
+        return True
+
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         team, channel, thread_ts = _decode_target(channel_id)
         client = await self._client_for(team)
@@ -611,11 +741,15 @@ class SlackAdapter(WebhookAdapter):
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:
         team, channel, thread_ts = _decode_target(channel_id)
-        first_ts = await self._post_chunked(team, channel, text, thread_ts=thread_ts)
+        first_ts, sent = await self._post_chunked(
+            team, channel, text, thread_ts=thread_ts
+        )
         if first_ts is None:
             return None
         return PostedRef(
-            id=first_ts, url=await self._permalink(team, channel, first_ts)
+            id=first_ts,
+            url=await self._permalink(team, channel, first_ts),
+            chunk_count=sent,
         )
 
     async def create_channel_thread(
@@ -624,18 +758,54 @@ class SlackAdapter(WebhookAdapter):
         # Slack threads are implicit + unnamed: post text as the root message;
         # the returned ref threads subsequent sends off it.
         team, channel, _ = _decode_target(channel_id)
-        root_ts = await self._post_chunked(team, channel, text)
+        root_ts, sent = await self._post_chunked(team, channel, text)
         if root_ts is None:
             return None
+        # `id` is the root message's ts so it can be edited; `channel_id`
+        # carries the encoded target whose thread_ts keeps follow-up sends
+        # threaded under it.
         return PostedRef(
-            id=_encode_target(team, channel, root_ts),
+            id=root_ts,
             url=await self._permalink(team, channel, root_ts),
+            channel_id=_encode_target(team, channel, root_ts),
+            chunk_count=sent,
         )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        team, channel, _ = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return EditOutcome.FAILED
+        try:
+            # `blocks=[]` is required, not cosmetic: chat.update keeps the
+            # message's existing blocks when the field is omitted, so editing
+            # a block message (every `send_link` card) would change nothing
+            # visible while still reporting success.
+            await client.chat_update(
+                channel=channel,
+                ts=ref_id,
+                text=self.localize_markup(text),
+                blocks=[],
+            )
+        except SlackApiError as e:
+            if e.response.get("error") == "message_not_found":
+                return EditOutcome.NOT_FOUND
+            logger.warning(
+                "Slack chat.update rejected edit: %s", e.response.get("error")
+            )
+            return EditOutcome.FAILED
+        except Exception:
+            logger.exception("Failed to edit Slack message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def _post_chunked(
         self, team_id: str, channel: str, text: str, thread_ts: Optional[str] = None
-    ) -> Optional[str]:
-        """Post ``text`` chunked under the message cap; return the first ts.
+    ) -> tuple[Optional[str], int]:
+        """Post ``text`` chunked under the message cap; return the first ts
+        and how many chunks landed.
 
         Later chunks thread off the first so a long post stays one conversation.
 
@@ -648,8 +818,9 @@ class SlackAdapter(WebhookAdapter):
         """
         client = await self._client_for(team_id)
         if client is None:
-            return None
+            return None, 0
         first_ts = thread_ts
+        sent = 0
         posted = False
         for rendered in self._localized_chunks(text, config.CHUNK_FLUSH_AT):
             try:
@@ -664,9 +835,10 @@ class SlackAdapter(WebhookAdapter):
                 logger.exception("Dropping trailing Slack chunk after partial send")
                 break
             posted = True
+            sent += 1
             if first_ts is None:
                 first_ts = resp.get("ts")
-        return first_ts
+        return first_ts, sent
 
     def _localized_chunks(self, text: str, flush_at: int) -> Iterator[str]:
         """Chunk the canonical markdown, then localize each chunk, so a cut
@@ -736,12 +908,14 @@ class SlackAdapter(WebhookAdapter):
         return _USER_MENTION_RE.sub(_replace, text).strip()
 
     async def _collect_mentionable_users(
-        self, team_id: str, text: str
+        self, team_id: str, text: str, author_id: str = ""
     ) -> tuple[tuple[str, str], ...]:
+        """The author and everyone the inbound message mentioned. The author
+        is who the bot is answering, so "@name" back to them must ping."""
         bot_id = await self._bot_user_id_for(team_id)
         pairs: list[tuple[str, str]] = []
-        for match in _USER_MENTION_RE.finditer(text):
-            uid = match.group(1)
+        mentioned = [m.group(1) for m in _USER_MENTION_RE.finditer(text)]
+        for uid in ([author_id] if author_id else []) + mentioned:
             if bot_id and uid == bot_id:
                 continue
             pair = (await self._user_display_name(team_id, uid), uid)

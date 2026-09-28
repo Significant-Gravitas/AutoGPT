@@ -31,11 +31,11 @@ export function ExpertDayOne({ name, items, accent }: Props) {
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
               <div className="min-w-0 flex-1">
-                <div className="break-words text-sm font-semibold leading-6 text-zinc-900">
+                <div className="break-words text-base font-semibold leading-6 text-zinc-900">
                   {item.title}
                 </div>
                 {item.description ? (
-                  <p className="break-words text-[13px] leading-5 text-zinc-500">
+                  <p className="break-words text-sm leading-6 text-zinc-500">
                     {item.description}
                   </p>
                 ) : null}

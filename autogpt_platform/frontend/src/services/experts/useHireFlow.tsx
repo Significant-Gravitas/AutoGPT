@@ -11,6 +11,7 @@ import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
+import { analytics } from "@/services/analytics";
 import { trackExperts } from "@/services/experts/experts-analytics";
 import { takeHireElapsedMs } from "@/services/experts/hire-timing";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
@@ -21,9 +22,10 @@ import { useRef, useState } from "react";
 function celebrate(result: HireResult) {
   toast({
     title: `${result.expert.name} joined your team`,
-    description: result.failed_preloads.length
-      ? `Couldn't attach: ${result.failed_preloads.join(", ")}`
-      : undefined,
+    description:
+      result.expert.setup_status === "installing"
+        ? "Their skills and workflows are installing."
+        : undefined,
     variant: "success",
     action: (
       <Button
@@ -79,6 +81,10 @@ export function useHireFlow(expert: Expert | null) {
     try {
       const response = await hireExpert({ data: { template_id: expert.id } });
       const result = response.data as HireResult;
+      analytics.sendDatafastEvent("hire_completed", {
+        template_id: expert.id,
+        expert_id: result.expert.id,
+      });
       await invalidateExpertRosterQueries(queryClient);
       pendingCelebrationRef.current = result;
       setHireResult(result);

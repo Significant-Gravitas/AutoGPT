@@ -5,6 +5,8 @@ Service tokens ride the same JWKS trust as user tokens but with a distinct
 audience and subject; these tests pin the separation between the two planes.
 """
 
+import base64
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -21,6 +23,7 @@ from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.service import (
     FRONTEND_SERVICE_SUBJECT,
     SERVICE_TOKEN_AUDIENCE,
+    frontend_service_claims,
     requires_frontend_service,
 )
 
@@ -60,10 +63,10 @@ def create_es256_token(payload, private_key, kid: str = "test-key-1") -> str:
 
 @pytest.fixture
 def jwks_config(mocker: MockerFixture):
-    """Configure both the legacy shared secret and a JWKS endpoint."""
+    """Configure a JWKS endpoint serving a single ES256 signing key."""
     mocker.patch.dict(
         os.environ,
-        {"JWT_VERIFY_KEY": MOCK_JWT_SECRET, "JWT_JWKS_URL": MOCK_JWKS_URL},
+        {"JWT_JWKS_URL": MOCK_JWKS_URL},
         clear=True,
     )
     mocker.patch.object(config, "_settings", Settings())
@@ -123,6 +126,29 @@ def test_symmetric_service_token_is_rejected(jwks_config):
     assert "symmetric" in response.json()["detail"]
 
 
+def _service_token_with_header(header: dict) -> str:
+    """Build a JWT with an arbitrary header; jwt.encode() always writes a
+    string `alg`, so malformed headers are assembled by hand. The signature is
+    garbage: these tokens must be rejected before verification."""
+    segments = [
+        json.dumps(header).encode(),
+        json.dumps(SERVICE_PAYLOAD).encode(),
+        b"not-a-signature",
+    ]
+    return ".".join(base64.urlsafe_b64encode(s).rstrip(b"=").decode() for s in segments)
+
+
+@pytest.mark.parametrize("alg", [None, 256], ids=["null-alg", "numeric-alg"])
+def test_non_string_algorithm_is_401_not_500(jwks_config, alg):
+    """A malformed `alg` header is an auth failure, not a server error.
+    TestClient re-raises server exceptions, so an AttributeError here would
+    fail the test rather than hide behind a 500."""
+    token = _service_token_with_header({"alg": alg, "kid": "test-key-1"})
+    response = _post(token)
+    assert response.status_code == 401
+    assert "signing algorithm" in response.json()["detail"]
+
+
 def test_expired_service_token_is_401(jwks_config):
     payload = {
         **SERVICE_PAYLOAD,
@@ -140,3 +166,49 @@ def test_garbage_token_is_401(jwks_config):
 # test here: a valid Settings() cannot exist without JWT_JWKS_URL (its
 # validate() raises), so the guard is unreachable. config_test.py covers that
 # enforcement.
+
+
+CLAIM_PAYLOAD = {
+    "sub": FRONTEND_SERVICE_SUBJECT,
+    "aud": SERVICE_TOKEN_AUDIENCE,
+    "scope": "client-country",
+    "country": "US",
+}
+
+
+@pytest.mark.asyncio
+async def test_frontend_service_claims_returns_a_vouched_claim(jwks_config):
+    token = create_es256_token(CLAIM_PAYLOAD, jwks_config)
+    claims = await frontend_service_claims(token, "client-country")
+    assert claims is not None and claims["country"] == "US"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**CLAIM_PAYLOAD, "scope": "auth-email:send"},
+        {**CLAIM_PAYLOAD, "sub": "service:imposter"},
+        {**CLAIM_PAYLOAD, "aud": "authenticated"},
+        {**CLAIM_PAYLOAD, "exp": datetime.now(timezone.utc) - timedelta(minutes=1)},
+    ],
+    ids=["other-scope", "wrong-subject", "user-audience", "expired"],
+)
+async def test_frontend_service_claims_refuses_anything_else(jwks_config, payload):
+    token = create_es256_token(payload, jwks_config)
+    assert await frontend_service_claims(token, "client-country") is None
+
+
+@pytest.mark.asyncio
+async def test_frontend_service_claims_refuses_a_foreign_signature(jwks_config):
+    """A token the caller signed itself -- the spoofing case -- is no claim."""
+    forged_key, _ = make_es256_keypair()
+    token = create_es256_token(CLAIM_PAYLOAD, forged_key)
+    assert await frontend_service_claims(token, "client-country") is None
+
+
+@pytest.mark.asyncio
+async def test_frontend_service_claims_refuses_symmetric_and_garbage(jwks_config):
+    hs = jwt.encode(CLAIM_PAYLOAD, MOCK_JWT_SECRET, algorithm="HS256")
+    assert await frontend_service_claims(hs, "client-country") is None
+    assert await frontend_service_claims("US", "client-country") is None

@@ -166,6 +166,15 @@ class AggregateSkipTests(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("unapproved skipped test IDs", diagnostic)
 
+    def test_secret_gated_skip_passes_whether_or_not_the_run_had_the_secret(self):
+        self.policy["secret_gated"] = {
+            "EXAMPLE_API_KEY": ["backend.example.test_needs_secret"]
+        }
+        self.write_report("3.11", "data", ["test_needs_secret"])
+        self.assertEqual(self.run_validator()[0], 0)
+        self.write_report("3.11", "data", [])
+        self.assertEqual(self.run_validator()[0], 0)
+
     def test_aggregate_validation_requires_explicit_versions(self):
         self.policy = ["backend.example.test_shared"]
         result, diagnostic = self.run_validator()
@@ -205,6 +214,27 @@ class AggregateSkipTests(unittest.TestCase):
             {"common": ["backend.test"], "python_versions": {"3.11": ["backend.test"]}},
             {"common": [], "python_versions": {"3.11": [""]}},
             {"common": [], "python_versions": {"3.11": []}, "typo": []},
+            {"common": [], "python_versions": {"3.11": []}, "secret_gated": []},
+            {
+                "common": [],
+                "python_versions": {"3.11": []},
+                "secret_gated": {"lowercase_key": ["backend.test"]},
+            },
+            {
+                "common": ["backend.test"],
+                "python_versions": {"3.11": []},
+                "secret_gated": {"EXAMPLE_API_KEY": ["backend.test"]},
+            },
+            {
+                "common": [],
+                "python_versions": {"3.11": ["backend.test"]},
+                "secret_gated": {"EXAMPLE_API_KEY": ["backend.test"]},
+            },
+            {
+                "common": [],
+                "python_versions": {"3.11": []},
+                "secret_gated": {"EXAMPLE_API_KEY": ["backend.test", "backend.test"]},
+            },
         )
         for policy in invalid:
             with self.subTest(policy=policy):
@@ -291,6 +321,13 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
                         self.assertNotEqual(run.returncode, 0)
                         self.assertIn("reports may be incomplete", run.stderr)
                         self.assertFalse(invocation.exists())
+
+    def test_every_secret_gated_variable_reaches_the_test_job_as_a_secret(self):
+        policy = load_skip_policy(self.github / "scripts/backend-allowed-skips.json")
+        self.assertTrue(policy.secret_gated)
+        environment = self.workflow["jobs"]["test"]["env"]
+        for variable in policy.secret_gated:
+            self.assertEqual(environment.get(variable), "${{ secrets.%s }}" % variable)
 
     def test_new_helper_and_test_changes_trigger_backend_ci(self):
         events = self.workflow["on"] if "on" in self.workflow else self.workflow[True]

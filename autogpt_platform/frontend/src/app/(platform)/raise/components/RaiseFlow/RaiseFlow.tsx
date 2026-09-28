@@ -34,6 +34,7 @@ export function RaiseFlow() {
     items,
     name,
     role,
+    jobTitle,
     color,
     avatarUrl,
     about,
@@ -66,7 +67,7 @@ export function RaiseFlow() {
             onClick={startRaising}
             disabled={hasStarted}
           >
-            {hasStarted ? "Setting up expert now" : "Start raising"}
+            {hasStarted ? "Setting up expert now" : "Create Expert"}
             {hasStarted ? null : <Icon icon={ArrowRight02Icon} size={14} />}
           </Button>
         </div>
@@ -99,7 +100,7 @@ export function RaiseFlow() {
             role="log"
             aria-live="polite"
             aria-relevant="additions text"
-            aria-label="Raise expert conversation"
+            aria-label="Expert creation conversation"
             className="flex flex-col gap-4 px-4 pb-16 pt-6 scrollbar-none sm:px-6 lg:h-full lg:overflow-y-auto lg:px-8"
           >
             {items.map(renderItem)}
@@ -139,6 +140,7 @@ export function RaiseFlow() {
             <SoulPreviewPanel
               name={name}
               role={role}
+              jobTitle={jobTitle}
               avatarUrl={avatarUrl || null}
               color={color}
               about={about}

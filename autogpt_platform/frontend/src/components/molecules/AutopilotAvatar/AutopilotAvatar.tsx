@@ -1,39 +1,45 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 import {
-  AUTOPILOT_AVATAR_BG_CLASS,
   AUTOPILOT_AVATAR_URL,
   AUTOPILOT_NAME,
+  AUTOPILOT_TRANSPARENT_AVATAR_URL,
 } from "./helpers";
 
 interface Props {
   size?: number;
+  transparent?: boolean;
   className?: string;
+  backgroundColor?: string;
 }
 
-/** Otto's face at any pixel size, on the cyan disc with the outline every
- *  expert avatar wears. */
-export function AutopilotAvatar({ size = 24, className }: Props) {
-  return (
-    <Avatar
-      style={{ width: size, height: size }}
-      className={cn(
-        "shrink-0 border border-stone-500",
-        AUTOPILOT_AVATAR_BG_CLASS,
-        className,
-      )}
-    >
-      <AvatarImage
-        src={AUTOPILOT_AVATAR_URL}
-        alt={AUTOPILOT_NAME}
+export function AutopilotAvatar({
+  size = 24,
+  transparent = false,
+  className,
+  backgroundColor,
+}: Props) {
+  if (transparent) {
+    return (
+      <Image
+        src={AUTOPILOT_TRANSPARENT_AVATAR_URL}
+        alt={`${AUTOPILOT_NAME}, your personal Head of AI`}
         width={size}
         height={size}
+        sizes={`${size}px`}
+        className={cn("shrink-0 object-contain", className)}
       />
-      <AvatarFallback>{AUTOPILOT_NAME}</AvatarFallback>
-    </Avatar>
+    );
+  }
+
+  return (
+    <ExpertAvatar
+      name={AUTOPILOT_NAME}
+      avatarUrl={AUTOPILOT_AVATAR_URL}
+      size={size}
+      backgroundColor={backgroundColor}
+      className={className}
+    />
   );
 }

@@ -10,12 +10,14 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
+import * as Sentry from "@sentry/nextjs";
 import { Key, storage } from "../local-storage";
 import { environment } from "@/services/environment";
 
 describe("storage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.mocked(Sentry.captureException).mockClear();
     vi.mocked(environment.isServerSide).mockReturnValue(false);
   });
 
@@ -38,20 +40,67 @@ describe("storage", () => {
     });
   });
 
+  describe("null localStorage", () => {
+    it("keeps values in memory instead of throwing", () => {
+      const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+      Object.defineProperty(window, "localStorage", {
+        value: null,
+        configurable: true,
+      });
+      try {
+        expect(storage.set(Key.COPILOT_MODE, "fast")).toBeUndefined();
+        expect(storage.get(Key.COPILOT_MODE)).toBe("fast");
+        expect(storage.clean(Key.COPILOT_MODE)).toBeUndefined();
+        expect(storage.get(Key.COPILOT_MODE)).toBeNull();
+      } finally {
+        if (original) {
+          Object.defineProperty(window, "localStorage", original);
+        }
+      }
+    });
+  });
+
+  describe("unexpected write failures", () => {
+    it("reports them to Sentry when storage is available", () => {
+      const error = new Error("QuotaExceededError");
+      const setItem = vi
+        .spyOn(window.localStorage, "setItem")
+        .mockImplementation(() => {
+          throw error;
+        });
+      const removeItem = vi
+        .spyOn(window.localStorage, "removeItem")
+        .mockImplementation(() => {
+          throw error;
+        });
+      try {
+        storage.set(Key.COPILOT_MODE, "fast");
+        storage.clean(Key.COPILOT_MODE);
+        expect(Sentry.captureException).toHaveBeenCalledTimes(2);
+        expect(Sentry.captureException).toHaveBeenCalledWith(error);
+      } finally {
+        setItem.mockRestore();
+        removeItem.mockRestore();
+      }
+    });
+  });
+
   describe("server-side guard", () => {
-    it("returns undefined for get when on server side", () => {
+    // Every route pulls a module in that reads storage while zustand builds
+    // its store, so this path runs on every server render. It must be silent.
+    it("reads null on the server without reporting to Sentry", () => {
       vi.mocked(environment.isServerSide).mockReturnValue(true);
-      expect(storage.get(Key.COPILOT_MODE)).toBeUndefined();
+
+      expect(storage.get(Key.COPILOT_MODE)).toBeNull();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
     });
 
-    it("returns undefined for set when on server side", () => {
+    it("drops writes on the server without reporting to Sentry", () => {
       vi.mocked(environment.isServerSide).mockReturnValue(true);
+
       expect(storage.set(Key.COPILOT_MODE, "fast")).toBeUndefined();
-    });
-
-    it("returns undefined for clean when on server side", () => {
-      vi.mocked(environment.isServerSide).mockReturnValue(true);
       expect(storage.clean(Key.COPILOT_MODE)).toBeUndefined();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
     });
   });
 });

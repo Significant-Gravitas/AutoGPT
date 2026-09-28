@@ -50,6 +50,7 @@ from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
     safe_caller_name,
+    sent_from_metadata,
     unknown_target_message,
 )
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
@@ -85,7 +86,7 @@ class DelegateToExpertTool(BaseTool):
             f"work. Waits up to wait_for_result sec (max "
             f"{MAX_SUB_SESSION_WAIT_SECONDS}); if not done, returns "
             "status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "tool:get_sub_session_result."
         )
 
     @property
@@ -199,6 +200,7 @@ class DelegateToExpertTool(BaseTool):
             # A teammate keeps their own teammates; depth still bounds the chain.
             spawn=SpawnRequest(may_spawn=True),
             allow_queue=False,
+            message_metadata=sent_from_metadata(session, caller),
         )
         elapsed = time.monotonic() - started_at
         discarded = (

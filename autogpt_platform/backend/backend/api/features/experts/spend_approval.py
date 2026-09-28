@@ -19,7 +19,7 @@ from backend.copilot import db as chat_db
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
+    SPEND_REVIEW_MARKER,
 )
 from backend.data import human_review
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
@@ -30,9 +30,7 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-# Present in every spend-approval review id, on both the graph-execution and
-# the chat shape, so one ``contains`` lookup finds an expert's decisions.
-SPEND_REVIEW_MARKER = "expert-spend:"
+
 _POST_NAMESPACE = uuid.UUID("2b7d1c4e-5a6f-4e8b-9c0d-1e2f3a4b5c6d")
 
 
@@ -187,13 +185,12 @@ async def open_chat_spend_review(
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> str:
-    """Park a paid ``run_block`` on the session's review rails and return the
+    """Park a paid ``run_capability`` block run on the session's review rails and return the
     review id. An open row for the same expert is reused so a model retry
     does not stack cards."""
-    synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
     node_id = f"{COPILOT_NODE_PREFIX}{SPEND_REVIEW_MARKER}{needed.expert_id}"
-    for review in await human_review.get_pending_reviews_for_execution(
-        synthetic_graph_id, user_id
+    for review in await human_review.get_pending_reviews_for_chat_session(
+        session_id, user_id
     ):
         if review.node_id == node_id:
             return review.node_exec_id
@@ -201,9 +198,7 @@ async def open_chat_spend_review(
     await human_review.get_or_create_human_review(
         user_id=user_id,
         node_exec_id=review_id,
-        graph_exec_id=synthetic_graph_id,
-        graph_id=synthetic_graph_id,
-        graph_version=1,
+        chat_session_id=session_id,
         input_data=_review_payload(needed, block=block_name),
         message=needed.headline,
         editable=False,

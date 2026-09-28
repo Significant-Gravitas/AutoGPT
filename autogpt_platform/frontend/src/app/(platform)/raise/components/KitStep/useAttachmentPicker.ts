@@ -35,8 +35,10 @@ export function useAttachmentPicker({
     );
   }
 
+  // Only a marketplace workflow needs resolving: a listing card carries a
+  // creator/slug pair, while every other hit already knows its own id.
   async function addHit(hit: SearchHit) {
-    if (hit.source === "marketplace") {
+    if (hit.source === "marketplace" && hit.kind === "workflow") {
       await addMarketplaceHit(hit);
       return;
     }

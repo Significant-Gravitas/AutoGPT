@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStreakStore, type StreakField } from "../streaks";
 import { VoiceStreaks } from "../VoiceStreaks";
 import { VoiceAura } from "../VoiceAura";
-import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
+import { AUTOPILOT_AURA_COLORS } from "@/components/molecules/AutopilotAvatar/helpers";
 
 const field: StreakField = {
   size: 160,
@@ -174,14 +174,19 @@ describe("VoiceStreaks lifecycle", () => {
 it("keeps the voice aura layers around their child and resizes with the avatar", () => {
   const levels = [motionValue(0.5)];
   const { container, rerender } = render(
-    <VoiceAura config={AUTOPILOT_AVATAR} size={160} levels={levels} isActive>
+    <VoiceAura
+      colors={AUTOPILOT_AURA_COLORS}
+      size={160}
+      levels={levels}
+      isActive
+    >
       <span>Avatar</span>
     </VoiceAura>,
   );
   expect(container.querySelectorAll("canvas")).toHaveLength(2);
   rerender(
     <VoiceAura
-      config={AUTOPILOT_AVATAR}
+      colors={AUTOPILOT_AURA_COLORS}
       size={160}
       levels={[...levels]}
       isActive
@@ -192,7 +197,7 @@ it("keeps the voice aura layers around their child and resizes with the avatar",
   expect(container.textContent).toBe("Avatar");
   rerender(
     <VoiceAura
-      config={{ ...AUTOPILOT_AVATAR, color: "coral" }}
+      colors={["#a5f3fc", "#0891b2"]}
       size={320}
       levels={levels}
       isActive

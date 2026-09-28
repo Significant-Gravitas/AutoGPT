@@ -53,7 +53,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # at the cloud default" so it can rewrite to ``fast_standard_model`` under
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
-_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
+_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-5-5"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
@@ -230,7 +230,7 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-5",
+        default="anthropic/claude-opus-5-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
@@ -264,6 +264,48 @@ class ChatConfig(BaseSettings):
         "platform OR cost low. Auto-overridden to match "
         "``fast_standard_model`` under ``use_local`` when left at the "
         "cloud default — see ``_apply_local_aux_models``.",
+    )
+    gate_model: str = Field(
+        default="anthropic/claude-haiku-4-5",
+        description="Model backing the auto-mode action supervisor "
+        "(``copilot/gate/classifier.py``). Deliberately NOT routed through "
+        "``_apply_local_aux_models``: silently swapping a security "
+        "classifier for whichever small model a local operator happens to "
+        "run is exactly the substitution nobody would notice.",
+    )
+    gate_content_model: str = Field(
+        default="anthropic/claude-sonnet-5",
+        description="Model backing the content judge on outside reads "
+        "(``copilot/gate/content.py``); Haiku missed most injections in pages "
+        "past a few hundred characters. Not routed through "
+        "``_apply_local_aux_models``, for the same reason as ``gate_model``.",
+    )
+    gate_timeout_s: float = Field(
+        default=6.0,
+        description="Hard timeout for one gate classification. Expiry is not "
+        "an error path — it resolves to 'ask'.",
+    )
+    gate_first_stage: Literal["none", "jev"] = Field(
+        default="jev",
+        description="First stage of the action supervisor: Jev decides every "
+        "judged call and the LLM (``gate_model``) runs only on an ask, to write "
+        "the reason. Off without ``TYPESAFE_API_KEY``.",
+    )
+    gate_jev_model: str = Field(default="jev-1.13.0", description="Jev model id.")
+    gate_jev_ask_threshold: float | None = Field(
+        default=None,
+        description="Unset: Jev's allow/ask choice decides. Set: the call also "
+        "asks when Jev's must-ask probability reaches it (0.4 was measured).",
+    )
+    gate_jev_timeout_s: float = Field(
+        default=2.0,
+        description="Timeout for one Jev call; expiry falls through to the LLM.",
+    )
+    content_judge_timeout_s: float = Field(
+        default=15.0,
+        description="Hard timeout for one content-judge call on an outside "
+        "read. Provisional until the supervisor measurement sets it from the "
+        "judge's p95; expiry holds the read.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -339,7 +381,9 @@ class ChatConfig(BaseSettings):
     )
     langfuse_prompt_cache_ttl: int = Field(
         default=300,
-        description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
+        ge=0,
+        description="How long a process may serve a cached Langfuse prompt before "
+        "re-fetching it (0 to disable caching)",
     )
 
     # Rate limiting — cost-based limits per day and per week, stored in
@@ -474,6 +518,12 @@ class ChatConfig(BaseSettings):
         "this cap). Admission reads settled spend, so a tree can overshoot by "
         "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
         "what bounds it.",
+    )
+    spend_ceiling_reset: Literal["never", "daily"] = Field(
+        default="daily",
+        description="When a chat's spend ceiling starts over: at each UTC "
+        "midnight, like the daily usage limit (the ceiling and any approved "
+        "raises reset with the day), or never within the chat.",
     )
     tree_max_nodes: int = Field(
         default=8,
@@ -701,7 +751,10 @@ class ChatConfig(BaseSettings):
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "
         "it is needed; see backend.util.e2b_template. Any other value is used "
-        "as-is and must already exist on the team.",
+        "as-is and must already exist on the team, and it must carry what the "
+        "desktop needs (Xvfb, XFCE, x11vnc and noVNC, as E2B's desktop image "
+        "does): the screen is turned on inside this same box, so a plain "
+        "image such as 'base' makes every start_desktop fail.",
     )
     e2b_sandbox_timeout: int = Field(
         default=420,  # 7 min safety net — allows headroom for compaction retries
@@ -1125,7 +1178,7 @@ class ChatConfig(BaseSettings):
         when the transport asks for it.
 
         The cloud defaults are ``openai/gpt-4o-mini`` / ``google/gemini-...``
-        / ``anthropic/claude-opus-4-8`` — fine on OpenRouter, instant 404
+        / ``anthropic/claude-opus-5-5`` — fine on OpenRouter, instant 404
         on a local backend (no provider slugs there). Operators on the
         local transport otherwise have to repeat the same Ollama slug
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
@@ -1134,7 +1187,7 @@ class ChatConfig(BaseSettings):
         Covers ``title_model`` + ``simulation_model`` (aux call sites)
         AND ``fast_advanced_model`` (the "advanced" baseline tier);
         without the advanced derivation, a user clicking the advanced
-        toggle in the UI sends ``anthropic/claude-opus-4-8`` to Ollama
+        toggle in the UI sends ``anthropic/claude-opus-5-5`` to Ollama
         and gets a model-not-found 404. The boot-time vendor validator
         is skipped under local transport so this misconfig wouldn't
         surface until the first advanced-tier turn.

@@ -7,10 +7,20 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import type { SubscriptionTier } from "@/app/api/__generated__/models/subscriptionTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useEffect } from "react";
+import type { ProviderFailure } from "../../providerFailure";
+import { useProviderLimitDialog } from "../ProviderLimitDialog/useProviderLimitDialog";
 import { RateLimitResetDialog } from "./RateLimitResetDialog";
 
 interface Props {
   rateLimitMessage: string | null;
+  /**
+   * The typed envelope behind our cap, when the backend sent one. With it
+   * the dialog can also offer a linked subscription to continue on. Without
+   * it (an older backend, or a 429 that is not the usage cap) the dialog is
+   * exactly as it always was.
+   */
+  failure?: ProviderFailure | null;
+  sessionId?: string | null;
   onDismiss: () => void;
 }
 
@@ -18,7 +28,22 @@ interface Props {
  * Renders the rate-limit dialog when the user hits their daily limit.
  * Falls back to a toast when the usage query fails.
  */
-export function RateLimitGate({ rateLimitMessage, onDismiss }: Props) {
+export function RateLimitGate({
+  rateLimitMessage,
+  failure = null,
+  sessionId = null,
+  onDismiss,
+}: Props) {
+  // The switch itself is the provider-limit dialog's: the same offers list,
+  // the same exclusion of the connection that just refused, the same session
+  // mutation. Only the framing differs. Here the cap is ours, so the upgrade
+  // stays on offer and the switch is offered beside it, never instead.
+  const { alternative, continueHere, isSwitching } = useProviderLimitDialog({
+    failure,
+    sessionId,
+    onDismiss,
+  });
+
   const {
     data: usage,
     isSuccess: hasUsage,
@@ -64,6 +89,9 @@ export function RateLimitGate({ rateLimitMessage, onDismiss }: Props) {
       onClose={onDismiss}
       resetsAt={usage?.daily?.resets_at ?? usage?.weekly?.resets_at ?? null}
       tier={tier ?? null}
+      alternative={alternative}
+      onContinue={continueHere}
+      isSwitching={isSwitching}
     />
   );
 }

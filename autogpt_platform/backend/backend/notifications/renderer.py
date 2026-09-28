@@ -61,6 +61,7 @@ class EmailUrls(BaseModel):
     """Per-recipient destinations. Kept out of the queued payload so a message
     that sat in the queue over a deploy still links at today's platform."""
 
+    chat: str
     dashboard: str
     settings: str
     unsubscribe: str
@@ -80,6 +81,7 @@ def build_urls(
 ) -> EmailUrls:
     base = settings.config.frontend_base_url or settings.config.platform_base_url
     return EmailUrls(
+        chat=f"{base.rstrip('/')}/copilot",
         dashboard=f"{base}/library",
         # The Briefing footer appends ?f=daily|weekly|monthly|alerts|off to
         # this, and the settings page applies it on load — that is what makes

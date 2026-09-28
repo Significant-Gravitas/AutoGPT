@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -114,7 +115,7 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
             </span>
             {expert?.role && (
               <span className="truncate text-xs text-zinc-500">
-                {expert.role}
+                {getExpertRoleLabel(expert.role)}
               </span>
             )}
           </span>

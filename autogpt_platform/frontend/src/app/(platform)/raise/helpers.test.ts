@@ -43,7 +43,7 @@ describe("raise helpers", () => {
 
   test("builds the same complete raised identity shown by the backend", () => {
     expect(raisedIdentity("Otto")).toBe(
-      "I'm Otto, raised by you. I learn how you work and grow with you.",
+      "I'm Otto, an AI Expert created by you. I use your instructions to help with your work.",
     );
   });
 
@@ -143,6 +143,23 @@ describe("restoring a persisted draft", () => {
     saveStepFromEarlierBuild("kit");
 
     expect(loadDraft().step).toBe("budget");
+  });
+
+  test("sends a draft from before the job title beat back to that beat", () => {
+    saveDraft({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      role: "marketer",
+      name: "Nova",
+      step: "avatar",
+    });
+
+    expect(loadDraft()).toEqual({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      role: "marketer",
+      step: "jobTitle",
+    });
   });
 
   test("restarts the flow when the stored step is not a known step", () => {

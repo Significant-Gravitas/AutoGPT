@@ -7,16 +7,18 @@ import {
   useListCopilotSkills,
 } from "@/app/api/__generated__/endpoints/skills/skills";
 import {
-  getV2GetSpecificAgent,
-  useGetV2ListStoreAgents,
+  useGetV2ListMarketplaceSkills,
+  usePostV2InstallMarketplaceSkill,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertSkillsUpdate } from "@/app/api/__generated__/models/expertSkillsUpdate";
 import { okData } from "@/app/api/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -35,15 +37,18 @@ export function useExpertSkills(expert: Expert) {
   const [source, setSource] = useState<"library" | "marketplace">("library");
   const [marketQuery, setMarketQuery] = useState("");
   const debouncedMarketQuery = useDebouncedValue(marketQuery, 250);
-  const marketplaceSkills = useGetV2ListStoreAgents(
+  const hub = useFlagStatus(Flag.SKILLS_HUB);
+  const marketplaceSkills = useGetV2ListMarketplaceSkills(
     { search_query: debouncedMarketQuery.trim(), page_size: 20 },
     {
       query: {
-        enabled: isAddOpen && source === "marketplace",
-        select: (res) => okData(res)?.agents ?? [],
+        enabled: hub.enabled && isAddOpen && source === "marketplace",
+        select: (res) => okData(res)?.skills ?? [],
       },
     },
   );
+  const { mutateAsync: installHubSkill, isPending: isInstalling } =
+    usePostV2InstallMarketplaceSkill();
   const librarySkills = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [] },
   });
@@ -84,25 +89,10 @@ export function useExpertSkills(expert: Expert) {
       )
     : attached;
 
-  async function save(
-    skills: string[],
-    successTitle: string,
-    marketplaceListingIds: string[] = [],
-  ) {
+  async function save(data: ExpertSkillsUpdate, successTitle: string) {
     try {
-      await updateSkills({
-        expertId: expert.id,
-        data: { skills, marketplace_listing_ids: marketplaceListingIds },
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getGetExpertQueryKey(expert.id),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getListCopilotSkillsQueryKey({ expert_id: expert.id }),
-        }),
-        invalidateExpertRosterQueries(queryClient),
-      ]);
+      await updateSkills({ expertId: expert.id, data });
+      await refreshExpert();
       toast({ title: successTitle, variant: "success" });
       return true;
     } catch (error) {
@@ -116,21 +106,22 @@ export function useExpertSkills(expert: Expert) {
   }
 
   async function addSkill(name: string) {
-    const saved = await save([...expert.skills, name], `Added ${name}`);
+    const saved = await save({ skills: [name] }, `Added ${name}`);
     if (saved) setIsAddOpen(false);
   }
 
-  async function addMarketplaceSkill(agent: StoreAgent) {
+  /** Copies the Hub skill's instructions into this expert's own folder, so
+   *  the expert runs it rather than only listing its name. */
+  async function addMarketplaceSkill(skill: MarketplaceSkill) {
     try {
-      const details = await getV2GetSpecificAgent(
-        agent.creator.toLowerCase(),
-        agent.slug,
-      );
-      if (details.status !== 200) throw new Error("listing unavailable");
-      const saved = await save(expert.skills, `Added ${agent.agent_name}`, [
-        details.data.store_listing_version_id,
-      ]);
-      if (saved) setIsAddOpen(false);
+      const response = await installHubSkill({
+        slug: skill.slug,
+        params: { expert_id: expert.id },
+      });
+      if (response.status !== 200) throw new Error("install failed");
+      await refreshExpert();
+      toast({ title: `Added ${skill.name}`, variant: "success" });
+      setIsAddOpen(false);
     } catch (error) {
       toast({
         title: "Couldn't add that skill",
@@ -140,11 +131,20 @@ export function useExpertSkills(expert: Expert) {
     }
   }
 
+  function refreshExpert() {
+    return Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: getGetExpertQueryKey(expert.id),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getListCopilotSkillsQueryKey({ expert_id: expert.id }),
+      }),
+      invalidateExpertRosterQueries(queryClient),
+    ]);
+  }
+
   function removeSkill(name: string) {
-    return save(
-      expert.skills.filter((skill) => skill !== name),
-      `Removed ${name}`,
-    );
+    return save({ remove: [name] }, `Removed ${name}`);
   }
 
   return {
@@ -163,9 +163,10 @@ export function useExpertSkills(expert: Expert) {
     setMarketQuery,
     marketplaceSkills: marketplaceSkills.data ?? [],
     isMarketplaceLoading: marketplaceSkills.isFetching,
+    hasMarketplace: hub.enabled,
     addSkill,
     addMarketplaceSkill,
     removeSkill,
-    isSaving: isPending,
+    isSaving: isPending || isInstalling,
   };
 }

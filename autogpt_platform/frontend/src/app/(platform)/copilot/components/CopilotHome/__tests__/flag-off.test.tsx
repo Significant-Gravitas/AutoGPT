@@ -14,7 +14,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.AGENT_BRIEFING,
+    useGetFlag: () => false,
   };
 });
 

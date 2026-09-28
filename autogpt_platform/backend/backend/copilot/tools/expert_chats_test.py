@@ -26,8 +26,8 @@ from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetad
 from backend.copilot.tools import (
     TOOL_GROUPS,
     execute_tool,
-    get_available_tools,
     get_tool,
+    reachable_tool_names,
 )
 
 from .expert_chats import _MAX_PAGE_CHARS, ListExpertChatsTool, ReadExpertChatTool
@@ -169,16 +169,16 @@ class TestGating:
         assert TOOL_GROUPS["list_expert_chats"] == "expert_admin"
         assert TOOL_GROUPS["read_expert_chat"] == "expert_admin"
 
-    def test_an_autopilot_session_is_offered_them_and_an_expert_session_is_not(
+    def test_an_autopilot_session_can_reach_them_and_an_expert_session_cannot(
         self,
     ) -> None:
-        autopilot = {t["function"]["name"] for t in get_available_tools()}
+        # Both tools are deferred, so ask what the session can reach through
+        # run_capability, not what it declares — the schema list leaves them
+        # out of both sides and would pass whether the group gate works or not.
+        autopilot = reachable_tool_names()
         # What survives the filter, NOT what it hid — naming this `hidden`
         # invites "fixing" the assertion below into its own inverse.
-        expert = {
-            t["function"]["name"]
-            for t in get_available_tools(disabled_groups=["expert_admin"])
-        }
+        expert = reachable_tool_names(disabled_groups=["expert_admin"])
         assert {"list_expert_chats", "read_expert_chat"} <= autopilot
         assert not {"list_expert_chats", "read_expert_chat"} & expert
 
@@ -343,8 +343,10 @@ class TestReadRendering:
 
 
 class TestReadPaging:
+    # Each row is over the row cap, so it truncates to exactly _MAX_MESSAGE_CHARS
+    # and _MAX_PAGE_CHARS // _MAX_MESSAGE_CHARS = 4 of the 6 fit on a page.
     def _long_chat(self) -> _FakeChatDB:
-        return _FakeChatDB(messages=[_msg(i, content="x" * 2_500) for i in range(1, 6)])
+        return _FakeChatDB(messages=[_msg(i, content="x" * 2_500) for i in range(1, 7)])
 
     @pytest.mark.asyncio
     async def test_the_cap_drops_the_oldest_rows_and_reports_them_as_more(
@@ -352,7 +354,7 @@ class TestReadPaging:
     ) -> None:
         result = await _read(self._long_chat())
         assert sum(len(m.content) for m in result.messages) <= _MAX_PAGE_CHARS
-        assert [m.sequence for m in result.messages] == [3, 4, 5]
+        assert [m.sequence for m in result.messages] == [3, 4, 5, 6]
         assert result.has_more is True
         assert result.next_before_sequence == 3
 

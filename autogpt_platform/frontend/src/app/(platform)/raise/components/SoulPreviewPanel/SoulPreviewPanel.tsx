@@ -16,28 +16,30 @@ type SoulDetail = {
   value: string;
 };
 
-type Props = {
+interface Props {
   name: string;
   role: string | null;
+  jobTitle?: string | null;
   avatarUrl: string | null;
   color: string | null;
   about: string | null;
   voiceLabel: string | null;
   kit: RaiseKit | null;
-};
+}
 
 // Starts as just the orb — an expert with nothing to say about itself yet.
 // Answers stack beneath it, which pushes the identity card up as they land.
 export function SoulPreviewPanel({
   name,
   role,
+  jobTitle,
   avatarUrl,
   color,
   about,
   voiceLabel,
   kit,
 }: Props) {
-  const roleLabel = roleLabelFor(role);
+  const roleLabel = jobTitle || roleLabelFor(role);
   const details = [
     { label: "About", value: about },
     { label: "Voice", value: voiceLabel },

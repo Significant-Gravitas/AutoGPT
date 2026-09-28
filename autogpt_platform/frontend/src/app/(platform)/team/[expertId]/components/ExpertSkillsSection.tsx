@@ -31,6 +31,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
     setMarketQuery,
     marketplaceSkills,
     isMarketplaceLoading,
+    hasMarketplace,
     addSkill,
     addMarketplaceSkill,
     removeSkill,
@@ -94,6 +95,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
         onMarketQueryChange={setMarketQuery}
         marketplaceSkills={marketplaceSkills}
         isMarketplaceLoading={isMarketplaceLoading}
+        hasMarketplace={hasMarketplace}
         isSaving={isSaving}
         onAdd={addSkill}
         onAddMarketplace={addMarketplaceSkill}

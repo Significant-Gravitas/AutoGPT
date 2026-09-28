@@ -55,7 +55,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     GRAPHITI_MEMORY: "graphiti-memory",
     HIRE_EXPERTS: "hire-experts",
-    ARTIFACTS: "artifacts",
     CHAT_MODE_OPTION: "chat-mode-option",
     ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
   },

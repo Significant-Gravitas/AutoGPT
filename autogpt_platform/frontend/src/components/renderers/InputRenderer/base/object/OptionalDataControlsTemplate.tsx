@@ -1,3 +1,4 @@
+import { getFieldDomId } from "../../field-accessibility";
 import { OptionalDataControlsTemplateProps } from "@rjsf/utils";
 import { PlusCircle } from "lucide-react";
 
@@ -31,5 +32,5 @@ export default function OptionalDataControlsTemplate(
       />
     );
   }
-  return <em id={id}>{label}</em>;
+  return <em id={getFieldDomId(id, registry.formContext)}>{label}</em>;
 }

@@ -1,6 +1,9 @@
 "use client";
 
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
+
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { PendingAnswerContexts } from "@/app/(platform)/copilot/components/ChatContainer/components/PendingAnswerContexts";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { Button } from "@/components/atoms/Button/Button";
@@ -124,16 +127,18 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
           </div>
         ) : sessionId ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            <ChatMessagesContainer
-              messages={messages}
-              status={status}
-              error={error}
-              isLoading={false}
-              sessionID={sessionId}
-              queuedMessages={queuedMessages}
-              variant="compact"
-              showThreadHeader={false}
-            />
+            <PendingAnswerContexts messages={messages}>
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
+                isLoading={false}
+                sessionID={sessionId}
+                queuedMessages={queuedMessages}
+                variant="compact"
+                showThreadHeader={false}
+              />
+            </PendingAnswerContexts>
           </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-6 text-center">
@@ -147,7 +152,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
                 What can I do for you?
               </Text>
               <Text variant="small" tone="muted">
-                {target.name} · {target.role}
+                {target.name} · {getExpertRoleLabel(target.role)}
               </Text>
             </div>
           </div>

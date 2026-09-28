@@ -52,4 +52,31 @@ describe("UserMessageClamp", () => {
     expect(content.className).toContain("line-clamp-6");
     expect(screen.getByRole("button", { name: "Read more" })).toBeDefined();
   });
+
+  it("renders the trailing badge even when nothing overflows", () => {
+    setMeasuredHeights({ scrollHeight: 100, clientHeight: 100 });
+
+    render(
+      <UserMessageClamp trailing={<span>Sent from Ari</span>}>
+        Short message
+      </UserMessageClamp>,
+    );
+
+    expect(screen.getByText("Sent from Ari")).toBeDefined();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("keeps the trailing badge beside the Read more toggle", () => {
+    setMeasuredHeights({ scrollHeight: 300, clientHeight: 120 });
+
+    render(
+      <UserMessageClamp trailing={<span>Sent from Ari</span>}>
+        Very long message
+      </UserMessageClamp>,
+    );
+
+    const toggle = screen.getByRole("button", { name: "Read more" });
+    const badge = screen.getByText("Sent from Ari");
+    expect(toggle.parentElement).toBe(badge.parentElement);
+  });
 });

@@ -137,11 +137,14 @@ export function useCopilotPage() {
     oldestSequence,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     createSession,
     isCreatingSession,
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
   } = useChatSession({
     dryRun: isDryRun,
     expertId,
@@ -167,6 +170,7 @@ export function useCopilotPage() {
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
   const {
+    followBackendTurn,
     messages: currentMessages,
     setMessages,
     sendMessage,
@@ -179,6 +183,7 @@ export function useCopilotPage() {
     isUserStoppingRef,
     isUserStopping,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
@@ -279,6 +284,7 @@ export function useCopilotPage() {
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
+    pendingSend,
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
@@ -410,8 +416,10 @@ export function useCopilotPage() {
     isUserStopping,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     isUserLoading,
     isLoggedIn,
     createSession,
@@ -425,6 +433,7 @@ export function useCopilotPage() {
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
@@ -433,9 +442,12 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
+    followBackendTurn,
   };
 }

@@ -1,11 +1,14 @@
 "use client";
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { HeldCallDetail } from "./HeldCallRowParts";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import { DesktopStreamCard } from "./DesktopStreamCard";
 import {
   AgentListCard,
   AgentPreviewCard,
@@ -13,6 +16,8 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { capabilityTargetRow } from "./capabilityRow";
+import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
@@ -147,16 +152,60 @@ function chipStrings(value: unknown, key: string): string[] | null {
   return labels.length > 0 ? labels : null;
 }
 
+/** The live desktop is the whole point of start_desktop: embed the stream
+ *  instead of letting the payload fall through to a truncated key/value
+ *  dump. The same renderer serves block outputs and attachments, and the
+ *  card is what tells the side panel a desktop exists. */
+function desktopCard(output: Record<string, unknown>, readOnly: boolean) {
+  const stream = output.desktop_stream;
+  if (!stream || !desktopStreamRenderer.canRender(stream)) return null;
+  return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
+}
+
+const CAPABILITY_RUN_TOOLS = new Set([
+  "run_capability",
+  "resume_capability",
+  "describe_capability",
+]);
+
+function isMcpCapabilityRow(
+  row: ChainRow,
+  output: Record<string, unknown>,
+): boolean {
+  if (!row.tool || !CAPABILITY_RUN_TOOLS.has(row.tool)) return false;
+  const input = asObject(row.input);
+  const id = (input && str(input, "id")) ?? "";
+  return (
+    id.startsWith("mcp:") || id.startsWith("https://") || "server_url" in output
+  );
+}
+
+function capabilityAsBlockItem(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...item,
+    description: item.purpose,
+    categories: [
+      item.kind === "mcp_server"
+        ? "integration"
+        : item.class === "primitive"
+          ? "building block"
+          : String(item.kind ?? ""),
+    ],
+  };
+}
+
 function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   const setupInfo = asObject(output.setup_info);
   if (!setupInfo) return null;
   const setupOutput = output as unknown as SetupRequirementsResponse;
 
-  if (row.tool === "run_mcp_tool") {
+  if (row.tool === "run_mcp_tool" || isMcpCapabilityRow(row, output)) {
     return (
       <MCPSetupCard
         output={setupOutput}
-        retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server URL and arguments."
+        retryInstruction="I've connected the integration. Please retry the same call."
       />
     );
   }
@@ -192,7 +241,11 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  readOnly: boolean,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -276,6 +329,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         <SubSessionPendingCard input={row.input} minimal={delegated} />
       ) : null;
     }
+    case "consult_teammate":
+      return output ? <ConsultVerdictCard output={output} /> : null;
     case "find_agent":
     case "find_library_agent": {
       const agents = output && asItems(output.agents);
@@ -285,13 +340,28 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       const blocks = output && asItems(output.blocks);
       return blocks ? <BlockListCard blocks={blocks} /> : null;
     }
+    case "find_capability": {
+      const items = output && asItems(output.capabilities);
+      return items ? (
+        <BlockListCard blocks={items.map(capabilityAsBlockItem)} />
+      ) : null;
+    }
     case "run_block":
-    case "continue_run_block": {
+    case "continue_run_block":
+    case "describe_capability":
+    case "run_capability":
+    case "resume_capability": {
       if (!output) return null;
+      // Transcripts recorded while start_desktop was deferred (#14569 until
+      // it went eager again) carry its result on a run_capability row: same
+      // payload, same card.
+      const desktop = desktopCard(output, readOnly);
+      if (desktop) return desktop;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
         return <BlockOutputCard output={output} />;
+      if ("result" in output) return <KeyValueList value={output.result} />;
       return null;
     }
     case "connect_integration":
@@ -385,6 +455,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "bash_exec":
       return <Terminal row={row} />;
+    case "start_desktop":
+      return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":
@@ -399,9 +471,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
 
 interface Props {
   row: ChainRow;
+  readOnly?: boolean;
 }
 
-export function ToolResult({ row }: Props) {
+export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
@@ -430,7 +503,14 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  if (row.held && row.held.state !== "approved") {
+    return <HeldCallDetail held={row.held} />;
+  }
+
+  const target = capabilityTargetRow(row);
+  const card =
+    toolCard(target, output, readOnly) ??
+    (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;
@@ -444,7 +524,7 @@ export function ToolResult({ row }: Props) {
     return <KeyValueList value={str(output, "message") ?? ""} />;
 
   return (
-    linkCard(data, asObject(row.input)) ??
+    linkCard(data, asObject(target.input)) ??
     shapeCard(data) ?? <KeyValueList value={data} />
   );
 }
