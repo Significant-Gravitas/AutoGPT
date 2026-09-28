@@ -11,6 +11,8 @@ import { useState } from "react";
 import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { ArtifactsTab } from "./components/ArtifactsTab/ArtifactsTab";
+import { PanelTabs } from "./components/PanelTabs";
+import { WorkTab } from "./components/WorkTab/WorkTab";
 import { useContextPanel } from "./useContextPanel";
 
 interface Props {
@@ -24,9 +26,10 @@ const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
 const PANEL_DURATION = 0.3;
 
 // Files render as a card grid above the composer (``WorkspaceFileCards``), so
-// this panel only ever holds the artifacts library. The open flag also drives
-// that card, so both the docked desktop panel and the mobile sheet claim the
-// screen for the artifacts tab only — a "files" tab belongs to the card.
+// this panel holds the artifacts library and the chat's delegated work. The
+// open flag also drives that card, so both the docked desktop panel and the
+// mobile sheet claim the screen for those two tabs only — a "files" tab
+// belongs to the card.
 export function ContextPanel({ sessionId, mobile }: Props) {
   const {
     isOpen,
@@ -39,16 +42,22 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const [isResizing, setIsResizing] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
+  const isPanelTab = activeTab === "artifacts" || activeTab === "work";
   const library = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <ArtifactsTab sessionId={sessionId} />
+      <PanelTabs />
+      {activeTab === "work" ? (
+        <WorkTab sessionId={sessionId} />
+      ) : (
+        <ArtifactsTab sessionId={sessionId} />
+      )}
     </div>
   );
 
   if (mobile) {
     return (
       <Sheet
-        open={isOpen && activeTab === "artifacts"}
+        open={isOpen && isPanelTab}
         onOpenChange={(open) => !open && closeArtifactPanel()}
       >
         <SheetContent
@@ -57,7 +66,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         >
           <SheetHeader className="mt-12 p-2 text-left">
             <SheetTitle className="text-sm font-medium text-zinc-900">
-              Artifacts
+              {activeTab === "work" ? "Work" : "Artifacts"}
             </SheetTitle>
           </SheetHeader>
           {library}
@@ -66,7 +75,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     );
   }
 
-  const isDocked = showExpanded && activeTab === "artifacts";
+  const isDocked = showExpanded && isPanelTab;
 
   // Width is the animated property because the panel pushes the chat column
   // rather than overlaying it. Dragging the handle bypasses the tween (a

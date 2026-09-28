@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanel } from "../ContextPanel";
 
@@ -37,6 +43,50 @@ describe("ContextPanel", () => {
     await waitFor(() =>
       expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
     );
+    expect(await screen.findByText("Nothing to preview yet.")).toBeDefined();
+  });
+
+  test("docks for the work tab and shows the chat's hand-offs", async () => {
+    server.use(
+      getGetV2GetSessionMockHandler200({
+        id: "session-1",
+        created_at: "2026-09-28T00:00:00Z",
+        updated_at: "2026-09-28T00:00:00Z",
+        user_id: "u-1",
+        chat_status: "idle",
+        messages: [],
+      }),
+    );
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "work" },
+    }));
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
+    );
+    expect(await screen.findByText("Nothing delegated yet")).toBeDefined();
+    expect(
+      screen.getByRole("tab", { name: "Work" }).getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  test("switches between the artifacts and work tabs from the panel header", async () => {
+    server.use(
+      getGetV2GetSessionMockHandler200({
+        id: "session-1",
+        created_at: "2026-09-28T00:00:00Z",
+        updated_at: "2026-09-28T00:00:00Z",
+        user_id: "u-1",
+        chat_status: "idle",
+        messages: [],
+      }),
+    );
+    render(<ContextPanel sessionId="session-1" />);
+    expect(await screen.findByText("Nothing to preview yet.")).toBeDefined();
+    fireEvent.click(screen.getByRole("tab", { name: "Work" }));
+    expect(await screen.findByText("Nothing delegated yet")).toBeDefined();
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("work");
+    fireEvent.click(screen.getByRole("tab", { name: "Artifacts" }));
     expect(await screen.findByText("Nothing to preview yet.")).toBeDefined();
   });
 

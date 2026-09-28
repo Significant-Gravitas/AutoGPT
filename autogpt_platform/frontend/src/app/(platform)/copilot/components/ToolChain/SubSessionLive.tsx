@@ -37,7 +37,7 @@ const MAX_STEPS = 3;
 // every few seconds indefinitely. The card keeps its last snapshot.
 const POLL_CAP_MS = 5 * 60_000;
 
-interface LiveStep {
+export interface LiveStep {
   name: string;
   input: unknown;
   displayName?: unknown;
@@ -85,7 +85,7 @@ export function SubSessionLive({ subSessionId, active }: Props) {
  *  nothing at all: a failed fetch, and the poll cap expiring while the run
  *  is still live. Both stop the polling, so both have to be visible —
  *  otherwise a dead card is indistinguishable from a working one. */
-function useLiveSubSession(subSessionId: string, active: boolean) {
+export function useLiveSubSession(subSessionId: string, active: boolean) {
   const [isCapped, setIsCapped] = useState(false);
   useEffect(
     function stopPollingAfterCap() {
@@ -177,7 +177,7 @@ function LiveSteps({ rows }: { rows: ChainRow[] }) {
 /** A re-delegation reuses the same sub-session, so only the CURRENT turn
  *  (everything after the last user message) belongs to this card — the full
  *  history would replay the previous delegation's final answer here. */
-function collectCurrentTurn(session: SessionDetailResponse) {
+export function collectCurrentTurn(session: SessionDetailResponse) {
   const allMessages = Array.isArray(session.messages) ? session.messages : [];
   const lastUserIndex = allMessages.findLastIndex((m) => m.role === "user");
   const messages =
@@ -217,7 +217,11 @@ function collectCurrentTurn(session: SessionDetailResponse) {
 
 /** Dress a polled tool call as a ChainRow so the delegate's steps reuse the
  *  main chain's icons and labels instead of raw tool names. */
-function toMiniRow(step: LiveStep, index: number, running: boolean): ChainRow {
+export function toMiniRow(
+  step: LiveStep,
+  index: number,
+  running: boolean,
+): ChainRow {
   const state = running ? "running" : "done";
   const catalog = getCatalogLabel(step.name, step.input, state, {
     displayName: step.displayName,
@@ -389,7 +393,7 @@ export function useSubSessionEffectiveStatus(
   return isSessionLive(session) ? status : "completed";
 }
 
-function isSessionLive(session: SessionDetailResponse): boolean {
+export function isSessionLive(session: SessionDetailResponse): boolean {
   if (session.active_stream) return true;
   const status = session.chat_status?.toLowerCase();
   return status === "running" || status === "queued";
