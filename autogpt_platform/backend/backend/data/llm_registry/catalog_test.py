@@ -163,11 +163,14 @@ def test_deepseek_chat_display_rate_tracks_openrouter():
     picks a model is still wrong. Re-derive with
     ``poetry run python scripts/check_openrouter_prices.py`` and move both
     sides together when OpenRouter reprices.
+
+    OpenRouter repriced again to $0.2574/$1.0287 live; these pins were moved
+    to match on 2026-09-28.
     """
     chat = LLMModel("deepseek/deepseek-chat")
     assert TOKEN_COST[chat].model_dump() == {
-        "input": 48.0,  # $0.32/1M x 150 cr/$
-        "output": 133.5,  # $0.89/1M x 150 cr/$
+        "input": 38.61,  # $0.2574/1M x 150 cr/$
+        "output": 154.305,  # $1.0287/1M x 150 cr/$
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
