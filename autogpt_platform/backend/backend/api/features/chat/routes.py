@@ -2051,6 +2051,11 @@ async def stream_chat_post(
                 status_code=429,
                 detail=inflight_turn_limit_message(inflight_cap),
             )
+        except BaseException:
+            # Raised inside the handler above, so the outer BaseException
+            # clause never sees it.
+            await release_client_message_claim()
+            raise
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"

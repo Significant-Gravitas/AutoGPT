@@ -812,6 +812,30 @@ def test_stream_chat_refused_send_can_be_retried_with_the_same_id(
     assert mocks.enqueue.await_count == 2
 
 
+def test_stream_chat_failed_queue_fallback_can_be_retried_with_the_same_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The running cap sends the turn to the queue. If that fails too, the
+    send was never accepted and its id must be free for the retry."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "try_enqueue_turn",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("database unavailable"),
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    with pytest.raises(RuntimeError):
+        client.post("/sessions/sess-1/stream", json=body)
+    assert mocks.claims.keys == set()
+
+    mocks.enqueue.side_effect = None
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    assert mocks.enqueue.await_count == 2
+
+
 # ─── UUID format filtering ─────────────────────────────────────────────
 
 
