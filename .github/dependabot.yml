@@ -18,6 +18,22 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path (auth, OAuth, payments, LLM providers, outbound HTTP) arrives
+        # one package per PR so each gets its own review. A default flipped inside
+        # google-auth-oauthlib hid in a 43-package group and broke Google OAuth (SECRT-2754).
+        exclude-patterns:
+          - "google-auth*"
+          - "oauthlib"
+          - "requests-oauthlib"
+          - "authlib"
+          - "pyjwt"
+          - "cryptography"
+          - "stripe"
+          - "anthropic"
+          - "openai"
+          - "httpx*"
+          - "requests"
+          - "aiohttp"
       development-dependencies:
         dependency-type: "development"
         update-types:
@@ -42,6 +58,22 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path (auth, OAuth, payments, LLM providers, outbound HTTP) arrives
+        # one package per PR so each gets its own review. A default flipped inside
+        # google-auth-oauthlib hid in a 43-package group and broke Google OAuth (SECRT-2754).
+        exclude-patterns:
+          - "google-auth*"
+          - "oauthlib"
+          - "requests-oauthlib"
+          - "authlib"
+          - "pyjwt"
+          - "cryptography"
+          - "stripe"
+          - "anthropic"
+          - "openai"
+          - "httpx*"
+          - "requests"
+          - "aiohttp"
       development-dependencies:
         dependency-type: "development"
         update-types:
@@ -69,6 +101,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path arrives one package per PR (see the backend block).
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
+          - "@stripe/*"
+          - "@supabase/*"
       development-dependencies:
         dependency-type: "development"
         update-types:
