@@ -264,6 +264,6 @@ def test_reference_set_follows_the_generation_standard():
             assert hashlib.sha256(content).hexdigest() == manifest[asset_id]["sha256"]
             with Image.open(io.BytesIO(content)) as image:
                 assert image.size == (512, 512)
-                assert image.mode == "RGB"
+                assert image.format == "PNG"
     assert reference_ids("content") == ["expert-maria", "expert-mina"]
     assert "hex anchor" in avatar_prompt(ExpertAvatarRequest(category="content"))
