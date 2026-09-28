@@ -29,6 +29,7 @@ TEST_THREAD = Thread(
     project_id=TEST_PROJECT.id,
     title="Upgrade CI to Node 24",
     status="working",
+    last_model_id="supergrok/grok-4.5",
     usage=Usage(),
     created_at="2026-09-27T10:00:00.000Z",
     updated_at="2026-09-27T10:00:00.000Z",

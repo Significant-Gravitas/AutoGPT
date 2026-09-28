@@ -1,11 +1,12 @@
 """Async client for the Capy public API v1 (https://docs.capy.ai/api-reference)."""
 
 import uuid
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 from backend.sdk import APIKeyCredentials, Requests
 from backend.util.request import Response
 
+from ._models import ModelRoute, is_linked_route, rejection_hint, resolve_model_id
 from ._types import (
     Message,
     MessagePage,
@@ -28,13 +29,51 @@ _NEWEST_EVENT_CURSOR = "7" + "Z" * 25
 _MAX_FORWARD_PAGES = 50
 
 
-class CapyAPIError(RuntimeError):
-    """A non-2xx answer from Capy, carrying its ``_tag`` (e.g. ``capy/Forbidden``)."""
+T = TypeVar("T")
 
-    def __init__(self, status: int, tag: str, message: str):
+
+class CapyAPIError(RuntimeError):
+    """A non-2xx answer from Capy, carrying its ``_tag`` (e.g. ``capy/Forbidden``).
+
+    A rejected model also carries Capy's ``rejection`` (``disconnected`` or
+    ``not_connected``) and the linked ``service`` it names.
+    """
+
+    def __init__(
+        self,
+        status: int,
+        tag: str,
+        message: str,
+        *,
+        rejection: str | None = None,
+        service: str | None = None,
+    ):
         super().__init__(message)
         self.status = status
         self.tag = tag
+        self.rejection = rejection
+        self.service = service
+
+
+async def with_capy_balance_fallback(
+    call: Callable[[str], Awaitable[T]], model_id: str, fallback: bool
+) -> tuple[T, str]:
+    """Run ``call`` with ``model_id``; if its linked provider is unavailable and
+    ``fallback`` is on, run the same model on the Capy balance instead.
+
+    Returns the result and the model ID that was actually used.
+    """
+    try:
+        return await call(model_id), model_id
+    except CapyAPIError as exc:
+        if not (
+            fallback
+            and exc.tag == "ModelSelection.Rejected"
+            and is_linked_route(model_id)
+        ):
+            raise
+    balance_id = resolve_model_id(model_id, ModelRoute.CAPY_BALANCE)
+    return await call(balance_id), balance_id
 
 
 class CapyClient:
@@ -270,7 +309,9 @@ def _error(response: Response) -> CapyAPIError:
         "capy/ThreadNotFound": "no thread with that ID is visible to this key",
         "capy/ReviewRoundNotFound": "no review round with that request ID",
         "capy/ReviewRefused": "Capy refused to review this pull request",
-        "ModelSelection.Rejected": "Capy rejected the model selection",
+        "ModelSelection.Rejected": rejection_hint(
+            body.get("rejection"), body.get("service"), str(body.get("modelId", ""))
+        ),
     }
     explanation = hints.get(tag, "request failed")
     message = f"Capy {tag or 'error'} (HTTP {response.status}): {explanation}"
@@ -279,4 +320,10 @@ def _error(response: Response) -> CapyAPIError:
     if candidates := body.get("candidates"):
         names = ", ".join(str(c.get("entryId", c.get("name"))) for c in candidates)
         message += f". Available models: {names}"
-    return CapyAPIError(response.status, tag, message)
+    return CapyAPIError(
+        response.status,
+        tag,
+        message,
+        rejection=body.get("rejection"),
+        service=body.get("service"),
+    )

@@ -15,7 +15,7 @@ from backend.blocks.capy._api import CapyAPIError, CapyClient, _error
 from backend.blocks.capy._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.capy._types import Message, MessagePage, ReviewRound, Thread
 from backend.blocks.capy.messages import CapyListThreadMessagesBlock
-from backend.blocks.capy.threads import CapyWaitForThreadBlock
+from backend.blocks.capy.wait import CapyWaitForThreadBlock
 
 # Trimmed from a live GET /threads response.
 LIVE_THREAD = {
@@ -226,7 +226,7 @@ class TestWaitForThread:
         )
         monkeypatch.setattr(_api, "Requests", MagicMock())
         sleep = AsyncMock()
-        monkeypatch.setattr("backend.blocks.capy.threads.asyncio.sleep", sleep)
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", sleep)
 
         out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
 
@@ -259,13 +259,51 @@ class TestWaitForThread:
         monkeypatch.setattr(CapyClient, "get_thread", get_thread)
         monkeypatch.setattr(CapyClient, "newest_messages", newest)
         monkeypatch.setattr(_api, "Requests", MagicMock())
-        monkeypatch.setattr("backend.blocks.capy.threads.asyncio.sleep", AsyncMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
 
         out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
 
         assert get_thread.await_count == 3
         assert out["finished"] is True
         assert out["last_reply"] == "pong"
+
+    async def test_reports_the_model_that_wrote_the_reply(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Right after a model switch Capy's lastModelId can still name the old
+        # model; the reply itself records the one that answered.
+        idle = Thread.model_validate(
+            {
+                **LIVE_THREAD,
+                "status": "idle",
+                "needsYou": False,
+                "lastModelId": "meta/muse-spark-1.3",
+            }
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", AsyncMock(return_value=idle))
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(id="1", source="user", text="Say ok again."),
+                        Message(
+                            id="2",
+                            source="assistant",
+                            text="ok",
+                            model="supergrok/grok-4.5",
+                        ),
+                    ]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1")
+
+        assert out["model_id"] == "supergrok/grok-4.5"
+        assert out["billed_via"] == "SuperGrok subscription"
 
     async def test_stops_when_the_agent_needs_an_answer(
         self, monkeypatch: pytest.MonkeyPatch

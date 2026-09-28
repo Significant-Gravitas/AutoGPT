@@ -30,7 +30,11 @@ Calls `GET /api/v1/usage`, which defaults to the current month to now. `total_do
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Send a weekly Capy spend summary, or stop starting new threads once the month's spend passes a budget.
+**Weekly Spend Report**: Send a summary of what the Capy organization spent this week.
+
+**Budget Stop**: Stop starting new threads once the month's spend passes a budget.
+
+**Model Cost Comparison**: Compare spend by model to choose a cheaper default.
 <!-- END MANUAL -->
 
 ---

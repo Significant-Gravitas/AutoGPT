@@ -28,7 +28,11 @@ Calls `POST /api/v1/threads/{id}/interrupt`, which stops the agent's current wor
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Stop an agent that is spending credits on the wrong approach before sending it a corrected brief.
+**Stop a Wrong Turn**: Halt an agent that is spending credits on the wrong approach.
+
+**Change of Plan**: Stop work before sending a corrected brief.
+
+**Budget Guard**: Stop a long-running thread when a spend limit is reached.
 <!-- END MANUAL -->
 
 ---
@@ -63,7 +67,11 @@ Reads `GET /api/v1/threads/{id}/messages`. With no cursor it returns the newest 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Read the agent's full answer, or poll a long-running thread for new replies and forward them to a chat channel.
+**Full Answer**: Read the agent's complete reply when the summary in Wait For Thread is not enough.
+
+**Incremental Relay**: Poll with `after_cursor` and forward each new reply to a chat channel.
+
+**Activity Log**: Include tool steps to see what the agent actually did.
 <!-- END MANUAL -->
 
 ---
@@ -75,7 +83,7 @@ Sends a message to the agent in a Capy thread: a follow-up instruction, a correc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Calls `POST /api/v1/threads/{id}/message`. `interrupt` (the default) stops current work and handles the message now, `steer` folds it into the work in progress, and `queue` waits for the current work to finish. Setting `model_id` switches the thread's model from this message on.
+Calls `POST /api/v1/threads/{id}/message`. `interrupt` (the default) stops current work and handles the message now, `steer` folds it into the work in progress, and `queue` waits for the current work to finish. Setting `model_id` switches the thread's model from this message on; `model_route` and `fall_back_to_capy_balance` work as in Capy Create Thread, so the switch can move the thread onto a linked subscription or back to the Capy balance.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -85,7 +93,9 @@ Calls `POST /api/v1/threads/{id}/message`. `interrupt` (the default) stops curre
 | thread_id | The Capy thread ID (starts with jam_) | str | Yes |
 | text | The message for the agent | str | Yes |
 | delivery | interrupt stops the current work and handles this message now; steer folds it into the work in progress; queue waits until the current work finishes | "interrupt" \| "steer" \| "queue" | No |
-| model_id | Switch the thread to this Capy model ID. Empty keeps it. | str | No |
+| model_id | Switch the thread to this Capy model ID (or a bare name to combine with model_route). Empty keeps the thread's model. | str | No |
+| model_route | Who pays for the model. as_given uses model_id exactly as written. capy_balance bills the Capy balance. codex, copilot, supergrok and azure run the model through that provider linked in Capy's settings, so it bills the subscription instead. | "as_given" \| "capy_balance" \| "codex" \| "copilot" \| "supergrok" \| "azure" | No |
+| fall_back_to_capy_balance | If the linked provider is disconnected or not linked, run the same model on the Capy balance instead of failing. Off by default, because it moves the cost from the subscription to the balance. | bool | No |
 | reasoning | Reasoning effort for model_id. Needs model_id. | "" \| "none" \| "instant" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" | No |
 
 ### Outputs
@@ -95,10 +105,15 @@ Calls `POST /api/v1/threads/{id}/message`. `interrupt` (the default) stops curre
 | error | Error message if the operation failed | str |
 | message_id | ID of the admitted message; a queued one can be cancelled in Capy | str |
 | deduped | True when Capy recognised this as a repeat of a message it already had | bool |
+| model_id | The model the thread was switched to; empty when the thread kept its model | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Answer the question a Capy agent asked, or ask for a change after reviewing its pull request.
+**Answer the Agent**: Reply to the question a Capy agent asked so it can continue.
+
+**Request Changes**: Ask for a change after reviewing the agent's pull request.
+
+**Switch Model or Payer**: Move a thread to another model, or onto a linked subscription with `model_route`.
 <!-- END MANUAL -->
 
 ---

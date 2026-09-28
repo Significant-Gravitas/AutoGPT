@@ -548,7 +548,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Capy List Thread Tasks](block-integrations/capy/tasks.md#capy-list-thread-tasks) | Lists the subagent tasks a Capy thread fanned its work out to, with each task's status and credit spend |
 | [Capy List Threads](block-integrations/capy/threads.md#capy-list-threads) | Lists the agent threads in a Capy project with their status, most recently active first |
 | [Capy Start Review](block-integrations/capy/reviews.md#capy-start-review) | Starts a Capy code review on a GitHub pull request |
-| [Capy Wait For Thread](block-integrations/capy/threads.md#capy-wait-for-thread) | Waits for a Capy thread to finish (the agent delivered, asked a question or failed) and returns its status and latest reply |
+| [Capy Wait For Thread](block-integrations/capy/wait.md#capy-wait-for-thread) | Waits for a Capy thread to finish (the agent delivered, asked a question or failed) and returns its status and latest reply |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
@@ -699,7 +699,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
 | [AutoPilot](block-integrations/misc.md#autopilot) | Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
-| [Capy Create Thread](block-integrations/capy/threads.md#capy-create-thread) | Starts a Capy cloud coding agent on a task in one of your Capy projects, such as fixing a bug, writing a feature or opening a pull request |
+| [Capy Create Thread](block-integrations/capy/create_thread.md#capy-create-thread) | Starts a Capy cloud coding agent on a task in one of your Capy projects, such as fixing a bug, writing a feature or opening a pull request |
 | [Capy Send Message](block-integrations/capy/messages.md#capy-send-message) | Sends a message to the agent in a Capy thread: a follow-up instruction, a correction, or the answer to its question |
 
 ## CRM Services

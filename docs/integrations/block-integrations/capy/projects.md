@@ -24,7 +24,11 @@ Calls `GET /api/v1/projects` with the API key and returns each project with its 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Resolve the project for "the checkout repo" before starting a thread, or let an agent choose between projects by repository name.
+**Project Lookup**: Resolve the project for "the checkout repo" before starting a thread.
+
+**Repository Routing**: Let an agent pick the project whose repositories match the work it was handed.
+
+**Access Audit**: List which projects and repositories an integration's key can reach.
 <!-- END MANUAL -->
 
 ---

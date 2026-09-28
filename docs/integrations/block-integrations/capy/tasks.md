@@ -31,7 +31,11 @@ Calls `GET /api/v1/threads/{id}/tasks`. Tasks come depth-first, so parents prece
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Report where a large thread spent its credits, task by task.
+**Spend Breakdown**: Report where a large thread spent its credits, task by task.
+
+**Progress View**: Show which parts of a fanned-out job are done and which are still working.
+
+**Failure Triage**: Find the subtask that failed before messaging the thread about it.
 <!-- END MANUAL -->
 
 ---

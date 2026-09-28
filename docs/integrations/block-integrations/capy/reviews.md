@@ -32,7 +32,11 @@ Calls `GET /api/v1/reviews/rounds/{requestId}` and returns the round's status an
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Poll until the review settles, then block a merge while `high_severity_count` is above zero.
+**Merge Blocking**: Hold a merge while `high_severity_count` is above zero.
+
+**Findings Report**: Send the confirmed issues, with file and line, to the author.
+
+**Settle Polling**: Poll until `is_settled` is true before acting on the review.
 <!-- END MANUAL -->
 
 ---
@@ -69,7 +73,11 @@ Calls `POST /api/v1/reviews` for a repository and PR number that the organizatio
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Gate a release on a Capy review: start one on the release PR and read its findings with Capy Get Review Round.
+**Release Gate**: Review the release pull request before it merges.
+
+**Agent Self-Review**: Pass `source_thread_id` so the thread that opened the PR triages the findings itself.
+
+**Deep Review on Demand**: Run a `high` tier review on a risky change.
 <!-- END MANUAL -->
 
 ---

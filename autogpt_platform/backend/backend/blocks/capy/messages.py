@@ -12,10 +12,16 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._api import CapyClient
+from ._api import CapyClient, with_capy_balance_fallback
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, capy_credentials_field
+from ._models import (
+    ModelRoute,
+    capy_balance_fallback_field,
+    model_route_field,
+    resolve_model_id,
+)
 from ._testdata import TEST_MESSAGES, TEST_RECEIPT, TEST_THREAD
-from ._types import MessageDelivery, MessagePage, ReasoningEffort
+from ._types import MessageDelivery, MessagePage, MessageReceipt, ReasoningEffort
 from .threads import _last_assistant_text, _thread_id_field
 
 
@@ -152,10 +158,15 @@ class CapySendMessageBlock(Block):
             default=MessageDelivery.INTERRUPT,
         )
         model_id: str = SchemaField(
-            description="Switch the thread to this Capy model ID. Empty keeps it.",
+            description=(
+                "Switch the thread to this Capy model ID (or a bare name to "
+                "combine with model_route). Empty keeps the thread's model."
+            ),
             default="",
             advanced=True,
         )
+        model_route: ModelRoute = model_route_field()
+        fall_back_to_capy_balance: bool = capy_balance_fallback_field()
         reasoning: ReasoningEffort = SchemaField(
             description="Reasoning effort for model_id. Needs model_id.",
             default=ReasoningEffort.DEFAULT,
@@ -168,6 +179,12 @@ class CapySendMessageBlock(Block):
         )
         deduped: bool = SchemaField(
             description="True when Capy recognised this as a repeat of a message it already had"
+        )
+        model_id: str = SchemaField(
+            description=(
+                "The model the thread was switched to; empty when the thread "
+                "kept its model"
+            )
         )
 
     def __init__(self):
@@ -190,29 +207,40 @@ class CapySendMessageBlock(Block):
             test_output=[
                 ("message_id", TEST_RECEIPT.id),
                 ("deduped", False),
+                ("model_id", ""),
             ],
-            test_mock={"send_message": lambda *args, **kwargs: TEST_RECEIPT},
+            test_mock={"send_message": lambda *args, **kwargs: (TEST_RECEIPT, "")},
             effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
     async def send_message(
         credentials: APIKeyCredentials, input_data: "CapySendMessageBlock.Input"
-    ):
-        return await CapyClient(credentials).send_message(
-            input_data.thread_id,
-            text=input_data.text,
-            delivery=input_data.delivery.value,
-            model_id=input_data.model_id,
-            reasoning=input_data.reasoning.value,
+    ) -> tuple[MessageReceipt, str]:
+        client = CapyClient(credentials)
+
+        async def send(model_id: str) -> MessageReceipt:
+            return await client.send_message(
+                input_data.thread_id,
+                text=input_data.text,
+                delivery=input_data.delivery.value,
+                model_id=model_id,
+                reasoning=input_data.reasoning.value,
+            )
+
+        return await with_capy_balance_fallback(
+            send,
+            resolve_model_id(input_data.model_id, input_data.model_route),
+            input_data.fall_back_to_capy_balance,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        receipt = await self.send_message(credentials, input_data)
+        receipt, model_id = await self.send_message(credentials, input_data)
         yield "message_id", receipt.id
         yield "deduped", receipt.deduped
+        yield "model_id", model_id
 
 
 class CapyInterruptThreadBlock(Block):
