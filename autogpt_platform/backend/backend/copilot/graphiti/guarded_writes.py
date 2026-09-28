@@ -16,10 +16,11 @@ recalled within the protection window is left alone unless the write's
 what it spared, and nothing is read beforehand to decide.
 
 A statement that raises has an unknown outcome: the server may have
-committed it before the acknowledgement was lost, so it is reported as
-``UNKNOWN``, never as having changed nothing. ``live_fact_uuids`` is the
-read that settles, afterwards and for accounting only, which of the facts a
-pass spared are still live.
+committed it before the acknowledgement was lost, never received it, or
+still be running it behind another write, so it is reported as
+``UNKNOWN``, never as having changed nothing. ``live_fact_uuids`` is a read,
+afterwards and for accounting only, that observes which of the facts a pass
+spared were live at that moment; it does not settle writes still pending.
 """
 
 from __future__ import annotations
@@ -63,9 +64,9 @@ class NeighbourWrites(BaseModel):
     """What an entity invalidation did: the live neighbours it demoted, and
     those it left alone because the user recalled them within the protection
     window. Each list holds distinct uuids and is complete, however many
-    neighbours the entity has. ``unknown``: the statement raised and may have
-    committed, so which neighbours it changed or spared is not known, and
-    both lists are empty."""
+    neighbours the entity has. ``unknown``: the statement raised, and may have
+    committed, never arrived or still be queued, so which neighbours it
+    changed or spared is not known, and both lists are empty."""
 
     changed: list[str] = Field(default_factory=list)
     spared: list[str] = Field(default_factory=list)

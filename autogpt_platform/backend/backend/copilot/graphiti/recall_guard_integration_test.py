@@ -410,9 +410,12 @@ _BLOCKER = (
     "SET n.barrier = until RETURN until // holds the writer"
 )
 # The writer is held at least this long, and ten times as long as the stage
-# had run when the retraction arrived, so a slower machine waits longer.
+# had run when the retraction arrived, so a slower machine waits longer,
+# but never longer than the cap: a killed test process does not stop the
+# server's query, so the cap bounds how long a failed run holds the graph.
 _HOLD_SECONDS = 5.5
 _HOLD_FACTOR = 10
+_MAX_HOLD_SECONDS = 30.0
 
 
 class _Queued(_Boundary):
@@ -457,7 +460,7 @@ class _Queued(_Boundary):
 
     async def _hold_the_writer(self) -> None:
         so_far = time.perf_counter() - self.first_query_at
-        self.hold = max(_HOLD_SECONDS, _HOLD_FACTOR * so_far)
+        self.hold = min(_MAX_HOLD_SECONDS, max(_HOLD_SECONDS, _HOLD_FACTOR * so_far))
         self.held_from = time.perf_counter()
         self.blocker = asyncio.create_task(
             self.others[0].execute_query(_BLOCKER, hold_ms=int(self.hold * 1000))

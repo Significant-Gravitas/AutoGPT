@@ -15,7 +15,7 @@ moved are provisional: ``accounting_complete`` is False, in the sweep's
 
 This module owns the pass logic itself. The Redis hit tracker lives
 in ``ratification_hits.py`` so this file stays focused on the
-promote-vs-supersede dispatch and fits the file-length budget.
+promote-vs-supersede dispatch.
 
 Per ``dream/p0-spec.md`` §5. The metric ``dream_ratification_rate``
 (P0.4d) is out of scope for this module — counts are logged at INFO

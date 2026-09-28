@@ -80,7 +80,8 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
-    # Distinct facts the recall guard kept live through the pass; a row
+    # Distinct facts an acknowledged write spared and the accounting read
+    # found live (provisional when the accounting is incomplete); a row
     # written before it reads 0.
     protected_demotions: int = 0
     # Demotion writes whose outcome is unknown (they raised), and whether

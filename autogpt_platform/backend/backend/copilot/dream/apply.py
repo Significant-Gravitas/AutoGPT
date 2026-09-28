@@ -670,7 +670,8 @@ async def apply_operations(
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
         "dropped_forgotten": completion.dropped_forgotten,
-        # Distinct facts the recall guard kept live through the pass.
+        # Distinct facts an acknowledged write spared and the accounting read
+        # found live; provisional when the accounting is incomplete.
         "protected_demotions": destroyed.protected,
         # Destructive writes that raised: each may have committed or still land.
         "indeterminate_demotion_writes": destroyed.indeterminate,
