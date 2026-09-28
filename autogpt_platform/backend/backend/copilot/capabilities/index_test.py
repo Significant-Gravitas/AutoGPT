@@ -390,6 +390,45 @@ def test_block_still_wins_when_nothing_is_connected(rival_index):
     assert result.names[0] == "LinearCreateIssueBlock"
 
 
+def test_an_exact_block_name_in_a_phrase_does_not_pin_it_over_a_connected_mcp(
+    rival_index,
+):
+    """AutoPilot searches "Linear create issue", which is also the block's
+    name.  With no Linear credential for the block, the connected server
+    leads, and the block is still listed."""
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    result = rival_index.search("Linear create issue", connections=state)
+    assert result.names[0] == "Linear"
+    assert "LinearCreateIssueBlock" in result.names
+    assert all(hit.reason == "search" for hit in result.hits)
+
+
+def test_an_exact_block_name_keeps_its_pin_when_the_block_is_connected(rival_index):
+    state = ConnectionState(
+        providers=frozenset({"linear"}), server_urls=frozenset({LINEAR_MCP_URL})
+    )
+    result = rival_index.search("Linear create issue", connections=state)
+    assert result.names[0] == "LinearCreateIssueBlock"
+    assert result.hits[0].reason == "exact_name"
+
+
+def test_a_query_spelling_the_class_name_keeps_the_pin(rival_index):
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    for query in ("LinearCreateIssueBlock", "linear create issue block"):
+        result = rival_index.search(query, connections=state)
+        assert result.names[0] == "LinearCreateIssueBlock", query
+        assert result.hits[0].reason == "exact_name", query
+
+
+def test_an_exact_block_name_keeps_its_pin_with_no_connected_alternative(
+    rival_index,
+):
+    for state in (ConnectionState(), None):
+        result = rival_index.search("Linear create issue", connections=state)
+        assert result.names[0] == "LinearCreateIssueBlock"
+        assert result.hits[0].reason == "exact_name"
+
+
 def test_a_distant_connected_service_is_not_lifted(rival_index):
     """The lift is one concept wide: a connected server that barely matches
     must not displace the block that actually does the job."""

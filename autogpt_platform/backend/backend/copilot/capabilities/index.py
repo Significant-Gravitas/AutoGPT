@@ -194,6 +194,12 @@ class CapabilityIndex:
                     if self.entries[idx].klass == "primitive"
                 ]
             )[:fallback_limit]
+            unpinned = self._unpinned_exact(query, exact, main, connections)
+            if unpinned:
+                hits = [
+                    to_hit(idx, "exact_name") for idx in exact if idx not in unpinned
+                ]
+                main += unpinned
         else:
             main = rest
         hits += _ranked([to_hit(idx, "search") for idx in main])
@@ -286,6 +292,45 @@ class CapabilityIndex:
             if tokens and all(token in document for token in tokens):
                 return True
         return False
+
+    def _unpinned_exact(
+        self,
+        query: str,
+        exact: list[int],
+        main: list[int],
+        connections: ConnectionState | None,
+    ) -> list[int]:
+        """Exact-name hits that rank with the rest instead of leading.
+
+        An exact name normally leads the list, but "Linear create issue" is
+        how AutoPilot phrases a job, not a request for the block that happens
+        to be called that, and the pin put ``LinearCreateIssueBlock`` over
+        the user's connected Linear MCP server.  So a block the user holds no
+        credential for is ranked like any other hit when the service query
+        also found a connected server or a platform tool.  A query that
+        spells the class name ("LinearCreateIssueBlock", "linear create
+        issue block") still asks for the block and keeps the pin, and so does
+        a block the user has connected.
+        """
+        words = query.lower().split()
+        if len(words) < 2 or words[-1] == "block":
+            return []
+        alternative = any(
+            self.entries[idx].kind == "tool"
+            or (
+                self.entries[idx].kind == "mcp_server"
+                and resolve_connected(self.entries[idx], connections)
+            )
+            for idx in main
+        )
+        if not alternative:
+            return []
+        return [
+            idx
+            for idx in exact
+            if self.entries[idx].kind == "block"
+            and resolve_connected(self.entries[idx], connections) is False
+        ]
 
     def _service_query(
         self, query: str
