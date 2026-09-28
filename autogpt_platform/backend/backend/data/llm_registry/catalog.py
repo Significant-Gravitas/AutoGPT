@@ -526,8 +526,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=48.0,
-                    output_credits_per_1m=133.5,
+                    input_credits_per_1m=38.61,
+                    output_credits_per_1m=154.305,
                 ),
             ),
             CatalogModel(
@@ -897,8 +897,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=2,
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=142.5,
-                    output_credits_per_1m=600.0,
+                    input_credits_per_1m=97.5,
+                    output_credits_per_1m=511.5,
                 ),
             ),
             CatalogModel(

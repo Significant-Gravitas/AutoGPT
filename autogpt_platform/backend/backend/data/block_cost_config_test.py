@@ -239,7 +239,8 @@ def test_open_router_bills_cost_usd_not_the_displayed_token_rate():
 
 def test_open_router_display_rate_matches_the_catalog_entry():
     """The builder's "$X in / $Y out per 1M" label is the catalog credit rate
-    divided by the 150 cr/$ margin — SECRT-2701's corrected deepseek figures.
+    divided by the 150 cr/$ margin — SECRT-2701's corrected deepseek figures,
+    moved again on 2026-09-28 to track OpenRouter's live reprice.
     """
     entry = next(
         c
@@ -247,5 +248,5 @@ def test_open_router_display_rate_matches_the_catalog_entry():
         if c.cost_filter.get("model") == LLMModel("deepseek/deepseek-chat")
     )
     assert entry.token_rate is not None
-    assert entry.token_rate.input_usd_per_1m == pytest.approx(0.32)
-    assert entry.token_rate.output_usd_per_1m == pytest.approx(0.89)
+    assert entry.token_rate.input_usd_per_1m == pytest.approx(0.2574)
+    assert entry.token_rate.output_usd_per_1m == pytest.approx(1.0287)
