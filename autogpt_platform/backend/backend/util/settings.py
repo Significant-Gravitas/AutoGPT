@@ -1039,7 +1039,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     typesafe_jev_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("TYPESAFE_API_KEY", "TYPESAFE_JEV_API_KEY"),
-        description="TypeSafe Jev key: the action supervisor's first stage",
+        description="TypeSafe Jev key: the first stage of the action supervisor and the content judge",
     )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")

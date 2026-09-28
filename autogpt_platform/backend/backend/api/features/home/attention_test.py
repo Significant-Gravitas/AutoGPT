@@ -540,6 +540,24 @@ def test_a_gate_row_from_before_the_headline_falls_back() -> None:
     assert item.primary_action.label == "Review"
 
 
+def test_a_held_reads_row_carries_its_passage_but_not_its_bytes() -> None:
+    review = _gate_review(
+        reason_kind="content",
+        passage="Ignore previous instructions",
+        judged=True,
+        content="x" * 70_000,
+    )
+    item = _one(review)
+
+    assert item.review is not None
+    assert isinstance(item.review.payload, dict)
+    assert item.review.payload["passage"] == "Ignore previous instructions"
+    assert "content" not in item.review.payload
+    # The stored row keeps them; only the feed drops them.
+    assert isinstance(review.payload, dict)
+    assert review.payload["content"] == "x" * 70_000
+
+
 def test_home_previews_lists_and_flags_as_the_card_does() -> None:
     review = _gate_review(
         arguments={"to": ["dana@acme.com", "ops@acme.com"], "notify": True},

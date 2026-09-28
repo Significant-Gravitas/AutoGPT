@@ -24,6 +24,7 @@ from backend.api.features.graph_executions.review.model import PendingHumanRevie
 from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
+from backend.data.db_accessors import experts_db
 from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
 
 from . import active_mode, held
@@ -332,11 +333,12 @@ def page_words(passage: str, text: str) -> str:
     return ""
 
 
-def read_headline(tool_name: str, args: dict[str, Any]) -> Headline:
-    headline = named(f"Let {AUTOPILOT_NAME} read", _SOURCE_KEYS, args)
+def read_headline(tool_name: str, args: dict[str, Any], actor: str) -> Headline:
+    """``actor`` is who reads it: the chat's Expert, or Otto in a plain chat."""
+    headline = named(f"Let {actor} read", _SOURCE_KEYS, args)
     if headline.object is None:
         label = tool_name.replace("_", " ")
-        return Headline(ask=f"Let {AUTOPILOT_NAME} read what {label} returned")
+        return Headline(ask=f"Let {actor} read what {label} returned")
     return headline
 
 
@@ -364,12 +366,9 @@ async def _hold(
     tool_name = call.tool_name
     if not await held.remember(session.session_id, call):
         return _stub(tool_name, source, _UNRECORDABLE, session)
-    reason = (
-        f"this content contains instructions: {passage}"
-        if judged
-        else "this content could not be checked"
-    )
-    headline = read_headline(tool_name, call.args)
+    reason = held_reason(passage, judged)
+    reader = await _actor(user_id, session)
+    headline = read_headline(tool_name, call.args, reader)
     payload = {
         **review_store.review_payload(
             tool_name,
@@ -382,6 +381,8 @@ async def _hold(
         ),
         "source": source,
         "headline": headline.model_dump(),
+        # Who the bytes reach: the card's copy names it, never the supervisor.
+        "reader": reader,
         "passage": passage,
         "judged": judged,
         "success": success,
@@ -398,6 +399,29 @@ async def _hold(
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)
+
+
+def held_reason(passage: str, judged: bool) -> str:
+    """The raw reason Home shows; the page's words quoted, so they read as the page's."""
+    if not judged:
+        return "this content could not be checked"
+    if not passage:
+        return "this content contains instructions"
+    return f'this content contains instructions: "{passage.replace(chr(34), chr(39))}"'
+
+
+async def _actor(user_id: str, session: ChatSession) -> str:
+    if session.expert_id is None:
+        return AUTOPILOT_NAME
+    try:
+        expert = await experts_db().get_expert(
+            user_id, session.expert_id, include_workflows=False
+        )
+    except Exception:
+        # A name on a card must never cost the hold itself.
+        logger.warning("Expert lookup for a held read failed", exc_info=True)
+        return AUTOPILOT_NAME
+    return expert.name if expert else AUTOPILOT_NAME
 
 
 def _stub(
