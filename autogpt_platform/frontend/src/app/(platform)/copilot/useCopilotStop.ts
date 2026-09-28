@@ -2,6 +2,7 @@ import { postV2CancelSessionTask } from "@/app/api/__generated__/endpoints/chat/
 import { toast } from "@/components/molecules/Toast/use-toast";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
+import { getChatDelegations } from "./delegations";
 import { resolveInProgressTools } from "./helpers";
 
 /**
@@ -24,6 +25,41 @@ interface UseCopilotStopArgs {
    *  stop-button UX flips immediately instead of waiting for AI SDK's
    *  ``status`` to transition away from "streaming" on abort. */
   setIsUserStopping: (value: boolean) => void;
+  /** The chat as it stands when Stop is pressed: every teammate still
+   *  working on one of its hand-offs is stopped along with it. */
+  messages?: UIMessage[];
+}
+
+/** Sub-sessions of hand-offs that may still be running. */
+export function getStoppableSubSessionIds(messages: UIMessage[]): string[] {
+  const ids = getChatDelegations(messages).flatMap((delegation) =>
+    delegation.subSessionId &&
+    ["running", "queued", "proposed"].includes(delegation.status)
+      ? [delegation.subSessionId]
+      : [],
+  );
+  return [...new Set(ids)];
+}
+
+/** Stop means stop: the teammates this chat handed work to stop too. Each
+ *  cancel is independent; one toast covers any that failed. */
+async function cancelSubSessions(subSessionIds: string[]) {
+  if (subSessionIds.length === 0) return;
+  const results = await Promise.allSettled(
+    subSessionIds.map((id) => postV2CancelSessionTask(id)),
+  );
+  const failed = results.filter(
+    (result) => result.status === "rejected" || result.value.status !== 200,
+  ).length;
+  if (failed === 0) return;
+  toast({
+    title:
+      failed === 1
+        ? "Could not stop one of the experts"
+        : `Could not stop ${failed} experts`,
+    description: "They may keep working in their own threads.",
+    variant: "destructive",
+  });
 }
 
 /**
@@ -35,7 +71,8 @@ interface UseCopilotStopArgs {
  *   3. inject a cancellation marker into the visible assistant message
  *   4. asynchronously tell the backend executor to actually stop the task,
  *      surfacing a toast when the cancel was published but not yet
- *      confirmed (the task should stop shortly) or failed outright.
+ *      confirmed (the task should stop shortly) or failed outright
+ *   5. cancel every teammate sub-session still working on a hand-off.
  */
 export function useCopilotStop({
   sessionId,
@@ -43,8 +80,10 @@ export function useCopilotStop({
   setMessages,
   isUserStoppingRef,
   setIsUserStopping,
+  messages = [],
 }: UseCopilotStopArgs) {
   async function stop() {
+    const cascade = cancelSubSessions(getStoppableSubSessionIds(messages));
     isUserStoppingRef.current = true;
     setIsUserStopping(true);
     try {
@@ -71,7 +110,10 @@ export function useCopilotStop({
       return resolved;
     });
 
-    if (!sessionId) return;
+    if (!sessionId) {
+      await cascade;
+      return;
+    }
     try {
       const res = await postV2CancelSessionTask(sessionId);
       if (
@@ -92,6 +134,7 @@ export function useCopilotStop({
         variant: "destructive",
       });
     }
+    await cascade;
   }
 
   return stop;
