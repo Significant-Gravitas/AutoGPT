@@ -151,8 +151,8 @@ async def test_backfill_does_not_overwrite_existing_status(
     'active' (e.g. an edge that was demoted before the backfill ran),
     the migration must NOT clobber it.
 
-    A demoted edge is still touched by the backfill: ``mark_edges_superseded``
-    only writes ``status``/``expired_at``/``expiration_reason``, so its
+    A demoted edge is still touched by the backfill: a demotion only writes
+    ``status``/``expired_at``/``expiration_reason``, so its
     ``source_kind``/``scope`` are NULL and legitimately get the defaults.
     The coalesce guards ``status`` so the existing 'superseded' value
     survives.

@@ -1,5 +1,4 @@
-"""Tests for the memory_forget tools and ``mark_edges_superseded``, which
-shares their module.
+"""Tests for the memory_forget tools.
 
 The retraction itself (Cypher, per-uuid failures) is pinned in
 ``graphiti/recall_forget_test.py``; here the tools are exercised with that
@@ -18,7 +17,6 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
@@ -27,7 +25,6 @@ from backend.copilot.tools.graphiti_forget import (
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
-    mark_edges_superseded,
 )
 from backend.copilot.tools.models import (
     MemoryForgetCandidatesResponse,
@@ -289,120 +286,3 @@ class TestBuildConfirmMessage:
         assert message.count("uuid-") == _MAX_FAILURE_DETAIL
         # Bounded regardless of batch size — cannot grow with the input.
         assert len(message) < _MAX_FAILURE_DETAIL * 300
-
-
-class TestMarkEdgesSuperseded:
-    @pytest.mark.asyncio
-    async def test_sets_status_and_reason(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        deleted, failed = await mark_edges_superseded(
-            driver,
-            ["u1"],
-            reason="stale_fact",
-            new_status="superseded",
-            user_id="abc",
-        )
-
-        assert deleted == ["u1"]
-        assert failed == []
-        call_kwargs = driver.execute_query.call_args.kwargs
-        assert call_kwargs["new_status"] == "superseded"
-        assert call_kwargs["reason"] == "stale_fact"
-        query = driver.execute_query.call_args.args[0]
-        assert "e.status = $new_status" in query
-        assert "e.expiration_reason = $reason" in query
-        assert "e.expired_at = $now" in query
-        # ``now`` parameter is bound from Python (FalkorDB doesn't
-        # implement Cypher's no-arg ``datetime()``).
-        assert "now" in driver.execute_query.call_args.kwargs
-
-    @pytest.mark.asyncio
-    async def test_default_status_is_superseded(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-        await mark_edges_superseded(driver, ["u1"], reason="x")
-        assert driver.execute_query.call_args.kwargs["new_status"] == "superseded"
-
-    @pytest.mark.asyncio
-    async def test_contradicted_status_supported(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-        await mark_edges_superseded(
-            driver, ["u1"], reason="x", new_status="contradicted"
-        )
-        assert driver.execute_query.call_args.kwargs["new_status"] == "contradicted"
-
-    @pytest.mark.asyncio
-    async def test_group_id_scopes_the_match_predicate(self) -> None:
-        """Defense-in-depth: when the caller supplies group_id, the Cypher
-        MATCH must require it alongside the uuid so a wrong-driver caller
-        can't touch another user's edges."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        deleted, failed = await mark_edges_superseded(
-            driver,
-            ["u1"],
-            reason="stale_fact",
-            user_id="abc",
-            group_id="user_abc",
-        )
-
-        assert deleted == ["u1"]
-        assert failed == []
-        query = driver.execute_query.call_args.args[0]
-        assert "{uuid: $uuid, group_id: $group_id}" in query
-        assert driver.execute_query.call_args.kwargs["group_id"] == "user_abc"
-
-    @pytest.mark.asyncio
-    async def test_no_group_id_keeps_unscoped_match_for_ratification(self) -> None:
-        """Omitting group_id preserves the original uuid-only predicate —
-        ratification.py still calls without it (per-group driver), so the
-        param must stay optional and default to no group filter."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        await mark_edges_superseded(driver, ["u1"], reason="unratified")
-
-        query = driver.execute_query.call_args.args[0]
-        assert "{uuid: $uuid}" in query
-        assert "group_id" not in query
-        assert "group_id" not in driver.execute_query.call_args.kwargs
-
-    @pytest.mark.asyncio
-    async def test_expected_status_makes_the_write_conditional(self) -> None:
-        """The ratification sweep's guard: only an edge still in that status
-        and unexpired is touched, so a forget made since it was listed is
-        kept, and the edge is reported failed."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)  # no longer tentative
-
-        deleted, failed = await mark_edges_superseded(
-            driver, ["u1"], reason="unratified", expected_status="tentative"
-        )
-
-        assert (deleted, failed) == ([], ["u1"])
-        query = driver.execute_query.call_args.args[0]
-        assert (
-            "WHERE e.status = $expected_status AND e.expired_at IS NULL"
-            " AND e.forgotten_at IS NULL" in query
-        )
-        assert driver.execute_query.call_args.kwargs["expected_status"] == "tentative"
-
-    @pytest.mark.asyncio
-    async def test_without_expected_status_only_a_live_fact_is_written(self) -> None:
-        """The dream's demotions: an edge retired or forgotten since the dream
-        read it is not overwritten, and is reported failed."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)  # forgotten meanwhile
-
-        deleted, failed = await mark_edges_superseded(
-            driver, ["u1"], reason="stale_fact"
-        )
-
-        assert (deleted, failed) == ([], ["u1"])
-        query = driver.execute_query.call_args.args[0]
-        assert f"WHERE {live_fact_predicate('e')}" in query
-        assert "expected_status" not in driver.execute_query.call_args.kwargs

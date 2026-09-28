@@ -1,7 +1,7 @@
 """The dream's guarded writers against a mocked driver: the Cypher each
 sends (single-hop, live facts only, the recall guard in the statement that
 writes) and what each reports. ``recall_guard_integration_test.py`` and
-``graphiti_forget_integration_test.py`` run the same statements on
+``guarded_writes_integration_test.py`` run the same statements on
 FalkorDB."""
 
 from unittest.mock import AsyncMock

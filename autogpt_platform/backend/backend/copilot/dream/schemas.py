@@ -249,7 +249,8 @@ class DemotionSummary(BaseModel):
     protected: bool = False
     """True when the write left a live fact alone because the user recalled
     it within the protection window (``recall_guard.py``); ``applied`` is
-    then False. Counted in ``protected_demotions``."""
+    then False. Counted in ``protected_demotions`` unless a later write of
+    the pass changed the fact."""
 
 
 class EntityInvalidationSummary(BaseModel):
@@ -260,7 +261,7 @@ class EntityInvalidationSummary(BaseModel):
     edges_touched: list[str] = Field(default_factory=list)
     # Live neighbours the invalidation's write left alone: the user recalled
     # them within the protection window (``recall_guard.py``). Counted in
-    # ``protected_demotions``.
+    # ``protected_demotions`` unless a later write of the pass changed them.
     edges_protected: list[str] = Field(default_factory=list)
 
 
@@ -348,9 +349,10 @@ class DreamPassResult(BaseModel):
     # forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
-    # Distinct facts the recall guard's writes left alone
+    # Distinct facts the recall guard kept live through the pass
     # (``recall_guard.py``): the user recalled them within the protection
-    # window. A fact spared by two writes counts once.
+    # window, a write spared them and no later write changed them. A fact
+    # spared by two writes counts once.
     protected_demotions: int = 0
 
     summary_for_user: str = ""

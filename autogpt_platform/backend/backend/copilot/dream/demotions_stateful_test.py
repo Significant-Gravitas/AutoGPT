@@ -124,9 +124,12 @@ class Graph:
     def changed(self) -> set[str]:
         return {w.edge for w in self.writes if w.changed}
 
-    def spared(self) -> int:
-        """The distinct facts some write spared."""
-        return len({w.edge for w in self.writes if not w.changed})
+    def kept_live(self) -> int:
+        """The distinct facts some write spared that are still live when the
+        pass ends."""
+        return len(
+            {w.edge for w in self.writes if not w.changed and self.edges[w.edge].live}
+        )
 
     def _supersede_one(
         self, uuid: str, reason: str, protection: RecallProtection
@@ -383,7 +386,7 @@ async def test_usage_never_demotes_more_and_protects_at_every_write(
             stats["entity_invalidation_count"]
         )
         assert reported == len(with_usage.changed()), case
-        assert stats["protected_demotions"] == with_usage.spared(), case
+        assert stats["protected_demotions"] == with_usage.kept_live(), case
 
 
 @pytest.mark.asyncio

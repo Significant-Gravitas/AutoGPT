@@ -11,12 +11,13 @@ Every write carries the recall guard in its own statement
 builds for its reason): a live fact the user recalled within the protection
 window is left alone unless the write's reason overrides it, and the
 statement returns the facts it changed and those it spared. Nothing is read
-beforehand to decide. ``protected_demotions`` counts the distinct facts the
-writes spared: a fact spared twice (a duplicated demotion, or a demotion and
-an invalidation) counts once, and a fact spared by one write and changed by
-a later one that overrides the guard counts as spared and as changed. A
-write that fails is logged and changes nothing, as before recall stamps
-existed.
+beforehand to decide. ``protected_demotions`` counts the distinct facts
+protection kept live through the pass: spared by a write and changed by no
+later one. A fact spared twice (a duplicated demotion, or a demotion and an
+invalidation) counts once; a fact spared by one write and then changed by a
+later one whose reason overrides the guard counts only as changed. Each
+operation's own summary still records what its write did. A write that
+fails is logged and changes nothing, as before recall stamps existed.
 
 Entity invalidation single-hop demotes every live edge around the entity,
 the most destructive op in the pass, so it stays behind its own LD flag for
@@ -75,11 +76,16 @@ class DemotionResults(BaseModel):
 
     @property
     def protected(self) -> int:
-        """The distinct facts any write of the stage spared."""
-        return len(
-            {d.edge_uuid for d in self.demotions if d.protected}
-            | {uuid for s in self.entity_invalidations for uuid in s.edges_protected}
-        )
+        """The distinct facts protection kept live: spared by a write of the
+        stage and changed by no later one. A fact is changed at most once, so
+        one both spared and changed was changed after it was spared."""
+        spared = {d.edge_uuid for d in self.demotions if d.protected} | {
+            uuid for s in self.entity_invalidations for uuid in s.edges_protected
+        }
+        changed = {d.edge_uuid for d in self.demotions if d.applied} | {
+            uuid for s in self.entity_invalidations for uuid in s.edges_touched
+        }
+        return len(spared - changed)
 
 
 async def apply_demotions(

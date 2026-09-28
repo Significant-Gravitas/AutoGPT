@@ -440,17 +440,23 @@ async def test_case_a_a_recalled_fact_keeps_its_cap_slots(
 @pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "recalled, protected", [(False, 0), (True, 1)], ids=["no-usage", "with-usage"]
+    "recalled, spared_by_the_demotion, changed_by_the_entity",
+    [(False, False, []), (True, True, ["A"])],
+    ids=["no-usage", "with-usage"],
 )
 async def test_case_b_a_user_retraction_through_an_entity_changes_no_more(
-    live_pass, recalled: bool, protected: int
+    live_pass,
+    recalled: bool,
+    spared_by_the_demotion: bool,
+    changed_by_the_entity: list[str],
 ) -> None:
     """Two facts, a cap of one, stale proposals ``[A, B]`` and a
     ``user_signal`` invalidation of the entity only A hangs off. Without
     usage the direct write demotes A and the entity finds it gone; with A
     recalled the direct write spares it and the user's retraction demotes it
-    through the entity. One edge changes either way: the first redo demoted
-    B as well (1 -> 2)."""
+    through the entity. One edge changes either way (the first redo demoted
+    B as well, 1 -> 2), and protection kept nothing live, so neither world
+    counts a protected fact."""
     driver, scope = live_pass.driver, live_pass.scope
     await _edge(driver, scope.group_id, "A", source="hub")
     await _edge(driver, scope.group_id, "B")
@@ -466,7 +472,10 @@ async def test_case_b_a_user_retraction_through_an_entity_changes_no_more(
         )
     )
 
-    assert (_changed(stats), stats["protected_demotions"]) == (1, protected)
+    assert (_changed(stats), stats["protected_demotions"]) == (1, 0)
+    snapshot = stats["snapshot"]
+    assert snapshot.demotions[0].protected is spared_by_the_demotion
+    assert snapshot.entity_invalidations[0].edges_touched == changed_by_the_entity
     assert await _statuses(driver, ["A", "B"]) == {"A": "superseded", "B": "active"}
 
 

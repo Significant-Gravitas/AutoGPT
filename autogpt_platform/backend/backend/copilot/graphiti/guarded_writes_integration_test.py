@@ -1,13 +1,13 @@
-"""Integration tests for the P-1.3 demotion helpers, against live FalkorDB:
-``mark_edges_superseded`` (``tools/graphiti_forget.py``) and the dream's
-single-hop ``invalidate_entity_direct_neighbors`` (``guarded_writes.py``).
+"""Integration tests for the dream's single-hop entity invalidation
+(``guarded_writes.invalidate_entity_direct_neighbors``), against live FalkorDB.
 
-The unit-test siblings (``backend/copilot/tools/graphiti_forget_test.py``,
-``guarded_writes_test.py``) pin the Cypher strings and call signatures via
-mock drivers; those run fast but don't catch Cypher that's syntactically
-valid yet semantically wrong on FalkorDB (different graph engines have
-slightly different behavior around relationship variable scoping,
-``MATCH`` semantics with property-only patterns, etc.).
+The unit-test sibling (``guarded_writes_test.py``) pins the Cypher strings and
+call signatures via mock drivers; those run fast but don't catch Cypher
+that's syntactically valid yet semantically wrong on FalkorDB (different
+graph engines have slightly different behavior around relationship variable
+scoping, ``MATCH`` semantics with property-only patterns, etc.). What the
+recall guard in the same statement spares is
+``recall_guard_integration_test.py``.
 
 This file is the regression net that catches those. For every P-1.3
 behavior, seed a known graph, run the helper, query the resulting
@@ -20,8 +20,6 @@ runaway-demotion footgun.
 """
 
 import pytest
-
-from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 
 from .guarded_writes import invalidate_entity_direct_neighbors
 
@@ -43,53 +41,6 @@ async def _select_edge(driver, uuid: str) -> dict | None:
 
 # The user-forget retraction (``expired_at`` + ``status='retracted'``,
 # never ``invalid_at``) is pinned live in ``recall_integration_test.py``.
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_mark_edges_superseded_writes_status_and_reason(
-    seeded_graph,
-) -> None:
-    """`status` + `expiration_reason` survive on the durable edge for audit."""
-    driver, group_id = seeded_graph
-
-    deleted, failed = await mark_edges_superseded(
-        driver,
-        ["e1"],
-        reason="stale_fact",
-        new_status="superseded",
-        user_id="test-user",
-    )
-    assert deleted == ["e1"]
-    assert failed == []
-
-    row = await _select_edge(driver, "e1")
-    assert row is not None
-    assert row["expired_at"] is not None
-    assert row["status"] == "superseded"
-    assert row["expiration_reason"] == "stale_fact"
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_mark_edges_superseded_supports_contradicted_status(
-    seeded_graph,
-) -> None:
-    """`contradicted` is the other allowed status — used by P0.5 web fact-check."""
-    driver, group_id = seeded_graph
-
-    await mark_edges_superseded(
-        driver,
-        ["e2"],
-        reason="web_contradicted:https://example.com",
-        new_status="contradicted",
-        user_id="test-user",
-    )
-
-    row = await _select_edge(driver, "e2")
-    assert row is not None
-    assert row["status"] == "contradicted"
-    assert row["expiration_reason"].startswith("web_contradicted:")
 
 
 @pytest.mark.integration

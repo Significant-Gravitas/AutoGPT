@@ -471,7 +471,7 @@ async def apply_operations(
     The demotions and entity invalidations (``demotions.py``) each carry the
     recall guard in their own statement: a live fact the user recalled within
     the protection window is left alone unless the write overrides it, and
-    ``protected_demotions`` counts the distinct facts the writes spared.
+    ``protected_demotions`` counts the distinct facts it kept live.
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -661,7 +661,7 @@ async def apply_operations(
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
         "dropped_forgotten": completion.dropped_forgotten,
-        # Distinct facts the recall guard's writes left alone.
+        # Distinct facts the recall guard kept live through the pass.
         "protected_demotions": destroyed.protected,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,

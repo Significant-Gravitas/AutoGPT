@@ -175,6 +175,30 @@ async def test_a_fact_spared_by_several_writes_counts_once(stage) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_fact_a_later_write_changes_is_not_counted_as_protected(
+    stage,
+) -> None:
+    """The direct demotion spares ``a``; the user's retraction through its
+    entity then changes it. Each operation records its own write, but ``a``
+    is not a fact protection kept, so it counts only as changed."""
+    stage.supersede.side_effect = None
+    stage.supersede.return_value = [S]
+    stage.invalidate.return_value = NeighbourWrites(changed=["a"])
+    ops = DreamOperations(
+        demotions=[_demote("a")],
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="hub", reason="user_signal")
+        ],
+    )
+
+    results = await apply_demotions(_SCOPE, "p-9", ops, {"a"})
+
+    assert results.demotions[0].protected is True
+    assert results.entity_invalidations[0].edges_touched == ["a"]
+    assert (results.demoted, results.entity_edges, results.protected) == (0, 1, 0)
+
+
+@pytest.mark.asyncio
 async def test_each_demotion_gets_its_own_outcome_in_bucket_order(stage) -> None:
     """Grouped by status and reason as before; a duplicate target and a
     demotion from another bucket keep their own outcomes."""
