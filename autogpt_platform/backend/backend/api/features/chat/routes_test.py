@@ -1,5 +1,6 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
@@ -7,12 +8,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 import pytest_mock
 from pydantic import SecretStr
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
+from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.model import ChatSession
@@ -663,28 +666,32 @@ def test_stream_chat_scopes_client_message_id_to_owner_and_session(
 
 
 class _ClaimRedis:
-    """The client-message claim's SET NX / EXISTS / DELETE, plus the LLEN a
-    duplicate's response reads the buffer length with."""
+    """The client-message claim's SET NX / GET / EXISTS / DELETE, plus the LLEN
+    a duplicate's response reads the buffer length with."""
 
     def __init__(self) -> None:
-        self.keys: set[str] = set()
+        self.values: dict[str, str] = {}
+
+    @property
+    def keys(self) -> set[str]:
+        return set(self.values)
 
     async def set(
         self, key: str, value: str, nx: bool = False, ex: int | None = None
     ) -> bool | None:
-        if nx and key in self.keys:
+        if nx and key in self.values:
             return None
-        self.keys.add(key)
+        self.values[key] = value
         return True
 
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
     async def exists(self, key: str) -> int:
-        return int(key in self.keys)
+        return int(key in self.values)
 
     async def delete(self, key: str) -> int:
-        if key not in self.keys:
-            return 0
-        self.keys.discard(key)
-        return 1
+        return int(self.values.pop(key, None) is not None)
 
     async def llen(self, key: str) -> int:
         return 0
@@ -835,6 +842,85 @@ def test_stream_chat_failed_queue_fallback_can_be_retried_with_the_same_id(
     mocks.enqueue.side_effect = None
     assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
     assert mocks.enqueue.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_copy_carries_a_send_the_first_copy_had_refused(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A copy lands while the first copy is being scheduled, and the first is
+    then refused at the in-flight cap. The send was never taken, so the copy
+    must schedule it, not be answered as a duplicate of nothing."""
+    mocks = _mock_stream_internals(mocker)
+    first_scheduling = asyncio.Event()
+    let_first_finish = asyncio.Event()
+    scheduled: list[str] = []
+
+    async def schedule(**kwargs: object) -> str:
+        scheduled.append("call")
+        if len(scheduled) == 1:
+            first_scheduling.set()
+            await let_first_finish.wait()
+            raise chat_routes.ConcurrentTurnLimitError("busy")
+        return "turn-2"
+
+    mocks.enqueue.side_effect = schedule
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "try_enqueue_turn",
+        new_callable=AsyncMock,
+        side_effect=chat_routes.turn_queue.InflightCapExceeded(),
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        first = asyncio.create_task(
+            async_client.post("/sessions/sess-1/stream", json=body)
+        )
+        await first_scheduling.wait()
+        copy = asyncio.create_task(
+            async_client.post("/sessions/sess-1/stream", json=body)
+        )
+        await asyncio.sleep(0.2)
+        let_first_finish.set()
+        first_response = await first
+        copy_response = await copy
+
+    assert first_response.status_code == 429
+    assert copy_response.status_code == 200
+    assert len(scheduled) == 2
+    assert list(mocks.claims.values.values()) == ["accepted"]
+
+
+def _reserve_client_message(claims: _ClaimRedis, user_id: str) -> None:
+    """Hold the id the way a first copy still being scheduled does."""
+    scoped_id = chat_routes.scoped_client_message_id(
+        user_id, "sess-1", "client-click-id"
+    )
+    key = pending_messages_module._client_message_key("sess-1", scoped_id)
+    claims.values[key] = "reserved"
+
+
+def test_stream_chat_copy_is_told_to_retry_while_the_first_is_unsettled(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The first copy is still being scheduled and may yet be refused, so
+    this one is told neither that the send was taken nor that it failed."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch.object(pending_messages_module, "_CLIENT_MESSAGE_WAIT_SECONDS", 0.05)
+    _reserve_client_message(mocks.claims, test_user_id)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "message_id": "client-click-id"},
+    )
+
+    assert response.status_code == 503
+    mocks.enqueue.assert_not_awaited()
+    assert list(mocks.claims.values.values()) == ["reserved"]
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -2489,6 +2575,29 @@ def test_queue_pending_message_same_message_id_is_buffered_once(
     assert response.status_code == 200
     assert response.json()["turn_in_flight"] is True
     push.assert_awaited_once()
+
+
+def test_queue_pending_message_copy_is_told_to_retry_while_the_first_is_unsettled(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    claims = _mock_client_message_claims(mocker)
+    mocker.patch.object(pending_messages_module, "_CLIENT_MESSAGE_WAIT_SECONDS", 0.05)
+    _reserve_client_message(claims, test_user_id)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up", "message_id": "client-click-id"},
+    )
+
+    assert response.status_code == 503
+    push.assert_not_awaited()
 
 
 def test_queue_pending_message_session_not_found_returns_404(

@@ -21,11 +21,12 @@ A hard cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse.  The
 buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
 """
 
+import asyncio
 import json
 import logging
 import time
 import uuid
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -63,6 +64,14 @@ _NOTIFY_PAYLOAD = "1"
 # retransmit of a queued one: without this claim every copy was buffered
 # again and ran as another follow-up.
 _CLIENT_MESSAGE_KEY_PREFIX = "copilot:pending:client-msg:"
+_CLIENT_MESSAGE_RESERVED = "reserved"
+_CLIENT_MESSAGE_ACCEPTED = "accepted"
+# A reservation covers scheduling a turn or pushing to the buffer, which takes
+# well under a second; the TTL only matters when the request dies midway.
+_CLIENT_MESSAGE_RESERVE_TTL_SECONDS = 30
+# How long a copy waits for the first copy's outcome before it gives up.
+_CLIENT_MESSAGE_WAIT_SECONDS = 10.0
+_CLIENT_MESSAGE_POLL_SECONDS = 0.1
 
 
 class PendingMessageContext(BaseModel):
@@ -111,43 +120,104 @@ def _client_message_key(session_id: str, message_id: str) -> str:
     return f"{_CLIENT_MESSAGE_KEY_PREFIX}{session_id}:{message_id}"
 
 
-async def claim_client_message(session_id: str, message_id: str) -> bool:
-    """Record that the send carrying *message_id* was accepted.
+ClientMessageClaim = Literal["claimed", "accepted", "reserved"]
 
-    Returns ``False`` when it already was: the caller holds a retransmit of
-    a message that is queued, drained or persisted, and must not act on it
-    again.  Fails open on a Redis error so dedup can never block a send.
+
+async def _settled_client_message(redis: Any, key: str, deadline: float) -> str | None:
+    """The key's state once no other request is still scheduling its send,
+    or ``"reserved"`` if that has not happened by *deadline*."""
+    while True:
+        state = await redis.get(key)
+        if state != _CLIENT_MESSAGE_RESERVED or time.monotonic() >= deadline:
+            return state
+        await asyncio.sleep(_CLIENT_MESSAGE_POLL_SECONDS)
+
+
+async def claim_client_message(session_id: str, message_id: str) -> ClientMessageClaim:
+    """Reserve *message_id* for the request carrying it.
+
+    ``"claimed"``: the caller owns the send.  It must call
+    :func:`accept_client_message` once the send is scheduled or queued, or
+    :func:`release_client_message` when it is refused.  The reservation
+    expires on its own within seconds, so a request that dies midway
+    cannot block the id.
+
+    ``"accepted"``: the caller holds a retransmit of a message that is
+    queued, drained or persisted, and must not act on it again.
+
+    ``"reserved"``: another copy was still being scheduled when the wait ran
+    out, so the caller should tell the client to retry.  A copy waits for
+    that outcome rather than being told it was accepted: the first copy can
+    still be refused, and then the send was never taken.
+
+    Fails open to ``"claimed"`` on a Redis error so dedup can never block a
+    send.
     """
+    key = _client_message_key(session_id, message_id)
+    deadline = time.monotonic() + _CLIENT_MESSAGE_WAIT_SECONDS
     try:
         redis = await get_redis_async()
-        claimed = await redis.set(
-            _client_message_key(session_id, message_id),
-            "1",
-            nx=True,
-            ex=_PENDING_TTL_SECONDS,
-        )
+        while True:
+            if await redis.set(
+                key,
+                _CLIENT_MESSAGE_RESERVED,
+                nx=True,
+                ex=_CLIENT_MESSAGE_RESERVE_TTL_SECONDS,
+            ):
+                return "claimed"
+            state = await _settled_client_message(redis, key, deadline)
+            if state == _CLIENT_MESSAGE_RESERVED:
+                return "reserved"
+            if state is not None:
+                return "accepted"
+            # The first copy was refused and gave the id back: take it.
     except Exception as e:
         logger.warning(
             "pending_messages: client message claim failed for session=%s: %s",
             session_id,
             e,
         )
-        return True
-    return bool(claimed)
+        return "claimed"
 
 
-async def is_client_message_claimed(session_id: str, message_id: str) -> bool:
-    """Whether a send carrying *message_id* was already accepted."""
+async def accept_client_message(session_id: str, message_id: str) -> None:
+    """Mark a claimed send as taken, so its retransmits are skipped."""
     try:
         redis = await get_redis_async()
-        return bool(await redis.exists(_client_message_key(session_id, message_id)))
+        await redis.set(
+            _client_message_key(session_id, message_id),
+            _CLIENT_MESSAGE_ACCEPTED,
+            ex=_PENDING_TTL_SECONDS,
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message accept failed for session=%s: %s",
+            session_id,
+            e,
+        )
+
+
+async def client_message_state(
+    session_id: str, message_id: str
+) -> Literal["accepted", "reserved"] | None:
+    """Whether a send carrying *message_id* was taken, waiting as
+    :func:`claim_client_message` does while another copy is scheduling it."""
+    deadline = time.monotonic() + _CLIENT_MESSAGE_WAIT_SECONDS
+    try:
+        redis = await get_redis_async()
+        state = await _settled_client_message(
+            redis, _client_message_key(session_id, message_id), deadline
+        )
     except Exception as e:
         logger.warning(
             "pending_messages: client message lookup failed for session=%s: %s",
             session_id,
             e,
         )
-        return False
+        return None
+    if state is None:
+        return None
+    return "reserved" if state == _CLIENT_MESSAGE_RESERVED else "accepted"
 
 
 async def release_client_message(session_id: str, message_id: str) -> None:

@@ -68,14 +68,16 @@ from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
     StreamRegistryUnavailable,
     already_accepted_response,
+    client_message_in_progress_error,
     is_turn_in_flight,
     queue_pending_for_http,
     resolve_attachments_for_http,
 )
 from backend.copilot.pending_messages import (
+    accept_client_message,
     claim_client_message,
     clear_pending_messages_unsafe,
-    is_client_message_claimed,
+    client_message_state,
     peek_pending_messages,
     release_client_message,
 )
@@ -1841,10 +1843,6 @@ async def stream_chat_post(
     # The kickoff owns a server-derived id and its own replay handling.
     client_message_id = None if request.expert_kickoff else message_id
 
-    async def release_client_message_claim() -> None:
-        if client_message_id is not None:
-            await release_client_message(session_id, client_message_id)
-
     # Session-anchored tenancy: the ChatSession row is the authoritative
     # org/team for every turn in it — a user whose active header org
     # differs still charges/attributes turns to the session's org.
@@ -1988,10 +1986,26 @@ async def stream_chat_post(
     # The client key is claimed before the turn can go in flight. From then on
     # a retransmit takes the queue branch above, where the PK cannot catch it:
     # the row may not be written yet, and a queued copy never gets this id.
+    # A copy that finds the key reserved waits for this request's outcome, so
+    # it is never told a send was taken that is then refused.
+    claim = (
+        await claim_client_message(session_id, client_message_id)
+        if client_message_id is not None
+        else None
+    )
+    if claim == "reserved":
+        raise client_message_in_progress_error()
+
+    async def release_client_message_claim() -> None:
+        if claim == "claimed" and client_message_id is not None:
+            await release_client_message(session_id, client_message_id)
+
+    async def accept_client_message_claim() -> None:
+        if claim == "claimed" and client_message_id is not None:
+            await accept_client_message(session_id, client_message_id)
+
     try:
-        if client_message_id is not None and not await claim_client_message(
-            session_id, client_message_id
-        ):
+        if claim == "accepted":
             turn_id = None
         else:
             turn_id = await schedule_chat_turn(
@@ -2056,6 +2070,7 @@ async def stream_chat_post(
             # clause never sees it.
             await release_client_message_claim()
             raise
+        await accept_client_message_claim()
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"
@@ -2064,6 +2079,7 @@ async def stream_chat_post(
     except BaseException:
         await release_client_message_claim()
         raise
+    await accept_client_message_claim()
 
     if turn_id is None:
         logger.info(
@@ -2254,10 +2270,12 @@ async def queue_pending_message(
     )
     # Before the in-flight gate: a retransmit landing after the turn drained
     # its original must not 409, or the client re-sends it via POST /stream.
-    if client_message_id is not None and await is_client_message_claimed(
-        session_id, client_message_id
-    ):
-        return await already_accepted_response(session_id)
+    if client_message_id is not None:
+        state = await client_message_state(session_id, client_message_id)
+        if state == "accepted":
+            return await already_accepted_response(session_id)
+        if state == "reserved":
+            raise client_message_in_progress_error()
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
     except StreamRegistryUnavailable as exc:

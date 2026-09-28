@@ -24,6 +24,7 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    accept_client_message,
     claim_client_message,
     drain_pending_messages,
     format_pending_as_user_message,
@@ -229,7 +230,9 @@ async def queue_pending_for_http(
     ``client_message_id`` is the send's scoped idempotency key.  A send
     whose key was already accepted is answered without pushing again (see
     :func:`already_accepted_response`), and a push that does not land gives
-    the key back so a genuine retry can.
+    the key back so a genuine retry can.  A copy that arrives while another
+    is still being pushed waits for its outcome, and gets a 503 if that
+    outlasts the wait.
 
     Raises :class:`HTTPException` with status 429 if the rate cap is hit or
     400 if an expert session attaches a file outside its scope; otherwise
@@ -261,15 +264,17 @@ async def queue_pending_for_http(
     # the FE's is_turn_in_flight check and our gate), which both this
     # endpoint and the POST /stream queue-fall-through can hit.  Pushing
     # first lets the gate own the no-op short-circuit.
-    if client_message_id is not None and not await claim_client_message(
-        session_id, client_message_id
-    ):
-        logger.info(
-            "pending_messages: skipped retransmit of an accepted message "
-            "for session=%s",
-            session_id,
-        )
-        return await already_accepted_response(session_id)
+    if client_message_id is not None:
+        claim = await claim_client_message(session_id, client_message_id)
+        if claim == "accepted":
+            logger.info(
+                "pending_messages: skipped retransmit of an accepted message "
+                "for session=%s",
+                session_id,
+            )
+            return await already_accepted_response(session_id)
+        if claim == "reserved":
+            raise client_message_in_progress_error()
 
     try:
         response = await queue_user_message(
@@ -290,6 +295,8 @@ async def queue_pending_for_http(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
+    if client_message_id is not None:
+        await accept_client_message(session_id, client_message_id)
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -306,6 +313,18 @@ async def queue_pending_for_http(
         )
 
     return response
+
+
+def client_message_in_progress_error() -> HTTPException:
+    """For a copy that arrived while the first copy was still being scheduled
+    and outlasted the wait for its outcome.  It is neither accepted nor
+    refused yet, so the client is told to retry, as for a degraded registry.
+    """
+    return HTTPException(
+        status_code=503,
+        detail="Your message is still being sent, retry shortly",
+        headers={"Retry-After": "5"},
+    )
 
 
 async def already_accepted_response(session_id: str) -> QueuePendingMessageResponse:

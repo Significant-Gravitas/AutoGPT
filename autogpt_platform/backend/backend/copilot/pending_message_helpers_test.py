@@ -288,14 +288,16 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
 
 
 def _mock_queue_claims(
-    monkeypatch: pytest.MonkeyPatch, *, claimed: bool
-) -> tuple[AsyncMock, AsyncMock]:
-    claim = AsyncMock(return_value=claimed)
+    monkeypatch: pytest.MonkeyPatch, *, claim_result: str
+) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+    claim = AsyncMock(return_value=claim_result)
+    accept = AsyncMock()
     release = AsyncMock()
     monkeypatch.setattr(helpers_module, "claim_client_message", claim)
+    monkeypatch.setattr(helpers_module, "accept_client_message", accept)
     monkeypatch.setattr(helpers_module, "release_client_message", release)
     monkeypatch.setattr(helpers_module, "peek_pending_count", AsyncMock(return_value=1))
-    return claim, release
+    return claim, accept, release
 
 
 async def _queue_with_client_id() -> QueuePendingMessageResponse:
@@ -318,7 +320,7 @@ async def test_queue_pending_skips_retransmit_of_an_accepted_message(
     """A retransmit is answered as accepted without a second push or a
     rate tick, and says the turn is in flight so the client does not fall
     back to POST /stream."""
-    _mock_queue_claims(monkeypatch, claimed=False)
+    _mock_queue_claims(monkeypatch, claim_result="accepted")
     queue_mock = AsyncMock()
     monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
     rate_mock = AsyncMock(return_value=1)
@@ -336,7 +338,7 @@ async def test_queue_pending_skips_retransmit_of_an_accepted_message(
 async def test_queue_pending_keeps_the_claim_once_the_push_lands(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    claim, release = _mock_queue_claims(monkeypatch, claimed=True)
+    claim, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
     monkeypatch.setattr(
         helpers_module,
         "queue_user_message",
@@ -355,6 +357,7 @@ async def test_queue_pending_keeps_the_claim_once_the_push_lands(
     await _queue_with_client_id()
 
     claim.assert_awaited_once_with("sess-1", "scoped-msg-1")
+    accept.assert_awaited_once_with("sess-1", "scoped-msg-1")
     release.assert_not_awaited()
 
 
@@ -364,7 +367,7 @@ async def test_queue_pending_releases_the_claim_when_the_push_is_refused(
 ) -> None:
     """The turn ended before the push: the route falls through to start a
     turn with the same id, which needs the claim back."""
-    _, release = _mock_queue_claims(monkeypatch, claimed=True)
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
     monkeypatch.setattr(
         helpers_module,
         "queue_user_message",
@@ -382,13 +385,14 @@ async def test_queue_pending_releases_the_claim_when_the_push_is_refused(
 
     assert exc_info.value.status_code == 409
     release.assert_awaited_once_with("sess-1", "scoped-msg-1")
+    accept.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_queue_pending_releases_the_claim_when_the_push_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, release = _mock_queue_claims(monkeypatch, claimed=True)
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
     monkeypatch.setattr(
         helpers_module,
         "queue_user_message",
@@ -399,6 +403,26 @@ async def test_queue_pending_releases_the_claim_when_the_push_fails(
         await _queue_with_client_id()
 
     release.assert_awaited_once_with("sess-1", "scoped-msg-1")
+    accept.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_tells_a_copy_to_retry_while_the_first_is_unsettled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first copy is still being pushed, so this one can be told neither
+    that the message was taken nor that it was refused."""
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="reserved")
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _queue_with_client_id()
+
+    assert exc_info.value.status_code == 503
+    queue_mock.assert_not_awaited()
+    accept.assert_not_awaited()
+    release.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -407,7 +431,7 @@ async def test_queue_pending_retransmit_is_accepted_when_the_count_lookup_fails(
 ) -> None:
     """The buffer length is informational, so a Redis error reading it still
     answers the copy as accepted rather than failing it."""
-    _mock_queue_claims(monkeypatch, claimed=False)
+    _mock_queue_claims(monkeypatch, claim_result="accepted")
     monkeypatch.setattr(
         helpers_module,
         "peek_pending_count",

@@ -17,6 +17,7 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    accept_client_message,
     claim_client_message,
     clear_pending_messages_unsafe,
     drain_and_format_for_injection,
@@ -24,7 +25,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_followup,
     format_pending_as_user_message,
-    is_client_message_claimed,
+    client_message_state,
     peek_pending_count,
     peek_pending_messages,
     push_pending_message,
@@ -42,6 +43,7 @@ class _FakeRedis:
         # handle both and our tests exercise both.
         self.lists: dict[str, list[str | bytes]] = {}
         self.strings: dict[str, str] = {}
+        self.ttls: dict[str, int | None] = {}
         self.published: list[tuple[str, str]] = []
 
     async def rpush(self, key: str, *values: Any) -> int:
@@ -105,7 +107,11 @@ class _FakeRedis:
         if nx and key in self.strings:
             return None
         self.strings[key] = value
+        self.ttls[key] = ex
         return True
+
+    async def get(self, key: str) -> str | None:
+        return self.strings.get(key)
 
     async def exists(self, key: str) -> int:
         return int(key in self.strings or key in self.lists)
@@ -822,21 +828,42 @@ def test_buffer_and_session_meta_keys_share_cluster_slot() -> None:
 # ── Client message claims (SECRT-2695) ──────────────────────────────
 
 
+@pytest.fixture()
+def short_claim_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pm_module, "_CLIENT_MESSAGE_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(pm_module, "_CLIENT_MESSAGE_POLL_SECONDS", 0.01)
+
+
 @pytest.mark.asyncio
 async def test_client_message_claim_is_granted_once(fake_redis: _FakeRedis) -> None:
-    """A retransmit of an accepted send must find the id already claimed."""
-    assert await claim_client_message("sess-1", "msg-a") is True
-    assert await claim_client_message("sess-1", "msg-a") is False
-    assert await is_client_message_claimed("sess-1", "msg-a") is True
+    """A retransmit of an accepted send must find the id already taken."""
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
+    await accept_client_message("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a") == "accepted"
+    assert await client_message_state("sess-1", "msg-a") == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_client_message_reservation_is_short_and_acceptance_long(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A request that dies before settling its send must not block the id
+    for the hour an accepted send is remembered."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+
+    await claim_client_message("sess-1", "msg-a")
+    assert fake_redis.ttls[key] == pm_module._CLIENT_MESSAGE_RESERVE_TTL_SECONDS
+    await accept_client_message("sess-1", "msg-a")
+    assert fake_redis.ttls[key] == pm_module._PENDING_TTL_SECONDS
 
 
 @pytest.mark.asyncio
 async def test_client_message_claims_are_per_id_and_session(
     fake_redis: _FakeRedis,
 ) -> None:
-    assert await claim_client_message("sess-1", "msg-a") is True
-    assert await claim_client_message("sess-1", "msg-b") is True
-    assert await claim_client_message("sess-2", "msg-a") is True
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
+    assert await claim_client_message("sess-1", "msg-b") == "claimed"
+    assert await claim_client_message("sess-2", "msg-a") == "claimed"
 
 
 @pytest.mark.asyncio
@@ -844,10 +871,50 @@ async def test_released_client_message_can_be_claimed_again(
     fake_redis: _FakeRedis,
 ) -> None:
     """A refused send drops its claim so the same id can land on retry."""
-    assert await claim_client_message("sess-1", "msg-a") is True
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
     await release_client_message("sess-1", "msg-a")
-    assert await is_client_message_claimed("sess-1", "msg-a") is False
-    assert await claim_client_message("sess-1", "msg-a") is True
+    assert await client_message_state("sess-1", "msg-a") is None
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_copy_during_reservation_waits_for_acceptance(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    """A copy is not told the send was taken until it has been."""
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
+    copy = asyncio.create_task(claim_client_message("sess-1", "msg-a"))
+    await asyncio.sleep(0.02)
+    assert not copy.done()
+
+    await accept_client_message("sess-1", "msg-a")
+
+    assert await copy == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_copy_during_reservation_takes_the_id_when_the_first_is_refused(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    """The first copy was refused, so the send was never taken: the copy
+    carries it instead of being answered as a duplicate."""
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
+    copy = asyncio.create_task(claim_client_message("sess-1", "msg-a"))
+    await asyncio.sleep(0.02)
+
+    await release_client_message("sess-1", "msg-a")
+
+    assert await copy == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_copy_gives_up_when_the_reservation_outlasts_the_wait(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
+
+    assert await claim_client_message("sess-1", "msg-a") == "reserved"
+    assert await client_message_state("sess-1", "msg-a") == "reserved"
 
 
 @pytest.mark.asyncio
@@ -858,6 +925,7 @@ async def test_client_message_claims_fail_open_on_redis_error(
     monkeypatch.setattr(
         pm_module, "get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
     )
-    assert await claim_client_message("sess-1", "msg-a") is True
-    assert await is_client_message_claimed("sess-1", "msg-a") is False
+    assert await claim_client_message("sess-1", "msg-a") == "claimed"
+    assert await client_message_state("sess-1", "msg-a") is None
+    await accept_client_message("sess-1", "msg-a")
     await release_client_message("sess-1", "msg-a")
