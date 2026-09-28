@@ -4,9 +4,13 @@ These tests cover ``_baseline_conversation_updater`` and ``_BaselineStreamState`
 without requiring API keys, database connections, or network access.
 """
 
+import asyncio
+import logging
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.edges import EntityEdge
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
@@ -31,12 +35,15 @@ from backend.copilot.baseline.service import (
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
     _natural_finish_empty_notice_text,
+    _refresh_follow_up_warm_context,
     _split_user_message_after_skills_block,
     _supports_prompt_cache_markers,
     stream_chat_completion_baseline,
 )
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
+from backend.copilot.graphiti import context as graphiti_context
+from backend.copilot.graphiti import context_refresh
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
@@ -2892,6 +2899,215 @@ class TestApplySkillsCacheBreakpoint:
         assert out[3] is usr2
 
 
+class TestRefreshFollowUpWarmContext:
+    """SECRT-2378 follow-up refresh gate on the BASELINE engine.
+
+    The SDK path has ``TestAppendFollowUpWarmContext``; this gate differs
+    (message count vs. has-history, no post-compaction force), so it needs
+    its own pins rather than inheriting confidence from the other engine.
+    """
+
+    @pytest.mark.asyncio
+    async def test_refreshes_on_a_follow_up_user_turn(self):
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _refresh_follow_up_warm_context(
+                None,
+                graphiti_enabled=True,
+                user_id="u-1",
+                expert_id=None,
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message="deploy the staging environment now",
+            )
+
+        assert out == "<temporal_context>fresh</temporal_context>"
+        # The baseline cannot tell it compacted, so it never forces.
+        mock_refresh.assert_awaited_once_with(
+            "u-1", "deploy the staging environment now", expert_id=None, force=False
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"graphiti_enabled": False},
+            {"user_id": None},
+            {"is_user_message": False},
+            {"pre_drain_msg_count": 1},
+        ],
+        ids=["flag-off", "no-user", "not-a-user-turn", "first-turn"],
+    )
+    async def test_gate_blocks_and_preserves_existing_context(self, kwargs):
+        """Each gate arm must skip the fetch AND leave the first-turn block
+        intact — returning None here would silently drop the cross-encoder
+        context the first turn already loaded."""
+        base = {
+            "graphiti_enabled": True,
+            "user_id": "u-1",
+            "expert_id": None,
+            "is_user_message": True,
+            "pre_drain_msg_count": 4,
+            "message": "deploy the staging environment now",
+        }
+        base.update(kwargs)
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _refresh_follow_up_warm_context(
+                "<temporal_context>first</temporal_context>", **base
+            )
+
+        assert out == "<temporal_context>first</temporal_context>"
+        mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_queries_on_the_folded_message_not_the_raw_send(self):
+        """The call site runs after the pending fold: a queued substantive
+        request paired with a short current send must still drive recall."""
+        folded = "restart the executor\n\nok"
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_refresh:
+            await _refresh_follow_up_warm_context(
+                None,
+                graphiti_enabled=True,
+                user_id="u-1",
+                expert_id=None,
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message=folded,
+            )
+
+        assert mock_refresh.await_args.args[1] == folded
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "message, reads",
+        [("ok", False), ("deploy the staging environment now", True)],
+        ids=["substance-gate", "empty-graph"],
+    )
+    async def test_empty_refresh_preserves_incoming_context(self, message, reads):
+        """The outer gate fires but the refresh yields nothing — the substance
+        gate skips a trivial message before any read, or the graph has
+        nothing for a substantive one.
+
+        Returning that None straight through would WIPE context the caller
+        already had, which is the opposite of this helper's contract. Benign
+        today only because ``warm_ctx`` is always None on follow-ups; this
+        pins the behaviour so a future change that does populate it can't
+        silently drop it.
+        """
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_refresh:
+            out = await _refresh_follow_up_warm_context(
+                "<temporal_context>first</temporal_context>",
+                graphiti_enabled=True,
+                user_id="u-1",
+                expert_id=None,
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message=message,
+            )
+
+        assert mock_refresh.await_count == (1 if reads else 0)
+        assert out == "<temporal_context>first</temporal_context>"
+
+
+_GRACE_MS = 300
+# How much later than the grace a join may return: the event loop's timer
+# granularity (about 16 ms on Windows) and the task's cancellation.
+_JOIN_SLACK_S = 0.25
+
+
+async def _search_that_never_answers(*_args, **_kwargs):
+    await asyncio.Event().wait()
+
+
+def _staging_edge() -> EntityEdge:
+    return EntityEdge(
+        uuid="edge-staging",
+        group_id="user_u-1",
+        source_node_uuid="staging",
+        target_node_uuid="k3s",
+        created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        name="runs_on",
+        fact="the staging environment runs on k3s",
+        valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        attributes={"status": "active"},
+    )
+
+
+class TestFollowUpRefreshJoinGrace:
+    """The baseline engine starts the refresh after the pending fold, with
+    nothing to overlap, so ``warm_context_refresh_join_grace_ms`` is its
+    whole budget: the most it adds to time-to-first-token. Driven through
+    the real ``refresh_warm_context`` with the graph reads stubbed."""
+
+    async def _refresh(self, search) -> tuple[str | None, float]:
+        with (
+            patch.object(
+                context_refresh.graphiti_config,
+                "warm_context_refresh_join_grace_ms",
+                _GRACE_MS,
+            ),
+            patch.object(graphiti_context, "search_facts", new=search),
+            patch.object(
+                graphiti_context,
+                "recent_episodes",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                graphiti_context,
+                "recheck",
+                new=AsyncMock(side_effect=lambda _scope, edges, eps: (edges, eps)),
+            ),
+        ):
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            out = await _refresh_follow_up_warm_context(
+                None,
+                graphiti_enabled=True,
+                user_id="u-1",
+                expert_id=None,
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message="deploy the staging environment now",
+            )
+            return out, loop.time() - started
+
+    @pytest.mark.asyncio
+    async def test_a_hung_search_adds_at_most_the_grace(self, caplog):
+        caplog.set_level(logging.INFO, logger=context_refresh.__name__)
+
+        out, waited = await self._refresh(_search_that_never_answers)
+
+        assert out is None
+        assert _GRACE_MS / 1000 - 0.05 <= waited <= _GRACE_MS / 1000 + _JOIN_SLACK_S
+        late = [r for r in caplog.records if "refresh late, skipped" in r.message]
+        assert len(late) == 1 and late[0].levelno == logging.INFO
+
+    @pytest.mark.asyncio
+    async def test_a_fast_search_is_still_injected(self, caplog):
+        caplog.set_level(logging.INFO, logger=context_refresh.__name__)
+
+        out, waited = await self._refresh(AsyncMock(return_value=[_staging_edge()]))
+
+        assert out is not None
+        assert "the staging environment runs on k3s" in out
+        assert waited < _GRACE_MS / 1000
+        assert "refresh late" not in caplog.text
+
+
 class _StopAfterExpertsGate(Exception):
     """Raised by a mocked ``build_builder_system_prompt_suffix`` to abort
     ``stream_chat_completion_baseline`` immediately after it resolves
@@ -3123,3 +3339,99 @@ class TestBaselineToolExecutorForwardsDisabledGroups:
         )
 
         assert kwargs["disabled_tools"] == frozenset({"run_agent"})
+
+
+class _StopAtWarmContextRefresh(Exception):
+    """Raised by the patched refresh so the turn loop aborts the moment the
+    SECRT-2378 call site is reached."""
+
+
+@pytest.mark.asyncio
+async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
+    """The helper is proven in isolation above; this pins the CALL SITE — the
+    argument wiring in the turn loop, which is where SECRT-2378 actually lived.
+    A helper that gates correctly on arguments the loop never passes it would
+    leave every follow-up turn without recall and all the unit tests green.
+    An expert chat, so the scope the refresh reads is the expert's, as the
+    first turn's was."""
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    session.title = "already titled"
+    session.messages = [
+        ChatMessage(role="user", content="first question"),
+        ChatMessage(role="assistant", content="first answer"),
+    ]
+    seen: dict[str, object] = {}
+
+    async def capture(warm_ctx, **kwargs):
+        seen.update(kwargs)
+        seen["warm_ctx"] = warm_ctx
+        raise _StopAtWarmContextRefresh
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.drain_pending_safe",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._resolve_baseline_model",
+            new=AsyncMock(
+                return_value=ResolvedModel(
+                    model="anthropic/claude-sonnet-4-6", source="env"
+                )
+            ),
+        ),
+        patch(
+            "backend.copilot.baseline.service.normalize_model_for_transport",
+            new=MagicMock(side_effect=lambda model, cfg=None: model),
+        ),
+        # Where the turn loop looks it up: patched at its source module it
+        # would still run, and with an E2B key configured locally it would
+        # reach E2B for the expert's box.
+        patch(
+            "backend.copilot.baseline.service.get_or_create_sandbox",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.baseline.service._build_system_prompt",
+            new=AsyncMock(return_value=("system prompt", None)),
+        ),
+        # The Graphiti gate: on for this turn, so the refresh must be wired.
+        patch(
+            "backend.copilot.baseline.service.is_enabled_for_user",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service._refresh_follow_up_warm_context",
+            new=capture,
+        ),
+        pytest.raises(_StopAtWarmContextRefresh),
+    ):
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message="restart the executor and redeploy staging",
+            user_id="user-1",
+            session=session,
+        ):
+            pass
+
+    assert seen["graphiti_enabled"] is True
+    assert seen["user_id"] == "user-1"
+    assert seen["expert_id"] == "expert-1"
+    assert seen["is_user_message"] is True
+    # The pre-drain count is what distinguishes turn 1 (already loaded warm
+    # context with the precise recipe) from later turns (this refresh): two
+    # prior messages plus the current user turn.
+    assert seen["pre_drain_msg_count"] == 3
+    assert seen["message"] == "restart the executor and redeploy staging"
