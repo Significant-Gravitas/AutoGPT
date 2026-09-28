@@ -1,3 +1,4 @@
+import inspect
 import logging
 import os
 
@@ -100,25 +101,71 @@ async def setup_admin_user(admin_user_id):
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def graph_cleanup(server):
-    created_graph_ids = []
-    original_create_graph = server.agent_server.test_create_graph
+    """Delete the graphs and store listings that tests created through the test
+    server, at the end of the session, so they don't pile up in the test DB."""
+    created_graphs: list[tuple[str, str]] = []
+    created_listing_ids: list[str] = []
+    agent_server = server.agent_server
+    original_create_graph = agent_server.test_create_graph
+    original_create_store_listing = agent_server.test_create_store_listing
 
     async def create_graph_wrapper(*args, **kwargs):
         created_graph = await original_create_graph(*args, **kwargs)
-        # Extract user_id correctly
-        user_id = kwargs.get("user_id", args[2] if len(args) > 2 else None)
-        created_graph_ids.append((created_graph.id, user_id))
+        # Callers pass user_id both positionally and by keyword.
+        call = inspect.signature(original_create_graph).bind(*args, **kwargs)
+        user_id = call.arguments["user_id"]
+        created_graphs.extend(
+            (graph.id, user_id) for graph in [created_graph, *created_graph.sub_graphs]
+        )
         return created_graph
 
+    async def create_store_listing_wrapper(*args, **kwargs):
+        from fastapi.responses import JSONResponse
+
+        store_listing = await original_create_store_listing(*args, **kwargs)
+        if not isinstance(store_listing, JSONResponse):
+            created_listing_ids.append(store_listing.listing_id)
+        return store_listing
+
     try:
-        server.agent_server.test_create_graph = create_graph_wrapper
+        agent_server.test_create_graph = create_graph_wrapper
+        agent_server.test_create_store_listing = create_store_listing_wrapper
         yield  # This runs the test function
     finally:
-        server.agent_server.test_create_graph = original_create_graph
+        agent_server.test_create_graph = original_create_graph
+        agent_server.test_create_store_listing = original_create_store_listing
+        await _delete_test_graphs(agent_server, created_graphs, created_listing_ids)
 
-        # Delete the created graphs and assert they were deleted
-        for graph_id, user_id in created_graph_ids:
-            if user_id:
-                resp = await server.agent_server.test_delete_graph(graph_id, user_id)
-                num_deleted = resp["version_counts"]
-                assert num_deleted > 0, f"Graph {graph_id} was not deleted."
+
+async def _delete_test_graphs(
+    agent_server, created_graphs: list[tuple[str, str]], listing_ids: list[str]
+) -> None:
+    from prisma.models import (
+        AgentGraph,
+        AgentNodeExecutionInputOutput,
+        AgentPreset,
+        LibraryAgent,
+        StoreListing,
+    )
+
+    graph_ids = [graph_id for graph_id, _ in created_graphs]
+    # Listing versions, presets and every user's library entries hold the graph
+    # (onDelete: Restrict), so they go first. Deleting a listing cascades to
+    # its versions and their reviews; a preset's saved inputs would only be
+    # orphaned, so they are deleted with it.
+    await StoreListing.prisma().delete_many(where={"id": {"in": listing_ids}})
+    await LibraryAgent.prisma().delete_many(where={"agentGraphId": {"in": graph_ids}})
+    presets = await AgentPreset.prisma().find_many(
+        where={"agentGraphId": {"in": graph_ids}}
+    )
+    preset_ids = [preset.id for preset in presets]
+    await AgentNodeExecutionInputOutput.prisma().delete_many(
+        where={"agentPresetId": {"in": preset_ids}}
+    )
+    await AgentPreset.prisma().delete_many(where={"id": {"in": preset_ids}})
+    for graph_id, user_id in created_graphs:
+        await agent_server.test_delete_graph(graph_id, user_id)
+
+    remaining = await AgentGraph.prisma().find_many(where={"id": {"in": graph_ids}})
+    leftover = sorted({graph.id for graph in remaining})
+    assert not leftover, f"Test graphs were not deleted: {leftover}"

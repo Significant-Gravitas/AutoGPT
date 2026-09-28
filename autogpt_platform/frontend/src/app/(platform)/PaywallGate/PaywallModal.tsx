@@ -1,19 +1,19 @@
 "use client";
 
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
-import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
-import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
-import { usePaywallModal } from "./usePaywallModal";
-import { Logout03Icon, PlayCircleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/SubscriptionPlans";
+import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
+import { Logout03Icon } from "@hugeicons/core-free-icons";
+import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
+import { PaywallHeader } from "./components/PaywallHeader";
+import { usePaywallModal } from "./usePaywallModal";
 
-// Non-dismissable Stripe paywall for NO_TIER users. Reuses the onboarding
-// PlanCard + Monthly/Yearly toggle so both surfaces share one visual.
+// Non-dismissable Stripe paywall for NO_TIER users. Renders the same
+// SubscriptionPlans organism as the onboarding paywall, so both surfaces share
+// one visual and one free-trial offer.
 export function PaywallModal() {
   const {
     isLoading,
@@ -21,7 +21,6 @@ export function PaywallModal() {
     retryLoadPlans,
     isRetryingPlans,
     country,
-    isYearly,
     selectedCycle,
     setSelectedCycle,
     handleSelectPlan,
@@ -32,6 +31,8 @@ export function PaywallModal() {
     confirmPendingTier,
     cancelPendingTier,
     handleLogout,
+    trial,
+    trialOffer,
   } = usePaywallModal();
 
   return (
@@ -54,72 +55,9 @@ export function PaywallModal() {
               Log out
             </Button>
           </div>
-          <div className="flex flex-col items-center gap-1 text-center">
-            <Text
-              variant="h3"
-              className="!text-[1.375rem] !leading-[1.6rem] md:!text-[1.75rem] md:!leading-[2.5rem]"
-            >
-              Choose the plan that&apos;s right for{" "}
-              <span className="bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-                you
-              </span>
-            </Text>
-            <Text variant="body" className="!text-zinc-500">
-              Pick a plan to start working with experts and running agents.
-            </Text>
-            <Link
-              href="/tour/chat?utm_source=platform_paywall"
-              target="_blank"
-              className="mt-2 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50/60 px-4 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-violet-100/60"
-            >
-              <Icon
-                icon={PlayCircleIcon}
-                className="size-5 shrink-0 text-violet-600"
-              />
-              <span>
-                Not sure yet?{" "}
-                <span className="font-semibold text-violet-700">Try it</span> —
-                Instant demo — No signup
-              </span>
-            </Link>
-          </div>
+          <PaywallHeader />
 
-          {plans.length > 0 && (
-            <div
-              role="radiogroup"
-              aria-label="Billing cycle"
-              className="inline-flex rounded-full border border-[#d8d8d8] bg-zinc-100 p-[3px]"
-            >
-              {(["monthly", "yearly"] as const).map((cycle) => (
-                <button
-                  key={cycle}
-                  role="radio"
-                  aria-checked={selectedCycle === cycle}
-                  type="button"
-                  onClick={() => setSelectedCycle(cycle)}
-                  className={cn(
-                    "rounded-full border-none px-4 py-1.5 text-xs font-medium transition-all",
-                    selectedCycle === cycle
-                      ? "bg-white text-zinc-900 shadow-sm"
-                      : "bg-transparent text-zinc-500 hover:text-zinc-700",
-                  )}
-                >
-                  {cycle === "monthly" ? (
-                    "Monthly billing"
-                  ) : (
-                    <>
-                      Yearly billing{" "}
-                      <span className="ml-1.5 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 bg-clip-text text-[11px] font-semibold text-transparent">
-                        Save 15%
-                      </span>
-                    </>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="relative mt-2 w-full max-w-[75.625rem]">
+          <div className="relative mt-2 w-full">
             {isLoading ? (
               <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
                 <Skeleton className="h-[26rem] rounded-2xl" />
@@ -142,28 +80,28 @@ export function PaywallModal() {
                 </Button>
               </div>
             ) : (
-              <div
-                className={cn(
-                  "grid w-full gap-4 px-[1rem] md:px-0",
-                  plans.length === 1 && "grid-cols-1",
-                  plans.length === 2 && "grid-cols-1 md:grid-cols-2",
-                  plans.length >= 3 && "grid-cols-1 md:grid-cols-3",
-                )}
-              >
-                {plans.map((plan) => (
-                  <PlanCard
-                    key={plan.key}
-                    plan={plan}
-                    country={country}
-                    isYearly={isYearly}
-                    onSelect={() => handleSelectPlan(plan.key)}
-                    loading={isPending && selectedTier === plan.key}
-                    disabled={isPending && selectedTier !== plan.key}
-                    priceCaption="billing-period"
-                    ctaGoalSurface="upgrade_modal"
-                  />
-                ))}
-              </div>
+              <SubscriptionPlans
+                // The modal renders its own title above, so the organism
+                // contributes only the billing toggle.
+                header={null}
+                goalSurface="upgrade_modal"
+                plans={plans}
+                country={country}
+                billing={selectedCycle}
+                onBillingChange={setSelectedCycle}
+                onSelectPlan={handleSelectPlan}
+                isUpdatingTier={isPending}
+                selectedPlan={selectedTier}
+                trialOffer={trialOffer}
+                onStartTrial={trial.startTrial}
+                isStartingTrial={trial.isStarting}
+                trialError={trial.error}
+                trialStatus={
+                  !trialOffer && (
+                    <TrialCardContent returnTo="billing" controller={trial} />
+                  )
+                }
+              />
             )}
           </div>
         </div>
