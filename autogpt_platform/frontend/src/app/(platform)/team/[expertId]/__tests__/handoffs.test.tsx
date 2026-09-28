@@ -91,6 +91,7 @@ function withHandoffs(delegations: DelegationSummary[]) {
   server.use(
     getListDelegationsMockHandler200({
       delegations,
+      total: delegations.length,
       summary: {
         working: 0,
         needs_you: 0,

@@ -6895,7 +6895,7 @@
       "get": {
         "tags": ["v2", "experts", "experts", "private", "experts"],
         "summary": "List Delegations",
-        "description": "The user's hand-offs, newest first, with counts and today's spend.",
+        "description": "The user's hand-offs, newest first, a page at a time, with the total\nthat matched and counts and today's spend.",
         "operationId": "list_delegations",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6954,6 +6954,18 @@
               "minimum": 1,
               "default": 50,
               "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
             }
           }
         ],
@@ -19368,6 +19380,10 @@
             "title": "Delegation Cap Stopped",
             "default": false
           },
+          "delegation_cap_raised_for": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegation Cap Raised For"
+          },
           "pending_question": {
             "anyOf": [
               { "$ref": "#/components/schemas/PendingQuestion" },
@@ -21012,10 +21028,11 @@
             "type": "array",
             "title": "Delegations"
           },
+          "total": { "type": "integer", "title": "Total" },
           "summary": { "$ref": "#/components/schemas/DelegationCounts" }
         },
         "type": "object",
-        "required": ["delegations", "summary"],
+        "required": ["delegations", "total", "summary"],
         "title": "DelegationListResponse"
       },
       "DelegationSettings": {

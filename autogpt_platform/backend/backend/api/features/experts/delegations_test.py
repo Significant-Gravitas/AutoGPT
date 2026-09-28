@@ -17,7 +17,11 @@ from prisma.models import (
 )
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.features.experts.delegations import brief_of, list_delegations
+from backend.api.features.experts.delegations import (
+    _elapsed,
+    brief_of,
+    list_delegations,
+)
 from backend.copilot.constants import COPILOT_ERROR_PREFIX
 from backend.copilot.delegation_list_db import HELD_HANDOFF_PREFIX
 from backend.data.db import prisma as db_client
@@ -268,7 +272,49 @@ async def test_filters_narrow_by_status_and_expert(team):
     await _seed(user_id, expert_id, otto)
 
     asking = await list_delegations(user_id, status="needs_input")
+    proposed = await list_delegations(user_id, status="proposed", expert_id=expert_id)
     other = await list_delegations(user_id, expert_id="someone-else")
 
     assert [r.question_options for r in asking.delegations] == [["Q4", "December"]]
-    assert other.delegations == []
+    assert asking.total == 1
+    assert [r.status for r in proposed.delegations] == ["proposed"]
+    assert (other.delegations, other.total) == ([], 0)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_status_filter_reaches_past_the_newest_page(team):
+    """The filter runs before the limit: an old match is still found."""
+    user_id, expert_id, otto = team
+    ids = await _seed(user_id, expert_id, otto)
+
+    done = await list_delegations(user_id, status="completed", limit=1)
+
+    assert [r.sub_session_id for r in done.delegations] == [ids["done"]]
+    assert done.total == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_pages_walk_the_merged_list_with_one_total(team):
+    user_id, expert_id, otto = team
+    await _seed(user_id, expert_id, otto)
+    everything = await list_delegations(user_id)
+
+    pages = [
+        await list_delegations(user_id, limit=2, offset=offset) for offset in (0, 2, 4)
+    ]
+
+    assert [r.status for p in pages for r in p.delegations] == [
+        r.status for r in everything.delegations
+    ]
+    assert {p.total for p in pages} == {6}
+    # The counts describe every hand-off in scope, not the page.
+    assert {p.summary.needs_you for p in pages} == {2}
+
+
+def test_a_running_thread_counts_up_from_a_naive_start():
+    """A raw read returns the zone-less column naive; elapsed still works."""
+    started = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=2)
+
+    elapsed = _elapsed(started, None)
+
+    assert 110 < elapsed < 130

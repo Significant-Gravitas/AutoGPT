@@ -8,8 +8,6 @@ scoped to ``user_id`` in every query.
 from datetime import UTC, datetime
 from typing import Any
 
-from prisma.enums import ReviewStatus
-from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import PendingHumanReview
 from pydantic import BaseModel, field_validator
 
@@ -17,9 +15,7 @@ from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
 )
-from backend.copilot.db import _PENDING_QUESTION_SESSION_COLUMNS as SESSION_COLUMNS
-from backend.copilot.delegation_db import delegated_session_sql
-from backend.copilot.model import ChatSessionInfo
+from backend.copilot.delegation_threads_db import DelegationFilter
 from backend.data import db
 
 # ``gate.review.node_id_for("delegate_to_expert")`` plus the separator, built
@@ -31,8 +27,6 @@ HELD_HANDOFF_PREFIX = (
 
 class ThreadMessages(BaseModel):
     first_user_content: str | None = None
-    last_role: str | None = None
-    last_content: str | None = None
     last_at: datetime | None = None
 
     @field_validator("last_at")
@@ -51,34 +45,6 @@ class HeldHandoff(BaseModel):
     created_at: datetime
 
 
-async def list_delegated_sessions(
-    user_id: str,
-    *,
-    expert_id: str | None = None,
-    parent_session_id: str | None = None,
-    limit: int = 50,
-    question_only: bool = False,
-) -> list[ChatSessionInfo]:
-    """The user's delegated threads, newest first."""
-    rows = await db.query_raw_with_schema(
-        f'SELECT {SESSION_COLUMNS} FROM {{schema_prefix}}"ChatSession" '
-        'WHERE "userId" = $1 AND '
-        + delegated_session_sql()
-        + ' AND ($2::text IS NULL OR "expertId" = $2) '
-        "AND ($3::text IS NULL OR \"metadata\" ->> 'delegated_by_session_id' = $3) "
-        "AND (NOT $4::boolean OR "
-        "jsonb_typeof(\"metadata\" -> 'pending_question') = 'object') "
-        'ORDER BY "createdAt" DESC LIMIT $5',
-        user_id,
-        expert_id,
-        parent_session_id,
-        question_only,
-        limit,
-        model=PrismaChatSession,
-    )
-    return [ChatSessionInfo.from_db(row) for row in rows]
-
-
 async def get_thread_messages(
     user_id: str, session_ids: list[str]
 ) -> dict[str, ThreadMessages]:
@@ -90,8 +56,6 @@ async def get_thread_messages(
     return {
         sid: ThreadMessages(
             first_user_content=first.get(sid, {}).get("content"),
-            last_role=last.get(sid, {}).get("role"),
-            last_content=last.get(sid, {}).get("content"),
             last_at=last.get(sid, {}).get("created_at"),
         )
         for sid in session_ids
@@ -117,18 +81,22 @@ async def count_session_files(user_id: str, session_ids: list[str]) -> dict[str,
 
 
 async def list_held_handoffs(
-    user_id: str, parent_session_id: str | None = None
+    user_id: str, filters: DelegationFilter, *, limit: int = 50
 ) -> list[HeldHandoff]:
     """Hand-offs waiting on the user's approval card, newest first."""
-    rows = await PendingHumanReview.prisma().find_many(
-        where={
-            "userId": user_id,
-            "status": ReviewStatus.WAITING,
-            "nodeExecId": {"startswith": HELD_HANDOFF_PREFIX},
-            **({"chatSessionId": parent_session_id} if parent_session_id else {}),
-        },
+    rows = await db.query_raw_with_schema(
+        'SELECT "nodeExecId" AS id FROM {schema_prefix}"PendingHumanReview" '
+        + _HELD
+        + 'ORDER BY "createdAt" DESC LIMIT $5',
+        *_held_params(user_id, filters),
+        limit,
+    )
+    ids = [str(row["id"]) for row in rows]
+    if not ids:
+        return []
+    reviews = await PendingHumanReview.prisma().find_many(
+        where={"userId": user_id, "nodeExecId": {"in": ids}},
         order={"createdAt": "desc"},
-        take=50,
     )
     return [
         HeldHandoff(
@@ -137,8 +105,35 @@ async def list_held_handoffs(
             payload=row.payload if isinstance(row.payload, dict) else {},
             created_at=row.createdAt,
         )
-        for row in rows
+        for row in reviews
     ]
+
+
+async def count_held_handoffs(user_id: str, filters: DelegationFilter) -> int:
+    rows = await db.query_raw_with_schema(
+        'SELECT COUNT(*) AS n FROM {schema_prefix}"PendingHumanReview" ' + _HELD,
+        *_held_params(user_id, filters),
+    )
+    return int(rows[0]["n"]) if rows else 0
+
+
+# $1 user, $2 id prefix, $3 expert, $4 parent chat. ``left`` rather than LIKE:
+# the prefix holds underscores, which LIKE reads as wildcards.
+_HELD = (
+    'WHERE "userId" = $1 AND "status" = \'WAITING\' '
+    'AND left("nodeExecId", length($2)) = $2 '
+    "AND ($3::text IS NULL OR \"payload\" -> 'handoff' ->> 'expert_id' = $3) "
+    'AND ($4::text IS NULL OR "chatSessionId" = $4) '
+)
+
+
+def _held_params(user_id: str, filters: DelegationFilter) -> tuple[str | None, ...]:
+    return (
+        user_id,
+        HELD_HANDOFF_PREFIX,
+        filters.expert_id,
+        filters.parent_session_id,
+    )
 
 
 async def _edge_messages(

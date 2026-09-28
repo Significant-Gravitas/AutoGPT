@@ -98,6 +98,7 @@ export function mockOttoApi() {
     getListCopilotSkillsMockHandler200([]),
     getListDelegationsMockHandler200({
       delegations: DELEGATIONS,
+      total: DELEGATIONS.length,
       summary: {
         working: 1,
         needs_you: 1,

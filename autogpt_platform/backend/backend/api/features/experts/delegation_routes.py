@@ -48,13 +48,16 @@ async def list_delegations(
     ),
     status: DelegationStatus | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10_000),
     user_id: str = Security(get_user_id),
 ) -> DelegationListResponse:
-    """The user's hand-offs, newest first, with counts and today's spend."""
+    """The user's hand-offs, newest first, a page at a time, with the total
+    that matched and counts and today's spend."""
     return await delegations.list_delegations(
         user_id,
         expert_id=expert_id,
         parent_session_id=parent_session_id,
         status=status,
         limit=limit,
+        offset=offset,
     )

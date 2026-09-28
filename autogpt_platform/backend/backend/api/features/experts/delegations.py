@@ -14,19 +14,17 @@ from pydantic import BaseModel, ValidationError
 
 from backend.api.features.experts import experts_db
 from backend.copilot import delegation_db, delegation_list_db
-from backend.copilot.constants import (
-    COPILOT_ERROR_PREFIX,
-    COPILOT_RETRYABLE_ERROR_PREFIX,
-)
 from backend.copilot.delegation_list_db import HeldHandoff, ThreadMessages
 from backend.copilot.delegation_settings import start_of_utc_day
-from backend.copilot.gate.handoff import HandoffCard
-from backend.copilot.model import (
-    CHAT_STATUS_QUEUED,
-    CHAT_STATUS_RUNNING,
-    ChatSessionInfo,
+from backend.copilot.delegation_threads_db import (
+    DelegatedThread,
+    DelegationFilter,
+    ThreadStatus,
+    count_delegated_threads,
+    list_delegated_threads,
 )
-from backend.copilot.stream_registry import CANCELLED_MESSAGE
+from backend.copilot.gate.handoff import HandoffCard
+from backend.copilot.model import ChatSessionInfo
 from backend.copilot.tools.models import DelegatedExpertInfo
 
 DelegationStatus = Literal[
@@ -75,6 +73,8 @@ class DelegationCounts(BaseModel):
 
 class DelegationListResponse(BaseModel):
     delegations: list[DelegationSummary]
+    # Every hand-off matching the filters, across all pages.
+    total: int
     summary: DelegationCounts
 
 
@@ -85,44 +85,62 @@ async def list_delegations(
     parent_session_id: str | None = None,
     status: DelegationStatus | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> DelegationListResponse:
-    """Newest first; ``summary`` counts the listed rows (before ``status``)."""
-    threads = await delegation_list_db.list_delegated_sessions(
-        user_id,
-        expert_id=expert_id,
-        parent_session_id=parent_session_id,
-        limit=limit,
+    """A page of hand-offs, newest first, over held cards and threads alike.
+
+    Every filter runs in SQL, so a page is cut from matching rows only;
+    ``total`` counts every match, and ``summary`` every hand-off in scope
+    whatever the ``status`` filter and page.
+    """
+    scope = DelegationFilter(expert_id=expert_id, parent_session_id=parent_session_id)
+    window = offset + limit
+    held = (
+        await delegation_list_db.list_held_handoffs(user_id, scope, limit=window)
+        if status in (None, "proposed")
+        else []
+    )
+    threads = (
+        await list_delegated_threads(user_id, scope, status=status, limit=window)
+        if status != "proposed"
+        else []
     )
     rows = [
-        *await _proposed(user_id, expert_id, parent_session_id),
+        *(p for h in held if (p := _proposal(h))),
         *await summarize_threads(user_id, threads),
     ]
     rows.sort(key=lambda row: row.created_at, reverse=True)
-    spent = await delegation_db.get_delegation_spend_since(user_id, start_of_utc_day())
+    counts = await count_delegated_threads(user_id, scope)
+    held_count = await delegation_list_db.count_held_handoffs(user_id, scope)
     return DelegationListResponse(
-        delegations=[r for r in rows if status is None or r.status == status][:limit],
-        summary=_counts(rows, spent),
+        delegations=rows[offset:window],
+        total=_total(counts, held_count, status),
+        summary=await _summary_counts(user_id, counts, held_count),
     )
 
 
 async def delegated_questions(user_id: str, limit: int = 10) -> list[DelegationSummary]:
     """Delegated threads paused on a question to the user, newest first."""
-    threads = await delegation_list_db.list_delegated_sessions(
-        user_id, limit=limit, question_only=True
+    threads = await list_delegated_threads(
+        user_id, DelegationFilter(), status="needs_input", limit=limit
     )
     return await summarize_threads(user_id, threads)
 
 
 async def recent_delegations(user_id: str, limit: int = 50) -> list[DelegationSummary]:
     """The newest delegated threads, whatever their state."""
-    threads = await delegation_list_db.list_delegated_sessions(user_id, limit=limit)
+    threads = await list_delegated_threads(user_id, DelegationFilter(), limit=limit)
     return await summarize_threads(user_id, threads)
 
 
 async def summarize_threads(
-    user_id: str, threads: list[ChatSessionInfo]
+    user_id: str, found: list[DelegatedThread]
 ) -> list[DelegationSummary]:
     """One summary per delegated thread, read in a fixed number of queries."""
+    threads = [t.session for t in found]
+    status_by_id: dict[str, DelegationStatus] = {
+        t.session.session_id: t.status for t in found
+    }
     ids = [t.session_id for t in threads]
     messages = await delegation_list_db.get_thread_messages(user_id, ids)
     costs = await delegation_db.get_session_costs(user_id, ids)
@@ -131,6 +149,7 @@ async def summarize_threads(
     return [
         _summary(
             t,
+            status_by_id[t.session_id],
             messages.get(t.session_id, ThreadMessages()),
             costs.get(t.session_id),
             files.get(t.session_id, 0),
@@ -179,31 +198,15 @@ def title_of(brief: str) -> str:
     return first_line[:_TITLE_CHARS] or "Delegated task"
 
 
-def status_of(thread: ChatSessionInfo, messages: ThreadMessages) -> DelegationStatus:
-    if thread.chat_status == CHAT_STATUS_RUNNING:
-        return "running"
-    if thread.chat_status == CHAT_STATUS_QUEUED:
-        return "queued"
-    if thread.metadata.pending_question is not None:
-        return "needs_input"
-    content = messages.last_content or ""
-    if messages.last_role != "assistant":
-        # Idle, yet the turn never answered: it died before a reply or marker.
-        return "failed"
-    if content.startswith((COPILOT_ERROR_PREFIX, COPILOT_RETRYABLE_ERROR_PREFIX)):
-        return "cancelled" if CANCELLED_MESSAGE in content else "failed"
-    return "completed"
-
-
 def _summary(
     thread: ChatSessionInfo,
+    status: DelegationStatus,
     messages: ThreadMessages,
     cost_microdollars: int | None,
     files_count: int,
     expert: DelegatedExpertInfo | None,
 ) -> DelegationSummary:
     brief = brief_of(messages.first_user_content)
-    status = status_of(thread, messages)
     finished_at = messages.last_at if status in _TERMINAL else None
     pending = thread.metadata.pending_question
     return DelegationSummary(
@@ -213,7 +216,7 @@ def _summary(
         title=title_of(brief),
         brief=brief,
         status=status,
-        created_at=thread.started_at,
+        created_at=_utc(thread.started_at),
         finished_at=finished_at,
         elapsed_seconds=_elapsed(thread.started_at, finished_at),
         cost_usd=(cost_microdollars or 0) / _MICRODOLLARS,
@@ -223,19 +226,6 @@ def _summary(
         asked_at=pending.asked_at if pending else None,
         delegated_by_expert_id=thread.metadata.delegated_by_expert_id,
     )
-
-
-async def _proposed(
-    user_id: str, expert_id: str | None, parent_session_id: str | None
-) -> list[DelegationSummary]:
-    held = await delegation_list_db.list_held_handoffs(user_id, parent_session_id)
-    rows = [_proposal(h) for h in held]
-    return [
-        r
-        for r in rows
-        if r is not None
-        and (expert_id is None or (r.expert and r.expert.id == expert_id))
-    ]
 
 
 def _proposal(held: HeldHandoff) -> DelegationSummary | None:
@@ -257,7 +247,7 @@ def _proposal(held: HeldHandoff) -> DelegationSummary | None:
         title=title_of(card.brief),
         brief=card.brief,
         status="proposed",
-        created_at=held.created_at,
+        created_at=_utc(held.created_at),
         finished_at=None,
         elapsed_seconds=None,
         cost_usd=None,
@@ -267,19 +257,34 @@ def _proposal(held: HeldHandoff) -> DelegationSummary | None:
     )
 
 
-def _counts(rows: list[DelegationSummary], spent_microdollars: int) -> DelegationCounts:
-    def count(*statuses: str) -> int:
-        return sum(1 for r in rows if r.status in statuses)
+def _total(
+    counts: dict[ThreadStatus, int], held: int, status: DelegationStatus | None
+) -> int:
+    if status is None:
+        return held + sum(counts.values())
+    if status == "proposed":
+        return held
+    return counts.get(status, 0)
 
+
+async def _summary_counts(
+    user_id: str, counts: dict[ThreadStatus, int], held: int
+) -> DelegationCounts:
+    spent = await delegation_db.get_delegation_spend_since(user_id, start_of_utc_day())
     return DelegationCounts(
-        working=count("running", "queued"),
-        needs_you=count("needs_input", "proposed"),
-        completed=count("completed"),
-        failed=count("failed"),
-        spent_today_usd=round(spent_microdollars / _MICRODOLLARS, 6),
+        working=counts.get("running", 0) + counts.get("queued", 0),
+        needs_you=counts.get("needs_input", 0) + held,
+        completed=counts.get("completed", 0),
+        failed=counts.get("failed", 0),
+        spent_today_usd=round(spent / _MICRODOLLARS, 6),
     )
 
 
 def _elapsed(started: datetime, finished: datetime | None) -> float:
-    end = finished or datetime.now(UTC)
-    return round(max(0.0, (end - started).total_seconds()), 2)
+    """Raw reads return the zone-less UTC columns naive; compare them as UTC."""
+    end = _utc(finished) if finished else datetime.now(UTC)
+    return round(max(0.0, (end - _utc(started)).total_seconds()), 2)
+
+
+def _utc(at: datetime) -> datetime:
+    return at.replace(tzinfo=UTC) if at.tzinfo is None else at.astimezone(UTC)

@@ -102,6 +102,7 @@ def test_the_list_passes_its_filters_for_the_caller(
 ):
     empty = DelegationListResponse(
         delegations=[],
+        total=0,
         summary=DelegationCounts(
             working=0, needs_you=0, completed=0, failed=0, spent_today_usd=0.0
         ),
@@ -114,7 +115,12 @@ def test_the_list_passes_its_filters_for_the_caller(
 
     response = client.get(
         "/experts/delegations",
-        params={"expert_id": "e1", "parent_session_id": "s1", "status": "running"},
+        params={
+            "expert_id": "e1",
+            "parent_session_id": "s1",
+            "status": "running",
+            "offset": 20,
+        },
     )
 
     assert response.status_code == 200
@@ -125,6 +131,7 @@ def test_the_list_passes_its_filters_for_the_caller(
         parent_session_id="s1",
         status="running",
         limit=50,
+        offset=20,
     )
 
 

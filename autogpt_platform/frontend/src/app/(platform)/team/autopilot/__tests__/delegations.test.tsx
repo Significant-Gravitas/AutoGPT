@@ -107,6 +107,7 @@ describe("Otto's Delegations tab", () => {
     server.use(
       getListDelegationsMockHandler200({
         delegations: [],
+        total: 0,
         summary: {
           working: 0,
           needs_you: 0,
