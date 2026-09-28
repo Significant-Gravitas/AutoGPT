@@ -14,6 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.graphiti.context import CONTEXT_TAG_NAME
+from backend.copilot.graphiti.context_marker import INJECTED_MEMORY_ATTRIBUTE
+from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
+
 _SVC = "backend.copilot.service"
 
 
@@ -554,6 +558,19 @@ class TestCacheableSystemPromptContent:
         from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
 
         assert "env_context" in _CACHEABLE_SYSTEM_PROMPT
+
+    def test_cacheable_prompt_describes_the_marked_memory_block(self):
+        """Memory now reaches the model as a marked ``<temporal_context>``
+        block after the user's words in any message, never as a
+        ``<memory_context>`` block at the start of the first one. The prompt
+        spells the tag and the attribute out (service.py does not import
+        graphiti), so pin them to the constants the engines stamp with."""
+        assert (
+            f'<{CONTEXT_TAG_NAME} {INJECTED_MEMORY_ATTRIBUTE}="…">'
+            in _CACHEABLE_SYSTEM_PROMPT
+        )
+        assert "**any** user message" in _CACHEABLE_SYSTEM_PROMPT
+        assert "memory_context" not in _CACHEABLE_SYSTEM_PROMPT
 
 
 class TestStripUserContextTags:

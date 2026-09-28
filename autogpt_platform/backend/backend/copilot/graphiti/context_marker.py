@@ -40,7 +40,11 @@ from .context import CONTEXT_TAG_NAME
 logger = logging.getLogger(__name__)
 
 INJECTED_MEMORY_NONCE = secrets.token_hex(16)
-INJECTED_MEMORY_MARKER = f'data-agpt-injected="{INJECTED_MEMORY_NONCE}"'
+# The attribute the mark sits in. The system prompt names it (without the
+# nonce, which changes per process) when it tells the model which block is
+# memory (``service._CACHEABLE_SYSTEM_PROMPT``).
+INJECTED_MEMORY_ATTRIBUTE = "data-agpt-injected"
+INJECTED_MEMORY_MARKER = f'{INJECTED_MEMORY_ATTRIBUTE}="{INJECTED_MEMORY_NONCE}"'
 
 # Matches only a block stamped with this process's nonce: a tag the user
 # typed is left alone unless it carries that nonce (the limit the module
