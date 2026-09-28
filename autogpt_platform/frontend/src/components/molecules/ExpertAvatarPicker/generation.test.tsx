@@ -55,3 +55,29 @@ test(
   },
   POLLING_TEST_TIMEOUT,
 );
+
+test("offers regeneration when polling fails", async () => {
+  server.use(
+    http.post("*/api/experts/avatars/generations", () =>
+      HttpResponse.json(
+        { id: "failed-poll-job", status: "pending" },
+        { status: 202 },
+      ),
+    ),
+    http.get("*/api/experts/avatars/generations/failed-poll-job", () =>
+      HttpResponse.json({}, { status: 500 }),
+    ),
+  );
+  render(
+    <ExpertAvatarPicker
+      name="Nova"
+      category="development"
+      autoGenerate
+      onPick={vi.fn()}
+    />,
+  );
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Could not check generation. Try again or regenerate.",
+  );
+});

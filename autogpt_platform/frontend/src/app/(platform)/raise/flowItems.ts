@@ -124,7 +124,7 @@ export function clearedAnswer(beat: BeatKey): Partial<RaiseDraft> {
   switch (beat) {
     case "category":
       // The color is answered in the same beat, so going back re-opens both.
-      return { category: null, color: null };
+      return { category: null, color: null, legacyRole: undefined };
     case "jobTitle":
       return { jobTitle: null };
     case "name":
