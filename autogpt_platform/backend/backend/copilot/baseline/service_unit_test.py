@@ -43,6 +43,7 @@ from backend.copilot.baseline.service import (
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
 from backend.copilot.graphiti import context as graphiti_context
+from backend.copilot.graphiti import context_refresh
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
@@ -2909,7 +2910,7 @@ class TestRefreshFollowUpWarmContext:
     @pytest.mark.asyncio
     async def test_refreshes_on_a_follow_up_user_turn(self):
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
@@ -2954,7 +2955,7 @@ class TestRefreshFollowUpWarmContext:
         }
         base.update(kwargs)
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
         ) as mock_refresh:
             out = await _refresh_follow_up_warm_context(
@@ -2970,7 +2971,7 @@ class TestRefreshFollowUpWarmContext:
         request paired with a short current send must still drive recall."""
         folded = "restart the executor\n\nok"
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_refresh:
@@ -3004,7 +3005,7 @@ class TestRefreshFollowUpWarmContext:
         silently drop it.
         """
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_refresh:
@@ -3055,7 +3056,7 @@ class TestFollowUpRefreshJoinGrace:
     async def _refresh(self, search) -> tuple[str | None, float]:
         with (
             patch.object(
-                graphiti_context.graphiti_config,
+                context_refresh.graphiti_config,
                 "warm_context_refresh_join_grace_ms",
                 _GRACE_MS,
             ),
@@ -3086,7 +3087,7 @@ class TestFollowUpRefreshJoinGrace:
 
     @pytest.mark.asyncio
     async def test_a_hung_search_adds_at_most_the_grace(self, caplog):
-        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+        caplog.set_level(logging.INFO, logger=context_refresh.__name__)
 
         out, waited = await self._refresh(_search_that_never_answers)
 
@@ -3097,7 +3098,7 @@ class TestFollowUpRefreshJoinGrace:
 
     @pytest.mark.asyncio
     async def test_a_fast_search_is_still_injected(self, caplog):
-        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+        caplog.set_level(logging.INFO, logger=context_refresh.__name__)
 
         out, waited = await self._refresh(AsyncMock(return_value=[_staging_edge()]))
 

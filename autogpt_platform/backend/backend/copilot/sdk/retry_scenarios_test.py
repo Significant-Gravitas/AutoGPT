@@ -40,7 +40,7 @@ from claude_agent_sdk import (
 from graphiti_core.edges import EntityEdge
 
 from backend.copilot.constants import COMPACTION_TOOL_NAME
-from backend.copilot.graphiti import context as graphiti_context
+from backend.copilot.graphiti import context_refresh
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamCompactionProgress,
@@ -1273,7 +1273,7 @@ class TestFollowUpWarmContextCallSite:
         )
         patches += [
             (
-                "backend.copilot.graphiti.context.refresh_warm_context",
+                "backend.copilot.graphiti.context_refresh.refresh_warm_context",
                 dict(new=refresh),
             ),
             (f"{_SVC}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
@@ -1376,7 +1376,8 @@ class TestFollowUpWarmContextCallSite:
         ctx = "backend.copilot.graphiti.context"
         return [
             (
-                f"{ctx}.graphiti_config.warm_context_refresh_join_grace_ms",
+                "backend.copilot.graphiti.context_refresh.graphiti_config"
+                ".warm_context_refresh_join_grace_ms",
                 dict(new=300),
             ),
             (f"{ctx}.search_facts", dict(new=search)),
@@ -1399,7 +1400,7 @@ class TestFollowUpWarmContextCallSite:
         at the join (a short message a compaction forces). A search that
         never answers costs the turn the grace, is cancelled and logged, and
         the query goes out without a block."""
-        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+        caplog.set_level(logging.INFO, logger=context_refresh.__name__)
         prior = self._big_prior() if forced else None
         ready_at: list[float] = []
         sent_at: list[float] = []
@@ -1410,7 +1411,7 @@ class TestFollowUpWarmContextCallSite:
 
         await self._run(
             self._session("go on" if forced else "restart the executor", prior=prior),
-            graphiti_context.refresh_warm_context,
+            context_refresh.refresh_warm_context,
             self._clients(queries, sent_at=sent_at),
             extra=[
                 *(self._compacting(prior) if prior else []),
@@ -1428,7 +1429,7 @@ class TestFollowUpWarmContextCallSite:
     async def test_a_fast_search_is_injected_without_waiting_out_the_grace(
         self, caplog
     ):
-        caplog.set_level(logging.INFO, logger=graphiti_context.__name__)
+        caplog.set_level(logging.INFO, logger=context_refresh.__name__)
         edge = EntityEdge(
             uuid="edge-executor",
             group_id="user_test-user",
@@ -1446,7 +1447,7 @@ class TestFollowUpWarmContextCallSite:
 
         await self._run(
             self._session("restart the executor"),
-            graphiti_context.refresh_warm_context,
+            context_refresh.refresh_warm_context,
             self._clients(queries, sent_at=sent_at),
             extra=self._graph(AsyncMock(return_value=[edge]), ready_at),
         )

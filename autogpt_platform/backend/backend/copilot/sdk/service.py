@@ -46,7 +46,7 @@ from opentelemetry import trace as otel_trace
 from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot.graphiti import context as graphiti_context
+from backend.copilot.graphiti import context_refresh
 from backend.copilot.model_router import (
     ResolvedModel,
     RoutingSource,
@@ -4787,7 +4787,7 @@ async def _maybe_prepend_skills_update(
 
 
 def _discard_pending_refresh(
-    pending: graphiti_context.PendingRefresh | None,
+    pending: context_refresh.PendingRefresh | None,
 ) -> None:
     """Cancel a started refresh whose result is no longer wanted."""
     if pending is not None:
@@ -4802,13 +4802,13 @@ def _start_follow_up_warm_context(
     user_id: str | None,
     expert_id: str | None,
     current_message: str,
-) -> graphiti_context.PendingRefresh | None:
+) -> context_refresh.PendingRefresh | None:
     """Start the SECRT-2378 refresh before the query is built.
 
     The refresh only needs the current message, so starting it here lets the
     graph round-trip overlap compaction, attachment prep and builder context.
     ``_append_follow_up_warm_context`` joins it once the query is ready and
-    waits at most the join grace for it (``graphiti_context.join_refresh``).
+    waits at most the join grace for it (``context_refresh.join_refresh``).
 
     Returns ``None`` when the turn is not a candidate — the outer gate, or a
     message the substance gate rejects. ``was_compacted`` (the only thing that
@@ -4824,7 +4824,7 @@ def _start_follow_up_warm_context(
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
         return None
-    return graphiti_context.start_refresh(user_id, current_message, expert_id=expert_id)
+    return context_refresh.start_refresh(user_id, current_message, expert_id=expert_id)
 
 
 async def _append_follow_up_warm_context(
@@ -4837,7 +4837,7 @@ async def _append_follow_up_warm_context(
     expert_id: str | None,
     current_message: str,
     was_compacted: bool,
-    pending: graphiti_context.PendingRefresh | None = None,
+    pending: context_refresh.PendingRefresh | None = None,
 ) -> str:
     """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
 
@@ -4868,12 +4868,12 @@ async def _append_follow_up_warm_context(
         _discard_pending_refresh(pending)
         return query_message
     if pending is None:
-        pending = graphiti_context.start_refresh(
+        pending = context_refresh.start_refresh(
             user_id, current_message, expert_id=expert_id, force=was_compacted
         )
     if pending is None:
         return query_message
-    refreshed = await graphiti_context.join_refresh(pending)
+    refreshed = await context_refresh.join_refresh(pending)
     if not refreshed:
         return query_message
     # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``

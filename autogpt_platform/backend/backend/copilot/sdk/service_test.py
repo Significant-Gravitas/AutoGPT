@@ -2670,7 +2670,7 @@ class TestAppendFollowUpWarmContext:
     @pytest.mark.asyncio
     async def test_appends_on_follow_up_user_turn(self):
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
@@ -2693,7 +2693,7 @@ class TestAppendFollowUpWarmContext:
     @pytest.mark.asyncio
     async def test_forces_refresh_after_compaction(self):
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
@@ -2715,7 +2715,7 @@ class TestAppendFollowUpWarmContext:
         that refreshed from the user's personal graph would swap the memory
         set mid-conversation."""
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
@@ -2737,7 +2737,7 @@ class TestAppendFollowUpWarmContext:
         graph round-trip overlaps the query build. Pin that the joiner
         consumes the started refresh rather than issuing a second fetch."""
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value="<temporal_context>fresh</temporal_context>",
         ) as mock_refresh:
@@ -2772,7 +2772,7 @@ class TestAppendFollowUpWarmContext:
         forced path intact for the one case the starter cannot judge yet
         (a short message that turns out to follow a compaction)."""
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
         ) as mock_refresh:
             for override in (
@@ -2806,7 +2806,7 @@ class TestAppendFollowUpWarmContext:
             await asyncio.sleep(3600)
 
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new=_never_finishes,
         ):
             pending = _start_follow_up_warm_context(
@@ -2844,7 +2844,7 @@ class TestAppendFollowUpWarmContext:
         the retry sends: replaying the first block would hand the model the
         fact the user just had forgotten."""
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             side_effect=[
                 "<temporal_context>Alice works on Atlas</temporal_context>",
@@ -2886,7 +2886,7 @@ class TestAppendFollowUpWarmContext:
         post-compaction retry (force=True) must still fetch — a skipped
         refresh must not re-break the headline case this PR fixes."""
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value="<temporal_context>forced</temporal_context>",
         ) as mock_refresh:
@@ -2921,7 +2921,7 @@ class TestAppendFollowUpWarmContext:
         come back byte-identical with no sentinel stamped, or the scrub
         would have a marker with no block to remove."""
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -2941,7 +2941,7 @@ class TestAppendFollowUpWarmContext:
     @pytest.mark.asyncio
     async def test_noop_on_first_turn_or_non_user_or_disabled(self):
         with patch(
-            "backend.copilot.graphiti.context.refresh_warm_context",
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
             new_callable=AsyncMock,
         ) as mock_refresh:
             for override in (

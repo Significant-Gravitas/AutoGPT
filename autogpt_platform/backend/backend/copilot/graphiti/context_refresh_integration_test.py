@@ -19,7 +19,7 @@ import asyncio
 
 import pytest
 
-from . import context
+from . import context, context_refresh
 from .recall_forget import retract
 from .recall_integration_fixtures import (
     ALICE,
@@ -70,7 +70,7 @@ async def test_a_fact_forgotten_between_turns_is_not_refreshed(
     forgot = await retract(scope, [alice[ALICE[2]]], hard=hard)
     assert (forgot.deleted, forgot.failures) == ([alice[ALICE[2]]], [])
 
-    refreshed = await context.refresh_warm_context(
+    refreshed = await context_refresh.refresh_warm_context(
         scope.owner_user_id, "who works on Atlas now"
     )
 

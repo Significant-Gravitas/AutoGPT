@@ -27,7 +27,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from . import client, context
+from . import client, context, context_refresh
 from .config import graphiti_config
 from .falkordb_driver import open_driver
 from .recall_integration_fixtures import ALICE, ingest_facts
@@ -98,7 +98,7 @@ async def test_a_silent_falkordb_neither_stalls_the_loop_nor_outlasts_the_budget
 ) -> None:
     async with _heartbeat() as heartbeat:
         started = time.perf_counter()
-        block = await context.refresh_warm_context("user-silent", _MESSAGE)
+        block = await context_refresh.refresh_warm_context("user-silent", _MESSAGE)
         elapsed = time.perf_counter() - started
         build = client._get_loop_state().building["user_user-silent"]
 
@@ -216,7 +216,9 @@ async def test_a_slow_falkordb_reply_does_not_stall_the_loop_and_the_build_serve
     try:
         async with _heartbeat() as heartbeat:
             started = time.perf_counter()
-            first = await context.refresh_warm_context(scope.owner_user_id, _MESSAGE)
+            first = await context_refresh.refresh_warm_context(
+                scope.owner_user_id, _MESSAGE
+            )
             elapsed = time.perf_counter() - started
             build = client._get_loop_state().building[scope.group_id]
             await asyncio.wait_for(build, timeout=10)
@@ -227,7 +229,9 @@ async def test_a_slow_falkordb_reply_does_not_stall_the_loop_and_the_build_serve
             heartbeat.max_gap < _MAX_STALL
         ), f"the loop stalled {heartbeat.max_gap:.3f}s"
 
-        second = await context.refresh_warm_context(scope.owner_user_id, _MESSAGE)
+        second = await context_refresh.refresh_warm_context(
+            scope.owner_user_id, _MESSAGE
+        )
         assert second is not None and body in second
     finally:
         await client.evict_client(scope.group_id)
@@ -264,7 +268,9 @@ async def test_a_query_slower_than_the_budget_ends_the_read_at_the_budget_and_a_
         await client.get_graphiti_client(scope.group_id)
         async with _heartbeat() as heartbeat:
             started = time.perf_counter()
-            block = await context.refresh_warm_context(scope.owner_user_id, _MESSAGE)
+            block = await context_refresh.refresh_warm_context(
+                scope.owner_user_id, _MESSAGE
+            )
             read_took = time.perf_counter() - started
 
             writer = open_driver(scope)

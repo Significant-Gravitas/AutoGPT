@@ -53,11 +53,8 @@ from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.context import (
-    fetch_warm_context,
-    join_refresh,
-    start_refresh,
-)
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
