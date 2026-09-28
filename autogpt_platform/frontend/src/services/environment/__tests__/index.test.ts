@@ -22,6 +22,17 @@ describe("AutoGPT server URL resolution", () => {
     );
   });
 
+  it("keeps an earlier /api segment when the API is mounted behind the proxy", () => {
+    vi.stubGlobal("window", {
+      location: { origin: "https://autogpt.example.com" },
+    });
+    vi.stubEnv("NEXT_PUBLIC_AGPT_SERVER_URL", "/api/proxy/api");
+
+    expect(environment.getAGPTServerBaseUrl()).toBe(
+      "https://autogpt.example.com/api/proxy",
+    );
+  });
+
   it("resolves a relative browser API URL against an HTTPS origin", () => {
     vi.stubGlobal("window", {
       location: { origin: "https://autogpt.example.com" },
