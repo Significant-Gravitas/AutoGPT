@@ -7,7 +7,9 @@ every other coroutine on the loop waits with it. These run the real refresh
 path with a loop heartbeat: the loop must keep ticking, the refresh must
 return within its budget with no block, and the build it gave up on must
 still end (its transport deadlines) or, when the server does answer, serve
-the next turn from the cache.
+the next turn from the cache. A query slower than the refresh's budget ends
+the read at the budget, not at the socket, and a write through the same
+kind of client still completes.
 
 Run the live case with FalkorDB reachable (see ``conftest.py``)::
 
@@ -27,6 +29,7 @@ import pytest
 
 from . import client, context
 from .config import graphiti_config
+from .falkordb_driver import open_driver
 from .recall_integration_fixtures import ALICE, ingest_facts
 
 # A refresh's budget in these tests, and what scheduling may add to it.
@@ -111,14 +114,20 @@ async def test_a_silent_falkordb_neither_stalls_the_loop_nor_outlasts_the_budget
 
 
 class _DelayingProxy:
-    """A transparent TCP proxy that holds the server's first reply back.
+    """A transparent TCP proxy that holds replies back.
 
-    Threads, not the event loop, so a stall on the loop cannot hide it.
+    By default it holds the server's first reply (the first client build's
+    probe); with ``queries_only`` it holds every reply to a graph query
+    instead. Threads, not the event loop, so a stall on the loop cannot hide
+    it.
     """
 
-    def __init__(self, upstream: tuple[str, int], delay: float) -> None:
+    def __init__(
+        self, upstream: tuple[str, int], delay: float, *, queries_only: bool = False
+    ) -> None:
         self._upstream = upstream
         self._delay = delay
+        self._queries_only = queries_only
         self._delayed = False
         self._claim = threading.Lock()
         self._done = threading.Event()
@@ -151,6 +160,7 @@ class _DelayingProxy:
             ).start()
 
     def _relay(self, downstream: socket.socket, upstream: socket.socket) -> None:
+        query_sent = False
         try:
             while not self._done.is_set():
                 ready, _, _ = select.select([downstream, upstream], [], [], 0.2)
@@ -159,9 +169,14 @@ class _DelayingProxy:
                     if not data:
                         return
                     if source is upstream:
-                        self._hold_first_reply()
+                        if not self._queries_only:
+                            self._hold_first_reply()
+                        elif query_sent:
+                            query_sent = False
+                            time.sleep(self._delay)
                         downstream.sendall(data)
                     else:
+                        query_sent = query_sent or _is_graph_query(data)
                         upstream.sendall(data)
         except OSError:
             return
@@ -171,6 +186,10 @@ class _DelayingProxy:
             first, self._delayed = not self._delayed, True
         if first:
             time.sleep(self._delay)
+
+
+def _is_graph_query(request: bytes) -> bool:
+    return b"GRAPH.QUERY" in request or b"GRAPH.RO_QUERY" in request
 
 
 @pytest.mark.integration
@@ -210,6 +229,63 @@ async def test_a_slow_falkordb_reply_does_not_stall_the_loop_and_the_build_serve
 
         second = await context.refresh_warm_context(scope.owner_user_id, _MESSAGE)
         assert second is not None and body in second
+    finally:
+        await client.evict_client(scope.group_id)
+        proxy.close()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_query_slower_than_the_budget_ends_the_read_at_the_budget_and_a_write_still_completes(
+    scope_graph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every graph query answers 2.5 s late: after a refresh's budget, and
+    after the 2 s reply timeout the memory code used to have, but well inside
+    the socket timeout now. The socket decides neither outcome. The refresh
+    ends at its budget with no block and the loop ticking; a write through
+    the same kind of client the writers use (``open_driver``: forget, the
+    dream, the memory API routes) waits the reply out and completes."""
+    _, scope = scope_graph
+    delay = 2.5
+    proxy = _DelayingProxy(
+        (graphiti_config.falkordb_host, graphiti_config.falkordb_port),
+        delay=delay,
+        queries_only=True,
+    )
+    monkeypatch.setattr(graphiti_config, "falkordb_host", "127.0.0.1")
+    monkeypatch.setattr(graphiti_config, "falkordb_port", proxy.port)
+    monkeypatch.setattr(graphiti_config, "context_refresh_timeout", _BUDGET)
+    # The episode read goes through the proxied client; the fact search
+    # would call the embedding API.
+    monkeypatch.setattr(context, "search_facts", AsyncMock(return_value=[]))
+    try:
+        # Built before the clock starts, so the read waits on the query and
+        # not on the build (the build's probe is not a graph query).
+        await client.get_graphiti_client(scope.group_id)
+        async with _heartbeat() as heartbeat:
+            started = time.perf_counter()
+            block = await context.refresh_warm_context(scope.owner_user_id, _MESSAGE)
+            read_took = time.perf_counter() - started
+
+            writer = open_driver(scope)
+            try:
+                started = time.perf_counter()
+                written = await writer.execute_query(
+                    "MERGE (n:TransportProbe {name: $name}) RETURN n.name AS name",
+                    name="slow write",
+                )
+                write_took = time.perf_counter() - started
+            finally:
+                await writer.close()
+
+        assert block is None
+        assert read_took < _BUDGET + _SLACK, f"the refresh took {read_took:.3f}s"
+        assert (
+            heartbeat.max_gap < _MAX_STALL
+        ), f"the loop stalled {heartbeat.max_gap:.3f}s"
+        assert written is not None
+        assert written[0] == [{"name": "slow write"}]
+        assert write_took >= delay - 0.1, f"the write took {write_took:.3f}s"
     finally:
         await client.evict_client(scope.group_id)
         proxy.close()

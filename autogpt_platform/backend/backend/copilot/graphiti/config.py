@@ -58,27 +58,33 @@ class GraphitiConfig(BaseSettings):
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
     # Transport deadlines on every FalkorDB connection this package opens
-    # (``falkordb_driver.new_falkordb_client``). The client probes the server
-    # with a synchronous INFO when it is built, which runs in a worker thread
-    # on the chat path (``connect_driver``); a cancelled await does not stop
-    # that thread, these deadlines do. Together they fit inside
-    # ``context_refresh_timeout``.
+    # (``falkordb_driver.new_falkordb_client``). Neither bounds how long anyone
+    # waits: interactive reads are bounded by their asyncio budgets
+    # (``context_timeout``; ``context_refresh_timeout`` and
+    # ``warm_context_refresh_join_grace_ms``), which cancel them. The deadlines
+    # end what cancellation cannot reach: a worker thread still building a
+    # client (falkordb's constructor probes the server synchronously) and a
+    # connection to a server that stopped answering.
     falkordb_socket_connect_timeout: float = Field(
         default=1.0,
         gt=0,
         description=(
-            "Seconds to open a TCP connection to FalkorDB before giving up. "
-            "Applies to every connection the memory code opens."
+            "Seconds to open a TCP connection to FalkorDB before giving up, on "
+            "every connection the memory code opens. Short, so an unreachable "
+            "server fails a client build or a reconnect quickly."
         ),
     )
     falkordb_socket_timeout: float = Field(
-        default=2.0,
+        default=30.0,
         gt=0,
         description=(
-            "Seconds to wait for any single FalkorDB reply (and to send a "
-            "command) before giving up. Applies to every connection the memory "
-            "code opens, so it bounds ingestion, dream and forget queries too; "
-            "raise it if a legitimate reply takes longer."
+            "Seconds a FalkorDB connection waits for any single reply before "
+            "it is dropped, on every connection the memory code opens. Not a "
+            "latency bound: interactive reads end at their asyncio budgets "
+            "(context_timeout; context_refresh_timeout and the join grace). It "
+            "ends worker threads a cancelled await left behind and connections "
+            "to a server that stopped answering, and is long enough for a slow "
+            "write (ingestion, the dream, a forget) on a large graph to finish."
         ),
     )
 
