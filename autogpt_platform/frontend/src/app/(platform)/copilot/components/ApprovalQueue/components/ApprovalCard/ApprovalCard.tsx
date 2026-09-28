@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
 import {
@@ -26,6 +27,10 @@ interface Props {
   expertName: string | null;
   onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
   onReject: () => void;
+  // Outside the chat: why a mode-held call asks.
+  note?: string | null;
+  // Home's dialog pins them in its own footer.
+  hideActions?: boolean;
 }
 
 export function ApprovalCard({
@@ -35,42 +40,26 @@ export function ApprovalCard({
   expertName,
   onApprove,
   onReject,
+  note = null,
+  hideActions = false,
 }: Props) {
   const fields = useApprovalFields(item);
-  const reason = reasonLine(item);
+  const reason = reasonLine(item) ?? note;
   const read = isHeldRead(item);
   const busy = status !== "idle";
 
-  const actions = (
-    <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
-      <ApproveSplitButton
-        label={read ? `Release to ${item.reader}` : "Approve"}
-        subjectName={ruleSubjectName(item.subject)}
-        expertName={expertName}
-        rules={read || item.spend ? [] : item.chatRulesAllowed}
-        loading={status === "approving"}
-        disabled={busy}
-        onApprove={onApprove}
-      />
-      <Button
-        size="small"
-        variant="secondary"
-        className="min-w-0"
-        loading={status === "rejecting"}
-        disabled={busy}
-        onClick={onReject}
-      >
-        {status === "rejecting"
-          ? "Rejecting…"
-          : read
-            ? "Keep it out"
-            : "Reject"}
-      </Button>
-    </div>
+  const actions = hideActions ? null : (
+    <ApprovalActions
+      item={item}
+      status={status}
+      expertName={expertName}
+      onApprove={onApprove}
+      onReject={onReject}
+    />
   );
 
   // Nothing to read beyond the headline: the card is one row, as a list line is.
-  if (isBare(item) && !failed) {
+  if (isBare(item) && !failed && !reason) {
     return (
       <article
         aria-busy={busy}
@@ -111,5 +100,58 @@ export function ApprovalCard({
         {actions}
       </div>
     </article>
+  );
+}
+
+interface ActionsProps {
+  item: ApprovalItem;
+  status: CardStatus;
+  expertName: string | null;
+  onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
+  onReject: () => void;
+  aside?: ReactNode;
+}
+
+export function ApprovalActions({
+  item,
+  status,
+  expertName,
+  onApprove,
+  onReject,
+  aside = null,
+}: ActionsProps) {
+  const read = isHeldRead(item);
+  const busy = status !== "idle";
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
+      <ApproveSplitButton
+        label={read ? `Release to ${item.reader}` : "Approve"}
+        subjectName={ruleSubjectName(item.subject)}
+        expertName={expertName}
+        rules={read || item.spend ? [] : item.chatRulesAllowed}
+        loading={status === "approving"}
+        disabled={busy}
+        onApprove={onApprove}
+      />
+      <Button
+        size="small"
+        variant="secondary"
+        className="min-w-0"
+        loading={status === "rejecting"}
+        disabled={busy}
+        onClick={onReject}
+      >
+        {status === "rejecting"
+          ? "Rejecting…"
+          : read
+            ? "Keep it out"
+            : "Reject"}
+      </Button>
+      {aside && (
+        <div className="col-span-2 flex justify-end sm:ml-auto sm:self-center">
+          {aside}
+        </div>
+      )}
+    </div>
   );
 }
