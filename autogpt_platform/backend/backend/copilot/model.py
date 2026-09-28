@@ -94,6 +94,8 @@ class PendingQuestion(BaseModel):
 
     text: str
     asked_at: datetime
+    # Suggested answers to the first question, for a delegator's chips.
+    options: list[str] = Field(default_factory=list)
 
 
 class ChatSessionMetadata(BaseModel):

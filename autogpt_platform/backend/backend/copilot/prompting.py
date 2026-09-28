@@ -755,11 +755,16 @@ def get_delegation_supplement() -> str:
   next step, not your final answer:
   - Still running / timed out → keep polling
     `run_capability(id="tool:get_sub_session_result")` until it resolves.
+  - `status="needs_input"` → the teammate asked the *user* a question
+    (`question`, with `question_options`) and is paused until the user
+    answers it in the chat. Tell the user in one line what they are asked,
+    then end your turn. Do not answer it yourself, do not re-delegate with a
+    guessed answer, and do not poll it again this turn.
   - Completed but the outcome is not met → re-delegate into the SAME
     `delegated_session_id`, naming exactly what remains.
-  - The expert asks something this conversation already answers (stack,
-    scope, paths, budget) → answer on the user's behalf in the follow-up;
-    only surface questions you genuinely cannot answer.
+  - A *completed* reply that asks something this conversation already
+    answers (stack, scope, paths, budget) → answer on the user's behalf in
+    the follow-up; only surface questions you genuinely cannot answer.
   - Stop only when the outcome is met, you are blocked on information
     only the user holds, or you are relaying a hard failure. Never close
     a turn by telling the user to go nudge the expert — nudging is your

@@ -946,7 +946,11 @@ PENDING_QUESTION_LIMIT = 10
 
 
 async def set_session_pending_question(
-    session_id: str, user_id: str, text: str, asked_at: datetime
+    session_id: str,
+    user_id: str,
+    text: str,
+    asked_at: datetime,
+    options: list[str] | None = None,
 ) -> None:
     """Record the question this session is waiting on the user to answer.
 
@@ -963,7 +967,9 @@ async def set_session_pending_question(
         'WHERE "id" = $1 AND "userId" = $2',
         session_id,
         user_id,
-        dumps({"text": text, "asked_at": asked_at.isoformat()}),
+        dumps(
+            {"text": text, "asked_at": asked_at.isoformat(), "options": options or []}
+        ),
     )
 
 

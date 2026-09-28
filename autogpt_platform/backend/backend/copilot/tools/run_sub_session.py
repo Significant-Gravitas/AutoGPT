@@ -56,7 +56,7 @@ from .models import (
     ToolResponseBase,
     WorkspaceFileInfoData,
 )
-from .sub_session_facts import RunFacts
+from .sub_session_facts import PendingAsk, RunFacts, ask_from_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -477,6 +477,7 @@ def response_from_outcome(
     workspace_files: list[WorkspaceFileInfoData] | None = None,
     actor: str = "Subtask",
     facts: RunFacts | None = None,
+    pending_ask: PendingAsk | None = None,
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
@@ -489,6 +490,11 @@ def response_from_outcome(
 
     ``facts`` (cost so far, turn start and end) ride on every outcome alike,
     so a card can show "$0.12 · 2m 14s" whatever state the child is in.
+
+    A completed turn that stopped on ``ask_question`` is ``needs_input``: the
+    child is waiting on the user, not done. The question is read from the
+    turn's last tool call, or from ``pending_ask`` when the caller has the
+    child's parked question instead (a cold poll of an idle thread).
 
     ``completed`` surfaces the aggregated response text, plus a manifest of
     any workspace files the sub wrote (SECRT-2377). Pass ``workspace_files``
@@ -548,6 +554,16 @@ def response_from_outcome(
         return status("error", running_turn_limit_message())
     if outcome == "failed":
         return status("error", f"{actor} failed. See the sub's transcript for details.")
+    ask = pending_ask or ask_from_tool_calls(result.tool_calls)
+    if ask is not None:
+        return status(
+            "needs_input",
+            f"{actor} is waiting on the user: {ask.question} The user answers "
+            "in the chat. Do not answer it yourself or delegate a guessed answer.",
+            response=result.response_text,
+            question=ask.question,
+            question_options=ask.options,
+        )
     return _completed(status, result, workspace_files, actor, link)
 
 

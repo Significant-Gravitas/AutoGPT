@@ -188,6 +188,14 @@ class TestTeamBuildingSupplement:
         assert "Building the team" not in result
         assert "hire_expert" not in result
 
+    def test_needs_input_means_wait_for_the_user(self):
+        """A teammate paused on the user's answer must not get an invented
+        one from Otto: the rule names the status and forbids re-delegating."""
+        result = prompting.get_delegation_supplement()
+
+        assert 'status="needs_input"' in result
+        assert "do not re-delegate with a" in result
+
 
 class TestChatPlatformSupplement:
     """The silence rule belongs to sessions a chat bot opened, and to no

@@ -48,7 +48,12 @@ from .run_sub_session import (
     list_sub_workspace_files,
     response_from_outcome,
 )
-from .sub_session_facts import run_facts, turn_finished_at, turn_started_at
+from .sub_session_facts import (
+    ask_from_pending,
+    run_facts,
+    turn_finished_at,
+    turn_started_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +272,13 @@ class GetSubSessionResultTool(BaseTool):
                 workspace_files=workspace_files,
                 actor=actor,
                 facts=facts,
+                # Only a thread idle before this poll has a current parked
+                # question; the copy loaded before a wait predates the turn.
+                pending_ask=(
+                    ask_from_pending(sub.metadata.pending_question)
+                    if terminal_result is not None
+                    else None
+                ),
             ),
             delegate,
         )
