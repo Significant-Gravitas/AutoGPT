@@ -41,6 +41,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.background import spawn_background_task
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -240,15 +241,17 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
 
 
-async def _cascade_cancel(
-    entry: CoPilotExecutionEntry, log: CoPilotLogMetadata
-) -> None:
-    """Stop the threads this cancelled turn handed work to. Best effort: a
-    failure here must not keep the turn itself from finishing as cancelled."""
-    try:
-        await cancel_delegated_children(entry.session_id, entry.user_id)
-    except Exception as e:
-        log.warning(f"Could not cancel child threads: {e}")
+def _cascade_cancel(entry: CoPilotExecutionEntry) -> None:
+    """Stop the threads this cancelled turn handed work to.
+
+    Detached, never awaited here: the caller is the turn's teardown, and a
+    slow or cancelled wait on the children must not keep this turn from
+    releasing its lease and finishing as cancelled. The helper logs failures.
+    """
+    spawn_background_task(
+        cancel_delegated_children(entry.session_id, entry.user_id),
+        name=f"cancel-children-{entry.session_id[:12]}",
+    )
 
 
 def execute_copilot_turn(
@@ -807,7 +810,7 @@ class CoPilotProcessor:
             if not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
             if error_msg == stream_registry.CANCELLED_MESSAGE:
-                await _cascade_cancel(entry, log)
+                _cascade_cancel(entry)
             try:
                 if credential_lease is not None:
                     try:

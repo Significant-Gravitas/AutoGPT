@@ -274,7 +274,9 @@ class TestExecuteAsyncAclose:
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
-        # Stop means stop: the threads this turn handed work to stop with it.
+        # Stop means stop: the threads this turn handed work to stop with it,
+        # on a detached task so the teardown never waits on them.
+        await asyncio.sleep(0)
         cascade.assert_awaited_once_with("sess-1", "user-1")
 
     @pytest.mark.asyncio
