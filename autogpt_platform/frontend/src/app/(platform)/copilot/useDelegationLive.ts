@@ -48,9 +48,11 @@ function useNow(active: boolean) {
 export function useDelegationLive(delegation: ChatDelegation): LiveDelegation {
   const frozenInFlight = IN_FLIGHT.has(delegation.status);
   const shouldPoll = frozenInFlight && !!delegation.subSessionId;
+  // A finished run is fetched once for its steps; the poll stops itself on
+  // an idle session, so only an in-flight run keeps refetching.
   const { session, isError, isPaused } = useLiveSubSession(
     delegation.subSessionId ?? "",
-    shouldPoll,
+    !!delegation.subSessionId,
   );
   const live = !!session && isSessionLive(session);
   const question = session ? pendingQuestionOf(session) : null;
