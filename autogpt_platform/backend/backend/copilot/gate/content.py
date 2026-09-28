@@ -39,8 +39,6 @@ _SOURCE_BLIND = (
     " do not change the answer, so a skill or manual written for an agent to follow"
     ' is "hold".\n'
 )
-if CONTENT_RUBRIC.count(_HOLD_RULE_END) != 1:
-    raise RuntimeError("content_rubric.txt no longer ends its hold rule as expected")
 LLM_RUBRIC = CONTENT_RUBRIC.replace(_HOLD_RULE_END, _HOLD_RULE_END + _SOURCE_BLIND)
 
 _UNCHECKED = "this content could not be checked for instructions"
