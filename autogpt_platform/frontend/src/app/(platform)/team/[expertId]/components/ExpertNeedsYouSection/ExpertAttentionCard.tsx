@@ -1,6 +1,7 @@
 "use client";
 
 import { AttentionRowActions } from "@/app/(platform)/home/components/NeedsYou/components/AttentionRowActions";
+import { HeldPassageQuote } from "@/app/(platform)/home/components/NeedsYou/components/HeldPassageQuote";
 import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -34,6 +35,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
  *  chat sidebar's mini cards. */
 export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
+  const reason = attentionReason(item.review);
 
   function handleDecline() {
     if (!confirmDecline) {
@@ -85,8 +87,11 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             as="span"
             className="break-words !text-zinc-400"
           >
-            {attentionReason(item.review)?.line ?? item.description}
+            {reason?.line ?? item.description}
           </Text>
+          {reason?.passage ? (
+            <HeldPassageQuote passage={reason.passage} />
+          ) : null}
         </div>
       </div>
 

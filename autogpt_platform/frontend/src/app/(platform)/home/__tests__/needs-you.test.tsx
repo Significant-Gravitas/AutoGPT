@@ -5,7 +5,10 @@ import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAtten
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import { heldRead } from "../../copilot/components/ApprovalQueue/__tests__/fixtures";
+import {
+  heldRead,
+  heldReview,
+} from "../../copilot/components/ApprovalQueue/__tests__/fixtures";
 import HomePage from "../page";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -307,3 +310,28 @@ test("a held read's row gives its reason in plain words and quotes the passage",
   expect(screen.queryByText(/this content contains instructions/)).toBeNull();
   expect(screen.queryByText("this content could not be checked")).toBeNull();
 });
+
+// Home's backend writes these lines itself (attention.py `_gate_reason`); the row must not reword them.
+test.each([
+  ["supervisor", "It sends mail.", "Not sure this is safe: It sends mail."],
+  ["subject", "Deletes a folder.", "Deletes a folder."],
+  ["rule", "A rule asks first.", "A rule asks first."],
+  ["mode", "Ask First is on.", "Otto is waiting for your approval."],
+])(
+  "a %s-held call's row shows the line Home's backend wrote",
+  async (kind, reason, description) => {
+    const review = heldReview({
+      id: kind,
+      tool: "send_email",
+      reason,
+      reasonKind: kind,
+    });
+    mockDashboard([
+      { ...makeApproval(0), id: `approval-${kind}`, description, review },
+    ]);
+
+    render(<HomePage />);
+
+    expect(await screen.findByText(description)).toBeDefined();
+  },
+);
