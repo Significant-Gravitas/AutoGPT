@@ -1093,6 +1093,113 @@ def _make_sdk_patches(
     ]
 
 
+class TestFollowUpWarmContextCallSite:
+    """SECRT-2378 wiring, asserted against the REAL generator.
+
+    The helpers are unit-tested in ``service_test.py``, but the bug this PR
+    fixes lived in the turn loop, and so did two later regressions: a
+    ``was_compacted`` that no longer existed after a merge, and a retry path
+    reading a field ``_RetryState`` never had. Both were invisible to
+    helper-level tests and to a green suite. These drive
+    ``stream_chat_completion_sdk`` end to end.
+    """
+
+    def _session(self):
+        return ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[
+                ChatMessage(role="user", content="prior question"),
+                ChatMessage(role="assistant", content="prior answer"),
+                ChatMessage(role="user", content="restart the executor"),
+            ],
+        )
+
+    def _client_mock(self, result_message):
+        cm = MagicMock()
+        client = MagicMock()
+        client.query = AsyncMock()
+
+        async def _receive():
+            yield result_message
+
+        client.receive_response = _receive
+        cm.__aenter__ = AsyncMock(return_value=client)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return cm
+
+    def _result_message(self):
+        return ResultMessage(
+            subtype="success",
+            result="done",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="test-session-id",
+            total_cost_usd=0.0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_follow_up_turn_starts_and_injects_the_refresh(self):
+        """A substantive follow-up turn must reach `client.query` with the
+        refreshed block appended — and must not raise on the way there."""
+        session = self._session()
+        result_msg = self._result_message()
+        captured: dict[str, object] = {}
+
+        def _factory(*args, **kwargs):
+            return self._client_mock(result_msg)
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=None,
+            client_side_effect=_factory,
+        )
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            captured["user_id"] = user_id
+            captured["message"] = message
+            captured["expert_id"] = expert_id
+            captured["force"] = force
+            return "<temporal_context>recalled</temporal_context>"
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(
+                patch(
+                    "backend.copilot.graphiti.context.refresh_warm_context",
+                    new=_refresh,
+                )
+            )
+            stack.enter_context(
+                patch(f"{_SVC}.is_enabled_for_user", new=AsyncMock(return_value=True))
+            )
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="restart the executor",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert not [e for e in events if isinstance(e, StreamError)]
+        assert captured["message"] == "restart the executor"
+        assert captured["user_id"] == "test-user"
+        # No compaction on this turn, so nothing forces past the substance
+        # gate — the starter already applied it.
+        assert captured["force"] is False
+
+
 class TestStreamChatCompletionRetryIntegration:
     """Integration tests exercising the actual ``stream_chat_completion_sdk``
     generator with a mocked ``ClaudeSDKClient``.
