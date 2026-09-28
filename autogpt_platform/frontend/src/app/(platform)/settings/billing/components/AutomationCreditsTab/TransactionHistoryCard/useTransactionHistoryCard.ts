@@ -47,7 +47,9 @@ function mergeTransactions(pages: TransactionHistory[]): Transaction[] {
       const id =
         item.id ||
         item.transaction_key ||
-        `execution:${item.usage_execution_id}`;
+        (item.usage_chat_session_id
+          ? `chat:${item.usage_chat_session_id}`
+          : `execution:${item.usage_execution_id}`);
       if (!transactions.has(id))
         transactions.set(id, {
           ...item,

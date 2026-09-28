@@ -22,7 +22,7 @@ def isolated_catalog_and_config(monkeypatch):
 
 
 @pytest.mark.parametrize("use_openrouter", [True, False])
-async def test_thinking_advanced_routes_opus_5_without_catalog_refusal(
+async def test_thinking_advanced_routes_opus_5_5_without_catalog_refusal(
     use_openrouter, caplog, mocker
 ):
     cfg = ChatConfig(
@@ -35,16 +35,18 @@ async def test_thinking_advanced_routes_opus_5_without_catalog_refusal(
     mocker.patch.object(router, "get_feature_flag_value", return_value=None)
     route = await router.resolve_model_route("thinking", "advanced", "user", config=cfg)
 
-    assert route.model == "anthropic/claude-opus-5"
+    assert route.model == "anthropic/claude-opus-5-5"
     assert route.source == "env"
     assert "refused" not in caplog.text
-    expected = "anthropic/claude-opus-5" if use_openrouter else "claude-opus-5"
+    expected = "anthropic/claude-opus-5-5" if use_openrouter else "claude-opus-5-5"
     assert normalize_model_for_transport(route.model, cfg) == expected
-    assert cfg.fast_advanced_model == "anthropic/claude-opus-5"
+    assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
     assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
 
 
 def test_opus_5_has_public_metadata_and_provider_prices():
+    # claude-opus-5 stays listed (no longer the advanced-tier default —
+    # see test_opus_5_5_has_public_metadata_and_provider_prices below).
     model = router.catalog_lookup("anthropic/claude-opus-5")
     assert model is not None
     assert model.is_enabled
@@ -56,3 +58,17 @@ def test_opus_5_has_public_metadata_and_provider_prices():
     assert model.cost is not None
     assert model.cost.provider_input_usd_per_1m == 5.0
     assert model.cost.provider_output_usd_per_1m == 25.0
+
+
+def test_opus_5_5_has_public_metadata_and_provider_prices():
+    model = router.catalog_lookup("anthropic/claude-opus-5-5")
+    assert model is not None
+    assert model.is_enabled
+    assert model.visibility == "GA"
+    assert model.display_name == "Claude Opus 5.5"
+    assert model.metadata.context_window == 200_000
+    assert model.metadata.max_output_tokens == 128_000
+    assert model.supports_tools and model.supports_reasoning
+    assert model.cost is not None
+    assert model.cost.provider_input_usd_per_1m == 4.0
+    assert model.cost.provider_output_usd_per_1m == 20.0
