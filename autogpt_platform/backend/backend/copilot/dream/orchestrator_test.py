@@ -1991,6 +1991,30 @@ class TestNearDuplicateWriteDedup:
         # Survivor keeps its own uuids first, then the absorbed extras.
         assert kept[0].source_episode_uuids == ["ep-2", "ep-3", "ep-1"]
 
+    def test_survivor_absorbs_dropped_writes_fact_citations(self):
+        """A forget of a fact only the dropped duplicate cited must still
+        reach the survivor (``graphiti/recall_cascade.py``)."""
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                confidence=0.6,
+                source_fact_uuids=["f-1"],
+            ),
+            ConsolidatedFact(
+                content=(
+                    "Nick uses Terminus on his iPhone for CLI work and wants "
+                    "it to display more ASCII characters"
+                ),
+                confidence=0.7,
+                source_episode_uuids=["ep-3"],
+                source_fact_uuids=["f-2"],
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 1
+        assert kept[0].source_fact_uuids == ["f-2", "f-1"]
+        assert kept[0].source_episode_uuids == ["ep-3"]
+
     def test_word_order_permutation_is_not_merged(self):
         writes = [
             ConsolidatedFact(content="Alice introduced Bob to Carol", confidence=0.7),

@@ -80,6 +80,9 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Writes and proposals dropped before they were queued for citing
+    # nothing the pass read; a row written before it reads 0.
+    uncited_writes_dropped: int = 0
     # Distinct facts an acknowledged write spared and the accounting read
     # found live (provisional when the accounting is incomplete); a row
     # written before it reads 0.

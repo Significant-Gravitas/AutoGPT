@@ -21,6 +21,7 @@ from backend.util.background import spawn_background_task
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .recall_citations import Citations, rests_on_a_forget
+from .recall_derivation import record as record_derivation
 from .recall_ingest import previous_episode_uuids
 from .scope import MemoryScope
 from .scope_lock import INGEST_LOCK_WAIT_SECONDS, LockState, graph_write_lock
@@ -366,13 +367,17 @@ async def _write_locked(
     """Write one episode holding the graph's write lock (``scope_lock.py``),
     so no forget lands between what graphiti reads and what it saves over
     it; False, writing nothing, when another writer kept it for the wait.
-    A dream write resting on a forget is dropped under the same lock."""
+    A dream write resting on a forget is dropped under the same lock, and
+    what one that is written was derived from is recorded under it too
+    (``recall_derivation.py``), so a forget waiting for the lock finds it."""
     wait = INGEST_LOCK_WAIT_SECONDS
     async with graph_write_lock(group_id, wait_seconds=wait) as lock:
         if lock is LockState.BUSY:
             return False
         client = await get_graphiti_client(group_id)
-        if await _dropped_as_forgotten(client, payload, completion):
+        # Sidecar (not an add_episode kwarg), present only for dream writes.
+        citations: Citations | None = payload.pop("_citations", None)
+        if await _dropped_as_forgotten(client, payload, citations, completion):
             return True
         # This is the write path, so materializing the graph is intended
         # here — unlike driver construction, which must never create one.
@@ -388,17 +393,24 @@ async def _write_locked(
         # ``_stamp_edge_metadata`` for the dedup-safety invariant).
         if edge_metadata:
             await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
+        if citations is not None:
+            episode = result.episode.uuid
+            touched = [edge.uuid for edge in result.edges if episode in edge.episodes]
+            await record_derivation(
+                client.driver, group_id, episode, touched, citations
+            )
     return True
 
 
 async def _dropped_as_forgotten(
     client: Graphiti,
     payload: dict[str, Any],
+    citations: Citations | None,
     completion: IngestionCompletion | None,
 ) -> bool:
     """True, counting it on ``completion``, when ``payload`` is a dream write
     that rests on a forget made since the dream read the graph."""
-    reason = await rests_on_a_forget(client.driver, payload.pop("_citations", None))
+    reason = await rests_on_a_forget(client.driver, citations)
     if reason is None:
         return False
     logger.info(f"Dropped dream write {payload.get('name')!r}: it {reason}")
@@ -579,7 +591,10 @@ async def enqueue_episode(
         citations: What a dream write rests on. The worker checks them under
             the graph's write lock right before writing and drops the
             episode, counting it on ``completion``, when a forget made since
-            the dream read the graph reached them (``recall_citations.py``).
+            the dream read the graph reached them (``recall_citations.py``);
+            once it is written, the worker records them on the episode and
+            on the facts only dream episodes state (``recall_derivation.py``),
+            so a later forget of one retracts them (``recall_cascade.py``).
             ``None`` for chat / memory-store writes.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.

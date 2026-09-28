@@ -59,8 +59,10 @@ class IngestionDrainStatus(str, Enum):
 class ConsolidatedFact(BaseModel):
     """A cluster of related facts merged into a single canonical statement.
 
-    Phase 1 output. Provenance always points back to the source episodes
-    so apply.py can record where the consolidation came from.
+    Phase 1 output. It cites the episodes and active facts it was drawn from,
+    so apply can record where the consolidation came from and a forget of one
+    of them reaches it (``dream/citations.py``); one citing nothing the pass
+    read is dropped unwritten.
     """
 
     content: str = Field(description="Canonical statement of the consolidated fact.")
@@ -76,6 +78,13 @@ class ConsolidatedFact(BaseModel):
     source_episode_uuids: list[str] = Field(
         default_factory=list,
         description="UUIDs of the :Episodic nodes the fact was consolidated from.",
+    )
+    source_fact_uuids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "UUIDs of the active facts (:RELATES_TO edges) the fact was "
+            "consolidated from."
+        ),
     )
 
 
@@ -359,6 +368,10 @@ class DreamPassResult(BaseModel):
     # forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
+    # Writes and proposals dropped before they were queued because they cited
+    # no fact or episode the pass read (``dream/citations.py``); not counted
+    # in ``consolidated_count`` or ``proposal_count``.
+    uncited_writes_dropped: int = 0
     # Distinct facts the recall guard kept live through the pass
     # (``recall_guard.py``): an acknowledged write spared them, and the
     # pass's final read, after every acknowledged write, found them live. A
