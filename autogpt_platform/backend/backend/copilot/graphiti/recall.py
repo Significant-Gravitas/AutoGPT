@@ -215,8 +215,8 @@ async def recent_episodes(scope: MemoryScope, n: int) -> list[EpisodicNode]:
     graphiti's ``retrieve_episodes`` plus the recallable-episode test it has
     no way to express. Read on the driver of the scope's cached client, as
     the fact search and the recheck are: warm context calls this on every
-    qualifying chat turn, and opening a driver per read would connect to
-    FalkorDB on the event loop each time (``falkordb_driver.open_driver``).
+    qualifying chat turn, and a driver per read would build and connect a
+    FalkorDB client each time (``falkordb_driver.open_driver``).
     """
     client = await get_graphiti_client(scope.group_id)
     records = await recallable_episodes(

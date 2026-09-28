@@ -1,10 +1,13 @@
+import asyncio
 import threading
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from . import falkordb_driver as fdb
 from .falkordb_driver import AutoGPTFalkorDriver
+from .migrations import backfill_legacy_forgets
 from .scope import MemoryScope
 
 
@@ -37,9 +40,8 @@ def _overflow() -> Exception:
 @pytest.fixture
 def driver() -> AutoGPTFalkorDriver:
     # ``build_fulltext_query`` is a pure string-builder that never touches
-    # the FalkorDB client; injecting a mock avoids the eager Redis probe
-    # that the upstream ``FalkorDriver.__init__`` runs against
-    # ``localhost:6379``.
+    # the FalkorDB client; the query tests wire the mock's ``select_graph``
+    # directly.
     return AutoGPTFalkorDriver(falkor_db=MagicMock())
 
 
@@ -493,36 +495,166 @@ def test_clone_returns_subclass_with_indices_disabled() -> None:
 
 
 def test_open_driver_targets_the_scope_graph_without_building_indices() -> None:
-    """The factory opens the scope's own graph on a client with transport
-    deadlines, and keeps the default that a bare construction never creates
-    one."""
+    """The factory opens the scope's own graph, keeps the default that a
+    bare construction never creates one, and builds no client to do it."""
     scope = MemoryScope.for_expert("user-1", "expert-1")
-    with (
-        patch.object(fdb, "new_falkordb_client") as new_client,
-        patch.object(fdb, "AutoGPTFalkorDriver") as driver_cls,
-    ):
-        assert fdb.open_driver(scope) is driver_cls.return_value
+    with patch.object(fdb, "new_falkordb_client") as new_client:
+        driver = fdb.open_driver(scope)
 
-    kwargs = driver_cls.call_args.kwargs
-    assert kwargs["falkor_db"] is new_client.return_value
-    assert kwargs["database"] == scope.group_id
-    assert kwargs["build_indices"] is False
+    assert driver.graph_name == scope.group_id
+    assert driver._build_indices_at_init is False
+    assert isinstance(driver.client, fdb.DeferredFalkorDB)
+    new_client.assert_not_called()
 
 
 def test_every_client_carries_the_transport_deadlines(monkeypatch) -> None:
     """falkordb defaults both to None, and its constructor probes the server
     with a synchronous INFO: without deadlines an unresponsive server holds
-    the caller, or an abandoned worker thread, indefinitely."""
+    an abandoned worker thread indefinitely."""
     monkeypatch.setattr(fdb.graphiti_config, "falkordb_socket_connect_timeout", 0.7)
     monkeypatch.setattr(fdb.graphiti_config, "falkordb_socket_timeout", 1.3)
     with patch.object(fdb, "FalkorDB") as falkordb:
         assert fdb.new_falkordb_client() is falkordb.return_value
+        fdb.new_falkordb_client("falkordb.internal", 7000)
 
-    kwargs = falkordb.call_args.kwargs
-    assert kwargs["socket_connect_timeout"] == 0.7
-    assert kwargs["socket_timeout"] == 1.3
-    assert kwargs["host"] == fdb.graphiti_config.falkordb_host
-    assert kwargs["port"] == fdb.graphiti_config.falkordb_port
+    configured, explicit = (call.kwargs for call in falkordb.call_args_list)
+    for kwargs in (configured, explicit):
+        assert kwargs["socket_connect_timeout"] == 0.7
+        assert kwargs["socket_timeout"] == 1.3
+    assert configured["host"] == fdb.graphiti_config.falkordb_host
+    assert configured["port"] == fdb.graphiti_config.falkordb_port
+    assert (explicit["host"], explicit["port"]) == ("falkordb.internal", 7000)
+
+
+def _open_through(route: str) -> AutoGPTFalkorDriver:
+    if route == "open_driver":
+        return fdb.open_driver(MemoryScope.for_user("user-1"))
+    if route == "host_and_port":
+        return AutoGPTFalkorDriver(host="127.0.0.1", port=6380, database="user_a")
+    return backfill_legacy_forgets._graph_driver("default_db")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "route", ["open_driver", "host_and_port", "legacy_forget_backfill"]
+)
+async def test_no_driver_builds_its_client_on_the_event_loop(route: str) -> None:
+    """Building a client sends falkordb's synchronous cluster probe. However
+    a driver is made (``open_driver``; host and port, as the test fixtures
+    do; the legacy-forget backfill's ``_graph_driver``), making it builds
+    nothing, and its first command builds the client on the connect pool
+    while the loop keeps ticking."""
+    built_on: list[str] = []
+    real = MagicMock()
+    real.execute_command = AsyncMock(side_effect=RuntimeError("no server here"))
+    real.aclose = AsyncMock()
+
+    def slow_build(**_kwargs) -> MagicMock:
+        built_on.append(threading.current_thread().name)
+        time.sleep(0.3)  # the probe, waiting on the server
+        return real
+
+    gaps: list[float] = []
+
+    async def beat() -> None:
+        last = time.perf_counter()
+        while True:
+            await asyncio.sleep(0.01)
+            now = time.perf_counter()
+            gaps.append(now - last)
+            last = now
+
+    with patch.object(fdb, "FalkorDB", side_effect=slow_build):
+        driver = _open_through(route)
+        assert built_on == [], "making the driver built a client"
+        ticker = asyncio.create_task(beat())
+        try:
+            with pytest.raises(RuntimeError, match="no server here"):
+                await driver.execute_query("MATCH (n) RETURN count(n)")
+        finally:
+            ticker.cancel()
+            await asyncio.gather(ticker, return_exceptions=True)
+            await driver.close()
+
+    assert len(built_on) == 1 and built_on[0].startswith("falkordb-connect")
+    assert gaps and max(gaps) < 0.15, f"the loop stalled {max(gaps):.3f}s"
+    real.aclose.assert_awaited_once()
+
+
+class TestDeferredFalkorDB:
+    @pytest.mark.asyncio
+    async def test_concurrent_first_commands_share_one_build(self) -> None:
+        builds: list[int] = []
+        real = MagicMock()
+        real.execute_command = AsyncMock(return_value="PONG")
+
+        def build() -> MagicMock:
+            builds.append(1)
+            time.sleep(0.1)
+            return real
+
+        client = fdb.DeferredFalkorDB(build)
+        results = await asyncio.gather(
+            *(client.execute_command("PING") for _ in range(5))
+        )
+
+        assert results == ["PONG"] * 5
+        assert len(builds) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_build_is_retried_by_the_next_command(self) -> None:
+        attempts: list[int] = []
+        real = MagicMock()
+        real.list_graphs = AsyncMock(return_value=["user_a"])
+
+        def build() -> MagicMock:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise ConnectionError("connection refused")
+            return real
+
+        client = fdb.DeferredFalkorDB(build)
+        with pytest.raises(ConnectionError):
+            await client.list_graphs()
+
+        assert await client.list_graphs() == ["user_a"]
+        assert len(attempts) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_caller_that_gives_up_leaves_the_build_to_the_next(
+        self,
+    ) -> None:
+        release = threading.Event()
+        builds: list[int] = []
+        real = MagicMock()
+        real.execute_command = AsyncMock(return_value=1)
+
+        def build() -> MagicMock:
+            builds.append(1)
+            release.wait(5)
+            return real
+
+        client = fdb.DeferredFalkorDB(build)
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(client.execute_command("PING"), timeout=0.05)
+        release.set()
+
+        assert await client.execute_command("PING") == 1
+        assert len(builds) == 1
+
+    @pytest.mark.asyncio
+    async def test_close_releases_the_built_client_and_builds_none(self) -> None:
+        unused = fdb.DeferredFalkorDB(MagicMock(side_effect=AssertionError("built")))
+        await unused.aclose()
+
+        real = MagicMock()
+        real.execute_command = AsyncMock()
+        real.aclose = AsyncMock()
+        used = fdb.DeferredFalkorDB(lambda: real)
+        await used.execute_command("PING")
+        await used.aclose()
+
+        real.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio

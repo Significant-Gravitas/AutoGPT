@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import logging
 import random
 import re
@@ -51,11 +52,12 @@ _WRITE_CLAUSE_RE = re.compile(
 # FalkorDB's error when the graph key does not exist yet.
 _EMPTY_KEY_ERROR = "invalid graph operation on empty key"
 
-# Where FalkorDB clients are built off the event loop (``connect_driver``).
-# Building one sends a synchronous INFO (falkordb's cluster probe), so an
-# unreachable server holds the building thread for up to the transport
-# deadlines; a pool of its own keeps that from tying up the loop's default
-# executor, which DNS lookups and ``asyncio.to_thread`` share.
+# Where every FalkorDB client is built (``build_off_loop``). Building one
+# sends a synchronous INFO (falkordb's cluster probe), so an unresponsive
+# server holds the building thread until the transport deadlines end it; a
+# small pool of its own bounds how many threads that can hold and keeps them
+# off the loop's default executor, which DNS lookups and ``asyncio.to_thread``
+# share.
 _CONNECT_EXECUTOR = ThreadPoolExecutor(
     max_workers=4, thread_name_prefix="falkordb-connect"
 )
@@ -150,16 +152,43 @@ class AutoGPTFalkorDriver(FalkorDriver):
        exceeded" backpressure with bounded jittered backoff, so a load
        spike degrades into a slightly slower memory op instead of a
        dropped one plus a Sentry alert. (SENTRY-1384.)
+
+    4. A driver made without a client never builds one on the calling
+       thread. Upstream constructs ``FalkorDB(...)`` there, whose
+       constructor probes the server synchronously; this one gets a
+       ``DeferredFalkorDB``, which builds the real client on the connect
+       pool when the first command needs it. ``host``, ``port`` and
+       ``password`` default to graphiti config.
     """
 
-    def __init__(self, *args, build_indices: bool = False, **kwargs):
+    def __init__(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        falkor_db: FalkorDB | None = None,
+        database: str = "default_db",
+        *,
+        build_indices: bool = False,
+    ):
         # Stash the flag BEFORE super().__init__ runs because
         # FalkorDriver.__init__ fires
         # ``loop.create_task(self.build_indices_and_constraints())``
         # synchronously; our override below reads this attribute when
         # the task actually ticks on the loop.
         self._build_indices_at_init = build_indices
-        super().__init__(*args, **kwargs)
+        if falkor_db is None:
+            falkor_db = DeferredFalkorDB(
+                functools.partial(
+                    new_falkordb_client,
+                    host,
+                    port,
+                    username=username,
+                    password=password,
+                )
+            )
+        super().__init__(falkor_db=falkor_db, database=database)
 
     @property
     def graph_name(self) -> str:
@@ -375,33 +404,86 @@ def open_driver(
     The one place scope-level code constructs a driver. ``build_indices``
     stays False unless the caller is about to write — see
     ``AutoGPTFalkorDriver`` for why a bare construction must never create a
-    graph. Building the client blocks the calling thread on the server
-    (``new_falkordb_client``), up to the transport deadlines; code on the
-    chat path reads through the scope's cached Graphiti client instead
-    (``client.get_graphiti_client``), whose driver ``connect_driver`` builds
-    off the event loop.
+    graph. Opening one touches no network: its client is built on the
+    connect pool when the first command needs it (``DeferredFalkorDB``), so
+    it can be opened anywhere, the event loop included.
     """
-    return AutoGPTFalkorDriver(
-        falkor_db=new_falkordb_client(),
-        database=scope.group_id,
-        build_indices=build_indices,
-    )
+    return AutoGPTFalkorDriver(database=scope.group_id, build_indices=build_indices)
 
 
 async def connect_driver(
     database: str, *, build_indices: bool = False
 ) -> AutoGPTFalkorDriver:
-    """A driver on graph ``database`` whose client is built off the event loop.
+    """A driver on graph ``database``, its client already built.
 
-    ``new_falkordb_client`` blocks on the server, and on the loop that would
-    stall every coroutine on it, deadline timers included, so it runs on the
-    connect pool (``build_off_loop``). The driver itself is made here, on
-    the loop: its constructor schedules the index build, when asked for.
+    Where ``open_driver`` builds the client at the first command, this
+    builds it before returning, on the connect pool (``build_off_loop``).
+    The driver itself is made here, on the loop: its constructor schedules
+    the index build, when asked for.
     """
     client = await build_off_loop(new_falkordb_client)
     return AutoGPTFalkorDriver(
         falkor_db=client, database=database, build_indices=build_indices
     )
+
+
+class DeferredFalkorDB(FalkorDB):
+    """A FalkorDB client that is built off the event loop, on first use.
+
+    falkordb's ``FalkorDB.__init__`` probes the server for cluster mode with
+    a synchronous INFO, so one built on the event loop stalls every
+    coroutine there until the server answers. This one does no I/O when it
+    is made. The first command builds the real client (``build``) on the
+    connect pool (``build_off_loop``); concurrent first commands share that
+    build, a caller that stops waiting leaves it running for the next, and
+    a failed build is dropped so the next command tries again. After that,
+    every command goes through the real client.
+
+    Deferred are the entry points the drivers reach: ``execute_command``,
+    which every graph selected from this client sends its commands through
+    (``select_graph`` is falkordb's own), ``list_graphs`` and ``aclose``.
+    """
+
+    def __init__(self, build: Callable[[], FalkorDB]) -> None:
+        # No ``super().__init__()``: that constructor is the blocking probe
+        # this class exists to defer.
+        self._build = build
+        self._client: FalkorDB | None = None
+        self._building: asyncio.Task[FalkorDB] | None = None
+
+    async def connect(self) -> FalkorDB:
+        """The real client, built on the connect pool the first time."""
+        if self._client is not None:
+            return self._client
+        building = self._building
+        if building is None:
+            building = asyncio.get_running_loop().create_task(
+                build_off_loop(self._build), name="falkordb-connect"
+            )
+            self._building = building
+        try:
+            client = await asyncio.shield(building)
+        except Exception:
+            if self._building is building:
+                self._building = None
+            raise
+        self._client = client
+        return client
+
+    async def execute_command(self, *args: Any, **options: Any) -> Any:
+        client = await self.connect()
+        return await client.execute_command(*args, **options)
+
+    async def list_graphs(self) -> list[str]:
+        client = await self.connect()
+        return await client.list_graphs()
+
+    async def aclose(self) -> None:
+        """Close the real client, if one was built. A build still running
+        has opened no connection that outlives it (redis connects on the
+        first command), so there is nothing else to release."""
+        if self._client is not None:
+            await self._client.aclose()
 
 
 async def build_off_loop(build: Callable[[], _T]) -> _T:
@@ -415,20 +497,33 @@ async def build_off_loop(build: Callable[[], _T]) -> _T:
     return await loop.run_in_executor(_CONNECT_EXECUTOR, build)
 
 
-def new_falkordb_client() -> FalkorDB:
-    """A FalkorDB client with finite transport deadlines. Blocking.
+def new_falkordb_client(
+    host: str | None = None,
+    port: int | None = None,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+) -> FalkorDB:
+    """A FalkorDB client with the transport deadlines. Blocking.
 
-    falkordb's asyncio client probes the server for cluster mode with a
-    synchronous INFO when it is built, so this call does network I/O on the
-    calling thread. ``falkordb_socket_connect_timeout`` and
-    ``falkordb_socket_timeout`` bound that probe and every later command on
-    the client's connections; without them (falkordb's default) an
-    unresponsive server holds the caller indefinitely.
+    falkordb's constructor probes the server for cluster mode with a
+    synchronous INFO, so this does network I/O on the calling thread: call
+    it off the event loop (``build_off_loop``, ``DeferredFalkorDB``).
+    ``falkordb_socket_connect_timeout`` bounds opening each connection and
+    ``falkordb_socket_timeout`` each reply, the probe's included. They end a
+    thread whose await was given up and a connection to a server that
+    stopped answering; the callers' asyncio budgets bound how long anyone
+    waits. ``host``, ``port`` and ``password`` default to graphiti config.
     """
     return FalkorDB(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
+        host=graphiti_config.falkordb_host if host is None else host,
+        port=graphiti_config.falkordb_port if port is None else port,
+        username=username,
+        password=(
+            (graphiti_config.falkordb_password or None)
+            if password is None
+            else password
+        ),
         socket_connect_timeout=graphiti_config.falkordb_socket_connect_timeout,
         socket_timeout=graphiti_config.falkordb_socket_timeout,
     )
