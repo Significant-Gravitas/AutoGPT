@@ -14,13 +14,14 @@ import {
   getHiredExperts,
   getTeamSchedules,
 } from "../helpers";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface Args {
   enabled: boolean;
 }
 
 export function useAutopilotPage({ enabled }: Args) {
+  const [tab, setTab] = useState("basics");
   const expertsQuery = useListExperts({
     query: { select: (res) => (okData(res) ?? []) as Expert[], enabled },
   });
@@ -61,6 +62,8 @@ export function useAutopilotPage({ enabled }: Args) {
   }
 
   return {
+    tab,
+    setTab,
     experts,
     schedules,
     workflows,

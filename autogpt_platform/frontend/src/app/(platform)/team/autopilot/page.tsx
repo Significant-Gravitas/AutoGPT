@@ -12,7 +12,9 @@ import {
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
   Calendar03Icon,
+  Settings01Icon,
   SparklesIcon,
+  TaskDone01Icon,
   UserIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
@@ -23,8 +25,11 @@ import { BackToTeamLink } from "../components/BackToTeamLink";
 import { AUTOPILOT_PILL_CLASS } from "../helpers";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
+import { AutopilotDelegationsSection } from "./components/AutopilotDelegationsSection/AutopilotDelegationsSection";
+import { DelegationSettingsSection } from "./components/DelegationSettingsSection/DelegationSettingsSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
 import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
+import { useAutopilotDelegations } from "./useAutopilotDelegations";
 import { useAutopilotPage } from "./useAutopilotPage";
 
 const MAIN_CLASS =
@@ -32,15 +37,27 @@ const MAIN_CLASS =
 
 const TABS = [
   { value: "basics", label: "Basics", icon: UserIcon },
+  { value: "delegations", label: "Delegations", icon: TaskDone01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
   { value: "skills", label: "Skills", icon: SparklesIcon },
+  { value: "settings", label: "Settings", icon: Settings01Icon },
 ] as const;
 
 export default function AutopilotPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const { schedules, workflows, skills, isLoading, isError, refetch } =
-    useAutopilotPage({ enabled: Boolean(enabled) && ready });
+  const isEnabled = Boolean(enabled) && ready;
+  const {
+    tab,
+    setTab,
+    schedules,
+    workflows,
+    skills,
+    isLoading,
+    isError,
+    refetch,
+  } = useAutopilotPage({ enabled: isEnabled });
+  const delegations = useAutopilotDelegations({ enabled: isEnabled });
 
   if (!ready || isLoading) {
     return (
@@ -72,13 +89,13 @@ export default function AutopilotPage() {
   return (
     <main className={MAIN_CLASS}>
       <BackToTeamLink />
-      <AutopilotHeader />
+      <AutopilotHeader delegationsToday={delegations.todayCount} />
 
       <Text variant="body" tone="muted">
         Built in, always on your team.
       </Text>
 
-      <TabsLine variant="compact" defaultValue="basics">
+      <TabsLine variant="compact" value={tab} onValueChange={setTab}>
         <TabsLineList className="overflow-x-auto">
           {TABS.map((tab) => (
             <TabsLineTrigger key={tab.value} value={tab.value} icon={tab.icon}>
@@ -89,6 +106,19 @@ export default function AutopilotPage() {
 
         <TabsLineContent value="basics">
           <AutopilotAboutSection />
+        </TabsLineContent>
+
+        <TabsLineContent value="delegations">
+          <AutopilotDelegationsSection
+            delegations={delegations.delegations}
+            summary={delegations.summary}
+            todayCount={delegations.todayCount}
+            mode={delegations.mode}
+            isLoading={delegations.isLoading}
+            isError={delegations.isError}
+            onRetry={() => void delegations.refetch()}
+            onChangeMode={() => setTab("settings")}
+          />
         </TabsLineContent>
 
         <TabsLineContent value="schedules">
@@ -111,6 +141,10 @@ export default function AutopilotPage() {
 
         <TabsLineContent value="skills">
           <AutopilotSkillsSection skills={skills} />
+        </TabsLineContent>
+
+        <TabsLineContent value="settings">
+          <DelegationSettingsSection enabled={isEnabled} />
         </TabsLineContent>
       </TabsLine>
     </main>
