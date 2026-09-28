@@ -20,7 +20,7 @@ The identity never changes with the Expert's name, role, skills, category or the
 
 ## Custom Experts
 
-A raised Expert starts on the General fallback. From the Team page its owner can keep that look, upload a picture (PNG/JPEG/WebP, 5 MB, scanned as before) or generate a candidate. A hired built-in can keep its saved identity or change appearance the same way; the picker never offers another Expert's face.
+The raise flow asks for a category before generating an avatar. The picker rolls the allowed traits within that category and offers Regenerate, Upload a picture and Use this avatar. A raised Expert starts on the General fallback while generation runs or if it fails. From the Team page its owner can keep that look, upload a picture (PNG/JPEG/WebP, 5 MB, scanned as before) or generate a candidate. A hired built-in can keep its saved identity or change appearance the same way; the picker never offers another Expert's face.
 
 ## Generation
 
@@ -28,7 +28,7 @@ A raised Expert starts on the General fallback. From the Team page its owner can
 
 The prompt in `avatar_generation.py` is the construction specification and the 25 September material policy: two touching masses, one category hue, low-sheen clay, cream `#EAE2D5` only on the lower form with a recessed groove, the gentle charcoal face placed optically, no anatomical readings, no purple, opaque warm studio tile. References follow the generation standard in order: Maria (finish, light, face, cream material), Mina (silhouette range, cream placement) and an accepted peer of the requested family as the color reference. They are the library's own 512 px exports, copied into `avatar_references/` with their hashes in `manifest.json`; a hash mismatch refuses to generate. Content has no accepted peer yet and takes its color from the hex anchor alone.
 
-`EXPERT_AVATAR_MODEL` defaults to the design system's pinned snapshot `gpt-image-2-2026-04-21` and needs the backend `OPENAI_API_KEY`; any override must support image edits with several reference images and opaque PNG output. The request asks for one 1024 px opaque PNG at high quality; validation checks format, size, the 5 MB limit, that the tile is opaque and that it carries artwork. Validation cannot prove a render follows every visual rule, which is why the user reviews the candidate and chooses **Use this avatar** before anything is saved. Jobs, limits (five per user per 24 hours, four minutes apart, failures count), Redis storage and the scanned media upload path are unchanged from #14858. A generated candidate is that Expert's own appearance; it is not added to the managed library.
+`EXPERT_AVATAR_MODEL` defaults to the design system's pinned snapshot `gpt-image-2-2026-04-21` and needs the backend `OPENAI_API_KEY`; any override must support image edits with several reference images and opaque PNG output. The request asks for one 1024 px opaque PNG at high quality; validation checks format, size, the 5 MB limit, that the tile is opaque and that it carries artwork. Validation cannot prove a render follows every visual rule, which is why the user reviews the candidate and chooses **Use this avatar** before anything is saved. Jobs, limits (ten per user per 24 hours, fifteen seconds apart, failures count), Redis storage and the scanned media upload path use the same storage and upload flow as #14858. A generated candidate is that Expert's own appearance; it is not added to the managed library.
 
 ## Before release
 

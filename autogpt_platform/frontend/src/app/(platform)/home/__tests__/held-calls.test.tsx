@@ -187,6 +187,22 @@ test("after an inline decision focus skips a setup row to the next held call", a
   );
 });
 
+test("a held read's receipt names the Expert who reads it", async () => {
+  serveAnswers();
+  const review = heldRead("n1", "docs.northwind.io/billing");
+  (review.payload as Record<string, unknown>).reader = "Nadia";
+  const item = homeHeldItem(review);
+  renderTile([item]);
+
+  await userEvent.click(
+    screen.getByRole("button", { name: `Release: ${item.title}` }),
+  );
+
+  expect(
+    await screen.findByText("· Released · Nadia is reading it"),
+  ).toBeDefined();
+});
+
 test("a held call that leaves the feed undecided reads Answered elsewhere", async () => {
   const gone = homeHeldItem(folder("f1", "Q3 reports"));
   const { refetch } = renderTile([gone]);

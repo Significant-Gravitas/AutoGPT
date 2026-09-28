@@ -32,8 +32,8 @@ export function isInformed(item: ApprovalItem) {
 export function receiptText(item: ApprovalItem, approved: boolean) {
   if (isHeldRead(item))
     return approved
-      ? `Released · ${AUTOPILOT_NAME} is reading it`
-      : `Kept out · ${AUTOPILOT_NAME} was told`;
+      ? `Released · ${item.reader} is reading it`
+      : `Kept out · ${item.reader} was told`;
   return approved
     ? `Approved · ${AUTOPILOT_NAME} is on it`
     : `Rejected · ${AUTOPILOT_NAME} was told`;

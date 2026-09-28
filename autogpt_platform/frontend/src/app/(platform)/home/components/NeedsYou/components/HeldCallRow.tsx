@@ -152,7 +152,7 @@ export function HeldCallRow({
       </div>
       <span className="sr-only" aria-live="polite">
         {confirmReject
-          ? `Press again to ${rejectLabel.toLowerCase()} ${item.title}. ${AUTOPILOT_NAME} will be told it didn't run.`
+          ? `Press again to ${rejectLabel.toLowerCase()} ${item.title}. ${read ? approval.reader : AUTOPILOT_NAME} will be told it didn't run.`
           : ""}
       </span>
     </article>

@@ -1,12 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { delay, http, HttpResponse } from "msw";
 import { fn } from "storybook/test";
+import {
+  DEFAULT_EXPERT_AVATAR_URL,
+  MANAGED_IDENTITIES,
+} from "../ExpertAvatar/helpers";
 import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
 
 const meta = {
   title: "Molecules/ExpertAvatarPicker",
   component: ExpertAvatarPicker,
-  args: { name: "Nova", color: null, onPick: fn() },
+  args: { name: "Nova", category: "finance", onPick: fn() },
   decorators: [
     (Story) => (
       <div className="w-full max-w-lg">
@@ -28,7 +32,7 @@ const meta = {
           return HttpResponse.json({
             id: "preview",
             status: "complete",
-            avatar_url: "/autogpt-characters/v2.1/expert-sofia/neutral/512.png",
+            avatar_url: DEFAULT_EXPERT_AVATAR_URL,
           });
         }),
       ],
@@ -39,16 +43,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A new custom Expert: the General fallback, an upload, or a generated
- *  candidate in the chosen category's color. */
-export const NewExpert: Story = {};
+/** The raise flow: one avatar, sculpted the moment the beat opens. */
+export const Generating: Story = { args: { autoGenerate: true } };
 
-/** A hired built-in keeps its saved identity on offer beside the fallback. */
-export const SavedIdentity: Story = {
-  args: {
-    name: "Maria",
-    avatarUrl: "/autogpt-characters/v1.1/expert-maria/neutral/128.webp",
-    categories: ["marketing", "content"],
-    color: "rose-300",
-  },
+/** The team page: the expert already has a face until it is regenerated. */
+export const ExistingAvatar: Story = {
+  args: { category: "marketing", avatarUrl: MANAGED_IDENTITIES[0].url },
 };
