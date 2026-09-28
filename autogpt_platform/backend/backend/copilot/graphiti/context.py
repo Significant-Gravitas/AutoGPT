@@ -1,11 +1,37 @@
-"""Warm context retrieval — deterministic memory recall for a chat turn.
+"""Warm context: deterministic memory recall written into a chat turn.
 
-The first turn of a session pre-loads relevant facts via
-``fetch_warm_context`` (cross-encoder recipe, highest precision).  Later
-turns — a new task started mid-session, or the turn right after a context
-compaction — refresh via ``refresh_warm_context`` (cheap RRF recipe, gated
-on message substance) so recall never depends solely on the model choosing
-to call the memory tool.  See SECRT-2378.
+Recall must not depend on the model choosing to call ``memory_search``
+(SECRT-2378), so the chat engines put a ``<temporal_context>`` block, keyed
+on the user's message, into the turn themselves:
+
+- The first turn of a session calls ``fetch_warm_context``. Its ranking is
+  unchanged by the follow-up refresh: graphiti's cross-encoder recipe (BM25,
+  cosine and BFS edge search, then a per-candidate LLM rerank),
+  ``context_max_facts`` facts, the five newest recallable episodes,
+  ``context_timeout``, and a ratification hit for every fact shown.
+- Every later user turn calls ``refresh_warm_context`` with that turn's
+  message. It fetches when the message carries at least
+  ``WARM_CONTEXT_REFRESH_MIN_WORDS`` signal units
+  (``should_refresh_warm_context``), or when the SDK engine forces it because
+  it compacted the history for the query it is sending (the initial query or
+  a context-overflow retry; the baseline engine cannot tell and never
+  forces); otherwise it returns ``None`` without touching the graph. A fetch
+  is one retrieval: the same search methods reranked with reciprocal rank
+  fusion (one query embedding, no LLM call), the recent-episode read and the
+  last check below, bounded by ``context_refresh_timeout``, recording no
+  ratification hits. An error or a timeout returns ``None`` and the turn
+  goes ahead without a refresh. The engines decide which turns are
+  follow-ups and where the block goes: ``sdk/service.py``
+  (``_start_follow_up_warm_context``, ``_append_follow_up_warm_context``) and
+  ``baseline/service.py`` (``_refresh_follow_up_warm_context``).
+
+Both read through the recall policy (``recall.py``) the same way: live facts
+only, recallable episodes only, one last check of both by uuid right before
+rendering (``recall_recheck.recheck``), written out by ``recall_render.py``.
+A fact forgotten between two turns, and every episode it came from, is
+therefore not in the next turn's refresh. Everything rendered into the block
+is neutralised so stored text can neither close nor open it
+(``_neutralise_context_tags``).
 """
 
 import asyncio
@@ -38,8 +64,8 @@ _RECENT_EPISODES = 5
 # ("restart the executor", "deploy prod now", "resume the migration" — all
 # exactly three units), so a four-unit floor would exclude the very case it
 # targets.  Three lets a stray acknowledgement through ("yes go ahead"), which
-# costs one RRF graph query — no LLM calls, and since the refresh now runs
-# concurrently with the query build it is off the time-to-first-token path.
+# costs one RRF graph query — no LLM calls, and on the SDK engine the refresh
+# runs concurrently with the query build, off the time-to-first-token path.
 # A missed recall costs the user the bug in SECRT-2378; the asymmetry decides.
 WARM_CONTEXT_REFRESH_MIN_WORDS = 3
 
@@ -123,12 +149,14 @@ async def refresh_warm_context(
     message may be short); the fetch runs the RRF recipe
     (``use_cross_encoder=False``) — graph search + embeddings only, no
     per-candidate cross-encoder LLM prompts; and it uses the shorter
-    ``context_refresh_timeout`` budget. Unlike the first-turn fetch (which runs
-    concurrently inside a gather), this refresh is a serial ``await`` on the
-    pre-stream hot path, so the tighter budget caps its worst-case
-    time-to-first-token hit on a cold graph.
+    ``context_refresh_timeout`` budget. The SDK engine starts it before the
+    query build, so it overlaps compaction, attachments and builder context;
+    a refresh forced by a compaction, a context-overflow retry and the
+    baseline engine await it in front of the model call, which is what the
+    tighter budget caps.
 
-    Returns the ``<temporal_context>`` block, or ``None`` when skipped/empty.
+    Returns the ``<temporal_context>`` block, or ``None`` when skipped, empty,
+    failed or timed out.
     """
     if not user_id:
         return None

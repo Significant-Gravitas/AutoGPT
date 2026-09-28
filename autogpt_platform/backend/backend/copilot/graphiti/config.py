@@ -161,10 +161,12 @@ class GraphitiConfig(BaseSettings):
     context_refresh_timeout: float = Field(
         default=3.0,
         description=(
-            "Seconds before a follow-up-turn warm-context REFRESH is abandoned "
-            "(SECRT-2378). Tighter than context_timeout because the refresh is a "
-            "serial await on the pre-stream hot path — this caps its worst-case "
-            "time-to-first-token cost on a cold graph."
+            "Seconds before a follow-up-turn warm-context refresh (SECRT-2378) "
+            "is abandoned; the turn then goes ahead without it. Tighter than "
+            "context_timeout: the SDK engine overlaps the refresh with the query "
+            "build, but a refresh forced by a compaction, a context-overflow "
+            "retry and the baseline engine wait for it before calling the model, "
+            "so this caps what it can add to time-to-first-token."
         ),
     )
 

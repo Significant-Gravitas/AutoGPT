@@ -582,10 +582,14 @@ async def _refresh_follow_up_warm_context(
     request paired with a short "ok" must still drive recall), and scoped by
     ``expert_id`` to the same graph the first turn read.
 
-    Diverges from the SDK's ``_append_follow_up_warm_context`` in one respect:
-    the baseline compactor doesn't surface ``was_compacted``, so there is no
-    ``force=True`` and a trivially short post-compaction turn skips recall
-    here. Documented debt; SDK is the production engine.
+    Diverges from the SDK's ``_append_follow_up_warm_context`` in two
+    respects. The baseline compactor doesn't surface ``was_compacted``, so
+    there is no ``force=True`` and a trivially short post-compaction turn
+    skips recall here. And the refresh is awaited here, after the fold, in
+    front of the model call rather than overlapped with the query build, so
+    a qualifying turn can wait up to ``context_refresh_timeout`` for it.
+    Documented debt; SDK is the production engine. The block is appended to
+    the model's input only, never to the transcript.
     """
     if not (graphiti_enabled and user_id and is_user_message):
         return warm_ctx
