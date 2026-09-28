@@ -384,6 +384,8 @@ def track_listing_added_to_library(
     graph_id: str,
     library_agent_id: str,
 ) -> None:
+    """Deduplicated on the library entry: two concurrent adds of the same
+    listing both reach here, the loser having restored the winner's row."""
     track(
         user_id,
         PostHogEvent.LISTING_ADDED_TO_LIBRARY,
@@ -392,6 +394,7 @@ def track_listing_added_to_library(
             "graph_id": graph_id,
             "library_agent_id": library_agent_id,
         },
+        dedup_key=library_agent_id,
     )
 
 

@@ -469,6 +469,7 @@ def test_listing_added_to_library_and_downloaded(capture: Mock) -> None:
     added, downloaded = capture.call_args_list
     assert added.kwargs["event"] == "listing_added_to_library"
     assert added.kwargs["properties"]["library_agent_id"] == "lib-1"
+    assert added.kwargs["properties"]["$insert_id"] == "lib-1"
     assert downloaded.kwargs["event"] == "listing_downloaded"
     assert downloaded.kwargs["properties"]["store_listing_version_id"] == "slv-1"
 
