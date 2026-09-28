@@ -63,9 +63,10 @@ def stub_sub_session_costs(monkeypatch):
     client.get_session_costs = AsyncMock(return_value={})
     client.get_delegation_settings = AsyncMock(return_value=DelegationSettings())
     client.get_delegation_spend_since = AsyncMock(return_value=0)
-    for module in ("sub_session_facts", "delegation_policy"):
-        monkeypatch.setattr(
-            f"backend.copilot.tools.{module}.delegation_db",
-            MagicMock(return_value=client),
-        )
+    for module in (
+        "backend.copilot.tools.sub_session_facts",
+        "backend.copilot.tools.delegation_policy",
+        "backend.copilot.gate.delegation_rules",
+    ):
+        monkeypatch.setattr(f"{module}.delegation_db", MagicMock(return_value=client))
     return client

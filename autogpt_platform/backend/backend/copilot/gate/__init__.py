@@ -26,6 +26,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from . import chat_rules, held
 from . import review as review_store
 from .classifier import DecidedBy, supervise
+from .delegation_rules import verdict_for
 from .handoff import is_approved_edit
 from .headline import Headline
 from .policy import (
@@ -36,7 +37,6 @@ from .policy import (
     Verdict,
     effect_for,
     estimate_for,
-    verdict_for_effect,
 )
 from .subject import Subject
 
@@ -169,7 +169,11 @@ async def check_action(
     )
     rule = hit.rule if hit else None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
-    verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
+    verdict = (
+        _RULE_VERDICTS[rule]
+        if rule
+        else await verdict_for(mode, effect, user_id, session)
+    )
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
     spend = spend_shown = None
     if effect in METERED and estimate > 0 and mode != "unsupervised":
