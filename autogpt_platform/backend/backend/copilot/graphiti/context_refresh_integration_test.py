@@ -8,7 +8,7 @@ nor the text of the chat turn it came from comes back, while a fact the
 forget did not touch still does. Facts go in through graphiti's real
 ``add_episode`` with only the LLM boundary scripted
 (``recall_integration_fixtures.py``). The unit sibling is
-``context_test.py::TestRefreshReadsThroughTheRecallPolicy``.
+``context_refresh_test.py::TestRefreshReadsThroughTheRecallPolicy``.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 

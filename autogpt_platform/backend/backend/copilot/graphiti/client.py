@@ -21,8 +21,8 @@ _MAX_GROUP_ID_LEN = 128
 # pinned to the event loop they were first used on. The CoPilot executor runs
 # one asyncio loop per worker thread, so a process-wide client cache would
 # hand a loop-1-bound connection to a task running on loop 2 → RuntimeError
-# "got Future attached to a different loop". Scope the cache (and its lock)
-# per running loop so each loop gets its own clients.
+# "got Future attached to a different loop". Scope the cache, and the
+# builds in flight, per running loop so each loop gets its own clients.
 class _LoopState:
     __slots__ = ("cache", "building", "indexed")
 

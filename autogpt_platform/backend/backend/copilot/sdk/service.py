@@ -1123,7 +1123,9 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
 # attribute is inert.
 _INJECTED_MEMORY_NONCE = secrets.token_hex(16)
 _INJECTED_MEMORY_MARKER = f'data-agpt-injected="{_INJECTED_MEMORY_NONCE}"'
-# Matches ONLY a nonce-stamped block, so user-authored tags are never hit.
+# Matches only a block stamped with this process's nonce: a tag the user
+# typed is left alone unless it carries that nonce (the limit
+# ``_INJECTED_MEMORY_NONCE`` describes).
 # The optional leading ``\n\n`` is the exact separator that
 # ``_append_follow_up_warm_context`` inserts before the block — removing it
 # together with the block leaves the user's own text (its leading/trailing
@@ -1217,8 +1219,9 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
         if not stripped or marker not in line:
             out.append(line)
             continue
-        # Past this point the line carries THIS process's nonce, so it is a
-        # block we injected and expected to remove. Both fall-throughs below
+        # Past this point the line carries this process's nonce: a block we
+        # injected (or, the limit ``_INJECTED_MEMORY_NONCE`` describes, one a
+        # user pasted with that nonce), expected to go. Both fall-throughs below
         # keep it — safe (they never eat user text), but they reintroduce the
         # accumulation this scrub exists to prevent, so the misses are counted
         # and reported once below rather than passing silently.

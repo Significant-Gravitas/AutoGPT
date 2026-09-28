@@ -112,7 +112,7 @@ def _is_pending_queue_overflow(exc: Exception) -> bool:
 
 
 class AutoGPTFalkorDriver(FalkorDriver):
-    """FalkorDriver subclass with three AutoGPT-specific tweaks.
+    """FalkorDriver subclass with four AutoGPT-specific tweaks.
 
     1. ``build_fulltext_query`` adds the per-user ``group_id`` filter so
        multi-tenant searches don't cross user graphs.

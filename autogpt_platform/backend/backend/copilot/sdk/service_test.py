@@ -2370,8 +2370,10 @@ class TestStripEphemeralMemoryFromCliJsonl:
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
 
     def test_preserves_user_block_with_forged_marker(self):
-        # A user can type the marker attribute, but not this process's random
-        # nonce, so their own text must survive the upload scrub verbatim.
+        # A user can type the marker attribute with any value; one that is not
+        # this process's nonce leaves their text to survive the upload scrub
+        # verbatim. A pasted matching nonce is the documented limit, pinned in
+        # test_a_user_block_carrying_this_process_nonce_is_scrubbed.
         forged = (
             '<temporal_context data-agpt-injected="1">my own notes'
             "</temporal_context>"
