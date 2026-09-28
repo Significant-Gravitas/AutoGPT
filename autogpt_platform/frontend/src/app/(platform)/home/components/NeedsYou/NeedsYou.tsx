@@ -6,6 +6,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AttentionRow } from "./components/AttentionRow";
+import { HeldCall } from "./components/HeldCall";
+import { isHeldCall } from "./helpers";
 import { useNeedsYou } from "./useNeedsYou";
 
 interface Props {
@@ -15,15 +17,16 @@ interface Props {
 
 export function NeedsYou({ dashboard, className }: Props) {
   const {
-    visibleItems,
+    visibleRows,
+    pendingCount,
     filterOptions,
     hasFilters,
     selectedKind,
     selectKind,
     pendingIDs,
     decide,
+    held,
   } = useNeedsYou({ items: dashboard.attention });
-  const itemCount = dashboard.attention.length;
 
   return (
     <HomeTile
@@ -36,10 +39,10 @@ export function NeedsYou({ dashboard, className }: Props) {
           as="span"
           tone="secondary"
           role="status"
-          aria-label={`${itemCount} ${itemCount === 1 ? "item needs" : "items need"} your attention`}
+          aria-label={`${pendingCount} ${pendingCount === 1 ? "item needs" : "items need"} your attention`}
           className="rounded-md bg-zinc-100 px-1.5 py-0.5 tabular-nums"
         >
-          {itemCount}
+          {pendingCount}
         </Text>
       }
       meta={
@@ -54,15 +57,34 @@ export function NeedsYou({ dashboard, className }: Props) {
       }
     >
       <div className="divide-y divide-zinc-100">
-        {visibleItems.map((item) => (
-          <AttentionRow
-            key={item.id}
-            item={item}
-            isProcessing={pendingIDs.has(item.id)}
-            onDecision={decide}
-          />
-        ))}
+        {visibleRows.map(({ item, receipt }) =>
+          isHeldCall(item) ? (
+            <HeldCall
+              key={item.id}
+              item={item}
+              receipt={receipt}
+              status={held.statusOf(item.id)}
+              failed={held.hasFailed(item.id)}
+              open={held.openId === item.id}
+              onToggle={() => held.toggle(item.id)}
+              onClose={() => held.close(item.id)}
+              onDecide={(approved, rule, scope) =>
+                held.decide([item], approved, rule, scope)
+              }
+            />
+          ) : (
+            <AttentionRow
+              key={item.id}
+              item={item}
+              isProcessing={pendingIDs.has(item.id)}
+              onDecision={decide}
+            />
+          ),
+        )}
       </div>
+      <span className="sr-only" aria-live="polite">
+        {held.announcement}
+      </span>
     </HomeTile>
   );
 }

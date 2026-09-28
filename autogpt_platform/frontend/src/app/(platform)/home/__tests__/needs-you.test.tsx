@@ -273,6 +273,7 @@ function heldReadItem(id: string, judged: boolean): HomeAttentionItem {
     ...makeApproval(0),
     id: `approval-${review.node_exec_id}`,
     title: `Let Otto read https://example.com/${id}`,
+    headline: { ask: "Let Otto read", object: `https://example.com/${id}` },
     description: reason,
     review: {
       ...review,

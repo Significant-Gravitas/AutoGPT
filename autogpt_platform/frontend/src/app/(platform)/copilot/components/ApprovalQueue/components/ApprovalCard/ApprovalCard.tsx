@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
@@ -27,6 +28,9 @@ interface Props {
   expertName: string | null;
   onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
   onReject: () => void;
+  // Outside the chat: why a mode-held call asks, and a link back to the chat.
+  note?: string | null;
+  aside?: ReactNode;
 }
 
 export function ApprovalCard({
@@ -36,9 +40,11 @@ export function ApprovalCard({
   expertName,
   onApprove,
   onReject,
+  note = null,
+  aside = null,
 }: Props) {
   const fields = useApprovalFields(item);
-  const reason = reasonLine(item);
+  const reason = reasonLine(item) ?? note;
   const read = isHeldRead(item);
   const busy = status !== "idle";
 
@@ -67,11 +73,16 @@ export function ApprovalCard({
             ? "Keep it out"
             : "Reject"}
       </Button>
+      {aside && (
+        <div className="col-span-2 flex justify-end sm:ml-auto sm:self-center">
+          {aside}
+        </div>
+      )}
     </div>
   );
 
   // Nothing to read beyond the headline: the card is one row, as a list line is.
-  if (isBare(item) && !failed) {
+  if (isBare(item) && !failed && !reason) {
     return (
       <article
         aria-busy={busy}
