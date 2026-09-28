@@ -24,6 +24,7 @@ from .tool_adapter import (
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
     get_sdk_disallowed_tools,
@@ -1492,6 +1493,34 @@ class TestEmptyArgsCircuitBreaker:
         assert "Do NOT retry" in text
 
 
+class TestNonRegistryGateSeam:
+    """The file handlers never reach ``BaseTool.execute``; this seam is their gate."""
+
+    @pytest.mark.asyncio
+    async def test_a_refused_file_write_never_reaches_its_handler(self):
+        called = False
+
+        async def handler(_args):
+            nonlocal called
+            called = True
+            return {"content": [{"type": "text", "text": "wrote"}], "isError": False}
+
+        refusal = {"content": [{"type": "text", "text": "no"}], "isError": True}
+        _init_ctx(_make_test_session())
+        with patch(
+            "backend.copilot.sdk.tool_adapter.gate_non_registry_tool",
+            new=AsyncMock(return_value=refusal),
+        ) as gate:
+            wrapper = _make_truncating_wrapper(
+                handler, "write_file", required_args=["path"]
+            )
+            result = await wrapper({"path": "a.txt", "content": "x"})
+
+        gate.assert_awaited_once()
+        assert called is False
+        assert result.get("isError") is True
+
+
 def test_set_execution_context_carries_hidden_tools():
     """The SDK engine hands its per-turn hidden tool set through this
     adapter's ``set_execution_context`` (not ``context.set_execution_context``),
@@ -1505,3 +1534,23 @@ def test_set_execution_context_carries_hidden_tools():
     finally:
         set_execution_context(None, session)
     assert get_current_hidden_tools() == frozenset()
+
+
+class TestLateToolResultCap:
+    """A held call's late result must read as the direct result would have."""
+
+    @pytest.mark.asyncio
+    async def test_a_late_result_is_cut_exactly_as_the_wrapper_cuts_a_direct_one(
+        self,
+    ):
+        text = "x" * (_MCP_MAX_CHARS + 20_000)
+
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        _init_ctx(_make_test_session())
+        wrapper = _make_truncating_wrapper(handler, "read_workspace_file")
+        direct = _text_from_mcp_result(await wrapper({}))
+
+        assert len(direct) < len(text)
+        assert cap_late_tool_result(text) == direct

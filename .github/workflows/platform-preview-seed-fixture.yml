@@ -151,6 +151,20 @@ jobs:
             exit 0
           }
 
+      # The marketplace skills and expert roster come from the public skills
+      # catalog, the same way a deploy publishes them after migrations. Store
+      # assets were loaded just above, so the roster's preload workflows
+      # resolve; --skip-missing-preloads keeps the bake going if that step
+      # was the one that soft-failed.
+      - name: "Seed: skills catalog (best-effort)"
+        run: |
+          timeout 600 poetry run publish-skills-catalog --skip-missing-preloads || {
+            echo "::warning title=seed-soft-failure::skills catalog publish failed or timed out; continuing without marketplace skills and roster experts."
+            exit 0
+          }
+        env:
+          SKILLS_CATALOG_TOKEN: ${{ github.token }}
+
       - name: "Seed: e2e_test_data (best-effort)"
         run: |
           timeout 300 poetry run python test/e2e_test_data.py || {

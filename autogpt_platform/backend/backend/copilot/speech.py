@@ -116,7 +116,7 @@ async def _meter_speech(
         model=config.voice_tts_model,
         provider="openai",
         block_name_override=TTS_BLOCK_NAME,
-        graph_exec_id_override=session_id,
+        chat_session_id_override=session_id,
         extra_metadata={
             "surface": "voice_mode",
             "characters": characters,

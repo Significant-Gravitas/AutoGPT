@@ -225,8 +225,8 @@ class TestUpdateCartBlock:
 
 
 class TestPayCartBlock:
-    def test_is_a_sensitive_action(self):
-        assert RMFGPayCartBlock().is_sensitive_action is True
+    def test_is_an_irreversible_action(self):
+        assert RMFGPayCartBlock().is_irreversible_action is True
 
     async def test_uses_node_exec_id_as_idempotency_key(
         self, monkeypatch: pytest.MonkeyPatch
