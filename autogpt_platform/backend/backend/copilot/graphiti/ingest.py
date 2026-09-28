@@ -157,8 +157,8 @@ CUSTOM_EXTRACTION_INSTRUCTIONS = """
 
 # Cypher that overwrites exactly the five envelope-sourced MemoryFact
 # props on a known set of edge uuids. group_id predicate is tenant
-# defense-in-depth (mirrors apply._apply_demotions); the forgotten test
-# keeps it off a fact a forget reached first.
+# defense-in-depth (mirrors the dream's demotions, ``dream/demotions.py``);
+# the forgotten test keeps it off a fact a forget reached first.
 _STAMP_EDGE_METADATA_QUERY = """
 MATCH ()-[e:RELATES_TO]->()
 WHERE e.uuid IN $uuids AND e.group_id = $gid AND e.forgotten_at IS NULL

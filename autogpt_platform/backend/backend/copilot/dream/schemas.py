@@ -176,7 +176,7 @@ class DreamDemotion(BaseModel):
 class EntityInvalidation(BaseModel):
     """Demote every :RELATES_TO edge directly attached to an entity.
 
-    Single-hop only — apply.py calls ``invalidate_entity_direct_neighbors``
+    Single-hop only — demotions.py calls ``invalidate_entity_direct_neighbors``
     which clamps to ``[r:RELATES_TO]-(other)``; never expands to
     neighbors-of-neighbors.
     """
@@ -243,8 +243,20 @@ class DemotionSummary(BaseModel):
     reason: str
     new_status: Literal["superseded", "contradicted"]
     applied: bool = True
-    """False when the underlying Cypher reported zero rows touched —
-    typically because the edge uuid was stale by the time apply.py ran."""
+    """False unless the write was acknowledged as changing the fact: it
+    matched no live fact (typically stale by the time apply ran), the recall
+    guard spared it (``protected``), or its outcome is unknown
+    (``indeterminate``)."""
+    protected: bool = False
+    """True when the write left a live fact alone because the user recalled
+    it within the protection window (``recall_guard.py``); ``applied`` is
+    then False. Counted in ``protected_demotions`` if the pass's final read,
+    after every acknowledged write, finds the fact live."""
+    indeterminate: bool = False
+    """True when the write raised: it may have committed before its
+    acknowledgement was lost, never arrived, or still be queued on the
+    server, so ``applied`` and ``protected`` say nothing. Counted in
+    ``indeterminate_demotion_writes``."""
 
 
 class EntityInvalidationSummary(BaseModel):
@@ -253,6 +265,14 @@ class EntityInvalidationSummary(BaseModel):
     entity_uuid: str
     reason: str
     edges_touched: list[str] = Field(default_factory=list)
+    # Live neighbours the invalidation's write left alone: the user recalled
+    # them within the protection window (``recall_guard.py``). Counted in
+    # ``protected_demotions`` if the pass's final read finds them live.
+    edges_protected: list[str] = Field(default_factory=list)
+    # The write raised: it may have committed, never arrived, or still be
+    # queued, so which neighbours it touched or protected is unknown and both
+    # lists are empty. Counted in ``indeterminate_demotion_writes``.
+    indeterminate: bool = False
 
 
 class DreamOperationsSnapshot(BaseModel):
@@ -339,6 +359,22 @@ class DreamPassResult(BaseModel):
     # forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
+    # Distinct facts the recall guard kept live through the pass
+    # (``recall_guard.py``): an acknowledged write spared them, and the
+    # pass's final read, after every acknowledged write, found them live. A
+    # snapshot at that read: a later forget or pass can retire them. A fact
+    # spared by two writes counts once.
+    protected_demotions: int = 0
+    # The pass's demotion and invalidation writes that raised. Each may have
+    # committed, never arrived, or still be queued on the server, so the
+    # changed counts above can be short by what they did.
+    indeterminate_demotion_writes: int = 0
+    # True only when the final read answered and no write's outcome is
+    # unknown. Otherwise the counts are provisional: ``protected_demotions``
+    # may count a fact an unknown write changes, even after the pass
+    # returned, and falls back to spared minus acknowledged changes when the
+    # read failed.
+    demotion_accounting_complete: bool = True
 
     summary_for_user: str = ""
     dream_session_id: str | None = None

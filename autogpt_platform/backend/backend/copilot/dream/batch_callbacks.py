@@ -58,7 +58,7 @@ from .batch_outcome import (
 from .batch_state import claim_apply_gate, content_for, read_state, write_phase_to_state
 from .batch_submit import PHASE_RESPONSE_MODELS, read_input_bundle, submit_phase
 from .cancel import end_batch_pass_if_stopped, pass_closed
-from .clamp import clamp_operations
+from .clamp import clamp_pass_operations
 from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
 from .llm import parse_json_with_prose_fallback
 from .provider_batch import anthropic_api_key
@@ -310,7 +310,9 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
     try:
         # No ingestion drain here: walk_once awaits this handler serially, so
         # an in-line drain would stall every other user's pending batch
-        # (``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``).
+        # (``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``). The input bundle is
+        # hours old by now; the demotion writes test the recall stamps as the
+        # graph holds them when each runs (``demotions.py``).
         apply_stats = await apply_operations(
             MemoryScope.build(bp.user_id, bp.expert_id),
             bp.pass_id,
@@ -377,11 +379,7 @@ async def _terminal_ops(
     # The 5%-of-active-facts demotion ceiling needs the original fact
     # count, and the known-fact allowlist filters hallucinated demotion
     # uuids BEFORE the cap slice (else they displace valid demotions).
-    return clamp_operations(
-        ops,
-        len(input_bundle.facts),
-        known_fact_uuids=input_bundle.known_fact_uuids,
-    )
+    return clamp_pass_operations(ops, input_bundle)
 
 
 async def _finish_applied(

@@ -7,15 +7,11 @@ Both steps go through the recall policy (``graphiti/recall.py`` and
 ``graphiti/recall_forget.py``): the candidates are the facts recall would
 return, and a confirmed forget is ``recall_forget.retract``, with the
 guarantees and limits ``graphiti/AGENTS.md`` lists.
-
-The demotion helpers below are the dream's writers. They write only over
-live facts, so a demotion can never overwrite a user's forget.
 """
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
 from graphiti_core.edges import EntityEdge
 
@@ -25,7 +21,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import live_fact_predicate, search_facts
+from backend.copilot.graphiti.recall import search_facts
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
@@ -47,19 +43,6 @@ _BUSY_RETRY_SECONDS = 5
 # message. Keeps a wholesale-failure batch from blowing past the tool-output
 # size threshold (base.py) and losing all detail to truncation.
 _MAX_FAILURE_DETAIL = 5
-
-
-def _now_iso() -> str:
-    """Current UTC time as an ISO-8601 string for Cypher parameter binding.
-
-    FalkorDB does not implement Cypher's no-arg ``datetime()`` function
-    (the error is ``Unknown function 'datetime'``), so timestamp values
-    have to be generated in Python and passed as a parameter.  ISO
-    strings work for the comparison + ordering we use (lexical sort on
-    ISO-8601 matches chronological sort) and round-trip cleanly through
-    ``toString(...)`` reads we already do.
-    """
-    return datetime.now(timezone.utc).isoformat()
 
 
 logger = logging.getLogger(__name__)
@@ -308,135 +291,3 @@ def _candidate(edge: EntityEdge) -> dict[str, str]:
         "valid_from": valid_from,
         "valid_to": valid_to,
     }
-
-
-async def mark_edges_superseded(
-    driver,
-    uuids: list[str],
-    reason: str,
-    new_status: Literal["superseded", "contradicted"] = "superseded",
-    user_id: str | None = None,
-    group_id: str | None = None,
-    expected_status: str | None = None,
-) -> tuple[list[str], list[str]]:
-    """Retract edges AND set the custom audit-trail ``status`` property.
-
-    Intended for the dream pass (P0.3 stale-fact deprecation): retire
-    the edge (``expired_at``; ``invalid_at`` is left alone) and
-    stamp ``status='superseded'`` (or ``'contradicted'``) plus
-    ``expiration_reason=<reason>`` so the demotion is queryable from
-    search (``WHERE e.status = 'superseded'``).
-
-    ``group_id`` adds defense-in-depth: the driver is normally opened
-    against the per-user FalkorDB database, but when provided the
-    Cypher predicate also requires the edge's ``group_id`` to match so
-    a future caller holding the wrong driver can't touch another
-    user's edges. ``None`` keeps the unscoped match.
-
-    The write lands only on a live fact (``recall.live_fact_predicate``), or,
-    with ``expected_status``, on an unexpired, unforgotten edge still in that
-    status, so a forget or other change made since the caller read the edge
-    is never overwritten; an edge that no longer qualifies is reported failed.
-
-    Returns ``(succeeded_uuids, failed_uuids)``.
-    """
-    deleted = []
-    failed = []
-    user_log = (user_id or "?")[:12]
-    query = _supersede_query(
-        scoped=group_id is not None, guarded=expected_status is not None
-    )
-    params: dict[str, str] = {"new_status": new_status, "reason": reason}
-    if group_id is not None:
-        params["group_id"] = group_id
-    if expected_status is not None:
-        params["expected_status"] = expected_status
-    for uuid in uuids:
-        try:
-            records, _, _ = await driver.execute_query(
-                query, uuid=uuid, now=_now_iso(), **params
-            )
-            if records:
-                deleted.append(uuid)
-            else:
-                failed.append(uuid)
-        except Exception:
-            logger.warning(
-                "Failed to mark edge %s superseded for user %s",
-                uuid,
-                user_log,
-                exc_info=True,
-            )
-            failed.append(uuid)
-    return deleted, failed
-
-
-def _supersede_query(*, scoped: bool, guarded: bool) -> str:
-    """``mark_edges_superseded``'s Cypher, with its ``group_id`` match and its
-    ``expected_status`` guard when asked for."""
-    edge_match = (
-        "MATCH ()-[e:RELATES_TO {uuid: $uuid, group_id: $group_id}]->()"
-        if scoped
-        else "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()"
-    )
-    guard = (
-        "WHERE e.status = $expected_status AND e.expired_at IS NULL"
-        " AND e.forgotten_at IS NULL"
-        if guarded
-        else f"WHERE {live_fact_predicate('e')}"
-    )
-    return f"""
-                {edge_match}
-                {guard}
-                SET e.expired_at = $now,
-                    e.status = $new_status,
-                    e.expiration_reason = $reason
-                RETURN e.uuid AS uuid
-                """
-
-
-async def invalidate_entity_direct_neighbors(
-    driver,
-    group_id: str,
-    entity_uuid: str,
-    reason: str,
-) -> list[str]:
-    """Demote every live ``:RELATES_TO`` edge directly attached to an entity.
-
-    **Single-hop only** — does NOT propagate to neighbors-of-neighbors.
-    The instinct to write ``[r:RELATES_TO*1..N]`` is exactly the
-    runaway-demotion bug we are protecting against (P0.3b in the dream
-    spec). Only live neighbours (``recall.live_fact_predicate``) are touched.
-
-    Returns the list of edge UUIDs that were demoted. ``DISTINCT``
-    matters: the undirected ``-[r]-`` pattern can yield the same edge
-    from both traversal directions, and duplicate uuids inflate the
-    demotion counts reported in ``DreamPassResult`` / the admin UI
-    (the ``SET`` itself is idempotent).
-    """
-    query = f"""
-    MATCH (e:Entity {{uuid: $entity_uuid, group_id: $group_id}})
-    MATCH (e)-[r:RELATES_TO]-(other)
-    WHERE {live_fact_predicate("r")}
-    SET r.expired_at = $now,
-        r.status = 'superseded',
-        r.expiration_reason = $reason
-    RETURN DISTINCT r.uuid AS edge_uuid
-    """
-    try:
-        records, _, _ = await driver.execute_query(
-            query,
-            entity_uuid=entity_uuid,
-            group_id=group_id,
-            reason=reason,
-            now=_now_iso(),
-        )
-        return [r["edge_uuid"] for r in records]
-    except Exception:
-        logger.warning(
-            "Failed to invalidate direct neighbors of entity %s in group %s",
-            entity_uuid,
-            group_id,
-            exc_info=True,
-        )
-        return []

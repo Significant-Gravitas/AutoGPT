@@ -57,20 +57,20 @@ async def _search(
     search_facts = AsyncMock(return_value=edges)
     recent_episodes = AsyncMock(return_value=episodes)
     recheck = AsyncMock(return_value=still or (edges, episodes))
-    record_hit = MagicMock(return_value="hit-coroutine")
+    record_recall = MagicMock(return_value="hit-coroutine")
     spawn = MagicMock()
     with (
         patch(f"{_MODULE}.is_enabled_for_user", AsyncMock(return_value=True)),
         patch(f"{_MODULE}.search_facts", search_facts),
         patch(f"{_MODULE}.recent_episodes", recent_episodes),
         patch(f"{_MODULE}.recheck", recheck),
-        patch(f"{_MODULE}.record_hit", record_hit),
+        patch(f"{_MODULE}.record_recall", record_recall),
         patch(f"{_MODULE}.spawn_background_task", spawn),
     ):
         result = await MemorySearchTool()._execute(
             "user-1", session, query="private fact", **tool_kwargs
         )
-    return result, search_facts, recent_episodes, record_hit, spawn
+    return result, search_facts, recent_episodes, record_recall, spawn
 
 
 @pytest.mark.asyncio
@@ -106,14 +106,14 @@ async def test_only_what_the_recheck_still_finds_is_shown_and_counted() -> None:
     kept = _edge("e2", "Bob leads Atlas")
     edges = [_edge("e1", "Alice works on Atlas"), kept]
 
-    result, _, _, record_hit, _ = await _search(
+    result, _, _, record_recall, _ = await _search(
         edges, [_episode("Alice works on Atlas")], still=([kept], [])
     )
 
     assert isinstance(result, MemorySearchResponse)
     assert [fact.split(" (")[0] for fact in result.facts] == ["Bob leads Atlas"]
     assert result.recent_episodes == []
-    record_hit.assert_called_once_with(MemoryScope.for_user("user-1"), ["e2"])
+    record_recall.assert_called_once_with(MemoryScope.for_user("user-1"), ["e2"])
 
 
 @pytest.mark.asyncio
@@ -122,18 +122,18 @@ async def test_returned_facts_are_counted_as_hits() -> None:
     model retrieves here has been used, like one warm context surfaced."""
     edges = [_edge("e1", "fact one"), _edge("e2", "fact two")]
 
-    _, _, _, record_hit, spawn = await _search(edges, [])
+    _, _, _, record_recall, spawn = await _search(edges, [])
 
-    record_hit.assert_called_once_with(MemoryScope.for_user("user-1"), ["e1", "e2"])
+    record_recall.assert_called_once_with(MemoryScope.for_user("user-1"), ["e1", "e2"])
     spawn.assert_called_once()
     assert spawn.call_args.args == ("hit-coroutine",)
 
 
 @pytest.mark.asyncio
 async def test_no_facts_no_hit_task() -> None:
-    _, _, _, record_hit, spawn = await _search([], [_episode("just chatting")])
+    _, _, _, record_recall, spawn = await _search([], [_episode("just chatting")])
 
-    record_hit.assert_not_called()
+    record_recall.assert_not_called()
     spawn.assert_not_called()
 
 

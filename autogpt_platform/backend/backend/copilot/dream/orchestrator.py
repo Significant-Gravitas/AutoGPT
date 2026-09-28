@@ -51,7 +51,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
-from .clamp import clamp_operations
+from .clamp import clamp_pass_operations
 from .fetch import (
     DreamInput,
     EpisodeRow,
@@ -635,11 +635,7 @@ async def _apply(
     input_bundle: DreamInput,
 ) -> DreamPassResult:
     """Clamp the operations, make the last checks, apply and stamp the marker."""
-    ops = clamp_operations(
-        sanitized,
-        len(input_bundle.facts),
-        known_fact_uuids=input_bundle.known_fact_uuids,
-    )
+    ops = clamp_pass_operations(sanitized, input_bundle)
     await record_applying(run.pass_id, ops)
     lease = await admit_sync_apply(run, scope, lock_handle)
     apply_stats = await apply_operations(
@@ -684,6 +680,12 @@ def _applied_result(
         demotion_count=_as_int("demotion_count"),
         entity_invalidation_count=_as_int("entity_invalidation_count"),
         dropped_forgotten=_as_int("dropped_forgotten"),
+        protected_demotions=_as_int("protected_demotions"),
+        indeterminate_demotion_writes=_as_int("indeterminate_demotion_writes"),
+        # Only apply's own False marks the count unconfirmed.
+        demotion_accounting_complete=(
+            apply_stats.get("demotion_accounting_complete") is not False
+        ),
         summary_for_user=ops.summary_for_user,
         # Fail-closed: a missing/malformed drain flag reads as
         # ``timed_out`` (writes at risk), never a confirmed drain.

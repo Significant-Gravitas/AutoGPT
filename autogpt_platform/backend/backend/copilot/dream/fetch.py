@@ -25,6 +25,7 @@ from backend.copilot.graphiti.recall import (
     live_fact_predicate,
     recallable_episode_predicate,
 )
+from backend.copilot.graphiti.recall_stamp import RecallStamp, recall_stamp_columns
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSessionInfo
 from backend.data.db_accessors import chat_db
@@ -49,8 +50,9 @@ class EpisodeRow(BaseModel):
     created_at: str | None
 
 
-class FactRow(BaseModel):
-    uuid: str
+class FactRow(RecallStamp):
+    """An active fact and its recall stamps (all ``None``: never recalled)."""
+
     source: str | None
     target: str | None
     name: str | None
@@ -222,7 +224,8 @@ async def _fetch_active_facts(
                    e.scope AS scope,
                    e.confidence AS confidence,
                    e.status AS status,
-                   toString(e.created_at) AS created_at
+                   toString(e.created_at) AS created_at,
+                   {recall_stamp_columns("e")}
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -248,6 +251,9 @@ async def _fetch_active_facts(
             confidence=r.get("confidence"),
             status=r.get("status"),
             created_at=r.get("created_at"),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
         )
         for r in rows
     ]

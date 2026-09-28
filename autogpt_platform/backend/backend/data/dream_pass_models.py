@@ -80,6 +80,15 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Distinct facts an acknowledged write spared and the accounting read
+    # found live (provisional when the accounting is incomplete); a row
+    # written before it reads 0.
+    protected_demotions: int = 0
+    # Demotion writes whose outcome is unknown (they raised), and whether
+    # the counts are settled (a final read answered and no write's outcome
+    # is unknown); a row written before them reads 0 and True.
+    indeterminate_demotion_writes: int = 0
+    demotion_accounting_complete: bool = True
     summary_for_user: str = ""
     dream_session_id: str | None = None
     ingestion_drain_status: IngestionDrainStatus = IngestionDrainStatus.drained

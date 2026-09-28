@@ -5,8 +5,8 @@ Three side-effects, in order:
      episodes via ``enqueue_episode``.
   2. Proposals (novel findings) → ``status='tentative'`` envelopes.
      Ratification (P-0.4) will flip these to active or supersede them.
-  3. Demotions / entity invalidations → ``mark_edges_superseded`` /
-     ``invalidate_entity_direct_neighbors`` against the FalkorDB driver.
+  3. Demotions / entity invalidations, written by ``demotions.py`` with the
+     recall guard in each statement.
 
 A ``ChatSession`` shell (``metadata.kind='dream'`` +
 ``metadata.dream_pass_id``) is created up front so the MemoryEnvelope
@@ -25,7 +25,6 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from backend.copilot.graphiti.falkordb_driver import open_driver
 from backend.copilot.graphiti.ingest import (
     IngestionCompletion,
     enqueue_episode,
@@ -39,24 +38,15 @@ from backend.copilot.graphiti.memory_model import (
 )
 from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.copilot.tools.graphiti_forget import (
-    invalidate_entity_direct_neighbors,
-    mark_edges_superseded,
-)
 from backend.copilot.transports import resolve_default_chat_route
-from backend.util.feature_flag import Flag, is_feature_enabled
 
-from .batch_submit import read_input_bundle
+from .demotions import apply_demotions
 from .fetch import DREAM_EPISODE_NAME_PREFIX
 from .locks import DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
-    DemotionSummary,
-    DreamDemotion,
     DreamOperations,
     DreamOperationsSnapshot,
-    EntityInvalidation,
-    EntityInvalidationSummary,
     IngestionDrainStatus,
     ProposedFinding,
     WriteSummary,
@@ -260,163 +250,6 @@ async def _write_proposed_finding(
     )
 
 
-async def _filter_demotions_to_known_facts(
-    pass_id: str,
-    demotions: list[DreamDemotion],
-    known_fact_uuids: set[str] | None,
-) -> list[DreamDemotion]:
-    """Code-level pre-flight for LLM-proposed demotion targets.
-
-    The sanitize prompt tells the model only ``known_fact_uuids`` are
-    valid demotion targets, but prompt text isn't enforcement — a
-    hallucinated or injected uuid would otherwise reach Cypher and
-    could demote edges the dream pass never fetched. Both the sync
-    orchestrator and the batch callback converge on
-    ``apply_operations``, so this is the one chokepoint that covers
-    both paths.
-
-    The sync path passes ``known_fact_uuids`` from its in-memory
-    ``DreamInput``; the batch path calls ``apply_operations`` without
-    it, so we fall back to the input bundle persisted at submit time.
-    If neither source exists (bundle expired/corrupted, or the Redis
-    read itself fails) we keep the demotions rather than zeroing the
-    pass — the same fail-open posture as the clamp's
-    unknown-fact-count fallback — and log that validation was skipped.
-    The Redis error MUST NOT propagate: by the time apply runs on the
-    batch path the at-most-once apply gate is already claimed, so an
-    exception here would permanently lose the dream (a retry hits the
-    "duplicate" branch and skips apply entirely).
-
-    Entity invalidations are NOT filtered here: the input bundle
-    carries no entity-uuid allowlist (``FactRow.source``/``target``
-    are entity *names*), so there is nothing to validate against.
-    """
-    if not demotions:
-        return demotions
-    if known_fact_uuids is None:
-        try:
-            bundle = await read_input_bundle(pass_id)
-        except Exception as exc:
-            logger.warning(
-                "Dream pass %s: input bundle read failed (%s) — failing open "
-                "and skipping known-fact validation for %d demotion(s)",
-                pass_id,
-                exc,
-                len(demotions),
-            )
-            return demotions
-        if bundle is None:
-            logger.warning(
-                "Dream pass %s: no input bundle available — skipping "
-                "known-fact validation for %d demotion(s)",
-                pass_id,
-                len(demotions),
-            )
-            return demotions
-        known_fact_uuids = bundle.known_fact_uuids
-    kept = [d for d in demotions if d.edge_uuid in known_fact_uuids]
-    dropped = len(demotions) - len(kept)
-    if dropped:
-        logger.warning(
-            "Dream pass %s: dropped %d demotion(s) targeting edge uuids "
-            "outside the pass's known_fact_uuids (prompt-only constraint "
-            "violated by the model)",
-            pass_id,
-            dropped,
-        )
-    return kept
-
-
-async def _apply_demotions(
-    scope: MemoryScope,
-    demotions: list[DreamDemotion],
-) -> tuple[int, int, list[DemotionSummary]]:
-    """Run mark_edges_superseded once per (reason, new_status) bucket.
-
-    Returns ``(succeeded_count, failed_count, summaries)`` where each
-    summary records the original DreamDemotion plus whether the
-    underlying Cypher actually touched a row (``applied`` flag).
-    """
-    if not demotions:
-        return 0, 0, []
-
-    # Group by (new_status, reason) so we minimize round-trips.
-    buckets: dict[tuple[str, str], list[str]] = {}
-    for d in demotions:
-        buckets.setdefault((d.new_status, d.reason), []).append(d.edge_uuid)
-
-    driver = open_driver(scope)
-    succeeded = 0
-    failed = 0
-    succeeded_uuids: set[str] = set()
-    try:
-        for (new_status, reason), uuids in buckets.items():
-            ok, bad = await mark_edges_superseded(
-                driver,
-                uuids,
-                reason=reason,
-                new_status=new_status,  # type: ignore[arg-type]
-                user_id=scope.owner_user_id,
-                # Defense-in-depth: the driver is already opened against
-                # the per-user database, but the group_id predicate keeps
-                # a future wrong-driver caller from touching another
-                # user's edges.
-                group_id=scope.group_id,
-            )
-            succeeded += len(ok)
-            failed += len(bad)
-            succeeded_uuids.update(ok)
-    finally:
-        await driver.close()
-
-    summaries = [
-        DemotionSummary(
-            edge_uuid=d.edge_uuid,
-            reason=d.reason,
-            new_status=d.new_status,
-            applied=d.edge_uuid in succeeded_uuids,
-        )
-        for d in demotions
-    ]
-    return succeeded, failed, summaries
-
-
-async def _apply_entity_invalidations(
-    scope: MemoryScope,
-    invalidations: list[EntityInvalidation],
-) -> tuple[int, list[EntityInvalidationSummary]]:
-    """Single-hop demotion of every :RELATES_TO around each invalidated entity.
-
-    Returns ``(total_edges_touched, summaries)`` — summaries enumerate
-    the per-entity edge uuids so callers can render or audit which
-    edges fell off when an entity was invalidated.
-    """
-    if not invalidations:
-        return 0, []
-    driver = open_driver(scope)
-    total = 0
-    summaries: list[EntityInvalidationSummary] = []
-    try:
-        for inv in invalidations:
-            uuids = await invalidate_entity_direct_neighbors(
-                driver,
-                group_id=scope.group_id,
-                entity_uuid=inv.entity_uuid,
-                reason=inv.reason,
-            )
-            total += len(uuids)
-            summaries.append(
-                EntityInvalidationSummary(
-                    entity_uuid=inv.entity_uuid,
-                    reason=inv.reason,
-                    edges_touched=list(uuids),
-                )
-            )
-    finally:
-        await driver.close()
-    return total, summaries
-
-
 async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
     """Create the dream-kind ChatSession shell and return its id.
 
@@ -603,9 +436,8 @@ async def apply_operations(
     ``known_fact_uuids`` is the set of edge uuids the dream pass
     actually fetched (``DreamInput.known_fact_uuids``); demotions
     targeting anything outside it are dropped before any Cypher runs
-    (see ``_filter_demotions_to_known_facts``). ``None`` means "look
-    up the persisted input bundle by pass_id" — the batch path's
-    callbacks rely on that fallback.
+    (``demotions.py``). ``None`` means "look up the persisted input
+    bundle by pass_id".
 
     Each write and proposal is queued with what it cites; one that cites
     nothing is taken to rest on everything the pass read, its
@@ -635,6 +467,15 @@ async def apply_operations(
     session was created, and maybe went to a newer pass, stops the writes.
     It narrows the window, it does not fence each write: a lease can still
     lapse between this renewal and the writes after it (``lease.py``).
+
+    The demotions and entity invalidations (``demotions.py``) each carry the
+    recall guard in their own statement: a live fact the user recalled within
+    the protection window is left alone unless the write overrides it, and
+    ``protected_demotions`` counts the distinct facts it kept live, as one
+    read after every acknowledged write finds them. A write that raised (it
+    may have committed or still be queued) is counted in
+    ``indeterminate_demotion_writes``, not as a failure, and leaves
+    ``demotion_accounting_complete`` False, as does a failed read.
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -667,6 +508,9 @@ async def apply_operations(
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
+            "protected_demotions": 0,
+            "indeterminate_demotion_writes": 0,
+            "demotion_accounting_complete": True,
             # Vacuously drained — the pass enqueued nothing.
             "ingestion_drain_status": IngestionDrainStatus.drained,
             "snapshot": DreamOperationsSnapshot(),
@@ -784,25 +628,7 @@ async def apply_operations(
         pass_id, completion, ingestion_drain_timeout
     )
 
-    demotions = await _filter_demotions_to_known_facts(
-        pass_id, ops.demotions, known_fact_uuids
-    )
-    demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
-        scope, demotions
-    )
-    # Entity invalidation single-hop demotes every edge around the
-    # entity — the most destructive op in the pass — so it stays behind
-    # its own LD flag for staged rollout, independent of the dream pass
-    # being enabled. Truthiness check short-circuits the flag eval when
-    # the model proposed nothing to invalidate.
-    if ops.entity_invalidations and await is_feature_enabled(
-        Flag.DREAM_PASS_INVALIDATE_ENTITY, user_id
-    ):
-        entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
-            scope, ops.entity_invalidations
-        )
-    else:
-        entity_edges_demoted, entity_summaries = 0, []
+    destroyed = await apply_demotions(scope, pass_id, ops, known_fact_uuids)
 
     # Narrative summary last — only surface the user-facing dream story
     # once the memory ops above have been attempted.
@@ -811,35 +637,46 @@ async def apply_operations(
     logger.info(
         "Dream pass %s applied for user %s: "
         "writes=%d proposals=%d dropped_forgotten=%d demoted=%d (failed=%d) "
-        "entity_edges=%d ingestion_drain_status=%s",
+        "protected=%d entity_edges=%d indeterminate=%d accounting_complete=%s "
+        "ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
         written,
         proposed,
         completion.dropped_forgotten,
-        demoted_ok,
-        demoted_fail,
-        entity_edges_demoted,
+        destroyed.demoted,
+        destroyed.failed,
+        destroyed.protected,
+        destroyed.entity_edges,
+        destroyed.indeterminate,
+        destroyed.accounting_complete,
         ingestion_drain_status.value,
     )
 
     snapshot = DreamOperationsSnapshot(
         writes=write_summaries,
         proposals=proposal_summaries,
-        demotions=demotion_summaries,
-        entity_invalidations=entity_summaries,
+        demotions=destroyed.demotions,
+        entity_invalidations=destroyed.entity_invalidations,
     )
 
     return {
         "session_id": session_id,
         "consolidated_count": written,
         "proposal_count": proposed,
-        "demotion_count": demoted_ok,
-        "demotion_failed_count": demoted_fail,
-        "entity_invalidation_count": entity_edges_demoted,
+        "demotion_count": destroyed.demoted,
+        "demotion_failed_count": destroyed.failed,
+        "entity_invalidation_count": destroyed.entity_edges,
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
         "dropped_forgotten": completion.dropped_forgotten,
+        # Distinct facts an acknowledged write spared and the accounting read
+        # found live; provisional when the accounting is incomplete.
+        "protected_demotions": destroyed.protected,
+        # Destructive writes that raised: each may have committed or still land.
+        "indeterminate_demotion_writes": destroyed.indeterminate,
+        # False when the final read failed or any write's outcome is unknown.
+        "demotion_accounting_complete": destroyed.accounting_complete,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }

@@ -42,6 +42,11 @@ def input_bundle_to_dict(input_bundle: DreamInput) -> dict[str, Any]:
                 "confidence": f.confidence,
                 "status": f.status,
                 "created_at": f.created_at,
+                # A bundle written before the stamps reads back without them:
+                # never recalled.
+                "recall_count": f.recall_count,
+                "last_recalled_at": f.last_recalled_at,
+                "prev_recalled_at": f.prev_recalled_at,
             }
             for f in input_bundle.facts
         ],

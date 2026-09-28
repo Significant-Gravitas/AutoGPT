@@ -1,23 +1,28 @@
 """Ratification pass tests — mock Graphiti driver + Redis at the
 boundary, verify each tentative-edge outcome produces the right
-Cypher / mark_edges_superseded call and the right counters.
+Cypher / guarded supersede call and the right counters.
 
 These tests do NOT touch FalkorDB or a live Redis. ratification.py
 opens a driver via ``open_driver`` for its own Cypher and calls
-``mark_edges_superseded`` for demotions; both are patched at the
-module surface so the dispatch logic can be exercised in isolation.
+``supersede_unless_recalled`` (``graphiti/guarded_writes.py``) for
+supersessions; both are patched at the module surface so the dispatch logic
+can be exercised in isolation.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.graphiti.guarded_writes import WriteOutcome
+from backend.copilot.graphiti.recall_stamp import parse_stamp
 from backend.copilot.graphiti.scope import MemoryScope
 
 from . import ratification as ratification_mod
+from . import recall_guard
 from .ratification import (
     RATIFICATION_GRACE_PERIOD,
     RatificationResult,
@@ -69,10 +74,13 @@ def _patch_driver_constructor(mocker):
 
 
 @pytest.fixture
-def stub_mark_superseded(mocker):
-    """Stub mark_edges_superseded so we can assert it was (or wasn't) called."""
-    stub = AsyncMock(side_effect=lambda driver, uuids, **kw: (list(uuids), []))
-    mocker.patch.object(ratification_mod, "mark_edges_superseded", stub)
+def stub_supersede(mocker):
+    """Stub the guarded supersede so we can assert it was (or wasn't) called;
+    every edge it is given is superseded unless a test says otherwise."""
+    stub = AsyncMock(
+        side_effect=lambda driver, uuids, **kw: [WriteOutcome.CHANGED] * len(uuids)
+    )
+    mocker.patch.object(ratification_mod, "supersede_unless_recalled", stub)
     return stub
 
 
@@ -119,7 +127,7 @@ def fake_redis(mocker):
 
 @pytest.mark.asyncio
 async def test_tentative_edge_with_hits_is_ratified_to_active(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_supersede
 ):
     """Hit count >= 1 → flip to active via the promote Cypher; no demotion."""
     edge = {"uuid": "edge-hot", "created_at": _hours_ago(2)}
@@ -147,14 +155,15 @@ async def test_tentative_edge_with_hits_is_ratified_to_active(
     assert promote_calls[0].kwargs["uuid"] == "edge-hot"
     assert "now" in promote_calls[0].kwargs
     # And demotion was NOT called
-    stub_mark_superseded.assert_not_awaited()
+    stub_supersede.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratified(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_supersede
 ):
-    """Zero hits, edge older than the grace window → mark_edges_superseded(reason='unratified')."""
+    """Zero hits, edge older than the grace window → superseded with
+    reason='unratified' through the guarded write."""
     edge = {
         "uuid": "edge-stale",
         "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
@@ -166,8 +175,9 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
 
     assert result.superseded_count == 1
     assert result.ratified_count == 0
-    stub_mark_superseded.assert_awaited_once()
-    call = stub_mark_superseded.await_args
+    assert result.accounting_complete is True
+    stub_supersede.assert_awaited_once()
+    call = stub_supersede.await_args
     assert call.args[1] == ["edge-stale"]
     assert call.kwargs["reason"] == "unratified"
     assert call.kwargs["new_status"] == "superseded"
@@ -178,7 +188,7 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
 
 @pytest.mark.asyncio
 async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_supersede
 ):
     """Hits say promote, but the user retracted the edge after the sweep
     listed it: the guarded write matches nothing, so the retraction stays."""
@@ -197,14 +207,59 @@ async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
     ]
     assert "WHERE e.status = 'tentative' AND e.expired_at IS NULL" in promote.args[0]
     assert "AND e.forgotten_at IS NULL" in promote.args[0]
-    stub_mark_superseded.assert_not_awaited()
+    stub_supersede.assert_not_awaited()
+    # Matching nothing is a known outcome: no error, and the counts stand.
+    assert (result.per_edge_errors, result.accounting_complete) == ([], True)
 
 
 @pytest.mark.asyncio
-async def test_supersede_failure_is_reported_not_silently_dropped(mocker, fake_redis):
+async def test_a_promotion_whose_outcome_is_unknown_leaves_the_counts_provisional(
+    mocker, fake_redis, stub_supersede
+):
+    """Hits say promote, and the promotion's write raises. It may have
+    committed, never arrived, or still land, so the edge is neither counted
+    as ratified nor as a failure, and the sweep's counts are provisional."""
+    edges = [
+        {"uuid": "edge-lost", "created_at": _hours_ago(2)},
+        {"uuid": "edge-hot", "created_at": _hours_ago(2)},
+    ]
+    driver = _make_driver(records_for_list=edges)
+    answer = driver.execute_query.side_effect
+
+    async def lose_one_promotion(query: str, **kwargs):
+        if "ratified_at" in query and kwargs.get("uuid") == "edge-lost":
+            raise TimeoutError("the promotion's reply was lost")
+        return await answer(query, **kwargs)
+
+    driver.execute_query.side_effect = lose_one_promotion
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
+    fake_redis.hits.update({"edge-lost": 1, "edge-hot": 1})
+
+    result = await run_ratification_pass("u-lost")
+
+    assert result.ratified_count == 1
+    assert result.per_edge_errors == ["edge-lost: promote_outcome_unknown"]
+    assert result.accounting_complete is False
+    stub_supersede.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "outcome, error, complete",
+    [
+        (WriteOutcome.UNMATCHED, "supersede_failed", True),
+        (WriteOutcome.UNKNOWN, "supersede_outcome_unknown", False),
+    ],
+    ids=["unmatched", "unknown"],
+)
+async def test_supersede_failure_is_reported_not_silently_dropped(
+    mocker, fake_redis, outcome: WriteOutcome, error: str, complete: bool
+):
     """An edge the group-scoped supersede can't match (legacy write without a
-    group_id property, or a query error) must land in per_edge_errors —
-    otherwise it is silently re-examined by every future sweep forever."""
+    group_id property) must land in per_edge_errors — otherwise it is silently
+    re-examined by every future sweep forever. A write that raised may have
+    committed, never arrived, or still land, so it is reported as unknown,
+    never as superseded or failed, and the sweep's counts are provisional."""
     edge = {
         "uuid": "edge-legacy",
         "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
@@ -213,21 +268,20 @@ async def test_supersede_failure_is_reported_not_silently_dropped(mocker, fake_r
     mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
     mocker.patch.object(
         ratification_mod,
-        "mark_edges_superseded",
-        AsyncMock(side_effect=lambda driver, uuids, **kw: ([], list(uuids))),
+        "supersede_unless_recalled",
+        AsyncMock(return_value=[outcome]),
     )
 
     result = await run_ratification_pass("u-legacy")
 
-    assert result.superseded_count == 0
-    assert len(result.per_edge_errors) == 1
-    assert "edge-legacy" in result.per_edge_errors[0]
-    assert "supersede_failed" in result.per_edge_errors[0]
+    assert (result.superseded_count, result.protected_count) == (0, 0)
+    assert result.per_edge_errors == [f"edge-legacy: {error}"]
+    assert result.accounting_complete is complete
 
 
 @pytest.mark.asyncio
 async def test_tentative_edge_within_grace_without_hits_is_untouched(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_supersede
 ):
     """Zero hits but still inside the grace window → no promote, no demote."""
     edge = {"uuid": "edge-young", "created_at": _hours_ago(6)}
@@ -239,7 +293,7 @@ async def test_tentative_edge_within_grace_without_hits_is_untouched(
     assert result.ratified_count == 0
     assert result.superseded_count == 0
     assert result.examined_count == 1
-    stub_mark_superseded.assert_not_awaited()
+    stub_supersede.assert_not_awaited()
     # No promote query was issued either
     promote_calls = [
         call
@@ -251,7 +305,7 @@ async def test_tentative_edge_within_grace_without_hits_is_untouched(
 
 @pytest.mark.asyncio
 async def test_expert_ratification_uses_expert_graph_and_scoped_hit_key(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_supersede
 ):
     edge = {
         "uuid": "edge-expert",
@@ -268,8 +322,78 @@ async def test_expert_ratification_uses_expert_graph_and_scoped_hit_key(
     assert scope == MemoryScope.for_expert("user-1", "expert-1")
     group_id = scope.group_id
     assert group_id.startswith("expert_")
-    assert stub_mark_superseded.call_args.kwargs["group_id"] == group_id
+    assert stub_supersede.call_args.kwargs["group_id"] == group_id
     assert fake_redis.get_calls == [f"mem:hits:{group_id}:edge-expert"]
+
+
+@pytest.mark.asyncio
+async def test_a_proposal_recalled_within_the_window_stays_tentative(
+    mocker, fake_redis, stub_supersede
+):
+    """Its hit count was lost (no hits in Redis), but the user recalled it
+    within the protection window: the guarded write spares it, the sweep
+    counts it as protected, and it is neither superseded nor an error."""
+    edge = {
+        "uuid": "edge-recalled",
+        "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+    }
+    driver = _make_driver(records_for_list=[edge])
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
+    stub_supersede.side_effect = None
+    stub_supersede.return_value = [WriteOutcome.SPARED]
+
+    result = await run_ratification_pass("u-recalled")
+
+    assert (result.superseded_count, result.protected_count) == (0, 1)
+    assert result.per_edge_errors == []
+    assert result.accounting_complete is True
+
+
+@pytest.mark.asyncio
+async def test_the_supersession_carries_the_guard_with_no_override(
+    mocker, fake_redis, stub_supersede
+):
+    """The window starts ``Config.dream_demotion_protect_days`` before the
+    sweep ran, and 'unratified' overrides nothing."""
+    edge = {
+        "uuid": "edge-stale",
+        "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+    }
+    driver = _make_driver(records_for_list=[edge])
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
+    before = datetime.now(timezone.utc)
+
+    await run_ratification_pass("u-guarded")
+
+    after = datetime.now(timezone.utc)
+    protection = stub_supersede.await_args.kwargs["protection"]
+    assert (protection.override, protection.cited) == (False, None)
+    start = parse_stamp(protection.recalled_since)
+    assert start is not None
+    assert before - timedelta(days=30) <= start <= after - timedelta(days=30)
+
+
+@pytest.mark.asyncio
+async def test_a_zero_window_supersedes_with_no_protection(
+    mocker, fake_redis, stub_supersede
+):
+    mocker.patch.object(
+        recall_guard,
+        "Settings",
+        return_value=SimpleNamespace(
+            config=SimpleNamespace(dream_demotion_protect_days=0)
+        ),
+    )
+    edge = {
+        "uuid": "edge-stale",
+        "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+    }
+    driver = _make_driver(records_for_list=[edge])
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
+
+    await run_ratification_pass("u-no-window")
+
+    assert stub_supersede.await_args.kwargs["protection"].recalled_since is None
 
 
 def test_grace_period_is_thirty_days_per_spec():
@@ -282,7 +406,7 @@ def test_grace_period_is_thirty_days_per_spec():
 
 @pytest.mark.asyncio
 async def test_unhit_edge_just_inside_grace_window_is_untouched(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_supersede
 ):
     """Boundary: zero hits with one hour of grace left → still a no-op.
     Derived from RATIFICATION_GRACE_PERIOD so the boundary moves with
@@ -299,12 +423,12 @@ async def test_unhit_edge_just_inside_grace_window_is_untouched(
     assert result.ratified_count == 0
     assert result.superseded_count == 0
     assert result.examined_count == 1
-    stub_mark_superseded.assert_not_awaited()
+    stub_supersede.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_already_active_edges_are_not_in_scope_of_the_listing_query(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_supersede
 ):
     """The list query filters ``status='tentative'`` so active edges are
     invisible to the pass — no examined, no ratified, no superseded."""
@@ -319,12 +443,12 @@ async def test_already_active_edges_are_not_in_scope_of_the_listing_query(
     assert result.examined_count == 0
     assert result.ratified_count == 0
     assert result.superseded_count == 0
-    stub_mark_superseded.assert_not_awaited()
+    stub_supersede.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_empty_user_with_no_tentative_edges_returns_zero_counts_no_error(
-    fake_redis, stub_mark_superseded
+    fake_redis, stub_supersede
 ):
     """User with no tentative edges → counts all zero, no error, completed_at set."""
     result = await run_ratification_pass("u-empty")
@@ -334,13 +458,13 @@ async def test_empty_user_with_no_tentative_edges_returns_zero_counts_no_error(
     assert result.ratified_count == 0
     assert result.superseded_count == 0
     assert result.completed_at is not None
-    stub_mark_superseded.assert_not_awaited()
+    stub_supersede.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("expert_id", [None, "expert-poison"])
 async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
-    mocker, fake_redis, stub_mark_superseded, expert_id
+    mocker, fake_redis, stub_supersede, expert_id
 ):
     """A poison-pill edge raises mid-pass; the others still get processed,
     and the failure is captured in ``per_edge_errors`` rather than raised."""
@@ -377,6 +501,9 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     assert result.superseded_count == 1
     assert len(result.per_edge_errors) == 1
     assert "edge-poison" in result.per_edge_errors[0]
+    # The poison edge failed before any write (its hit count could not be
+    # read): a known outcome, so the counts stand.
+    assert result.accounting_complete is True
     scope = MemoryScope.build("u-mixed", expert_id)
     assert fake_redis.get_calls == [
         scope.redis_key("hits", edge_uuid="edge-good-hot"),
@@ -439,7 +566,7 @@ async def test_try_ratify_on_hit_empty_edge_list_returns_zero_without_redis_or_c
 
     promoted = await ratification_mod.try_ratify_on_hit(MemoryScope.for_user("u1"), [])
 
-    assert promoted == 0
+    assert (promoted.promoted_count, promoted.accounting_complete) == (0, True)
     record_spy.assert_not_called()
     driver_spy.assert_not_called()
 
@@ -486,6 +613,8 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
     driver.close = AsyncMock(return_value=None)
 
     async def fake_execute(query: str, **kwargs):
+        if "recall_count" in query:
+            return ([{"stamped": 3}], None, None)
         return (list(next(promote_results)), None, None)
 
     driver.execute_query = AsyncMock(side_effect=fake_execute)
@@ -495,13 +624,14 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
         MemoryScope.for_user("u1"), ["edge-1", "edge-2", "edge-3"]
     )
 
-    assert promoted == 2
+    assert (promoted.promoted_count, promoted.accounting_complete) == (2, True)
 
 
 @pytest.mark.asyncio
 async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
     """One bad Cypher call mustn't poison the rest of the retrieved
-    edges — log + continue."""
+    edges — log + continue. Its promotion may have committed, never arrived,
+    or still land, so the count is provisional."""
     mocker.patch.object(ratification_mod, "record_memory_hit", new=AsyncMock())
 
     calls = {"n": 0}
@@ -522,8 +652,9 @@ async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
     )
 
     # The poison edge errored; the others promoted.
-    assert promoted == 2
-    assert calls["n"] == 3  # all three attempted; one raised
+    assert (promoted.promoted_count, promoted.accounting_complete) == (2, False)
+    # One batched recall stamp, then all three promotions attempted; one raised.
+    assert calls["n"] == 4
 
 
 @pytest.mark.asyncio

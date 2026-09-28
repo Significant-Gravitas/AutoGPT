@@ -3,9 +3,10 @@ calls are produced for each operation type.
 
 These tests do NOT touch FalkorDB or Prisma. apply.py is a pure
 fan-out: it builds MemoryEnvelopes for writes/proposals and delegates
-to ``enqueue_episode`` / ``mark_edges_superseded`` /
-``invalidate_entity_direct_neighbors`` / ``create_chat_session`` /
-``add_chat_message``. Each of those is mocked here.
+to ``enqueue_episode`` / ``create_chat_session`` / ``add_chat_message``
+and, through its destructive stage (``demotions.py``), to
+``supersede_unless_recalled`` / ``invalidate_entity_direct_neighbors``.
+Each of those is mocked here.
 """
 
 from __future__ import annotations
@@ -16,16 +17,20 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.graphiti.guarded_writes import NeighbourWrites, WriteOutcome
 from backend.copilot.graphiti.ingest import IngestionCompletion
 from backend.copilot.graphiti.scope import MemoryScope
 
 from . import apply as apply_mod
+from . import demotions as demotions_mod
+from .demotions import DemotionResults
 from .fetch import DreamInput
 from .locks import DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
     DreamDemotion,
     DreamOperations,
+    DreamOperationsSnapshot,
     EntityInvalidation,
     IngestionDrainStatus,
     ProposedFinding,
@@ -52,21 +57,34 @@ def _stub_boundaries(mocker):
     # (300s) per test and time out the CI job. Default the drain to an
     # instant success; drain-behavior tests re-patch this explicitly.
     mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
-    # The driver factory + close — apply.py opens a FalkorDB driver for
-    # demotions and entity invalidations. Patch where it's used.
+    # The driver factory + close — the destructive stage (demotions.py) opens
+    # a FalkorDB driver for demotions and entity invalidations. Patch where
+    # it's used.
     driver = mocker.MagicMock()
     driver.close = AsyncMock(return_value=None)
-    mocker.patch.object(apply_mod, "open_driver", mocker.MagicMock(return_value=driver))
-    # Helper functions
     mocker.patch.object(
-        apply_mod,
-        "mark_edges_superseded",
-        AsyncMock(return_value=(["e1"], [])),
+        demotions_mod, "open_driver", mocker.MagicMock(return_value=driver)
+    )
+    # The guarded writers: every demotion lands, every invalidation touches
+    # two edges, nothing is spared unless a test says otherwise.
+    mocker.patch.object(
+        demotions_mod,
+        "supersede_unless_recalled",
+        AsyncMock(
+            side_effect=lambda driver, uuids, **kw: [WriteOutcome.CHANGED] * len(uuids)
+        ),
     )
     mocker.patch.object(
-        apply_mod,
+        demotions_mod,
         "invalidate_entity_direct_neighbors",
-        AsyncMock(return_value=["e1", "e2"]),
+        AsyncMock(return_value=NeighbourWrites(changed=["e1", "e2"])),
+    )
+    # The read that settles the protected count: every spared fact is still
+    # live unless a test says otherwise.
+    mocker.patch.object(
+        demotions_mod,
+        "live_fact_uuids",
+        AsyncMock(side_effect=lambda driver, group_id, uuids: set(uuids)),
     )
     # ChatSession + ChatMessage writes — apply.py imports them lazily inside
     # ``_create_dream_session`` / ``_write_dream_summary_message`` to avoid a
@@ -98,11 +116,15 @@ def _stub_boundaries(mocker):
     # Entity invalidation is gated on DREAM_PASS_INVALIDATE_ENTITY. Default
     # the flag ON so the existing entity tests exercise the apply path; the
     # flag-off behavior has its own dedicated test below.
-    mocker.patch.object(apply_mod, "is_feature_enabled", AsyncMock(return_value=True))
+    mocker.patch.object(
+        demotions_mod, "is_feature_enabled", AsyncMock(return_value=True)
+    )
     # No persisted input bundle by default — the demotion pre-flight filter
     # fails open (keeps all demotions) so tests that don't care about uuid
     # validation behave as before. Filter tests re-patch with a bundle.
-    mocker.patch.object(apply_mod, "read_input_bundle", AsyncMock(return_value=None))
+    mocker.patch.object(
+        demotions_mod, "read_input_bundle", AsyncMock(return_value=None)
+    )
     # derive_group_id is deterministic; let it run.
 
 
@@ -167,7 +189,7 @@ async def test_proposals_become_tentative_envelopes():
 
 @pytest.mark.asyncio
 async def test_demotions_group_by_status_and_reason():
-    """Bucketed mark_edges_superseded calls — one per (status, reason) pair."""
+    """Bucketed guarded writes — one per (status, reason) pair."""
     ops = DreamOperations(
         demotions=[
             DreamDemotion(edge_uuid="a", reason="stale", new_status="superseded"),
@@ -183,20 +205,20 @@ async def test_demotions_group_by_status_and_reason():
 
     # Three demotions but only TWO buckets: (superseded, stale) and
     # (contradicted, contradicted_by:x)
-    assert apply_mod.mark_edges_superseded.await_count == 2
+    assert demotions_mod.supersede_unless_recalled.await_count == 2
     bucket_args = [
         call.args[1] if len(call.args) > 1 else call.kwargs.get("uuids")
-        for call in apply_mod.mark_edges_superseded.await_args_list
+        for call in demotions_mod.supersede_unless_recalled.await_args_list
     ]
     # One bucket has 2 uuids, the other has 1
     assert sorted(len(b) for b in bucket_args) == [1, 2]
 
 
 @pytest.mark.asyncio
-async def test_demotions_pass_group_id_to_mark_edges_superseded():
+async def test_demotions_pass_group_id_to_the_guarded_write():
     """The Cypher group_id predicate (defense-in-depth against a
-    wrong-driver caller) only works if apply.py threads the derived
-    group_id into every mark_edges_superseded call."""
+    wrong-driver caller) only works if the stage threads the derived
+    group_id into every guarded write."""
     ops = DreamOperations(
         demotions=[DreamDemotion(edge_uuid="a", reason="stale")],
     )
@@ -204,16 +226,19 @@ async def test_demotions_pass_group_id_to_mark_edges_superseded():
         scope=MemoryScope.for_user("u-gid"), pass_id="p-gid", ops=ops
     )
 
-    apply_mod.mark_edges_superseded.assert_awaited_once()
+    demotions_mod.supersede_unless_recalled.assert_awaited_once()
     # derive_group_id prefixes user ids with "user_"
-    assert apply_mod.mark_edges_superseded.await_args.kwargs["group_id"] == "user_u-gid"
+    assert (
+        demotions_mod.supersede_unless_recalled.await_args.kwargs["group_id"]
+        == "user_u-gid"
+    )
 
 
 @pytest.mark.asyncio
 async def test_hallucinated_demotion_uuids_dropped_before_cypher():
     """Sync path: demotions targeting edge uuids outside the pass's
     known_fact_uuids are a prompt-constraint violation (hallucination or
-    injection) and must never reach mark_edges_superseded."""
+    injection) and must never reach the guarded write."""
     ops = DreamOperations(
         demotions=[
             DreamDemotion(edge_uuid="known-1", reason="stale"),
@@ -227,22 +252,24 @@ async def test_hallucinated_demotion_uuids_dropped_before_cypher():
         known_fact_uuids={"known-1", "known-2"},
     )
 
-    apply_mod.mark_edges_superseded.assert_awaited_once()
-    sent_uuids = apply_mod.mark_edges_superseded.await_args.args[1]
+    demotions_mod.supersede_unless_recalled.assert_awaited_once()
+    sent_uuids = demotions_mod.supersede_unless_recalled.await_args.args[1]
     assert sent_uuids == ["known-1"]
     # The rejected demotion never reaches the snapshot either
     assert [d.edge_uuid for d in stats["snapshot"].demotions] == ["known-1"]
     # The caller supplied the allowlist — no Redis bundle lookup needed
-    apply_mod.read_input_bundle.assert_not_awaited()
+    demotions_mod.read_input_bundle.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_batch_path_demotions_validated_against_persisted_bundle(mocker):
-    """Batch path: apply_operations is called without known_fact_uuids
-    (batch_callbacks doesn't have the in-memory DreamInput), so the
-    filter must fall back to the bundle persisted at submit time."""
+async def test_demotions_without_known_facts_validated_against_persisted_bundle(
+    mocker,
+):
+    """Both routes pass known_fact_uuids from their DreamInput; a caller that
+    passes none has the filter fall back to the input bundle persisted at
+    submit time."""
     mocker.patch.object(
-        apply_mod,
+        demotions_mod,
         "read_input_bundle",
         AsyncMock(return_value=_bundle_with_known_facts("known-1")),
     )
@@ -256,9 +283,9 @@ async def test_batch_path_demotions_validated_against_persisted_bundle(mocker):
         scope=MemoryScope.for_user("u-batch"), pass_id="p-batch", ops=ops
     )
 
-    apply_mod.read_input_bundle.assert_awaited_once_with("p-batch")
-    apply_mod.mark_edges_superseded.assert_awaited_once()
-    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["known-1"]
+    demotions_mod.read_input_bundle.assert_awaited_once_with("p-batch")
+    demotions_mod.supersede_unless_recalled.assert_awaited_once()
+    assert demotions_mod.supersede_unless_recalled.await_args.args[1] == ["known-1"]
 
 
 @pytest.mark.asyncio
@@ -275,8 +302,10 @@ async def test_missing_input_bundle_fails_open_and_keeps_demotions():
         scope=MemoryScope.for_user("u-open"), pass_id="p-open", ops=ops
     )
 
-    apply_mod.mark_edges_superseded.assert_awaited_once()
-    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["unverifiable"]
+    demotions_mod.supersede_unless_recalled.assert_awaited_once()
+    assert demotions_mod.supersede_unless_recalled.await_args.args[1] == [
+        "unverifiable"
+    ]
 
 
 @pytest.mark.asyncio
@@ -288,20 +317,22 @@ async def test_redis_blip_on_bundle_fallback_fails_open(mocker, caplog):
     so an exception here permanently loses the dream (a retry hits the
     "duplicate" branch and skips apply entirely)."""
     mocker.patch.object(
-        apply_mod,
+        demotions_mod,
         "read_input_bundle",
         AsyncMock(side_effect=ConnectionError("redis blip")),
     )
     ops = DreamOperations(
         demotions=[DreamDemotion(edge_uuid="unverifiable", reason="stale")],
     )
-    with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
+    with caplog.at_level(logging.WARNING, logger=demotions_mod.logger.name):
         stats = await apply_mod.apply_operations(
             scope=MemoryScope.for_user("u-blip"), pass_id="p-blip", ops=ops
         )
 
-    apply_mod.mark_edges_superseded.assert_awaited_once()
-    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["unverifiable"]
+    demotions_mod.supersede_unless_recalled.assert_awaited_once()
+    assert demotions_mod.supersede_unless_recalled.await_args.args[1] == [
+        "unverifiable"
+    ]
     assert stats["demotion_count"] == 1
     assert any(
         "input bundle read failed" in record.getMessage()
@@ -328,7 +359,7 @@ async def test_entity_invalidations_not_filtered_by_known_fact_uuids():
         known_fact_uuids={"some-fact"},
     )
 
-    apply_mod.invalidate_entity_direct_neighbors.assert_awaited_once()
+    demotions_mod.invalidate_entity_direct_neighbors.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -342,8 +373,8 @@ async def test_entity_invalidation_calls_single_hop_helper():
         scope=MemoryScope.for_user("u-z"), pass_id="p-4", ops=ops
     )
 
-    apply_mod.invalidate_entity_direct_neighbors.assert_awaited_once()
-    kwargs = apply_mod.invalidate_entity_direct_neighbors.await_args.kwargs
+    demotions_mod.invalidate_entity_direct_neighbors.assert_awaited_once()
+    kwargs = demotions_mod.invalidate_entity_direct_neighbors.await_args.kwargs
     assert kwargs["entity_uuid"] == "ent-x"
     assert kwargs["reason"] == "dead_to_us"
 
@@ -353,7 +384,9 @@ async def test_entity_invalidation_skipped_when_flag_off(mocker):
     """With DREAM_PASS_INVALIDATE_ENTITY off, proposed invalidations are
     dropped — the destructive single-hop helper must never run and the
     snapshot reflects zero entity edges touched."""
-    mocker.patch.object(apply_mod, "is_feature_enabled", AsyncMock(return_value=False))
+    mocker.patch.object(
+        demotions_mod, "is_feature_enabled", AsyncMock(return_value=False)
+    )
     ops = DreamOperations(
         entity_invalidations=[
             EntityInvalidation(entity_uuid="ent-x", reason="dead_to_us"),
@@ -363,7 +396,7 @@ async def test_entity_invalidation_skipped_when_flag_off(mocker):
         scope=MemoryScope.for_user("u-z"), pass_id="p-off", ops=ops
     )
 
-    apply_mod.invalidate_entity_direct_neighbors.assert_not_awaited()
+    demotions_mod.invalidate_entity_direct_neighbors.assert_not_awaited()
     assert stats["entity_invalidation_count"] == 0
     assert stats["snapshot"].entity_invalidations == []
 
@@ -511,13 +544,7 @@ async def test_summary_written_after_memory_ops(mocker):
         apply_mod, "_write_dream_summary_message", side_effect=_track_summary
     )
     mocker.patch.object(
-        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0, [])
-    )
-    mocker.patch.object(
-        apply_mod,
-        "_apply_entity_invalidations",
-        new_callable=AsyncMock,
-        return_value=(0, []),
+        apply_mod, "apply_demotions", AsyncMock(return_value=DemotionResults())
     )
 
     await apply_mod.apply_operations(
@@ -667,9 +694,7 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
     ownership. The orchestrator's catch-all turns the raise into an errored
     ``DreamPassResult``."""
     drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
-    demote = mocker.patch.object(
-        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
-    )
+    demote = mocker.patch.object(apply_mod, "apply_demotions", AsyncMock())
     lock_handle = mocker.MagicMock()
     lock_handle.extend = AsyncMock(return_value=False)
     ops = DreamOperations(
@@ -802,13 +827,7 @@ async def test_apply_operations_never_auto_connects_prisma(mocker):
         apply_mod, "_write_dream_summary_message", new_callable=AsyncMock
     )
     mocker.patch.object(
-        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0, [])
-    )
-    mocker.patch.object(
-        apply_mod,
-        "_apply_entity_invalidations",
-        new_callable=AsyncMock,
-        return_value=(0, []),
+        apply_mod, "apply_demotions", AsyncMock(return_value=DemotionResults())
     )
 
     # Whatever state Prisma is in, apply_operations must not touch
@@ -846,15 +865,6 @@ async def test_apply_operations_returns_snapshot_with_per_op_detail(mocker):
     Consumers (AgentProbe scorers, admin visualizer, future P9 SSE
     event) read this; counts alone aren't enough."""
     from backend.copilot.dream.schemas import DreamOperationsSnapshot
-
-    # The autouse fixture stubs mark_edges_superseded to return ["e1"]
-    # in the succeeded list, which doesn't match our test uuid "d1".
-    # Override so d1 lands in the succeeded list.
-    mocker.patch.object(
-        apply_mod,
-        "mark_edges_superseded",
-        AsyncMock(return_value=(["d1"], [])),
-    )
 
     ops = DreamOperations(
         writes=[
@@ -901,22 +911,22 @@ async def test_apply_operations_returns_snapshot_with_per_op_detail(mocker):
     assert snap.demotions[0].applied is True
     assert len(snap.entity_invalidations) == 1
     assert snap.entity_invalidations[0].entity_uuid == "ent-x"
-    # ``invalidate_entity_direct_neighbors`` returns ["e1","e2"] per fixture stub
+    # ``invalidate_entity_direct_neighbors`` changes ["e1","e2"] per fixture stub
     assert snap.entity_invalidations[0].edges_touched == ["e1", "e2"]
 
 
 @pytest.mark.asyncio
 async def test_apply_operations_demotion_summary_marks_applied_false_on_miss(mocker):
-    """When mark_edges_superseded returns the uuid in the failed list,
+    """When the guarded write reports the edge failed (no longer live),
     the corresponding DemotionSummary records ``applied=False`` so the
     consumer can render a "stale-uuid skip" without inferring it."""
     from backend.copilot.dream.schemas import DreamOperationsSnapshot
 
     # Override the default success stub: this uuid lands in the bad list.
     mocker.patch.object(
-        apply_mod,
-        "mark_edges_superseded",
-        AsyncMock(return_value=([], ["d-missing"])),
+        demotions_mod,
+        "supersede_unless_recalled",
+        AsyncMock(return_value=[WriteOutcome.UNMATCHED]),
     )
     ops = DreamOperations(
         demotions=[
@@ -933,3 +943,97 @@ async def test_apply_operations_demotion_summary_marks_applied_false_on_miss(moc
     assert len(snap.demotions) == 1
     assert snap.demotions[0].edge_uuid == "d-missing"
     assert snap.demotions[0].applied is False
+    assert snap.demotions[0].protected is False
+    assert stats["demotion_failed_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_what_the_guarded_writes_spared_reaches_the_stats_and_snapshot(
+    mocker,
+):
+    """``protected_demotions`` is the distinct facts the writes spared, less
+    any the final read finds no longer live (here all are); a spared demotion
+    is neither applied nor failed."""
+    mocker.patch.object(
+        demotions_mod,
+        "supersede_unless_recalled",
+        AsyncMock(return_value=[WriteOutcome.SPARED, WriteOutcome.CHANGED]),
+    )
+    mocker.patch.object(
+        demotions_mod,
+        "invalidate_entity_direct_neighbors",
+        AsyncMock(return_value=NeighbourWrites(changed=["n1"], spared=["n2", "n3"])),
+    )
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="cold", reason="stale_fact"),
+        ],
+        entity_invalidations=[EntityInvalidation(entity_uuid="ent", reason="gone")],
+        summary_for_user="ok",
+    )
+
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-spared"), pass_id="p-spared", ops=ops
+    )
+
+    assert (
+        stats["demotion_count"],
+        stats["demotion_failed_count"],
+        stats["entity_invalidation_count"],
+        stats["protected_demotions"],
+        stats["indeterminate_demotion_writes"],
+        stats["demotion_accounting_complete"],
+    ) == (1, 0, 1, 3, 0, True)
+    snap = stats["snapshot"]
+    assert isinstance(snap, DreamOperationsSnapshot)
+    assert [(d.edge_uuid, d.applied, d.protected) for d in snap.demotions] == [
+        ("hot", False, True),
+        ("cold", True, False),
+    ]
+    assert snap.entity_invalidations[0].edges_touched == ["n1"]
+    assert snap.entity_invalidations[0].edges_protected == ["n2", "n3"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_writes_and_a_failed_read_reach_the_stats(mocker):
+    """A write whose reply was lost and a neighbour statement that raised
+    are indeterminate, not failures; with the liveness read failing too, the
+    protected count is provisional and marked so."""
+    mocker.patch.object(
+        demotions_mod,
+        "supersede_unless_recalled",
+        AsyncMock(return_value=[WriteOutcome.SPARED, WriteOutcome.UNKNOWN]),
+    )
+    mocker.patch.object(
+        demotions_mod,
+        "invalidate_entity_direct_neighbors",
+        AsyncMock(return_value=NeighbourWrites(unknown=True)),
+    )
+    mocker.patch.object(
+        demotions_mod, "live_fact_uuids", AsyncMock(side_effect=TimeoutError)
+    )
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="gone", reason="stale_fact"),
+        ],
+        entity_invalidations=[EntityInvalidation(entity_uuid="ent", reason="gone")],
+        summary_for_user="ok",
+    )
+
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-unknown"), pass_id="p-unknown", ops=ops
+    )
+
+    assert (
+        stats["demotion_count"],
+        stats["demotion_failed_count"],
+        stats["indeterminate_demotion_writes"],
+        stats["protected_demotions"],
+        stats["demotion_accounting_complete"],
+    ) == (0, 0, 2, 1, False)
+    snap = stats["snapshot"]
+    assert isinstance(snap, DreamOperationsSnapshot)
+    assert [d.indeterminate for d in snap.demotions] == [False, True]
+    assert snap.entity_invalidations[0].indeterminate is True

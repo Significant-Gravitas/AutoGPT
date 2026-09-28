@@ -21002,7 +21002,17 @@
             "enum": ["superseded", "contradicted"],
             "title": "New Status"
           },
-          "applied": { "type": "boolean", "title": "Applied", "default": true }
+          "applied": { "type": "boolean", "title": "Applied", "default": true },
+          "protected": {
+            "type": "boolean",
+            "title": "Protected",
+            "default": false
+          },
+          "indeterminate": {
+            "type": "boolean",
+            "title": "Indeterminate",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["edge_uuid", "reason", "new_status"],
@@ -21435,6 +21445,21 @@
             "title": "Entity Invalidation Count",
             "default": 0
           },
+          "protected_demotions": {
+            "type": "integer",
+            "title": "Protected Demotions",
+            "default": 0
+          },
+          "indeterminate_demotion_writes": {
+            "type": "integer",
+            "title": "Indeterminate Demotion Writes",
+            "default": 0
+          },
+          "demotion_accounting_complete": {
+            "type": "boolean",
+            "title": "Demotion Accounting Complete",
+            "default": true
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",
@@ -21726,6 +21751,21 @@
             "title": "Dropped Forgotten",
             "default": 0
           },
+          "protected_demotions": {
+            "type": "integer",
+            "title": "Protected Demotions",
+            "default": 0
+          },
+          "indeterminate_demotion_writes": {
+            "type": "integer",
+            "title": "Indeterminate Demotion Writes",
+            "default": 0
+          },
+          "demotion_accounting_complete": {
+            "type": "boolean",
+            "title": "Demotion Accounting Complete",
+            "default": true
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",
@@ -21913,7 +21953,7 @@
         "type": "object",
         "required": ["entity_uuid", "reason"],
         "title": "EntityInvalidation",
-        "description": "Demote every :RELATES_TO edge directly attached to an entity.\n\nSingle-hop only — apply.py calls ``invalidate_entity_direct_neighbors``\nwhich clamps to ``[r:RELATES_TO]-(other)``; never expands to\nneighbors-of-neighbors."
+        "description": "Demote every :RELATES_TO edge directly attached to an entity.\n\nSingle-hop only — demotions.py calls ``invalidate_entity_direct_neighbors``\nwhich clamps to ``[r:RELATES_TO]-(other)``; never expands to\nneighbors-of-neighbors."
       },
       "EntityInvalidationSummary": {
         "properties": {
@@ -21923,6 +21963,16 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Edges Touched"
+          },
+          "edges_protected": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Edges Protected"
+          },
+          "indeterminate": {
+            "type": "boolean",
+            "title": "Indeterminate",
+            "default": false
           }
         },
         "type": "object",
@@ -23361,6 +23411,18 @@
       "FactRow": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
+          "recall_count": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Recall Count"
+          },
+          "last_recalled_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Recalled At"
+          },
+          "prev_recalled_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Prev Recalled At"
+          },
           "source": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source"
@@ -23406,7 +23468,8 @@
           "status",
           "created_at"
         ],
-        "title": "FactRow"
+        "title": "FactRow",
+        "description": "An active fact and its recall stamps (all ``None``: never recalled)."
       },
       "FactSummary": {
         "properties": {
@@ -29059,6 +29122,16 @@
             "type": "integer",
             "title": "Superseded Count",
             "default": 0
+          },
+          "protected_count": {
+            "type": "integer",
+            "title": "Protected Count",
+            "default": 0
+          },
+          "accounting_complete": {
+            "type": "boolean",
+            "title": "Accounting Complete",
+            "default": true
           },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],

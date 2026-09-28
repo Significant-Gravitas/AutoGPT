@@ -30,11 +30,11 @@ from backend.copilot.dream.ratification import try_ratify_on_hit
 from backend.copilot.dream.ratification_hits import get_hit_count
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import graphiti_search
-from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 from backend.copilot.tools.models import MemorySearchResponse
 
 from . import context
 from .falkordb_driver import open_driver
+from .guarded_writes import WriteOutcome, supersede_unless_recalled
 from .memory_model import MemoryForgetFailureCode
 from .recall import FORGOTTEN_FACT, forgotten_fact_predicate, is_forgotten
 from .recall_forget import retract
@@ -51,6 +51,7 @@ from .recall_integration_fixtures import (
     recalled_facts,
     rows,
 )
+from .recall_stamp import RecallProtection
 from .scope import MemoryScope
 
 _LONG_AGO = "2025-01-01T00:00:00+00:00"
@@ -183,15 +184,17 @@ async def test_superseded_fact_is_not_recalled(
     _, edges = await ingest_facts(driver, scope, stub_graphiti_client, [ALICE, BOB])
     alice, bob = edges[ALICE[2]], edges[BOB[2]]
 
-    demoted, failed = await mark_edges_superseded(
+    outcomes = await supersede_unless_recalled(
         driver,
         [alice],
         reason="stale_fact",
-        user_id=scope.owner_user_id,
+        new_status="superseded",
         group_id=scope.group_id,
+        protection=RecallProtection(),
+        user_id=scope.owner_user_id,
     )
 
-    assert (demoted, failed) == ([alice], [])
+    assert outcomes == [WriteOutcome.CHANGED]
     assert await recalled_facts(scope) == {bob}
     assert await _settings_view(scope) == (1, {bob})
 
@@ -216,7 +219,7 @@ async def test_retracted_fact_is_neither_gathered_nor_ratified_by_the_dream(
 
     assert facts == []
     assert {e.uuid for e in episodes}.isdisjoint({active_episode, tentative_episode})
-    assert await try_ratify_on_hit(scope, [tentative[CAROL[2]]]) == 0
+    assert (await try_ratify_on_hit(scope, [tentative[CAROL[2]]])).promoted_count == 0
     assert (await edge_row(driver, tentative[CAROL[2]]))["status"] == "retracted"
 
 
