@@ -203,7 +203,7 @@ class ChatConfig(BaseSettings):
     # ``CHAT_FAST_MODEL``) are preserved via ``validation_alias`` so
     # existing deployments continue to override the same effective cell.
     fast_standard_model: str = Field(
-        default="anthropic/claude-sonnet-5",
+        default="anthropic/claude-sonnet-5-5",
         validation_alias=AliasChoices(
             "CHAT_FAST_STANDARD_MODEL",
             "CHAT_FAST_MODEL",
@@ -221,7 +221,7 @@ class ChatConfig(BaseSettings):
         "the cloud default — see ``_apply_local_aux_models``.",
     )
     thinking_standard_model: str = Field(
-        default="anthropic/claude-sonnet-5",
+        default="anthropic/claude-sonnet-5-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_STANDARD_MODEL",
             "CHAT_MODEL",

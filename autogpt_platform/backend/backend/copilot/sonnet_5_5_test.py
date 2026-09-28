@@ -1,3 +1,11 @@
+"""Sonnet 5.5 is the shipped standard-tier default on both paths.
+
+Mirrors ``opus_5_test.py`` for the advanced tier: the failure this guards
+against is a default that routes but is not catalogued, where
+``_registry_refuses`` silently downgrades the request and the only trace
+is a warning nobody reads.
+"""
+
 import os
 
 import pytest
@@ -21,9 +29,10 @@ def isolated_catalog_and_config(monkeypatch):
     registry.load_catalog()
 
 
+@pytest.mark.parametrize("path", ["thinking", "fast"])
 @pytest.mark.parametrize("use_openrouter", [True, False])
-async def test_thinking_advanced_routes_opus_5_5_without_catalog_refusal(
-    use_openrouter, caplog, mocker
+async def test_standard_tier_routes_sonnet_5_5_without_catalog_refusal(
+    path, use_openrouter, caplog, mocker
 ):
     cfg = ChatConfig(
         use_local=False,
@@ -33,42 +42,33 @@ async def test_thinking_advanced_routes_opus_5_5_without_catalog_refusal(
         aux_api_key="test-key",
     )
     mocker.patch.object(router, "get_feature_flag_value", return_value=None)
-    route = await router.resolve_model_route("thinking", "advanced", "user", config=cfg)
+    route = await router.resolve_model_route(path, "standard", "user", config=cfg)
 
-    assert route.model == "anthropic/claude-opus-5-5"
+    assert route.model == "anthropic/claude-sonnet-5-5"
     assert route.source == "env"
     assert "refused" not in caplog.text
-    expected = "anthropic/claude-opus-5-5" if use_openrouter else "claude-opus-5-5"
+    expected = "anthropic/claude-sonnet-5-5" if use_openrouter else "claude-sonnet-5-5"
     assert normalize_model_for_transport(route.model, cfg) == expected
-    assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
-    assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5-5"
 
 
-def test_opus_5_has_public_metadata_and_provider_prices():
-    # claude-opus-5 stays listed (no longer the advanced-tier default —
-    # see test_opus_5_5_has_public_metadata_and_provider_prices below).
-    model = router.catalog_lookup("anthropic/claude-opus-5")
+def test_sonnet_5_5_has_public_metadata_and_provider_prices():
+    model = router.catalog_lookup("anthropic/claude-sonnet-5-5")
     assert model is not None
     assert model.is_enabled
     assert model.visibility == "GA"
-    assert model.display_name == "Claude Opus 5"
+    assert model.display_name == "Claude Sonnet 5.5"
     assert model.metadata.context_window == 200_000
     assert model.metadata.max_output_tokens == 128_000
     assert model.supports_tools and model.supports_reasoning
     assert model.cost is not None
-    assert model.cost.provider_input_usd_per_1m == 5.0
-    assert model.cost.provider_output_usd_per_1m == 25.0
+    assert model.cost.provider_input_usd_per_1m == 2.0
+    assert model.cost.provider_output_usd_per_1m == 10.0
 
 
-def test_opus_5_5_has_public_metadata_and_provider_prices():
-    model = router.catalog_lookup("anthropic/claude-opus-5-5")
+def test_sonnet_5_stays_listed_after_the_default_moves():
+    """Superseded, not removed: existing graphs pinned to Sonnet 5 keep
+    running and the builder keeps offering it."""
+    model = router.catalog_lookup("anthropic/claude-sonnet-5")
     assert model is not None
     assert model.is_enabled
     assert model.visibility == "GA"
-    assert model.display_name == "Claude Opus 5.5"
-    assert model.metadata.context_window == 200_000
-    assert model.metadata.max_output_tokens == 128_000
-    assert model.supports_tools and model.supports_reasoning
-    assert model.cost is not None
-    assert model.cost.provider_input_usd_per_1m == 4.0
-    assert model.cost.provider_output_usd_per_1m == 20.0
