@@ -33,6 +33,18 @@ class RegistryCacheTests(unittest.TestCase):
             any("cache-to" in s for s in self.settings("pull_request", arch="arm64"))
         )
 
+    def test_only_pull_requests_tolerate_a_failed_cache_login(self):
+        workflow = (
+            SCRIPT.parents[1] / "workflows/platform-single-container-docker.yml"
+        ).read_text(encoding="utf-8")
+        login = workflow.split("      - name: Authenticate to GHCR build cache\n", 1)[
+            1
+        ].split("      - name:", 1)[0]
+        self.assertIn(
+            "continue-on-error: ${{ github.event_name == 'pull_request' }}", login
+        )
+        self.assertNotIn("if:", login)
+
     def test_only_dev_push_writes_the_shared_validation_cache(self):
         settings = self.settings("push")
         self.assertIn(
