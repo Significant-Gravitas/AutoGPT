@@ -826,9 +826,10 @@ def test_stream_chat_failed_queue_fallback_can_be_retried_with_the_same_id(
         side_effect=RuntimeError("database unavailable"),
     )
     body = {"message": "hello", "message_id": "client-click-id"}
+    safe_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
-    with pytest.raises(RuntimeError):
-        client.post("/sessions/sess-1/stream", json=body)
+    response = safe_client.post("/sessions/sess-1/stream", json=body)
+    assert response.status_code == 500
     assert mocks.claims.keys == set()
 
     mocks.enqueue.side_effect = None
