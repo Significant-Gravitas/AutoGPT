@@ -31,7 +31,7 @@ export function useAvatarGeneration() {
   const error =
     mutation.error?.message ??
     (query.isError
-      ? "Could not check generation. Try again or choose a catalog avatar."
+      ? "Could not check generation. Try again or regenerate."
       : job?.error);
 
   function generate(request: ExpertAvatarRequest) {
