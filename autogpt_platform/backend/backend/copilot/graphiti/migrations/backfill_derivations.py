@@ -16,7 +16,8 @@ already forgotten, which a dry run only counts.
 
 Dry run by default. ``--apply`` writes, each graph holding its write lock
 (``scope_lock.py``) from its first read to its last write, in batches of
-``BATCH_SIZE``. A graph locked past ``BACKFILL_LOCK_WAIT_SECONDS``, or not
+``BATCH_SIZE``, after completing the dream records a failed write left
+pending in it (``recall_reconcile.py``). A graph locked past ``BACKFILL_LOCK_WAIT_SECONDS``, or not
 lockable because Redis is unreachable, is skipped unwritten and counted
 busy; one whose backfill raises, or whose cascade stops short, is counted
 failed. Either makes the script exit 1: run it again. Every write is
@@ -45,6 +46,7 @@ from backend.copilot.graphiti.graphs import list_graph_names
 from backend.copilot.graphiti.memory_model import ForgetResult
 from backend.copilot.graphiti.recall import forgotten_fact_predicate
 from backend.copilot.graphiti.recall_cascade import cascade
+from backend.copilot.graphiti.recall_reconcile import reconcile
 from backend.copilot.graphiti.scope_lock import LockState, graph_write_lock
 
 from .backfill_legacy_forgets import MEMORY_GRAPH_PREFIXES
@@ -56,12 +58,13 @@ BATCH_SIZE = 500
 
 
 class Derivations(BaseModel):
-    """What the backfill found (with ``--apply``, wrote): dream ``episodes``
-    given a record, ``facts`` stamped, of them ``unattributed`` with nothing
-    cited; the forgotten ``roots`` a cascade started from and the facts it
-    retracted (``derived``); and the graphs to run again, ``busy`` and
-    ``failed``."""
+    """What the backfill found (with ``--apply``, wrote): pending dream
+    records completed (``reconciled``), dream ``episodes`` given a record,
+    ``facts`` stamped, of them ``unattributed`` with nothing cited; the
+    forgotten ``roots`` a cascade started from and the facts it retracted
+    (``derived``); and the graphs to run again, ``busy`` and ``failed``."""
 
+    reconciled: int = 0
     episodes: int = 0
     facts: int = 0
     unattributed: int = 0
@@ -87,7 +90,12 @@ async def backfill_graph(
         if lock is not LockState.HELD:
             logger.warning(f"Skipped graph {graph[:20]}: write lock {lock.value}")
             return Derivations(busy=1)
-        return await _derive(driver, apply=True, cascade_forgets=cascade_forgets)
+        pending = await reconcile(driver, graph)
+        found = await _derive(driver, apply=True, cascade_forgets=cascade_forgets)
+        found.reconciled = pending.completed
+        if pending.left:
+            found.failed = 1
+        return found
 
 
 async def _derive(
@@ -287,6 +295,7 @@ async def main(args: argparse.Namespace) -> int:
     )
     verb = "recorded" if args.apply else "would record (dry run)"
     print(
+        f"completed {totals.reconciled} pending dream records; "
         f"{verb} {totals.episodes} dream episodes and {totals.facts} facts; "
         f"{totals.unattributed} dream facts cite nothing to attribute"
     )

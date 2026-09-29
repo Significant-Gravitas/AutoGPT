@@ -20,7 +20,9 @@ from backend.util.background import spawn_background_task
 
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .provenance_pending import note_pending
 from .recall_citations import Citations, rests_on_a_forget
+from .recall_derivation import mark as mark_derivation
 from .recall_derivation import record as record_derivation
 from .recall_ingest import previous_episode_uuids
 from .scope import MemoryScope
@@ -92,7 +94,14 @@ class IngestionCompletion:
     interleave can never drive the outstanding count negative.
     """
 
-    __slots__ = ("_registered", "_completed", "_event", "dropped_forgotten")
+    __slots__ = (
+        "_registered",
+        "_completed",
+        "_event",
+        "dropped_forgotten",
+        "failed",
+        "provenance_pending",
+    )
 
     def __init__(self) -> None:
         self._registered = 0
@@ -102,6 +111,13 @@ class IngestionCompletion:
         # Episodes the worker dropped, unwritten, for resting on a forget
         # made since they were queued (``recall_citations.py``).
         self.dropped_forgotten = 0
+        # Episodes the worker did not write: a dream write whose citation
+        # marker could not be written (it fails closed), a graph write that
+        # raised, a payload for another graph.
+        self.failed = 0
+        # Dream writes made whose derivation record failed after the write:
+        # their marker stays until it is reconciled (``recall_reconcile.py``).
+        self.provenance_pending = 0
 
     @property
     def registered(self) -> int:
@@ -322,12 +338,14 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     payload.get("group_id"),
                     group_id,
                 )
+                _count_failed(completion)
             except Exception:
                 logger.warning(
                     "Graphiti ingestion failed for user %s",
                     user_id[:12],
                     exc_info=True,
                 )
+                _count_failed(completion)
             finally:
                 queue.task_done()
                 # Signal completion for the enqueuer's drain barrier even on
@@ -367,39 +385,103 @@ async def _write_locked(
     """Write one episode holding the graph's write lock (``scope_lock.py``),
     so no forget lands between what graphiti reads and what it saves over
     it; False, writing nothing, when another writer kept it for the wait.
-    A dream write resting on a forget is dropped under the same lock, and
-    what one that is written was derived from is recorded under it too
-    (``recall_derivation.py``), so a forget waiting for the lock finds it."""
+    A dream write resting on a forget is dropped under the same lock; one
+    that is written has its citations marked before the write, failing
+    closed, and recorded after it (``recall_derivation.py``), so a forget
+    waiting for the lock finds them."""
     wait = INGEST_LOCK_WAIT_SECONDS
     async with graph_write_lock(group_id, wait_seconds=wait) as lock:
         if lock is LockState.BUSY:
             return False
         client = await get_graphiti_client(group_id)
-        # Sidecar (not an add_episode kwarg), present only for dream writes.
+        # Sidecars (not add_episode kwargs), present only for dream writes.
         citations: Citations | None = payload.pop("_citations", None)
+        edge_metadata = payload.pop("_edge_metadata", None)
         if await _dropped_as_forgotten(client, payload, citations, completion):
             return True
         # This is the write path, so materializing the graph is intended
         # here — unlike driver construction, which must never create one.
         # Once per group per loop.
         await ensure_indices_once(group_id, client)
-        # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) — pop it
-        # before the **payload spread. Present only for dream writes.
-        edge_metadata = payload.pop("_edge_metadata", None)
-        result = await _add_episode(client, group_id, payload)
+        marker = await _marked(client, group_id, payload, citations, completion)
+        if citations is not None and marker is None:
+            return True
+        result = await _add_episode_marked(client, group_id, payload, marker)
         # graphiti's attribute extraction fills MemoryFact fields from the
         # episode text, not the envelope, so dream metadata doesn't survive:
         # stamp it onto the edges THIS episode newly created (see
         # ``_stamp_edge_metadata`` for the dedup-safety invariant).
         if edge_metadata:
             await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
-        if citations is not None:
-            episode = result.episode.uuid
-            touched = [edge.uuid for edge in result.edges if episode in edge.episodes]
-            await record_derivation(
-                client.driver, group_id, episode, touched, citations
-            )
+        if citations is not None and marker is not None:
+            await _recorded(client, group_id, marker, result, citations, completion)
     return True
+
+
+async def _marked(
+    client: Graphiti,
+    group_id: str,
+    payload: dict[str, Any],
+    citations: Citations | None,
+    completion: IngestionCompletion | None,
+) -> str | None:
+    """The citation marker of a dream write, written before the write; None
+    for any other write, and for a dream write whose marker could not be
+    written, which is then not made and counts as failed."""
+    if citations is None:
+        return None
+    try:
+        return await mark_derivation(
+            client.driver, group_id, str(payload["name"]), citations
+        )
+    except Exception:
+        logger.warning(
+            f"Dropped dream write {payload.get('name')!r}: its citation marker "
+            f"could not be written in graph {group_id[:20]}",
+            exc_info=True,
+        )
+        _count_failed(completion)
+        return None
+
+
+async def _add_episode_marked(
+    client: Graphiti, group_id: str, payload: dict[str, Any], marker: str | None
+) -> AddEpisodeResults:
+    """``_add_episode``; a marked write that raised may have landed in part,
+    so its graph is noted for the reaper to reconcile."""
+    try:
+        return await _add_episode(client, group_id, payload)
+    except Exception:
+        if marker is not None:
+            await note_pending(group_id)
+        raise
+
+
+async def _recorded(
+    client: Graphiti,
+    group_id: str,
+    marker: str,
+    result: AddEpisodeResults,
+    citations: Citations,
+    completion: IngestionCompletion | None,
+) -> None:
+    """Record what the dream write just made was derived from; a record that
+    failed leaves its marker, is noted for the reaper and counts as
+    ``provenance_pending``."""
+    episode = result.episode.uuid
+    touched = [edge.uuid for edge in result.edges if episode in edge.episodes]
+    if await record_derivation(
+        client.driver, group_id, marker, episode, touched, citations
+    ):
+        return
+    await note_pending(group_id)
+    if completion is not None:
+        completion.provenance_pending += 1
+
+
+def _count_failed(completion: IngestionCompletion | None) -> None:
+    if completion is not None:
+        completion.failed += 1
 
 
 async def _dropped_as_forgotten(

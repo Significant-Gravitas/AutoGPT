@@ -61,6 +61,8 @@ async def test_an_applied_pass_reads_back_what_it_dropped(pass_id):
         dropped_forgotten=1,
         uncited_writes_dropped=3,
         cross_scope_citations_dropped=4,
+        failed_writes=5,
+        provenance_pending=6,
     )
 
     assert await update_dream_pass(pass_id, outcome(result, None))
@@ -73,7 +75,9 @@ async def test_an_applied_pass_reads_back_what_it_dropped(pass_id):
         read_back.dropped_forgotten,
         read_back.uncited_writes_dropped,
         read_back.cross_scope_citations_dropped,
-    ) == (2, 1, 3, 4)
+        read_back.failed_writes,
+        read_back.provenance_pending,
+    ) == (2, 1, 3, 4, 5, 6)
 
 
 async def test_a_row_applied_before_the_drop_counts_reads_none_dropped(pass_id):
@@ -90,4 +94,6 @@ async def test_a_row_applied_before_the_drop_counts_reads_none_dropped(pass_id):
         applied.dropped_forgotten,
         applied.uncited_writes_dropped,
         applied.cross_scope_citations_dropped,
-    ) == (2, 0, 0, 0)
+        applied.failed_writes,
+        applied.provenance_pending,
+    ) == (2, 0, 0, 0, 0, 0)

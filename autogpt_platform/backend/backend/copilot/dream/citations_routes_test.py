@@ -5,9 +5,10 @@ queued with what it cites; the other two are dropped before they reach the
 graph and reach ``uncited_writes_dropped`` in the result, the durable record
 and the admin job status. The first also cites a fact of another scope,
 which is dropped and counted in ``cross_scope_citations_dropped`` there. The worker then drops the queued write for resting
-on a forget: ``dropped_forgotten`` reports it in the same places on the sync
-route, which waits for the worker, and not on the batch route, which does
-not. Only the LLM, the ingestion queue and worker, and the chat store are
+on a forget, fails another and makes a third whose record fails:
+``dropped_forgotten``, ``failed_writes`` and ``provenance_pending`` report
+them in the same places on the sync route, which waits for the worker, and
+not on the batch route, which does not. Only the LLM, the ingestion queue and worker, and the chat store are
 stubbed; the rest runs on ``conftest.py``'s in-memory Redis and store."""
 
 import asyncio
@@ -95,18 +96,22 @@ def _bundle(user_id: str) -> DreamInput:
     )
 
 
-async def _worker_drops_one(completion: IngestionCompletion, _: float) -> bool:
-    """The worker finds what the queued write rests on forgotten and drops it."""
+async def _worker_reports(completion: IngestionCompletion, _: float) -> bool:
+    """The worker's outcomes, one of each, as its counters carry them: a
+    write dropped for resting on a forget, one it failed to make, one made
+    whose record is pending."""
     completion.dropped_forgotten += 1
+    completion.failed += 1
+    completion.provenance_pending += 1
     return True
 
 
 @pytest.fixture
 def queued(mocker) -> AsyncMock:
-    """The ingestion queue and its worker, which drops one; apply's chat store."""
+    """The ingestion queue and its worker's outcomes; apply's chat store."""
     enqueue = AsyncMock(return_value=True)
     mocker.patch.object(apply_mod, "enqueue_episode", enqueue)
-    mocker.patch.object(apply_mod, "wait_for_ingestion", _worker_drops_one)
+    mocker.patch.object(apply_mod, "wait_for_ingestion", _worker_reports)
     database = MagicMock()
     database.create_chat_session = AsyncMock()
     database.update_chat_session_title = AsyncMock()
@@ -145,12 +150,16 @@ async def _job_result(job_id: str) -> DreamPassResult:
 
 
 def _reported(result: DreamPassResult | DreamPassApplied) -> tuple[int, ...]:
+    """Written, proposed, uncited, cross-scope citations, and the worker's
+    three outcomes: dropped as forgotten, failed, provenance pending."""
     return (
         result.consolidated_count,
         result.proposal_count,
         result.uncited_writes_dropped,
-        result.dropped_forgotten,
         result.cross_scope_citations_dropped,
+        result.dropped_forgotten,
+        result.failed_writes,
+        result.provenance_pending,
     )
 
 
@@ -214,11 +223,11 @@ def test_the_sync_route_reports_the_dropped_writes_everywhere(
 
     job = scheduler_loop.run_until_complete(_job_result("j-sync"))
     assert job.error is None
-    assert _reported(job) == (1, 0, 2, 1, 1)
+    assert _reported(job) == (1, 0, 2, 1, 1, 1, 1)
     applied = fake_dream_db.rows[job.pass_id]["operations"]["applied"]
-    assert _reported(applied) == (1, 0, 2, 1, 1)
+    assert _reported(applied) == (1, 0, 2, 1, 1, 1, 1)
     record = dream_pass_result_from_row(fake_dream_db.record(job.pass_id))
-    assert _reported(record) == (1, 0, 2, 1, 1)
+    assert _reported(record) == (1, 0, 2, 1, 1, 1, 1)
     _only_the_cited_write_was_queued(queued)
 
 
@@ -297,8 +306,8 @@ async def test_the_batch_route_reports_the_dropped_writes_everywhere(
 
     row = fake_dream_db.rows["p-batch"]
     assert row["status"] is DreamPassStatus.COMPLETE
-    assert _reported(row["operations"]["applied"]) == (1, 0, 2, 0, 1)
+    assert _reported(row["operations"]["applied"]) == (1, 0, 2, 1, 0, 0, 0)
     record = dream_pass_result_from_row(fake_dream_db.record("p-batch"))
-    assert _reported(record) == (1, 0, 2, 0, 1)
-    assert _reported(await _job_result("j-batch")) == (1, 0, 2, 0, 1)
+    assert _reported(record) == (1, 0, 2, 1, 0, 0, 0)
+    assert _reported(await _job_result("j-batch")) == (1, 0, 2, 1, 0, 0, 0)
     _only_the_cited_write_was_queued(queued)

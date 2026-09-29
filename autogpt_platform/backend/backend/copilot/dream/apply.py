@@ -618,6 +618,8 @@ async def apply_operations(
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
+            "failed_writes": 0,
+            "provenance_pending": 0,
             "uncited_writes_dropped": cited.uncited,
             "cross_scope_citations_dropped": cited.cross_scope,
             "protected_demotions": 0,
@@ -699,7 +701,8 @@ async def apply_operations(
 
     logger.info(
         "Dream pass %s applied for user %s: "
-        "writes=%d proposals=%d uncited=%d dropped_forgotten=%d demoted=%d "
+        "writes=%d proposals=%d uncited=%d dropped_forgotten=%d "
+        "failed_writes=%d provenance_pending=%d demoted=%d "
         "(failed=%d) protected=%d entity_edges=%d indeterminate=%d "
         "accounting_complete=%s ingestion_drain_status=%s",
         pass_id,
@@ -708,6 +711,8 @@ async def apply_operations(
         proposed,
         cited.uncited,
         completion.dropped_forgotten,
+        completion.failed,
+        completion.provenance_pending,
         destroyed.demoted,
         destroyed.failed,
         destroyed.protected,
@@ -734,6 +739,12 @@ async def apply_operations(
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
         "dropped_forgotten": completion.dropped_forgotten,
+        # Writes and proposals the worker did not make: their citation marker
+        # could not be written (it fails closed) or the graph write raised.
+        "failed_writes": completion.failed,
+        # Writes made whose derivation record failed after the write: their
+        # marker stays until reconciled (``graphiti/recall_reconcile.py``).
+        "provenance_pending": completion.provenance_pending,
         # Writes and proposals dropped before they were queued: they cited
         # nothing the pass read in their scope.
         "uncited_writes_dropped": cited.uncited,

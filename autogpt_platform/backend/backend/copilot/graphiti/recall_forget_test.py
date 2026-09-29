@@ -20,6 +20,7 @@ from . import (
     recall_forget,
     recall_hide,
     recall_orphans,
+    recall_reconcile,
     scope_lock,
 )
 from .memory_model import (
@@ -36,11 +37,14 @@ _LOCK = write_lock_key(_SCOPE.group_id)
 _CLEANUP = MemoryForgetFailureCode.CLEANUP_ERROR
 
 
-def _driver(*results) -> AsyncMock:
-    """A driver whose queries return (or raise) ``results`` in order."""
+def _driver(*results, markers: object = None) -> AsyncMock:
+    """A driver whose queries return (or raise) ``results`` in order, after
+    the read of the graph's pending dream records every forget makes first
+    (``markers``: none by default)."""
     driver = AsyncMock()
+    answers = [[] if markers is None else markers, *results]
     driver.execute_query.side_effect = [
-        r if isinstance(r, Exception) else (r, [], None) for r in results
+        r if isinstance(r, Exception) else (r, [], None) for r in answers
     ]
     return driver
 
@@ -51,11 +55,13 @@ async def _retract(driver: AsyncMock, uuids: list[str], **kwargs):
 
 
 def _queries(driver: AsyncMock) -> list[str]:
-    return [call.args[0] for call in driver.execute_query.await_args_list]
+    """The forget's queries after its read of pending dream records."""
+    return [call.args[0] for call in driver.execute_query.await_args_list][1:]
 
 
 def _call(driver: AsyncMock, index: int) -> tuple[str, dict]:
-    call = driver.execute_query.await_args_list[index]
+    """The ``index``-th of the forget's queries after that read."""
+    call = driver.execute_query.await_args_list[index + 1]
     return call.args[0], call.kwargs
 
 
@@ -125,7 +131,7 @@ class TestSoftRetract:
             ("missing", MemoryForgetFailureCode.NO_MATCH)
         ]
         assert result.failures[0].reason == FORGET_NO_MATCH_REASON
-        assert driver.execute_query.await_count == 1
+        assert driver.execute_query.await_count == 2, "the pending read, the lookup"
 
     @pytest.mark.asyncio
     async def test_lookup_error_fails_every_uuid_with_its_reason(self) -> None:
@@ -156,7 +162,7 @@ class TestSoftRetract:
         assert by_uuid["errored"].code == MemoryForgetFailureCode.QUERY_ERROR
         assert "boom" in by_uuid["errored"].reason
         assert by_uuid["vanished"].code == MemoryForgetFailureCode.NO_MATCH
-        assert driver.execute_query.await_count == 3, "nothing to hide"
+        assert driver.execute_query.await_count == 4, "nothing to hide"
 
     @pytest.mark.asyncio
     async def test_a_failed_hide_is_a_cleanup_error_on_each_edge(self) -> None:
@@ -201,7 +207,7 @@ class TestWriteLock:
         self, lock_redis: FakeRedis
     ) -> None:
         held: list[bool] = []
-        results = [*_SOFT, *_NOTHING_DERIVED]
+        results = [[], *_SOFT, *_NOTHING_DERIVED]
 
         async def query(cypher: str, **params: object):
             held.append(_LOCK in lock_redis.values)
@@ -212,7 +218,9 @@ class TestWriteLock:
 
         await _retract(driver, ["u1"])
 
-        assert held == [True] * (len(_SOFT) + len(_NOTHING_DERIVED)), "cascade too"
+        assert held == [True] * (
+            1 + len(_SOFT) + len(_NOTHING_DERIVED)
+        ), "reconcile and cascade too"
         assert _LOCK not in lock_redis.values, "released afterwards"
 
     @pytest.mark.asyncio
@@ -294,7 +302,7 @@ class TestHardRetract:
 
         assert result.deleted == [], "a deleted edge could no longer hide its text"
         assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-        assert driver.execute_query.await_count == 3
+        assert driver.execute_query.await_count == 4
 
     @pytest.mark.asyncio
     async def test_unmatched_delete_is_a_no_match(self) -> None:
@@ -304,7 +312,49 @@ class TestHardRetract:
 
         assert result.deleted == []
         assert [f.code for f in result.failures] == [MemoryForgetFailureCode.NO_MATCH]
-        assert driver.execute_query.await_count == 12
+        assert driver.execute_query.await_count == 13
+
+
+class TestPendingDreamRecords:
+    """Every forget completes the graph's pending dream records first
+    (``recall_reconcile.py``, pinned in ``recall_reconcile_test.py``), so
+    its cascade sees them."""
+
+    @pytest.mark.asyncio
+    async def test_it_reads_them_before_anything_else(self) -> None:
+        driver = _driver(*_SOFT, *_NOTHING_DERIVED)
+
+        await _retract(driver, ["u1"])
+
+        first = driver.execute_query.await_args_list[0]
+        assert first.args[0] == recall_reconcile.PENDING_MARKERS_QUERY
+
+    @pytest.mark.asyncio
+    async def test_a_failed_read_forgets_anyway_and_asks_for_a_retry(self) -> None:
+        driver = _driver(*_SOFT, *_NOTHING_DERIVED, markers=RuntimeError("down"))
+
+        result = await _retract(driver, ["u1"])
+
+        assert result.deleted == ["u1"], "the fact itself is forgotten"
+        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
+        assert "RuntimeError: down" in result.failures[0].reason
+
+    @pytest.mark.asyncio
+    async def test_more_than_one_forget_takes_asks_for_a_retry(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.side_effect = [
+            (r, [], None) for r in (*_SOFT, *_NOTHING_DERIVED)
+        ]
+
+        with patch.object(
+            recall_forget,
+            "reconcile",
+            AsyncMock(return_value=recall_reconcile.Reconciled(left=True)),
+        ):
+            result = await _retract(driver, ["u1"])
+
+        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
+        assert "pending a record" in result.failures[0].reason
 
 
 class TestCascade:

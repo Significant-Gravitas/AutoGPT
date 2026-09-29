@@ -595,6 +595,8 @@ class TestReadSide:
             dropped_forgotten=1,
             uncited_writes_dropped=2,
             cross_scope_citations_dropped=3,
+            failed_writes=4,
+            provenance_pending=5,
         )
         await store.record_sync_outcome(result)
         _, update = _update(db)

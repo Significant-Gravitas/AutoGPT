@@ -12,6 +12,7 @@ import pytest
 from backend.copilot.dream.citations import described_citations
 from backend.copilot.graphiti.memory_model import ForgetResult, MemoryForgetFailure
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
+from backend.copilot.graphiti.recall_reconcile import PENDING_MARKERS_QUERY
 from backend.copilot.graphiti.scope import write_lock_key
 
 from . import backfill_derivations as backfill
@@ -36,9 +37,14 @@ class _Driver:
             backfill.FORGOTTEN_FACTS_QUERY: [{"uuid": u} for u in forgotten or []],
         }
         self.writes: list[tuple[str, list[dict[str, Any]]]] = []
+        # Whether it read the pending dream records (none here).
+        self.reconciled = False
         self.close = AsyncMock()
 
     async def execute_query(self, query: str, **params: Any):
+        if query == PENDING_MARKERS_QUERY:
+            self.reconciled = True
+            return [], [], None
         if query in self.answers:
             rows = [r for r in self.answers[query] if r["uuid"] > params["after"]]
             return rows[: params["limit"]], [], None
@@ -130,6 +136,7 @@ class TestBackfillGraph:
 
         await backfill.backfill_graph(driver, apply=True, cascade_forgets=False)
 
+        assert driver.reconciled, "pending dream records are completed first"
         (records_query, records), (stamps_query, stamps) = driver.writes
         assert records_query == backfill.RECORD_EPISODES_QUERY
         assert records == [

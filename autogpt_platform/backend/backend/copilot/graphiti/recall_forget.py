@@ -25,6 +25,7 @@ from .recall import USER_FORGET_REASON
 from .recall_cascade import cascade
 from .recall_hide import hide
 from .recall_orphans import purge
+from .recall_reconcile import reconcile
 from .scope import MemoryScope
 from .scope_lock import FORGET_LOCK_WAIT_SECONDS, LockState, graph_write_lock
 
@@ -43,7 +44,11 @@ async def retract(
     The forget holds the graph's write lock (``scope_lock.py``), so it never
     lands while an ingestion is between reading the graph and saving over
     it; when the lock stays busy for ``FORGET_LOCK_WAIT_SECONDS`` every uuid
-    fails as ``busy`` and nothing is written.
+    fails as ``busy`` and nothing is written. It first completes the
+    derivation records of every dream write still marked in the graph
+    (``recall_reconcile.reconcile``), so its cascade sees complete
+    provenance; if that fails or leaves markers, each fact forgotten is a
+    ``cleanup_error`` and forgetting it again finishes the job.
 
     Soft (the default) stamps ``forgotten_at``, sets ``status='retracted'``
     and ``expiration_reason``, keeps an earlier ``expired_at`` and leaves
@@ -81,16 +86,48 @@ async def _forget(
 ) -> ForgetResult:
     result = ForgetResult()
     now = datetime.now(timezone.utc).isoformat()
+    unreconciled = await _reconciled(driver, group_id)
     found = await _existing_edges(driver, group_id, uuids, result)
     retracted = await _retract_edges(driver, group_id, found, reason, now, result)
     hidden = await hide(driver, group_id, retracted, now, result)
     if hidden:
         await cascade(driver, group_id, retracted, now, result, erase=hard)
+    if unreconciled is not None:
+        _provenance_incomplete(result, retracted, unreconciled)
     if not hard:
         result.deleted = retracted
     elif hidden:
         await purge(driver, group_id, retracted, now, result)
     return result
+
+
+async def _reconciled(driver: GraphDriver, group_id: str) -> Exception | None:
+    """Complete the graph's pending dream records before anything else; what
+    went wrong, when some may still be missing: the error, or ``None``."""
+    try:
+        done = await reconcile(driver, group_id)
+    except Exception as exc:
+        logger.warning(
+            f"Could not reconcile graph {group_id[:20]} before a forget",
+            exc_info=True,
+        )
+        return exc
+    if done.left:
+        return RuntimeError("more dream writes pending a record than one forget takes")
+    return None
+
+
+def _provenance_incomplete(
+    result: ForgetResult, retracted: list[str], exc: Exception
+) -> None:
+    """A ``cleanup_error`` on each fact forgotten that has no failure yet: its
+    cascade may have missed a dream fact whose record was still pending."""
+    failed = {failure.uuid for failure in result.failures}
+    result.failures.extend(
+        MemoryForgetFailure.cleanup_error(uuid, exc)
+        for uuid in retracted
+        if uuid not in failed
+    )
 
 
 async def _existing_edges(

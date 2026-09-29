@@ -682,6 +682,8 @@ def _applied_result(
         demotion_count=_as_int("demotion_count"),
         entity_invalidation_count=_as_int("entity_invalidation_count"),
         dropped_forgotten=_as_int("dropped_forgotten"),
+        failed_writes=_as_int("failed_writes"),
+        provenance_pending=_as_int("provenance_pending"),
         uncited_writes_dropped=_as_int("uncited_writes_dropped"),
         cross_scope_citations_dropped=_as_int("cross_scope_citations_dropped"),
         protected_demotions=_as_int("protected_demotions"),

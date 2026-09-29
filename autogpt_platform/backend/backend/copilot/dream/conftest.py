@@ -57,15 +57,32 @@ class FakeAsyncRedis:
 
     Covers the surface the dream code uses: ``get``/``set`` (with ``nx``,
     ``xx`` and ``ex``), ``delete``, ``expire``, ``ttl``, ``exists``, ``incr``,
-    the hash commands, and ``eval`` for the two single-key lock scripts in
-    ``locks.py`` (compare-and-delete, compare-and-extend). TTLs are recorded,
-    not enforced.
+    the hash commands, the set commands the reaper's sweep of pending dream
+    records uses (``graphiti/provenance_pending.py``), and ``eval`` for the
+    two single-key lock scripts in ``locks.py`` (compare-and-delete,
+    compare-and-extend). TTLs are recorded, not enforced.
     """
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
         self.hashes: dict[str, dict[str, str]] = {}
+        self.sets: dict[str, set[str]] = {}
         self.ttls: dict[str, int] = {}
+
+    async def sadd(self, name: str, *values: Any) -> int:
+        bucket = self.sets.setdefault(name, set())
+        added = {self._s(value) for value in values} - bucket
+        bucket |= added
+        return len(added)
+
+    async def srem(self, name: str, *values: Any) -> int:
+        bucket = self.sets.get(name, set())
+        removed = {self._s(value) for value in values} & bucket
+        bucket -= removed
+        return len(removed)
+
+    async def srandmember(self, name: str, number: int) -> list[str]:
+        return sorted(self.sets.get(name, set()))[:number]
 
     @staticmethod
     def _s(value: Any) -> str:

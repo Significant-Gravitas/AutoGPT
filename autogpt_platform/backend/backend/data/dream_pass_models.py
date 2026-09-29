@@ -83,6 +83,11 @@ class DreamPassApplied(BaseModel):
     # Writes and proposals the worker dropped unwritten for resting on a
     # forget, before the pass was reported; a row written before it reads 0.
     dropped_forgotten: int = 0
+    # Writes and proposals the worker did not make (their citation marker or
+    # the graph write failed), and writes made whose derivation record
+    # failed and awaits reconcile; a row written before them reads 0.
+    failed_writes: int = 0
+    provenance_pending: int = 0
     # Writes and proposals dropped before they were queued for citing
     # nothing the pass read in their scope; a row written before it reads 0.
     uncited_writes_dropped: int = 0

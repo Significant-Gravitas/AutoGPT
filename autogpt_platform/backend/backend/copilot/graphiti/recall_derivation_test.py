@@ -1,10 +1,13 @@
-"""Unit tests for ``recall_derivation``: what a dream write rests on is
-recorded on its episode, then on the facts only dream episodes state, right
-after the ingestion worker writes it, under the graph's write lock.
+"""Unit tests for ``recall_derivation``: a dream write's citations are marked
+before the ingestion worker writes it, failing closed, then recorded on its
+episode and on the facts only dream episodes state, and the marker dropped,
+all under the graph's write lock; a record that fails leaves the marker and
+is reported as ``provenance_pending``.
 
-On FalkorDB, through ``dream/apply.py`` and the production worker, the facts
-a dream write produced or merged into are checked in
-``recall_cascade_integration_test.py``.
+On FalkorDB, through ``dream/apply.py`` and the production worker:
+``recall_cascade_integration_test.py`` (the facts a dream write produced or
+merged into) and ``recall_provenance_integration_test.py`` (a record that
+failed, reconciled before the next forget).
 """
 
 import asyncio
@@ -29,14 +32,54 @@ def _driver() -> MagicMock:
     return driver
 
 
-class TestRecord:
+class TestMark:
     @pytest.mark.asyncio
-    async def test_records_the_episode_then_the_facts_it_touched(self) -> None:
+    async def test_marks_the_complete_citations_under_the_episodes_name(
+        self,
+    ) -> None:
         driver = _driver()
 
-        await recall_derivation.record(driver, "user_a", "dream-ep", ["e1"], _CITED)
+        marker = await recall_derivation.mark(driver, "user_a", "dream_p_1", _CITED)
 
-        episode, facts = driver.execute_query.await_args_list
+        [call] = driver.execute_query.await_args_list
+        assert call.args[0] == recall_derivation.MARK_QUERY
+        params = dict(call.kwargs)
+        assert params.pop("now")
+        assert params == {
+            "uuid": marker,
+            "group_id": "user_a",
+            "name": "dream_p_1",
+            "facts": ["f1", "f2"],
+            "episodes": ["ep1"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_marker_that_cannot_be_written_raises(self) -> None:
+        driver = _driver()
+        driver.execute_query.side_effect = RuntimeError("down")
+
+        with pytest.raises(RuntimeError):
+            await recall_derivation.mark(driver, "user_a", "dream_p_1", _CITED)
+
+    def test_a_marker_holds_uuids_and_names_only(self) -> None:
+        query = recall_derivation.MARK_QUERY
+        assert "CREATE (:DreamCitations {" in query
+        for text in ("content", "fact:", "rationale", "source_description"):
+            assert text not in query
+
+
+class TestRecord:
+    @pytest.mark.asyncio
+    async def test_records_the_episode_then_the_facts_then_drops_the_marker(
+        self,
+    ) -> None:
+        driver = _driver()
+
+        recorded = await recall_derivation.record(
+            driver, "user_a", "m1", "dream-ep", ["e1"], _CITED
+        )
+
+        episode, facts, drop = driver.execute_query.await_args_list
         assert episode.args[0] == recall_derivation.RECORD_EPISODE_QUERY
         assert episode.kwargs == {
             "episode": "dream-ep",
@@ -45,6 +88,11 @@ class TestRecord:
         }
         assert facts.args[0] == recall_derivation.STAMP_FACTS_QUERY
         assert facts.kwargs == {"uuids": ["e1"], "group_id": "user_a"}
+        assert (drop.args[0], drop.kwargs) == (
+            recall_derivation.DROP_MARKER_QUERY,
+            {"uuid": "m1"},
+        )
+        assert recorded is True
 
     @pytest.mark.asyncio
     async def test_a_write_that_touched_no_fact_records_its_episode_only(
@@ -52,21 +100,28 @@ class TestRecord:
     ) -> None:
         driver = _driver()
 
-        await recall_derivation.record(driver, "user_a", "dream-ep", [], _CITED)
+        await recall_derivation.record(driver, "user_a", "m1", "dream-ep", [], _CITED)
 
-        [call] = driver.execute_query.await_args_list
-        assert call.args[0] == recall_derivation.RECORD_EPISODE_QUERY
+        queries = [call.args[0] for call in driver.execute_query.await_args_list]
+        assert queries == [
+            recall_derivation.RECORD_EPISODE_QUERY,
+            recall_derivation.DROP_MARKER_QUERY,
+        ]
 
     @pytest.mark.asyncio
-    async def test_a_failure_is_logged_and_the_write_stands(
+    async def test_a_failure_leaves_the_marker_and_says_so(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         driver = _driver()
-        driver.execute_query.side_effect = RuntimeError("down")
+        driver.execute_query.side_effect = [([], [], None), RuntimeError("down")]
 
-        await recall_derivation.record(driver, "user_a", "dream-ep", ["e1"], _CITED)
+        recorded = await recall_derivation.record(
+            driver, "user_a", "m1", "dream-ep", ["e1"], _CITED
+        )
 
-        assert "Failed to record what dream episode dream-ep" in caplog.text
+        assert recorded is False
+        assert driver.execute_query.await_count == 2, "the marker is not dropped"
+        assert "its marker stays for reconcile" in caplog.text
 
 
 class TestTheStamp:
@@ -84,7 +139,7 @@ class TestTheStamp:
         assert "SET e.derived_from_facts = reduce(" in query
 
 
-def _payload(citations: Citations | None) -> dict:
+def _payload(citations: Citations | None, completion=None) -> dict:
     return {
         "name": "dream_p1_consolidate_000",
         "episode_body": '{"content": "Alice works on Atlas"}',
@@ -93,7 +148,7 @@ def _payload(citations: Citations | None) -> dict:
         "reference_time": datetime(2026, 9, 28, tzinfo=timezone.utc),
         "group_id": "user_test",
         "_citations": citations,
-        "_completion": None,
+        "_completion": completion,
     }
 
 
@@ -108,17 +163,35 @@ def _written(episode: str, edges: dict[str, list[str]]) -> SimpleNamespace:
     )
 
 
+class _Worker(SimpleNamespace):
+    """What the worker was handed and what it called."""
+
+    add_episode: AsyncMock
+    mark: AsyncMock
+    record: AsyncMock
+    noted: AsyncMock
+
+
 async def _work(
     payload: dict,
-    written: SimpleNamespace,
+    written: SimpleNamespace | Exception,
     monkeypatch: pytest.MonkeyPatch,
-    record: AsyncMock,
-) -> None:
-    """One payload through the worker, recording through ``record``."""
+    *,
+    mark: AsyncMock | None = None,
+    record: AsyncMock | None = None,
+) -> _Worker:
+    """One payload through the worker, marking through ``mark`` and
+    recording through ``record``."""
     client = MagicMock()
-    client.add_episode = AsyncMock(return_value=written)
+    client.add_episode = AsyncMock(side_effect=[written])
     client.driver.execute_query = AsyncMock(
         return_value=([{"facts": ["f1"], "episodes": []}], [], None)
+    )
+    worker = _Worker(
+        add_episode=client.add_episode,
+        mark=mark or AsyncMock(return_value="m1"),
+        record=record or AsyncMock(return_value=True),
+        noted=AsyncMock(),
     )
     queue: asyncio.Queue = asyncio.Queue(maxsize=10)
     queue.put_nowait(payload)
@@ -127,44 +200,119 @@ async def _work(
         patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client)),
         patch.object(ingest, "ensure_indices_once", AsyncMock()),
         patch.object(ingest, "previous_episode_uuids", AsyncMock(return_value=[])),
-        patch.object(ingest, "record_derivation", record),
+        patch.object(ingest, "mark_derivation", worker.mark),
+        patch.object(ingest, "record_derivation", worker.record),
+        patch.object(ingest, "note_pending", worker.noted),
     ):
         await ingest._ingestion_worker("test-user", "user_test", queue)
+    return worker
 
 
 class TestTheWorker:
     @pytest.mark.asyncio
-    async def test_records_a_dream_write_on_the_facts_it_produced_or_merged_into(
+    async def test_marks_before_the_write_and_records_after_it_under_the_lock(
         self, lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """An edge the episode invalidated does not name it and is left out;
-        the record is made while the write still holds the lock."""
-        held: list[bool] = []
+        """An edge the episode invalidated does not name it and is left out."""
+        held: list[str] = []
         cited = Citations(fact_uuids=["f1"])
         written = _written(
             "dream-ep",
             {"new": ["dream-ep"], "merged": ["user-ep", "dream-ep"], "old": ["x"]},
         )
 
-        async def under_the_lock(*args, **kwargs) -> None:
-            held.append(write_lock_key("user_test") in lock_redis.values)
+        def step(name: str, answer: object):
+            async def run(*args, **kwargs) -> object:
+                locked = write_lock_key("user_test") in lock_redis.values
+                held.append(f"{name}:{'locked' if locked else 'unlocked'}")
+                return answer
 
-        recorded = AsyncMock(side_effect=under_the_lock)
-        await _work(_payload(cited), written, monkeypatch, recorded)
+            return run
 
-        recorded.assert_awaited_once()
-        _, group, episode, touched, citations = recorded.await_args.args
-        assert (group, episode, touched) == ("user_test", "dream-ep", ["new", "merged"])
-        assert citations == cited
-        assert held == [True]
+        worker = await _work(
+            _payload(cited),
+            written,
+            monkeypatch,
+            mark=AsyncMock(side_effect=step("mark", "m1")),
+            record=AsyncMock(side_effect=step("record", True)),
+        )
+
+        assert held == ["mark:locked", "record:locked"]
+        _, group, name, citations = worker.mark.await_args.args
+        assert (group, name, citations) == (
+            "user_test",
+            "dream_p1_consolidate_000",
+            cited,
+        )
+        _, group, marker, episode, touched, citations = worker.record.await_args.args
+        assert (group, marker, episode) == ("user_test", "m1", "dream-ep")
+        assert (touched, citations) == (["new", "merged"], cited)
+        worker.noted.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_a_chat_write_records_nothing(
+    async def test_a_marker_that_cannot_be_written_drops_the_write(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        written = _written("chat-ep", {"new": ["chat-ep"]})
-        recorded = AsyncMock()
+        completion = ingest.IngestionCompletion()
+        completion.register()
 
-        await _work(_payload(None), written, monkeypatch, recorded)
+        worker = await _work(
+            _payload(Citations(fact_uuids=["f1"]), completion),
+            _written("dream-ep", {"new": ["dream-ep"]}),
+            monkeypatch,
+            mark=AsyncMock(side_effect=RuntimeError("down")),
+        )
 
-        recorded.assert_not_awaited()
+        worker.add_episode.assert_not_awaited()
+        worker.record.assert_not_awaited()
+        assert (completion.failed, completion.provenance_pending) == (1, 0)
+        assert await completion.wait(0), "the drain is not held up"
+
+    @pytest.mark.asyncio
+    async def test_a_failed_record_is_noted_and_reported_pending(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        completion = ingest.IngestionCompletion()
+        completion.register()
+
+        worker = await _work(
+            _payload(Citations(fact_uuids=["f1"]), completion),
+            _written("dream-ep", {"new": ["dream-ep"]}),
+            monkeypatch,
+            record=AsyncMock(return_value=False),
+        )
+
+        worker.noted.assert_awaited_once_with("user_test")
+        assert (completion.failed, completion.provenance_pending) == (0, 1)
+
+    @pytest.mark.asyncio
+    async def test_a_marked_write_that_raised_is_noted_and_failed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """It may have landed in part: its marker stays for the reaper."""
+        completion = ingest.IngestionCompletion()
+        completion.register()
+
+        worker = await _work(
+            _payload(Citations(fact_uuids=["f1"]), completion),
+            RuntimeError("graphiti down"),
+            monkeypatch,
+        )
+
+        worker.noted.assert_awaited_once_with("user_test")
+        worker.record.assert_not_awaited()
+        assert (completion.failed, completion.provenance_pending) == (1, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_chat_write_marks_and_records_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        worker = await _work(
+            _payload(None),
+            _written("chat-ep", {"new": ["chat-ep"]}),
+            monkeypatch,
+        )
+
+        worker.mark.assert_not_awaited()
+        worker.record.assert_not_awaited()
+        worker.add_episode.assert_awaited_once()

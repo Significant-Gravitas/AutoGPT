@@ -50,9 +50,12 @@ def lock_redis(mocker) -> FakeRedis:
 
 def _mock_driver(*results) -> AsyncMock:
     """A FalkorDB driver whose queries return ``results`` in order, for
-    driving the real ``retract`` from the confirm tool."""
+    driving the real ``retract`` from the confirm tool, after the read of
+    pending dream records every forget makes first (none here)."""
     driver = AsyncMock()
-    driver.execute_query.side_effect = [(r, [], None) for r in results]
+    driver.execute_query.side_effect = [
+        r if isinstance(r, Exception) else (r, [], None) for r in ([], *results)
+    ]
     return driver
 
 
@@ -252,14 +255,13 @@ class TestForgetFailuresAreActionable:
     async def test_confirm_tool_reports_a_failed_clean_up(self) -> None:
         """Retracted, but the episode redaction failed: the model is told the
         fact is forgotten and that the clean-up did not finish."""
-        driver = AsyncMock()
-        driver.execute_query.side_effect = [
-            ([{"uuid": "u1"}], [], None),  # lookup
-            ([{"uuid": "u1"}], [], None),  # retract
-            ([], [], None),  # scrub its sentence
-            ([], [], None),  # find the entities to scrub (none)
+        driver = _mock_driver(
+            [{"uuid": "u1"}],  # lookup
+            [{"uuid": "u1"}],  # retract
+            [],  # scrub its sentence
+            [],  # find the entities to scrub (none)
             RuntimeError("down"),  # redact its episodes
-        ]
+        )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
             patch(f"{_MODULE}.is_enabled_for_user", _enabled),

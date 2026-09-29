@@ -372,6 +372,15 @@ class DreamPassResult(BaseModel):
     # forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
+    # Of those writes and proposals, the ones the worker did not make: their
+    # citation marker could not be written (the write fails closed) or the
+    # graph write raised; only those failed before the pass was reported.
+    failed_writes: int = 0
+    # Of those made, the ones whose derivation record failed after the write:
+    # their citation marker stays in the graph until it is reconciled, before
+    # the next forget there or by the dream reaper
+    # (``graphiti/recall_reconcile.py``); same reporting window.
+    provenance_pending: int = 0
     # Writes and proposals dropped before they were queued because they cited
     # no fact or episode the pass read in their scope (``dream/citations.py``);
     # not counted in ``consolidated_count`` or ``proposal_count``.
