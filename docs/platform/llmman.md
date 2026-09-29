@@ -11,12 +11,12 @@
 
    **Linux/macOS:**
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/llmmanorg/llmman/main/install.sh | sh
+   curl -fsSL https://llmmanorg.github.io/install.sh | sh
    ```
 
    **Windows (PowerShell):**
    ```powershell
-   irm https://raw.githubusercontent.com/llmmanorg/llmman/main/install.ps1 | iex
+   irm https://llmmanorg.github.io/install.ps1 | iex
    ```
 
 ## Setup Steps
