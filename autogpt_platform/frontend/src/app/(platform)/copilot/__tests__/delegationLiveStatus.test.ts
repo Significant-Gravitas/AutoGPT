@@ -24,6 +24,7 @@ function delegation(status: DelegationStatus): ChatDelegation {
     files: [],
     reviewId: null,
     approved: false,
+    superseded: false,
   };
 }
 
@@ -65,10 +66,42 @@ describe("resolveLiveStatus", () => {
   it("follows the polled session over the frozen transcript", () => {
     expect(resolve("running")).toBe("completed");
     expect(resolve("needs-input", { isLive: true })).toBe("running");
-    expect(resolve("completed", { isLive: true })).toBe("completed");
+    // Running again (answered in their thread, cap raised): live wins.
+    expect(resolve("completed", { isLive: true })).toBe("running");
+    expect(
+      resolve("completed", {
+        isLive: true,
+        session: { chat_status: "queued" } as SessionDetailResponse,
+      }),
+    ).toBe("queued");
     expect(resolve("running", { isError: true })).toBe("unknown");
     expect(resolve("cancelled")).toBe("cancelled");
     expect(resolve("running", { session: null })).toBe("running");
+  });
+});
+
+describe("resolveLiveStatus for a superseded run", () => {
+  it("keeps the older entry's result while a re-delegation uses the thread", () => {
+    const older = { ...delegation("completed"), superseded: true };
+    const inputs = {
+      session: SESSION,
+      question: null,
+      isError: false,
+      isPaused: false,
+      answer: null,
+      now: NOW,
+    };
+    expect(
+      resolveLiveStatus({ ...inputs, delegation: older, isLive: true }),
+    ).toBe("completed");
+    expect(
+      resolveLiveStatus({
+        ...inputs,
+        delegation: older,
+        isLive: false,
+        question: "Q4?",
+      }),
+    ).toBe("completed");
   });
 });
 

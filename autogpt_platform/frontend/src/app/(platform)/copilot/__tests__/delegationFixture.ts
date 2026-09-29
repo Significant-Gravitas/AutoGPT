@@ -24,6 +24,7 @@ export function makeDelegation(
     files: [],
     reviewId: null,
     approved: false,
+    superseded: false,
     ...overrides,
   };
 }

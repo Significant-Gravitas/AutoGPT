@@ -64,6 +64,9 @@ export interface ChatDelegation {
   reviewId: string | null;
   /** The user approved it at the gate (Ask First) before it ran. */
   approved: boolean;
+  /** A later hand-off reuses this one's sub-session: what that thread does
+   *  now is the newer run's story, not this one's. */
+  superseded: boolean;
 }
 
 const START_TOOLS = new Set(["delegate_to_expert", "handoff_to_expert"]);
@@ -100,6 +103,7 @@ function openDelegation(
       files: [],
       reviewId: null,
       approved: false,
+      superseded: false,
     },
     toolPart,
     asObject(toolPart.output),
@@ -132,6 +136,11 @@ export function getChatDelegations(
         const outcome = heldOutcomes.get(opened.toolCallId);
         if (opened.status === "proposed" && outcome)
           opened = applyHeldOutcome(opened, outcome);
+        const earlier = opened.subSessionId
+          ? latestBySession.get(opened.subSessionId)
+          : undefined;
+        if (earlier !== undefined)
+          delegations[earlier] = { ...delegations[earlier], superseded: true };
         delegations.push(opened);
         if (opened.subSessionId)
           latestBySession.set(opened.subSessionId, delegations.length - 1);
@@ -150,6 +159,27 @@ export function getChatDelegations(
     }
   }
   return delegations;
+}
+
+/** Tool call ids of hand-offs a later one in the chat superseded. The
+ *  status line and chain read one message at a time, so they learn about a
+ *  re-delegation in a later message from here. */
+export function getSupersededCallIds(delegations: ChatDelegation[]) {
+  return new Set(
+    delegations.filter((d) => d.superseded).map((d) => d.toolCallId),
+  );
+}
+
+/** Marks the entries the whole chat knows were superseded. */
+export function withSuperseded(
+  delegations: ChatDelegation[],
+  superseded: ReadonlySet<string>,
+): ChatDelegation[] {
+  return delegations.map((delegation) =>
+    !delegation.superseded && superseded.has(delegation.toolCallId)
+      ? { ...delegation, superseded: true }
+      : delegation,
+  );
 }
 
 export interface DelegationCounts {

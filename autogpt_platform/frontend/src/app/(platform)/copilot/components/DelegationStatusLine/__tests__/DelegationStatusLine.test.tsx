@@ -1,10 +1,16 @@
 import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
-import { render, screen, fireEvent } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import { HeldOutcomesContext } from "../../ChatMessagesContainer/HeldOutcomesContext";
+import { SupersededDelegationsContext } from "../../../supersededDelegationsContext";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { useCopilotUIStore } from "../../../store";
 import { DelegationStatusLine } from "../DelegationStatusLine";
@@ -131,6 +137,46 @@ describe("DelegationStatusLine", () => {
     );
     const line = screen.getByTestId("delegation-status-line");
     expect(line.getAttribute("data-status")).toBe("queued");
+  });
+
+  it("shows a completed hand-off as working again once its thread runs again", async () => {
+    server.use(
+      getGetV2GetSessionMockHandler200({
+        id: "sub-1",
+        created_at: "2026-09-28T10:00:00Z",
+        updated_at: "2026-09-28T10:00:00Z",
+        user_id: "u-1",
+        chat_status: "running",
+        messages: [],
+      }),
+    );
+    const done = part("delegate_to_expert", "c1", {
+      status: "completed",
+      sub_session_id: "sub-1",
+      expert: ALEX,
+    });
+    const { unmount } = render(
+      <DelegationStatusLine parts={[done]} messageId="m1" />,
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("delegation-status-line")
+          .getAttribute("data-status"),
+      ).toBe("running"),
+    );
+    unmount();
+
+    // A later re-delegation owns the thread now: this run stays done.
+    render(
+      <SupersededDelegationsContext.Provider value={new Set(["c1"])}>
+        <DelegationStatusLine parts={[done]} messageId="m1" />
+      </SupersededDelegationsContext.Provider>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(
+      screen.getByTestId("delegation-status-line").getAttribute("data-status"),
+    ).toBe("completed");
   });
 
   it("says the user stopped the teammate after a stopped turn reloads", () => {

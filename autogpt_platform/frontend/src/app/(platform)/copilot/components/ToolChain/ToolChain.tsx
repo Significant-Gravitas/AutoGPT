@@ -42,7 +42,9 @@ import type { UIMessage } from "ai";
 import {
   getChatDelegations,
   type LiveDelegationStatus,
+  withSuperseded,
 } from "../../delegations";
+import { SupersededDelegationsContext } from "../../supersededDelegationsContext";
 import { LiveDelegationProbes } from "../DelegationStatusLine/LiveDelegationProbes";
 import { withDelegation } from "./delegationRow";
 import { applyHeldOutcome } from "./heldRow";
@@ -76,6 +78,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   const pendingQuestions = useContext(PendingQuestionsContext);
   const heldOutcomes = useContext(HeldOutcomesContext);
+  const superseded = useContext(SupersededDelegationsContext);
   const heldAnswers = useHeldAnswersStore((state) => state.answers);
   const { onSend } = useCopilotChatActions();
   // The ref latches against a double effect run; the state re-renders Proceed.
@@ -185,9 +188,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   );
 
   const { rows, delegations } = useMemo(() => {
-    const chainDelegations = getChatDelegations(
-      [{ id: "chain", role: "assistant", parts } as UIMessage],
-      heldOutcomes,
+    const chainDelegations = withSuperseded(
+      getChatDelegations(
+        [{ id: "chain", role: "assistant", parts } as UIMessage],
+        heldOutcomes,
+      ),
+      superseded,
     );
     const byCallId = new Map(
       chainDelegations.map((delegation) => [delegation.toolCallId, delegation]),

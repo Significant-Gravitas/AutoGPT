@@ -5,6 +5,8 @@ import {
   formatElapsed,
   getChatDelegations,
   getDelegationSummary,
+  getSupersededCallIds,
+  withSuperseded,
 } from "../delegations";
 
 function toolPart(
@@ -179,6 +181,12 @@ describe("getChatDelegations", () => {
       "First answer",
       "Second",
     ]);
+    expect(delegations.map((d) => d.superseded)).toEqual([true, false]);
+    expect([...getSupersededCallIds(delegations)]).toEqual(["call-1"]);
+    expect(
+      withSuperseded([{ ...delegations[1] }], new Set(["call-2"]))[0]
+        .superseded,
+    ).toBe(true);
   });
 
   it("marks a held hand-off as proposed with its review id", () => {

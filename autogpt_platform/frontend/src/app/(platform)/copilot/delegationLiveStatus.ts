@@ -69,8 +69,9 @@ interface LiveInputs {
 const ANSWER_GRACE_MS = 15_000;
 
 /** The transcript freezes the status the call returned with; the teammate's
- *  own session is the truth while it can be read. A teammate that stopped
- *  on a question needs the user whatever the transcript says. */
+ *  own session is the truth while it can be read: running again (an answer,
+ *  a resumed cap) is running, and a teammate that stopped on a question
+ *  needs the user, whatever the transcript says. */
 export function resolveLiveStatus({
   delegation,
   session,
@@ -85,8 +86,10 @@ export function resolveLiveStatus({
   const inFlight = IN_FLIGHT.has(frozen);
   if (inFlight && (isError || isPaused)) return "unknown";
   if (!session || !POLL_TRUSTED.has(frozen)) return frozen;
+  // A re-delegation into the same thread opened a newer entry; whatever the
+  // thread does now belongs to that one, so this run keeps its result.
+  if (delegation.superseded && frozen === "completed") return frozen;
   if (isLive) {
-    if (frozen === "completed") return frozen;
     return session.chat_status?.toLowerCase() === "queued"
       ? "queued"
       : "running";

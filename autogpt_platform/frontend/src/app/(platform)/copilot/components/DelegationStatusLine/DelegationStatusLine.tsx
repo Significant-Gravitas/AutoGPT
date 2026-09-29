@@ -18,7 +18,12 @@ import { cn } from "@/lib/utils";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import { type ChatDelegation, getChatDelegations } from "../../delegations";
+import {
+  type ChatDelegation,
+  getChatDelegations,
+  withSuperseded,
+} from "../../delegations";
+import { SupersededDelegationsContext } from "../../supersededDelegationsContext";
 import { isTurnedDown } from "../../delegationOutput";
 import {
   type DelegationTone,
@@ -118,9 +123,13 @@ export function DelegationStatusLine({
   readOnly = false,
 }: Props) {
   const heldOutcomes = useContext(HeldOutcomesContext);
-  const delegations = getChatDelegations(
-    [{ id: messageId, role: "assistant", parts } as UIMessage],
-    heldOutcomes,
+  const superseded = useContext(SupersededDelegationsContext);
+  const delegations = withSuperseded(
+    getChatDelegations(
+      [{ id: messageId, role: "assistant", parts } as UIMessage],
+      heldOutcomes,
+    ),
+    superseded,
   ).filter(
     (delegation) =>
       delegation.status !== "proposed" && !isTurnedDown(delegation),

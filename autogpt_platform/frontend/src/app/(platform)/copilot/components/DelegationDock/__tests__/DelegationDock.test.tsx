@@ -91,6 +91,7 @@ describe("getDockLine", () => {
     files: [],
     reviewId: null,
     approved: false,
+    superseded: false,
   };
 
   it("counts a teammate's question as needing you", () => {

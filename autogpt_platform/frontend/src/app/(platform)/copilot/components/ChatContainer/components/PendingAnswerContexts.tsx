@@ -7,6 +7,8 @@ import { getPendingOnboardingCallId } from "../../ExpertOnboardingCard/helpers";
 import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { getPendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import { getChatDelegations, getSupersededCallIds } from "../../../delegations";
+import { SupersededDelegationsContext } from "../../../supersededDelegationsContext";
 import { ChatSessionContext } from "./ChatSessionContext";
 
 interface Props {
@@ -24,14 +26,20 @@ export function PendingAnswerContexts({
   sessionId = null,
   children,
 }: Props) {
+  const heldOutcomes = getHeldOutcomes(messages);
+  const superseded = getSupersededCallIds(
+    getChatDelegations(messages, heldOutcomes),
+  );
   return (
     <ChatSessionContext.Provider value={sessionId}>
       <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
         <PendingOnboardingContext.Provider
           value={getPendingOnboardingCallId(messages)}
         >
-          <HeldOutcomesContext.Provider value={getHeldOutcomes(messages)}>
-            {children}
+          <HeldOutcomesContext.Provider value={heldOutcomes}>
+            <SupersededDelegationsContext.Provider value={superseded}>
+              {children}
+            </SupersededDelegationsContext.Provider>
           </HeldOutcomesContext.Provider>
         </PendingOnboardingContext.Provider>
       </PendingQuestionsContext.Provider>
