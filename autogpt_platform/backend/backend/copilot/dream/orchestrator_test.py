@@ -47,6 +47,7 @@ from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .batch_callbacks import handle_dream_batch_result
 from .batch_submit import persist_input_bundle
+from .citations import fact_scopes
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
@@ -652,6 +653,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -722,6 +724,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -837,6 +840,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -927,6 +931,10 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
         apply_mock.await_args.kwargs["known_episode_uuids"]
         == input_bundle.known_episode_uuids
     )
+    # Each fact's scope, which a write's fact citations must share
+    # (``citations.py``).
+    assert apply_mock.await_args.kwargs["fact_scopes"] == fact_scopes(input_bundle)
+    assert apply_mock.await_args.kwargs["fact_scopes"]
 
 
 @pytest.mark.asyncio
@@ -1990,6 +1998,30 @@ class TestNearDuplicateWriteDedup:
         assert len(kept) == 1
         # Survivor keeps its own uuids first, then the absorbed extras.
         assert kept[0].source_episode_uuids == ["ep-2", "ep-3", "ep-1"]
+
+    def test_survivor_absorbs_dropped_writes_fact_citations(self):
+        """A forget of a fact only the dropped duplicate cited must still
+        reach the survivor (``graphiti/recall_cascade.py``)."""
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                confidence=0.6,
+                source_fact_uuids=["f-1"],
+            ),
+            ConsolidatedFact(
+                content=(
+                    "Nick uses Terminus on his iPhone for CLI work and wants "
+                    "it to display more ASCII characters"
+                ),
+                confidence=0.7,
+                source_episode_uuids=["ep-3"],
+                source_fact_uuids=["f-2"],
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 1
+        assert kept[0].source_fact_uuids == ["f-2", "f-1"]
+        assert kept[0].source_episode_uuids == ["ep-3"]
 
     def test_word_order_permutation_is_not_merged(self):
         writes = [

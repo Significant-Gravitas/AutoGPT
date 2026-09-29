@@ -54,6 +54,12 @@ outlives its lease by an hour (``INPUT_TTL_SECONDS``), which leaves a first
 attempt, after the grace, an interval and a budget, about 1,140 s of nominal
 margin to charge the landed phases, an interval less per resumed attempt.
 
+With ``SWEEP_RESERVE_SECONDS`` of the budget left after the rows, a run also
+sweeps the memory graphs where a dream write's derivation record failed
+(``graphiti/provenance_pending.py``): it completes their citation markers
+under each graph's write lock, so a dream fact's provenance is complete even
+before the next forget there, which reconciles on its own anyway.
+
 One line per row (INFO when it expired, was cleaned or moved; WARNING when it
 failed, is to be retried, or the budget left it), then one with the counts
 per outcome.
@@ -70,6 +76,7 @@ from prisma.enums import DreamPassStatus
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.graphiti.provenance_pending import sweep_pending
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data import redis_client
 from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
@@ -104,15 +111,19 @@ REAPER_LOCK_TTL_SECONDS = 120
 ROW_RESERVE_SECONDS = 15.0
 # Giving back the reaper's hold on a scope, carved out of the budget.
 RELEASE_TIMEOUT_SECONDS = 2.0
+# The budget a run needs left after its rows to sweep pending dream records.
+SWEEP_RESERVE_SECONDS = 20.0
 
 ReapOutcome = Literal["expired", "cleaned", "moved", "retry", "failed", "out_of_budget"]
 
 
 class ReaperRun(BaseModel):
-    """What one run did: how many rows it listed, and each one's outcome."""
+    """What one run did: how many rows it listed, and each one's outcome;
+    and how many dream records it completed in the graphs it swept."""
 
     listed: int
     outcomes: dict[ReapOutcome, int]
+    reconciled: int = 0
 
 
 async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
@@ -121,13 +132,16 @@ async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
     deadline = loop.time() + REAPER_BUDGET_SECONDS - RELEASE_TIMEOUT_SECONDS
     rows: list[DreamPassRecord] = []
     done: dict[str, ReapOutcome] = {}
+    reconciled = 0
     try:
         async with asyncio.timeout_at(deadline):
             rows = await _list(now or datetime.now(timezone.utc))
             await _reap_rows(rows, done, deadline)
+            if loop.time() < deadline - SWEEP_RESERVE_SECONDS:
+                reconciled = (await sweep_pending()).completed
     except Exception:
         logger.warning("Dream pass reaper: the run stopped short", exc_info=True)
-    return _summary(rows, done)
+    return _summary(rows, done, reconciled)
 
 
 async def _list(now: datetime) -> list[DreamPassRecord]:
@@ -152,7 +166,9 @@ async def _reap_rows(
         await _reap(row, done)
 
 
-def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> ReaperRun:
+def _summary(
+    rows: list[DreamPassRecord], done: dict[str, ReapOutcome], reconciled: int
+) -> ReaperRun:
     """Log each row the budget left and the counts per outcome."""
     for row in rows:
         if row.id not in done:
@@ -162,8 +178,11 @@ def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> Reape
             )
     outcomes: Counter[ReapOutcome] = Counter(done.values())
     outcomes["out_of_budget"] += len(rows) - len(done)
-    run = ReaperRun(listed=len(rows), outcomes=dict(+outcomes))
-    logger.info(f"Dream pass reaper: {run.listed} listed; {_counts(run)}")
+    run = ReaperRun(listed=len(rows), outcomes=dict(+outcomes), reconciled=reconciled)
+    logger.info(
+        f"Dream pass reaper: {run.listed} listed; {_counts(run)}; "
+        f"{run.reconciled} dream record(s) reconciled"
+    )
     return run
 
 

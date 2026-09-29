@@ -145,6 +145,9 @@ async def test_phase_outputs_and_operations_merge_one_field_at_a_time(make_user)
     planned = DreamOperations(summary_for_user="clamped")
     applied = DreamPassApplied(
         consolidated_count=1,
+        dropped_forgotten=4,
+        uncited_writes_dropped=3,
+        cross_scope_citations_dropped=5,
         protected_demotions=2,
         indeterminate_demotion_writes=1,
         demotion_accounting_complete=False,

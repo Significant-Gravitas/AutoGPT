@@ -174,15 +174,17 @@ def dedupe_near_duplicate_writes(
     Greedy by content length (desc) so the most specific phrasing survives;
     output preserves the writes' original order. Writes are only compared
     within the same ``scope`` (facts must never merge across scopes), and a
-    dropped write's ``source_episode_uuids`` are unioned into its cluster's
-    survivor so provenance is never lost. Returns (kept, dropped)."""
+    dropped write's ``source_episode_uuids`` and ``source_fact_uuids`` are
+    unioned into its cluster's survivor so provenance is never lost: a forget
+    of anything a dropped duplicate cited still reaches the survivor.
+    Returns (kept, dropped)."""
     by_len_desc = sorted(
         range(len(writes)), key=lambda i: len(writes[i].content), reverse=True
     )
     tokens = [_content_tokens(w.content) for w in writes]
     bigrams = [_word_bigrams(w.content) for w in writes]
     kept_idx: list[int] = []
-    absorbed: dict[int, list[str]] = {}
+    absorbed: dict[int, list[ConsolidatedFact]] = {}
     for i in by_len_desc:
         survivor = next(
             (
@@ -197,20 +199,34 @@ def dedupe_near_duplicate_writes(
             kept_idx.append(i)
             absorbed[i] = []
         else:
-            absorbed[survivor].extend(writes[i].source_episode_uuids)
+            absorbed[survivor].append(writes[i])
     kept = [_absorb_provenance(writes[i], absorbed[i]) for i in sorted(kept_idx)]
     return kept, len(writes) - len(kept)
 
 
 def _absorb_provenance(
-    write: ConsolidatedFact, absorbed_uuids: list[str]
+    write: ConsolidatedFact, absorbed: list[ConsolidatedFact]
 ) -> ConsolidatedFact:
-    """Union dropped near-duplicates' episode uuids into the survivor."""
-    extra = [
-        u for u in dict.fromkeys(absorbed_uuids) if u not in write.source_episode_uuids
-    ]
-    if not extra:
+    """Union dropped near-duplicates' episode and fact uuids into the
+    survivor, after its own."""
+    episodes = list(
+        dict.fromkeys(
+            [
+                *write.source_episode_uuids,
+                *(uuid for dup in absorbed for uuid in dup.source_episode_uuids),
+            ]
+        )
+    )
+    facts = list(
+        dict.fromkeys(
+            [
+                *write.source_fact_uuids,
+                *(uuid for dup in absorbed for uuid in dup.source_fact_uuids),
+            ]
+        )
+    )
+    if (episodes, facts) == (write.source_episode_uuids, write.source_fact_uuids):
         return write
     return write.model_copy(
-        update={"source_episode_uuids": [*write.source_episode_uuids, *extra]}
+        update={"source_episode_uuids": episodes, "source_fact_uuids": facts}
     )

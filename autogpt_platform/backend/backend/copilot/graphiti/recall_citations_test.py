@@ -1,5 +1,6 @@
 """Unit tests for ``recall_citations``: a dream write is checked against
-forgets, by what it cites or, citing nothing, by its statement, and the
+forgets, by what it cites (up the derived facts no longer live among them,
+``recall_sources_test.py``) or, citing nothing, by its statement, and the
 ingestion worker drops one that rests on a forget.
 
 The live runs, through the real dream write helpers and the production
@@ -13,9 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from graphiti_core.nodes import EpisodeType
 
-from . import ingest, recall
+from . import ingest, recall, recall_sources
 from .recall_citations import Citations, rests_on_a_forget
 from .recall_fake_redis import FakeRedis
+from .recall_sources_fake import fact
 from .scope import write_lock_key
 
 _NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
@@ -43,16 +45,49 @@ class TestRestsOnAForget:
 
     @pytest.mark.asyncio
     async def test_everything_it_cites_still_there_lets_it_through(self) -> None:
-        driver = _driver(_still(["f1", "f2"], ["ep1"]))
+        """Then it reads the cited facts' states: none is a derived fact no
+        longer live, so there is nothing to walk up."""
+        driver = _driver(_still(["f1", "f2"], ["ep1"]), [])
         cited = Citations(fact_uuids=["f1", "f2"], episode_uuids=["ep1"])
 
         assert await rests_on_a_forget(driver, cited) is None
-        [call] = driver.execute_query.await_args_list
+        call, states = driver.execute_query.await_args_list
         query = call.args[0]
         assert query.startswith(recall.forgotten_facts_clause())
         assert "NOT (fact.uuid IN forgotten)" in query
         assert recall.recallable_episode_predicate("episode") in query
         assert call.kwargs == {"fact_uuids": ["f1", "f2"], "episode_uuids": ["ep1"]}
+        assert (states.args[0], states.kwargs) == (
+            recall_sources.FACT_STATES_QUERY,
+            {"uuids": ["f1", "f2"]},
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_derived_fact_no_longer_live_resting_on_a_forget_drops_it(
+        self,
+    ) -> None:
+        """``d`` was superseded after the pass read it and ``f``, which it
+        was derived from, forgotten: the write would carry ``f``'s content."""
+        driver = _driver(
+            _still(["d"], []),
+            [{"uuid": "d", **fact(facts=("f",))}],
+            [{"uuid": "f", **fact(forgotten=True)}],
+        )
+
+        found = await rests_on_a_forget(driver, Citations(fact_uuids=["d"]))
+
+        assert found == "cites a derived fact no longer live that rests on a forget"
+
+    @pytest.mark.asyncio
+    async def test_a_walk_stopped_at_its_bound_drops_it(self) -> None:
+        driver = _driver(_still(["d"], []), [{"uuid": "d", **fact(facts=("p1",))}])
+
+        with patch.object(recall_sources, "CASCADE_MAX_ITEMS", 0):
+            found = await rests_on_a_forget(driver, Citations(fact_uuids=["d"]))
+
+        assert found == (
+            "cites derived facts no longer live deeper than the check follows"
+        )
 
     @pytest.mark.parametrize(
         "still, reason",
@@ -98,9 +133,9 @@ class TestRestsOnAForget:
         assert await rests_on_a_forget(forgotten_read, uncited) is not None
         assert forgotten_read.execute_query.await_count == 1
 
-        all_live = _driver(_still(["f1"], []), [])
+        all_live = _driver(_still(["f1"], []), [], [])
         assert await rests_on_a_forget(all_live, uncited) is None
-        assert all_live.execute_query.await_count == 2
+        assert all_live.execute_query.await_count == 3
 
 
 def _payload(citations: Citations, completion: ingest.IngestionCompletion) -> dict:
@@ -117,9 +152,19 @@ def _payload(citations: Citations, completion: ingest.IngestionCompletion) -> di
 
 
 def _client(still: list[dict]) -> MagicMock:
+    """A graphiti client whose driver finds ``still`` of what a write cites,
+    each fact of it live (so no derived fact no longer live among it)."""
     client = MagicMock()
     client.add_episode = AsyncMock()
-    client.driver.execute_query = AsyncMock(return_value=(still, [], None))
+    live = set(still[0]["facts"]) if still else set()
+
+    async def answer(query: str, **params) -> tuple[list[dict], list, None]:
+        if query != recall_sources.FACT_STATES_QUERY:
+            return still, [], None
+        rows = [{"uuid": u, **fact(live=True)} for u in params["uuids"] if u in live]
+        return rows, [], None
+
+    client.driver.execute_query = AsyncMock(side_effect=answer)
     return client
 
 

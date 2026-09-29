@@ -58,6 +58,7 @@ from .batch_outcome import (
 from .batch_state import claim_apply_gate, content_for, read_state, write_phase_to_state
 from .batch_submit import PHASE_RESPONSE_MODELS, read_input_bundle, submit_phase
 from .cancel import end_batch_pass_if_stopped, pass_closed
+from .citations import fact_scopes
 from .clamp import clamp_pass_operations
 from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
 from .llm import parse_json_with_prose_fallback
@@ -319,6 +320,7 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
             ops,
             known_fact_uuids=input_bundle.known_fact_uuids,
             known_episode_uuids=input_bundle.known_episode_uuids,
+            fact_scopes=fact_scopes(input_bundle),
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
             lease=lease,
         )

@@ -268,6 +268,12 @@ def _applied_result(
         demotion_count=_stat_count(apply_stats, "demotion_count"),
         entity_invalidation_count=_stat_count(apply_stats, "entity_invalidation_count"),
         dropped_forgotten=_stat_count(apply_stats, "dropped_forgotten"),
+        failed_writes=_stat_count(apply_stats, "failed_writes"),
+        provenance_pending=_stat_count(apply_stats, "provenance_pending"),
+        uncited_writes_dropped=_stat_count(apply_stats, "uncited_writes_dropped"),
+        cross_scope_citations_dropped=_stat_count(
+            apply_stats, "cross_scope_citations_dropped"
+        ),
         protected_demotions=_stat_count(apply_stats, "protected_demotions"),
         indeterminate_demotion_writes=_stat_count(
             apply_stats, "indeterminate_demotion_writes"

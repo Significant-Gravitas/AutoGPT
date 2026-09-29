@@ -8,12 +8,16 @@ Three side-effects, in order:
   3. Demotions / entity invalidations, written by ``demotions.py`` with the
      recall guard in each statement.
 
+Every write and proposal must cite what the pass read, and no fact of
+another scope; one that does not is dropped first and counted
+(``citations.py``).
+
 A ``ChatSession`` shell (``metadata.kind='dream'`` +
 ``metadata.dream_pass_id``) is created up front so the MemoryEnvelope
 provenance can reference its id; the assistant message holding
 ``summary_for_user`` is appended LAST, after the ops above, so a partway
 failure leaves an empty dream rather than a narrative with no memory.
-A pass with no operations at all creates neither — see the empty-pass
+A pass with no operations left at all creates neither — see the empty-pass
 guard at the top of ``apply_operations``.
 """
 
@@ -21,9 +25,12 @@ from __future__ import annotations
 
 import logging
 import uuid as uuidlib
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from functools import partial
+from typing import TYPE_CHECKING, Literal
+
+from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.ingest import (
     IngestionCompletion,
@@ -40,6 +47,7 @@ from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.transports import resolve_default_chat_route
 
+from .citations import source_description, validated_citations
 from .demotions import apply_demotions
 from .fetch import DREAM_EPISODE_NAME_PREFIX
 from .locks import DreamLockHandle, DreamLockLostError
@@ -153,23 +161,55 @@ def _edge_metadata(envelope: MemoryEnvelope) -> dict:
     }
 
 
-def _citations(
-    statement: str,
-    fact_uuids: list[str],
-    episode_uuids: list[str],
-    read: Citations | None,
-) -> Citations:
-    """What a dream write rests on, which the ingestion worker checks against
-    forgets right before writing it (``graphiti/recall_citations.py``): what
-    it cites or, citing nothing, everything its pass read (``read``) and its
-    own statement, since an uncited claim may come from any of it."""
-    if fact_uuids or episode_uuids:
-        return Citations(fact_uuids=list(fact_uuids), episode_uuids=list(episode_uuids))
-    everything = read or Citations()
-    return Citations(
-        fact_uuids=everything.fact_uuids,
-        episode_uuids=everything.episode_uuids,
-        statement=statement,
+class _Cited(BaseModel):
+    """A pass's writes and proposals, each with the citations that name
+    something the pass read (``citations.validated_citations``), by its index
+    in the pass; ``uncited`` counts those dropped for citing nothing it read
+    or a fact of another scope, ``cross_scope`` their citations of a fact of
+    another scope."""
+
+    writes: list[tuple[int, ConsolidatedFact, Citations]] = Field(default_factory=list)
+    proposals: list[tuple[int, ProposedFinding, Citations]] = Field(
+        default_factory=list
+    )
+    uncited: int = 0
+    cross_scope: int = 0
+
+
+def _cite(
+    ops: DreamOperations,
+    known_facts: Collection[str],
+    known_episodes: Collection[str],
+    fact_scopes: Mapping[str, str],
+) -> _Cited:
+    """``ops``' writes and proposals checked against what the pass read."""
+    check = partial(
+        validated_citations,
+        known_facts=known_facts,
+        known_episodes=known_episodes,
+        fact_scopes=fact_scopes,
+    )
+    items: list[ConsolidatedFact | ProposedFinding] = [*ops.writes, *ops.proposals]
+    checked = [
+        check(item.source_fact_uuids, item.source_episode_uuids, scope=item.scope)
+        for item in items
+    ]
+    found = checked[: len(ops.writes)], checked[len(ops.writes) :]
+    writes = [
+        (i, fact, kept.citations)
+        for i, (fact, kept) in enumerate(zip(ops.writes, found[0]))
+        if kept.citations is not None
+    ]
+    proposals = [
+        (i, finding, kept.citations)
+        for i, (finding, kept) in enumerate(zip(ops.proposals, found[1]))
+        if kept.citations is not None
+    ]
+    return _Cited(
+        writes=writes,
+        proposals=proposals,
+        uncited=len(items) - len(writes) - len(proposals),
+        cross_scope=sum(kept.cross_scope for kept in checked),
     )
 
 
@@ -181,8 +221,10 @@ async def _write_consolidated_fact(
     session_id: str,
     completion: IngestionCompletion,
     *,
-    read: Citations | None = None,
+    citations: Citations,
 ) -> bool:
+    """Queue one consolidated fact with what it cites: the worker checks the
+    citations against forgets, then records them (``citations.py``)."""
     envelope = MemoryEnvelope(
         content=fact.content,
         source_kind=SourceKind.assistant_derived,
@@ -197,14 +239,11 @@ async def _write_consolidated_fact(
         session_id=session_id,
         name=_episode_name(pass_id, "consolidate", counter),
         episode_body=envelope.model_dump_json(),
-        source_description=(
-            f"dream-pass consolidation; src_episodes="
-            f"{','.join(fact.source_episode_uuids[:5])}"
-        ),
+        source_description=source_description("consolidation"),
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
-        citations=_citations(fact.content, [], fact.source_episode_uuids, read),
+        citations=citations,
     )
 
 
@@ -216,8 +255,9 @@ async def _write_proposed_finding(
     session_id: str,
     completion: IngestionCompletion,
     *,
-    read: Citations | None = None,
+    citations: Citations,
 ) -> bool:
+    """Queue one proposal with what it cites, like a consolidated fact."""
     envelope = MemoryEnvelope(
         content=finding.content,
         source_kind=SourceKind.assistant_derived,
@@ -227,27 +267,71 @@ async def _write_proposed_finding(
         scope=finding.scope,
         provenance=_provenance(pass_id, "recombine"),
     )
-    description_parts: list[str] = ["dream-pass proposal"]
-    if finding.rationale:
-        description_parts.append(f"rationale={finding.rationale[:240]}")
-    if finding.source_fact_uuids:
-        description_parts.append(f"src_facts={','.join(finding.source_fact_uuids[:5])}")
     return await enqueue_episode(
         scope,
         session_id=session_id,
         name=_episode_name(pass_id, "recombine", counter),
         episode_body=envelope.model_dump_json(),
-        source_description="; ".join(description_parts),
+        source_description=source_description("proposal", rationale=finding.rationale),
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
-        citations=_citations(
-            finding.content,
-            finding.source_fact_uuids,
-            finding.source_episode_uuids,
-            read,
-        ),
+        citations=citations,
     )
+
+
+def _summary(
+    item: ConsolidatedFact | ProposedFinding,
+    citations: Citations,
+    status: Literal["active", "tentative"],
+) -> WriteSummary:
+    """The snapshot line for a queued write: what it said and what it cites."""
+    return WriteSummary(
+        content=item.content,
+        scope=item.scope,
+        confidence=item.confidence,
+        status=status,
+        source_episode_uuids=list(citations.episode_uuids),
+        source_fact_uuids=list(citations.fact_uuids),
+    )
+
+
+async def _queue_cited(
+    scope: MemoryScope,
+    pass_id: str,
+    cited: _Cited,
+    session_id: str,
+    completion: IngestionCompletion,
+) -> tuple[list[WriteSummary], list[WriteSummary]]:
+    """Queue the cited writes, then the cited proposals, registering each
+    queued episode on ``completion``; the snapshot lines of those queued."""
+    writes: list[WriteSummary] = []
+    for i, fact, citations in cited.writes:
+        if await _write_consolidated_fact(
+            scope,
+            pass_id,
+            i,
+            fact,
+            session_id=session_id,
+            completion=completion,
+            citations=citations,
+        ):
+            completion.register()
+            writes.append(_summary(fact, citations, "active"))
+    proposals: list[WriteSummary] = []
+    for i, finding, citations in cited.proposals:
+        if await _write_proposed_finding(
+            scope,
+            pass_id,
+            i,
+            finding,
+            session_id=session_id,
+            completion=completion,
+            citations=citations,
+        ):
+            completion.register()
+            proposals.append(_summary(finding, citations, "tentative"))
+    return writes, proposals
 
 
 async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
@@ -408,6 +492,7 @@ async def apply_operations(
     *,
     known_fact_uuids: set[str] | None = None,
     known_episode_uuids: set[str] | None = None,
+    fact_scopes: Mapping[str, str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
     lease: ApplyLease | None = None,
@@ -425,27 +510,38 @@ async def apply_operations(
     (see ``_drain_ingestion``). Read it back via ``drain_status_from_stats``.
 
     An empty pass — no writes, proposals, demotions, or entity
-    invalidations — returns zero counts and an empty snapshot WITHOUT
-    creating the dream session or writing any message; the
-    ``session_id`` key is absent so ``apply_stats.get("session_id")``
-    reads as ``None`` for both the orchestrator and the batch callback.
-    A pass WITH operations but an empty ``summary_for_user`` still
-    creates the session and writes the fallback narrative (the ops were
-    attempted; only the narrative is missing).
+    invalidations, once the writes citing nothing the pass read are
+    dropped — returns zero counts (``uncited_writes_dropped`` aside) and an
+    empty snapshot WITHOUT creating the dream session or writing any
+    message; the ``session_id`` key is absent so
+    ``apply_stats.get("session_id")`` reads as ``None`` for both the
+    orchestrator and the batch callback. A pass WITH operations but an
+    empty ``summary_for_user`` still creates the session and writes the
+    fallback narrative (the ops were attempted; only the narrative is
+    missing).
 
     ``known_fact_uuids`` is the set of edge uuids the dream pass
     actually fetched (``DreamInput.known_fact_uuids``); demotions
     targeting anything outside it are dropped before any Cypher runs
     (``demotions.py``). ``None`` means "look up the persisted input
-    bundle by pass_id".
+    bundle by pass_id" for the demotions.
 
-    Each write and proposal is queued with what it cites; one that cites
-    nothing is taken to rest on everything the pass read, its
-    ``known_fact_uuids`` and ``known_episode_uuids``. The ingestion worker
+    Each write and proposal keeps the citations that name a fact in
+    ``known_fact_uuids`` or an episode in ``known_episode_uuids``
+    (``citations.py``). One left citing nothing, or citing a fact whose
+    scope (``fact_scopes``, from ``citations.fact_scopes``) is not its own,
+    is dropped whole before it is queued and counted in
+    ``uncited_writes_dropped``, and each of its citations of a fact of
+    another scope in ``cross_scope_citations_dropped``; episode citations
+    are not scoped. Both routes pass their input bundle's sets and fact
+    scopes; ``None`` reads as nothing read, so every write is dropped, and a
+    fact with no scope given is ``citations.UNSCOPED``. The ingestion worker
     drops, unwritten, any whose citations a forget reached after the pass
-    read the graph (``graphiti/recall_citations.py``). ``dropped_forgotten``
-    counts those dropped before apply returned: all of them on a drained
-    pass, possibly fewer when the drain was skipped or timed out.
+    read the graph (``graphiti/recall_citations.py``), and records the
+    citations of every write it makes (``graphiti/recall_derivation.py``).
+    ``dropped_forgotten`` counts those dropped before apply returned: all of
+    them on a drained pass, possibly fewer when the drain was skipped or
+    timed out.
 
     ``ingestion_drain_timeout`` bounds the in-line wait for the worker to
     finish the enqueued episodes (see ``_drain_ingestion``). The sync path keeps the
@@ -489,7 +585,22 @@ async def apply_operations(
     the engine is still booting).
     """
     user_id = scope.owner_user_id
-    if not (ops.writes or ops.proposals or ops.demotions or ops.entity_invalidations):
+    cited = _cite(
+        ops,
+        known_fact_uuids or set(),
+        known_episode_uuids or set(),
+        fact_scopes or {},
+    )
+    if cited.uncited:
+        logger.warning(
+            f"Dream pass {pass_id} for user {user_id[:12]}: dropped "
+            f"{cited.uncited} write(s) and proposal(s) citing nothing the pass "
+            f"read or a fact of another scope ({cited.cross_scope} citation(s) "
+            "of another scope)"
+        )
+    if not (
+        cited.writes or cited.proposals or ops.demotions or ops.entity_invalidations
+    ):
         # Empty pass — nothing landed in memory, so don't manufacture a
         # user-visible artifact for it. Creating the session shell +
         # placeholder narrative here is what produced one untitled empty
@@ -508,6 +619,10 @@ async def apply_operations(
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
+            "failed_writes": 0,
+            "provenance_pending": 0,
+            "uncited_writes_dropped": cited.uncited,
+            "cross_scope_citations_dropped": cited.cross_scope,
             "protected_demotions": 0,
             "indeterminate_demotion_writes": 0,
             "demotion_accounting_complete": True,
@@ -532,59 +647,10 @@ async def apply_operations(
     # live-chat ingestion sharing the same per-user queue. Registered once
     # per successful enqueue; the worker signals each as it finishes it.
     completion = IngestionCompletion()
-    read = Citations(
-        fact_uuids=sorted(known_fact_uuids or ()),
-        episode_uuids=sorted(known_episode_uuids or ()),
+    write_summaries, proposal_summaries = await _queue_cited(
+        scope, pass_id, cited, session_id, completion
     )
-
-    written = 0
-    write_summaries: list[WriteSummary] = []
-    for i, fact in enumerate(ops.writes):
-        if await _write_consolidated_fact(
-            scope,
-            pass_id,
-            i,
-            fact,
-            session_id=session_id,
-            completion=completion,
-            read=read,
-        ):
-            completion.register()
-            written += 1
-            write_summaries.append(
-                WriteSummary(
-                    content=fact.content,
-                    scope=fact.scope,
-                    confidence=fact.confidence,
-                    status="active",
-                    source_episode_uuids=list(fact.source_episode_uuids),
-                )
-            )
-
-    proposed = 0
-    proposal_summaries: list[WriteSummary] = []
-    for i, prop in enumerate(ops.proposals):
-        if await _write_proposed_finding(
-            scope,
-            pass_id,
-            i,
-            prop,
-            session_id=session_id,
-            completion=completion,
-            read=read,
-        ):
-            completion.register()
-            proposed += 1
-            proposal_summaries.append(
-                WriteSummary(
-                    content=prop.content,
-                    scope=prop.scope,
-                    confidence=prop.confidence,
-                    status="tentative",
-                    source_episode_uuids=list(prop.source_episode_uuids),
-                    source_fact_uuids=list(prop.source_fact_uuids),
-                )
-            )
+    written, proposed = len(write_summaries), len(proposal_summaries)
 
     # One episode was registered per successful enqueue, so the tracker's
     # count is exactly the writes + proposals we report — the drain waits on
@@ -636,14 +702,18 @@ async def apply_operations(
 
     logger.info(
         "Dream pass %s applied for user %s: "
-        "writes=%d proposals=%d dropped_forgotten=%d demoted=%d (failed=%d) "
-        "protected=%d entity_edges=%d indeterminate=%d accounting_complete=%s "
-        "ingestion_drain_status=%s",
+        "writes=%d proposals=%d uncited=%d dropped_forgotten=%d "
+        "failed_writes=%d provenance_pending=%d demoted=%d "
+        "(failed=%d) protected=%d entity_edges=%d indeterminate=%d "
+        "accounting_complete=%s ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
         written,
         proposed,
+        cited.uncited,
         completion.dropped_forgotten,
+        completion.failed,
+        completion.provenance_pending,
         destroyed.demoted,
         destroyed.failed,
         destroyed.protected,
@@ -670,6 +740,17 @@ async def apply_operations(
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
         "dropped_forgotten": completion.dropped_forgotten,
+        # Writes and proposals the worker did not make: their citation marker
+        # could not be written (it fails closed) or the graph write raised.
+        "failed_writes": completion.failed,
+        # Writes made whose derivation record failed after the write: their
+        # marker stays until reconciled (``graphiti/recall_reconcile.py``).
+        "provenance_pending": completion.provenance_pending,
+        # Writes and proposals dropped before they were queued: they cited
+        # nothing the pass read, or a fact of another scope.
+        "uncited_writes_dropped": cited.uncited,
+        # Their citations of a fact of another scope.
+        "cross_scope_citations_dropped": cited.cross_scope,
         # Distinct facts an acknowledged write spared and the accounting read
         # found live; provisional when the accounting is incomplete.
         "protected_demotions": destroyed.protected,

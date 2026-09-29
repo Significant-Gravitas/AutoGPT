@@ -151,7 +151,19 @@ class TestRedactQuery:
         live fact: the redaction and the read side share one predicate."""
         query = recall_hide.REDACT_EPISODES_QUERY
         assert query.startswith(forgotten_facts_clause())
-        assert "any(x IN coalesce(ep.entity_edges, []) WHERE x IN $uuids)" in query
+        assert (
+            "any(x IN coalesce(ep.entity_edges, []) + coalesce(ep.redacted_for, [])"
+            in query
+        )
         assert f"NOT ({recallable_episode_predicate('ep')})" in query
         assert "SET ep.redacted_at = coalesce(ep.redacted_at, $now)" in query
         assert "content" not in query, "the text stays for audit"
+
+    def test_an_episode_remembers_the_forgotten_facts_it_was_hidden_for(
+        self,
+    ) -> None:
+        """So a cascade resumed after a hard forget purged the fact, which
+        drops it from ``entity_edges``, still finds the fact's episodes."""
+        query = recall_hide.REDACT_EPISODES_QUERY
+        assert "ep.redacted_for = kept + [x IN coalesce(ep.entity_edges, [])" in query
+        assert "WHERE x IN $uuids AND NOT x IN kept]" in query
