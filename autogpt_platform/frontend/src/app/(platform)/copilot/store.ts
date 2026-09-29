@@ -568,8 +568,14 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }),
   clearLastArtifact: () =>
     set((state) => ({
+      // The integrations tab belongs to the previous chat's expert.
+      integrationsPanelExpert: null,
       artifactPanel: {
         ...state.artifactPanel,
+        activeTab:
+          state.artifactPanel.activeTab === "integrations"
+            ? "files"
+            : state.artifactPanel.activeTab,
         lastArtifact: null,
         // A new chat has its own computer; never show the previous chat's.
         computer: null,
@@ -733,6 +739,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,
+      integrationsPanelExpert: null,
       artifactPanel: {
         isOpen: false,
         activeArtifact: null,
