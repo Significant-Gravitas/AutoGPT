@@ -51,6 +51,7 @@ from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
 from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
+from backend.util.posthog_events import PostHogEvent
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
@@ -1165,7 +1166,7 @@ class UserCredit(UserCreditBase):
         # webhook/retry replays don't double-emit.
         if activation is not None and amount > 0:
             _track_billing_event(
-                "credit_topup_success",
+                PostHogEvent.CREDIT_TOPUP_SUCCESS,
                 user_id,
                 {
                     "amount_credits": amount,
@@ -1308,7 +1309,7 @@ class UserCredit(UserCreditBase):
             )
             if activation is not None:
                 _track_billing_event(
-                    "credit_topup_success",
+                    PostHogEvent.CREDIT_TOPUP_SUCCESS,
                     credit_transaction.userId,
                     {
                         "amount_credits": credit_transaction.amount,
@@ -1675,7 +1676,7 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
             get_pending_subscription_change.cache_delete(user_id)
             current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
             _track_billing_event(
-                "subscription_cancellation_scheduled",
+                PostHogEvent.SUBSCRIPTION_CANCELLATION_SCHEDULED,
                 user_id,
                 {"subscription_tier": current_tier.value},
             )
@@ -2180,7 +2181,7 @@ async def modify_stripe_subscription_for_tier(
         # the DB flip fails, so gating here avoids double-firing on success.
         if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
             _track_billing_event(
-                "subscription_upgraded",
+                PostHogEvent.SUBSCRIPTION_UPGRADED,
                 user_id,
                 {
                     "previous_subscription_tier": current_tier.value,
@@ -2873,7 +2874,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
         )
         _track_billing_event(
-            "subscription_upgraded",
+            PostHogEvent.SUBSCRIPTION_UPGRADED,
             user.id,
             {
                 "previous_subscription_tier": current_tier.value,
@@ -2947,7 +2948,9 @@ def _invoice_subscription_id(invoice: dict) -> str:
     return legacy if isinstance(legacy, str) and legacy else ""
 
 
-TIER_RECONCILIATION_DISCREPANCY_EVENT = "subscription_tier_reconciliation_discrepancy"
+TIER_RECONCILIATION_DISCREPANCY_EVENT = (
+    PostHogEvent.SUBSCRIPTION_TIER_RECONCILIATION_DISCREPANCY
+)
 
 
 def log_tier_reconciliation_discrepancy(
@@ -3008,14 +3011,14 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
 
 
 def _track_billing_event(
-    event: str, distinct_id: str, properties: dict[str, Any]
+    event: PostHogEvent, distinct_id: str, properties: dict[str, Any]
 ) -> None:
     if not settings.secrets.posthog_api_key:
         return
 
     try:
         posthog.capture(
-            event=event,
+            event=event.value,
             distinct_id=distinct_id,
             properties=properties,
         )
@@ -3043,7 +3046,7 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
         )
 
         posthog.capture(
-            event="subscription_payment_success",
+            event=PostHogEvent.SUBSCRIPTION_PAYMENT_SUCCESS.value,
             distinct_id=user.id,
             properties={
                 "subscription_tier": tier,

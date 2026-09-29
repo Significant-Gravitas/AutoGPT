@@ -33,6 +33,13 @@ Event vocabulary (PostHog event name -> SQL equivalent):
 - ``credential_oauth_exchange_failed`` the OAuth callback returned an error, by
                           ``failure_class``.  No SQL equivalent: nothing is stored.
 
+``run_agent`` is not the same as a "task": the ``analytics.*`` views count a
+copilot-started run through the chat turn that asked for it, so a task is
+``run_agent`` / ``run_expert`` with ``trigger`` other than ``copilot``, plus
+every ``run_autopilot`` and chat-turn ``run_expert``. Event names live in
+``backend.util.posthog_events``; the full list and the task filter are in
+``docs/platform/tracking-plan.md``.
+
 Every emitter is best-effort: tracking can never break the work it describes.
 """
 
@@ -40,10 +47,10 @@ import logging
 import re
 from collections.abc import Iterable
 from datetime import datetime
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.util.posthog_client import get_posthog_client
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -52,21 +59,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 settings = Settings()
-
-
-class ActivationEvent(StrEnum):
-    RUN_AGENT = "run_agent"
-    RUN_AUTOPILOT = "run_autopilot"
-    RUN_EXPERT = "run_expert"
-    AGENT_RUN_COMPLETED = "agent_run_completed"
-    AGENT_RUN_FAILED = "agent_run_failed"
-    SCHEDULE_CREATED = "schedule_created"
-    SCHEDULE_FIRED = "schedule_fired"
-    TRIGGER_FIRED = "trigger_fired"
-    EXPERT_HIRED = "expert_hired"
-    INTEGRATION_CONNECTED = "integration_connected"
-    CREDENTIAL_OAUTH_STARTED = "credential_oauth_started"
-    CREDENTIAL_OAUTH_EXCHANGE_FAILED = "credential_oauth_exchange_failed"
 
 
 ScheduleTarget = Literal["agent", "autopilot", "expert"]
@@ -99,7 +91,7 @@ def _enum_value(value: Any) -> Any:
 
 def track(
     user_id: str | None,
-    event: ActivationEvent,
+    event: PostHogEvent,
     properties: dict[str, Any] | None = None,
 ) -> None:
     """Send one event for *user_id*. Silently no-ops when analytics is off."""
@@ -147,11 +139,11 @@ def track_agent_run_started(
     if expert_id:
         track(
             user_id,
-            ActivationEvent.RUN_EXPERT,
+            PostHogEvent.RUN_EXPERT,
             {**properties, "kind": "workflow_run"},
         )
     else:
-        track(user_id, ActivationEvent.RUN_AGENT, properties)
+        track(user_id, PostHogEvent.RUN_AGENT, properties)
 
 
 def track_agent_run_finished(
@@ -171,9 +163,9 @@ def track_agent_run_finished(
         return
     status_value = _enum_value(status)
     if status_value == "COMPLETED":
-        event = ActivationEvent.AGENT_RUN_COMPLETED
+        event = PostHogEvent.AGENT_RUN_COMPLETED
     elif status_value == "FAILED":
-        event = ActivationEvent.AGENT_RUN_FAILED
+        event = PostHogEvent.AGENT_RUN_FAILED
     else:
         return
     track(
@@ -231,7 +223,7 @@ def track_chat_turn(
         return
     track(
         user_id,
-        ActivationEvent.RUN_EXPERT if expert_id else ActivationEvent.RUN_AUTOPILOT,
+        PostHogEvent.RUN_EXPERT if expert_id else PostHogEvent.RUN_AUTOPILOT,
         {
             "session_id": session_id,
             "expert_id": expert_id,
@@ -261,7 +253,7 @@ def track_schedule_created(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.SCHEDULE_CREATED,
+        PostHogEvent.SCHEDULE_CREATED,
         {
             "schedule_id": schedule_id,
             "target": target,
@@ -287,7 +279,7 @@ def track_schedule_fired(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.SCHEDULE_FIRED,
+        PostHogEvent.SCHEDULE_FIRED,
         {
             "schedule_id": schedule_id,
             "target": target,
@@ -310,7 +302,7 @@ def track_trigger_fired(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.TRIGGER_FIRED,
+        PostHogEvent.TRIGGER_FIRED,
         {
             "webhook_id": webhook_id,
             "graph_id": graph_id,
@@ -331,7 +323,7 @@ def track_expert_hired(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.EXPERT_HIRED,
+        PostHogEvent.EXPERT_HIRED,
         {"expert_id": expert_id, "template_id": template_id, "name": name},
     )
 
@@ -345,7 +337,7 @@ def track_integration_connected(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.INTEGRATION_CONNECTED,
+        PostHogEvent.INTEGRATION_CONNECTED,
         {
             "provider": _enum_value(provider),
             "credential_type": _enum_value(credential_type),
@@ -357,7 +349,7 @@ def track_integration_connected(
 def track_credential_oauth_started(*, user_id: str, provider: str) -> None:
     track(
         user_id,
-        ActivationEvent.CREDENTIAL_OAUTH_STARTED,
+        PostHogEvent.CREDENTIAL_OAUTH_STARTED,
         {"provider": _enum_value(provider)},
     )
 
@@ -373,7 +365,7 @@ def track_credential_oauth_exchange_failed(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.CREDENTIAL_OAUTH_EXCHANGE_FAILED,
+        PostHogEvent.CREDENTIAL_OAUTH_EXCHANGE_FAILED,
         {
             "provider": _enum_value(provider),
             "failure_class": failure_class,

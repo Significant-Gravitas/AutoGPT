@@ -11,6 +11,7 @@ reads what the model would read and the stored bytes are what it would have got.
 import base64
 import json
 import logging
+import posixpath
 import re
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -22,7 +23,9 @@ from pydantic import BaseModel, ConfigDict
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.models import ApprovalRequiredResponse
+from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
+from backend.data.db_accessors import experts_db
+from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
 
 from . import active_mode, held
 from . import review as review_store
@@ -32,7 +35,9 @@ from .policy import DEFAULT_MODE
 
 logger = logging.getLogger(__name__)
 
-# Every tool whose output is bytes AutoPilot did not author (plan A4).
+# Every tool whose output is bytes AutoPilot did not author (plan A4). The
+# user's own memories are left out: a memory is content they already trust
+# (Reinier, 2026-09-28). ``trusted_read`` exempts installed skills.
 JUDGED_READS: frozenset[str] = frozenset(
     {
         "bash_exec",
@@ -41,8 +46,6 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_screenshot",
         "delegate_to_expert",
         "get_sub_session_result",
-        "memory_forget_search",
-        "memory_search",
         "read_expert_chat",
         "read_skill",
         "read_workspace_file",
@@ -68,6 +71,10 @@ model_view: ContextVar[Callable[[str, bool], str] | None] = ContextVar(
     "held_read_model_view", default=None
 )
 
+_WORKSPACE_READS = (
+    ResponseType.WORKSPACE_FILE_CONTENT,
+    ResponseType.WORKSPACE_FILE_METADATA,
+)
 _SOURCE_KEYS = (
     "url",
     "query",
@@ -204,7 +211,7 @@ async def screen_read(
     ``output`` is what the model would receive; ``text`` and ``images`` are
     what of it can be read. Any failure in here withholds the read.
     """
-    if tool_name not in JUDGED_READS:
+    if tool_name not in JUDGED_READS or trusted_read(tool_name, args, output):
         return None
     source = source_of(tool_name, args)
     try:
@@ -238,6 +245,44 @@ async def screen_read(
     except Exception:
         logger.warning(f"Held-read screen failed for {tool_name}", exc_info=True)
         return _stub(tool_name, source, _UNRECORDABLE, session)
+
+
+def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
+    """Whether the read is of an installed skill, which the user already
+    chose to trust, marketplace installs included (Reinier, 2026-09-28)."""
+    if tool_name == "read_skill":
+        # Any other name reaches outside the skill folders, which a slug cannot.
+        from backend.copilot.tools.skills import is_skill_slug
+
+        name = args.get("name")
+        return isinstance(name, str) and is_skill_slug(name.strip().lower())
+    if tool_name == "read_workspace_file":
+        return is_skill_path(_opened_path(output))
+    return False
+
+
+def is_skill_path(path: str | None) -> bool:
+    """A workspace path under an installed-skill folder. Only the skills
+    registry writes there; ``write_workspace_file`` refuses these roots."""
+    if not path or posixpath.normpath(path) != path:
+        return False
+    if path.startswith(SKILLS_ROOT):
+        return True
+    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
+    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
+
+
+def _opened_path(output: str) -> str | None:
+    """The path of the file the reader opened, as its row records it: an
+    argument can be relative, or resolve under the session."""
+    try:
+        data = json.loads(output)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("type") not in _WORKSPACE_READS:
+        return None
+    path = data.get("path")
+    return path if isinstance(path, str) else None
 
 
 def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
@@ -288,11 +333,12 @@ def page_words(passage: str, text: str) -> str:
     return ""
 
 
-def read_headline(tool_name: str, args: dict[str, Any]) -> Headline:
-    headline = named(f"Let {AUTOPILOT_NAME} read", _SOURCE_KEYS, args)
+def read_headline(tool_name: str, args: dict[str, Any], actor: str) -> Headline:
+    """``actor`` is who reads it: the chat's Expert, or Otto in a plain chat."""
+    headline = named(f"Let {actor} read", _SOURCE_KEYS, args)
     if headline.object is None:
         label = tool_name.replace("_", " ")
-        return Headline(ask=f"Let {AUTOPILOT_NAME} read what {label} returned")
+        return Headline(ask=f"Let {actor} read what {label} returned")
     return headline
 
 
@@ -320,12 +366,9 @@ async def _hold(
     tool_name = call.tool_name
     if not await held.remember(session.session_id, call):
         return _stub(tool_name, source, _UNRECORDABLE, session)
-    reason = (
-        f"this content contains instructions: {passage}"
-        if judged
-        else "this content could not be checked"
-    )
-    headline = read_headline(tool_name, call.args)
+    reason = held_reason(passage, judged)
+    reader = await _actor(user_id, session)
+    headline = read_headline(tool_name, call.args, reader)
     payload = {
         **review_store.review_payload(
             tool_name,
@@ -338,6 +381,8 @@ async def _hold(
         ),
         "source": source,
         "headline": headline.model_dump(),
+        # Who the bytes reach: the card's copy names it, never the supervisor.
+        "reader": reader,
         "passage": passage,
         "judged": judged,
         "success": success,
@@ -354,6 +399,29 @@ async def _hold(
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)
+
+
+def held_reason(passage: str, judged: bool) -> str:
+    """The raw reason Home shows; the page's words quoted, so they read as the page's."""
+    if not judged:
+        return "this content could not be checked"
+    if not passage:
+        return "this content contains instructions"
+    return f'this content contains instructions: "{passage.replace(chr(34), chr(39))}"'
+
+
+async def _actor(user_id: str, session: ChatSession) -> str:
+    if session.expert_id is None:
+        return AUTOPILOT_NAME
+    try:
+        expert = await experts_db().get_expert(
+            user_id, session.expert_id, include_workflows=False
+        )
+    except Exception:
+        # A name on a card must never cost the hold itself.
+        logger.warning("Expert lookup for a held read failed", exc_info=True)
+        return AUTOPILOT_NAME
+    return expert.name if expert else AUTOPILOT_NAME
 
 
 def _stub(

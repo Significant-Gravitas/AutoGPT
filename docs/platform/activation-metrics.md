@@ -100,6 +100,8 @@ failure: the credential is stored and `integration_connected` fires.
 
 The pre-existing copilot events (`copilot_message_sent`, `copilot_tool_called`,
 ...) and billing events (`credit_topup_success`, `subscription_*`) are unchanged.
+Every PostHog event, its sender, its properties and whether it is kept,
+merged or planned is listed in the [PostHog Tracking Plan](tracking-plan.md).
 
 ## SQL views (Looker)
 
