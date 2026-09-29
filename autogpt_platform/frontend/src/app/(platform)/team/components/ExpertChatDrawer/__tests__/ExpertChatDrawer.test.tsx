@@ -30,6 +30,7 @@ const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const SESSION_ID = "session-zara";
 const FRESH_SESSION_ID = "session-zara-fresh";
 const RETRY_SESSION_ID = "session-zara-retry";
+const ERROR_SESSION_ID = "session-zara-error";
 
 function deferred() {
   let resolve!: () => void;
@@ -268,6 +269,36 @@ describe("ExpertChatDrawer", () => {
       { expert_id: EXPERT_ID, expert_kickoff: true },
       { expert_id: EXPERT_ID, expert_kickoff: true },
     ]);
+  });
+
+  test("releases the kickoff after its stream fails", async () => {
+    let streamStarted = false;
+    server.use(
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${ERROR_SESSION_ID}/stream`,
+        () => {
+          streamStarted = true;
+          return HttpResponse.json(
+            { detail: "Could not start stream" },
+            { status: 500 },
+          );
+        },
+      ),
+      ...freshThreadHandlers([], [], ERROR_SESSION_ID),
+    );
+
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        onClose={() => {}}
+        resumeLatest={false}
+      />,
+    );
+
+    await waitFor(() => expect(streamStarted).toBe(true));
+    await waitFor(() =>
+      expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle"),
+    );
   });
 
   test("kicks off onboarding the first time an expert's thread opens", async () => {
