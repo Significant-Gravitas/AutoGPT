@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import type { CardStatus } from "./components/ApprovalCard/ApprovalCard";
 import {
   type ApprovalItem,
@@ -22,6 +23,7 @@ interface Args {
 export function useApprovalQueue({ items, onAnswered }: Args) {
   const outcomes = useContext(HeldOutcomesContext);
   const { processReviews } = useProcessReviews();
+  const recordAnswers = useHeldAnswersStore((state) => state.record);
   const [statuses, setStatuses] = useState<Record<string, CardStatus>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -77,6 +79,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
       ok = false;
     }
     if (ok) {
+      recordAnswers(ids, approved);
       setReceipts((prev) => [
         ...prev,
         ...batch.map((item) => ({
