@@ -25,14 +25,11 @@ Run with FalkorDB reachable (see ``conftest.py``)::
     poetry run pytest -m integration backend/copilot/graphiti/recall_marker_race_integration_test.py
 """
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
-from contextlib import contextmanager
-from typing import Any
-from unittest.mock import AsyncMock, patch
+from collections.abc import AsyncIterator, Awaitable, Callable
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from graphiti_core.driver.falkordb_driver import FalkorDriverSession
 from pytest_mock import MockerFixture
 from redis.asyncio import Redis
 
@@ -40,7 +37,7 @@ from backend.copilot.dream import apply
 from backend.copilot.dream.schemas import ConsolidatedFact, DreamOperations
 
 from . import marked_write, scope_lock
-from .memory_model import ForgetResult, MemoryForgetFailureCode
+from .memory_model import MemoryForgetFailureCode
 from .recall import FORGOTTEN_FACT
 from .recall_cascade_fixtures import FLOUR, SUPPLIES, derivation, dream, gather
 from .recall_cascade_walk import derived_reason
@@ -57,6 +54,7 @@ from .recall_integration_fixtures import (
     sentence_properties,
     stop_ingestion_workers,
 )
+from .recall_marker_fixtures import forget_mid_save
 from .scope import MemoryScope, write_lock_key
 
 _MARKERS = f"MATCH (m:{MARKER_LABEL}) RETURN count(m) AS c"
@@ -78,29 +76,6 @@ async def dream_apply(mocker: MockerFixture) -> AsyncIterator[None]:
     )
     yield
     await stop_ingestion_workers()
-
-
-@contextmanager
-def _forget_mid_save(
-    scope: MemoryScope,
-    root: str,
-    hard: bool,
-    unfence: Callable[[], Awaitable[None]],
-) -> Iterator[list[ForgetResult]]:
-    """Forget ``root`` to the end right before graphiti saves the dream
-    write's facts, once ``unfence`` has taken the lock's protection away."""
-    original = FalkorDriverSession.run
-    forgotten: list[ForgetResult] = []
-
-    async def run(session: FalkorDriverSession, query: Any, **params: Any) -> Any:
-        text = query if isinstance(query, str) else " ".join(q for q, _ in query)
-        if not forgotten and "SET r = edge" in text:
-            await unfence()
-            forgotten.append(await retract(scope, [root], hard=hard))
-        return await original(session, query, **params)
-
-    with patch.object(FalkorDriverSession, "run", run):
-        yield forgotten
 
 
 def _unfencing(
@@ -159,7 +134,7 @@ async def test_a_forget_while_a_write_is_in_flight_and_the_write_landing(
     read = await gather(scope)
     unfence = _unfencing(overlap, scope, live_lock, mocker)
 
-    with _forget_mid_save(scope, flour, hard, unfence) as forgotten:
+    with forget_mid_save(scope, flour, hard, unfence) as forgotten:
         stats = await dream(
             driver,
             scope,
@@ -220,7 +195,7 @@ async def test_a_writer_dying_after_its_write_landed_is_settled_by_the_retry(
     unfence = _unfencing("redis_down", scope, live_lock, mocker)
     mocker.patch.object(marked_write, "recorded", AsyncMock())
 
-    with _forget_mid_save(scope, flour, True, unfence) as forgotten:
+    with forget_mid_save(scope, flour, True, unfence) as forgotten:
         await dream(
             driver,
             scope,

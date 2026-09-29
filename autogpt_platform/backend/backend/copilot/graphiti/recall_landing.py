@@ -8,43 +8,39 @@ cascade cannot reach the write's facts, which carry no record yet. So
 whoever completes a write's citation marker, its writer right after the
 record or ``recall_reconcile.reconcile``, settles the write first:
 ``settle`` looks up every source it cites and, when a forget reached one
-since the pass read the graph, runs a forget's cascade from it
+since the pass read the graph, directly or up the derived facts no longer
+live that it cites (``recall_sources.py``), runs a forget's cascade from it
 (``recall_cascade.py``). The write's facts, now recorded, are retracted and
 its dream episode hidden, erased when a hard forget reached the source.
-Only then is the marker cleared. The writer settles from the citations it holds, so it
-does even when its marker is already gone.
+Only then is the marker cleared. The writer settles from the citations it
+holds, so it does even when its marker is already gone.
 
-A cited fact a forget reached is forgotten, retracted by a forget's cascade
-too (its reason names the root the user forgot), or gone: a hard forget
-purged it (the pass read it, so it existed). A hard forget reached a fact
-that is gone, one it is still purging (``hard_forgotten_at``, stamped when
-it retracts the fact) and a derived fact its cascade erased (blank audit
-copy). A cited episode a forget reached is hidden, and a tombstone, one
-that is gone, or one hidden for a fact a hard forget reached, was emptied
-by a hard forget or soon will be. The cascade from each names the root the
-user forgot, and erases for whatever a hard forget reached.
+A cited derived fact no longer live is cascaded from itself, under the root
+the source it rests on names: the cascade leaves it as it is and retracts
+what rests on it, the write's facts among them. When the walk up from one
+stopped at its bound (``recall_sources.ancestry``), the settle fails closed
+and cascades from it under its own name.
 """
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
 from pydantic import BaseModel, Field
 
 from .memory_model import ForgetResult
-from .recall import (
-    forgotten_fact_predicate,
-    forgotten_facts_clause,
-    recallable_episode_predicate,
-)
 from .recall_cascade import cascade
-from .recall_cascade_walk import DERIVED_FROM_FORGOTTEN
-from .recall_citations import Citations, rests_on_a_forget
+from .recall_citations import Citations
+from .recall_sources import (
+    Reach,
+    ancestry,
+    fact_reach,
+    fact_states,
+    reached_episodes,
+    walkable,
+)
 
 logger = logging.getLogger(__name__)
-
-_PREFIX = f"{DERIVED_FROM_FORGOTTEN}:"
 
 
 class Reached(BaseModel):
@@ -61,14 +57,18 @@ class Reached(BaseModel):
     def any(self) -> bool:
         return bool(self.soft or self.hard or self.soft_seeds or self.hard_seeds)
 
+    def fact(self, uuid: str, reach: Reach) -> None:
+        (self.hard if reach.hard else self.soft)[uuid] = reach.root
+
+    def seed(self, uuid: str, reach: Reach) -> None:
+        (self.hard_seeds if reach.hard else self.soft_seeds)[uuid] = reach.root
+
 
 async def settle(driver: GraphDriver, group_id: str, citations: Citations) -> bool:
     """Cascade from each source in ``citations`` a forget reached since the
     pass read the graph, so what rests on it (the write just recorded) is
     retracted; True when nothing is left to do, False when a cascade stopped
     short and the write's marker must stay. Raises when a read fails."""
-    if await rests_on_a_forget(driver, citations) is None:
-        return True
     reached = await reached_sources(driver, citations)
     if not reached.any():
         return True
@@ -103,79 +103,21 @@ async def settle(driver: GraphDriver, group_id: str, citations: Citations) -> bo
 
 
 async def reached_sources(driver: GraphDriver, citations: Citations) -> Reached:
-    """The sources in ``citations`` a forget reached, as ``Reached``."""
-    episodes = await _read(driver, CITED_EPISODES_QUERY, citations.episode_uuids)
-    hidden = [row for row in episodes if row["hidden"]]
-    hidden_for = [row["hidden_for"][0] for row in hidden if row["hidden_for"]]
-    lookups = [*citations.fact_uuids, *hidden_for]
-    facts = {
-        row["uuid"]: row for row in await _read(driver, CITED_FACTS_QUERY, lookups)
-    }
+    """The sources in ``citations`` a forget reached, directly or through
+    the derived facts no longer live among them, as ``Reached``."""
     reached = Reached()
+    facts = await fact_states(driver, citations.fact_uuids)
     for uuid in dict.fromkeys(citations.fact_uuids):
-        if uuid not in facts:
-            reached.hard[uuid] = uuid
-        elif facts[uuid]["forgotten"]:
-            hard = facts[uuid]["hard"]
-            (reached.hard if hard else reached.soft)[uuid] = _root(uuid, facts[uuid])
-    found = {row["uuid"] for row in episodes}
-    for uuid in dict.fromkeys(citations.episode_uuids):
-        if uuid not in found:
-            reached.hard_seeds[uuid] = uuid
-    for row in hidden:
-        _seed(reached, row, facts)
+        if (reach := fact_reach(uuid, facts.get(uuid))) is not None:
+            reached.fact(uuid, reach)
+    walk = await ancestry(driver, list(facts.values()))
+    for uuid, reach in walk.reached.items():
+        reached.fact(uuid, reach)
+    if walk.unfinished:
+        for row in facts.values():
+            if walkable(row) and row["uuid"] not in walk.reached:
+                reached.fact(row["uuid"], Reach(root=row["uuid"], hard=False))
+    episodes = await reached_episodes(driver, citations.episode_uuids)
+    for uuid, reach in episodes.items():
+        reached.seed(uuid, reach)
     return reached
-
-
-def _seed(reached: Reached, row: dict[str, Any], facts: dict[str, Any]) -> None:
-    """File a hidden cited episode under the root it was hidden for (the
-    first fact in its ``redacted_for``, or that fact's root), else itself;
-    to erase from when it is a tombstone or a hard forget reached that
-    fact."""
-    first = row["hidden_for"][0] if row["hidden_for"] else None
-    name = _root(first, facts[first]) if first in facts else first or row["uuid"]
-    purged = first is not None and (first not in facts or facts[first]["hard"])
-    hard = row["hard"] or purged
-    (reached.hard_seeds if hard else reached.soft_seeds)[row["uuid"]] = name
-
-
-def _root(uuid: str, fact: dict[str, Any]) -> str:
-    """The root a forgotten fact's retraction names, else the fact itself."""
-    reason = fact.get("reason") or ""
-    return reason.removeprefix(_PREFIX) if reason.startswith(_PREFIX) else uuid
-
-
-async def _read(
-    driver: GraphDriver, query: str, uuids: list[str]
-) -> list[dict[str, Any]]:
-    """``query``'s rows for ``uuids``, once each; none read for none."""
-    if not uuids:
-        return []
-    result = await driver.execute_query(query, uuids=list(dict.fromkeys(uuids)))
-    return result[0] if result else []
-
-
-# Each of ``$uuids`` still in the graph, whether a forget reached it, and a
-# hard one (purging it, or its cascade erased it), and its reason (a
-# cascade's names the root).
-CITED_FACTS_QUERY = f"""
-MATCH ()-[e:RELATES_TO]->()
-WHERE e.uuid IN $uuids
-RETURN e.uuid AS uuid, {forgotten_fact_predicate("e")} AS forgotten,
-       e.hard_forgotten_at IS NOT NULL
-           OR coalesce(e.fact_redacted, '-') = '' AS hard,
-       e.expiration_reason AS reason
-"""
-
-# Each of ``$uuids`` still in the graph, whether the recall policy hides it,
-# whether a hard forget emptied it, and the forgotten facts it was hidden for.
-CITED_EPISODES_QUERY = (
-    forgotten_facts_clause()
-    + f"""
-MATCH (ep:Episodic)
-WHERE ep.uuid IN $uuids
-RETURN ep.uuid AS uuid, NOT ({recallable_episode_predicate("ep")}) AS hidden,
-       ep.hard_deleted_at IS NOT NULL AS hard,
-       coalesce(ep.redacted_for, []) AS hidden_for
-"""
-)

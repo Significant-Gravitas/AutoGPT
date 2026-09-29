@@ -15,7 +15,12 @@ reaches the facts it names, as after any write.
 
 A write rests on a forget when a fact it cites is forgotten or gone (a hard
 forget deletes it, a forget's cascade retracts it), or an episode it cites is
-no longer recallable or gone.
+no longer recallable or gone; and when a derived fact it cites that is no
+longer live (superseded, contradicted) rests on one of those, as far up the
+records as derived facts no longer live go (``recall_sources.ancestry``,
+bounded like the cascade; a walk stopped by its bound drops the write too).
+A forget's cascade walks through such a fact to what rests on it, and the
+write would rest on it the same way, carrying that content.
 
 The ``statement`` comparison is kept as defence in depth. apply no longer
 sends a write that cites nothing: it drops one before it is queued
@@ -40,6 +45,7 @@ from .recall import (
     forgotten_facts_clause,
     recallable_episode_predicate,
 )
+from .recall_sources import ancestry, fact_states
 
 
 class Citations(BaseModel):
@@ -61,6 +67,8 @@ async def rests_on_a_forget(
     if citations is None:
         return None
     reason = await _cites_a_forget(driver, citations)
+    if reason is None and citations.fact_uuids:
+        reason = await _rests_through_derived(driver, citations.fact_uuids)
     if reason is None and citations.statement is not None:
         reason = await _restates_a_forget(driver, citations.statement)
     return reason
@@ -81,6 +89,17 @@ async def _cites_a_forget(driver: GraphDriver, citations: Citations) -> str | No
         return "cites a fact that is forgotten or gone"
     if set(citations.episode_uuids) - set(row["episodes"]):
         return "cites an episode that is hidden or gone"
+    return None
+
+
+async def _rests_through_derived(driver: GraphDriver, facts: list[str]) -> str | None:
+    """Why a write citing ``facts`` rests on a forget through the derived
+    facts no longer live among them, else None."""
+    walk = await ancestry(driver, list((await fact_states(driver, facts)).values()))
+    if walk.reached:
+        return "cites a derived fact no longer live that rests on a forget"
+    if walk.unfinished:
+        return "cites derived facts no longer live deeper than the check follows"
     return None
 
 

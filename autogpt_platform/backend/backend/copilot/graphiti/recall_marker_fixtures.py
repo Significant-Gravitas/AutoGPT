@@ -1,18 +1,28 @@
 """Seeding and reads for the live dream-marker tests
 (``recall_marker_integration_test.py``,
-``recall_marker_crash_integration_test.py``): a user's fact and the
-episode that stated it, a write landing as graphiti saves one, and the
-markers a graph holds. Not collected by pytest.
+``recall_marker_crash_integration_test.py``,
+``recall_marker_race_integration_test.py``,
+``recall_ancestry_integration_test.py``): a user's fact and the episode
+that stated it, a write landing as graphiti saves one, the markers a graph
+holds, and a forget run to the end while graphiti saves a dream write.
+Not collected by pytest.
 """
 
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
+from unittest.mock import patch
 
+from graphiti_core.driver.falkordb_driver import FalkorDriverSession
 from graphiti_core.nodes import EpisodeType
 
 from .falkordb_driver import AutoGPTFalkorDriver
+from .memory_model import ForgetResult
 from .recall_derivation import MARKER_LABEL
+from .recall_forget import retract
 from .recall_integration_fixtures import rows
+from .scope import MemoryScope
 
 # Long past ``recall_reconcile.MARKER_EXPIRY_SECONDS``.
 LONG_AGO = "2000-01-01T00:00:00+00:00"
@@ -101,3 +111,26 @@ async def age(driver: AutoGPTFalkorDriver, marker: str) -> None:
         uuid=marker,
         long_ago=LONG_AGO,
     )
+
+
+@contextmanager
+def forget_mid_save(
+    scope: MemoryScope,
+    root: str,
+    hard: bool,
+    unfence: Callable[[], Awaitable[None]],
+) -> Iterator[list[ForgetResult]]:
+    """Forget ``root`` to the end right before graphiti saves the dream
+    write's facts, once ``unfence`` has taken the lock's protection away."""
+    original = FalkorDriverSession.run
+    forgotten: list[ForgetResult] = []
+
+    async def run(session: FalkorDriverSession, query: Any, **params: Any) -> Any:
+        text = query if isinstance(query, str) else " ".join(q for q, _ in query)
+        if not forgotten and "SET r = edge" in text:
+            await unfence()
+            forgotten.append(await retract(scope, [root], hard=hard))
+        return await original(session, query, **params)
+
+    with patch.object(FalkorDriverSession, "run", run):
+        yield forgotten
