@@ -12,6 +12,8 @@ paying audience the way a first checkout does.
 import logging
 from collections.abc import Mapping
 
+from pydantic import ValidationError
+
 from backend.data.db_accessors import user_db
 from backend.data.notifications import AudienceAction, AudienceEventModel
 from backend.notifications.queue import queue_audience_change
@@ -41,9 +43,10 @@ async def queue_trial_group_change(kind: str, user_id: str, email: str) -> None:
     action = _TRIAL_GROUP_CHANGES.get(kind)
     if action is None or not settings.config.mailerlite_trial_group_id:
         return
-    result = await queue_audience_change(
-        AudienceEventModel(action=action, email=email, user_id=user_id)
-    )
+    event = _event(action, email, user_id)
+    if event is None:
+        return
+    result = await queue_audience_change(event)
     if not result.success:
         raise RuntimeError(f"Could not queue {action.value}: {result.message}")
 
@@ -55,15 +58,36 @@ async def join_paying_audience(user_id: str, email: str) -> None:
     the same welcome claim a first checkout does: a later resubscription is
     then treated as the returning customer it is. Called once the notice is
     out, so, like the tour enrolment after a welcome, a failure is reported
-    rather than raised.
+    rather than raised: a Stripe retry would find the notice claimed and do
+    nothing, so raising could only fail the webhook.
     """
-    first = await user_db().claim_welcome_email(user_id)
-    action = AudienceAction.ENROLL_TOUR if first else AudienceAction.ADD_CHANGELOG
-    result = await queue_audience_change(
-        AudienceEventModel(action=action, email=email, user_id=user_id)
-    )
+    try:
+        first = await user_db().claim_welcome_email(user_id)
+        action = AudienceAction.ENROLL_TOUR if first else AudienceAction.ADD_CHANGELOG
+        event = _event(action, email, user_id)
+        if event is None:
+            return
+        result = await queue_audience_change(event)
+    except Exception:
+        logger.exception(f"Trial for user {user_id} converted but was not enrolled")
+        return
     if not result.success:
         logger.error(
             f"Trial for user {user_id} converted but {action.value} could not be "
             f"queued: {result.message}"
         )
+
+
+def _event(
+    action: AudienceAction, email: str, user_id: str
+) -> AudienceEventModel | None:
+    """None for an address MailerLite would refuse, such as a reserved domain:
+    no retry can ever deliver that change, so it must not hold up the notice."""
+    try:
+        return AudienceEventModel(action=action, email=email, user_id=user_id)
+    except ValidationError:
+        logger.warning(
+            f"User {user_id}'s email cannot be a MailerLite subscriber; "
+            f"skipping {action.value}"
+        )
+        return None
