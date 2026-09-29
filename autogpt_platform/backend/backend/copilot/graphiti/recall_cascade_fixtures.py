@@ -19,7 +19,7 @@ from graphiti_core import Graphiti
 from pydantic import BaseModel
 
 from backend.copilot.dream import apply, fetch
-from backend.copilot.dream.citations import source_scopes
+from backend.copilot.dream.citations import fact_scopes
 from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
@@ -189,7 +189,7 @@ async def dream(
             ops,
             known_fact_uuids=read.known_fact_uuids,
             known_episode_uuids=read.known_episode_uuids,
-            source_scopes=source_scopes(read),
+            fact_scopes=fact_scopes(read),
             ingestion_drain_timeout=25,
         )
 

@@ -12,20 +12,22 @@ src_facts=<ids>]``, and this branch's first form, which could end with both
 keys. A description naming a ``src_`` key twice, or anywhere before those
 final keys (a rationale quoting one), or listing an id with a space in it,
 is ambiguous and attributes nothing. Each uuid read back must then name a
-fact or an episode in the graph, in the dream episode's own scope
-(``dream/citations.py``); the others are dropped and counted. A shape a
-forged rationale could still take (it ends the description with one key,
-naming a real source in the right scope) cannot be told from a real one;
-new writes never put citations or a raw ``;`` in their description.
+fact or an episode the graph has, a fact in the dream episode's own scope
+(episode citations are not scoped: ``dream/citations.py``); the others are
+dropped and counted. Unlike a new write, an older one citing a fact of
+another scope cannot be dropped: it keeps its other citations, so it could
+escape that fact's forget. A shape a forged rationale could still take (it
+ends the description with one key, naming a real source in the right
+scope) cannot be told from a real one; new writes never put citations or a
+raw ``;`` in their description.
 """
 
 import re
-from collections.abc import Callable, Iterable
-from typing import Any
+from collections.abc import Iterable
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.dream.citations import envelope_scope, scope_key
+from backend.copilot.dream.citations import scope_key
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 
 from .backfill_pages import BATCH_SIZE, rows
@@ -70,8 +72,8 @@ def _ids(listed: str | None) -> list[str] | None:
 
 
 class Checked(BaseModel):
-    """The citations of the episodes read back that name a source in the
-    graph in the episode's own scope, by episode uuid; how many it
+    """The citations of the episodes read back that name a source the graph
+    has (a fact in the episode's own scope), by episode uuid; how many it
     ``rejected``."""
 
     cited: dict[str, LegacyCitations] = Field(default_factory=dict)
@@ -84,20 +86,18 @@ async def checked(
     scopes: dict[str, str],
 ) -> Checked:
     """Keep each citation in ``described`` (by dream episode) whose source
-    is a fact or an episode in the graph, in the scope ``scopes`` gives its
-    dream episode."""
+    the graph has: a fact in the scope ``scopes`` gives its dream episode,
+    an episode of any scope."""
     cited_facts = [uuid for c in described.values() for uuid in c.facts]
     cited_episodes = [uuid for c in described.values() for uuid in c.episodes]
-    facts = await _scopes(driver, FACT_SCOPES_QUERY, cited_facts, _fact_scope)
-    episodes = await _scopes(
-        driver, EPISODE_SCOPES_QUERY, cited_episodes, _episode_scope
-    )
+    facts = await _found(driver, FACT_SCOPES_QUERY, cited_facts)
+    episodes = await _found(driver, CITED_EPISODES_QUERY, cited_episodes)
     done = Checked()
     for uuid, citations in described.items():
         wanted = scope_key(scopes.get(uuid))
         kept = LegacyCitations(
             facts=[f for f in citations.facts if facts.get(f) == wanted],
-            episodes=[e for e in citations.episodes if episodes.get(e) == wanted],
+            episodes=[e for e in citations.episodes if e in episodes],
         )
         done.rejected += len(citations.facts) + len(citations.episodes)
         done.rejected -= len(kept.facts) + len(kept.episodes)
@@ -105,29 +105,19 @@ async def checked(
     return done
 
 
-async def _scopes(
-    driver: AutoGPTFalkorDriver,
-    query: str,
-    uuids: Iterable[str],
-    scope_of: Callable[[dict[str, Any]], str],
+async def _found(
+    driver: AutoGPTFalkorDriver, query: str, uuids: Iterable[str]
 ) -> dict[str, str]:
-    """The scope of each of ``uuids`` the graph has."""
+    """Each of ``uuids`` the graph has, with the scope its row gives (a
+    fact's; ``UNSCOPED`` for a row that gives none)."""
     listed = list(dict.fromkeys(uuids))
     found: dict[str, str] = {}
     for start in range(0, len(listed), BATCH_SIZE):
         result = await driver.execute_query(
             query, uuids=listed[start : start + BATCH_SIZE]
         )
-        found |= {row["uuid"]: scope_of(row) for row in rows(result)}
+        found |= {row["uuid"]: scope_key(row.get("scope")) for row in rows(result)}
     return found
-
-
-def _fact_scope(row: dict[str, Any]) -> str:
-    return scope_key(row["scope"])
-
-
-def _episode_scope(row: dict[str, Any]) -> str:
-    return envelope_scope(row["content"])
 
 
 FACT_SCOPES_QUERY = """
@@ -136,8 +126,8 @@ WHERE e.uuid IN $uuids
 RETURN e.uuid AS uuid, e.scope AS scope
 """
 
-EPISODE_SCOPES_QUERY = """
+CITED_EPISODES_QUERY = """
 MATCH (ep:Episodic)
 WHERE ep.uuid IN $uuids
-RETURN ep.uuid AS uuid, ep.content AS content
+RETURN ep.uuid AS uuid
 """

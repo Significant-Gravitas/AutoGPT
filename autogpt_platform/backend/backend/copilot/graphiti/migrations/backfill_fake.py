@@ -50,8 +50,8 @@ class BackfillGraph:
         if query == legacy_citations.FACT_SCOPES_QUERY:
             found = [{"uuid": u, "scope": None} for u in params["uuids"]]
             return [row for row in found if row["uuid"] in self.sources], [], None
-        if query == legacy_citations.EPISODE_SCOPES_QUERY:
-            found = [{"uuid": u, "content": None} for u in params["uuids"]]
+        if query == legacy_citations.CITED_EPISODES_QUERY:
+            found = [{"uuid": u} for u in params["uuids"]]
             return [row for row in found if row["uuid"] in self.sources], [], None
         if query in self.answers:
             rows = [r for r in self.answers[query] if r["uuid"] > params["after"]]

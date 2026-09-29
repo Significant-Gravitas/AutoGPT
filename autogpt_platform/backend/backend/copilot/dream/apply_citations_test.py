@@ -51,7 +51,7 @@ def _checked(
         scope=UNSCOPED,
         known_facts=known["known_facts"],
         known_episodes=known["known_episodes"],
-        source_scopes={},
+        fact_scopes={},
     ).citations
 
 

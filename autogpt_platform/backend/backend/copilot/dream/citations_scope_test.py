@@ -1,7 +1,9 @@
-"""A dream write keeps only the citations whose source shares its scope
-(``citations.py``): the rule the prompts give the model ("group by scope",
-"proposed findings live in the same scope as their evidence"), enforced by
-apply. The live run is ``graphiti/recall_citation_scope_integration_test.py``.
+"""A dream write's fact citations must name facts of its own scope, and a
+write citing a fact of another scope is dropped whole (``citations.py``):
+the rule the prompts give the model ("group by scope", a finding stays in
+the scope of the facts it cites), enforced by apply. Episode citations are
+not scoped: a chat turn can hold facts of any scope. The live run is
+``graphiti/recall_citation_scope_integration_test.py``.
 """
 
 from datetime import datetime, timezone
@@ -14,20 +16,16 @@ from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 
 from . import apply as apply_mod
-from .citations import UNSCOPED, scope_key, source_scopes, validated_citations
+from .citations import UNSCOPED, fact_scopes, scope_key, validated_citations
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .schemas import ConsolidatedFact, DreamOperations, ProposedFinding
 
 _SCOPE = MemoryScope.for_user("u-1234567890ab")
-_SCOPES = {
-    "f-global": UNSCOPED,
-    "f-bread": "project:bread",
-    "ep-bread": "project:bread",
-}
+_SCOPES = {"f-global": UNSCOPED, "f-bread": "project:bread"}
 _READ = {
     "known_fact_uuids": {"f-global", "f-bread"},
-    "known_episode_uuids": {"ep-bread"},
-    "source_scopes": _SCOPES,
+    "known_episode_uuids": {"ep-chat", "ep-stored"},
+    "fact_scopes": _SCOPES,
 }
 
 
@@ -37,19 +35,20 @@ def _check(scope: str, *cited: str):
         [uuid for uuid in cited if uuid.startswith("ep")],
         scope=scope,
         known_facts={"f-global", "f-bread"},
-        known_episodes={"ep-bread"},
-        source_scopes=_SCOPES,
+        known_episodes={"ep-chat", "ep-stored"},
+        fact_scopes=_SCOPES,
     )
 
 
 class TestValidatedCitations:
-    def test_a_citation_of_another_scope_is_dropped_and_counted(self) -> None:
-        checked = _check("project:bread", "f-bread", "f-global", "ep-bread")
+    def test_a_write_citing_a_fact_of_another_scope_is_dropped_whole(
+        self,
+    ) -> None:
+        """Trimmed to its own scope's citations it could restate the other
+        fact and escape that fact's forget."""
+        checked = _check("project:bread", "f-bread", "f-global", "ep-chat")
 
-        assert checked.citations == Citations(
-            fact_uuids=["f-bread"], episode_uuids=["ep-bread"]
-        )
-        assert checked.cross_scope == 1
+        assert (checked.citations, checked.cross_scope) == (None, 1)
 
     def test_a_write_citing_only_another_scope_cites_nothing(self) -> None:
         """Codex's probe: a project conclusion citing a global fact."""
@@ -57,19 +56,33 @@ class TestValidatedCitations:
 
         assert (checked.citations, checked.cross_scope) == (None, 1)
 
+    def test_an_episode_citation_is_not_scoped(self) -> None:
+        """A chat turn holds facts of any scope."""
+        checked = _check("project:bread", "f-bread", "ep-chat")
+
+        assert checked.citations == Citations(
+            fact_uuids=["f-bread"], episode_uuids=["ep-chat"]
+        )
+        assert checked.cross_scope == 0
+
+    def test_a_project_write_citing_only_chat_turns_is_kept(self) -> None:
+        checked = _check("project:unrelated", "ep-chat", "ep-stored")
+
+        assert checked.citations == Citations(episode_uuids=["ep-chat", "ep-stored"])
+
     def test_an_unknown_uuid_is_not_counted_as_cross_scope(self) -> None:
         checked = _check("project:bread", "made-up")
 
         assert (checked.citations, checked.cross_scope) == (None, 0)
 
-    def test_a_source_with_no_scope_given_is_unscoped(self) -> None:
+    def test_a_fact_with_no_scope_given_is_unscoped(self) -> None:
         checked = validated_citations(
             ["f1"],
             [],
             scope="real:global",
             known_facts={"f1"},
             known_episodes=set(),
-            source_scopes={},
+            fact_scopes={},
         )
 
         assert checked.citations == Citations(fact_uuids=["f1"])
@@ -79,9 +92,9 @@ class TestValidatedCitations:
         assert scope_key(None) == scope_key("") == UNSCOPED
 
 
-def test_a_pass_reads_each_sources_scope() -> None:
-    """A fact's own (unset: unscoped), an episode's envelope's, and a chat
-    turn, plain text, unscoped."""
+def test_a_pass_reads_each_facts_scope() -> None:
+    """A fact's own, unset read as unscoped. An episode's envelope scope is
+    not read: episode citations are not scoped."""
     envelope = MemoryEnvelope(content="bread notes", scope="project:bread")
     bundle = DreamInput(
         user_id="u",
@@ -89,20 +102,10 @@ def test_a_pass_reads_each_sources_scope() -> None:
         window_start=datetime(2026, 9, 1, tzinfo=timezone.utc),
         window_end=datetime(2026, 9, 28, tzinfo=timezone.utc),
         facts=[_fact("f-bread", "project:bread"), _fact("f-old", None)],
-        episodes=[
-            _episode("ep-stored", envelope.model_dump_json()),
-            _episode("ep-chat", "Nick: I bake on Fridays"),
-            _episode("ep-empty", None),
-        ],
+        episodes=[_episode("ep-stored", envelope.model_dump_json())],
     )
 
-    assert source_scopes(bundle) == {
-        "f-bread": "project:bread",
-        "f-old": UNSCOPED,
-        "ep-stored": "project:bread",
-        "ep-chat": UNSCOPED,
-        "ep-empty": UNSCOPED,
-    }
+    assert fact_scopes(bundle) == {"f-bread": "project:bread", "f-old": UNSCOPED}
 
 
 @pytest.fixture
@@ -116,7 +119,9 @@ def enqueue(mocker) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_apply_drops_the_citations_of_another_scope(enqueue: AsyncMock) -> None:
+async def test_apply_drops_every_write_citing_a_fact_of_another_scope(
+    enqueue: AsyncMock,
+) -> None:
     ops = DreamOperations(
         writes=[
             ConsolidatedFact(
@@ -131,6 +136,13 @@ async def test_apply_drops_the_citations_of_another_scope(enqueue: AsyncMock) ->
                 confidence=0.9,
                 source_fact_uuids=["f-bread", "f-global"],
             ),
+            ConsolidatedFact(
+                content="The bread project bakes on Fridays",
+                scope="project:bread",
+                confidence=0.9,
+                source_fact_uuids=["f-bread"],
+                source_episode_uuids=["ep-chat"],
+            ),
         ],
         proposals=[
             ProposedFinding(
@@ -138,7 +150,7 @@ async def test_apply_drops_the_citations_of_another_scope(enqueue: AsyncMock) ->
                 scope="project:bread",
                 confidence=0.5,
                 rationale="volume",
-                source_episode_uuids=["ep-bread"],
+                source_episode_uuids=["ep-chat"],
             )
         ],
     )
@@ -146,14 +158,14 @@ async def test_apply_drops_the_citations_of_another_scope(enqueue: AsyncMock) ->
     stats = await apply_mod.apply_operations(_SCOPE, "p1", ops, **_READ)
 
     assert [call.kwargs["citations"] for call in enqueue.await_args_list] == [
-        Citations(fact_uuids=["f-bread"]),
-        Citations(episode_uuids=["ep-bread"]),
+        Citations(fact_uuids=["f-bread"], episode_uuids=["ep-chat"]),
+        Citations(episode_uuids=["ep-chat"]),
     ]
     assert (
         stats["uncited_writes_dropped"],
         stats["cross_scope_citations_dropped"],
     ) == (
-        1,
+        2,
         2,
     )
 

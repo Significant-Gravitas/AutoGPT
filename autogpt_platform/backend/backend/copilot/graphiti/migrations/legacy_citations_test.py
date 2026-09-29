@@ -68,18 +68,26 @@ class TestDescribedCitations:
 
 class TestLegacyCitationsAreChecked:
     @pytest.mark.asyncio
-    async def test_a_citation_the_graph_lacks_or_of_another_scope_is_dropped(
+    async def test_a_source_the_graph_lacks_or_a_fact_of_another_scope_is_dropped(
         self,
     ) -> None:
+        """The graph's sources are unscoped. A project write keeps the chat
+        turn it cites (episode citations are not scoped) and loses the
+        global fact."""
+        project = '{"content": "x", "scope": "project:bread"}'
         driver = BackfillGraph(
             episodes=[
                 dream_row("d1", "dream-pass proposal; rationale=r; src_facts=f1,ghost"),
                 {
                     **dream_row("d2", "dream-pass consolidation; src_episodes=e0"),
-                    "content": '{"content": "x", "scope": "project:bread"}',
+                    "content": project,
+                },
+                {
+                    **dream_row("d3", "dream-pass proposal; rationale=r; src_facts=f2"),
+                    "content": project,
                 },
                 dream_row(
-                    "d3",
+                    "d4",
                     "dream-pass proposal; rationale=a; b; src_facts=f1; src_facts=f2",
                 ),
             ],
@@ -91,7 +99,8 @@ class TestLegacyCitationsAreChecked:
         [(_, records)] = driver.writes
         assert records == [
             {"uuid": "d1", "facts": ["f1"], "episodes": []},
-            {"uuid": "d2", "facts": [], "episodes": []},
+            {"uuid": "d2", "facts": [], "episodes": ["e0"]},
             {"uuid": "d3", "facts": [], "episodes": []},
+            {"uuid": "d4", "facts": [], "episodes": []},
         ]
         assert (found.rejected, found.ambiguous) == (2, 1)

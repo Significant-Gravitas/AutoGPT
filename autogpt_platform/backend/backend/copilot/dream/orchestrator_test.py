@@ -47,7 +47,7 @@ from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .batch_callbacks import handle_dream_batch_result
 from .batch_submit import persist_input_bundle
-from .citations import source_scopes
+from .citations import fact_scopes
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
@@ -653,7 +653,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
-        source_scopes=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -724,7 +724,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
-        source_scopes=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -840,7 +840,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
-        source_scopes=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -931,9 +931,10 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
         apply_mock.await_args.kwargs["known_episode_uuids"]
         == input_bundle.known_episode_uuids
     )
-    # The scope of each, which a write's citations must share (``citations.py``).
-    assert apply_mock.await_args.kwargs["source_scopes"] == source_scopes(input_bundle)
-    assert apply_mock.await_args.kwargs["source_scopes"]
+    # Each fact's scope, which a write's fact citations must share
+    # (``citations.py``).
+    assert apply_mock.await_args.kwargs["fact_scopes"] == fact_scopes(input_bundle)
+    assert apply_mock.await_args.kwargs["fact_scopes"]
 
 
 @pytest.mark.asyncio

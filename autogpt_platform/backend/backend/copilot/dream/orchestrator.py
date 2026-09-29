@@ -51,7 +51,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
-from .citations import source_scopes
+from .citations import fact_scopes
 from .clamp import clamp_pass_operations
 from .fetch import (
     DreamInput,
@@ -645,7 +645,7 @@ async def _apply(
         ops,
         known_fact_uuids=input_bundle.known_fact_uuids,
         known_episode_uuids=input_bundle.known_episode_uuids,
-        source_scopes=source_scopes(input_bundle),
+        fact_scopes=fact_scopes(input_bundle),
         lock_handle=lock_handle,
         lease=lease,
     )

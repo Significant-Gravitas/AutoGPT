@@ -89,10 +89,11 @@ class DreamPassApplied(BaseModel):
     failed_writes: int = 0
     provenance_pending: int = 0
     # Writes and proposals dropped before they were queued for citing
-    # nothing the pass read in their scope; a row written before it reads 0.
+    # nothing the pass read, or a fact of another scope; a row written
+    # before it reads 0.
     uncited_writes_dropped: int = 0
-    # Citations dropped for naming a source in another scope than the
-    # write's; a row written before it reads 0.
+    # Their citations of a fact of another scope; a row written before it
+    # reads 0.
     cross_scope_citations_dropped: int = 0
     # Distinct facts an acknowledged write spared and the accounting read
     # found live (provisional when the accounting is incomplete); a row

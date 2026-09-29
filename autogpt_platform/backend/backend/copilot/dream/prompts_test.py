@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from backend.copilot.graphiti.memory_model import MemoryEnvelope
-
 from .fetch import DreamInput, EpisodeRow, FactRow, SessionRow
 from .prompts import (
     MAX_DEMOTIONS_PER_PASS,
@@ -89,30 +87,25 @@ def test_consolidate_prompt_has_system_and_user_messages():
     assert "[scope=project:x]" in user_body
 
 
-def test_each_episode_is_listed_with_the_scope_a_citation_must_share():
+def test_the_scope_rule_binds_the_fact_citations_only():
+    """Facts are listed by scope and one citing a fact of another scope is
+    dropped; a chat turn can hold facts of any scope, so episodes carry no
+    scope and are cited from any."""
     bundle = _build_bundle()
-    envelope = MemoryEnvelope(content="ProjectX ships weekly", scope="project:x")
-    bundle.episodes.append(
-        EpisodeRow(
-            uuid="ep-2",
-            name="memory",
-            content=envelope.model_dump_json(),
-            source_description="stored",
-            valid_at="2026-05-11",
-            created_at="2026-05-11",
-        )
-    )
 
     system, user = build_consolidate_prompt(bundle)
+    recombine = build_recombine_prompt(bundle, "{}")[0]["content"]
 
-    assert "uuid=ep-1 scope=real:global" in user["content"]
-    assert "uuid=ep-2 scope=project:x" in user["content"]
-    assert "a citation of another scope is dropped" in system["content"]
-    recombine = build_recombine_prompt(bundle, "{}")
-    assert "uuid=ep-2 scope=project:x" in recombine[1]["content"]
-    assert "a citation of a source in another scope is dropped" in (
-        recombine[0]["content"]
+    assert "- uuid=ep-1 valid_at=2026-05-10" in user["content"]
+    assert "a fact citing an active fact of another scope is dropped" in (
+        system["content"]
     )
+    assert "Recent episodes can be cited whatever the fact's scope" in (
+        system["content"]
+    )
+    assert "across scopes" not in recombine
+    assert "a finding stays in the scope of the facts it cites" in recombine
+    assert "Recent episodes can be cited whatever the finding's scope" in recombine
 
 
 def test_consolidate_prompt_instructs_merge_and_no_restate():

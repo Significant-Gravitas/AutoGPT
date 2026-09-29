@@ -499,8 +499,8 @@ class TestPhaseChaining:
         # for the clamp — apply must not re-read the bundle from Redis.
         assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
         assert apply.call_args.kwargs["known_episode_uuids"] == {"episode-1"}
-        # ...and the scope of each, which a write's citations must share.
-        assert apply.call_args.kwargs["source_scopes"] == {"fact-1": "project:bread"}
+        # ...and each fact's scope, which a write's fact citations must share.
+        assert apply.call_args.kwargs["fact_scopes"] == {"fact-1": "project:bread"}
         # The batch path must NOT run the 300s in-line ingestion drain: apply
         # executes inside this handler, which BatchExecutor.walk_once awaits
         # serially — a long drain would stall every other user's batch poll.

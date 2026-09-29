@@ -5,8 +5,8 @@ the facts only dream episodes state (``recall_derivation.py``); a forget's
 cascade follows them (``recall_cascade.py``). An older dream write has them
 only in its episode's ``source_description``, the first five of each kind
 (a consolidation listed episodes, a proposal facts). This reads them back,
-only in the shapes the dream wrote and only uuids the graph has in the
-episode's own scope (``legacy_citations.py``: a model's rationale could
+only in the shapes the dream wrote and only uuids the graph has, facts in
+the episode's own scope (``legacy_citations.py``: a model's rationale could
 forge a citation): every dream episode with no record (named ``dream_...``
 or described ``dream-pass...``) gets one from its description, empty when
 it lists nothing or its shape is ambiguous; then every fact with no record
@@ -268,7 +268,7 @@ async def main(args: argparse.Namespace) -> int:
         f"{verb} {totals.episodes} dream episodes and {totals.facts} facts; "
         f"{totals.unattributed} dream facts cite nothing to attribute; "
         f"{totals.ambiguous} descriptions ambiguous, {totals.rejected} "
-        "citations not in the graph in their scope"
+        "citations not in the graph, or of a fact of another scope"
     )
     if args.cascade_existing_forgets:
         done = f"retracted {totals.derived} derived facts" if args.apply else "not run"

@@ -1,11 +1,12 @@
-"""Writes citing nothing a pass read, end to end on both routes: the sanitizer
-lets through one consolidation citing a fact the pass read, one citing
-nothing, and a proposal citing only a uuid the pass never read. The first is
-queued with what it cites; the other two are dropped before they reach the
-graph and reach ``uncited_writes_dropped`` in the result, the durable record
-and the admin job status. The first also cites a fact of another scope,
-which is dropped and counted in ``cross_scope_citations_dropped`` there.
-The worker then drops the queued write for resting on a forget, fails
+"""Writes dropped for what they cite, end to end on both routes: the
+sanitizer lets through one consolidation citing a fact the pass read, one
+citing nothing, one citing a fact of another scope beside that fact, and a
+proposal citing only a uuid the pass never read. The first is queued with
+what it cites; the other three are dropped before they reach the graph and
+reach ``uncited_writes_dropped`` in the result, the durable record and the
+admin job status, the third's citation of another scope
+``cross_scope_citations_dropped`` too. The worker then drops the queued
+write for resting on a forget, fails
 another and makes a third whose record fails: ``dropped_forgotten``,
 ``failed_writes`` and ``provenance_pending`` report them in the same places
 on the sync route, which waits for the worker, and not on the batch route,
@@ -58,9 +59,14 @@ _OPS = DreamOperations(
         ConsolidatedFact(
             content="Nick ships on Fridays",
             confidence=0.9,
-            source_fact_uuids=["f-read", "f-project"],
+            source_fact_uuids=["f-read"],
         ),
         ConsolidatedFact(content="Nick ships on Mondays", confidence=0.9),
+        ConsolidatedFact(
+            content="Project X releases go through staging first",
+            confidence=0.9,
+            source_fact_uuids=["f-read", "f-project"],
+        ),
     ],
     proposals=[
         ProposedFinding(
@@ -225,11 +231,11 @@ def test_the_sync_route_reports_the_dropped_writes_everywhere(
 
     job = scheduler_loop.run_until_complete(_job_result("j-sync"))
     assert job.error is None
-    assert _reported(job) == (1, 0, 2, 1, 1, 1, 1)
+    assert _reported(job) == (1, 0, 3, 1, 1, 1, 1)
     applied = fake_dream_db.rows[job.pass_id]["operations"]["applied"]
-    assert _reported(applied) == (1, 0, 2, 1, 1, 1, 1)
+    assert _reported(applied) == (1, 0, 3, 1, 1, 1, 1)
     record = dream_pass_result_from_row(fake_dream_db.record(job.pass_id))
-    assert _reported(record) == (1, 0, 2, 1, 1, 1, 1)
+    assert _reported(record) == (1, 0, 3, 1, 1, 1, 1)
     _only_the_cited_write_was_queued(queued)
 
 
@@ -308,8 +314,8 @@ async def test_the_batch_route_reports_the_dropped_writes_everywhere(
 
     row = fake_dream_db.rows["p-batch"]
     assert row["status"] is DreamPassStatus.COMPLETE
-    assert _reported(row["operations"]["applied"]) == (1, 0, 2, 1, 0, 0, 0)
+    assert _reported(row["operations"]["applied"]) == (1, 0, 3, 1, 0, 0, 0)
     record = dream_pass_result_from_row(fake_dream_db.record("p-batch"))
-    assert _reported(record) == (1, 0, 2, 1, 0, 0, 0)
-    assert _reported(await _job_result("j-batch")) == (1, 0, 2, 1, 0, 0, 0)
+    assert _reported(record) == (1, 0, 3, 1, 0, 0, 0)
+    assert _reported(await _job_result("j-batch")) == (1, 0, 3, 1, 0, 0, 0)
     _only_the_cited_write_was_queued(queued)
