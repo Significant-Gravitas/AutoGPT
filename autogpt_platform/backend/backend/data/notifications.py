@@ -411,11 +411,42 @@ class NotificationResult(BaseModel):
 
 class AudienceAction(Enum):
     """Membership changes the backend owns. The tour → changelog handoff is
-    deliberately absent: MailerLite's automation owns that edge."""
+    deliberately absent: MailerLite's automation owns that edge. Both edges of
+    the trial group are the backend's."""
 
     ENROLL_TOUR = "enroll_tour"
     ADD_CHANGELOG = "add_changelog"
     REMOVE_CHANGELOG = "remove_changelog"
+    ADD_TRIAL = "add_trial"
+    REMOVE_TRIAL = "remove_trial"
+    # No group change: only the subscriber's fields.
+    UPDATE_FIELDS = "update_fields"
+    # A new account's fields. Its `signed` never replaces a status already
+    # held (see `mailerlite.record_signup`).
+    SIGNUP = "signup"
+
+
+class SubscriberField(str, Enum):
+    """MailerLite custom field keys the backend writes. GTM segments on these,
+    so a key is renamed only together with MailerLite."""
+
+    STATUS = "subscription_status"
+    SIGNUP = "signup_date"
+    TRIAL_STARTED = "trial_started_date"
+    SUBSCRIPTION_STARTED = "subscription_started_date"
+    SUBSCRIPTION_CANCELED = "subscription_canceled_date"
+    SUBSCRIPTION_ENDED = "subscription_ended_date"
+
+
+class SubscriptionStatus(str, Enum):
+    """Exactly one of these is a subscriber's `subscription_status`."""
+
+    SIGNED = "signed"
+    IN_TRIAL = "in_trial"
+    TRIAL_CANCELED = "trial_canceled"
+    SUBSCRIBED = "subscribed"
+    SUBSCRIPTION_CANCELED = "subscription_canceled"
+    SUBSCRIPTION_ENDED = "subscription_ended"
 
 
 class AudienceEventModel(BaseModel):
@@ -425,6 +456,10 @@ class AudienceEventModel(BaseModel):
     action: AudienceAction
     email: EmailStr
     user_id: str
+    # Written with the group change, or alone for UPDATE_FIELDS and SIGNUP. A
+    # date is YYYY-MM-DD; None clears the field, and a field left out is
+    # untouched.
+    fields: dict[SubscriberField, str | None] = Field(default_factory=dict)
 
 
 class NotificationPreference(BaseModel):
