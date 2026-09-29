@@ -255,9 +255,7 @@ async def test_joining_the_paying_audience_never_fails_the_sent_conversion(
 ):
     trial, raw = _state(trial, "converted")
     broken = AsyncMock(side_effect=RuntimeError("database unavailable"))
-    got, notice, release = await _notify(
-        trial, raw, "converted", claim_welcome=broken
-    )
+    got, notice, release = await _notify(trial, raw, "converted", claim_welcome=broken)
     assert got == [AudienceAction.REMOVE_TRIAL]
     notice.assert_awaited_once()
     release.assert_not_awaited()
