@@ -757,3 +757,88 @@ async def test_a_skills_copy_in_the_sandbox_is_still_judged(rows):
     with patch(f"{_READS}.judge_content", _judge(_HELD)):
         result = await wrapper({"path": "/home/user/skills/report/SKILL.md"})
     assert _MARKER not in json.dumps(result) and len(rows.rows) == 1
+
+
+async def test_the_platforms_sign_in_card_reaches_the_chat_unjudged(rows):
+    """The card a block with no connected key answers with is the platform's
+    own text; held, the chat got a stub where the sign-in button should be."""
+    from backend.blocks.search import GetWeatherInformationBlock
+    from backend.copilot.capabilities.models import CapabilityEntry, Implementation
+    from backend.copilot.tools.run_capability import RunCapabilityTool
+
+    block_id = GetWeatherInformationBlock().id
+    entry = CapabilityEntry(
+        id="openweathermap",
+        kind="block",
+        name="Get Weather Information",
+        purpose="weather",
+        implementations=[Implementation(kind="block", ref=block_id)],
+    )
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        patch(
+            "backend.copilot.tools.run_capability.resolve_session_entry",
+            AsyncMock(return_value=entry),
+        ),
+        patch(
+            "backend.copilot.tools.utils.get_user_credentials",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.tools.utils.selected_credentials",
+            AsyncMock(return_value=None),
+        ),
+    ):
+        result = await _call(
+            RunCapabilityTool(),
+            _session(),
+            {"id": "openweathermap", "input": {"location": "Amsterdam"}},
+        )
+
+    judge.assert_not_awaited()
+    card = json.loads(result.output)
+    assert card["type"] == ResponseType.SETUP_REQUIREMENTS
+    assert "credentials" in card["setup_info"]["user_readiness"]["missing_credentials"]
+    assert rows.rows == {}
+
+
+async def test_a_sign_in_card_quoting_the_providers_refusal_is_judged(rows):
+    from backend.copilot.tools.models import (
+        CredentialRejection,
+        SetupInfo,
+        SetupRequirementsResponse,
+        UserReadiness,
+    )
+
+    class _Rejected(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return SetupRequirementsResponse(
+                message="The service rejected the saved credential.",
+                setup_info=SetupInfo(
+                    agent_id="b",
+                    agent_name="B",
+                    user_readiness=UserReadiness(),
+                    requirements={},
+                ),
+                rejection=CredentialRejection(provider="p", detail=_MARKER),
+            )
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        result = await _call(_Rejected("", name="run_capability"), _session())
+    assert _MARKER in judge.await_args.kwargs["text"]
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_a_blocks_own_output_is_still_judged(rows):
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        result = await _call(_Fetch(_MARKER, name="run_capability"), _session())
+    assert _MARKER in judge.await_args.kwargs["text"]
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+def _no_action_gate():
+    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False)))
