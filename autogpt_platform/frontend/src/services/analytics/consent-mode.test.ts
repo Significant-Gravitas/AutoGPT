@@ -7,7 +7,7 @@ import {
 } from "@/tests/integrations/cookiebot";
 import {
   buildConsentDefaultsScript,
-  CONSENT_DENIED_BY_DEFAULT_REGIONS,
+  CONSENT_GRANTED_BY_DEFAULT_REGIONS,
   followConsentForGoogleTag,
 } from "./consent-mode";
 
@@ -46,41 +46,70 @@ function runDefaultsScript(): unknown[][] {
   );
 }
 
+type ConsentDefault = Record<string, unknown> & { region?: string[] };
+
+// Google's rule: the default whose region lists the visitor's country wins,
+// and the one without a region covers everyone else.
+function defaultsFor(country: string) {
+  const defaults = dataLayerEntries()
+    .filter(
+      ([command, action]) => command === "consent" && action === "default",
+    )
+    .map(([, , params]) => params as ConsentDefault);
+  const regional = defaults.find((params) => params.region?.includes(country));
+  const { region: _region, ...signals } =
+    regional ?? defaults.find((params) => !params.region) ?? {};
+  return signals;
+}
+
+const ALL_DENIED = {
+  ad_storage: "denied",
+  ad_user_data: "denied",
+  ad_personalization: "denied",
+  analytics_storage: "denied",
+  wait_for_update: 500,
+};
+
+const ALL_GRANTED = {
+  ad_storage: "granted",
+  ad_user_data: "granted",
+  ad_personalization: "granted",
+  analytics_storage: "granted",
+  wait_for_update: 500,
+};
+
 describe("buildConsentDefaultsScript", () => {
   afterEach(() => {
     delete (window as DataLayerWindow).dataLayer;
     delete window.gtag;
   });
 
-  it("grants by default, denies in the EEA, UK and Switzerland, and passes click IDs through URLs", () => {
+  it("grants only in the US, denies everywhere else, and passes click IDs through URLs", () => {
     expect(runDefaultsScript()).toEqual([
       [
         "consent",
         "default",
-        {
-          ad_storage: "granted",
-          ad_user_data: "granted",
-          ad_personalization: "granted",
-          analytics_storage: "granted",
-        },
+        { ...ALL_GRANTED, region: CONSENT_GRANTED_BY_DEFAULT_REGIONS },
       ],
-      [
-        "consent",
-        "default",
-        {
-          ad_storage: "denied",
-          ad_user_data: "denied",
-          ad_personalization: "denied",
-          analytics_storage: "denied",
-          region: CONSENT_DENIED_BY_DEFAULT_REGIONS,
-          wait_for_update: 500,
-        },
-      ],
+      ["consent", "default", ALL_DENIED],
       ["set", "url_passthrough", true],
     ]);
-    expect(CONSENT_DENIED_BY_DEFAULT_REGIONS).toEqual(
-      expect.arrayContaining(["DE", "FR", "ES", "GB", "CH", "NO", "IS", "LI"]),
-    );
+    expect(CONSENT_GRANTED_BY_DEFAULT_REGIONS).toEqual(["US"]);
+  });
+
+  it.each(["BR", "CA", "IN", "DE", "GB", "CH", "AU"])(
+    "starts a visitor in %s with every signal denied",
+    (country) => {
+      runDefaultsScript();
+
+      expect(defaultsFor(country)).toEqual(ALL_DENIED);
+    },
+  );
+
+  it("starts a US visitor with every signal granted", () => {
+    runDefaultsScript();
+
+    expect(defaultsFor("US")).toEqual(ALL_GRANTED);
   });
 
   it("only sets defaults; updates come from the visitor's answer", () => {
@@ -121,6 +150,23 @@ describe("followConsentForGoogleTag", () => {
     expect(consentUpdates()).toEqual([update(true, false)]);
     const [entry] = (window as DataLayerWindow).dataLayer ?? [];
     expect(Object.prototype.toString.call(entry)).toBe("[object Arguments]");
+    unfollow();
+  });
+
+  it("follows the defaults with the visitor's answer", () => {
+    runDefaultsScript();
+    configureCookiebot();
+    installCookiebot();
+
+    const unfollow = followConsentForGoogleTag();
+    answerCookiebot({ statistics: true, marketing: true });
+
+    expect(dataLayerEntries()).toEqual([
+      ["consent", "default", expect.objectContaining({ region: ["US"] })],
+      ["consent", "default", ALL_DENIED],
+      ["set", "url_passthrough", true],
+      update(true, true),
+    ]);
     unfollow();
   });
 

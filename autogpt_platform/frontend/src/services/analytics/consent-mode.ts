@@ -7,48 +7,11 @@ import {
 } from "@/services/consent/consent";
 import { DATA_LAYER_NAME } from "./gtag";
 
-const EU_MEMBER_STATES = [
-  "AT",
-  "BE",
-  "BG",
-  "HR",
-  "CY",
-  "CZ",
-  "DK",
-  "EE",
-  "FI",
-  "FR",
-  "DE",
-  "GR",
-  "HU",
-  "IE",
-  "IT",
-  "LV",
-  "LT",
-  "LU",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SK",
-  "SI",
-  "ES",
-  "SE",
-];
-
-// EEA (EU + IS, LI, NO), the UK and Switzerland start with every Google
-// signal denied until the visitor answers the banner; everywhere else the tag
-// runs with consent granted by default. Mirrored on agpt.co so a click ID
-// collected there is handled the same way here.
-export const CONSENT_DENIED_BY_DEFAULT_REGIONS = [
-  ...EU_MEMBER_STATES,
-  "IS",
-  "LI",
-  "NO",
-  "GB",
-  "CH",
-];
+// Every Google signal starts denied until the visitor answers the banner,
+// except in the US, whose Cookiebot domain group is opt-out: there the tag
+// runs with consent granted until the visitor opts out. Keep agpt.co in step
+// so a click ID collected there is handled the same way here.
+export const CONSENT_GRANTED_BY_DEFAULT_REGIONS = ["US"];
 
 // How long the tag holds its first hit for the banner's stored answer, so a
 // returning visitor's first page view already carries it.
@@ -63,18 +26,22 @@ export function buildConsentDefaultsScript(): string {
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
     `(function(){`,
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
+    // Google applies the default whose region most specifically matches the
+    // visitor and falls back to the one without a region. The regional one
+    // goes first, as in Google's own example.
     `gtag('consent','default',${JSON.stringify({
       ad_storage: "granted",
       ad_user_data: "granted",
       ad_personalization: "granted",
       analytics_storage: "granted",
+      region: CONSENT_GRANTED_BY_DEFAULT_REGIONS,
+      wait_for_update: WAIT_FOR_UPDATE_MS,
     })});`,
     `gtag('consent','default',${JSON.stringify({
       ad_storage: "denied",
       ad_user_data: "denied",
       ad_personalization: "denied",
       analytics_storage: "denied",
-      region: CONSENT_DENIED_BY_DEFAULT_REGIONS,
       wait_for_update: WAIT_FOR_UPDATE_MS,
     })});`,
     // Carries the ad click ID across pages in the URL while cookies are denied.
