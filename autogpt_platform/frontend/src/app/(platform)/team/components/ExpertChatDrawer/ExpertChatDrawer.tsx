@@ -90,7 +90,12 @@ export function ExpertChatDrawer({
       onClose={onClose}
     >
       {identity && target ? (
-        <ChatPanelBody target={target} identity={identity} chat={chat} />
+        <ChatPanelBody
+          key={threadKey}
+          target={target}
+          identity={identity}
+          chat={chat}
+        />
       ) : null}
     </ExpertSidePanel>
   );
