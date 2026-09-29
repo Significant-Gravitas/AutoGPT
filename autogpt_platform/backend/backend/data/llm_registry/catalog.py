@@ -290,6 +290,36 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="claude-sonnet-5-5",
+                display_name="Claude Sonnet 5.5",
+                provider="anthropic",
+                creator="anthropic",
+                # Same compaction-cap convention as the rest of the Claude
+                # 5 family: native window is 1M, capped at 200K here.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Sticker price $2/$10 per Mtok, undercutting Sonnet 5's
+                # $3/$15 sticker. Cache read $0.20/1M, cache write (5m)
+                # $2.50/1M, (1h) $4.00/1M. Verified 2026-09-28 against
+                # Anthropic's sonnet-5-5 docs, the vendored rate card and
+                # OpenRouter's live listing — no intro-pricing end date is
+                # published, unlike Sonnet 5. Credits at the standard 1.5x
+                # margin.
+                cost=CatalogModelCost(
+                    run_credits=9,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=30.0,
+                    cache_creation_credits_per_1m=375.0,
+                    provider_input_usd_per_1m=2.00,
+                    provider_output_usd_per_1m=10.00,
+                ),
+            ),
+            CatalogModel(
                 slug="claude-fable-5-1",
                 display_name="Claude Fable 5.1",
                 provider="anthropic",
