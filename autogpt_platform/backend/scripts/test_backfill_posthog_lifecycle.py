@@ -138,3 +138,14 @@ def test_dry_run_is_the_default():
     assert args.send is False
     assert args.all_users is False
     assert backfill.parse_args(["--send", "--all-users"]).send is True
+
+
+@pytest.mark.parametrize("size", ["0", "-5"])
+def test_a_non_positive_batch_size_is_rejected(size: str):
+    with pytest.raises(SystemExit) as exit_info:
+        backfill.parse_args(["--batch-size", size])
+    assert exit_info.value.code == 2
+
+
+def test_a_positive_batch_size_is_accepted():
+    assert backfill.parse_args(["--batch-size", "50"]).batch_size == 50

@@ -2718,18 +2718,14 @@ async def sync_subscription_from_stripe(
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
     covers those users.
     """
-    await _sync_subscription_tier_from_stripe(
-        stripe_subscription, track_lifecycle=track_lifecycle
-    )
+    await _sync_subscription_tier_from_stripe(stripe_subscription)
     if track_lifecycle:
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
         )
 
 
-async def _sync_subscription_tier_from_stripe(
-    stripe_subscription: dict, *, track_lifecycle: bool = True
-) -> None:
+async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
     customer_id = stripe_subscription.get("customer")
     if not customer_id:
         logger.warning(
@@ -2894,7 +2890,9 @@ async def _sync_subscription_tier_from_stripe(
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier, track_lifecycle=track_lifecycle)
+    # The wrapper schedules the lifecycle sync (or, for the tier sweep, doesn't),
+    # so the tier write mustn't schedule a second one.
+    await set_subscription_tier(user.id, tier, track_lifecycle=False)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None

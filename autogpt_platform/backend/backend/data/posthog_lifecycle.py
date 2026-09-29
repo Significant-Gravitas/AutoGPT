@@ -56,6 +56,7 @@ _PAYMENT_FAILED_STATUSES = frozenset({"past_due", "unpaid"})
 # A subscription in one of these was never paid for.
 _NEVER_PAID_STATUSES = frozenset({"trialing", "incomplete", "incomplete_expired"})
 _EPOCH = datetime.min.replace(tzinfo=UTC)
+_NEVER = datetime.max.replace(tzinfo=UTC)
 
 
 class StripeSubscriptionFacts(BaseModel):
@@ -153,11 +154,13 @@ def compute_lifecycle_snapshot(
     """
     tier = SubscriptionTier(user.subscription_tier or SubscriptionTier.NO_TIER)
     started = _trial_started(trial)
+    all_subs = list(subscriptions)
     common: dict[str, Any] = {
         "signup_at": user.created_at,
-        "trial_started_at": trial.started_at if trial and started else None,
+        "trial_started_at": (
+            trial.started_at if trial and started else _native_trial_start(all_subs)
+        ),
     }
-    all_subs = list(subscriptions)
     paid = [sub for sub in all_subs if _is_paid(sub, trial)]
     live = _current_live(paid)
 
@@ -187,18 +190,9 @@ def compute_lifecycle_snapshot(
     native = _native_trial(all_subs, now)
     if native is not None:
         status = "trial_canceled" if native.cancel_at_period_end else "in_trial"
-        common["trial_started_at"] = common["trial_started_at"] or native.trial_start
         return LifecycleSnapshot(subscription_status=status, **common)
-    ended_native = max(
-        (sub for sub in all_subs if _is_ended_native_trial(sub, trial)),
-        key=lambda sub: _utc(sub.trial_start),
-        default=None,
-    )
-    if ended_native is not None:
-        common["trial_started_at"] = (
-            common["trial_started_at"] or ended_native.trial_start
-        )
-    return _after_access_ended(paid, trial, started or ended_native is not None, common)
+    ended_native = any(_is_ended_native_trial(sub, trial) for sub in all_subs)
+    return _after_access_ended(paid, trial, started or ended_native, common)
 
 
 def _is_ended_native_trial(
@@ -349,11 +343,31 @@ def _native_trial(
     )
 
 
-def _ended_order(sub: StripeSubscriptionFacts) -> tuple[datetime, bool]:
+def _ended_order(sub: StripeSubscriptionFacts) -> tuple[datetime, datetime]:
     # The most recently started subscription is the one the user is on. Not
     # the end date: after an upgrade the old subscription is canceled after
-    # the new one started, and a failed renewal has no end date at all.
-    return (_utc(sub.started_at), sub.status in _PAYMENT_FAILED_STATUSES)
+    # the new one started. Ties go to the one that ended last, and a failed
+    # renewal hasn't ended. Known gap: an older subscription that outlived a
+    # newer one loses to it; Stripe data alone can't tell which one the user
+    # kept using.
+    failed = sub.status in _PAYMENT_FAILED_STATUSES
+    return (
+        _utc(sub.started_at),
+        _NEVER if failed else _utc(sub.ended_at or sub.canceled_at),
+    )
+
+
+def _native_trial_start(
+    subscriptions: Sequence[StripeSubscriptionFacts],
+) -> datetime | None:
+    """Start of the newest Stripe-native trial (one outside our trial flow),
+    kept after it converts or ends, as our own trial's start is."""
+    native = max(
+        (s for s in subscriptions if not s.trial_enrollment_id and s.trial_start),
+        key=lambda s: _utc(s.trial_start),
+        default=None,
+    )
+    return native.trial_start if native else None
 
 
 def _paid_start(

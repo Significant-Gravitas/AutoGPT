@@ -2104,8 +2104,6 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            self._register_posthog_lifecycle_sweep()
-
             # Execution Accuracy Monitoring - configurable interval
             self.scheduler.add_job(
                 execution_accuracy_alerts,
@@ -2155,6 +2153,10 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
+        if self.register_system_tasks:
+            # After start: until then get_job only sees pending jobs, not the
+            # jobstore, so the "leave an unchanged job alone" check can't work.
+            self._register_posthog_lifecycle_sweep()
         self._report_parked_jobs()
 
         # Keep the service running since BackgroundScheduler doesn't block
@@ -2802,14 +2804,6 @@ class Scheduler(AppService):
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
 
-    # --- Morning briefing ---
-    #
-    # Daily per-user cron at user-local 09:00. The job body's flag gate and
-    # idempotency (per local calendar date) live inside
-    # ``generate_and_deliver_briefing`` itself, so — unlike community
-    # rebuild — there's no registration-time flag check here.
-
-    @expose
     def _register_posthog_lifecycle_sweep(self) -> None:
         """Daily PostHog lifecycle sweep: the safety net behind the webhook and
         signup hooks, and what moves a trial that ran out on the clock on.
@@ -2836,6 +2830,14 @@ class Scheduler(AppService):
             jobstore=Jobstores.EXECUTION.value,
         )
 
+    # --- Morning briefing ---
+    #
+    # Daily per-user cron at user-local 09:00. The job body's flag gate and
+    # idempotency (per local calendar date) live inside
+    # ``generate_and_deliver_briefing`` itself, so — unlike community
+    # rebuild — there's no registration-time flag check here.
+
+    @expose
     def add_morning_briefing_schedule(
         self,
         user_id: str,

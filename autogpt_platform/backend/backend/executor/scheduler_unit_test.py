@@ -48,6 +48,7 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     UserPaywalledError,
 )
+from backend.util.service import EXPOSED_FLAG
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -2270,3 +2271,11 @@ class TestPostHogLifecycleSweepRegistration:
         existing = MagicMock(trigger=CronTrigger.from_crontab("0 3 * * *"))
 
         self._register(existing=existing).assert_called_once()
+
+    def test_morning_briefing_stays_an_rpc_endpoint(self):
+        # The sweep registrar sits next to it; the @expose must stay on the
+        # RPC method, not slide onto the private helper.
+        assert getattr(Scheduler.add_morning_briefing_schedule, EXPOSED_FLAG, False)
+        assert not getattr(
+            Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
+        )

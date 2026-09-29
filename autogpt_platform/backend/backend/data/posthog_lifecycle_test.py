@@ -456,6 +456,33 @@ def test_a_newer_ended_sub_beats_an_older_failed_one():
         assert result.subscription_ended_at == ended_at
 
 
+def test_a_start_date_tie_goes_to_the_sub_that_ended_last():
+    start = NOW - timedelta(days=40)
+    early = sub("a", "canceled", start=start, ended_at=NOW - timedelta(days=20))
+    late_end = NOW - timedelta(days=2)
+    late = sub("b", "canceled", start=start, ended_at=late_end)
+    for order in permutations([early, late]):
+        assert snapshot(subs=list(order)).subscription_ended_at == late_end
+
+
+def test_a_start_date_tie_between_ended_and_failed_is_payment_failed():
+    start = NOW - timedelta(days=40)
+    ended = sub("a", "canceled", start=start, ended_at=NOW - timedelta(days=2))
+    failed = sub("b", "past_due", start=start)
+    for order in permutations([ended, failed]):
+        assert snapshot(subs=list(order)).subscription_status == "payment_failed"
+
+
+def test_a_converted_native_trial_keeps_its_trial_start():
+    start = NOW - timedelta(days=20)
+    converted = sub(
+        "sub_native", "active", start=start, trial_end=start + timedelta(days=7)
+    )
+    result = snapshot(subs=[converted])
+    assert result.subscription_status == "subscribed"
+    assert result.trial_started_at == start
+
+
 def test_stripe_native_trial_is_in_trial():
     start = NOW - timedelta(days=2)
     native = sub(

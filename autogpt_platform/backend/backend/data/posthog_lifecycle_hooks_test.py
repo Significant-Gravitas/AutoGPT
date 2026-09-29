@@ -32,7 +32,7 @@ async def test_subscription_sync_schedules_by_customer():
     ):
         await sync_subscription_from_stripe(TRIAL_SUB)
 
-    inner.assert_awaited_once_with(TRIAL_SUB, track_lifecycle=True)
+    inner.assert_awaited_once_with(TRIAL_SUB)
     schedule.assert_called_once_with(stripe_customer_id="cus_1")
 
 
@@ -86,7 +86,6 @@ async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
 
     assert incomplete is False
     inner.assert_awaited_once()
-    assert inner.await_args.kwargs == {"track_lifecycle": False}
     schedule.assert_not_called()
     assert tiers == {"cus_1": SubscriptionTier.TRIAL}
 
