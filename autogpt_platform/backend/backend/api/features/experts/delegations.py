@@ -105,18 +105,55 @@ async def list_delegations(
         if status != "proposed"
         else []
     )
-    rows = [
-        *(p for h in held if (p := _proposal(h))),
-        *await summarize_threads(user_id, threads),
-    ]
-    rows.sort(key=lambda row: row.created_at, reverse=True)
     counts = await count_delegated_threads(user_id, scope)
     held_count = await delegation_list_db.count_held_handoffs(user_id, scope)
     return DelegationListResponse(
-        delegations=rows[offset:window],
+        delegations=await _page(user_id, held, threads, offset, window),
         total=_total(counts, held_count, status),
         summary=await _summary_counts(user_id, counts, held_count),
     )
+
+
+class _Candidate(BaseModel):
+    """One row of the merged list before any per-thread reads: a held card
+    (already a summary) or a thread still to be enriched."""
+
+    created_at: datetime
+    proposal: DelegationSummary | None = None
+    thread: DelegatedThread | None = None
+
+
+async def _page(
+    user_id: str,
+    held: list[HeldHandoff],
+    threads: list[DelegatedThread],
+    start: int,
+    end: int,
+) -> list[DelegationSummary]:
+    """Cut the page from both sources by creation time, then enrich only the
+    page's threads: the reads behind a summary run per page, not per window."""
+    candidates = [
+        *(_Candidate(created_at=p.created_at, proposal=p) for p in _proposals(held)),
+        *(_Candidate(created_at=_utc(t.session.started_at), thread=t) for t in threads),
+    ]
+    candidates.sort(key=lambda c: c.created_at, reverse=True)
+    page = candidates[start:end]
+    summaries = {
+        s.sub_session_id: s
+        for s in await summarize_threads(user_id, [c.thread for c in page if c.thread])
+    }
+    return [
+        row
+        for c in page
+        if (
+            row := c.proposal
+            or summaries.get(c.thread.session.session_id if c.thread else None)
+        )
+    ]
+
+
+def _proposals(held: list[HeldHandoff]) -> list[DelegationSummary]:
+    return [p for h in held if (p := _proposal(h))]
 
 
 async def delegated_questions(user_id: str, limit: int = 10) -> list[DelegationSummary]:

@@ -3,6 +3,7 @@
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -17,6 +18,7 @@ from prisma.models import (
 )
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.experts import delegations
 from backend.api.features.experts.delegations import (
     _elapsed,
     brief_of,
@@ -309,6 +311,27 @@ async def test_pages_walk_the_merged_list_with_one_total(team):
     assert {p.total for p in pages} == {6}
     # The counts describe every hand-off in scope, not the page.
     assert {p.summary.needs_you for p in pages} == {2}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_only_the_pages_threads_are_enriched(team):
+    """Messages, costs, files and experts are read for the page, not for
+    every row up to offset + limit."""
+    user_id, expert_id, otto = team
+    await _seed(user_id, expert_id, otto)
+    everything = await list_delegations(user_id)
+    real = delegations.summarize_threads
+    spy = AsyncMock(side_effect=real)
+
+    with patch.object(delegations, "summarize_threads", spy):
+        page = await list_delegations(user_id, limit=2, offset=2)
+
+    enriched = [t.session.session_id for t in spy.await_args.args[1]]
+    assert enriched == [r.sub_session_id for r in page.delegations]
+    assert [r.sub_session_id for r in page.delegations] == [
+        r.sub_session_id for r in everything.delegations[2:4]
+    ]
+    assert page.total == 6
 
 
 def test_a_running_thread_counts_up_from_a_naive_start():
