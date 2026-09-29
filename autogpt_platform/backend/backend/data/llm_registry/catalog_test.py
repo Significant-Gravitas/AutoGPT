@@ -190,6 +190,25 @@ def test_claude_sonnet_5_bills_at_authored_rates():
     assert MODEL_METADATA[s5].max_output_tokens == 128000
 
 
+def test_claude_sonnet_5_5_bills_at_authored_rates():
+    """Claude Sonnet 5.5 (Anthropic sticker $2/$10 per 1M, undercutting
+    Sonnet 5's $3/$15) — flat tier and per-1M projections must match the
+    authored catalog entry. This is the default standard-tier copilot
+    model, so a silent repricing here moves every standard chat."""
+    s55 = LLMModel("claude-sonnet-5-5")
+    assert MODEL_COST[s55] == 9
+    assert TOKEN_COST[s55].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 30.0,
+        "cache_creation": 375.0,
+    }
+    assert MODEL_METADATA[s55].max_output_tokens == 128000
+    s55_entry = next(m for m in CATALOG.models if m.slug == "claude-sonnet-5-5")
+    assert s55_entry.price_tier == 3
+    assert s55_entry.context_window == 200000
+
+
 def test_claude_opus_5_bills_at_authored_rates():
     opus = LLMModel("claude-opus-5")
     assert MODEL_COST[opus] == 14
