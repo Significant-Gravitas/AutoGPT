@@ -429,7 +429,7 @@ class TestPhaseChaining:
         flips to complete."""
         from backend.copilot.dream.batch_state import write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
-        from backend.copilot.dream.fetch import DreamInput
+        from backend.copilot.dream.fetch import DreamInput, FactRow
 
         _, _, string_store = fake_redis
         # The orchestrator holds the dream lock while persisting the bundle;
@@ -443,6 +443,19 @@ class TestPhaseChaining:
                 group_id="user_u1",
                 window_start=now,
                 window_end=now,
+                facts=[
+                    FactRow(
+                        uuid="fact-1",
+                        source="A",
+                        target="B",
+                        name="likes",
+                        fact="A likes B",
+                        scope="project:bread",
+                        confidence=0.7,
+                        status="active",
+                        created_at=None,
+                    )
+                ],
                 known_fact_uuids={"fact-1"},
                 known_episode_uuids={"episode-1"},
             ),
@@ -486,6 +499,8 @@ class TestPhaseChaining:
         # for the clamp — apply must not re-read the bundle from Redis.
         assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
         assert apply.call_args.kwargs["known_episode_uuids"] == {"episode-1"}
+        # ...and the scope of each, which a write's citations must share.
+        assert apply.call_args.kwargs["source_scopes"] == {"fact-1": "project:bread"}
         # The batch path must NOT run the 300s in-line ingestion drain: apply
         # executes inside this handler, which BatchExecutor.walk_once awaits
         # serially — a long drain would stall every other user's batch poll.
