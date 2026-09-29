@@ -5,6 +5,8 @@ writes out what it returns. A fact line always says when the fact holds, so
 an ended or retired fact never reads as a current one.
 """
 
+import re
+
 from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EpisodicNode
 from pydantic import BaseModel, ValidationError
@@ -16,6 +18,15 @@ from .recall import fact_status, is_live
 GLOBAL_SCOPE = "real:global"
 # Episode bodies are cut to this many characters when rendered.
 EPISODE_DISPLAY_CHARS = 500
+
+# The start of anything a lenient reader could take for a tag: ``<``, optional
+# whitespace, an optional ``/``, optional whitespace, then a letter or an
+# underscore. Only the start is matched, never the closing ``>``, so a tag the
+# memory left unterminated, one that truncation cut short, and one the text
+# rendered after it would complete are all caught. The optional ``/`` owns
+# the whitespace after it, so a ``<`` followed by a long run of whitespace
+# is scanned once: ``\s*/?\s*`` would try every split of that run.
+_TAG_START_RE = re.compile(r"<(?=\s*(?:/\s*)?[^\W\d])")
 
 _RETIRED_STATUSES = frozenset(
     status.value
@@ -64,6 +75,21 @@ def fact_validity(fact: EntityEdge) -> tuple[str, str]:
 def render_episode(episode: EpisodicNode) -> str:
     """``[created_at] body``, the body cut to ``EPISODE_DISPLAY_CHARS``."""
     return f"[{episode.created_at}] {episode.content[:EPISODE_DISPLAY_CHARS]}"
+
+
+def neutralise_tags(text: str) -> str:
+    """``text`` with every tag start made inert: its ``<`` becomes ``<!``.
+
+    For memory written between delimiters of our own (warm context's
+    ``<temporal_context>`` and its sections). Memory is user-, tool- and
+    web-authored, and a stored ``</temporal_context>`` would close the block
+    early, so the rest reads as the user's own words; an LLM reads tags
+    leniently, so spacing, case and trailing junk do not make one harmless.
+    Every tag is neutralised, in both directions and whatever its name, so
+    stored text can neither forge a delimiter nor finish one. Apply it to
+    the rendered line, after any truncation. The text stays readable.
+    """
+    return _TAG_START_RE.sub("<!", text)
 
 
 def episode_scope(episode: EpisodicNode) -> str:

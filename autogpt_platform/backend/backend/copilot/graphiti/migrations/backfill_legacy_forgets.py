@@ -155,7 +155,8 @@ async def _memory_graph_names() -> list[str]:
 def _graph_driver(database: str) -> AutoGPTFalkorDriver:
     """A driver on a graph known only by its name. ``open_driver`` needs a
     ``MemoryScope``, and an expert graph's name is a digest that no scope can
-    be rebuilt from. Opening one creates no graph (see the driver)."""
+    be rebuilt from. Opening one creates no graph, and builds its client off
+    the event loop at the first command (see the driver)."""
     return AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,
         port=graphiti_config.falkordb_port,

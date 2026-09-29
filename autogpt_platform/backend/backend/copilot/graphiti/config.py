@@ -57,6 +57,41 @@ class GraphitiConfig(BaseSettings):
     falkordb_host: str = Field(default="localhost")
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
+    # Transport deadlines on every FalkorDB connection this package opens
+    # (``falkordb_connect.new_falkordb_client``), for every operation on it,
+    # reads and writes alike. They are separate from the chat's asyncio budgets
+    # (``context_timeout``; ``context_refresh_timeout`` and
+    # ``warm_context_refresh_join_grace_ms``), which are shorter and cancel an
+    # interactive read before a deadline would. The deadlines also end what
+    # cancellation cannot reach: a worker thread still building a client
+    # (falkordb's constructor probes the server synchronously) and a
+    # connection to a server that stopped answering.
+    falkordb_socket_connect_timeout: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Seconds to open a TCP connection to FalkorDB before giving up, on "
+            "every connection the memory code opens. Short, so an unreachable "
+            "server fails a client build or a reconnect quickly."
+        ),
+    )
+    falkordb_socket_timeout: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "Seconds any single FalkorDB reply may take before its command "
+            "fails with a timeout: a deadline per reply, on every operation the "
+            "memory code runs (reads, writes, and the probe a client build "
+            "sends). A write whose reply times out may already have been "
+            "committed, so its outcome is unknown to the caller. Separate from "
+            "the chat's asyncio budgets (context_timeout; "
+            "context_refresh_timeout and the join grace), which are shorter and "
+            "end an interactive read first. Long by default so that a slow "
+            "write (ingestion, the dream, a forget) on a large graph normally "
+            "completes; it also ends worker threads a cancelled await left "
+            "behind and connections to a server that stopped answering."
+        ),
+    )
 
     # LLM for entity extraction (used by graphiti-core during ingestion).
     # Default is a cloud OpenAI-compat slug. Under ``CHAT_USE_LOCAL=true``
@@ -157,6 +192,27 @@ class GraphitiConfig(BaseSettings):
     context_timeout: float = Field(
         default=8.0,
         description="Seconds before warm context fetch is abandoned (needs headroom for FalkorDB cold connections)",
+    )
+    context_refresh_timeout: float = Field(
+        default=3.0,
+        description=(
+            "Seconds a follow-up-turn warm-context refresh (SECRT-2378) may run "
+            "in all before it is abandoned. On the SDK engine it starts before "
+            "the query build; what it may add to time-to-first-token is bounded "
+            "separately by warm_context_refresh_join_grace_ms."
+        ),
+    )
+    warm_context_refresh_join_grace_ms: int = Field(
+        default=500,
+        ge=0,
+        description=(
+            "The most a follow-up warm-context refresh (SECRT-2378) may add to "
+            "time-to-first-token, in milliseconds. Once the turn's query is "
+            "ready it waits at most this long for the refresh; a refresh still "
+            "running then is cancelled and the turn goes on without a block. "
+            "A refresh started at that point (the baseline engine, retries, a "
+            "refresh forced by a compaction) has this as its whole budget."
+        ),
     )
 
     # Client cache

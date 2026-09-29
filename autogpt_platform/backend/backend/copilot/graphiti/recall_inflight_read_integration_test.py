@@ -27,11 +27,13 @@ import pytest
 from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EpisodicNode
+from graphiti_core.search.search_config import SearchConfig
+from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_search import MemorySearchTool
 
-from . import context, recall
+from . import context, context_refresh, recall
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall_forget import retract
 from .recall_integration_fixtures import (
@@ -119,12 +121,18 @@ async def test_warm_context_paused_at_its_reranker_shows_nothing_forgotten(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "recipe",
+    [EDGE_HYBRID_SEARCH_CROSS_ENCODER, context_refresh.REFRESH_RECIPE],
+    ids=["first-turn", "follow-up-refresh"],
+)
 async def test_warm_context_after_its_fact_check_passed_shows_nothing_forgotten(
-    scope_graph, stub_graphiti_client
+    scope_graph, stub_graphiti_client, recipe: SearchConfig
 ) -> None:
     """The fact check has kept Alice's fact, a forget answers, then the rest
     of the read runs: its one last statement finds neither her fact nor her
-    episode."""
+    episode. The same holds for a follow-up turn's refresh (SECRT-2378),
+    which reads through the same ``_fetch`` with the RRF-reranked recipe."""
     driver, scope = scope_graph
     alice = await _alice_and_bob(driver, scope, stub_graphiti_client)
     live_now = recall.live_now
@@ -143,7 +151,10 @@ async def test_warm_context_after_its_fact_check_passed_shows_nothing_forgotten(
         return patch.object(recall, "live_now", checked)
 
     shown = await _forget_while_paused(
-        scope, alice, lambda: context._fetch(scope, "Alice Bob Atlas"), pause
+        scope,
+        alice,
+        lambda: context._fetch(scope, "Alice Bob Atlas", recipe=recipe),
+        pause,
     )
 
     assert ALICE[2] in passed, "the fact check passed before the forget"

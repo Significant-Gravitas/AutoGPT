@@ -1,5 +1,6 @@
 """Unit tests for how recalled memory is written out (``recall_render.py``)."""
 
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -104,6 +105,50 @@ class TestRenderEpisode:
         assert recall_render.render_episode(_episode("x" * 1000)) == (
             f"[2026-09-26 12:00:00+00:00] {body}"
         )
+
+
+class TestNeutraliseTags:
+    """Every tag start, whatever its name, is made inert; nothing else is
+    touched. The assembled warm-context block is pinned in
+    ``context_test.py::TestDelimiterGuard``."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("a </temporal_context> b", "a <!/temporal_context> b"),
+            ("a <temporal_context x=1> b", "a <!temporal_context x=1> b"),
+            ("< / FACTS", "<! / FACTS"),
+            ("<\n/RECENT_EPISODES>", "<!\n/RECENT_EPISODES>"),
+            ("cut short </temporal_con", "cut short <!/temporal_con"),
+            ("<_private>", "<!_private>"),
+            ("<été>", "<!été>"),
+        ],
+    )
+    def test_tag_starts_are_neutralised(self, text: str, expected: str) -> None:
+        assert recall_render.neutralise_tags(text) == expected
+
+    @pytest.mark.parametrize(
+        "text", ["3 < 4", "x<=y", "a -> b <3", "<!-- note -->", "<", "</", "< /"]
+    )
+    def test_text_that_opens_no_tag_is_untouched(self, text: str) -> None:
+        assert recall_render.neutralise_tags(text) == text
+
+    def test_neutralising_twice_changes_nothing_more(self) -> None:
+        once = recall_render.neutralise_tags("<a> </b> < c")
+        assert recall_render.neutralise_tags(once) == once
+
+    def test_a_long_whitespace_run_after_a_bracket_is_scanned_once(self) -> None:
+        """Fact text has no length cap: a ``<`` before a long run of
+        whitespace must not take quadratic time on the event loop (the
+        previous pattern took seconds for 20,000 spaces)."""
+        run = " " * 200_000
+        started = time.perf_counter()
+        untouched = recall_render.neutralise_tags("<" + run)
+        neutralised = recall_render.neutralise_tags("<" + run + "/" + run + "tag")
+        elapsed = time.perf_counter() - started
+        assert untouched == "<" + run
+        assert neutralised == "<!" + run + "/" + run + "tag"
+        assert elapsed < 1.0, f"neutralising took {elapsed:.2f}s"
 
 
 class TestEpisodeScope:
