@@ -34,7 +34,12 @@ from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.review import review_payload
 from backend.copilot.gate.subject import workflow_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
-from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
+from backend.copilot.tools.bash_exec import BashExecTool
+from backend.copilot.tools.models import (
+    BashExecResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+)
 from backend.copilot.tools.run_agent import RunAgentTool
 from backend.copilot.tools.run_capability import RunCapabilityTool
 from backend.data.graph import BaseGraph, GraphModel, Link, Node, NodeModel
@@ -691,3 +696,39 @@ async def _opened(
 ) -> Headline:
     # The headline the real card stores, so the chat row names what it names.
     return Headline.model_validate(review_payload(tool_name, args, subject)["headline"])
+
+
+# ---- a workspace file written through bash_exec -----------------------------
+
+_LONG_POST = (
+    "cd /home/user/workspace/blog && cat > post.md << 'EOF'\n"
+    + "word " * 2_000
+    + "\nEOF"
+)
+
+
+@pytest.mark.parametrize("mode", ["ask_first", "auto"])
+@pytest.mark.parametrize(
+    "command, runs",
+    [(_LONG_POST, True), (_LONG_POST + "\nrm -rf ~", False)],
+)
+async def test_a_heredoc_write_into_the_workspace_runs_as_a_file_write(
+    gate, mode, command, runs
+):
+    """Too long for the supervisor to read, so it must never be asked about a write."""
+    shell = AsyncMock(
+        return_value=BashExecResponse(
+            message="ok", stdout="", stderr="", exit_code=0, timed_out=False
+        )
+    )
+    asks = AsyncMock(return_value=Judgement(allowed=False, reason="too long"))
+    with (
+        patch.object(BashExecTool, "_execute", shell),
+        patch(f"{_GATE}.supervise", asks),
+    ):
+        result = await BashExecTool().execute(
+            "user-1", _session(mode), "call-1", command=command
+        )
+    assert _is_held(result) is not runs
+    assert shell.await_count == int(runs)
+    assert asks.await_count == int(mode == "auto" and not runs)
