@@ -16,6 +16,16 @@ import type { ChatTarget } from "./helpers";
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
+class SessionStartingError extends Error {}
+
+function notifyStartFailed() {
+  toast({
+    variant: "destructive",
+    title: "Could not start the chat",
+    description: "Please try sending your message again.",
+  });
+}
+
 interface Args {
   target: ChatTarget | null;
   isOpen: boolean;
@@ -39,6 +49,7 @@ export function useExpertChatDrawer({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [skipLatest, setSkipLatest] = useState(false);
+  const [suppressOnboarding, setSuppressOnboarding] = useState(!!seedPrompt);
   const pendingPromptRef = useRef<string | null>(null);
   // Every thread reset bumps the generation; a session create that resolves
   // for an older generation is ignored so its prompt never lands in the new
@@ -114,6 +125,7 @@ export function useExpertChatDrawer({
     setMessages([]);
     pendingPromptRef.current = null;
     setSeedToSend(seedPrompt);
+    setSuppressOnboarding(!!seedPrompt);
   }, [threadKey, seedPrompt, setMessages]);
 
   const startSessionRef = useRef(startSession);
@@ -121,7 +133,7 @@ export function useExpertChatDrawer({
   useEffect(() => {
     if (!seedToSend) return;
     setSeedToSend(null);
-    void startSessionRef.current(seedToSend);
+    void startSessionRef.current(seedToSend).catch(notifyStartFailed);
   }, [seedToSend]);
 
   useEffect(() => {
@@ -132,6 +144,7 @@ export function useExpertChatDrawer({
   }, [sessionId, sendMessage]);
 
   function startNewThread() {
+    setSuppressOnboarding(false);
     generationRef.current += 1;
     creatingGenerationRef.current = null;
     setIsCreating(false);
@@ -143,7 +156,12 @@ export function useExpertChatDrawer({
 
   async function startSession(firstMessage: string) {
     const generation = generationRef.current;
-    if (creatingGenerationRef.current === generation || !target) return;
+    if (!target) return;
+    // A card answered while a typed prompt is still creating the session must
+    // not settle on a message that never went out, so the second send rejects.
+    if (creatingGenerationRef.current === generation) {
+      throw new SessionStartingError();
+    }
     creatingGenerationRef.current = generation;
     setIsCreating(true);
     try {
@@ -155,15 +173,13 @@ export function useExpertChatDrawer({
         throw new Error("Failed to create expert chat session");
       }
       pendingPromptRef.current = firstMessage;
+      setSuppressOnboarding(true);
       setSessionId(response.data.id);
     } catch (err) {
       if (generation !== generationRef.current) return;
       Sentry.captureException(err);
-      toast({
-        variant: "destructive",
-        title: "Could not start the chat",
-        description: "Please try sending your message again.",
-      });
+      setSuppressOnboarding(false);
+      throw err;
     } finally {
       if (creatingGenerationRef.current === generation) {
         creatingGenerationRef.current = null;
@@ -204,6 +220,17 @@ export function useExpertChatDrawer({
     sendMessage({ text: trimmed });
   }
 
+  // Cards fail quietly and keep their form, so this path owns the toast; the
+  // composer shows its own and restores the draft.
+  async function onActionSend(message: string) {
+    try {
+      await onSend(message);
+    } catch (err) {
+      if (!(err instanceof SessionStartingError)) notifyStartFailed();
+      throw err;
+    }
+  }
+
   const isResolvingSession = !sessionId && wantsLatest && latestQuery.isLoading;
 
   return {
@@ -214,8 +241,11 @@ export function useExpertChatDrawer({
     error,
     stop,
     onSend,
+    onActionSend,
     queuedMessages,
     isResolvingSession,
+    isLoadingSession: !!sessionId && sessionQuery.isLoading,
     isCreating,
+    suppressOnboarding,
   };
 }

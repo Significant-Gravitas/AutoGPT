@@ -7,6 +7,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { SessionFile } from "../../ContextPanel/components/FilesTab/useSessionFiles";
 import { WorkspaceFileCard } from "./WorkspaceFileCard";
+import { WorkspaceFileRow } from "./WorkspaceFileRow";
 
 export interface WorkspaceFilesContentProps {
   files: SessionFile[];
@@ -21,6 +22,8 @@ export interface WorkspaceFilesContentProps {
   /** The floating stack hoists the title out of the card (see
    *  ``StackSection``); the popover keeps it inline. */
   showHeader?: boolean;
+  /** ``detailed`` shows Files-page rows with a thumbnail, date and size. */
+  rowStyle?: "compact" | "detailed";
 }
 
 export function WorkspaceFilesContent({
@@ -34,6 +37,7 @@ export function WorkspaceFilesContent({
   onDownloadAll,
   emptyMessage,
   showHeader = true,
+  rowStyle = "compact",
 }: WorkspaceFilesContentProps) {
   return (
     <>
@@ -64,6 +68,7 @@ export function WorkspaceFilesContent({
         onDownload={onDownload}
         onRequestDelete={onRequestDelete}
         emptyMessage={emptyMessage}
+        rowStyle={rowStyle}
       />
     </>
   );
@@ -77,6 +82,7 @@ interface BodyProps {
   onDownload: (file: SessionFile) => void;
   onRequestDelete: (file: SessionFile) => void;
   emptyMessage?: string;
+  rowStyle: "compact" | "detailed";
 }
 
 const COLLAPSED_FILE_COUNT = 4;
@@ -89,6 +95,7 @@ function Body({
   onDownload,
   onRequestDelete,
   emptyMessage,
+  rowStyle,
 }: BodyProps) {
   const [showAll, setShowAll] = useState(false);
 
@@ -121,19 +128,33 @@ function Body({
 
   return (
     <>
-      {/* Rows bleed their hover highlight past the text with negative margins,
-          so the scroller widens to match — otherwise it clips them. */}
-      <div className="-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
-        {visibleFiles.map((file) => (
-          <WorkspaceFileCard
-            key={file.item.id}
-            file={file}
-            onOpen={onOpen}
-            onDownload={onDownload}
-            onRequestDelete={onRequestDelete}
-          />
-        ))}
-      </div>
+      {rowStyle === "detailed" ? (
+        <div className="-mx-3 grid max-h-80 divide-y divide-zinc-200/70 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+          {visibleFiles.map((file) => (
+            <WorkspaceFileRow
+              key={file.item.id}
+              file={file}
+              onOpen={onOpen}
+              onDownload={onDownload}
+              onRequestDelete={onRequestDelete}
+            />
+          ))}
+        </div>
+      ) : (
+        // Rows bleed their hover highlight past the text with negative
+        // margins, so the scroller widens to match — otherwise it clips them.
+        <div className="-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+          {visibleFiles.map((file) => (
+            <WorkspaceFileCard
+              key={file.item.id}
+              file={file}
+              onOpen={onOpen}
+              onDownload={onDownload}
+              onRequestDelete={onRequestDelete}
+            />
+          ))}
+        </div>
+      )}
       {files.length > COLLAPSED_FILE_COUNT && (
         <button
           type="button"
