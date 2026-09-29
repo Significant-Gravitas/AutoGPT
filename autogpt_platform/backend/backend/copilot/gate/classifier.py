@@ -28,9 +28,9 @@ ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
     encoding="utf-8"
 )
 
-# The largest call Jev reads whole beside a full request (~24.5k); Haiku alone
-# missed a buried `curl | sh` 1 in 10 at 40k (measured 2026-09-29).
-_MAX_ARG_CHARS = 24_000
+# UTF-8 bytes, Jev's own unit: the largest call it reads whole beside a full
+# request (~24.5k); Haiku alone missed a buried `curl | sh` 1 in 10 at 40k.
+_MAX_ARG_BYTES = 24_000
 # Shares Jev's input budget with the call: each char here is one less there.
 _MAX_REQUEST_CHARS = 1_000
 _FALLBACK_REASON = "Could not verify this action automatically."
@@ -54,10 +54,16 @@ async def supervise(
 ) -> Judgement:
     """Jev decides when it can; the LLM then only writes an ask's reason and
     cannot turn it into an allow. Without Jev the LLM decides, as before."""
-    call = json.dumps({"tool": tool_name, "arguments": args}, indent=1, default=str)
+    call = json.dumps(
+        {"tool": tool_name, "arguments": args},
+        indent=1,
+        default=str,
+        ensure_ascii=False,
+    )
+    size = len(call.encode())
     # A cut call would be judged on its head while its tail runs.
-    if len(call) > _MAX_ARG_CHARS:
-        return Judgement(allowed=False, reason=too_long_reason(len(call)))
+    if size > _MAX_ARG_BYTES:
+        return Judgement(allowed=False, reason=too_long_reason(size))
     prompt = (
         fence("USER REQUEST", user_message[:_MAX_REQUEST_CHARS])
         + "\n\n"
@@ -132,8 +138,9 @@ async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
 
 def too_long_reason(size: int) -> str:
     return (
-        f"This action is {size:,} characters; the automatic check reads up to "
-        f"{_MAX_ARG_CHARS:,}. Approve it yourself, or ask for it in smaller pieces."
+        f"This action is {size / 1000:.1f} KB; the automatic check reads up to "
+        f"{_MAX_ARG_BYTES // 1000} KB. Approve it yourself, or ask for it in "
+        "smaller pieces."
     )
 
 
