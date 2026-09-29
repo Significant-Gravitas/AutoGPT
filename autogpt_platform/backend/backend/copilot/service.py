@@ -167,8 +167,8 @@ USER_CONTEXT_TAG = "user_context"
 # more. It stays server-only: user-supplied occurrences are stripped before
 # the message reaches the LLM, and the display strip hides it on messages
 # stored before the change. Those are read without it wherever they become
-# model input, and cleaned from storage and restored CLI session files
-# (``copilot/legacy_first_turn_memory.py``).
+# model input or a tool's output, and cleaned from storage and restored CLI
+# session files (``copilot/legacy_first_turn_memory.py``).
 MEMORY_CONTEXT_TAG = "memory_context"
 
 # Tag name for the environment context block prepended on first turn.

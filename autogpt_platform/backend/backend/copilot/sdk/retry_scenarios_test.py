@@ -1807,8 +1807,10 @@ class TestFirstTurnWarmContextIsEphemeral:
         first_block: str | None,
         refresh,
         extra: list[tuple[str, dict]] | None = None,
+        message: str | None = None,
     ) -> MagicMock:
-        """Drive one turn. Returns the ``chat_db`` stand-in that saw every
+        """Drive one turn, sending the session's last message unless
+        ``message`` is given. Returns the ``chat_db`` stand-in that saw every
         write ``inject_user_context`` made to a stored message's content."""
         db = MagicMock()
         db.update_message_content_by_sequence = AsyncMock(return_value=True)
@@ -1854,7 +1856,7 @@ class TestFirstTurnWarmContextIsEphemeral:
                 stack.enter_context(patch(target, **kwargs))
             async for event in stream_chat_completion_sdk(
                 session_id="test-session-id",
-                message=session.messages[-1].content,
+                message=session.messages[-1].content if message is None else message,
                 is_user_message=True,
                 user_id="test-user",
                 session=session,
@@ -2165,6 +2167,41 @@ class TestFirstTurnWarmContextIsEphemeral:
         assert "what is Alice working on" in turn.queries[1]
         for query in turn.queries:
             assert "violet-913" not in query
+
+    @pytest.mark.asyncio
+    async def test_an_old_first_turn_is_titled_without_the_stored_block(self):
+        """A turn that adds no message to an old session holding only its
+        first, which never got a title: the title model reads that stored
+        message without the block, and so does the model (the engine reads
+        the stored message for the query when the turn sends none)."""
+        session = self._first_turn(_OLD_FIRST)
+        session.title = None
+        title = AsyncMock()
+        queries: list[str] = []
+
+        await self._run(
+            session,
+            TestFollowUpWarmContextCallSite._clients(queries),
+            first_block=None,
+            refresh=self._no_refresh,
+            extra=[
+                (f"{_SVC}._update_title_async", dict(new=title)),
+                (
+                    f"{_SVC}.read_cli_session_from_disk",
+                    dict(new=self._cli_file(queries)),
+                ),
+                (f"{_SVC}.upload_transcript", dict(new=AsyncMock())),
+            ],
+            message="",
+        )
+
+        assert title.call_args is not None
+        first_message = title.call_args.args[1]
+        assert "what is Alice working on" in first_message
+        assert len(queries) == 1 and "what is Alice working on" in queries[0]
+        for text in (first_message, queries[0]):
+            assert "violet-913" not in text
+            assert "memory_context" not in text
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

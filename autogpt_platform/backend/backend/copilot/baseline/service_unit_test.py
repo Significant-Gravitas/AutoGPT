@@ -3515,10 +3515,14 @@ async def _run_baseline_turn(
     refresh,
     download: TranscriptDownload | None = None,
     storage: MagicMock | None = None,
+    message: str | None = None,
+    is_user_message: bool = True,
+    extra: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> _BaselineTurn:
     """Drive one baseline turn to completion, the model answering "done".
     Its prior transcript is ``download``; with ``storage``, the real
-    ``download_transcript`` restores it from that bucket instead."""
+    ``download_transcript`` restores it from that bucket instead. The turn
+    sends the session's last message unless ``message`` is given."""
     turn = _BaselineTurn()
 
     async def _llm(messages, tools, *, state):
@@ -3604,13 +3608,15 @@ async def _run_baseline_turn(
         ),
         (f"{_BASELINE}.persist_and_record_usage", dict(new=AsyncMock())),
         (f"{_BASELINE}.enqueue_conversation_turn", dict(new=AsyncMock())),
+        *(extra or []),
     ]
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:
             stack.enter_context(patch(target, **kwargs))
         async for _ in stream_chat_completion_baseline(
             session_id=session.session_id,
-            message=session.messages[-1].content,
+            message=session.messages[-1].content if message is None else message,
+            is_user_message=is_user_message,
             user_id="user-1",
             session=session,
         ):
@@ -3793,6 +3799,49 @@ class TestBaselineFirstTurnWarmContextIsEphemeral:
         assert b"done, as stored" in uploaded
         for text in (read.encode(), uploaded):
             assert b"violet-913" not in text
+
+    @pytest.mark.asyncio
+    async def test_an_old_first_turn_is_titled_without_the_stored_block(self):
+        """A turn that adds no message to an old session holding only its
+        first, which never got a title: the title model reads that stored
+        message without the block."""
+        session = _baseline_session(_OLD_FIRST)
+        session.title = None
+        title = AsyncMock()
+
+        await _run_baseline_turn(
+            session,
+            first_block=None,
+            refresh=_refresh_nothing,
+            message="",
+            extra=[(f"{_BASELINE}._update_title_async", dict(new=title))],
+        )
+
+        assert title.call_args is not None
+        first_message = title.call_args.args[1]
+        assert "what is Alice working on" in first_message
+        assert "violet-913" not in first_message
+        assert "memory_context" not in first_message
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_adds_no_message_reads_the_first_one_without_it(
+        self,
+    ):
+        """A turn that stores no message of its own (not the user's, and
+        empty) in an old session holding only its first message: the model's
+        current turn is that stored message, read without the block."""
+        turn = await _run_baseline_turn(
+            _baseline_session(_OLD_FIRST),
+            first_block=None,
+            refresh=_refresh_nothing,
+            message="",
+            is_user_message=False,
+        )
+
+        read = turn.model_input()
+        assert "what is Alice working on" in read
+        assert "violet-913" not in read
+        assert "memory_context" not in read
 
     @pytest.mark.asyncio
     async def test_a_paste_in_an_old_file_is_read_as_it_is(self):

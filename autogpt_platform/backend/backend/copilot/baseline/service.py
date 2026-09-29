@@ -1976,9 +1976,14 @@ async def stream_chat_completion_baseline(
     # entry, duplicating the pending content in the JSONL uploaded for
     # the next turn's ``--resume``.
 
-    # Generate title for new sessions
+    # Generate title for new sessions. The title model reads the first
+    # message without the memory block an older session stored in it.
     if is_user_message and not session.title:
-        user_messages = [m for m in session.messages if m.role == "user"]
+        user_messages = [
+            m
+            for m in without_stored_first_turn_memory(session.messages)
+            if m.role == "user"
+        ]
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
             if first_message:
@@ -2047,11 +2052,14 @@ async def stream_chat_completion_baseline(
     # gap (DB messages after watermark) + current user turn.
     # This avoids re-reading the full session history from DB on every turn.
     # See extract_context_messages() in transcript.py for the shared primitive.
+    # The last stored message stands for the current turn. A turn that stored
+    # none of its own reads an earlier one, maybe the session's first, which
+    # is read without the memory block an older session stored in it.
     prior_context = await extract_context_messages(
         transcript_download, session.messages, session_id=session.session_id
     )
     messages_for_context = await _compress_session_messages(
-        prior_context + ([session.messages[-1]] if session.messages else []),
+        prior_context + without_stored_first_turn_memory(session.messages[-1:]),
         model=active_model,
     )
 

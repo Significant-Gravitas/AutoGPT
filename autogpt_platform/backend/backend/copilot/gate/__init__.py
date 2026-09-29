@@ -19,6 +19,7 @@ from typing import Any, Awaitable, Callable
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -275,7 +276,9 @@ def _dollars(microdollars: int) -> str:
 
 
 def _last_user_message(session: ChatSession) -> str:
-    for message in reversed(session.messages):
+    """What the user last asked, for the supervisor's prompt; the session's
+    first message without the memory block an older session stored in it."""
+    for message in reversed(without_stored_first_turn_memory(session.messages)):
         if message.role == "user" and message.content:
             return message.content
     return ""

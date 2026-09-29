@@ -4900,9 +4900,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 f"in-memory append rolled back"
             )
 
-    # Generate title for new sessions (first user message)
+    # Generate title for new sessions (first user message). The title model
+    # reads it without the memory block an older session stored in it.
     if is_user_message and not session.title:
-        user_messages = [m for m in session.messages if m.role == "user"]
+        user_messages = [
+            m
+            for m in without_stored_first_turn_memory(session.messages)
+            if m.role == "user"
+        ]
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
             if first_message:
