@@ -36,6 +36,7 @@ from backend.data.model import (
 from backend.data.model import User as AppUser
 from backend.data.model import UserTransaction
 from backend.data.notifications import NotificationEventModel, OpsData
+from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
@@ -1557,6 +1558,7 @@ async def set_subscription_tier(
     }
     await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
+    schedule_posthog_lifecycle_sync(user_id)
 
 
 def invalidate_subscription_caches(user_id: str) -> None:
@@ -2695,7 +2697,9 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
-async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
+async def sync_subscription_from_stripe(
+    stripe_subscription: dict, *, track_lifecycle: bool = True
+) -> None:
     """Update User.subscriptionTier from a Stripe subscription object.
 
     Expected shape of stripe_subscription (subset of Stripe's Subscription object):
@@ -2703,7 +2707,22 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         status:   str                  — "active" | "trialing" | "canceled" | ...
         id:       str                  — Stripe subscription ID
         items.data[].price.id: str     — Stripe price ID identifying the tier
+
+    Every ``customer.subscription.*`` webhook and every trial transition ends
+    up here, so this is also where the PostHog lifecycle properties are
+    refreshed (in the background, from the customer's current state).
+    ``track_lifecycle=False`` is for the periodic tier sweep, which would
+    otherwise fan out one Stripe call per trial; the daily lifecycle sweep
+    covers those users.
     """
+    await _sync_subscription_tier_from_stripe(stripe_subscription)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(
+            stripe_customer_id=stripe_subscription.get("customer")
+        )
+
+
+async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
     customer_id = stripe_subscription.get("customer")
     if not customer_id:
         logger.warning(

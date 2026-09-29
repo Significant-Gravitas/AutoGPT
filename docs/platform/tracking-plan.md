@@ -293,6 +293,29 @@ Return visits are `$pageview`; account-level retention is computed in
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.
 
+## Person properties
+
+The backend keeps these on the person (distinct id = platform user id) with
+a `$set` event (`PostHogEvent.SET_PERSON_PROPERTIES`), sent from
+`backend/data/posthog_lifecycle_sync.py` after signup, tier changes and every
+Stripe subscription sync, and by a daily sweep at 04:15 UTC. The lifecycle
+events above mark the moment something happens; these properties hold the
+person's current state, so a cohort or breakdown can filter on them without
+replaying events.
+
+| Property | Value |
+| --- | --- |
+| `subscription_status` | `signed`, `in_trial`, `trial_canceled`, `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (renewal failed, access lost), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
+| `signup_at` | When the user row was created. |
+| `trial_started_at` | When the trial started. |
+| `subscription_started_at` | Start of the current or last paid subscription; for a converted trial, the conversion. |
+| `subscription_canceled_at` | When the subscription was canceled, while `subscription_canceled` or `subscription_ended`. |
+| `subscription_ended_at` | When the subscription ended, while `subscription_ended`. |
+
+Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
+date that doesn't apply to the current status is `$unset`, never sent as
+null.
+
 ## Differences from the analytics plan
 
 Left for follow-up changes, so this list and the plan can be compared line by
