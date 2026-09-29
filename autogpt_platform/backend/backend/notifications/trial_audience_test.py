@@ -64,7 +64,9 @@ def trial() -> TrialState:
 
 @pytest.fixture
 def trial_group(monkeypatch):
-    fake = SimpleNamespace(config=SimpleNamespace(mailerlite_trial_group_id="grp_trial"))
+    fake = SimpleNamespace(
+        config=SimpleNamespace(mailerlite_trial_group_id="grp_trial")
+    )
     monkeypatch.setattr(trial_audience, "settings", fake)
     return fake
 
@@ -116,7 +118,9 @@ async def _notify(
         patch.object(
             notices,
             "credit_db",
-            return_value=MagicMock(get_subscription_trial=AsyncMock(return_value=trial)),
+            return_value=MagicMock(
+                get_subscription_trial=AsyncMock(return_value=trial)
+            ),
         ),
         patch.object(notices, "user_db", return_value=users),
         patch.object(trial_audience, "user_db", return_value=users),
@@ -173,7 +177,9 @@ async def test_conversion_leaves_the_trial_and_joins_the_paying_audience(
 
 
 @pytest.mark.asyncio
-async def test_conversion_joins_the_paying_audience_without_a_trial_group(trial, monkeypatch):
+async def test_conversion_joins_the_paying_audience_without_a_trial_group(
+    trial, monkeypatch
+):
     monkeypatch.setattr(
         trial_audience,
         "settings",

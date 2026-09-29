@@ -96,7 +96,9 @@ async def _customers() -> "tuple[list[Customer], int]":
         user
         for start in range(0, len(ids), _ACCOUNT_LOOKUP_CHUNK)
         for user in await prisma.models.User.prisma().find_many(
-            where={"stripeCustomerId": {"in": ids[start : start + _ACCOUNT_LOOKUP_CHUNK]}}
+            where={
+                "stripeCustomerId": {"in": ids[start : start + _ACCOUNT_LOOKUP_CHUNK]}
+            }
         )
     ]
     customers = [

@@ -109,9 +109,7 @@ async def _remove_from_group(email: str, group_id: str, description: str) -> Non
             f"Removing subscriber {_pseudonym(email)} from the {description} group "
             f"failed with {response.status}"
         )
-    logger.info(
-        f"Removed {_pseudonym(email)} from the MailerLite {description} group"
-    )
+    logger.info(f"Removed {_pseudonym(email)} from the MailerLite {description} group")
 
 
 async def _add_to_group(email: str, group_id: str, description: str) -> None:

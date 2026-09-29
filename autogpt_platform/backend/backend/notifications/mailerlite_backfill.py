@@ -133,7 +133,9 @@ def _paying(subscription: Subscription) -> bool:
     return subscription.status == "past_due" and not subscription.from_trial
 
 
-def decide(customer: Customer, audience: Audience, trial_enabled: bool) -> PlannedChange:
+def decide(
+    customer: Customer, audience: Audience, trial_enabled: bool
+) -> PlannedChange:
     standing = classify(customer.subscriptions)
     email = customer.email.strip().lower()
     in_tour = email in audience.tour
@@ -212,13 +214,24 @@ def _call_for(decision: Decision, email: str, audience: Audience) -> dict:
     config = settings.config
     if decision is Decision.ADD_CHANGELOG:
         group = config.mailerlite_changelog_group_id
-        return {"method": "POST", "path": "api/subscribers", "body": _upsert(email, group)}
+        return {
+            "method": "POST",
+            "path": "api/subscribers",
+            "body": _upsert(email, group),
+        }
     if decision is Decision.ADD_TRIAL:
         group = config.mailerlite_trial_group_id
-        return {"method": "POST", "path": "api/subscribers", "body": _upsert(email, group)}
+        return {
+            "method": "POST",
+            "path": "api/subscribers",
+            "body": _upsert(email, group),
+        }
     key = email.strip().lower()
     if decision is Decision.REMOVE_CHANGELOG:
-        subscriber, group = audience.changelog[key], config.mailerlite_changelog_group_id
+        subscriber, group = (
+            audience.changelog[key],
+            config.mailerlite_changelog_group_id,
+        )
     else:
         subscriber, group = audience.trial[key], config.mailerlite_trial_group_id
     return {"method": "DELETE", "path": f"api/subscribers/{subscriber}/groups/{group}"}

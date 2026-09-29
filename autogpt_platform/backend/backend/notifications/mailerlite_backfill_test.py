@@ -70,9 +70,7 @@ def _response(status: int, body: dict) -> MagicMock:
 
 
 def _batch_ok(requests: list[dict], code: int = 201) -> MagicMock:
-    return _response(
-        200, {"responses": [{"code": code, "body": {}} for _ in requests]}
-    )
+    return _response(200, {"responses": [{"code": code, "body": {}} for _ in requests]})
 
 
 @pytest.mark.parametrize(
@@ -164,7 +162,9 @@ def test_plan_reads_the_trial_setting(configured):
 @pytest.mark.asyncio
 async def test_apply_sends_the_live_handlers_calls(configured, no_sleep, monkeypatch):
     client = MagicMock()
-    client.post = AsyncMock(side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"]))
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
     monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
     audience = _audience(changelog=["gone@x.io"], trial=["paid@x.io"])
     changes = mailerlite_backfill.plan(
@@ -180,12 +180,35 @@ async def test_apply_sends_the_live_handlers_calls(configured, no_sleep, monkeyp
     result = await mailerlite_backfill.apply(changes, audience)
 
     sent = [call.kwargs["json"]["requests"] for call in client.post.await_args_list]
-    assert all(c.args[0] == f"{mailerlite.API_BASE}/batch" for c in client.post.await_args_list)
+    assert all(
+        c.args[0] == f"{mailerlite.API_BASE}/batch" for c in client.post.await_args_list
+    )
     assert sent == [
-        [{"method": "POST", "path": "api/subscribers", "body": {"email": "new@x.io", "groups": [CHANGELOG]}},
-         {"method": "POST", "path": "api/subscribers", "body": {"email": "paid@x.io", "groups": [CHANGELOG]}}],
-        [{"method": "POST", "path": "api/subscribers", "body": {"email": "trial@x.io", "groups": [TRIAL]}}],
-        [{"method": "DELETE", "path": f"api/subscribers/sub-gone@x.io/groups/{CHANGELOG}"}],
+        [
+            {
+                "method": "POST",
+                "path": "api/subscribers",
+                "body": {"email": "new@x.io", "groups": [CHANGELOG]},
+            },
+            {
+                "method": "POST",
+                "path": "api/subscribers",
+                "body": {"email": "paid@x.io", "groups": [CHANGELOG]},
+            },
+        ],
+        [
+            {
+                "method": "POST",
+                "path": "api/subscribers",
+                "body": {"email": "trial@x.io", "groups": [TRIAL]},
+            }
+        ],
+        [
+            {
+                "method": "DELETE",
+                "path": f"api/subscribers/sub-gone@x.io/groups/{CHANGELOG}",
+            }
+        ],
         [{"method": "DELETE", "path": f"api/subscribers/sub-paid@x.io/groups/{TRIAL}"}],
     ]
     assert result.succeeded == {
@@ -198,9 +221,13 @@ async def test_apply_sends_the_live_handlers_calls(configured, no_sleep, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_apply_paces_batches_for_the_import_limit(configured, no_sleep, monkeypatch):
+async def test_apply_paces_batches_for_the_import_limit(
+    configured, no_sleep, monkeypatch
+):
     client = MagicMock()
-    client.post = AsyncMock(side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"]))
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
     monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
     customers = [_customer(f"c{i}@x.io", "active") for i in range(120)]
     changes = mailerlite_backfill.plan(customers, _audience())
@@ -253,9 +280,15 @@ async def test_a_short_batch_answer_is_an_error(configured, no_sleep, monkeypatc
 @pytest.mark.asyncio
 async def test_read_audience_pages_every_status(configured, monkeypatch):
     pages = {
-        (TOUR, "active", None): {"data": [{"id": "1", "email": "T@x.io"}], "meta": {"next_cursor": "c2"}},
+        (TOUR, "active", None): {
+            "data": [{"id": "1", "email": "T@x.io"}],
+            "meta": {"next_cursor": "c2"},
+        },
         (TOUR, "active", "c2"): {"data": [{"id": "2", "email": "t2@x.io"}], "meta": {}},
-        (CHANGELOG, "unsubscribed", None): {"data": [{"id": "3", "email": "u@x.io"}], "meta": {}},
+        (CHANGELOG, "unsubscribed", None): {
+            "data": [{"id": "3", "email": "u@x.io"}],
+            "meta": {},
+        },
     }
 
     async def get(url, **kw):
@@ -291,5 +324,7 @@ def test_a_second_run_finds_nothing_to_do():
         _customer("gone@x.io", "canceled"),
     ]
     after = _audience(changelog=["new@x.io"], trial=["trial@x.io"])
-    changes = [mailerlite_backfill.decide(c, after, trial_enabled=True) for c in customers]
+    changes = [
+        mailerlite_backfill.decide(c, after, trial_enabled=True) for c in customers
+    ]
     assert all(c.decisions == [Decision.ALREADY_CORRECT] for c in changes)
