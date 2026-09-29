@@ -1,3 +1,12 @@
+import {
+  buildKickoffMessage,
+  clearKickoffPending,
+  type ExpertKickoffMetadata,
+  getKickoffStatus,
+  markKickoffDone,
+  markKickoffPending,
+  withKickoffLock,
+} from "@/app/(platform)/copilot/expertKickoff";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
 import { latestExpertSessionParams } from "@/app/(platform)/copilot/expertSessionQuery";
@@ -9,12 +18,18 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatTarget } from "./helpers";
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
+
+interface PendingSend {
+  text: string;
+  metadata?: ExpertKickoffMetadata;
+}
 
 interface Args {
   target: ChatTarget | null;
@@ -36,10 +51,14 @@ export function useExpertChatDrawer({
   seedPrompt,
 }: Args) {
   const expertId = target?.expertId ?? null;
+  const userId = useAuthStore((state) => state.user?.id) ?? null;
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [skipLatest, setSkipLatest] = useState(false);
-  const pendingPromptRef = useRef<string | null>(null);
+  const [kickoffCheckedFor, setKickoffCheckedFor] = useState<string | null>(
+    null,
+  );
+  const pendingPromptRef = useRef<PendingSend | null>(null);
   // Every thread reset bumps the generation; a session create that resolves
   // for an older generation is ignored so its prompt never lands in the new
   // thread, and the new thread is free to create its own session.
@@ -62,6 +81,38 @@ export function useExpertChatDrawer({
     const latest = latestQuery.data.data.sessions[0];
     if (latest) setSessionId(latest.id);
   }, [latestQuery.data, wantsLatest]);
+
+  // An expert that has never been kicked off opens the thread itself with its
+  // onboarding card, as it does on the copilot page after a hire. Any existing
+  // thread means that already happened somewhere else, so only remember it.
+  const wantsKickoff =
+    isOpen &&
+    !!expertId &&
+    !!userId &&
+    !sessionId &&
+    !isCreating &&
+    kickoffCheckedFor !== expertId &&
+    getKickoffStatus(userId, expertId) === "idle";
+  const kickoffCheckQuery = useGetV2ListSessions(
+    latestExpertSessionParams(expertId),
+    { query: { enabled: wantsKickoff, refetchOnWindowFocus: false } },
+  );
+
+  const startKickoffRef = useRef(startKickoff);
+  startKickoffRef.current = startKickoff;
+  useEffect(() => {
+    if (!wantsKickoff || !userId || !expertId) return;
+    if (kickoffCheckQuery.data?.status !== 200) return;
+    setKickoffCheckedFor(expertId);
+    if (kickoffCheckQuery.data.data.sessions.length > 0) {
+      void withKickoffLock(userId, expertId, async () => {
+        if (getKickoffStatus(userId, expertId) !== "idle") return;
+        markKickoffDone(userId, expertId, markKickoffPending(userId, expertId));
+      }).catch(() => undefined);
+      return;
+    }
+    void startKickoffRef.current(userId, expertId);
+  }, [expertId, kickoffCheckQuery.data, userId, wantsKickoff]);
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
@@ -112,6 +163,7 @@ export function useExpertChatDrawer({
     setSkipLatest(true);
     setSessionId(null);
     setMessages([]);
+    setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
     setSeedToSend(seedPrompt);
   }, [threadKey, seedPrompt, setMessages]);
@@ -121,14 +173,14 @@ export function useExpertChatDrawer({
   useEffect(() => {
     if (!seedToSend) return;
     setSeedToSend(null);
-    void startSessionRef.current(seedToSend);
+    void startSessionRef.current({ text: seedToSend });
   }, [seedToSend]);
 
   useEffect(() => {
     if (!sessionId || !pendingPromptRef.current) return;
-    const prompt = pendingPromptRef.current;
+    const pending = pendingPromptRef.current;
     pendingPromptRef.current = null;
-    sendMessage({ text: prompt });
+    sendMessage({ text: pending.text, metadata: pending.metadata });
   }, [sessionId, sendMessage]);
 
   function startNewThread() {
@@ -138,32 +190,60 @@ export function useExpertChatDrawer({
     setSkipLatest(true);
     setSessionId(null);
     setMessages([]);
+    setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
   }
 
-  async function startSession(firstMessage: string) {
+  async function startKickoff(ownerId: string, id: string) {
+    await withKickoffLock(ownerId, id, async () => {
+      if (getKickoffStatus(ownerId, id) !== "idle") return;
+      const attemptToken = markKickoffPending(ownerId, id);
+      const started = await startSession(
+        buildKickoffMessage(id, attemptToken),
+        {
+          expertKickoff: true,
+        },
+      );
+      if (started) markKickoffDone(ownerId, id, attemptToken);
+      else clearKickoffPending(ownerId, id, attemptToken);
+    }).catch(() => undefined);
+  }
+
+  async function startSession(
+    firstMessage: PendingSend,
+    options?: { expertKickoff?: boolean },
+  ): Promise<boolean> {
     const generation = generationRef.current;
-    if (creatingGenerationRef.current === generation || !target) return;
+    if (creatingGenerationRef.current === generation || !target) return false;
     creatingGenerationRef.current = generation;
     setIsCreating(true);
     try {
       const response = await createSession(
-        expertId ? { data: { expert_id: expertId } } : { data: null },
+        expertId
+          ? {
+              data: {
+                expert_id: expertId,
+                ...(options?.expertKickoff ? { expert_kickoff: true } : {}),
+              },
+            }
+          : { data: null },
       );
-      if (generation !== generationRef.current) return;
+      if (generation !== generationRef.current) return false;
       if (response.status !== 200) {
         throw new Error("Failed to create expert chat session");
       }
       pendingPromptRef.current = firstMessage;
       setSessionId(response.data.id);
+      return true;
     } catch (err) {
-      if (generation !== generationRef.current) return;
+      if (generation !== generationRef.current) return false;
       Sentry.captureException(err);
       toast({
         variant: "destructive",
         title: "Could not start the chat",
         description: "Please try sending your message again.",
       });
+      return false;
     } finally {
       if (creatingGenerationRef.current === generation) {
         creatingGenerationRef.current = null;
@@ -176,7 +256,7 @@ export function useExpertChatDrawer({
     const trimmed = message.trim();
     if (!trimmed) return;
     if (!sessionId) {
-      await startSession(trimmed);
+      await startSession({ text: trimmed });
       return;
     }
     const isInFlight = status === "streaming" || status === "submitted";
