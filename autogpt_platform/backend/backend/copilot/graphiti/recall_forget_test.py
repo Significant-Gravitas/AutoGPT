@@ -14,7 +14,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from . import recall_cascade, recall_forget, recall_hide, recall_orphans, scope_lock
+from . import (
+    recall_cascade,
+    recall_erase,
+    recall_forget,
+    recall_hide,
+    recall_orphans,
+    scope_lock,
+)
 from .memory_model import (
     FORGET_BUSY_REASON,
     FORGET_NO_MATCH_REASON,
@@ -253,6 +260,7 @@ class TestHardRetract:
             redacted,  # redact
             [],  # the cascade: no earlier try,
             redacted,  # the episodes citing the fact,
+            [],  # the dream's among them erased,
             [],  # nothing derived
             [],
             [{"uuid": "ep1", "content": "Alice works on Atlas"}],  # citing
@@ -270,6 +278,7 @@ class TestHardRetract:
             recall_hide.REDACT_EPISODES_QUERY,
             recall_cascade.EARLIER_QUERY,
             recall_hide.REDACT_EPISODES_QUERY,
+            recall_erase.ERASE_DREAM_EPISODES_QUERY,
             recall_cascade.DERIVED_FACTS_QUERY,
             recall_cascade.DERIVED_EPISODES_QUERY,
             recall_orphans._CITING_EPISODES_QUERY,
@@ -307,10 +316,11 @@ class TestCascade:
     async def test_it_runs_on_what_was_retracted_and_its_count_is_returned(
         self, hard: bool
     ) -> None:
-        seen: list[list[str]] = []
+        """A hard forget's cascade erases the text it reaches as well."""
+        seen: list[tuple[list[str], bool]] = []
 
-        async def cascade(driver, group_id, roots, now, result) -> None:
-            seen.append(roots)
+        async def cascade(driver, group_id, roots, now, result, *, erase) -> None:
+            seen.append((roots, erase))
             result.derived.extend(["d1", "d2"])
 
         purged = ([], [], [{"uuid": "u1", "deleted_entities": []}]) if hard else ()
@@ -319,7 +329,7 @@ class TestCascade:
         with patch.object(recall_forget, "cascade", cascade):
             result = await _retract(driver, ["u1"], hard=hard)
 
-        assert seen == [["u1"]]
+        assert seen == [(["u1"], hard)]
         assert (result.deleted, result.derived) == (["u1"], ["d1", "d2"])
 
     @pytest.mark.asyncio

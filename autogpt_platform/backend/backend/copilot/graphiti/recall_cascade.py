@@ -22,16 +22,20 @@ episode citing it redacted. Its ``expiration_reason`` is
 descends from. A dream episode reached without a live fact of its own (its
 fact was superseded, merged into a fact a user stated, or never extracted)
 is redacted and the entities it mentions blanked, since the dream reads its
-text. A hard forget cascades the same way, softly: the derived facts are the
-assistant's inferences, not text the user asked to erase, retraction takes
-them out of every read, and deleting them would purge what the model's
-citations name, which can be more than a fact truly rests on, beyond undoing.
+text. A hard forget cascades the same way, softly: retraction takes the
+derived facts out of every read, and deleting them would purge what the
+model's citations name, which can be more than a fact truly rests on, beyond
+undoing. It also erases the text it reaches (``recall_erase.py``): every
+derived fact's, retracted or walked through, and every hidden dream episode's.
 
 At most ``CASCADE_MAX_ROUNDS`` rounds and ``CASCADE_MAX_ITEMS`` derived facts
 and dream episodes per forget. A forget stopped by a bound or a failed step
 reports a ``cleanup_error`` on each fact it forgot, and forgetting them again
 picks up the facts already retracted for them (their reason names them) and
-goes on from there.
+goes on from there. A hard forget purges the facts it forgot even when its
+cascade stops short, so it cannot be repeated; the derivation backfill's
+``--cascade-existing-forgets`` goes on from what the cascade retracted,
+softly.
 """
 
 import logging
@@ -48,6 +52,7 @@ from .recall_cascade_queries import (
     REDACT_DERIVED_QUERY,
     RETRACT_QUERY,
 )
+from .recall_erase import erase as erase_text
 from .recall_hide import REDACT_EPISODES_QUERY, scrub, scrub_entities
 
 logger = logging.getLogger(__name__)
@@ -69,14 +74,22 @@ async def cascade(
     roots: list[str],
     now: str,
     result: ForgetResult,
+    *,
+    erase: bool = False,
 ) -> None:
     """Retract what the dream derived from ``roots``, the facts this forget
     has just retracted and hidden: ``result.derived`` gets each fact it
-    retracts and ``result.redacted_episodes`` each episode it hides. A failed
-    step or a bound reached is a failure on every root."""
+    retracts and ``result.redacted_episodes`` each episode it hides; with
+    ``erase`` (a hard forget), their text goes too. A failed step or a bound
+    reached is a failure on every root."""
     if not roots:
         return
-    walk = _Walk(roots=roots, root_of={r: r for r in roots}, budget=CASCADE_MAX_ITEMS)
+    walk = _Walk(
+        roots=roots,
+        root_of={r: r for r in roots},
+        budget=CASCADE_MAX_ITEMS,
+        erase=erase,
+    )
     try:
         finished = await _run(driver, group_id, walk, now, result)
     except Exception as exc:
@@ -95,11 +108,13 @@ async def cascade(
 
 class _Walk(BaseModel):
     """Every fact and episode the cascade has reached, mapped to the root it
-    descends from, and how many more derived items it may retire."""
+    descends from, how many more derived items it may retire, and whether it
+    erases their text."""
 
     roots: list[str]
     root_of: dict[str, str]
     budget: int
+    erase: bool = False
 
     def root(self, via: list[str]) -> str:
         """The root of the first item in ``via`` the walk has reached."""
@@ -169,6 +184,8 @@ async def _resume(
         await scrub(driver, again)
     facts = [*walk.roots, *again]
     hidden = await _redact_citing(driver, walk, facts, now, result)
+    if walk.erase:
+        await erase_text(driver, again, hidden)
     return _Frontier(facts=facts, episodes=hidden)
 
 
@@ -201,8 +218,9 @@ async def _retire(
     result: ForgetResult,
 ) -> _Frontier:
     """Retract ``found``'s live facts and hide its episodes, each marker
-    before any clean-up; the next frontier: every fact it reached, retracted
-    or passed through, and every episode it hid."""
+    before any clean-up (erasing their text, and that of the facts passed
+    through, on a hard forget); the next frontier: every fact it reached,
+    retracted or passed through, and every episode it hid."""
     targets = [
         {"uuid": row["uuid"], "reason": derived_reason(walk.root(row["via"]))}
         for row in found.facts
@@ -223,10 +241,13 @@ async def _retire(
     walk.budget -= len(retracted) + len(passed) + len(tainted)
     if mentioned:
         await scrub_entities(driver, [], mentioned)
-    if retracted:
-        await scrub(driver, retracted)
     reached = [*retracted, *passed]
+    scrubbed = reached if walk.erase else retracted
+    if scrubbed:
+        await scrub(driver, scrubbed)
     hidden = await _redact_citing(driver, walk, reached, now, result)
+    if walk.erase:
+        await erase_text(driver, reached, [*tainted, *hidden])
     return _Frontier(facts=reached, episodes=[*tainted, *hidden])
 
 

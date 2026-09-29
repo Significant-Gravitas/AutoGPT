@@ -54,9 +54,10 @@ async def retract(
     ``recall_cascade.cascade`` retracts the facts the dream derived from the
     forgotten ones, transitively, and hides the dream episodes that did
     (``ForgetResult.derived``). Hard does all that first, the cascade soft
-    too, then empties and deletes what only the forgotten edges kept, the
-    edges last (``recall_orphans.purge``), so forgetting again after any
-    failure finishes the job. A failed step after the edge write is a
+    too but erasing the derived text it reaches (``recall_erase.py``), then
+    empties and deletes what only the forgotten edges kept, the edges last
+    (``recall_orphans.purge``), so forgetting again after any failure but
+    the cascade's finishes the job. A failed step after the edge write is a
     ``cleanup_error`` on each edge it concerned; recall hides the fact and
     its text regardless.
     """
@@ -84,7 +85,7 @@ async def _forget(
     retracted = await _retract_edges(driver, group_id, found, reason, now, result)
     hidden = await hide(driver, group_id, retracted, now, result)
     if hidden:
-        await cascade(driver, group_id, retracted, now, result)
+        await cascade(driver, group_id, retracted, now, result, erase=hard)
     if not hard:
         result.deleted = retracted
     elif hidden:

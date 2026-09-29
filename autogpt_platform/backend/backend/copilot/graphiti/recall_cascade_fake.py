@@ -1,14 +1,14 @@
 """A small in-memory graph that answers a forget's cascade as FalkorDB would,
 for ``recall_cascade_test.py``: each of the cascade's queries (by identity)
-and the forget's own scrub and redaction, over facts and episodes that carry
-a dream's record or not. Not collected by pytest.
+and the forget's own scrub, redaction and erasure, over facts and episodes
+that carry a dream's record or not. Not collected by pytest.
 """
 
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from . import recall_cascade, recall_hide
+from . import recall_cascade, recall_erase, recall_hide
 
 
 class FakeFact(BaseModel):
@@ -43,6 +43,7 @@ class CascadeGraph:
         self.episodes = episodes
         self.queries: list[str] = []
         self.scrubbed: list[str] = []
+        self.erased: list[str] = []
         # A query that raises, and facts the dream demotes between the
         # cascade's read and its retraction.
         self.fail_on: str | None = None
@@ -78,6 +79,11 @@ class CascadeGraph:
         if query == recall_hide.SCRUB_FACTS_QUERY:
             self.scrubbed.extend(p["uuids"])
             return [{"ends": []}]
+        if query == recall_erase.ERASE_FACTS_QUERY:
+            self.erased.extend(p["uuids"])
+        if query == recall_erase.ERASE_DREAM_EPISODES_QUERY:
+            dream = [x for x in p["uuids"] if self.episodes[x].facts is not None]
+            self.erased.extend(dream)
         return []
 
     def _redact_citing(self, uuids: list[str]) -> list[dict[str, Any]]:

@@ -3,8 +3,9 @@ that answers the cascade's queries as FalkorDB would
 (``recall_cascade_fake.py``).
 
 Pin the transitive walk, what a derived fact is retracted with, the root its
-reason names, resuming an earlier try, the bounds and failure reporting. The
-Cypher itself runs on FalkorDB in ``recall_cascade_integration_test.py``.
+reason names, resuming an earlier try, the bounds and failure reporting
+(what a hard forget erases: ``recall_erase_test.py``). The Cypher itself runs
+on FalkorDB in ``recall_cascade_integration_test.py``.
 """
 
 from unittest.mock import AsyncMock, patch

@@ -7,7 +7,8 @@ uses Hill Country Mills as its flour supplier, and three dream passes derived
 a consolidation from it, a proposal from that and from a fact the user
 stated about the same bakery, and a proposal from the consolidation's dream
 text. On the test bed a forget left 16 such facts live, and the assistant
-went on answering with the forgotten one.
+went on answering with the forgotten one. A hard forget's erasure is in
+``recall_cascade_erase_integration_test.py``.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -213,27 +214,6 @@ async def test_the_next_dream_pass_cannot_teach_them_again(
     )
     assert (stats["dropped_forgotten"], stats["uncited_writes_dropped"]) == (2, 0)
     assert await live_facts(driver) == live
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_a_hard_forget_cascades_too_retracting_the_derived_facts(
-    scope_graph, stub_graphiti_client, dream_apply
-) -> None:
-    """The forgotten fact is deleted and its chat turn emptied; what the
-    dream derived is retracted, softly, and kept for audit."""
-    driver, scope = scope_graph
-    bakery = await build_bakery(driver, scope, stub_graphiti_client)
-
-    result = await retract(scope, [bakery.flour], hard=True)
-
-    assert (result.deleted, result.failures) == ([bakery.flour], [])
-    assert sorted(result.derived) == bakery.derived()
-    assert await edge_row(driver, bakery.flour) == {}
-    assert (await episode_row(driver, bakery.said))["hard_deleted_at"] is not None
-    derived = [bakery.supplies, bakery.boule_flour, bakery.weekly]
-    await _assert_retracted_for(driver, bakery, dict(zip(derived, _DERIVED)))
-    assert set(await live_facts(driver)) == {bakery.boule, bakery.cafe}
 
 
 @pytest.mark.integration

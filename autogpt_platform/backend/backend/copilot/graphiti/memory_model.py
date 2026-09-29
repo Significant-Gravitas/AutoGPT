@@ -161,9 +161,10 @@ class ForgetResult(BaseModel):
     edge whose clean-up failed, which is in ``deleted`` too when its own write
     landed. ``derived`` lists the facts the dream derived from them that the
     forget retracted with them (``recall_cascade.py``), a soft retraction in
-    either mode. The episode and entity lists record the clean-up done: a
-    hard forget empties an episode nothing else cites into a tombstone rather
-    than deleting it, so the chat session it came from stays known.
+    either mode, a hard one erasing their text (``recall_erase.py``). The
+    episode and entity lists record the clean-up done: a hard forget empties
+    an episode nothing else cites into a tombstone rather than deleting it,
+    so the chat session it came from stays known.
     """
 
     deleted: list[str] = Field(default_factory=list)
