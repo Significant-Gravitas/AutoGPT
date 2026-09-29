@@ -599,6 +599,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="MailerLite group that receives the monthly changelog campaign",
     )
+    mailerlite_trial_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding customers in a card-required trial. "
+            "Blank leaves trial customers out of MailerLite."
+        ),
+    )
 
     expert_avatar_model: str = Field(
         default="gpt-image-2-2026-04-21",
