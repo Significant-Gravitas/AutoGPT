@@ -20,10 +20,13 @@ What survives goes to the ingestion worker, which checks it against the
 forgets made since the pass read the graph (``graphiti/recall_citations.py``)
 and then records it on the dream's episode and on the facts only dream
 episodes state (``graphiti/recall_derivation.py``). A later forget of
-anything it cites retracts those facts (``graphiti/recall_cascade.py``).
+anything it cites retracts those facts (``graphiti/recall_cascade.py``). The
+episode's free-text ``source_description`` no longer lists what it cites:
+the marker and the records carry that, and only the derivation backfill
+reads the lists older descriptions hold
+(``graphiti/migrations/legacy_citations.py``).
 """
 
-import re
 from collections.abc import Collection, Mapping, Sequence
 
 from pydantic import BaseModel, ValidationError
@@ -35,14 +38,6 @@ from .fetch import DreamInput
 # The scope of a fact or episode that names none: ``MemoryFact``'s and
 # ``MemoryEnvelope``'s default, and how the prompts list an unscoped fact.
 UNSCOPED = "real:global"
-
-# How many uuids of each kind the episode's free-text ``source_description``
-# repeats, for people reading the graph. The complete lists are recorded on
-# the episode and its facts; a dream episode written before them has only
-# these (``graphiti/migrations/backfill_derivations.py`` reads them back).
-DESCRIBED_CITATIONS = 5
-
-_DESCRIBED = re.compile(r"(?:^|;)\s*(src_episodes|src_facts)=([^;]*)")
 
 
 class CheckedCitations(BaseModel):
@@ -90,7 +85,7 @@ def source_scopes(input_bundle: DreamInput) -> dict[str, str]:
     episode's envelope's, else ``UNSCOPED``."""
     scopes = {fact.uuid: scope_key(fact.scope) for fact in input_bundle.facts}
     for episode in input_bundle.episodes:
-        scopes[episode.uuid] = _envelope_scope(episode.content)
+        scopes[episode.uuid] = envelope_scope(episode.content)
     return scopes
 
 
@@ -98,7 +93,7 @@ class _EnvelopeScope(BaseModel):
     scope: str | None = None
 
 
-def _envelope_scope(content: str | None) -> str:
+def envelope_scope(content: str | None) -> str:
     """The scope a ``MemoryEnvelope`` body declares; ``UNSCOPED`` for any
     other episode (a chat turn is plain text)."""
     try:
@@ -107,29 +102,12 @@ def _envelope_scope(content: str | None) -> str:
         return UNSCOPED
 
 
-def source_description(
-    kind: str, citations: Citations, *, rationale: str | None = None
-) -> str:
-    """The dream episode's ``source_description``: ``dream-pass <kind>``, the
-    proposal's rationale, and the first few uuids of each kind it cites."""
+def source_description(kind: str, *, rationale: str | None = None) -> str:
+    """The dream episode's ``source_description``, for people reading the
+    graph: ``dream-pass <kind>`` and the proposal's rationale, each ``;`` in
+    it written as ``,`` so no part of it reads as a field of its own. What
+    the write cites is not in it: the marker and the records carry that."""
     parts = [f"dream-pass {kind}"]
     if rationale:
-        parts.append(f"rationale={rationale[:240]}")
-    for label, uuids in (
-        ("src_episodes", citations.episode_uuids),
-        ("src_facts", citations.fact_uuids),
-    ):
-        if uuids:
-            parts.append(f"{label}={','.join(uuids[:DESCRIBED_CITATIONS])}")
+        parts.append(f"rationale={rationale[:240].replace(';', ',')}")
     return "; ".join(parts)
-
-
-def described_citations(description: str | None) -> tuple[list[str], list[str]]:
-    """``(facts, episodes)`` a dream episode's ``source_description`` lists,
-    as ``source_description`` writes it and older dream writes did (a
-    consolidation listed episodes only, a proposal facts only); a key given
-    twice (a rationale quoting one) counts its last value."""
-    found: dict[str, list[str]] = {}
-    for key, value in _DESCRIBED.findall(description or ""):
-        found[key] = [uuid for uuid in value.strip().split(",") if uuid]
-    return found.get("src_facts", []), found.get("src_episodes", [])

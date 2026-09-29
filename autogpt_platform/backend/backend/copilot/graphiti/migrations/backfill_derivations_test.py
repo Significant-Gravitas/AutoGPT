@@ -1,6 +1,7 @@
-"""Unit tests for the derivation backfill: how it reads a dream episode's
-description, what it would write on a dry run and writes with ``--apply``,
-under the graph's write lock, and its command line. The live run is in
+"""Unit tests for the derivation backfill: what it would write on a dry run
+and writes with ``--apply``, under the graph's write lock, and its command
+line. How it reads a description is in ``legacy_citations_test.py``, its
+cascade in ``backfill_cascade_test.py``; the live run is in
 ``backfill_derivations_integration_test.py``.
 """
 
@@ -9,125 +10,20 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.dream.citations import described_citations
-from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
-from backend.copilot.graphiti.recall_reconcile import PENDING_MARKERS_QUERY
 from backend.copilot.graphiti.scope import write_lock_key
 
-from . import backfill_cascade
 from . import backfill_derivations as backfill
 from . import backfill_pages
+from .backfill_fake import BackfillGraph, older_dreams
 
 _LOCK = write_lock_key("user_a")
-
-
-class _Driver:
-    """A graph as the backfill's reads see it, recording its writes."""
-
-    graph_name = "user_a"
-
-    def __init__(
-        self,
-        episodes: list[dict[str, Any]],
-        facts: list[dict[str, Any]],
-        forgotten: list[str] | None = None,
-    ) -> None:
-        self.answers = {
-            backfill.DREAM_EPISODES_QUERY: episodes,
-            backfill.UNSTAMPED_FACTS_QUERY: facts,
-            backfill_cascade.FORGOTTEN_FACTS_QUERY: [
-                {"uuid": u} for u in forgotten or []
-            ],
-            backfill_cascade.FACT_NAMES_QUERY: [],
-            backfill_cascade.EPISODE_NAMES_QUERY: [],
-        }
-        self.writes: list[tuple[str, list[dict[str, Any]]]] = []
-        # Whether it read the pending dream records (none here).
-        self.reconciled = False
-        self.close = AsyncMock()
-
-    async def execute_query(self, query: str, **params: Any):
-        if query == PENDING_MARKERS_QUERY:
-            self.reconciled = True
-            return [], [], None
-        if query == backfill_cascade.MARKER_NAMES_QUERY:
-            return [], [], None
-        if query in self.answers:
-            rows = [r for r in self.answers[query] if r["uuid"] > params["after"]]
-            return rows[: params["limit"]], [], None
-        self.writes.append((query, params["rows"]))
-        return [], [], None
-
-
-def _dream(uuid: str, description: str | None, **record: list[str]) -> dict:
-    return {
-        "uuid": uuid,
-        "description": description,
-        "facts": record.get("facts"),
-        "episodes": record.get("episodes"),
-    }
-
-
-def _graph() -> _Driver:
-    """Two dream episodes written before records (a consolidation listing
-    episodes, a proposal listing facts), one recorded since, one listing
-    nothing; and the facts they and a user's chat turn produced."""
-    return _Driver(
-        episodes=[
-            _dream("d1", "dream-pass consolidation; src_episodes=e0,e9"),
-            _dream("d2", "dream-pass proposal; rationale=r; src_facts=f1"),
-            _dream("d3", "dream-pass consolidation", facts=["f2"], episodes=[]),
-            _dream("d4", "dream-pass consolidation; src_episodes="),
-        ],
-        facts=[
-            {"uuid": "c1", "episodes": ["d1"]},
-            {"uuid": "c2", "episodes": ["d2", "d3"]},
-            {"uuid": "c4", "episodes": ["d4"]},
-            {"uuid": "merged", "episodes": ["d1", "chat"]},
-            {"uuid": "user", "episodes": ["chat"]},
-        ],
-    )
-
-
-class TestDescribedCitations:
-    @pytest.mark.parametrize(
-        "description, cited",
-        [
-            ("dream-pass consolidation; src_episodes=e1,e2", ([], ["e1", "e2"])),
-            ("dream-pass proposal; rationale=r; src_facts=f1", (["f1"], [])),
-            (
-                "dream-pass proposal; src_episodes=e1; src_facts=f1,f2",
-                (["f1", "f2"], ["e1"]),
-            ),
-            ("dream-pass consolidation; src_episodes=", ([], [])),
-            ("dream-pass proposal", ([], [])),
-            (None, ([], [])),
-            (
-                "dream-pass proposal; rationale=see src_facts=x; src_facts=f1",
-                (["f1"], []),
-            ),
-        ],
-        ids=[
-            "consolidation",
-            "proposal",
-            "both kinds",
-            "empty list",
-            "nothing listed",
-            "no description",
-            "a rationale quoting a key",
-        ],
-    )
-    def test_reads_the_uuids_each_kind_lists(
-        self, description: str | None, cited: tuple[list[str], list[str]]
-    ) -> None:
-        assert described_citations(description) == cited
 
 
 class TestBackfillGraph:
     @pytest.mark.asyncio
     async def test_a_dry_run_counts_and_writes_nothing(self) -> None:
-        driver = _graph()
+        driver = older_dreams()
 
         found = await backfill.backfill_graph(
             driver, apply=False, cascade_forgets=False
@@ -140,7 +36,7 @@ class TestBackfillGraph:
     async def test_apply_records_the_episodes_then_stamps_the_facts(self) -> None:
         """A fact a user's own turn also states is left unstamped; one whose
         dream episodes cite nothing is stamped empty and reported."""
-        driver = _graph()
+        driver = older_dreams()
 
         await backfill.backfill_graph(driver, apply=True, cascade_forgets=False)
 
@@ -164,7 +60,7 @@ class TestBackfillGraph:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(backfill_pages, "BATCH_SIZE", 2)
-        driver = _graph()
+        driver = older_dreams()
 
         await backfill.backfill_graph(driver, apply=True, cascade_forgets=False)
 
@@ -176,66 +72,13 @@ class TestBackfillGraph:
         assert "SET" not in backfill.DREAM_EPISODES_QUERY
         assert "SET" not in backfill.UNSTAMPED_FACTS_QUERY
 
-    @pytest.mark.asyncio
-    async def test_a_dry_run_counts_the_forgets_it_would_cascade_from(self) -> None:
-        driver = _Driver([], [], forgotten=["x1", "x2"])
-        cascade = AsyncMock()
-
-        with patch.object(backfill_cascade, "cascade", cascade):
-            found = await backfill.backfill_graph(
-                driver, apply=False, cascade_forgets=True
-            )
-
-        assert found.roots == 2
-        cascade.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_apply_cascades_from_every_forget_after_stamping(self) -> None:
-        driver = _Driver([], [], forgotten=["x1", "x2"])
-
-        async def retract_two(
-            driver, group_id, roots, now, result, *, erase, seeds
-        ) -> None:
-            assert (group_id, roots, erase, seeds) == (
-                "user_a",
-                ["x1", "x2"],
-                False,
-                {},
-            )
-            result.derived.extend(["d1", "d2"])
-
-        with patch.object(
-            backfill_cascade, "cascade", AsyncMock(side_effect=retract_two)
-        ):
-            found = await backfill.backfill_graph(
-                driver, apply=True, cascade_forgets=True
-            )
-
-        assert (found.roots, found.derived, found.failed) == (2, 2, 0)
-
-    @pytest.mark.asyncio
-    async def test_a_cascade_that_stopped_short_fails_the_graph(self) -> None:
-        driver = _Driver([], [], forgotten=["x1"])
-
-        async def stop_short(driver, group_id, roots, now, result, **_: object):
-            result.failures.append(MemoryForgetFailure.derived_left("x1"))
-
-        with patch.object(
-            backfill_cascade, "cascade", AsyncMock(side_effect=stop_short)
-        ):
-            found = await backfill.backfill_graph(
-                driver, apply=True, cascade_forgets=True
-            )
-
-        assert found.failed == 1
-
 
 class TestTheWriteLock:
     @pytest.mark.asyncio
     async def test_apply_holds_the_graphs_write_lock_throughout(
         self, lock_redis: FakeRedis
     ) -> None:
-        driver = _graph()
+        driver = older_dreams()
         held: list[bool] = []
         query = driver.execute_query
 
@@ -255,7 +98,7 @@ class TestTheWriteLock:
     ) -> None:
         lock_redis.values[_LOCK] = "an ingestion's token"
         monkeypatch.setattr(backfill, "BACKFILL_LOCK_WAIT_SECONDS", 0)
-        driver = _graph()
+        driver = older_dreams()
 
         found = await backfill.backfill_graph(driver, apply=True, cascade_forgets=True)
 
@@ -265,9 +108,13 @@ class TestTheWriteLock:
 class TestBackfillAllGraphs:
     @pytest.mark.asyncio
     async def test_walks_every_memory_graph_and_counts_a_failing_one(self) -> None:
-        broken = _Driver([], [])
+        broken = BackfillGraph([], [])
         broken.answers = {}
-        drivers = {"user_a": _graph(), "expert_b": _graph(), "user_broken": broken}
+        drivers = {
+            "user_a": older_dreams(),
+            "expert_b": older_dreams(),
+            "user_broken": broken,
+        }
 
         with (
             patch.object(

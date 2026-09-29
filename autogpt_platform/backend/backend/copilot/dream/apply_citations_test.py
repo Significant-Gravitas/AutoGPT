@@ -14,16 +14,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot.graphiti.ingest import IngestionCompletion
+from backend.copilot.graphiti.migrations.legacy_citations import described_citations
 from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 
 from . import apply as apply_mod
-from .citations import (
-    UNSCOPED,
-    described_citations,
-    source_description,
-    validated_citations,
-)
+from .citations import UNSCOPED, source_description, validated_citations
 from .schemas import ConsolidatedFact, DreamOperations, ProposedFinding
 
 _SCOPE = MemoryScope.for_user("u-1234567890ab")
@@ -222,26 +218,24 @@ async def test_the_snapshot_and_the_episode_description_carry_the_checked_citati
     assert (proposal.source_fact_uuids, proposal.source_episode_uuids) == (["f2"], [])
     descriptions = [c.kwargs["source_description"] for c in enqueue.await_args_list]
     assert descriptions == [
-        "dream-pass consolidation; src_episodes=ep1; src_facts=f1",
-        "dream-pass proposal; rationale=she runs the standups; src_facts=f2",
-    ]
+        "dream-pass consolidation",
+        "dream-pass proposal; rationale=she runs the standups",
+    ], "the marker and the records carry what it cites"
 
 
-def test_the_description_lists_the_first_five_of_each_kind() -> None:
-    cited = Citations(
-        fact_uuids=[f"f{i}" for i in range(7)], episode_uuids=["ep1", "ep2"]
+def test_a_rationale_cannot_forge_a_citation_in_the_description() -> None:
+    """Codex's probe: a rationale holding the delimiter and a key. Its
+    ``;`` is written as ``,``, so the backfill's reader finds a key where
+    the dream never puts one and attributes nothing."""
+    description = source_description(
+        "proposal", rationale="ordinary; src_facts=11111111-2222"
     )
-
-    description = source_description("consolidation", cited, rationale="r; x")
 
     assert description == (
-        "dream-pass consolidation; rationale=r; x; src_episodes=ep1,ep2; "
-        "src_facts=f0,f1,f2,f3,f4"
+        "dream-pass proposal; rationale=ordinary, src_facts=11111111-2222"
     )
-    assert described_citations(description) == (
-        ["f0", "f1", "f2", "f3", "f4"],
-        ["ep1", "ep2"],
-    ), "the backfill reads back what it wrote"
+    read_back = described_citations(description)
+    assert (read_back.facts, read_back.ambiguous) == ([], True)
 
 
 @pytest.mark.asyncio

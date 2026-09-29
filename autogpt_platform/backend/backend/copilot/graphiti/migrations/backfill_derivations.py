@@ -4,13 +4,17 @@ The ingestion worker records a dream write's citations on its episode and on
 the facts only dream episodes state (``recall_derivation.py``); a forget's
 cascade follows them (``recall_cascade.py``). An older dream write has them
 only in its episode's ``source_description``, the first five of each kind
-(a consolidation listed episodes, a proposal facts). This reads them back:
-every dream episode with no record (named ``dream_...`` or described
-``dream-pass...``) gets one from its description, empty when it lists
-nothing; then every fact with no record whose source episodes all have one
-gets their union, as ingestion stamps it. It reports the dream facts it
-could not attribute (stamped with nothing cited, so no forget reaches them);
-a citation past the first five is lost too. It does not cascade on its own:
+(a consolidation listed episodes, a proposal facts). This reads them back,
+only in the shapes the dream wrote and only uuids the graph has in the
+episode's own scope (``legacy_citations.py``: a model's rationale could
+forge a citation): every dream episode with no record (named ``dream_...``
+or described ``dream-pass...``) gets one from its description, empty when
+it lists nothing or its shape is ambiguous; then every fact with no record
+whose source episodes all have one gets their union, as ingestion stamps
+it. It reports the ambiguous descriptions, the citations it rejected, and
+the dream facts it could not attribute (stamped with nothing cited, so no
+forget reaches them); a citation past the first five is lost too, and so is
+one of a fact a hard forget purged before this ran. It does not cascade on its own:
 ``--cascade-existing-forgets`` also runs a forget's cascade from every root
 the graph's forgets left, the facts a hard forget purged and the episodes a
 forget hid included (``backfill_cascade.py``), which a dry run only
@@ -40,7 +44,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from backend.copilot.dream.citations import described_citations
+from backend.copilot.dream.citations import envelope_scope
 from backend.copilot.graphiti.falkordb_driver import (
     AutoGPTFalkorDriver,
     open_graph_driver,
@@ -52,6 +56,7 @@ from backend.copilot.graphiti.scope_lock import LockState, graph_write_lock
 from .backfill_cascade import cascade_existing_forgets
 from .backfill_legacy_forgets import MEMORY_GRAPH_PREFIXES
 from .backfill_pages import pages, write_rows
+from .legacy_citations import LegacyCitations, checked, described_citations
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +66,17 @@ BACKFILL_LOCK_WAIT_SECONDS = 60
 class Derivations(BaseModel):
     """What the backfill found (with ``--apply``, wrote): pending dream
     records completed (``reconciled``), dream ``episodes`` given a record,
-    ``facts`` stamped, of them ``unattributed`` with nothing cited; the
+    of their descriptions those ``ambiguous``, the citations ``rejected``
+    (not in the graph in the episode's scope), ``facts`` stamped, of them
+    ``unattributed`` with nothing cited; the
     ``roots`` a cascade started from (forgotten or purged facts, hidden
     episodes) and the facts it retracted (``derived``); and the graphs to
     run again, ``busy`` and ``failed``."""
 
     reconciled: int = 0
     episodes: int = 0
+    ambiguous: int = 0
+    rejected: int = 0
     facts: int = 0
     unattributed: int = 0
     roots: int = 0
@@ -105,15 +114,21 @@ async def _derive(
 ) -> Derivations:
     """Both steps, reading the whole graph before writing anything."""
     records: dict[str, _Record] = {}
-    new: list[_Record] = []
+    described: dict[str, LegacyCitations] = {}
+    scopes: dict[str, str] = {}
     for row in await pages(driver, DREAM_EPISODES_QUERY):
         if row["facts"] is None:
-            facts, episodes = described_citations(row["description"])
-            new.append(_Record(uuid=row["uuid"], facts=facts, episodes=episodes))
+            described[row["uuid"]] = described_citations(row["description"])
+            scopes[row["uuid"]] = envelope_scope(row["content"])
         else:
             records[row["uuid"]] = _Record(
                 uuid=row["uuid"], facts=row["facts"], episodes=row["episodes"] or []
             )
+    verified = await checked(driver, described, scopes)
+    new = [
+        _Record(uuid=uuid, facts=cited.facts, episodes=cited.episodes)
+        for uuid, cited in verified.cited.items()
+    ]
     records |= {record.uuid: record for record in new}
     stamps = [
         stamp
@@ -122,6 +137,8 @@ async def _derive(
     ]
     found = Derivations(
         episodes=len(new),
+        ambiguous=sum(1 for cited in described.values() if cited.ambiguous),
+        rejected=verified.rejected,
         facts=len(stamps),
         unattributed=sum(1 for stamp in stamps if not (stamp.facts or stamp.episodes)),
     )
@@ -200,6 +217,7 @@ WHERE ep.uuid > $after
        OR ep.name STARTS WITH 'dream_'
        OR ep.source_description STARTS WITH 'dream-pass')
 RETURN ep.uuid AS uuid, ep.source_description AS description,
+       ep.content AS content,
        ep.derived_from_facts AS facts, ep.derived_from_episodes AS episodes
 ORDER BY uuid
 LIMIT $limit
@@ -248,7 +266,9 @@ async def main(args: argparse.Namespace) -> int:
     print(
         f"completed {totals.reconciled} pending dream records; "
         f"{verb} {totals.episodes} dream episodes and {totals.facts} facts; "
-        f"{totals.unattributed} dream facts cite nothing to attribute"
+        f"{totals.unattributed} dream facts cite nothing to attribute; "
+        f"{totals.ambiguous} descriptions ambiguous, {totals.rejected} "
+        "citations not in the graph in their scope"
     )
     if args.cascade_existing_forgets:
         done = f"retracted {totals.derived} derived facts" if args.apply else "not run"

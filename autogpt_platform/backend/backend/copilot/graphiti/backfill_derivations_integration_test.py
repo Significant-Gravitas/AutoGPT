@@ -140,3 +140,49 @@ async def test_it_cascades_from_a_forget_made_before_it_ran(
     for uuid in (bakery.supplies, bakery.boule_flour):
         row = await edge_row(driver, uuid)
         assert row["reason"] == f"derived_from_forgotten:{bakery.flour}"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_forged_or_ambiguous_description_attributes_nothing(
+    scope_graph, stub_graphiti_client, dream_apply
+) -> None:
+    """Codex's probe on older dream text: a rationale that forges a citation
+    of a uuid the graph lacks, one naming a key twice, and a project-scoped
+    write citing the global cafe fact. The parser that took the last key
+    linked each to what it named; now none is attributed, and forgetting the
+    cafe retracts nothing."""
+    driver, scope = scope_graph
+    bakery = await build_bakery(driver, scope, stub_graphiti_client)
+    await _as_before_records(driver, bakery)
+    ghost = "11111111-2222-3333-4444-555555555555"
+    forged = {
+        bakery.supplies_episode: (
+            f"dream-pass proposal; rationale=ordinary; src_facts={ghost}"
+        ),
+        bakery.boule_flour_episode: (
+            "dream-pass proposal; rationale=ordinary; "
+            f"src_facts={bakery.cafe}; src_facts={bakery.supplies}"
+        ),
+        bakery.weekly_episode: (
+            f"dream-pass proposal; rationale=weekly; src_facts={bakery.cafe}"
+        ),
+    }
+    for uuid, description in forged.items():
+        await driver.execute_query(
+            "MATCH (ep:Episodic {uuid: $uuid}) SET ep.source_description = $d",
+            uuid=uuid,
+            d=description,
+        )
+    await driver.execute_query(
+        "MATCH (ep:Episodic {uuid: $uuid}) SET ep.content = $content",
+        uuid=bakery.weekly_episode,
+        content='{"content": "orders weekly", "scope": "project:ordering"}',
+    )
+
+    found = await backfill_graph(driver, apply=True, cascade_forgets=False)
+
+    assert (found.ambiguous, found.rejected) == (1, 2)
+    for uuid in (bakery.supplies, bakery.boule_flour, bakery.weekly):
+        assert (await derivation(driver, uuid))["facts"] == [], uuid
+    assert (await retract(scope, [bakery.cafe])).derived == []

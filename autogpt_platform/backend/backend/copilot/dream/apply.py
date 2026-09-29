@@ -237,7 +237,7 @@ async def _write_consolidated_fact(
         session_id=session_id,
         name=_episode_name(pass_id, "consolidate", counter),
         episode_body=envelope.model_dump_json(),
-        source_description=source_description("consolidation", citations),
+        source_description=source_description("consolidation"),
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
@@ -270,9 +270,7 @@ async def _write_proposed_finding(
         session_id=session_id,
         name=_episode_name(pass_id, "recombine", counter),
         episode_body=envelope.model_dump_json(),
-        source_description=source_description(
-            "proposal", citations, rationale=finding.rationale
-        ),
+        source_description=source_description("proposal", rationale=finding.rationale),
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,

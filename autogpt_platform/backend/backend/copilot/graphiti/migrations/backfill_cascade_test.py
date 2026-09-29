@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.graphiti.memory_model import MemoryForgetFailure
+
 from . import backfill_cascade
+from . import backfill_derivations as backfill
+from .backfill_fake import BackfillGraph
 
 _PREFIX = "derived_from_forgotten:"
 
@@ -143,3 +147,58 @@ class TestCascadeExistingForgets:
 
         cascade.assert_not_awaited()
         assert done.roots == 7
+
+
+class TestThroughTheBackfill:
+    @pytest.mark.asyncio
+    async def test_a_dry_run_counts_the_forgets_it_would_cascade_from(self) -> None:
+        driver = BackfillGraph([], [], forgotten=["x1", "x2"])
+        cascade = AsyncMock()
+
+        with patch.object(backfill_cascade, "cascade", cascade):
+            found = await backfill.backfill_graph(
+                driver, apply=False, cascade_forgets=True
+            )
+
+        assert found.roots == 2
+        cascade.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_apply_cascades_from_every_forget_after_stamping(self) -> None:
+        driver = BackfillGraph([], [], forgotten=["x1", "x2"])
+
+        async def retract_two(
+            driver, group_id, roots, now, result, *, erase, seeds
+        ) -> None:
+            assert (group_id, roots, erase, seeds) == (
+                "user_a",
+                ["x1", "x2"],
+                False,
+                {},
+            )
+            result.derived.extend(["d1", "d2"])
+
+        with patch.object(
+            backfill_cascade, "cascade", AsyncMock(side_effect=retract_two)
+        ):
+            found = await backfill.backfill_graph(
+                driver, apply=True, cascade_forgets=True
+            )
+
+        assert (found.roots, found.derived, found.failed) == (2, 2, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_cascade_that_stopped_short_fails_the_graph(self) -> None:
+        driver = BackfillGraph([], [], forgotten=["x1"])
+
+        async def stop_short(driver, group_id, roots, now, result, **_: object):
+            result.failures.append(MemoryForgetFailure.derived_left("x1"))
+
+        with patch.object(
+            backfill_cascade, "cascade", AsyncMock(side_effect=stop_short)
+        ):
+            found = await backfill.backfill_graph(
+                driver, apply=True, cascade_forgets=True
+            )
+
+        assert found.failed == 1
