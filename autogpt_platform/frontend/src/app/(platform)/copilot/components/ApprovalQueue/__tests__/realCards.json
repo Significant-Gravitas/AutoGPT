@@ -36,6 +36,8 @@
             "label": "Body"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -49,12 +51,14 @@
         },
         "reason": "Runs Gmail Send, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Gmail Send",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -218,6 +222,8 @@
             "label": "Values"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -231,12 +237,14 @@
         },
         "reason": "Otto does not know what Google Sheets Update Row does, so he asks.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Google Sheets Update Row",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Google Sheets Update Row",
       "editable": false,
@@ -434,6 +442,8 @@
             "label": "Step code"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -447,12 +457,14 @@
         },
         "reason": "it reads a local file of invoices and prints what it finds.",
         "reason_kind": "supervisor",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Execute Code Step",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Execute Code Step",
       "editable": false,
@@ -579,6 +591,8 @@
             "label": "Body"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -592,12 +606,14 @@
         },
         "reason": "Runs Send Web Request, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Send Web Request",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Send Web Request",
       "editable": false,
@@ -718,6 +734,8 @@
             "label": "Shorten links"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -731,12 +749,14 @@
         },
         "reason": "Runs Post To X, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Post To X",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Post To X",
       "editable": false,
@@ -1057,6 +1077,8 @@
             "label": "Inputs"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_agent",
         "turn": 1,
         "mode": "auto",
@@ -1070,12 +1092,14 @@
         },
         "reason": "Runs Morning digest; its step Gmail Send reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Morning digest",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Morning digest",
       "editable": false,

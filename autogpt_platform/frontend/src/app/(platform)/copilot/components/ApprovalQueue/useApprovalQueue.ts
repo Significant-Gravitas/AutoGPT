@@ -1,8 +1,14 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import type { CardStatus } from "./components/ApprovalCard/ApprovalCard";
-import { type ApprovalItem, type ChatRule, isHeldRead } from "./helpers";
+import {
+  type ApprovalItem,
+  type ChatRule,
+  type RuleScope,
+  isHeldRead,
+} from "./helpers";
 
 export interface Receipt {
   item: ApprovalItem;
@@ -17,6 +23,7 @@ interface Args {
 export function useApprovalQueue({ items, onAnswered }: Args) {
   const outcomes = useContext(HeldOutcomesContext);
   const { processReviews } = useProcessReviews();
+  const recordAnswers = useHeldAnswersStore((state) => state.record);
   const [statuses, setStatuses] = useState<Record<string, CardStatus>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -45,6 +52,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
     batch: ApprovalItem[],
     approved: boolean,
     rule?: ChatRule,
+    scope?: RuleScope,
   ) {
     const ids = batch.map((item) => item.reviewId);
     setFailed((prev) => prev.filter((id) => !ids.includes(id)));
@@ -62,6 +70,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
           node_exec_id: item.reviewId,
           approved,
           chat_rule: approved ? (rule ?? null) : null,
+          ...(approved && rule && scope ? { chat_rule_scope: scope } : {}),
         })),
         batch.map((item) => item.scope),
       );
@@ -70,6 +79,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
       ok = false;
     }
     if (ok) {
+      recordAnswers(ids, approved);
       setReceipts((prev) => [
         ...prev,
         ...batch.map((item) => ({

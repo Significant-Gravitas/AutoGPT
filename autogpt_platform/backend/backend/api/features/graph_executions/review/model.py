@@ -166,6 +166,13 @@ class ReviewItem(BaseModel):
             "the chat instead of asking."
         ),
     )
+    chat_rule_scope: Literal["chat", "expert", "team"] = Field(
+        default="chat",
+        description=(
+            "Where chat_rule holds: this chat, every chat with this chat's "
+            "Expert (or Otto), or every Expert on the user's team."
+        ),
+    )
 
     @field_validator("reviewed_data")
     @classmethod

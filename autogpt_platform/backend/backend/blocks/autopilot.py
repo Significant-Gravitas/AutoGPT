@@ -879,7 +879,7 @@ async def _enqueue_for_recovery(
                 # is what an AutoPilotBlock turn already gets, the graph
                 # executor being a separate process.
                 # TODO(#14244-f5): revisit together with run_agent's tree reset.
-                envelope=root_envelope(recovery_turn_id),
+                envelope=root_envelope(recovery_turn_id, session_id=session_id),
             ),
             timeout=10,
         )

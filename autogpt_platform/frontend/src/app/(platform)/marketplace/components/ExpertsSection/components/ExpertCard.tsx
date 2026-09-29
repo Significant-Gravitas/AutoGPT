@@ -37,10 +37,13 @@ interface Props {
 export function ExpertCard({ expert, isHired, category }: Props) {
   const selectedCategory =
     category && expert.categories?.includes(category) ? category : undefined;
-  const topicColor = getExpertTopicHex(
-    expert.role,
-    selectedCategory ? [selectedCategory] : expert.categories,
-  );
+  // The expert's own visual family, whatever filter the shelf is under: the
+  // same Maria under Marketing and under Content.
+  const topicColor = getExpertTopicHex({
+    avatarUrl: expert.avatar_url,
+    categories: expert.categories,
+    role: expert.role,
+  });
   const skills = expert.bundled_skills ?? [];
   const named = skills.slice(0, NAMED_SKILLS);
   const restSkills = skills.slice(NAMED_SKILLS);
@@ -64,7 +67,6 @@ export function ExpertCard({ expert, isHired, category }: Props) {
           avatarUrl={expert.avatar_url}
           size={88}
           backgroundColor={topicColor}
-          category={selectedCategory ?? expert.categories?.[0]}
           className="rounded-full ring-4 ring-white"
         />
 

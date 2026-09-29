@@ -24,6 +24,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from backend.copilot.gate.headline import Headline
     from backend.copilot.gate.subject import Subject
 
 logger = logging.getLogger(__name__)
@@ -568,7 +569,7 @@ class BaseTool:
                 decision.reason,
                 review_id=decision.review_id,
                 args=kwargs,
-                subject_name=decision.subject_name,
+                headline=decision.headline,
             ),
             False,
         )
@@ -645,16 +646,12 @@ class BaseTool:
         reason: str,
         review_id: str | None = None,
         args: dict[str, Any] | None = None,
-        subject_name: str | None = None,
+        headline: "Headline | None" = None,
     ) -> StreamToolOutputAvailable:
         from backend.copilot.gate import refusal_message
-        from backend.copilot.gate.headline import Headline, headline_for
+        from backend.copilot.gate.headline import headline_for
 
-        headline = (
-            Headline(ask="Run", object=subject_name)
-            if subject_name
-            else headline_for(self.name, args or {})
-        )
+        headline = headline or headline_for(self.name, args or {})
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,

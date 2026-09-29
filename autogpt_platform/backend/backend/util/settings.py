@@ -601,8 +601,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     expert_avatar_model: str = Field(
-        default="gpt-image-1.5",
-        description="OpenAI model for transparent expert PNG avatars",
+        default="gpt-image-2-2026-04-21",
+        description=(
+            "OpenAI image-edit model for brand-constrained Expert avatar candidates; "
+            "the design system pins this dated snapshot"
+        ),
     )
 
     use_agent_image_generation_v2: bool = Field(
@@ -1033,6 +1036,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    typesafe_jev_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("TYPESAFE_API_KEY", "TYPESAFE_JEV_API_KEY"),
+        description="TypeSafe Jev key: the first stage of the action supervisor and the content judge",
+    )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
     webshare_proxy_username: str = Field(
