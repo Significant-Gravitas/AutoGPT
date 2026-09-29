@@ -144,7 +144,7 @@ describe("WorkspaceFileCards", () => {
 
     expect(await screen.findByText("uploaded.png")).toBeDefined();
     expect(screen.getByText("result.csv")).toBeDefined();
-    expect(screen.getByText(/^Files \(2\)/)).toBeDefined();
+    expect(screen.getByText(/^Files in this chat \(2\)/)).toBeDefined();
     expect(screen.getByLabelText("Download all")).toBeDefined();
   });
 
