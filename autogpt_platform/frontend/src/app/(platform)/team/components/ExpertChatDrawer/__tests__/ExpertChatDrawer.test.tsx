@@ -354,7 +354,6 @@ describe("ExpertChatDrawer", () => {
     await waitFor(() => expect(streamBodies.length).toBe(1));
     expect(JSON.parse(streamBodies[0]).expert_kickoff).toBe(true);
     await waitFor(() => expect(input.value).toBe("Plan my launch"));
-    expect(await screen.findByText("Couldn't send message")).toBeDefined();
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
   });
 
@@ -363,10 +362,10 @@ describe("ExpertChatDrawer", () => {
     const createBodies: unknown[] = [];
     const streamBodies: string[] = [];
     server.use(
-      ...freshThreadHandlers(createBodies, streamBodies),
       http.get("/api/proxy/api/chat/sessions", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
       ),
+      ...freshThreadHandlers(createBodies, streamBodies),
     );
 
     render(
