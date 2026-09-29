@@ -2400,6 +2400,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         block = mark_injected_memory_block(
             '<temporal_context role="memory">\n  - stale fact\n</temporal_context>'
         )
+        assert block is not None
         assert INJECTED_MEMORY_MARKER in block
         assert 'role="memory"' in block, "producer attributes must survive"
 
@@ -2481,6 +2482,7 @@ class TestStripEphemeralMemoryFromCliJsonl:
         block = mark_injected_memory_block(
             "<temporal_context>only memory</temporal_context>"
         )
+        assert block is not None
         line = self._user_line(block)
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
 
@@ -2517,15 +2519,15 @@ class TestStripEphemeralMemoryFromCliJsonl:
         block = mark_injected_memory_block(
             "<temporal_context>only memory</temporal_context>"
         )
+        assert block is not None
         line = self._user_line_str(block)
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
 
     def test_round_trips_with_the_injector(self):
         # What _append_warm_context stamps, the stripper removes.
-        query_with_block = "the user turn\n\n" + mark_injected_memory_block(
-            "<temporal_context>fresh</temporal_context>"
-        )
-        line = self._user_line(query_with_block)
+        block = mark_injected_memory_block("<temporal_context>fresh</temporal_context>")
+        assert block is not None
+        line = self._user_line("the user turn\n\n" + block)
         result = _strip_ephemeral_memory_from_cli_jsonl(line)
         assert b"temporal_context" not in result
         assert b"the user turn" in result
@@ -2703,6 +2705,7 @@ class TestAppendWarmContext:
         # The appended block is stamped with the strip sentinel.
         assert out.endswith("fresh</temporal_context>")
         assert INJECTED_MEMORY_MARKER in out
+        assert mock_refresh.await_args is not None
         assert mock_refresh.await_args.kwargs["force"] is False
 
     @pytest.mark.asyncio
@@ -2722,6 +2725,7 @@ class TestAppendWarmContext:
                 current_message="continue",
                 was_compacted=True,
             )
+        assert mock_refresh.await_args is not None
         assert mock_refresh.await_args.kwargs["force"] is True
 
     @pytest.mark.asyncio
@@ -2744,6 +2748,7 @@ class TestAppendWarmContext:
                 current_message="what is Sarah working on this week",
                 was_compacted=False,
             )
+        assert mock_refresh.await_args is not None
         assert mock_refresh.await_args.kwargs["expert_id"] == "expert-1"
 
     @pytest.mark.asyncio
@@ -2888,6 +2893,7 @@ class TestAppendWarmContext:
             )
 
         assert mock_refresh.await_count == 2
+        assert mock_refresh.await_args is not None
         assert mock_refresh.await_args.kwargs["force"] is True
         assert "Alice works on Atlas" in first
         assert second.startswith("q2")
@@ -2927,6 +2933,7 @@ class TestAppendWarmContext:
             )
 
         mock_refresh.assert_awaited_once()
+        assert mock_refresh.await_args is not None
         assert mock_refresh.await_args.kwargs["force"] is True
         assert out.endswith("forced</temporal_context>")
 
