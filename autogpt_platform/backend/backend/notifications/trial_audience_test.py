@@ -104,14 +104,23 @@ def _state(trial: TrialState, kind: str) -> tuple[TrialState, dict]:
 
 
 async def _notify(
-    trial, raw, kind, *, welcomed=False, claimed=True, audience=None, raises=False
+    trial,
+    raw,
+    kind,
+    *,
+    welcomed=False,
+    claimed=True,
+    audience=None,
+    raises=False,
+    email=EMAIL,
+    claim_welcome=None,
 ):
     audience = audience or AsyncMock(return_value=NotificationResult(success=True))
     notice = AsyncMock(return_value=NotificationResult(success=True))
-    user = SimpleNamespace(name="Sam", email=EMAIL)
+    user = SimpleNamespace(name="Sam", email=email)
     users = MagicMock(
         get_user_by_id=AsyncMock(return_value=user),
-        claim_welcome_email=AsyncMock(return_value=not welcomed),
+        claim_welcome_email=claim_welcome or AsyncMock(return_value=not welcomed),
     )
     with (
         patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
@@ -222,6 +231,34 @@ async def test_a_failed_group_change_releases_the_claim_so_stripe_retries(
     )
     release.assert_awaited_once_with(notices.trial_notice_key(trial, "canceled"))
     notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "converted"])
+async def test_an_email_mailerlite_cannot_take_never_blocks_the_notice(
+    trial, trial_group, kind
+):
+    """A reserved-domain address fails the audience event's email validation.
+    That must cost the MailerLite change, not the customer's trial notice."""
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(trial, raw, kind, email="sam@site.test")
+    assert got == []
+    notice.assert_awaited_once()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_joining_the_paying_audience_never_fails_the_sent_conversion(
+    trial, trial_group
+):
+    trial, raw = _state(trial, "converted")
+    broken = AsyncMock(side_effect=RuntimeError("database unavailable"))
+    got, notice, release = await _notify(
+        trial, raw, "converted", claim_welcome=broken
+    )
+    assert got == [AudienceAction.REMOVE_TRIAL]
+    notice.assert_awaited_once()
+    release.assert_not_awaited()
 
 
 @pytest.mark.asyncio

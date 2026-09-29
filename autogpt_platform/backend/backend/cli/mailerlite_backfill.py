@@ -20,9 +20,9 @@ def mailerlite_backfill_command(apply: bool, yes: bool):
     Paying customers join the changelog unless they are in the onboarding
     tour; churned customers leave it. When MAILERLITE_TRIAL_GROUP_ID is set,
     the trial group ends up holding exactly the customers on a trial that is
-    not set to cancel. Dry run by default: prints counts
-    and one pseudonymised line per customer, and writes nothing. Idempotent,
-    so a partial or repeated --apply is safe.
+    not set to cancel. Dry run by default: prints counts and one pseudonymised
+    line per customer, and writes nothing. Idempotent, so a partial or
+    repeated --apply is safe.
     """
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
