@@ -20,7 +20,8 @@ import {
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import { http, ws } from "msw";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse, ws } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ExpertChatDrawer } from "../ExpertChatDrawer";
 
@@ -28,6 +29,7 @@ const USER_ID = "user-1";
 const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const SESSION_ID = "session-zara";
 const FRESH_SESSION_ID = "session-zara-fresh";
+const RETRY_SESSION_ID = "session-zara-retry";
 
 function deferred() {
   let resolve!: () => void;
@@ -71,23 +73,27 @@ const ZARA = {
   avatarUrl: null,
 };
 
-function freshThreadHandlers(createBodies: unknown[], streamBodies: string[]) {
+function freshThreadHandlers(
+  createBodies: unknown[],
+  streamBodies: string[],
+  sessionId = FRESH_SESSION_ID,
+) {
   return [
     getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
     getPostV2CreateSessionMockHandler200(async (info) => {
       createBodies.push(await info.request.clone().json());
-      return getPostV2CreateSessionResponseMock200({ id: FRESH_SESSION_ID });
+      return getPostV2CreateSessionResponseMock200({ id: sessionId });
     }),
     getGetV2GetSessionMockHandler200(
       getGetV2GetSessionResponseMock200({
-        id: FRESH_SESSION_ID,
+        id: sessionId,
         expert_id: EXPERT_ID,
         messages: [],
         active_stream: null,
       }),
     ),
     http.post(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${FRESH_SESSION_ID}/stream`,
+      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${sessionId}/stream`,
       async ({ request }) => {
         streamBodies.push(await request.clone().text());
         return streamSseResponse(assistantTextChunks("Hi, I'm Zara."), {
@@ -211,6 +217,57 @@ describe("ExpertChatDrawer", () => {
       expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done"),
     );
     expect(createBodies.length).toBe(1);
+  });
+
+  test("retries a failed kickoff before sending the user's message", async () => {
+    const user = userEvent.setup();
+    const createBodies: unknown[] = [];
+    const streamBodies: string[] = [];
+    let createAttempts = 0;
+    server.use(
+      http.post("/api/proxy/api/chat/sessions", async ({ request }) => {
+        createBodies.push(await request.clone().json());
+        createAttempts += 1;
+        if (createAttempts === 1) {
+          return HttpResponse.json(
+            { detail: "Could not create session" },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json(
+          getPostV2CreateSessionResponseMock200({ id: RETRY_SESSION_ID }),
+        );
+      }),
+      ...freshThreadHandlers([], streamBodies, RETRY_SESSION_ID),
+    );
+
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        onClose={() => {}}
+        resumeLatest={false}
+      />,
+    );
+
+    await waitFor(() => expect(createAttempts).toBe(1));
+    const input = await screen.findByPlaceholderText("Message Zara…");
+    await waitFor(() =>
+      expect(input as HTMLTextAreaElement).toHaveProperty("disabled", false),
+    );
+    await user.type(input, "Plan my launch{Enter}");
+
+    await waitFor(() => expect(createAttempts).toBe(2));
+    await waitFor(() => expect(streamBodies.length).toBe(2));
+    expect(JSON.parse(streamBodies[0]).expert_kickoff).toBe(true);
+    expect(JSON.parse(streamBodies[1])).toMatchObject({
+      expert_kickoff: false,
+      message: "Plan my launch",
+    });
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done");
+    expect(createBodies).toEqual([
+      { expert_id: EXPERT_ID, expert_kickoff: true },
+      { expert_id: EXPERT_ID, expert_kickoff: true },
+    ]);
   });
 
   test("kicks off onboarding the first time an expert's thread opens", async () => {

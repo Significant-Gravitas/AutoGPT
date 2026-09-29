@@ -3,6 +3,7 @@ import {
   clearKickoffPending,
   type ExpertKickoffMetadata,
   getKickoffStatus,
+  type KickoffAttemptToken,
   markKickoffDone,
   markKickoffPending,
   withKickoffLock,
@@ -29,6 +30,12 @@ type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 interface PendingSend {
   text: string;
   metadata?: ExpertKickoffMetadata;
+}
+
+interface KickoffAttempt {
+  userId: string;
+  expertId: string;
+  token: KickoffAttemptToken;
 }
 
 interface Args {
@@ -59,6 +66,8 @@ export function useExpertChatDrawer({
     null,
   );
   const pendingPromptRef = useRef<PendingSend | null>(null);
+  const pendingAfterKickoffRef = useRef<string | null>(null);
+  const kickoffAttemptRef = useRef<KickoffAttempt | null>(null);
   // Every thread reset bumps the generation; a session create that resolves
   // for an older generation is ignored so its prompt never lands in the new
   // thread, and the new thread is free to create its own session.
@@ -100,6 +109,8 @@ export function useExpertChatDrawer({
 
   const startKickoffRef = useRef(startKickoff);
   startKickoffRef.current = startKickoff;
+  const startSessionRef = useRef(startSession);
+  startSessionRef.current = startSession;
   useEffect(() => {
     if (!wantsKickoff || !userId || !expertId) return;
     if (kickoffCheckQuery.isFetching) return;
@@ -107,9 +118,21 @@ export function useExpertChatDrawer({
     setKickoffCheckedFor(expertId);
     if (kickoffCheckQuery.data.data.sessions.length > 0) {
       void withKickoffLock(userId, expertId, async () => {
-        if (getKickoffStatus(userId, expertId) !== "idle") return;
-        markKickoffDone(userId, expertId, markKickoffPending(userId, expertId));
-      }).catch(() => undefined);
+        if (getKickoffStatus(userId, expertId) === "idle") {
+          markKickoffDone(
+            userId,
+            expertId,
+            markKickoffPending(userId, expertId),
+          );
+        }
+      })
+        .then(() => {
+          const pending = pendingAfterKickoffRef.current;
+          if (!pending) return;
+          pendingAfterKickoffRef.current = null;
+          void startSessionRef.current({ text: pending });
+        })
+        .catch(() => undefined);
       return;
     }
     void startKickoffRef.current(userId, expertId);
@@ -145,12 +168,42 @@ export function useExpertChatDrawer({
 
   const { messages, setMessages, sendMessage, stop, status, error } =
     useCopilotStream({
+      userId,
       sessionId,
       hydratedMessages,
       hasActiveStream,
       refetchSession: sessionQuery.refetch,
       copilotModel: undefined,
     });
+
+  const hasAssistantReply = messages.some(
+    (message) => message.role === "assistant",
+  );
+  useEffect(() => {
+    const attempt = kickoffAttemptRef.current;
+    if (!attempt || status !== "ready" || !hasAssistantReply) return;
+    kickoffAttemptRef.current = null;
+    void withKickoffLock(attempt.userId, attempt.expertId, async () => {
+      markKickoffDone(attempt.userId, attempt.expertId, attempt.token);
+    })
+      .catch(() => undefined)
+      .then(async () => {
+        const pending = pendingAfterKickoffRef.current;
+        if (!pending) return;
+        pendingAfterKickoffRef.current = null;
+        await sendMessage({ text: pending });
+      });
+  }, [hasAssistantReply, sendMessage, status]);
+
+  useEffect(() => {
+    const attempt = kickoffAttemptRef.current;
+    if (!error || !attempt) return;
+    kickoffAttemptRef.current = null;
+    pendingAfterKickoffRef.current = null;
+    void withKickoffLock(attempt.userId, attempt.expertId, async () => {
+      clearKickoffPending(attempt.userId, attempt.expertId, attempt.token);
+    }).catch(() => undefined);
+  }, [error]);
 
   const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
@@ -172,11 +225,11 @@ export function useExpertChatDrawer({
     setMessages([]);
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
+    pendingAfterKickoffRef.current = null;
+    kickoffAttemptRef.current = null;
     setSeedToSend(seedPrompt);
   }, [threadKey, seedPrompt, setMessages]);
 
-  const startSessionRef = useRef(startSession);
-  startSessionRef.current = startSession;
   useEffect(() => {
     if (!seedToSend) return;
     setSeedToSend(null);
@@ -199,21 +252,38 @@ export function useExpertChatDrawer({
     setMessages([]);
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
+    pendingAfterKickoffRef.current = null;
+    kickoffAttemptRef.current = null;
   }
 
-  async function startKickoff(ownerId: string, id: string) {
-    await withKickoffLock(ownerId, id, async () => {
-      if (getKickoffStatus(ownerId, id) !== "idle") return;
-      const attemptToken = markKickoffPending(ownerId, id);
-      const started = await startSession(
-        buildKickoffMessage(id, attemptToken),
-        {
-          expertKickoff: true,
-        },
-      );
-      if (started) markKickoffDone(ownerId, id, attemptToken);
-      else clearKickoffPending(ownerId, id, attemptToken);
-    }).catch(() => undefined);
+  async function startKickoff(ownerId: string, id: string): Promise<boolean> {
+    let attemptToken: KickoffAttemptToken | null = null;
+    const started = await withKickoffLock(ownerId, id, async () => {
+      if (getKickoffStatus(ownerId, id) !== "idle") return false;
+      const token = markKickoffPending(ownerId, id);
+      attemptToken = token;
+      kickoffAttemptRef.current = { userId: ownerId, expertId: id, token };
+      if (sessionId) {
+        await sendMessage(buildKickoffMessage(id, token));
+        return true;
+      }
+      const created = await startSession(buildKickoffMessage(id, token), {
+        expertKickoff: true,
+      });
+      if (created) return true;
+      kickoffAttemptRef.current = null;
+      pendingAfterKickoffRef.current = null;
+      clearKickoffPending(ownerId, id, token);
+      return false;
+    }).catch(() => false);
+    if (!started && attemptToken) {
+      if (kickoffAttemptRef.current?.token === attemptToken) {
+        kickoffAttemptRef.current = null;
+      }
+      pendingAfterKickoffRef.current = null;
+      clearKickoffPending(ownerId, id, attemptToken);
+    }
+    return started ?? false;
   }
 
   async function startSession(
@@ -262,6 +332,20 @@ export function useExpertChatDrawer({
   async function onSend(message: string) {
     const trimmed = message.trim();
     if (!trimmed) return;
+    if (!sessionId && (isCheckingKickoff || isCreating)) {
+      pendingAfterKickoffRef.current = trimmed;
+      return;
+    }
+    if (
+      userId &&
+      expertId &&
+      kickoffCheckedFor === expertId &&
+      getKickoffStatus(userId, expertId) === "idle"
+    ) {
+      pendingAfterKickoffRef.current = trimmed;
+      await startKickoff(userId, expertId);
+      return;
+    }
     if (!sessionId) {
       await startSession({ text: trimmed });
       return;
