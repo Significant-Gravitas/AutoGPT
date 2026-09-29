@@ -80,6 +80,9 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Writes and proposals the worker dropped unwritten for resting on a
+    # forget, before the pass was reported; a row written before it reads 0.
+    dropped_forgotten: int = 0
     # Writes and proposals dropped before they were queued for citing
     # nothing the pass read; a row written before it reads 0.
     uncited_writes_dropped: int = 0

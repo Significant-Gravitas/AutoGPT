@@ -3,9 +3,11 @@ lets through one consolidation citing a fact the pass read, one citing
 nothing, and a proposal citing only a uuid the pass never read. The first is
 queued with what it cites; the other two are dropped before they reach the
 graph and reach ``uncited_writes_dropped`` in the result, the durable record
-and the admin job status. Only the LLM, the ingestion queue and the chat
-store are stubbed; the lock, lease, record and job status run on the
-in-memory Redis and DreamPass store from ``conftest.py``."""
+and the admin job status. The worker then drops the queued write for resting
+on a forget: ``dropped_forgotten`` reports it in the same places on the sync
+route, which waits for the worker, and not on the batch route, which does
+not. Only the LLM, the ingestion queue and worker, and the chat store are
+stubbed; the rest runs on ``conftest.py``'s in-memory Redis and store."""
 
 import asyncio
 import json
@@ -20,6 +22,7 @@ from prisma.enums import (
     DreamPassTrigger,
 )
 
+from backend.copilot.graphiti.ingest import IngestionCompletion
 from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.complete import StructuredCompletion
@@ -90,12 +93,18 @@ def _bundle(user_id: str) -> DreamInput:
     )
 
 
+async def _worker_drops_one(completion: IngestionCompletion, _: float) -> bool:
+    """The worker finds what the queued write rests on forgotten and drops it."""
+    completion.dropped_forgotten += 1
+    return True
+
+
 @pytest.fixture
 def queued(mocker) -> AsyncMock:
-    """The ingestion queue, which takes every write; and apply's chat store."""
+    """The ingestion queue and its worker, which drops one; apply's chat store."""
     enqueue = AsyncMock(return_value=True)
     mocker.patch.object(apply_mod, "enqueue_episode", enqueue)
-    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
+    mocker.patch.object(apply_mod, "wait_for_ingestion", _worker_drops_one)
     database = MagicMock()
     database.create_chat_session = AsyncMock()
     database.update_chat_session_title = AsyncMock()
@@ -133,11 +142,12 @@ async def _job_result(job_id: str) -> DreamPassResult:
     return DreamPassResult.model_validate(status.result)
 
 
-def _reported(result: DreamPassResult | DreamPassApplied) -> tuple[int, int, int]:
+def _reported(result: DreamPassResult | DreamPassApplied) -> tuple[int, ...]:
     return (
         result.consolidated_count,
         result.proposal_count,
         result.uncited_writes_dropped,
+        result.dropped_forgotten,
     )
 
 
@@ -159,7 +169,7 @@ def scheduler_loop(mocker):
     loop.close()
 
 
-def test_the_sync_route_reports_the_uncited_writes_everywhere(
+def test_the_sync_route_reports_the_dropped_writes_everywhere(
     mocker, queued, fake_dream_db, scheduler_loop
 ) -> None:
     mocker.patch.object(orchestrator_mod, "resolve_route", side_effect=_route)
@@ -201,14 +211,11 @@ def test_the_sync_route_reports_the_uncited_writes_everywhere(
 
     job = scheduler_loop.run_until_complete(_job_result("j-sync"))
     assert job.error is None
-    assert _reported(job) == (1, 0, 2)
-    assert _reported(fake_dream_db.rows[job.pass_id]["operations"]["applied"]) == (
-        1,
-        0,
-        2,
-    )
+    assert _reported(job) == (1, 0, 2, 1)
+    applied = fake_dream_db.rows[job.pass_id]["operations"]["applied"]
+    assert _reported(applied) == (1, 0, 2, 1)
     record = dream_pass_result_from_row(fake_dream_db.record(job.pass_id))
-    assert _reported(record) == (1, 0, 2)
+    assert _reported(record) == (1, 0, 2, 1)
     _only_the_cited_write_was_queued(queued)
 
 
@@ -244,7 +251,7 @@ def _row(phase: str, content: str) -> BatchResultRow:
 
 
 @pytest.mark.asyncio
-async def test_the_batch_route_reports_the_uncited_writes_everywhere(
+async def test_the_batch_route_reports_the_dropped_writes_everywhere(
     mocker, queued, fake_dream_db, fake_dream_redis
 ) -> None:
     scope = MemoryScope.for_user("u-batch")
@@ -287,11 +294,8 @@ async def test_the_batch_route_reports_the_uncited_writes_everywhere(
 
     row = fake_dream_db.rows["p-batch"]
     assert row["status"] is DreamPassStatus.COMPLETE
-    assert _reported(row["operations"]["applied"]) == (1, 0, 2)
-    assert _reported(dream_pass_result_from_row(fake_dream_db.record("p-batch"))) == (
-        1,
-        0,
-        2,
-    )
-    assert _reported(await _job_result("j-batch")) == (1, 0, 2)
+    assert _reported(row["operations"]["applied"]) == (1, 0, 2, 0)
+    record = dream_pass_result_from_row(fake_dream_db.record("p-batch"))
+    assert _reported(record) == (1, 0, 2, 0)
+    assert _reported(await _job_result("j-batch")) == (1, 0, 2, 0)
     _only_the_cited_write_was_queued(queued)

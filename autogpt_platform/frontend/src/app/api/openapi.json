@@ -21451,6 +21451,11 @@
             "title": "Entity Invalidation Count",
             "default": 0
           },
+          "dropped_forgotten": {
+            "type": "integer",
+            "title": "Dropped Forgotten",
+            "default": 0
+          },
           "uncited_writes_dropped": {
             "type": "integer",
             "title": "Uncited Writes Dropped",
