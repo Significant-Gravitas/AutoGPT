@@ -77,6 +77,14 @@ export function EmptySession({
   } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
+  const recipientPicker = isExpertsEnabled ? (
+    <RecipientChip
+      recipient={recipient}
+      options={options}
+      isLoading={isLoadingRecipient}
+      onSelect={selectRecipient}
+    />
+  ) : undefined;
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -160,7 +168,12 @@ export function EmptySession({
             // moves it there rather than replacing it.
             <GreetingLoader />
           ) : (
-            <EmptyHero name={greetingName} intro={introLine} />
+            <EmptyHero
+              name={greetingName}
+              intro={introLine}
+              recipientPicker={recipientPicker}
+              isExpert={Boolean(selectedExpert)}
+            />
           )}
 
           {/* Held back while the greeting is on its way — it enters with
@@ -206,14 +219,7 @@ export function EmptySession({
                   expertId={expertId}
                   expertName={expertName}
                   recipientPicker={
-                    isExpertsEnabled ? (
-                      <RecipientChip
-                        recipient={recipient}
-                        options={options}
-                        isLoading={isLoadingRecipient}
-                        onSelect={selectRecipient}
-                      />
-                    ) : undefined
+                    intro.isVisible ? recipientPicker : undefined
                   }
                 />
               </div>

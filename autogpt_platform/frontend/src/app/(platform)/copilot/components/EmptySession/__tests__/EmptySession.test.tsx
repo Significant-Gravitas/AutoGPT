@@ -66,7 +66,7 @@ function renderEmptySession(searchParams: string, onSend = vi.fn()) {
   server.use(
     getListExpertIdentitiesMockHandler([mariaExpert, maxExpert, samExpert]),
   );
-  const Wrapper = withNuqsTestingAdapter({ searchParams });
+  const Wrapper = withNuqsTestingAdapter({ searchParams, hasMemory: true });
   return render(
     <Wrapper>
       <EmptySession
@@ -79,12 +79,12 @@ function renderEmptySession(searchParams: string, onSend = vi.fn()) {
 }
 
 describe("EmptySession — recipient-aware intro", () => {
-  it("introduces the selected expert by name and role", async () => {
+  it("introduces the selected expert with an inline recipient chip", async () => {
     const { container } = renderEmptySession("?expertId=expert-maria");
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "I'm Maria, your Marketing Strategist. What should I take on?",
+        "Tell Maria what you need, and it will get to work.",
       ),
     );
     expect(
@@ -92,22 +92,22 @@ describe("EmptySession — recipient-aware intro", () => {
     ).toBeDefined();
   });
 
-  it("calls a bare-domain role an expert so the line still reads", async () => {
+  it("supports an expert with a short role", async () => {
     const { container } = renderEmptySession("?expertId=expert-sam");
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "I'm Sam, your Sales Development Rep. What should I take on?",
+        "Tell Sam what you need, and it will get to work.",
       ),
     );
   });
 
-  it("drops the role clause when the expert has none", async () => {
+  it("supports an expert without a role", async () => {
     const { container } = renderEmptySession("?expertId=expert-max");
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "I'm Max. What should I take on?",
+        "Tell Max what you need, and it will get to work.",
       ),
     );
     expect(
@@ -120,7 +120,7 @@ describe("EmptySession — recipient-aware intro", () => {
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "Tell me about your work — I'll find what to automate.",
+        "Tell Otto about your work, and it will find what to automate.",
       ),
     );
     expect(screen.getByPlaceholderText(/What's your role/)).toBeDefined();
@@ -202,4 +202,27 @@ it("shows a named kickoff status and withholds the empty composer", () => {
     "Opening Maria's workspace",
   );
   expect(screen.queryByPlaceholderText(/What's your role/)).toBeNull();
+});
+
+it("switches recipients from the intro with no duplicate picker in the composer", async () => {
+  const user = userEvent.setup();
+  renderEmptySession("");
+  const picker = await screen.findByRole("button", {
+    name: "Sending to Otto — change recipient",
+  });
+  const prompt = screen.getByPlaceholderText(/What's your role/);
+  expect(
+    picker.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    screen.getAllByRole("button", { name: /change recipient/, hidden: true }),
+  ).toHaveLength(1);
+  await user.click(picker);
+  await user.click(await screen.findByRole("menuitem", { name: /Maria/ }));
+  expect(
+    await screen.findByPlaceholderText("What should Maria work on?"),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("button", { name: "Sending to Maria — change recipient" }),
+  ).toBeDefined();
 });
