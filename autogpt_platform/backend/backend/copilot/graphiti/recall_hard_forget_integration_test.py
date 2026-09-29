@@ -28,6 +28,7 @@ from backend.api.features.admin.memory_admin_routes import (
 from backend.copilot.dream import fetch
 from backend.copilot.dream.hidden_sessions import hidden_session_ids
 from backend.copilot.dream.prompts import build_consolidate_prompt
+from backend.copilot.model import ChatMessage
 
 from . import recall_hide, recall_orphans
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -119,7 +120,7 @@ async def _admin_views(
 
 
 def _chat_store(*session_ids: str) -> SimpleNamespace:
-    message = SimpleNamespace(role="user", content="Whole session text")
+    message = ChatMessage(role="user", content="Whole session text", sequence=0)
     return SimpleNamespace(
         get_user_chat_sessions=AsyncMock(
             return_value=[SimpleNamespace(session_id=s, title=s) for s in session_ids]

@@ -24,6 +24,7 @@ from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
@@ -368,6 +369,9 @@ async def _build_progress_snapshot(
 ) -> SubSessionProgressSnapshot | None:
     """Read the sub's ChatSession and return a preview of recent messages.
 
+    The preview goes back to the model, so the sub's first message is read
+    without the memory block an older session stored in it.
+
     Returns ``None`` silently on lookup failure — progress is best-effort;
     missing progress shouldn't abort the normal ``still running`` response.
     """
@@ -377,7 +381,7 @@ async def _build_progress_snapshot(
         sub = await get_chat_session(inner_session_id)
         if sub is None:
             return None
-        messages = list(sub.messages)
+        messages = without_stored_first_turn_memory(list(sub.messages))
     except Exception as exc:  # best-effort peek
         logger.debug(
             "Progress snapshot unavailable for sub %s: %s",

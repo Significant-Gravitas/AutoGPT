@@ -15,6 +15,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    legacy_first_message,
+    master_warm,
+)
+from backend.copilot.model import ChatMessage
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
@@ -758,6 +763,58 @@ class TestGetSubSessionResult:
         assert r.status == "running"
         assert r.sub_session_id == "inner-7"
         mock_waiter.result_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_progress_reads_an_old_sub_without_its_stored_memory_block(
+        self, monkeypatch, mock_waiter
+    ):
+        """A sub that began before warm context became query-only still holds
+        its first turn's memory block in its first message. The preview goes
+        back to the model, so it shows that message without the block, and a
+        fact forgotten since stays out of it."""
+        forgotten = "the Nova recovery password is violet-913"
+        first = legacy_first_message(
+            master_warm((forgotten,)), skills=False, rest="look into Nova"
+        )
+        sub = MagicMock(
+            user_id="alice",
+            expert_id=None,
+            messages=[ChatMessage(role="user", content=first, sequence=0)],
+        )
+        sub.metadata.delegated_by_session_id = None
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-old",
+            wait_if_running=30,
+            include_progress=True,
+        )
+
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "running" and r.progress is not None
+        assert r.progress.last_messages == [
+            {"role": "user", "content": "look into Nova"}
+        ]
+        assert forgotten not in r.model_dump_json()
+        assert "memory_context" not in r.model_dump_json()
+        # The stored message is left as it is; the backfill cleans storage.
+        assert sub.messages[0].content == first
 
     @pytest.mark.asyncio
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
