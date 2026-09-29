@@ -2,16 +2,18 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useCopilotUIStore, type IntegrationsPanelExpert } from "../../store";
+import { useCopilotUIStore, type ContextPanelExpert } from "../../store";
 import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
 import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
+import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
+import { useEffect } from "react";
 
 interface Props {
   sessionId?: string | null;
   /** The chat's live expert, whose integrations lead the controls. */
-  expert?: IntegrationsPanelExpert | null;
+  expert?: ContextPanelExpert | null;
 }
 
 // Sized and stroked like the sidebar's nav icons so the chat's top-right
@@ -25,6 +27,14 @@ const toggleClass =
  *  own "Turn on screen" button lives on that face, so it must be reachable
  *  before any desktop exists. */
 export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
+  const { deliverables, documentCount: liveDocumentCount } =
+    useSessionFiles(sessionId);
+  const documentCount = Math.max(deliverables.length, liveDocumentCount);
+  const expertId = expert?.id ?? null;
+  const expertName = expert?.name ?? null;
+  const setContextPanelExpert = useCopilotUIStore(
+    (s) => s.setContextPanelExpert,
+  );
   const isFilesOpen = useCopilotUIStore(
     (s) =>
       s.artifactPanel.isOpen &&
@@ -44,6 +54,12 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   const isMobile = useIsMobile();
   // The mobile sheet has no computer face to open.
   const showComputerToggle = !!sessionId && !isMobile;
+
+  useEffect(() => {
+    setContextPanelExpert(
+      expertId && expertName ? { id: expertId, name: expertName } : null,
+    );
+  }, [expertId, expertName, setContextPanelExpert]);
 
   function handleComputerToggle() {
     // Back to whatever the computer was covering: the preview, the tab, or
@@ -83,14 +99,28 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
         variant="ghost"
         size="icon"
         onClick={() => toggleContextPanelTab("files")}
-        aria-label={isFilesOpen ? "Hide files" : "Open files"}
+        aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
+          documentCount > 0
+            ? ` (${documentCount} ${documentCount === 1 ? "document" : "documents"})`
+            : ""
+        }`}
         aria-pressed={isFilesOpen}
-        className={cn(toggleClass, "size-8", isFilesOpen && "bg-zinc-100")}
+        className={cn(
+          toggleClass,
+          "h-8",
+          documentCount > 0 ? "w-auto gap-1 px-2" : "w-8",
+          isFilesOpen && "bg-zinc-100",
+        )}
       >
         <Icon
           icon={LicenseDraftIcon}
           className="!size-4 text-sidebar-foreground/90"
         />
+        {documentCount > 0 && (
+          <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+            {documentCount}
+          </span>
+        )}
       </Button>
     </div>
   );

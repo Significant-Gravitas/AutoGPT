@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DeleteFileDialog } from "../../ContextPanel/components/FilesTab/components/DeleteFileDialog";
 import type { SessionFile } from "../../ContextPanel/components/FilesTab/useSessionFiles";
 import { WorkspaceFileCard } from "./WorkspaceFileCard";
 
@@ -13,15 +12,12 @@ export interface WorkspaceFilesContentProps {
   files: SessionFile[];
   isLoading: boolean;
   isError: boolean;
-  isDeleting: boolean;
   isZipping: boolean;
-  pendingDelete: SessionFile | null;
   onOpen: (file: SessionFile) => void;
   onDownload: (file: SessionFile) => void;
   onRequestDelete: (file: SessionFile) => void;
-  onConfirmDelete: () => void;
-  onCancelDelete: () => void;
   onDownloadAll: () => void;
+  emptyMessage?: string;
   /** The floating stack hoists the title out of the card (see
    *  ``StackSection``); the popover keeps it inline. */
   showHeader?: boolean;
@@ -31,15 +27,12 @@ export function WorkspaceFilesContent({
   files,
   isLoading,
   isError,
-  isDeleting,
   isZipping,
-  pendingDelete,
   onOpen,
   onDownload,
   onRequestDelete,
-  onConfirmDelete,
-  onCancelDelete,
   onDownloadAll,
+  emptyMessage,
   showHeader = true,
 }: WorkspaceFilesContentProps) {
   return (
@@ -70,12 +63,7 @@ export function WorkspaceFilesContent({
         onOpen={onOpen}
         onDownload={onDownload}
         onRequestDelete={onRequestDelete}
-      />
-      <DeleteFileDialog
-        fileName={pendingDelete?.item.name ?? null}
-        isDeleting={isDeleting}
-        onConfirm={onConfirmDelete}
-        onCancel={onCancelDelete}
+        emptyMessage={emptyMessage}
       />
     </>
   );
@@ -88,6 +76,7 @@ interface BodyProps {
   onOpen: (file: SessionFile) => void;
   onDownload: (file: SessionFile) => void;
   onRequestDelete: (file: SessionFile) => void;
+  emptyMessage?: string;
 }
 
 const COLLAPSED_FILE_COUNT = 4;
@@ -99,6 +88,7 @@ function Body({
   onOpen,
   onDownload,
   onRequestDelete,
+  emptyMessage,
 }: BodyProps) {
   const [showAll, setShowAll] = useState(false);
 
@@ -120,7 +110,8 @@ function Body({
   if (files.length === 0) {
     return (
       <p className="py-2 text-[13px] text-zinc-400">
-        No files yet. Upload one or ask an expert to create something.
+        {emptyMessage ??
+          "No files yet. Upload one or ask an expert to create something."}
       </p>
     );
   }

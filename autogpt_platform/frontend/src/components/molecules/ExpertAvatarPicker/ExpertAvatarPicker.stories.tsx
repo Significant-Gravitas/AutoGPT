@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { delay, http, HttpResponse } from "msw";
-import { fn } from "storybook/test";
+import { fn, userEvent, within } from "storybook/test";
 import {
   DEFAULT_EXPERT_AVATAR_URL,
   MANAGED_IDENTITIES,
@@ -43,8 +43,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The raise flow: one avatar, sculpted the moment the beat opens. */
-export const Generating: Story = { args: { autoGenerate: true } };
+export const Default: Story = {};
+
+export const Generating: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", { name: "Regenerate" }),
+    );
+  },
+};
 
 /** The team page: the expert already has a face until it is regenerated. */
 export const ExistingAvatar: Story = {
