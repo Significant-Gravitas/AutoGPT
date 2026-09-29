@@ -29,6 +29,14 @@ const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const SESSION_ID = "session-zara";
 const FRESH_SESSION_ID = "session-zara-fresh";
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 vi.mock("@/lib/auth/actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
   getWebSocketToken: async () => ({ token: "test-token" }),
@@ -106,6 +114,105 @@ afterEach(() => {
 });
 
 describe("ExpertChatDrawer", () => {
+  test("keeps chat disabled while it checks for an existing thread", async () => {
+    const sessionsRequest = deferred();
+    const createBodies: unknown[] = [];
+    server.use(
+      getGetV2ListSessionsMockHandler200(async () => {
+        await sessionsRequest.promise;
+        return { sessions: [], total: 0 };
+      }),
+      ...freshThreadHandlers(createBodies, []),
+    );
+
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        onClose={() => {}}
+        resumeLatest={false}
+      />,
+    );
+
+    expect(
+      (await screen.findByPlaceholderText(
+        "Message Zara…",
+      )) as HTMLTextAreaElement,
+    ).toHaveProperty("disabled", true);
+    expect(createBodies).toEqual([]);
+
+    sessionsRequest.resolve();
+    await waitFor(() => expect(createBodies.length).toBe(1));
+    expect(await screen.findByText("Hi, I'm Zara.")).toBeDefined();
+  });
+
+  test("waits for a fresh session list before starting onboarding", async () => {
+    const createBodies: unknown[] = [];
+    server.use(...freshThreadHandlers(createBodies, []));
+    const { rerender } = render(
+      <ExpertChatDrawer
+        target={ZARA}
+        onClose={() => {}}
+        resumeLatest={false}
+        threadKey={0}
+      />,
+    );
+
+    await waitFor(() => expect(createBodies.length).toBe(1));
+    expect(await screen.findByText("Hi, I'm Zara.")).toBeDefined();
+
+    rerender(
+      <ExpertChatDrawer
+        target={null}
+        onClose={() => {}}
+        resumeLatest={false}
+        threadKey={1}
+      />,
+    );
+    await waitFor(() => expect(screen.queryByText("Hi, I'm Zara.")).toBeNull());
+    window.localStorage.clear();
+
+    const sessionsRequest = deferred();
+    server.use(
+      getGetV2ListSessionsMockHandler200(async () => {
+        await sessionsRequest.promise;
+        return {
+          sessions: [
+            {
+              id: SESSION_ID,
+              created_at: "2026-09-27T18:00:00Z",
+              updated_at: "2026-09-27T18:01:00Z",
+              is_processing: false,
+              expert_id: EXPERT_ID,
+            },
+          ],
+          total: 1,
+        };
+      }),
+    );
+    rerender(
+      <ExpertChatDrawer
+        target={ZARA}
+        onClose={() => {}}
+        resumeLatest={false}
+        threadKey={2}
+      />,
+    );
+
+    expect(
+      (await screen.findByPlaceholderText(
+        "Message Zara…",
+      )) as HTMLTextAreaElement,
+    ).toHaveProperty("disabled", true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(createBodies.length).toBe(1);
+
+    sessionsRequest.resolve();
+    await waitFor(() =>
+      expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done"),
+    );
+    expect(createBodies.length).toBe(1);
+  });
+
   test("kicks off onboarding the first time an expert's thread opens", async () => {
     const createBodies: unknown[] = [];
     const streamBodies: string[] = [];

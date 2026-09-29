@@ -102,6 +102,7 @@ export function useExpertChatDrawer({
   startKickoffRef.current = startKickoff;
   useEffect(() => {
     if (!wantsKickoff || !userId || !expertId) return;
+    if (kickoffCheckQuery.isFetching) return;
     if (kickoffCheckQuery.data?.status !== 200) return;
     setKickoffCheckedFor(expertId);
     if (kickoffCheckQuery.data.data.sessions.length > 0) {
@@ -112,7 +113,13 @@ export function useExpertChatDrawer({
       return;
     }
     void startKickoffRef.current(userId, expertId);
-  }, [expertId, kickoffCheckQuery.data, userId, wantsKickoff]);
+  }, [
+    expertId,
+    kickoffCheckQuery.data,
+    kickoffCheckQuery.isFetching,
+    userId,
+    wantsKickoff,
+  ]);
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
@@ -284,7 +291,11 @@ export function useExpertChatDrawer({
     sendMessage({ text: trimmed });
   }
 
-  const isResolvingSession = !sessionId && wantsLatest && latestQuery.isLoading;
+  const isCheckingKickoff =
+    wantsKickoff &&
+    (kickoffCheckQuery.isFetching || !kickoffCheckQuery.isError);
+  const isResolvingSession =
+    (!sessionId && wantsLatest && latestQuery.isLoading) || isCheckingKickoff;
 
   return {
     sessionId,
