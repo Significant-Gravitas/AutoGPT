@@ -20,6 +20,7 @@ import json
 
 from backend.copilot.graphiti.recall_stamp import parse_stamp
 
+from .citations import source_scopes
 from .fetch import DreamInput, FactRow
 from .staleness import identify_stale_candidates
 
@@ -32,12 +33,18 @@ MAX_WRITES_PER_PASS = 30
 
 
 def _format_episodes(input_bundle: DreamInput, max_chars_per_episode: int = 500) -> str:
+    """Each recent episode with its scope, the one a citation of it must
+    share (``citations.py``)."""
     if not input_bundle.episodes:
         return "(no recent episodes in window)"
+    scopes = source_scopes(input_bundle)
     lines: list[str] = []
     for e in input_bundle.episodes:
         body = (e.content or "")[:max_chars_per_episode]
-        lines.append(f"- uuid={e.uuid} valid_at={e.valid_at}\n  {body}".rstrip())
+        lines.append(
+            f"- uuid={e.uuid} scope={_inline(scopes[e.uuid])} "
+            f"valid_at={e.valid_at}\n  {body}".rstrip()
+        )
     return "\n".join(lines)
 
 
@@ -128,7 +135,9 @@ CONSOLIDATE_SYSTEM = (
     "episodes in source_episode_uuids and of the active facts in "
     "source_fact_uuids, copied exactly from the lists below. Cite every "
     "source you used, and at least one; a fact citing nothing listed below "
-    "is dropped. Never make uuids up.\n"
+    "is dropped. Never make uuids up. Cite only sources in the fact's own "
+    "scope (each episode and fact is listed with its scope): a citation of "
+    "another scope is dropped too.\n"
     " * Confidence is your own — 0.0 means 'I am unsure', 1.0 means "
     "'this is restated verbatim across multiple sources'.\n"
     f" * Output AT MOST {MAX_WRITES_PER_PASS} consolidated facts. Better "
@@ -182,7 +191,7 @@ RECOMBINE_SYSTEM = (
     "no uuid of its own: cite the uuids it cites. A proposal citing nothing "
     "listed below is dropped.\n"
     " * Stay in scope — proposed findings live in the same scope as "
-    "their evidence.\n"
+    "their evidence: a citation of a source in another scope is dropped.\n"
     ' * Do not propose first-person-as-user statements ("I think X"). '
     "All proposals must describe the user's world, not the assistant's.\n"
     f" * Output AT MOST {MAX_PROPOSALS_PER_PASS} proposals. Quality > quantity.\n"

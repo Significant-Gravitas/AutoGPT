@@ -84,8 +84,11 @@ class DreamPassApplied(BaseModel):
     # forget, before the pass was reported; a row written before it reads 0.
     dropped_forgotten: int = 0
     # Writes and proposals dropped before they were queued for citing
-    # nothing the pass read; a row written before it reads 0.
+    # nothing the pass read in their scope; a row written before it reads 0.
     uncited_writes_dropped: int = 0
+    # Citations dropped for naming a source in another scope than the
+    # write's; a row written before it reads 0.
+    cross_scope_citations_dropped: int = 0
     # Distinct facts an acknowledged write spared and the accounting read
     # found live (provisional when the accounting is incomplete); a row
     # written before it reads 0.

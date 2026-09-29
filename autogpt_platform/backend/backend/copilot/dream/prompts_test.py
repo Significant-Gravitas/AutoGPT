@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from backend.copilot.graphiti.memory_model import MemoryEnvelope
+
 from .fetch import DreamInput, EpisodeRow, FactRow, SessionRow
 from .prompts import (
     MAX_DEMOTIONS_PER_PASS,
@@ -85,6 +87,32 @@ def test_consolidate_prompt_has_system_and_user_messages():
     # Per-scope grouping in the facts section
     assert "[scope=real:global]" in user_body
     assert "[scope=project:x]" in user_body
+
+
+def test_each_episode_is_listed_with_the_scope_a_citation_must_share():
+    bundle = _build_bundle()
+    envelope = MemoryEnvelope(content="ProjectX ships weekly", scope="project:x")
+    bundle.episodes.append(
+        EpisodeRow(
+            uuid="ep-2",
+            name="memory",
+            content=envelope.model_dump_json(),
+            source_description="stored",
+            valid_at="2026-05-11",
+            created_at="2026-05-11",
+        )
+    )
+
+    system, user = build_consolidate_prompt(bundle)
+
+    assert "uuid=ep-1 scope=real:global" in user["content"]
+    assert "uuid=ep-2 scope=project:x" in user["content"]
+    assert "a citation of another scope is dropped" in system["content"]
+    recombine = build_recombine_prompt(bundle, "{}")
+    assert "uuid=ep-2 scope=project:x" in recombine[1]["content"]
+    assert "a citation of a source in another scope is dropped" in (
+        recombine[0]["content"]
+    )
 
 
 def test_consolidate_prompt_instructs_merge_and_no_restate():

@@ -8,8 +8,8 @@ Three side-effects, in order:
   3. Demotions / entity invalidations, written by ``demotions.py`` with the
      recall guard in each statement.
 
-Every write and proposal must cite what the pass read; one that cites
-nothing it read is dropped first and counted (``citations.py``).
+Every write and proposal must cite what the pass read in its own scope;
+one that cites nothing of it is dropped first and counted (``citations.py``).
 
 A ``ChatSession`` shell (``metadata.kind='dream'`` +
 ``metadata.dream_pass_id``) is created up front so the MemoryEnvelope
@@ -162,40 +162,52 @@ def _edge_metadata(envelope: MemoryEnvelope) -> dict:
 
 class _Cited(BaseModel):
     """A pass's writes and proposals, each with the citations that name
-    something the pass read (``citations.validated_citations``), by its index
-    in the pass; ``uncited`` counts those left citing nothing."""
+    something the pass read in its scope (``citations.validated_citations``),
+    by its index in the pass; ``uncited`` counts those left citing nothing,
+    ``cross_scope`` the citations dropped for naming another scope."""
 
     writes: list[tuple[int, ConsolidatedFact, Citations]] = Field(default_factory=list)
     proposals: list[tuple[int, ProposedFinding, Citations]] = Field(
         default_factory=list
     )
     uncited: int = 0
+    cross_scope: int = 0
 
 
 def _cite(
     ops: DreamOperations,
     known_facts: Collection[str],
     known_episodes: Collection[str],
+    source_scopes: Mapping[str, str],
 ) -> _Cited:
     """``ops``' writes and proposals checked against what the pass read."""
     check = partial(
-        validated_citations, known_facts=known_facts, known_episodes=known_episodes
+        validated_citations,
+        known_facts=known_facts,
+        known_episodes=known_episodes,
+        source_scopes=source_scopes,
     )
+    items: list[ConsolidatedFact | ProposedFinding] = [*ops.writes, *ops.proposals]
+    checked = [
+        check(item.source_fact_uuids, item.source_episode_uuids, scope=item.scope)
+        for item in items
+    ]
+    found = checked[: len(ops.writes)], checked[len(ops.writes) :]
     writes = [
-        (i, fact, found)
-        for i, fact in enumerate(ops.writes)
-        if (found := check(fact.source_fact_uuids, fact.source_episode_uuids))
+        (i, fact, kept.citations)
+        for i, (fact, kept) in enumerate(zip(ops.writes, found[0]))
+        if kept.citations is not None
     ]
     proposals = [
-        (i, finding, found)
-        for i, finding in enumerate(ops.proposals)
-        if (found := check(finding.source_fact_uuids, finding.source_episode_uuids))
+        (i, finding, kept.citations)
+        for i, (finding, kept) in enumerate(zip(ops.proposals, found[1]))
+        if kept.citations is not None
     ]
-    total = len(ops.writes) + len(ops.proposals)
     return _Cited(
         writes=writes,
         proposals=proposals,
-        uncited=total - len(writes) - len(proposals),
+        uncited=len(items) - len(writes) - len(proposals),
+        cross_scope=sum(kept.cross_scope for kept in checked),
     )
 
 
@@ -480,6 +492,7 @@ async def apply_operations(
     *,
     known_fact_uuids: set[str] | None = None,
     known_episode_uuids: set[str] | None = None,
+    source_scopes: Mapping[str, str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
     lease: ApplyLease | None = None,
@@ -514,11 +527,14 @@ async def apply_operations(
     bundle by pass_id" for the demotions.
 
     Each write and proposal keeps the citations that name a fact in
-    ``known_fact_uuids`` or an episode in ``known_episode_uuids``
-    (``citations.py``); one left citing nothing is dropped before it is
-    queued and counted in ``uncited_writes_dropped``. Both routes pass their
-    input bundle's sets; ``None`` reads as nothing read, so every write is
-    dropped. The ingestion worker drops, unwritten, any whose citations a
+    ``known_fact_uuids`` or an episode in ``known_episode_uuids`` whose scope
+    (``source_scopes``, from ``citations.source_scopes``) is its own
+    (``citations.py``); the others are counted in
+    ``cross_scope_citations_dropped``, and one left citing nothing is dropped
+    before it is queued and counted in ``uncited_writes_dropped``. Both
+    routes pass their input bundle's sets and scopes; ``None`` reads as
+    nothing read, so every write is dropped, and a source with no scope
+    given is ``citations.UNSCOPED``. The ingestion worker drops, unwritten, any whose citations a
     forget reached after the pass read the graph
     (``graphiti/recall_citations.py``), and records the citations of every
     write it makes (``graphiti/recall_derivation.py``).
@@ -568,12 +584,18 @@ async def apply_operations(
     the engine is still booting).
     """
     user_id = scope.owner_user_id
-    cited = _cite(ops, known_fact_uuids or set(), known_episode_uuids or set())
-    if cited.uncited:
+    cited = _cite(
+        ops,
+        known_fact_uuids or set(),
+        known_episode_uuids or set(),
+        source_scopes or {},
+    )
+    if cited.uncited or cited.cross_scope:
         logger.warning(
             f"Dream pass {pass_id} for user {user_id[:12]}: dropped "
-            f"{cited.uncited} write(s) and proposal(s) citing nothing the "
-            "pass read"
+            f"{cited.cross_scope} citation(s) of a source in another scope, "
+            f"and {cited.uncited} write(s) and proposal(s) left citing nothing "
+            "the pass read in their scope"
         )
     if not (
         cited.writes or cited.proposals or ops.demotions or ops.entity_invalidations
@@ -597,6 +619,7 @@ async def apply_operations(
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
             "uncited_writes_dropped": cited.uncited,
+            "cross_scope_citations_dropped": cited.cross_scope,
             "protected_demotions": 0,
             "indeterminate_demotion_writes": 0,
             "demotion_accounting_complete": True,
@@ -712,8 +735,10 @@ async def apply_operations(
         # rest on after the pass read the graph.
         "dropped_forgotten": completion.dropped_forgotten,
         # Writes and proposals dropped before they were queued: they cited
-        # nothing the pass read.
+        # nothing the pass read in their scope.
         "uncited_writes_dropped": cited.uncited,
+        # Citations dropped for naming a source in another scope.
+        "cross_scope_citations_dropped": cited.cross_scope,
         # Distinct facts an acknowledged write spared and the accounting read
         # found live; provisional when the accounting is incomplete.
         "protected_demotions": destroyed.protected,

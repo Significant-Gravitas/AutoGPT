@@ -18,7 +18,12 @@ from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 
 from . import apply as apply_mod
-from .citations import described_citations, source_description, validated_citations
+from .citations import (
+    UNSCOPED,
+    described_citations,
+    source_description,
+    validated_citations,
+)
 from .schemas import ConsolidatedFact, DreamOperations, ProposedFinding
 
 _SCOPE = MemoryScope.for_user("u-1234567890ab")
@@ -39,9 +44,24 @@ def _cited(enqueue: AsyncMock) -> list[Citations]:
     return [call.kwargs["citations"] for call in enqueue.await_args_list]
 
 
+def _checked(
+    facts: list[str], episodes: list[str], **known: set[str]
+) -> Citations | None:
+    """``validated_citations`` for a write in the default scope, every
+    source unscoped."""
+    return validated_citations(
+        facts,
+        episodes,
+        scope=UNSCOPED,
+        known_facts=known["known_facts"],
+        known_episodes=known["known_episodes"],
+        source_scopes={},
+    ).citations
+
+
 class TestValidatedCitations:
     def test_keeps_what_the_pass_read_in_the_models_order_once_each(self) -> None:
-        cited = validated_citations(
+        cited = _checked(
             ["f2", "made-up", "f1", "f2"],
             ["ep2", "ep1", "ep2"],
             known_facts={"f1", "f2"},
@@ -51,9 +71,7 @@ class TestValidatedCitations:
         assert cited == Citations(fact_uuids=["f2", "f1"], episode_uuids=["ep2", "ep1"])
 
     def test_files_a_uuid_under_the_kind_the_pass_read_it_as(self) -> None:
-        cited = validated_citations(
-            ["ep1"], ["f1"], known_facts={"f1"}, known_episodes={"ep1"}
-        )
+        cited = _checked(["ep1"], ["f1"], known_facts={"f1"}, known_episodes={"ep1"})
 
         assert cited == Citations(fact_uuids=["f1"], episode_uuids=["ep1"])
 
@@ -63,9 +81,7 @@ class TestValidatedCitations:
     def test_nothing_the_pass_read_is_none(
         self, facts: list[str], episodes: list[str]
     ) -> None:
-        cited = validated_citations(
-            facts, episodes, known_facts={"f1"}, known_episodes={"ep1"}
-        )
+        cited = _checked(facts, episodes, known_facts={"f1"}, known_episodes={"ep1"})
 
         assert cited is None
 

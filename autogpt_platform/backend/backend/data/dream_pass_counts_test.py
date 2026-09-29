@@ -1,6 +1,6 @@
 """What a pass's apply dropped, through a DreamPass row against a real
 database: the record the sync route writes (``pass_record.outcome``) reads
-back through ``dream_pass_result_from_row`` with both drop counts, and a row
+back through ``dream_pass_result_from_row`` with its drop counts, and a row
 written before them reads none dropped."""
 
 import uuid
@@ -60,6 +60,7 @@ async def test_an_applied_pass_reads_back_what_it_dropped(pass_id):
         consolidated_count=2,
         dropped_forgotten=1,
         uncited_writes_dropped=3,
+        cross_scope_citations_dropped=4,
     )
 
     assert await update_dream_pass(pass_id, outcome(result, None))
@@ -71,7 +72,8 @@ async def test_an_applied_pass_reads_back_what_it_dropped(pass_id):
         read_back.consolidated_count,
         read_back.dropped_forgotten,
         read_back.uncited_writes_dropped,
-    ) == (2, 1, 3)
+        read_back.cross_scope_citations_dropped,
+    ) == (2, 1, 3, 4)
 
 
 async def test_a_row_applied_before_the_drop_counts_reads_none_dropped(pass_id):
@@ -87,4 +89,5 @@ async def test_a_row_applied_before_the_drop_counts_reads_none_dropped(pass_id):
         applied.consolidated_count,
         applied.dropped_forgotten,
         applied.uncited_writes_dropped,
-    ) == (2, 0, 0)
+        applied.cross_scope_citations_dropped,
+    ) == (2, 0, 0, 0)

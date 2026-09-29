@@ -201,7 +201,11 @@ class DreamOperations(BaseModel):
     apply.py:
       * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion
         mitigation per spec §3 / TODO P0.3b).
-      * Scope match enforced — proposals cannot cross scopes.
+      * Scope match enforced — a write or proposal keeps only the citations
+        whose source (a fact's scope, an episode's envelope scope, else
+        ``real:global``) has its own scope, and one left citing nothing is
+        dropped (``dream/citations.py``). A source in the same scope that
+        the write does not truly rest on is not caught.
       * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op.
     """
 
@@ -369,9 +373,12 @@ class DreamPassResult(BaseModel):
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
     # Writes and proposals dropped before they were queued because they cited
-    # no fact or episode the pass read (``dream/citations.py``); not counted
-    # in ``consolidated_count`` or ``proposal_count``.
+    # no fact or episode the pass read in their scope (``dream/citations.py``);
+    # not counted in ``consolidated_count`` or ``proposal_count``.
     uncited_writes_dropped: int = 0
+    # Citations dropped for naming a source in another scope than the write's
+    # (``dream/citations.py``); a write left citing nothing is counted above.
+    cross_scope_citations_dropped: int = 0
     # Distinct facts the recall guard kept live through the pass
     # (``recall_guard.py``): an acknowledged write spared them, and the
     # pass's final read, after every acknowledged write, found them live. A

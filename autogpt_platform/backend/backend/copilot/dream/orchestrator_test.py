@@ -652,6 +652,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        source_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -722,6 +723,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        source_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -837,6 +839,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        source_scopes=None,
         lock_handle=None,
         lease=None,
     ):
