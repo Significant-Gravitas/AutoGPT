@@ -3,14 +3,13 @@ sweep the dream reaper runs over them.
 
 When a dream write's derivation record fails after its graph write, or the
 graph write itself raises after its marker was written, the ingestion worker
-notes the graph here: a Redis set of graph names, ``PENDING_KEY``
-(``recall_derivation.py``, ``ingest._write_locked``). Each run of the dream
-reaper (``dream/reaper.py``) sweeps up to ``SWEEP_MAX_GRAPHS`` of them: it
-takes the graph's write lock, completes its markers
-(``recall_reconcile.reconcile``) and, once none is left, removes the graph
-from the set while it still holds the lock, so a failure noted meanwhile
-(also under that lock) is never lost. A graph it cannot lock, or whose
-reconcile fails, stays for the next run.
+(``marked_write.py``) notes the graph here: a Redis set of graph names,
+``PENDING_KEY``. Each run of the dream reaper (``dream/reaper.py``) sweeps
+up to ``SWEEP_MAX_GRAPHS`` of them: it takes the graph's write lock,
+completes its markers (``recall_reconcile.reconcile``) and, once none is
+left, removes the graph from the set while it still holds the lock, so a
+failure noted meanwhile (also under that lock) is never lost. A graph it
+cannot lock, or whose reconcile fails, stays for the next run.
 
 This is the background path; the guarantee does not rest on it. A marker no
 failure noted (a worker that died between its marker and its record) and one

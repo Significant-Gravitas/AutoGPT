@@ -1,8 +1,9 @@
-"""Unit tests for the ingestion worker's side of ``recall_derivation``: a
-dream write's citations are marked before the write, failing closed, and
-recorded after it, both under the graph's write lock; a record that fails
-is noted for the reaper and reported as ``provenance_pending``, and a marked
-write that raised as failed. The record itself is pinned in
+"""Unit tests for the ingestion worker's side of ``recall_derivation``
+(``marked_write.py``, called from ``ingest._write_locked``): a dream write's
+citations are marked before the write, failing closed, and recorded after
+it, both under the graph's write lock; a record that fails is noted for the
+reaper and reported as ``provenance_pending``, and a marked write that
+raised as failed. The record itself is pinned in
 ``recall_derivation_test.py``.
 """
 
@@ -14,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from graphiti_core.nodes import EpisodeType
 
-from . import ingest
+from . import ingest, marked_write
 from .recall_citations import Citations
 from .recall_fake_redis import FakeRedis
 from .scope import write_lock_key
@@ -81,9 +82,9 @@ async def _work(
         patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client)),
         patch.object(ingest, "ensure_indices_once", AsyncMock()),
         patch.object(ingest, "previous_episode_uuids", AsyncMock(return_value=[])),
-        patch.object(ingest, "mark_derivation", worker.mark),
-        patch.object(ingest, "record_derivation", worker.record),
-        patch.object(ingest, "note_pending", worker.noted),
+        patch.object(marked_write, "mark", worker.mark),
+        patch.object(marked_write, "record", worker.record),
+        patch.object(marked_write, "note_pending", worker.noted),
     ):
         await ingest._ingestion_worker("test-user", "user_test", queue)
     return worker

@@ -2,7 +2,8 @@
 
 A dream write cites the facts and episodes it rests on
 (``dream/citations.py``). The ingestion worker holds the graph's write lock
-for the whole write (``ingest._write_locked``), and inside it:
+for the whole write (``ingest._write_locked``), and inside it
+(``marked_write.py``):
 
 1. before ``add_episode``, ``mark`` writes the write's complete citations to
    a ``DreamCitations`` marker in the same graph: the dream episode's name,
