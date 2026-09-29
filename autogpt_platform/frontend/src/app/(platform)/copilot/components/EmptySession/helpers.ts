@@ -41,10 +41,14 @@ export function getIntroLine(
   expert: { name: string; role: string | null } | null,
 ) {
   if (!expert) return AUTOPILOT_INTRO;
-  const role = expert.role?.trim();
-  return role
-    ? `I'm ${expert.name}, your ${getExpertRoleLabel(role)}. What should I take on?`
-    : `I'm ${expert.name}. What should I take on?`;
+  return `I'm ${expert.name}${getExpertIntroSuffix(expert.role)}`;
+}
+
+export function getExpertIntroSuffix(role: string | null) {
+  const trimmedRole = role?.trim();
+  return trimmedRole
+    ? `, your ${getExpertRoleLabel(trimmedRole)}. What should I take on?`
+    : ". What should I take on?";
 }
 
 export function getExpertInputPlaceholder(expertName: string) {

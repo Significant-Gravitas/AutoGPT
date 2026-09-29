@@ -173,6 +173,7 @@ export function EmptySession({
               intro={introLine}
               recipientPicker={recipientPicker}
               isExpert={Boolean(selectedExpert)}
+              expertRole={selectedExpert?.role}
             />
           )}
 

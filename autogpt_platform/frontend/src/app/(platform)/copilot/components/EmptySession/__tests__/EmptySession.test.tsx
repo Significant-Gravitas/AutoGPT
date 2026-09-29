@@ -84,7 +84,7 @@ describe("EmptySession — recipient-aware intro", () => {
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "Tell Maria what you need, and it will get to work.",
+        "I'm Maria, your Marketing Strategist. What should I take on?",
       ),
     );
     expect(
@@ -97,7 +97,7 @@ describe("EmptySession — recipient-aware intro", () => {
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "Tell Sam what you need, and it will get to work.",
+        "I'm Sam, your Sales Development Rep. What should I take on?",
       ),
     );
   });
@@ -107,7 +107,7 @@ describe("EmptySession — recipient-aware intro", () => {
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "Tell Max what you need, and it will get to work.",
+        "I'm Max. What should I take on?",
       ),
     );
     expect(
