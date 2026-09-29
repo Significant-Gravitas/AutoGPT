@@ -10,6 +10,11 @@ from backend.copilot.graphiti.recall import (
     recallable_episode_predicate,
 )
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    legacy_first_message,
+    master_warm,
+)
+from backend.copilot.model import ChatMessage
 
 from . import fetch as fetch_mod
 from . import hidden_sessions
@@ -71,7 +76,7 @@ async def test_fact_gather_reads_live_facts_by_recalls_own_test():
 
 
 def _chat_store(*session_ids: str) -> SimpleNamespace:
-    message = SimpleNamespace(role="user", content="something the user said")
+    message = ChatMessage(role="user", content="something the user said", sequence=0)
     return SimpleNamespace(
         get_user_chat_sessions=AsyncMock(
             return_value=[
@@ -133,3 +138,23 @@ async def test_the_dream_reads_no_session_when_it_cannot_tell_which_are_hidden(
 
     assert bundle.recent_sessions == []
     chat_store.get_user_chat_sessions.assert_not_awaited()
+
+
+def test_a_session_body_reads_the_first_message_without_its_stored_block():
+    """The dream's session bodies are model input: the first message comes
+    without the memory block an older session stored in it, the backfill not
+    yet run; a later message holding a copy (a paste) is the user's."""
+    first = legacy_first_message(master_warm(("the Nova password is violet-913",)))
+    pasted = legacy_first_message(master_warm(("Bob leads Atlas",)))
+
+    body = fetch_mod._session_body(
+        [
+            ChatMessage(role="user", content=first, sequence=0),
+            ChatMessage(role="assistant", content="done", sequence=1),
+            ChatMessage(role="user", content=pasted, sequence=2),
+        ]
+    )
+
+    assert "violet-913" not in body
+    assert "what is Alice working on" in body
+    assert "Bob leads Atlas" in body

@@ -15,6 +15,10 @@ from prisma.enums import ReviewStatus
 from backend.copilot.gate import active_mode, chat_rules, check_action, gate_active
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    legacy_first_message,
+    master_warm,
+)
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -133,6 +137,31 @@ async def test_every_shell_command_in_auto_reaches_the_supervisor(
         )
     assert supervisor.await_count == int(reaches_supervisor)
     assert decision.allowed is (mode != "ask_first")
+
+
+async def test_the_supervisor_reads_an_old_first_message_without_its_memory_block(
+    gate_on, clean_session_state
+):
+    """A turn that is not a new message (a continuation) in a session that
+    began before warm context became query-only: the last user message is
+    the first one, which still holds its first turn's memory block. The
+    supervisor's prompt gets it without the block, and so without a fact the
+    user has forgotten since."""
+    forgotten = "the Nova recovery password is violet-913"
+    first = legacy_first_message(
+        master_warm((forgotten,)), skills=False, rest="tidy the repo"
+    )
+    session = _session("auto")
+    session.messages = [ChatMessage(role="user", content=first, sequence=0)]
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
+
+    with patch(f"{_GATE}.supervise", supervisor):
+        decision = await check_action("bash_exec", {"command": "ls"}, "u", session)
+
+    assert decision.allowed
+    assert supervisor.await_args is not None
+    assert supervisor.await_args.kwargs["user_message"] == "tidy the repo"
+    assert session.messages[0].content == first
 
 
 async def test_a_supervisor_ask_parks_the_call(gate_on, clean_session_state):

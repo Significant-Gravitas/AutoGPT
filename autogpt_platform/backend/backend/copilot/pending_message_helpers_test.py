@@ -690,7 +690,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
       1. **N+1 user rows total** (1 routes.py-saved row + N pending).
       2. **Original row carries the wrapped envelopes** but NOT any
          pending text — the bubble in the UI shows just the original
-         send (markdown strips the trusted ``<memory_context>`` /
+         send (markdown strips the trusted ``<env_context>`` /
          ``<user_context>`` blocks for display).
       3. **Each pending row carries its raw chip text alone** — no
          envelopes, no neighbours' texts joined with ``\\n\\n``.
@@ -725,7 +725,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
         MagicMock(
             role="user",
             content=(
-                "<memory_context>\nfacts\n</memory_context>\n\n"
+                "<env_context>\nworking_dir: /tmp/copilot-sess\n</env_context>\n\n"
                 "<user_context>\nbio\n</user_context>\n\n"
                 "can you sleep for 2 seconds then 3 seconds"
             ),
@@ -768,7 +768,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     # Invariant 2: original row keeps wrapped envelopes; no pending text.
     original_row = session.messages[0]
-    assert "<memory_context>" in original_row.content
+    assert "<env_context>" in original_row.content
     assert "<user_context>" in original_row.content
     assert "can you sleep" in original_row.content
     assert "oh sleep 4 secs" not in original_row.content, (
@@ -781,7 +781,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
     assert (
         chip_row.content == "oh sleep 4 secs in between"
     ), f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
-    assert "<memory_context>" not in chip_row.content
+    assert "<env_context>" not in chip_row.content
     assert "can you sleep" not in chip_row.content, (
         "regression: chip row absorbed original text — "
         "persist ran before inject, or the chip was joined with `\\n\\n`"
