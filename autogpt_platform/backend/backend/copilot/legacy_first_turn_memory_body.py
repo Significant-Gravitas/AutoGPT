@@ -61,9 +61,9 @@ _EPISODE_STAMP_RE = re.compile(rf"\[(?P<created>{_DATETIME})\] ")
 # The renderers cut an episode's body to this many characters.
 _EPISODE_BODY_CHARS = 500
 # A tag start this stack's renderer would have neutralised, and one it did
-# (``recall_render.neutralise_tags``: ``<`` became ``<!``). They match what
-# its pattern matches, written without its ``\s*/?\s*``, which backtracks
-# over a run of whitespace in time quadratic in its length.
+# (``recall_render.neutralise_tags``: ``<`` became ``<!``). The first is the
+# renderer's own linear-time pattern (#15003 replaced its earlier
+# ``\s*/?\s*``, which backtracked quadratically over a whitespace run).
 _TAG_START_RE = re.compile(r"<(?=\s*(?:/\s*)?[^\W\d])")
 _NEUTRALISED_TAG_START_RE = re.compile(r"<!(?=\s*(?:/\s*)?[^\W\d])")
 
