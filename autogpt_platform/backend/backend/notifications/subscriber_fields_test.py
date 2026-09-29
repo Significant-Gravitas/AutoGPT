@@ -15,7 +15,10 @@ from backend.data.notifications import (
     SubscriberField,
     SubscriptionStatus,
 )
-from backend.notifications import mailerlite, subscriber_fields
+from backend.notifications import mailerlite
+from backend.notifications import notifications as delivery
+from backend.notifications import subscriber_fields
+from backend.notifications.notifications import NotificationManager
 
 EMAIL = "sam@example.com"
 
@@ -57,7 +60,7 @@ async def test_a_signup_queues_signed_with_the_account_creation_day(fields_on):
         "user-1", EMAIL, datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
     )
     event = fields_on.await_args.args[0]
-    assert event.action is AudienceAction.UPDATE_FIELDS
+    assert event.action is AudienceAction.SIGNUP
     assert event.fields == {
         SubscriberField.STATUS: SubscriptionStatus.SIGNED.value,
         SubscriberField.SIGNUP: "2026-09-29",
@@ -268,7 +271,7 @@ async def test_fields_land_even_while_the_group_is_unconfigured(
     mailerlite_configured,
 ):
     """The status is not the group's to hold hostage: it is written, and the
-    group change then retries as it always has."""
+    group change is then dead-lettered (see below)."""
     mailerlite_configured.config.mailerlite_changelog_group_id = ""
     client = MagicMock(
         get=AsyncMock(return_value=_response(200, _all_fields())),
@@ -342,3 +345,134 @@ async def test_no_fields_means_no_field_calls(mailerlite_configured):
         "groups": ["grp_changelog"],
     }
     client.post.assert_awaited_once()
+
+
+# ── ordering against the checkout ──────────────────────────────────────────
+
+
+class _FakeMailerLite:
+    """Subscribers as MailerLite holds them: an upsert merges its fields into
+    whatever is already there, so the last write wins."""
+
+    def __init__(self, held: dict[str, dict] | None = None):
+        self.subscribers = held or {}
+
+    async def get(self, url: str, **_) -> MagicMock:
+        if "/fields" in url:
+            return _response(200, _all_fields())
+        held = self.subscribers.get(url.rsplit("/", 1)[-1])
+        if held is None:
+            return _response(404)
+        return _response(200, {"data": {"id": "ml_1", "fields": dict(held)}})
+
+    async def post(self, url: str, json: dict, **_) -> MagicMock:
+        held = self.subscribers.setdefault(json["email"], {})
+        held.update(json.get("fields") or {})
+        return _response(200)
+
+
+async def _consume(*events) -> None:
+    for event in events:
+        assert await NotificationManager._process_audience_change(
+            MagicMock(), event.model_dump_json()
+        )
+
+
+async def _signup_event(fields_on):
+    await subscriber_fields.queue_signup(
+        "user-1", EMAIL, datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+    )
+    return fields_on.await_args.args[0]
+
+
+def _checkout_event():
+    return subscriber_fields.audience_event(
+        AudienceAction.ENROLL_TOUR,
+        EMAIL,
+        "user-1",
+        subscriber_fields.subscribed(1788305400),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_signup_synced_after_the_checkout_does_not_undo_it(
+    mailerlite_configured, fields_on
+):
+    """The signup is queued from a background task, so nothing orders it
+    before the account's first checkout. Landing second, its `signed` must not
+    replace the `subscribed` the checkout wrote; the signup date still lands."""
+    mailerlite_configured.config.mailerlite_onboarding_group_id = "grp_tour"
+    signup = await _signup_event(fields_on)
+    ml = _FakeMailerLite()
+    with patch.object(mailerlite, "_client", return_value=ml):
+        await _consume(_checkout_event(), signup)
+    assert ml.subscribers[EMAIL]["subscription_status"] == "subscribed"
+    assert ml.subscribers[EMAIL]["signup_date"] == "2026-09-29"
+
+
+@pytest.mark.asyncio
+async def test_a_signup_in_order_is_overtaken_by_the_checkout(
+    mailerlite_configured, fields_on
+):
+    mailerlite_configured.config.mailerlite_onboarding_group_id = "grp_tour"
+    signup = await _signup_event(fields_on)
+    ml = _FakeMailerLite()
+    with patch.object(mailerlite, "_client", return_value=ml):
+        await _consume(signup)
+        assert ml.subscribers[EMAIL]["subscription_status"] == "signed"
+        await _consume(_checkout_event())
+    assert ml.subscribers[EMAIL]["subscription_status"] == "subscribed"
+
+
+@pytest.mark.asyncio
+async def test_a_signup_gives_a_subscriber_with_no_status_signed(
+    mailerlite_configured, fields_on
+):
+    """Someone already on the newsletter has no status of ours yet."""
+    signup = await _signup_event(fields_on)
+    ml = _FakeMailerLite({EMAIL: {"subscription_status": None, "city": "Leeds"}})
+    with patch.object(mailerlite, "_client", return_value=ml):
+        await _consume(signup)
+    assert ml.subscribers[EMAIL]["subscription_status"] == "signed"
+
+
+# ── a required group without an ID ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "action", [AudienceAction.ENROLL_TOUR, AudienceAction.REMOVE_CHANGELOG]
+)
+async def test_a_missing_required_group_is_dead_lettered_at_once(
+    mailerlite_configured, monkeypatch, caplog, action
+):
+    """No retry makes a setting appear, so the change goes to the dead-letter
+    queue on the first attempt, to be replayed once the ID is set. The fields
+    are written once and the problem is said once."""
+    mailerlite_configured.config.mailerlite_onboarding_group_id = ""
+    mailerlite_configured.config.mailerlite_changelog_group_id = ""
+    event = subscriber_fields.audience_event(
+        action, EMAIL, "user-1", subscriber_fields.subscribed(1788305400)
+    )
+    message = MagicMock(
+        body=event.model_dump_json().encode(), ack=AsyncMock(), reject=AsyncMock()
+    )
+    ml = _FakeMailerLite()
+    ml.post = AsyncMock(side_effect=ml.post)
+    sleep = AsyncMock()
+    monkeypatch.setattr(delivery.asyncio, "sleep", sleep)
+    with (
+        patch.object(mailerlite, "_client", return_value=ml),
+        caplog.at_level("WARNING"),
+    ):
+        manager = NotificationManager.__new__(NotificationManager)
+        await manager._process_message_with_retry(
+            message, manager._process_audience_change, delivery.AUDIENCE_QUEUE
+        )
+    message.reject.assert_awaited_once_with(requeue=False)
+    message.ack.assert_not_awaited()
+    sleep.assert_not_awaited()
+    assert ml.post.await_count == 1
+    assert ml.subscribers[EMAIL]["subscription_status"] == "subscribed"
+    assert caplog.text.count("group ID is not configured") == 1
+    assert EMAIL not in caplog.text

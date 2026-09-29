@@ -328,3 +328,32 @@ def test_a_second_run_finds_nothing_to_do():
         mailerlite_backfill.decide(c, after, trial_enabled=True) for c in customers
     ]
     assert all(c.decisions == [Decision.ALREADY_CORRECT] for c in changes)
+
+
+@pytest.mark.asyncio
+async def test_read_audience_stops_on_a_repeated_cursor(configured, monkeypatch):
+    """A cursor MailerLite already handed out would page forever. It is an
+    error, not the end, or the plan would be made from a partial read."""
+    page = {"data": [{"id": "1", "email": "t@x.io"}], "meta": {"next_cursor": "c2"}}
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=_paging_forever(page))
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+
+    with pytest.raises(mailerlite.MailerLiteError, match="repeated"):
+        await mailerlite_backfill.read_audience()
+    assert client.get.await_count == 2
+
+
+def _paging_forever(page: dict):
+    """The same page every time. A mock never yields to the event loop, so a
+    reader that does not stop would hang the test rather than time out."""
+    calls = 0
+
+    async def get(url, **kw):
+        nonlocal calls
+        calls += 1
+        if calls > 10:
+            raise AssertionError("the reader requested the same page forever")
+        return _response(200, page)
+
+    return get
