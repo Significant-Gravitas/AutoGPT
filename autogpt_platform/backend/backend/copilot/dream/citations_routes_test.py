@@ -4,12 +4,14 @@ nothing, and a proposal citing only a uuid the pass never read. The first is
 queued with what it cites; the other two are dropped before they reach the
 graph and reach ``uncited_writes_dropped`` in the result, the durable record
 and the admin job status. The first also cites a fact of another scope,
-which is dropped and counted in ``cross_scope_citations_dropped`` there. The worker then drops the queued write for resting
-on a forget, fails another and makes a third whose record fails:
-``dropped_forgotten``, ``failed_writes`` and ``provenance_pending`` report
-them in the same places on the sync route, which waits for the worker, and
-not on the batch route, which does not. Only the LLM, the ingestion queue and worker, and the chat store are
-stubbed; the rest runs on ``conftest.py``'s in-memory Redis and store."""
+which is dropped and counted in ``cross_scope_citations_dropped`` there.
+The worker then drops the queued write for resting on a forget, fails
+another and makes a third whose record fails: ``dropped_forgotten``,
+``failed_writes`` and ``provenance_pending`` report them in the same places
+on the sync route, which waits for the worker, and not on the batch route,
+which does not. Only the LLM, the ingestion queue and worker, and the chat
+store are stubbed; the rest runs on ``conftest.py``'s in-memory Redis and
+store."""
 
 import asyncio
 import json

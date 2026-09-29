@@ -532,8 +532,8 @@ async def apply_operations(
     before it is queued and counted in ``uncited_writes_dropped``. Both
     routes pass their input bundle's sets and scopes; ``None`` reads as
     nothing read, so every write is dropped, and a source with no scope
-    given is ``citations.UNSCOPED``. The ingestion worker drops, unwritten, any whose citations a
-    forget reached after the pass read the graph
+    given is ``citations.UNSCOPED``. The ingestion worker drops, unwritten,
+    any whose citations a forget reached after the pass read the graph
     (``graphiti/recall_citations.py``), and records the citations of every
     write it makes (``graphiti/recall_derivation.py``).
     ``dropped_forgotten`` counts those dropped before apply returned: all of

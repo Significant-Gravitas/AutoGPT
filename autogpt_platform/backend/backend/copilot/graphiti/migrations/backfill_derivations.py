@@ -14,20 +14,20 @@ whose source episodes all have one gets their union, as ingestion stamps
 it. It reports the ambiguous descriptions, the citations it rejected, and
 the dream facts it could not attribute (stamped with nothing cited, so no
 forget reaches them); a citation past the first five is lost too, and so is
-one of a fact a hard forget purged before this ran. It does not cascade on its own:
-``--cascade-existing-forgets`` also runs a forget's cascade from every root
-the graph's forgets left, the facts a hard forget purged and the episodes a
-forget hid included (``backfill_cascade.py``), which a dry run only
-counts.
+one of a fact a hard forget purged before this ran. It does not cascade on
+its own: ``--cascade-existing-forgets`` also runs a forget's cascade from
+every root the graph's forgets left, the facts a hard forget purged and the
+episodes a forget hid included (``backfill_cascade.py``), which a dry run
+only counts.
 
 Dry run by default. ``--apply`` writes, each graph holding its write lock
 (``scope_lock.py``) from its first read to its last write, in batches of
 ``BATCH_SIZE``, after completing the dream records a failed write left
 pending in it (``recall_reconcile.py``). A graph locked past
 ``BACKFILL_LOCK_WAIT_SECONDS``, or not lockable because Redis is
-unreachable, is skipped unwritten and counted busy; one whose backfill raises, or whose cascade stops short, is counted
-failed. Either makes the script exit 1: run it again. Every write is
-idempotent.
+unreachable, is skipped unwritten and counted busy; one whose backfill
+raises, or whose cascade stops short, is counted failed. Either makes the
+script exit 1: run it again. Every write is idempotent.
 
 Usage:
 
@@ -68,10 +68,10 @@ class Derivations(BaseModel):
     records completed (``reconciled``), dream ``episodes`` given a record,
     of their descriptions those ``ambiguous``, the citations ``rejected``
     (not in the graph in the episode's scope), ``facts`` stamped, of them
-    ``unattributed`` with nothing cited; the
-    ``roots`` a cascade started from (forgotten or purged facts, hidden
-    episodes) and the facts it retracted (``derived``); and the graphs to
-    run again, ``busy`` and ``failed``."""
+    ``unattributed`` with nothing cited; the ``roots`` a cascade started
+    from (forgotten or purged facts, hidden episodes) and the facts it
+    retracted (``derived``); and the graphs to run again, ``busy`` and
+    ``failed``."""
 
     reconciled: int = 0
     episodes: int = 0
