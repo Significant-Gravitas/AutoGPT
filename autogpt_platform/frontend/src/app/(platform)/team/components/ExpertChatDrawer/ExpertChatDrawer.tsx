@@ -115,6 +115,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
     error,
     stop,
     onSend,
+    onActionSend,
     queuedMessages,
     isResolvingSession,
     isLoadingSession,
@@ -125,7 +126,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
   const isStreaming = status === "streaming" || status === "submitted";
 
   return (
-    <CopilotChatActionsProvider onSend={onSend}>
+    <CopilotChatActionsProvider onSend={onActionSend}>
       <div className="flex min-h-0 flex-1 flex-col">
         {isResolvingSession ? (
           <div className="flex flex-1 items-center justify-center px-4 py-6">

@@ -16,6 +16,16 @@ import type { ChatTarget } from "./helpers";
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
+class SessionStartingError extends Error {}
+
+function notifyStartFailed() {
+  toast({
+    variant: "destructive",
+    title: "Could not start the chat",
+    description: "Please try sending your message again.",
+  });
+}
+
 interface Args {
   target: ChatTarget | null;
   isOpen: boolean;
@@ -123,7 +133,7 @@ export function useExpertChatDrawer({
   useEffect(() => {
     if (!seedToSend) return;
     setSeedToSend(null);
-    void startSessionRef.current(seedToSend).catch(() => undefined);
+    void startSessionRef.current(seedToSend).catch(notifyStartFailed);
   }, [seedToSend]);
 
   useEffect(() => {
@@ -146,7 +156,12 @@ export function useExpertChatDrawer({
 
   async function startSession(firstMessage: string) {
     const generation = generationRef.current;
-    if (creatingGenerationRef.current === generation || !target) return;
+    if (!target) return;
+    // A card answered while a typed prompt is still creating the session must
+    // not settle on a message that never went out, so the second send rejects.
+    if (creatingGenerationRef.current === generation) {
+      throw new SessionStartingError();
+    }
     creatingGenerationRef.current = generation;
     setIsCreating(true);
     try {
@@ -163,11 +178,6 @@ export function useExpertChatDrawer({
     } catch (err) {
       if (generation !== generationRef.current) return;
       Sentry.captureException(err);
-      toast({
-        variant: "destructive",
-        title: "Could not start the chat",
-        description: "Please try sending your message again.",
-      });
       setSuppressOnboarding(false);
       throw err;
     } finally {
@@ -210,6 +220,17 @@ export function useExpertChatDrawer({
     sendMessage({ text: trimmed });
   }
 
+  // Cards fail quietly and keep their form, so this path owns the toast; the
+  // composer shows its own and restores the draft.
+  async function onActionSend(message: string) {
+    try {
+      await onSend(message);
+    } catch (err) {
+      if (!(err instanceof SessionStartingError)) notifyStartFailed();
+      throw err;
+    }
+  }
+
   const isResolvingSession = !sessionId && wantsLatest && latestQuery.isLoading;
 
   return {
@@ -220,6 +241,7 @@ export function useExpertChatDrawer({
     error,
     stop,
     onSend,
+    onActionSend,
     queuedMessages,
     isResolvingSession,
     isLoadingSession: !!sessionId && sessionQuery.isLoading,

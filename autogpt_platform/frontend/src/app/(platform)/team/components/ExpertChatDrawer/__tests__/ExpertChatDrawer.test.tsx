@@ -59,30 +59,27 @@ describe("ExpertChatDrawer", () => {
     ).toBe("true");
   });
 
-  test.each(["completed", "skipped"])(
-    "keeps %s setup out of new chats",
-    async () => {
-      const request = vi.fn(() => HttpResponse.json(null));
-      server.use(
-        http.get("/api/proxy/api/experts/:expertId/onboarding", request),
-      );
-      render(
-        <ExpertChatDrawer
-          target={{
-            expertId: EXPERT_ID,
-            name: "Zara",
-            role: "GTM Strategist",
-            avatarUrl: null,
-          }}
-          resumeLatest={false}
-          onClose={() => {}}
-        />,
-      );
-      await waitFor(() => expect(request).toHaveBeenCalled());
-      expect(screen.getByText("What can I do for you?")).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
-    },
-  );
+  test("keeps settled setup out of new chats", async () => {
+    const request = vi.fn(() => HttpResponse.json(null));
+    server.use(
+      http.get("/api/proxy/api/experts/:expertId/onboarding", request),
+    );
+    render(
+      <ExpertChatDrawer
+        target={{
+          expertId: EXPERT_ID,
+          name: "Zara",
+          role: "GTM Strategist",
+          avatarUrl: null,
+        }}
+        resumeLatest={false}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    expect(screen.getByText("What can I do for you?")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+  });
 
   test("does not request setup when the new chat has a prompt", async () => {
     const request = vi.fn(() => HttpResponse.json(onboardingCard()));
