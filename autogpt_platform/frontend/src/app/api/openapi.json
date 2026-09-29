@@ -21398,7 +21398,7 @@
         },
         "type": "object",
         "title": "DreamOperations",
-        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — a write or proposal keeps only the citations\n    whose source (a fact's scope, an episode's envelope scope, else\n    ``real:global``) has its own scope, and one left citing nothing is\n    dropped (``dream/citations.py``). A source in the same scope that\n    the write does not truly rest on is not caught.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
+        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — a write or proposal citing a fact of\n    another scope (a fact's scope, else ``real:global``) is dropped\n    whole, as is one citing nothing the pass read\n    (``dream/citations.py``); episode citations are not scoped. A\n    source in the same scope that the write does not truly rest on is\n    not caught.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
       },
       "DreamOperationsSnapshot": {
         "properties": {
