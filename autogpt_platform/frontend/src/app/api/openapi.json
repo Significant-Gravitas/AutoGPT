@@ -23777,12 +23777,13 @@
             "type": "integer",
             "title": "Derived Forgotten",
             "default": 0
-          }
+          },
+          "resumed": { "type": "boolean", "title": "Resumed", "default": false }
         },
         "type": "object",
         "required": ["uuid", "forgotten"],
         "title": "ForgetFactResponse",
-        "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``)."
+        "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``).\n``resumed`` is True when the fact had already been erased by an earlier\nhard forget, and this one went on retracting and erasing what the dream\nderived from it (``graphiti/recall_forget.py``)."
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -26788,6 +26789,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Derived Uuids"
+          },
+          "resumed_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Resumed Uuids"
           },
           "failed_uuids": {
             "items": { "type": "string" },

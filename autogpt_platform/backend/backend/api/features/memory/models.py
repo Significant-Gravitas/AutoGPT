@@ -31,11 +31,15 @@ class MemoryFactListResponse(BaseModel):
 
 class ForgetFactResponse(BaseModel):
     """A forgotten fact. ``derived_forgotten`` counts the facts the dream had
-    derived from it, retracted with it (``graphiti/recall_cascade.py``)."""
+    derived from it, retracted with it (``graphiti/recall_cascade.py``).
+    ``resumed`` is True when the fact had already been erased by an earlier
+    hard forget, and this one went on retracting and erasing what the dream
+    derived from it (``graphiti/recall_forget.py``)."""
 
     uuid: str
     forgotten: bool
     derived_forgotten: int = 0
+    resumed: bool = False
 
 
 class EraseMemoryResponse(BaseModel):

@@ -133,7 +133,8 @@ async def test_it_cascades_from_a_forget_made_before_it_ran(
 
     found = await backfill_graph(driver, apply=True, cascade_forgets=True)
 
-    assert (found.roots, found.derived, found.failed) == (1, 2, 0)
+    # The forgotten fact, and the chat turn it hid, which a record now names.
+    assert (found.roots, found.derived, found.failed) == (2, 2, 0)
     live = set(await live_facts(driver))
     assert live == {bakery.boule, bakery.cafe, bakery.weekly}
     for uuid in (bakery.supplies, bakery.boule_flour):

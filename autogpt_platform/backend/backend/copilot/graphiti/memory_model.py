@@ -164,12 +164,15 @@ class ForgetResult(BaseModel):
     either mode, a hard one erasing their text (``recall_erase.py``). The
     episode and entity lists record the clean-up done: a hard forget empties
     an episode nothing else cites into a tombstone rather than deleting it,
-    so the chat session it came from stays known.
+    so the chat session it came from stays known. ``resumed`` lists the
+    requested uuids that were already gone, purged by a hard forget, whose
+    cascade this forget went on with, erasing (``recall_forget.py``).
     """
 
     deleted: list[str] = Field(default_factory=list)
     failures: list[MemoryForgetFailure] = Field(default_factory=list)
     derived: list[str] = Field(default_factory=list)
+    resumed: list[str] = Field(default_factory=list)
     redacted_episodes: list[str] = Field(default_factory=list)
     tombstoned_episodes: list[str] = Field(default_factory=list)
     deleted_entities: list[str] = Field(default_factory=list)

@@ -11,6 +11,26 @@ from .recall import live_fact_predicate
 
 _LIVE = live_fact_predicate("e")
 
+# Of ``$uuids``, gone from the graph, those something still names as what
+# it rests on or was hidden for: a record (a fact's or an episode's), a
+# pending citation marker, an episode's ``redacted_for``, or the reason of a
+# fact an earlier cascade retracted for it (``$prefix`` + the uuid). One of
+# these was a fact a hard forget purged (``recall_forget.py``).
+NAMED_ROOTS_QUERY = """
+UNWIND $uuids AS root
+OPTIONAL MATCH ()-[e:RELATES_TO]->()
+WHERE root IN coalesce(e.derived_from_facts, [])
+   OR e.expiration_reason = $prefix + root
+WITH root, count(e) AS facts
+OPTIONAL MATCH (n)
+WHERE (n:Episodic OR n:DreamCitations)
+  AND (root IN coalesce(n.derived_from_facts, [])
+       OR root IN coalesce(n.redacted_for, []))
+WITH root, facts, count(n) AS nodes
+WHERE facts + nodes > 0
+RETURN root AS uuid
+"""
+
 # The facts an earlier try of this forget retracted.
 EARLIER_QUERY = """
 MATCH ()-[e:RELATES_TO]->()

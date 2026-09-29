@@ -193,7 +193,7 @@ class TestForgetFailuresAreActionable:
         """End to end: a soft delete that matches nothing must return the
         per-UUID reason in both the structured `failures` field and the
         human-readable message — not a bare "0 invalidated, 1 failed"."""
-        driver = _mock_driver([])  # the edge lookup finds nothing
+        driver = _mock_driver([], [])  # the lookup finds nothing, nothing names it
         session = ChatSession.new("user-abc", dry_run=False)
         with (
             patch(f"{_MODULE}.is_enabled_for_user", _enabled),
@@ -222,6 +222,7 @@ class TestForgetFailuresAreActionable:
         success count and the per-UUID failure detail."""
         driver = _mock_driver(
             [{"uuid": "kept"}],  # lookup: only "kept" exists
+            [],  # nothing names "gone" as a purged root
             [{"uuid": "kept"}],  # retract "kept"
             [],  # scrub its sentence
             [],  # find the entities to scrub (none)
@@ -298,6 +299,15 @@ class TestBuildConfirmMessage:
         assert message == (
             "1 memory edge(s) permanently deleted; "
             "3 fact(s) derived from them retracted too."
+        )
+
+    def test_edges_already_erased_are_told_apart(self) -> None:
+        message = _build_confirm_message(0, "retracted from memory", [], 2, 1)
+        assert message == (
+            "0 memory edge(s) retracted from memory; "
+            "2 fact(s) derived from them retracted too. "
+            "1 memory edge(s) had already been erased; what was derived from "
+            "them was retracted and erased."
         )
 
     def test_caps_inlined_detail_and_notes_remainder(self) -> None:

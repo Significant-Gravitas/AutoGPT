@@ -230,9 +230,12 @@ async def _forget_fact_impl(
             status_code=500,
             detail="Forgot this memory but could not finish cleaning up; try again",
         )
-    if result.deleted:
+    if result.deleted or result.resumed:
         return ForgetFactResponse(
-            uuid=fact_uuid, forgotten=True, derived_forgotten=len(result.derived)
+            uuid=fact_uuid,
+            forgotten=True,
+            derived_forgotten=len(result.derived),
+            resumed=bool(result.resumed),
         )
     if MemoryForgetFailureCode.QUERY_ERROR in codes:
         raise HTTPException(status_code=500, detail="Could not forget this memory")

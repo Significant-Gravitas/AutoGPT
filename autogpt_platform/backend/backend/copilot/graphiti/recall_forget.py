@@ -20,9 +20,16 @@ from typing import Any
 from graphiti_core.driver.driver import GraphDriver
 
 from .falkordb_driver import open_driver
-from .memory_model import ForgetResult, MemoryForgetFailure, MemoryStatus
+from .memory_model import (
+    ForgetResult,
+    MemoryForgetFailure,
+    MemoryForgetFailureCode,
+    MemoryStatus,
+)
 from .recall import USER_FORGET_REASON
 from .recall_cascade import cascade
+from .recall_cascade_queries import NAMED_ROOTS_QUERY
+from .recall_cascade_walk import derived_reason
 from .recall_hide import hide
 from .recall_orphans import purge
 from .recall_reconcile import reconcile
@@ -61,10 +68,17 @@ async def retract(
     (``ForgetResult.derived``). Hard does all that first, the cascade soft
     too but erasing the derived text it reaches (``recall_erase.py``), then
     empties and deletes what only the forgotten edges kept, the edges last
-    (``recall_orphans.purge``), so forgetting again after any failure but
-    the cascade's finishes the job. A failed step after the edge write is a
+    (``recall_orphans.purge``), so forgetting again after any failure
+    finishes the job, a purged fact's cascade included (below). A failed
+    step after the edge write is a
     ``cleanup_error`` on each edge it concerned; recall hides the fact and
     its text regardless.
+
+    A uuid that is no longer in the graph but that a derivation record, a
+    citation marker, an episode's ``redacted_for`` or an earlier cascade's
+    reason still names was a fact a hard forget purged, perhaps before its
+    cascade finished: the forget goes on with that cascade, erasing, and
+    lists it in ``ForgetResult.resumed`` instead of failing it as no match.
     """
     requested = list(dict.fromkeys(uuids))
     if not requested:
@@ -88,17 +102,41 @@ async def _forget(
     now = datetime.now(timezone.utc).isoformat()
     unreconciled = await _reconciled(driver, group_id)
     found = await _existing_edges(driver, group_id, uuids, result)
+    result.resumed = await _purged_roots(driver, result)
     retracted = await _retract_edges(driver, group_id, found, reason, now, result)
     hidden = await hide(driver, group_id, retracted, now, result)
-    if hidden:
+    if hidden and retracted:
         await cascade(driver, group_id, retracted, now, result, erase=hard)
+    if result.resumed:
+        await cascade(driver, group_id, result.resumed, now, result, erase=True)
     if unreconciled is not None:
-        _provenance_incomplete(result, retracted, unreconciled)
+        roots = [*retracted, *result.resumed]
+        _provenance_incomplete(result, roots, unreconciled)
     if not hard:
         result.deleted = retracted
     elif hidden:
         await purge(driver, group_id, retracted, now, result)
     return result
+
+
+async def _purged_roots(driver: GraphDriver, result: ForgetResult) -> list[str]:
+    """The uuids that matched no edge but that something still names as a
+    root: taken off ``result.failures``, to resume their cascade."""
+    missing = [
+        failure.uuid
+        for failure in result.failures
+        if failure.code is MemoryForgetFailureCode.NO_MATCH
+    ]
+    if not missing:
+        return []
+    rows = _rows(
+        await driver.execute_query(
+            NAMED_ROOTS_QUERY, uuids=missing, prefix=derived_reason("")
+        )
+    )
+    named = {row["uuid"] for row in rows}
+    result.failures = [f for f in result.failures if f.uuid not in named]
+    return [uuid for uuid in missing if uuid in named]
 
 
 async def _reconciled(driver: GraphDriver, group_id: str) -> Exception | None:

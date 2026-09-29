@@ -238,11 +238,16 @@ class MemoryForgetConfirmTool(BaseTool):
         mode = "permanently deleted" if hard_delete else "retracted from memory"
         return MemoryForgetConfirmResponse(
             message=_build_confirm_message(
-                len(result.deleted), mode, result.failures, len(result.derived)
+                len(result.deleted),
+                mode,
+                result.failures,
+                len(result.derived),
+                len(result.resumed),
             ),
             session_id=session.session_id,
             deleted_uuids=result.deleted,
             derived_uuids=result.derived,
+            resumed_uuids=result.resumed,
             failed_uuids=[f.uuid for f in result.failures],
             failures=result.failures,
         )
@@ -266,6 +271,7 @@ def _build_confirm_message(
     mode: str,
     failures: list[MemoryForgetFailure],
     derived_count: int = 0,
+    resumed_count: int = 0,
 ) -> str:
     """Human/model-readable summary that spells out *why* edges failed.
 
@@ -273,7 +279,8 @@ def _build_confirm_message(
     each UUID with its reason lets it retry, hard-delete, or tell the user.
     The facts the dream had derived from the forgotten ones, retracted with
     them (``graphiti/recall_cascade.py``), are counted so the user hears of
-    them too.
+    them too, and so are the edges an earlier hard forget had already erased,
+    whose derived facts this forget went on to retract and erase.
 
     Only the first ``_MAX_FAILURE_DETAIL`` reasons are inlined: a large batch
     failing wholesale (e.g. a driver outage) would otherwise push the tool
@@ -285,6 +292,11 @@ def _build_confirm_message(
         summary = (
             f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
             "derived from them retracted too."
+        )
+    if resumed_count:
+        summary += (
+            f" {resumed_count} memory edge(s) had already been erased; what "
+            "was derived from them was retracted and erased."
         )
     if not failures:
         return summary

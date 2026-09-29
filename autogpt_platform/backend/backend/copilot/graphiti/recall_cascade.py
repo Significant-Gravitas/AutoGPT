@@ -18,31 +18,35 @@ A derived fact is retracted as a soft forget retracts one: ``forgotten_at``,
 ``status='retracted'``, its sentence moved to its audit copy, its entities'
 summaries and attributes and their communities' summaries blanked, and every
 episode citing it redacted. Its ``expiration_reason`` is
-``derived_from_forgotten:<uuid>``, naming the fact the user forgot that it
-descends from. A dream episode reached without a live fact of its own (its
-fact was superseded, merged into a fact a user stated, or never extracted)
-is redacted and the entities it mentions blanked, since the dream reads its
-text. A hard forget cascades the same way, softly: retraction takes the
-derived facts out of every read, and deleting them would purge what the
-model's citations name, which can be more than a fact truly rests on, beyond
-undoing. It also erases the text it reaches (``recall_erase.py``): every
-derived fact's, retracted or walked through, and every hidden dream episode's.
+``derived_from_forgotten:<uuid>``, naming the root it descends from: the
+fact the user forgot (``recall_cascade_walk.py``). A dream episode reached
+without a live fact of its own (its fact was superseded, merged into a fact
+a user stated, or never extracted) is redacted and the entities it mentions
+blanked, since the dream reads its text. A hard forget cascades the same
+way, softly: retraction takes the derived facts out of every read, and
+deleting them would purge what the model's citations name, which can be
+more than a fact truly rests on, beyond undoing. It also erases the text it
+reaches (``recall_erase.py``): every derived fact's, retracted or walked
+through, and every hidden dream episode's.
 
 At most ``CASCADE_MAX_ROUNDS`` rounds and ``CASCADE_MAX_ITEMS`` derived facts
 and dream episodes per forget. A forget stopped by a bound or a failed step
-reports a ``cleanup_error`` on each fact it forgot, and forgetting them again
-picks up the facts already retracted for them (their reason names them) and
-goes on from there. A hard forget purges the facts it forgot even when its
-cascade stops short, so it cannot be repeated; the derivation backfill's
-``--cascade-existing-forgets`` goes on from what the cascade retracted,
-softly.
+reports a ``cleanup_error`` on each root, and forgetting it again picks up
+the facts already retracted for it (their reason names it) and goes on from
+there, erasing when the root is gone: a hard forget purges its facts even
+when its cascade stops short, and a repeated forget of one of them starts
+from the records that name it (``recall_forget.py``). The episodes a forget
+hid remember which forgotten facts they were hidden for (``redacted_for``,
+``recall_hide.py``), so a cascade resumed after the purge still starts from
+the root's own episodes. The derivation backfill starts one from hidden
+episodes too (``seeds``).
 """
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
-from pydantic import BaseModel, Field
 
 from .memory_model import ForgetResult, MemoryForgetFailure, MemoryStatus
 from .recall_cascade_queries import (
@@ -52,20 +56,20 @@ from .recall_cascade_queries import (
     REDACT_DERIVED_QUERY,
     RETRACT_QUERY,
 )
+from .recall_cascade_walk import (
+    DERIVED_FROM_FORGOTTEN,
+    Found,
+    Frontier,
+    Walk,
+    derived_reason,
+)
 from .recall_erase import erase as erase_text
 from .recall_hide import REDACT_EPISODES_QUERY, scrub, scrub_entities
 
 logger = logging.getLogger(__name__)
 
-# ``expiration_reason`` of a fact the cascade retracted, before the colon.
-DERIVED_FROM_FORGOTTEN = "derived_from_forgotten"
 CASCADE_MAX_ITEMS = 500
 CASCADE_MAX_ROUNDS = 10
-
-
-def derived_reason(root: str) -> str:
-    """The reason recorded on a fact derived from forgotten fact ``root``."""
-    return f"{DERIVED_FROM_FORGOTTEN}:{root}"
 
 
 async def cascade(
@@ -76,26 +80,24 @@ async def cascade(
     result: ForgetResult,
     *,
     erase: bool = False,
+    seeds: Mapping[str, str] | None = None,
 ) -> None:
     """Retract what the dream derived from ``roots``, the facts this forget
-    has just retracted and hidden: ``result.derived`` gets each fact it
-    retracts and ``result.redacted_episodes`` each episode it hides; with
-    ``erase`` (a hard forget), their text goes too. A failed step or a bound
-    reached is a failure on every root."""
-    if not roots:
+    has just retracted and hidden, or that are gone: ``result.derived`` gets
+    each fact it retracts and ``result.redacted_episodes`` each episode it
+    hides; with ``erase`` (a hard forget, or a root that is gone), their text
+    goes too. ``seeds`` are hidden episodes to start from as well, each
+    mapped to the root it names. A failed step or a bound reached is a
+    failure on every root."""
+    walk = Walk.start(roots, dict(seeds or {}), budget=CASCADE_MAX_ITEMS, erase=erase)
+    if not walk.names:
         return
-    walk = _Walk(
-        roots=roots,
-        root_of={r: r for r in roots},
-        budget=CASCADE_MAX_ITEMS,
-        erase=erase,
-    )
     try:
         finished = await _run(driver, group_id, walk, now, result)
     except Exception as exc:
         logger.warning(f"Forget cascade failed in graph {group_id[:20]}", exc_info=True)
         result.failures.extend(
-            MemoryForgetFailure.cleanup_error(root, exc) for root in roots
+            MemoryForgetFailure.cleanup_error(name, exc) for name in walk.names
         )
         return
     if not finished:
@@ -103,52 +105,15 @@ async def cascade(
             f"Forget cascade in graph {group_id[:20]} stopped at its bound "
             f"after {len(result.derived)} derived facts"
         )
-        result.failures.extend(MemoryForgetFailure.derived_left(root) for root in roots)
-
-
-class _Walk(BaseModel):
-    """Every fact and episode the cascade has reached, mapped to the root it
-    descends from, how many more derived items it may retire, and whether it
-    erases their text."""
-
-    roots: list[str]
-    root_of: dict[str, str]
-    budget: int
-    erase: bool = False
-
-    def root(self, via: list[str]) -> str:
-        """The root of the first item in ``via`` the walk has reached."""
-        return next((self.root_of[x] for x in via if x in self.root_of), self.roots[0])
-
-    def reach(self, rows: list[dict[str, Any]]) -> list[str]:
-        """Record each row's ``uuid`` as reached ``via`` its items; the uuids
-        not reached before."""
-        new = [row for row in rows if row["uuid"] not in self.root_of]
-        for row in new:
-            self.root_of[row["uuid"]] = self.root(row["via"])
-        return [row["uuid"] for row in new]
-
-
-class _Frontier(BaseModel):
-    """What the last round retracted and hid: the next round's search."""
-
-    facts: list[str] = Field(default_factory=list)
-    episodes: list[str] = Field(default_factory=list)
-
-
-class _Found(BaseModel):
-    """One round's finds, rows of ``uuid`` and ``via`` (and, for a fact,
-    ``live``); ``truncated`` when the walk's budget cut them short."""
-
-    facts: list[dict[str, Any]] = Field(default_factory=list)
-    episodes: list[dict[str, Any]] = Field(default_factory=list)
-    truncated: bool = False
+        result.failures.extend(
+            MemoryForgetFailure.derived_left(name) for name in walk.names
+        )
 
 
 async def _run(
     driver: GraphDriver,
     group_id: str,
-    walk: _Walk,
+    walk: Walk,
     now: str,
     result: ForgetResult,
 ) -> bool:
@@ -168,12 +133,12 @@ async def _run(
 
 
 async def _resume(
-    driver: GraphDriver, walk: _Walk, now: str, result: ForgetResult
-) -> _Frontier:
-    """The first frontier: the roots, the facts an earlier try of this forget
-    retracted for them (their clean-up finished again), and every episode
-    citing one."""
-    reasons = [derived_reason(root) for root in walk.roots]
+    driver: GraphDriver, walk: Walk, now: str, result: ForgetResult
+) -> Frontier:
+    """The first frontier: the roots, the facts an earlier try retracted for
+    them (their clean-up finished again), every episode citing one or hidden
+    for one, and the seeds."""
+    reasons = [derived_reason(name) for name in walk.names]
     earlier = _rows(await driver.execute_query(EARLIER_QUERY, reasons=reasons))
     for row in earlier:
         walk.root_of[row["uuid"]] = row["reason"].removeprefix(
@@ -183,17 +148,17 @@ async def _resume(
     if again:
         await scrub(driver, again)
     facts = [*walk.roots, *again]
-    hidden = await _redact_citing(driver, walk, facts, now, result)
+    hidden = [*walk.seeds, *await _redact_citing(driver, walk, facts, now, result)]
     if walk.erase:
         await erase_text(driver, again, hidden)
-    return _Frontier(facts=facts, episodes=hidden)
+    return Frontier(facts=facts, episodes=hidden)
 
 
-async def _derived(driver: GraphDriver, walk: _Walk, frontier: _Frontier) -> _Found:
+async def _derived(driver: GraphDriver, walk: Walk, frontier: Frontier) -> Found:
     """The facts and the dream episodes not reached yet whose record names
     something in ``frontier``, no more than the walk's budget."""
     if not (frontier.facts or frontier.episodes):
-        return _Found()
+        return Found()
     params = {
         "facts": frontier.facts,
         "episodes": frontier.episodes,
@@ -203,20 +168,20 @@ async def _derived(driver: GraphDriver, walk: _Walk, frontier: _Frontier) -> _Fo
     facts = _rows(await driver.execute_query(DERIVED_FACTS_QUERY, **params))
     episodes = _rows(await driver.execute_query(DERIVED_EPISODES_QUERY, **params))
     if len(facts) + len(episodes) <= walk.budget:
-        return _Found(facts=facts, episodes=episodes)
+        return Found(facts=facts, episodes=episodes)
     kept = facts[: walk.budget]
     rest = episodes[: walk.budget - len(kept)]
-    return _Found(facts=kept, episodes=rest, truncated=True)
+    return Found(facts=kept, episodes=rest, truncated=True)
 
 
 async def _retire(
     driver: GraphDriver,
     group_id: str,
-    walk: _Walk,
-    found: _Found,
+    walk: Walk,
+    found: Found,
     now: str,
     result: ForgetResult,
-) -> _Frontier:
+) -> Frontier:
     """Retract ``found``'s live facts and hide its episodes, each marker
     before any clean-up (erasing their text, and that of the facts passed
     through, on a hard forget); the next frontier: every fact it reached,
@@ -248,7 +213,7 @@ async def _retire(
     hidden = await _redact_citing(driver, walk, reached, now, result)
     if walk.erase:
         await erase_text(driver, reached, [*tainted, *hidden])
-    return _Frontier(facts=reached, episodes=[*tainted, *hidden])
+    return Frontier(facts=reached, episodes=[*tainted, *hidden])
 
 
 async def _retract(
@@ -272,14 +237,14 @@ async def _retract(
 
 async def _redact_citing(
     driver: GraphDriver,
-    walk: _Walk,
+    walk: Walk,
     facts: list[str],
     now: str,
     result: ForgetResult,
 ) -> list[str]:
-    """Redact every episode citing one of ``facts`` that the recall policy
-    hides (all of them, for a fact forgotten now), as a forget does; the
-    episodes the walk had not reached."""
+    """Redact every episode citing one of ``facts``, or hidden for one, that
+    the recall policy hides (all of them, for a fact forgotten now), as a
+    forget does; the episodes the walk had not reached."""
     if not facts:
         return []
     rows = _rows(

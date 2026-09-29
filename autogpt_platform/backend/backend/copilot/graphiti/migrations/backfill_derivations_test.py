@@ -10,12 +10,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.dream.citations import described_citations
-from backend.copilot.graphiti.memory_model import ForgetResult, MemoryForgetFailure
+from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
 from backend.copilot.graphiti.recall_reconcile import PENDING_MARKERS_QUERY
 from backend.copilot.graphiti.scope import write_lock_key
 
+from . import backfill_cascade
 from . import backfill_derivations as backfill
+from . import backfill_pages
 
 _LOCK = write_lock_key("user_a")
 
@@ -34,7 +36,11 @@ class _Driver:
         self.answers = {
             backfill.DREAM_EPISODES_QUERY: episodes,
             backfill.UNSTAMPED_FACTS_QUERY: facts,
-            backfill.FORGOTTEN_FACTS_QUERY: [{"uuid": u} for u in forgotten or []],
+            backfill_cascade.FORGOTTEN_FACTS_QUERY: [
+                {"uuid": u} for u in forgotten or []
+            ],
+            backfill_cascade.FACT_NAMES_QUERY: [],
+            backfill_cascade.EPISODE_NAMES_QUERY: [],
         }
         self.writes: list[tuple[str, list[dict[str, Any]]]] = []
         # Whether it read the pending dream records (none here).
@@ -44,6 +50,8 @@ class _Driver:
     async def execute_query(self, query: str, **params: Any):
         if query == PENDING_MARKERS_QUERY:
             self.reconciled = True
+            return [], [], None
+        if query == backfill_cascade.MARKER_NAMES_QUERY:
             return [], [], None
         if query in self.answers:
             rows = [r for r in self.answers[query] if r["uuid"] > params["after"]]
@@ -155,7 +163,7 @@ class TestBackfillGraph:
     async def test_reads_and_writes_in_batches(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(backfill, "BATCH_SIZE", 2)
+        monkeypatch.setattr(backfill_pages, "BATCH_SIZE", 2)
         driver = _graph()
 
         await backfill.backfill_graph(driver, apply=True, cascade_forgets=False)
@@ -173,7 +181,7 @@ class TestBackfillGraph:
         driver = _Driver([], [], forgotten=["x1", "x2"])
         cascade = AsyncMock()
 
-        with patch.object(backfill, "cascade", cascade):
+        with patch.object(backfill_cascade, "cascade", cascade):
             found = await backfill.backfill_graph(
                 driver, apply=False, cascade_forgets=True
             )
@@ -185,11 +193,20 @@ class TestBackfillGraph:
     async def test_apply_cascades_from_every_forget_after_stamping(self) -> None:
         driver = _Driver([], [], forgotten=["x1", "x2"])
 
-        async def retract_two(driver, group_id, roots, now, result) -> None:
-            assert (group_id, roots) == ("user_a", ["x1", "x2"])
+        async def retract_two(
+            driver, group_id, roots, now, result, *, erase, seeds
+        ) -> None:
+            assert (group_id, roots, erase, seeds) == (
+                "user_a",
+                ["x1", "x2"],
+                False,
+                {},
+            )
             result.derived.extend(["d1", "d2"])
 
-        with patch.object(backfill, "cascade", AsyncMock(side_effect=retract_two)):
+        with patch.object(
+            backfill_cascade, "cascade", AsyncMock(side_effect=retract_two)
+        ):
             found = await backfill.backfill_graph(
                 driver, apply=True, cascade_forgets=True
             )
@@ -200,10 +217,12 @@ class TestBackfillGraph:
     async def test_a_cascade_that_stopped_short_fails_the_graph(self) -> None:
         driver = _Driver([], [], forgotten=["x1"])
 
-        async def stop_short(driver, group_id, roots, now, result: ForgetResult):
+        async def stop_short(driver, group_id, roots, now, result, **_: object):
             result.failures.append(MemoryForgetFailure.derived_left("x1"))
 
-        with patch.object(backfill, "cascade", AsyncMock(side_effect=stop_short)):
+        with patch.object(
+            backfill_cascade, "cascade", AsyncMock(side_effect=stop_short)
+        ):
             found = await backfill.backfill_graph(
                 driver, apply=True, cascade_forgets=True
             )
@@ -256,7 +275,9 @@ class TestBackfillAllGraphs:
                 "list_graph_names",
                 AsyncMock(return_value=[*drivers, "other", "default_db"]),
             ),
-            patch.object(backfill, "_graph_driver", side_effect=drivers.__getitem__),
+            patch.object(
+                backfill, "open_graph_driver", side_effect=drivers.__getitem__
+            ),
         ):
             totals = await backfill.backfill_all_graphs(
                 apply=False, cascade_forgets=False

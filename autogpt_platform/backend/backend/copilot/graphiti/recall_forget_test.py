@@ -16,6 +16,7 @@ import pytest
 
 from . import (
     recall_cascade,
+    recall_cascade_queries,
     recall_erase,
     recall_forget,
     recall_hide,
@@ -122,16 +123,19 @@ class TestSoftRetract:
 
     @pytest.mark.asyncio
     async def test_unknown_uuid_is_a_no_match_and_nothing_is_written(self) -> None:
-        driver = _driver([])
+        driver = _driver([], [])  # the lookup, then nothing names it
 
         result = await _retract(driver, ["missing"])
 
-        assert result.deleted == []
+        assert result.deleted == [] and result.resumed == []
         assert [(f.uuid, f.code) for f in result.failures] == [
             ("missing", MemoryForgetFailureCode.NO_MATCH)
         ]
         assert result.failures[0].reason == FORGET_NO_MATCH_REASON
-        assert driver.execute_query.await_count == 2, "the pending read, the lookup"
+        assert _queries(driver) == [
+            recall_forget._EXISTING_EDGES_QUERY,
+            recall_cascade_queries.NAMED_ROOTS_QUERY,
+        ], "reads only"
 
     @pytest.mark.asyncio
     async def test_lookup_error_fails_every_uuid_with_its_reason(self) -> None:
@@ -392,3 +396,35 @@ class TestCascade:
 
         cascade.assert_not_awaited()
         assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
+
+    @pytest.mark.asyncio
+    async def test_a_purged_root_something_names_resumes_its_cascade_erasing(
+        self,
+    ) -> None:
+        """``gone`` was purged by a hard forget whose cascade stopped short; a
+        record still names it. ``never`` names nothing and stays no match."""
+        seen: list[tuple[list[str], bool]] = []
+
+        async def cascade(driver, group_id, roots, now, result, *, erase) -> None:
+            seen.append((roots, erase))
+            result.derived.append("d1")
+
+        driver = _driver([], [{"uuid": "gone"}])  # the lookup, the names
+
+        with patch.object(recall_forget, "cascade", cascade):
+            result = await _retract(driver, ["gone", "never"])
+
+        assert seen == [(["gone"], True)], "the root is gone: it was hard"
+        assert (result.resumed, result.derived, result.deleted) == (
+            ["gone"],
+            ["d1"],
+            [],
+        )
+        assert [(f.uuid, f.code) for f in result.failures] == [
+            ("never", MemoryForgetFailureCode.NO_MATCH)
+        ]
+        _, names = _call(driver, 1)
+        assert names == {
+            "uuids": ["gone", "never"],
+            "prefix": "derived_from_forgotten:",
+        }

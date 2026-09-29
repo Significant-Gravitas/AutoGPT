@@ -186,6 +186,7 @@ class TestForgetFact:
             "uuid": "edge-1",
             "forgotten": True,
             "derived_forgotten": 0,
+            "resumed": False,
         }
         retract.assert_awaited_once_with(MemoryScope.for_user(test_user_id), ["edge-1"])
 
@@ -207,6 +208,20 @@ class TestForgetFact:
             resp = client.delete("/memory/facts/edge-1")
         assert resp.status_code == 500
         assert "try again" in resp.json()["detail"]
+
+    def test_a_fact_already_erased_whose_cascade_resumed_is_forgotten(self) -> None:
+        """An earlier hard forget purged it before its cascade finished; this
+        forget went on with the cascade (``graphiti/recall_forget.py``)."""
+        result = ForgetResult(resumed=["edge-1"], derived=["d1", "d2"])
+        with patch(f"{_MOCK_MODULE}.retract", AsyncMock(return_value=result)):
+            resp = client.delete("/memory/facts/edge-1")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "uuid": "edge-1",
+            "forgotten": True,
+            "derived_forgotten": 2,
+            "resumed": True,
+        }
 
     def test_no_match_is_404(self) -> None:
         result = ForgetResult(failures=[MemoryForgetFailure.no_match("edge-unknown")])

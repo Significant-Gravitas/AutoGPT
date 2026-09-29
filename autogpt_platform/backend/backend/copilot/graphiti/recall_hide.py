@@ -148,18 +148,26 @@ WHERE member IN scrubbed
 SET c.summary = ''
 """
 
-# Every episode naming one of ``$uuids`` that the recall policy now hides,
-# which after the retraction is all of them: the stamp and the read-side test
-# cannot disagree. ``coalesce`` keeps the time of the first redaction. ``via``
-# names the facts among ``$uuids`` it cites (the forget's cascade follows it,
-# ``recall_cascade.py``).
+# Every episode naming one of ``$uuids``, or hidden for one before, that the
+# recall policy now hides, which after the retraction is all of them: the
+# stamp and the read-side test cannot disagree. ``coalesce`` keeps the time
+# of the first redaction. ``redacted_for`` keeps, once each, the forgotten
+# facts it was hidden for: a hard forget's purge drops a deleted fact from
+# ``entity_edges``, and a cascade resumed after it still finds the fact's own
+# episodes through this (``recall_cascade.py``). ``via`` names the facts
+# among ``$uuids`` it cites or was hidden for (the cascade follows it).
 REDACT_EPISODES_QUERY = (
     forgotten_facts_clause()
     + f"""
 MATCH (ep:Episodic)
-WHERE any(x IN coalesce(ep.entity_edges, []) WHERE x IN $uuids)
+WHERE any(x IN coalesce(ep.entity_edges, []) + coalesce(ep.redacted_for, [])
+          WHERE x IN $uuids)
   AND NOT ({recallable_episode_predicate("ep")})
-SET ep.redacted_at = coalesce(ep.redacted_at, $now)
-RETURN ep.uuid AS uuid, [x IN ep.entity_edges WHERE x IN $uuids] AS via
+WITH ep, coalesce(ep.redacted_for, []) AS kept
+SET ep.redacted_at = coalesce(ep.redacted_at, $now),
+    ep.redacted_for = kept + [x IN coalesce(ep.entity_edges, [])
+                              WHERE x IN $uuids AND NOT x IN kept]
+RETURN ep.uuid AS uuid,
+       [x IN coalesce(ep.entity_edges, []) + kept WHERE x IN $uuids] AS via
 """
 )

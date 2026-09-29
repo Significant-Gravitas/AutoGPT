@@ -11,15 +11,17 @@ nothing; then every fact with no record whose source episodes all have one
 gets their union, as ingestion stamps it. It reports the dream facts it
 could not attribute (stamped with nothing cited, so no forget reaches them);
 a citation past the first five is lost too. It does not cascade on its own:
-``--cascade-existing-forgets`` also runs a forget's cascade from every fact
-already forgotten, which a dry run only counts.
+``--cascade-existing-forgets`` also runs a forget's cascade from every root
+the graph's forgets left, the facts a hard forget purged and the episodes a
+forget hid included (``backfill_cascade.py``), which a dry run only
+counts.
 
 Dry run by default. ``--apply`` writes, each graph holding its write lock
 (``scope_lock.py``) from its first read to its last write, in batches of
 ``BATCH_SIZE``, after completing the dream records a failed write left
-pending in it (``recall_reconcile.py``). A graph locked past ``BACKFILL_LOCK_WAIT_SECONDS``, or not
-lockable because Redis is unreachable, is skipped unwritten and counted
-busy; one whose backfill raises, or whose cascade stops short, is counted
+pending in it (``recall_reconcile.py``). A graph locked past
+``BACKFILL_LOCK_WAIT_SECONDS``, or not lockable because Redis is
+unreachable, is skipped unwritten and counted busy; one whose backfill raises, or whose cascade stops short, is counted
 failed. Either makes the script exit 1: run it again. Every write is
 idempotent.
 
@@ -34,35 +36,35 @@ import argparse
 import asyncio
 import logging
 import sys
-from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel
 
 from backend.copilot.dream.citations import described_citations
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import (
+    AutoGPTFalkorDriver,
+    open_graph_driver,
+)
 from backend.copilot.graphiti.graphs import list_graph_names
-from backend.copilot.graphiti.memory_model import ForgetResult
-from backend.copilot.graphiti.recall import forgotten_fact_predicate
-from backend.copilot.graphiti.recall_cascade import cascade
 from backend.copilot.graphiti.recall_reconcile import reconcile
 from backend.copilot.graphiti.scope_lock import LockState, graph_write_lock
 
+from .backfill_cascade import cascade_existing_forgets
 from .backfill_legacy_forgets import MEMORY_GRAPH_PREFIXES
+from .backfill_pages import pages, write_rows
 
 logger = logging.getLogger(__name__)
 
 BACKFILL_LOCK_WAIT_SECONDS = 60
-BATCH_SIZE = 500
 
 
 class Derivations(BaseModel):
     """What the backfill found (with ``--apply``, wrote): pending dream
     records completed (``reconciled``), dream ``episodes`` given a record,
     ``facts`` stamped, of them ``unattributed`` with nothing cited; the
-    forgotten ``roots`` a cascade started from and the facts it retracted
-    (``derived``); and the graphs to run again, ``busy`` and ``failed``."""
+    ``roots`` a cascade started from (forgotten or purged facts, hidden
+    episodes) and the facts it retracted (``derived``); and the graphs to
+    run again, ``busy`` and ``failed``."""
 
     reconciled: int = 0
     episodes: int = 0
@@ -104,7 +106,7 @@ async def _derive(
     """Both steps, reading the whole graph before writing anything."""
     records: dict[str, _Record] = {}
     new: list[_Record] = []
-    for row in await _pages(driver, DREAM_EPISODES_QUERY):
+    for row in await pages(driver, DREAM_EPISODES_QUERY):
         if row["facts"] is None:
             facts, episodes = described_citations(row["description"])
             new.append(_Record(uuid=row["uuid"], facts=facts, episodes=episodes))
@@ -115,7 +117,7 @@ async def _derive(
     records |= {record.uuid: record for record in new}
     stamps = [
         stamp
-        for row in await _pages(driver, UNSTAMPED_FACTS_QUERY)
+        for row in await pages(driver, UNSTAMPED_FACTS_QUERY)
         if (stamp := _union(row["uuid"], row["episodes"], records)) is not None
     ]
     found = Derivations(
@@ -124,10 +126,12 @@ async def _derive(
         unattributed=sum(1 for stamp in stamps if not (stamp.facts or stamp.episodes)),
     )
     if apply:
-        await _write(driver, RECORD_EPISODES_QUERY, new)
-        await _write(driver, STAMP_FACTS_QUERY, stamps)
+        await write_rows(driver, RECORD_EPISODES_QUERY, _dumped(new))
+        await write_rows(driver, STAMP_FACTS_QUERY, _dumped(stamps))
     if cascade_forgets:
-        await _cascade_forgets(driver, found, apply=apply)
+        cascaded = await cascade_existing_forgets(driver, apply=apply)
+        found.roots, found.derived = cascaded.roots, cascaded.derived
+        found.failed = int(cascaded.failed)
     return found
 
 
@@ -156,42 +160,8 @@ def _union(
     )
 
 
-async def _cascade_forgets(
-    driver: AutoGPTFalkorDriver, found: Derivations, *, apply: bool
-) -> None:
-    """A forget's cascade from every forgotten fact in the graph (counted
-    only, on a dry run)."""
-    roots = [row["uuid"] for row in await _pages(driver, FORGOTTEN_FACTS_QUERY)]
-    found.roots = len(roots)
-    if not (apply and roots):
-        return
-    result = ForgetResult()
-    now = datetime.now(timezone.utc).isoformat()
-    await cascade(driver, driver.graph_name, roots, now, result)
-    found.derived = len(result.derived)
-    if result.failures:
-        found.failed = 1
-
-
-async def _pages(driver: AutoGPTFalkorDriver, query: str) -> list[dict[str, Any]]:
-    """Every row of ``query``, read ``BATCH_SIZE`` at a time by uuid."""
-    rows: list[dict[str, Any]] = []
-    after = ""
-    while True:
-        result = await driver.execute_query(query, after=after, limit=BATCH_SIZE)
-        page = result[0] if result else []
-        rows.extend(page)
-        if len(page) < BATCH_SIZE:
-            return rows
-        after = page[-1]["uuid"]
-
-
-async def _write(
-    driver: AutoGPTFalkorDriver, query: str, records: list[_Record]
-) -> None:
-    rows = [record.model_dump() for record in records]
-    for start in range(0, len(rows), BATCH_SIZE):
-        await driver.execute_query(query, rows=rows[start : start + BATCH_SIZE])
+def _dumped(records: list[_Record]) -> list[dict[str, Any]]:
+    return [record.model_dump() for record in records]
 
 
 async def backfill_all_graphs(
@@ -202,7 +172,7 @@ async def backfill_all_graphs(
     names = [graph] if graph else await _memory_graph_names()
     totals = Derivations()
     for name in names:
-        driver = _graph_driver(name)
+        driver = open_graph_driver(name)
         try:
             found = await backfill_graph(
                 driver, apply=apply, cascade_forgets=cascade_forgets
@@ -220,17 +190,6 @@ async def backfill_all_graphs(
 async def _memory_graph_names() -> list[str]:
     names = await list_graph_names()
     return sorted(name for name in names if name.startswith(MEMORY_GRAPH_PREFIXES))
-
-
-def _graph_driver(database: str) -> AutoGPTFalkorDriver:
-    """A driver on a graph known only by its name (an expert graph's name is
-    a digest no scope can be rebuilt from). Opening one creates no graph."""
-    return AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=database,
-    )
 
 
 # Reads page by uuid, so a dry run never writes (nor creates) a graph.
@@ -253,14 +212,6 @@ WHERE e.uuid > $after
   AND e.derived_from_facts IS NULL
   AND e.forgotten_at IS NULL
 RETURN e.uuid AS uuid, coalesce(e.episodes, []) AS episodes
-ORDER BY uuid
-LIMIT $limit
-"""
-
-FORGOTTEN_FACTS_QUERY = f"""
-MATCH ()-[e:RELATES_TO]->()
-WHERE e.uuid > $after AND {forgotten_fact_predicate("e")}
-RETURN e.uuid AS uuid
 ORDER BY uuid
 LIMIT $limit
 """
@@ -301,7 +252,7 @@ async def main(args: argparse.Namespace) -> int:
     )
     if args.cascade_existing_forgets:
         done = f"retracted {totals.derived} derived facts" if args.apply else "not run"
-        print(f"cascade from {totals.roots} forgotten facts: {done}")
+        print(f"cascade from {totals.roots} roots forgets left: {done}")
     if not (totals.busy or totals.failed):
         return 0
     print(f"skipped {totals.busy} busy and {totals.failed} failed graphs: run again")

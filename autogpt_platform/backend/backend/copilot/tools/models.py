@@ -1381,6 +1381,9 @@ class MemoryForgetConfirmResponse(ToolResponseBase):
     # Facts the dream derived from the deleted ones, retracted with them
     # (``graphiti/recall_cascade.py``).
     derived_uuids: list[str] = Field(default_factory=list)
+    # Requested uuids already erased by an earlier hard forget whose cascade
+    # this one went on with (``graphiti/recall_forget.py``).
+    resumed_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
     failures: list[MemoryForgetFailure] = Field(default_factory=list)
 
