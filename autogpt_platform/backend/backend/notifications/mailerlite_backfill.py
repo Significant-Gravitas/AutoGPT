@@ -288,6 +288,7 @@ async def _read_group(group_id: str) -> dict[str, str]:
     members: dict[str, str] = {}
     for status in MEMBER_STATUSES:
         cursor: str | None = None
+        seen: set[str] = set()
         while True:
             params = {"limit": str(PAGE_SIZE), "filter[status]": status}
             if cursor:
@@ -295,10 +296,23 @@ async def _read_group(group_id: str) -> dict[str, str]:
             page = await _get_page(group_id, params)
             for row in page.get("data") or []:
                 members[str(row["email"]).strip().lower()] = str(row["id"])
-            cursor = (page.get("meta") or {}).get("next_cursor")
+            cursor = next_cursor(page, seen)
             if not cursor:
                 break
     return members
+
+
+def next_cursor(page: dict, seen: set[str]) -> str | None:
+    """The cursor for the page after this one, or None after the last. One
+    MailerLite already handed out would page forever, so it is an error rather
+    than the end: stopping there would plan from a partial read."""
+    cursor = (page.get("meta") or {}).get("next_cursor")
+    if not cursor:
+        return None
+    if cursor in seen:
+        raise MailerLiteError(f"MailerLite repeated the page cursor {cursor!r}")
+    seen.add(cursor)
+    return cursor
 
 
 async def _get_page(group_id: str, params: dict[str, str]) -> dict:

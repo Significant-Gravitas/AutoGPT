@@ -72,8 +72,9 @@ _fields_ready = False
 
 
 class MailerLiteNotConfigured(RuntimeError):
-    """Raised so a queued job retries once the missing setting is in place,
-    rather than silently reporting success."""
+    """A setting the change needs is missing. The consumer dead-letters it at
+    once rather than silently reporting success, so it can be replayed once the
+    setting is in place."""
 
 
 def configured() -> bool:
@@ -140,6 +141,21 @@ async def update_fields(email: str, fields: Fields | None = None) -> None:
     _require_token()
     await ensure_fields()
     await _upsert(email, {"fields": _payload(fields)}, "field update")
+
+
+async def record_signup(email: str, fields: Fields | None = None) -> None:
+    """A new account's fields. `signed` is where every subscriber starts, so
+    it never replaces a status MailerLite already holds: the signup is queued
+    in the background, and a checkout queued before it must not be undone.
+    The audience queue is worked one message at a time, so nothing of ours
+    writes between the read and the write."""
+    if not fields:
+        return
+    _require_token()
+    held = (await _find_subscriber(email) or {}).get("fields") or {}
+    if held.get(SubscriberField.STATUS.value):
+        fields = {k: v for k, v in fields.items() if k != SubscriberField.STATUS}
+    await update_fields(email, fields)
 
 
 async def ensure_fields() -> list[SubscriberField]:
@@ -228,7 +244,7 @@ async def _add_to_group(
     email: str, group_id: str, description: str, fields: Fields | None
 ) -> None:
     if not group_id:
-        # The fields still land; the group change then retries as before.
+        # The fields still land; the group change is then dead-lettered.
         await update_fields(email, fields)
     _require_config(group_id, description)
     body: dict = {"groups": [group_id]}
@@ -255,6 +271,10 @@ def _payload(fields: Fields) -> dict[str, str | None]:
 
 
 async def _find_subscriber_id(email: str) -> str | None:
+    return (await _find_subscriber(email) or {}).get("id")
+
+
+async def _find_subscriber(email: str) -> dict | None:
     response = await _client().get(
         f"{API_BASE}/subscribers/{email}", headers=_headers()
     )
@@ -265,7 +285,7 @@ async def _find_subscriber_id(email: str) -> str | None:
             f"Looking up MailerLite subscriber {_pseudonym(email)} failed with "
             f"{response.status}"
         )
-    return ((response.json() or {}).get("data") or {}).get("id")
+    return (response.json() or {}).get("data") or {}
 
 
 def _client() -> Requests:

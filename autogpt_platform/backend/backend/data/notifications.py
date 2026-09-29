@@ -421,6 +421,9 @@ class AudienceAction(Enum):
     REMOVE_TRIAL = "remove_trial"
     # No group change: only the subscriber's fields.
     UPDATE_FIELDS = "update_fields"
+    # A new account's fields. Its `signed` never replaces a status already
+    # held (see `mailerlite.record_signup`).
+    SIGNUP = "signup"
 
 
 class SubscriberField(str, Enum):
@@ -453,8 +456,9 @@ class AudienceEventModel(BaseModel):
     action: AudienceAction
     email: EmailStr
     user_id: str
-    # Written with the group change, or alone for UPDATE_FIELDS. A date is
-    # YYYY-MM-DD; None clears the field, and a field left out is untouched.
+    # Written with the group change, or alone for UPDATE_FIELDS and SIGNUP. A
+    # date is YYYY-MM-DD; None clears the field, and a field left out is
+    # untouched.
     fields: dict[SubscriberField, str | None] = Field(default_factory=dict)
 
 

@@ -382,8 +382,15 @@ class NotificationManager(AppService):
             AudienceAction.ADD_TRIAL: mailerlite.add_to_trial,
             AudienceAction.REMOVE_TRIAL: mailerlite.remove_from_trial,
             AudienceAction.UPDATE_FIELDS: mailerlite.update_fields,
+            AudienceAction.SIGNUP: mailerlite.record_signup,
         }[event.action]
-        await handler(event.email, event.fields or None)
+        try:
+            await handler(event.email, event.fields or None)
+        except mailerlite.MailerLiteNotConfigured as e:
+            # A group this change needs has no ID. No retry makes a setting
+            # appear, so it is dead-lettered now, to be replayed once it is set.
+            logger.error(f"{e}; sending {event.action.value} to the DLQ")
+            return False
         return True
 
     def _parse_message(self, message: str) -> NotificationEventModel | None:

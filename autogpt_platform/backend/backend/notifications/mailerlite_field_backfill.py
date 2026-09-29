@@ -35,6 +35,7 @@ from backend.notifications.mailerlite_backfill import (
     UPSERT_BATCH_INTERVAL_SECONDS,
     Subscription,
     _send_batch,
+    next_cursor,
 )
 from backend.notifications.subscriber_fields import Fields, mailerlite_date
 
@@ -153,6 +154,7 @@ async def read_current() -> Current:
     current: Current = {}
     for status in MEMBER_STATUSES:
         cursor: str | None = None
+        seen: set[str] = set()
         while True:
             params = {"limit": str(PAGE_SIZE), "filter[status]": status}
             if cursor:
@@ -163,7 +165,7 @@ async def read_current() -> Current:
                 current[str(row["email"]).strip().lower()] = {
                     k: fields.get(k) for k in keys
                 }
-            cursor = (page.get("meta") or {}).get("next_cursor")
+            cursor = next_cursor(page, seen)
             if not cursor:
                 break
     return current

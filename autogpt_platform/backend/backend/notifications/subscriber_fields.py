@@ -119,11 +119,16 @@ def audience_event(
         return None
 
 
-async def queue_fields(user_id: str, email: str, fields: Fields) -> None:
+async def queue_fields(
+    user_id: str,
+    email: str,
+    fields: Fields,
+    action: AudienceAction = AudienceAction.UPDATE_FIELDS,
+) -> None:
     """Queue a field update with no group change. Reports rather than raises:
     it follows a billing email that is already out, and a status must never
     cost one."""
-    event = audience_event(AudienceAction.UPDATE_FIELDS, email, user_id, fields)
+    event = audience_event(action, email, user_id, fields)
     if event is None:
         return
     try:
@@ -138,5 +143,7 @@ async def queue_fields(user_id: str, email: str, fields: Fields) -> None:
 
 
 async def queue_signup(user_id: str, email: str, created_at: datetime) -> None:
-    """A new account: `signed`, with the day it was created."""
-    await queue_fields(user_id, email, signed(created_at))
+    """A new account: `signed`, with the day it was created. It is queued
+    from a background task, so nothing orders it before the account's first
+    checkout; the notification service keeps it from undoing one."""
+    await queue_fields(user_id, email, signed(created_at), AudienceAction.SIGNUP)
