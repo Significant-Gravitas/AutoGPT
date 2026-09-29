@@ -352,11 +352,18 @@ async def callback(
         return await _complete_codex_login(user_id, code, valid_state)
 
     failure_class: product_analytics.OAuthExchangeFailureClass = "invalid_state"
+    # Everything secret we send the provider, in case its error echoes it back.
+    redact = [code, state_token]
     try:
         valid_state = await _verify_callback_state(user_id, state_token, provider)
+        if valid_state.code_verifier:
+            redact.append(valid_state.code_verifier)
 
         failure_class = "provider_unavailable"
         handler = _get_provider_oauth_handler(request, provider)
+        client_secret = getattr(handler, "client_secret", None)
+        if isinstance(client_secret, str) and client_secret:
+            redact.append(client_secret)
 
         failure_class = "token_exchange"
         credentials = await _exchange_code_for_credentials(
@@ -370,7 +377,7 @@ async def callback(
         )
     except Exception as e:
         _track_oauth_exchange_failed(
-            user_id, provider, failure_class, e, redact=(code, state_token)
+            user_id, provider, failure_class, e, redact=tuple(redact)
         )
         raise
 

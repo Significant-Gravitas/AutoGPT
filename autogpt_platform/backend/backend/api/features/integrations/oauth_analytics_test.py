@@ -175,6 +175,31 @@ class TestOAuthExchangeFailed:
         assert failure["status_code"] == 400
         assert failure["detail"] == "ValueError: (invalid_grant) Missing code verifier."
 
+    def test_token_exchange_detail_hides_client_secret_and_code_verifier(
+        self, capture: Mock
+    ):
+        exchange = AsyncMock(
+            side_effect=ValueError(
+                "rejected client_secret=shh verifier=pkce-v with invalid_grant"
+            )
+        )
+        handler = _handler(exchange)
+        handler.client_secret = "shh"
+        state = _state()
+        state.code_verifier = "pkce-v"
+        with (
+            patch(f"{ROUTER}._get_provider_oauth_handler", return_value=handler),
+            patch(f"{ROUTER}.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.verify_state_token = AsyncMock(return_value=state)
+            resp = _post_callback()
+
+        assert resp.status_code == 400
+        assert _only_failure(capture)["detail"] == (
+            "ValueError: rejected client_secret=[redacted] "
+            "verifier=[redacted] with invalid_grant"
+        )
+
     def test_token_exchange_detail_is_truncated_and_carries_no_secrets(
         self, capture: Mock
     ):
