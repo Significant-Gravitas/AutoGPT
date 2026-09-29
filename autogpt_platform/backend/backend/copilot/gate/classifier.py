@@ -28,10 +28,12 @@ ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
     encoding="utf-8"
 )
 
-_MAX_ARG_CHARS = 4_000
+# The largest call Jev reads whole beside a full request (~24.5k); Haiku alone
+# missed a buried `curl | sh` 1 in 10 at 40k (measured 2026-09-29).
+_MAX_ARG_CHARS = 24_000
+# Shares Jev's input budget with the call: each char here is one less there.
 _MAX_REQUEST_CHARS = 1_000
 _FALLBACK_REASON = "Could not verify this action automatically."
-_TOO_LONG_REASON = "This action is too long to check automatically."
 
 DecidedBy = Literal["llm", "jev", "jev+llm"]
 
@@ -55,7 +57,7 @@ async def supervise(
     call = json.dumps({"tool": tool_name, "arguments": args}, indent=1, default=str)
     # A cut call would be judged on its head while its tail runs.
     if len(call) > _MAX_ARG_CHARS:
-        return Judgement(allowed=False, reason=_TOO_LONG_REASON)
+        return Judgement(allowed=False, reason=too_long_reason(len(call)))
     prompt = (
         fence("USER REQUEST", user_message[:_MAX_REQUEST_CHARS])
         + "\n\n"
@@ -126,6 +128,13 @@ async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
     if verdict is None:
         logger.warning(f"Gate supervisor returned an unusable body for {tool_name}")
     return verdict
+
+
+def too_long_reason(size: int) -> str:
+    return (
+        f"This action is {size:,} characters; the automatic check reads up to "
+        f"{_MAX_ARG_CHARS:,}. Approve it yourself, or ask for it in smaller pieces."
+    )
 
 
 def fence(label: str, body: str) -> str:
