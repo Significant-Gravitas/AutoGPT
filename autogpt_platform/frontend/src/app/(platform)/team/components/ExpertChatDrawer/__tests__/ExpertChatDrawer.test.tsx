@@ -12,17 +12,22 @@ import {
   getPostV2CreateSessionMockHandler200,
   getPostV2CreateSessionResponseMock200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import type { SessionDetailResponseMessagesItem } from "@/app/api/__generated__/models/sessionDetailResponseMessagesItem";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, ws } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { onboardingCard, onboardingTurn } from "./onboardingFixtures";
 import { ExpertChatDrawer } from "../ExpertChatDrawer";
 
 const USER_ID = "user-1";
@@ -379,6 +384,99 @@ describe("ExpertChatDrawer", () => {
     expect(createBodies).toEqual([]);
   });
 
+  test("keeps answers if creating the new chat fails", async () => {
+    markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
+    const createSession = vi.fn(() =>
+      HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
+    );
+    server.use(
+      http.get("/api/proxy/api/experts/:expertId/onboarding", () =>
+        HttpResponse.json(onboardingCard()),
+      ),
+      http.post("/api/proxy/api/chat/sessions", createSession),
+    );
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        resumeLatest={false}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("radio", { name: "Pricing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+    await waitFor(() => expect(createSession).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Send answers",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(
+      screen
+        .getByRole("radio", { name: "Pricing" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  test("keeps settled setup out of new chats", async () => {
+    markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
+    const request = vi.fn(() => HttpResponse.json(null));
+    server.use(
+      http.get("/api/proxy/api/experts/:expertId/onboarding", request),
+    );
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        resumeLatest={false}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    expect(screen.getByText("What can I do for you?")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+  });
+
+  test("does not request setup when the new chat has a prompt", async () => {
+    markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
+    const request = vi.fn(() => HttpResponse.json(onboardingCard()));
+    server.use(
+      http.get("/api/proxy/api/experts/:expertId/onboarding", request),
+    );
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        resumeLatest={false}
+        seedPrompt="Research this company"
+        onClose={() => {}}
+      />,
+    );
+    expect(await screen.findByText("What can I do for you?")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  test("shows unanswered setup questions in a new chat", async () => {
+    markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
+    server.use(
+      http.get("/api/proxy/api/experts/:expertId/onboarding", () =>
+        HttpResponse.json(onboardingCard()),
+      ),
+    );
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        resumeLatest={false}
+        onClose={() => {}}
+      />,
+    );
+    expect(
+      await screen.findByText("Which outcome should I start with?"),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Skip" })).toBeDefined();
+  });
+
   test("a hire's onboarding card is a live form, not a settled row", async () => {
     server.use(
       getGetV2ListSessionsMockHandler200({
@@ -412,67 +510,3 @@ describe("ExpertChatDrawer", () => {
     expect(screen.queryByText(/Setup questions from/)).toBeNull();
   });
 });
-
-function onboardingTurn(): SessionDetailResponseMessagesItem[] {
-  const row = {
-    tool_call_id: null,
-    tool_calls: null,
-    duration_ms: null,
-    metadata: null,
-  };
-  return [
-    {
-      ...row,
-      id: "db-1",
-      role: "user",
-      content: "Hey!",
-      sequence: 1,
-      created_at: "2026-09-27T18:00:00Z",
-    },
-    {
-      ...row,
-      id: "db-2",
-      role: "assistant",
-      content: "",
-      tool_calls: [
-        {
-          id: "call-onboarding",
-          type: "function",
-          function: { name: "expert_onboarding", arguments: "{}" },
-        },
-      ],
-      sequence: 2,
-      created_at: "2026-09-27T18:00:10Z",
-    },
-    {
-      ...row,
-      id: "db-3",
-      role: "tool",
-      tool_call_id: "call-onboarding",
-      content: JSON.stringify({
-        type: "expert_onboarding",
-        message: "Which outcome should I start with?",
-        session_id: SESSION_ID,
-        expert_id: EXPERT_ID,
-        greeting: "Hi, I'm Zara.",
-        steps: [
-          {
-            question: "Which outcome should I start with?",
-            keyword: "outcome",
-            options: ["Positioning", "Pricing"],
-          },
-        ],
-      }),
-      sequence: 3,
-      created_at: "2026-09-27T18:00:11Z",
-    },
-    {
-      ...row,
-      id: "db-4",
-      role: "assistant",
-      content: "Onboarding card's up — pick your answers above.",
-      sequence: 4,
-      created_at: "2026-09-27T18:00:12Z",
-    },
-  ];
-}

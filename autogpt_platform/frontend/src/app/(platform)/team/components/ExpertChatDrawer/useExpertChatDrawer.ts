@@ -27,6 +27,16 @@ import type { ChatTarget } from "./helpers";
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
+class SessionStartingError extends Error {}
+
+function notifyStartFailed() {
+  toast({
+    variant: "destructive",
+    title: "Could not start the chat",
+    description: "Please try sending your message again.",
+  });
+}
+
 interface PendingSend {
   text: string;
   metadata?: ExpertKickoffMetadata;
@@ -62,6 +72,7 @@ export function useExpertChatDrawer({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [skipLatest, setSkipLatest] = useState(false);
+  const [suppressOnboarding, setSuppressOnboarding] = useState(!!seedPrompt);
   const [kickoffCheckedFor, setKickoffCheckedFor] = useState<string | null>(
     null,
   );
@@ -130,12 +141,12 @@ export function useExpertChatDrawer({
           const pending = pendingAfterKickoffRef.current;
           if (!pending) return;
           pendingAfterKickoffRef.current = null;
-          void startSessionRef.current({ text: pending });
+          return startSessionRef.current({ text: pending });
         })
-        .catch(() => undefined);
+        .catch(notifyStartFailed);
       return;
     }
-    void startKickoffRef.current(userId, expertId);
+    void startKickoffRef.current(userId, expertId).catch(notifyStartFailed);
   }, [
     expertId,
     kickoffCheckQuery.data,
@@ -228,12 +239,13 @@ export function useExpertChatDrawer({
     pendingAfterKickoffRef.current = null;
     kickoffAttemptRef.current = null;
     setSeedToSend(seedPrompt);
+    setSuppressOnboarding(!!seedPrompt);
   }, [threadKey, seedPrompt, setMessages]);
 
   useEffect(() => {
     if (!seedToSend) return;
     setSeedToSend(null);
-    void startSessionRef.current({ text: seedToSend });
+    void startSessionRef.current({ text: seedToSend }).catch(notifyStartFailed);
   }, [seedToSend]);
 
   useEffect(() => {
@@ -244,6 +256,7 @@ export function useExpertChatDrawer({
   }, [sessionId, sendMessage]);
 
   function startNewThread() {
+    setSuppressOnboarding(false);
     generationRef.current += 1;
     creatingGenerationRef.current = null;
     setIsCreating(false);
@@ -258,31 +271,34 @@ export function useExpertChatDrawer({
 
   async function startKickoff(ownerId: string, id: string): Promise<boolean> {
     let attemptToken: KickoffAttemptToken | null = null;
-    const started = await withKickoffLock(ownerId, id, async () => {
-      if (getKickoffStatus(ownerId, id) !== "idle") return false;
-      const token = markKickoffPending(ownerId, id);
-      attemptToken = token;
-      kickoffAttemptRef.current = { userId: ownerId, expertId: id, token };
-      if (sessionId) {
-        await sendMessage(buildKickoffMessage(id, token));
-        return true;
-      }
-      const created = await startSession(buildKickoffMessage(id, token), {
-        expertKickoff: true,
-      });
-      if (created) return true;
-      kickoffAttemptRef.current = null;
-      pendingAfterKickoffRef.current = null;
-      clearKickoffPending(ownerId, id, token);
-      return false;
-    }).catch(() => false);
-    if (!started && attemptToken) {
+    function abandonAttempt() {
+      if (!attemptToken) return;
       if (kickoffAttemptRef.current?.token === attemptToken) {
         kickoffAttemptRef.current = null;
       }
       pendingAfterKickoffRef.current = null;
       clearKickoffPending(ownerId, id, attemptToken);
     }
+    let started: boolean | undefined;
+    try {
+      started = await withKickoffLock(ownerId, id, async () => {
+        if (getKickoffStatus(ownerId, id) !== "idle") return false;
+        const token = markKickoffPending(ownerId, id);
+        attemptToken = token;
+        kickoffAttemptRef.current = { userId: ownerId, expertId: id, token };
+        if (sessionId) {
+          await sendMessage(buildKickoffMessage(id, token));
+          return true;
+        }
+        return startSession(buildKickoffMessage(id, token), {
+          expertKickoff: true,
+        });
+      });
+    } catch (err) {
+      abandonAttempt();
+      throw err;
+    }
+    if (!started) abandonAttempt();
     return started ?? false;
   }
 
@@ -291,7 +307,12 @@ export function useExpertChatDrawer({
     options?: { expertKickoff?: boolean },
   ): Promise<boolean> {
     const generation = generationRef.current;
-    if (creatingGenerationRef.current === generation || !target) return false;
+    if (!target) return false;
+    // A card answered while a typed prompt is still creating the session must
+    // not settle on a message that never went out, so the second send rejects.
+    if (creatingGenerationRef.current === generation) {
+      throw new SessionStartingError();
+    }
     creatingGenerationRef.current = generation;
     setIsCreating(true);
     try {
@@ -310,17 +331,14 @@ export function useExpertChatDrawer({
         throw new Error("Failed to create expert chat session");
       }
       pendingPromptRef.current = firstMessage;
+      setSuppressOnboarding(true);
       setSessionId(response.data.id);
       return true;
     } catch (err) {
       if (generation !== generationRef.current) return false;
       Sentry.captureException(err);
-      toast({
-        variant: "destructive",
-        title: "Could not start the chat",
-        description: "Please try sending your message again.",
-      });
-      return false;
+      setSuppressOnboarding(false);
+      throw err;
     } finally {
       if (creatingGenerationRef.current === generation) {
         creatingGenerationRef.current = null;
@@ -333,6 +351,9 @@ export function useExpertChatDrawer({
     const trimmed = message.trim();
     if (!trimmed) return;
     if (!sessionId && (isCheckingKickoff || isCreating)) {
+      // One message rides along behind the kickoff; a second sender must not
+      // silently replace it, so it rejects like a send during creation.
+      if (pendingAfterKickoffRef.current) throw new SessionStartingError();
       pendingAfterKickoffRef.current = trimmed;
       return;
     }
@@ -375,6 +396,17 @@ export function useExpertChatDrawer({
     sendMessage({ text: trimmed });
   }
 
+  // Cards fail quietly and keep their form, so this path owns the toast; the
+  // composer shows its own and restores the draft.
+  async function onActionSend(message: string) {
+    try {
+      await onSend(message);
+    } catch (err) {
+      if (!(err instanceof SessionStartingError)) notifyStartFailed();
+      throw err;
+    }
+  }
+
   const isCheckingKickoff =
     wantsKickoff &&
     (kickoffCheckQuery.isFetching || !kickoffCheckQuery.isError);
@@ -389,8 +421,11 @@ export function useExpertChatDrawer({
     error,
     stop,
     onSend,
+    onActionSend,
     queuedMessages,
     isResolvingSession,
+    isLoadingSession: !!sessionId && sessionQuery.isLoading,
     isCreating,
+    suppressOnboarding,
   };
 }
