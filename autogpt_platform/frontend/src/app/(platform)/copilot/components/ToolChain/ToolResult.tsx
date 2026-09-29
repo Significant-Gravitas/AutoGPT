@@ -54,6 +54,7 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isWebhookIngressUrl,
   str,
   stripBaseFields,
 } from "./resultHelpers";
@@ -139,6 +140,10 @@ function linkCard(
       url={url}
       title={str(output, "title", "issue_title") ?? undefined}
       meta={meta}
+      secret={
+        isWebhookIngressUrl(url) ||
+        url === str(output, "webhook_url", "ingress_url")
+      }
     />
   );
 }
