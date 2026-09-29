@@ -10,7 +10,6 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { act } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,41 +77,6 @@ function listResponse(): ListFilesResponse {
   };
 }
 
-function openFilesCard() {
-  useCopilotUIStore.setState({
-    artifactPanel: {
-      isOpen: true,
-      activeArtifact: null,
-      history: [],
-      activeTab: "files",
-      lastArtifact: null,
-      mode: "artifact",
-      computer: null,
-      isComputerOpen: false,
-    },
-  });
-}
-
-function closeFilesCard() {
-  useCopilotUIStore.setState({
-    artifactPanel: {
-      isOpen: false,
-      activeArtifact: null,
-      history: [],
-      activeTab: "files",
-      lastArtifact: null,
-      mode: "artifact",
-      computer: null,
-      isComputerOpen: false,
-    },
-  });
-}
-
-// Long enough for a mounted list query to reach the MSW handler.
-function flushRequests() {
-  return new Promise((resolve) => setTimeout(resolve, 20));
-}
-
 function activityMessages(): UIMessage[] {
   return [
     {
@@ -151,7 +115,6 @@ function activityMessages(): UIMessage[] {
 
 beforeEach(() => {
   server.use(getListWorkspaceFilesMockHandler200(listResponse()));
-  openFilesCard();
 });
 
 afterEach(() => {
@@ -176,83 +139,13 @@ afterEach(() => {
 });
 
 describe("WorkspaceFileCards", () => {
-  it("renders the session's files as a floating card when the store flag is open", async () => {
+  it("renders the session's files", async () => {
     render(<WorkspaceFileCards sessionId={SESSION} />);
 
     expect(await screen.findByText("uploaded.png")).toBeDefined();
     expect(screen.getByText("result.csv")).toBeDefined();
     expect(screen.getByText(/^Files \(2\)/)).toBeDefined();
     expect(screen.getByLabelText("Download all")).toBeDefined();
-  });
-
-  it("renders nothing while the card is closed", () => {
-    useCopilotUIStore.setState({
-      artifactPanel: {
-        isOpen: false,
-        activeArtifact: null,
-        history: [],
-        activeTab: "files",
-        lastArtifact: null,
-        mode: "artifact",
-        computer: null,
-        isComputerOpen: false,
-      },
-    });
-    const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-
-  it("steps aside while the artifacts tab owns the side panel", () => {
-    useCopilotUIStore.setState({
-      artifactPanel: {
-        isOpen: true,
-        activeArtifact: null,
-        history: [],
-        activeTab: "artifacts",
-        lastArtifact: null,
-        mode: "artifact",
-        computer: null,
-        isComputerOpen: false,
-      },
-    });
-    const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-
-  it("steps aside while the computer face covers the panel", () => {
-    useCopilotUIStore.setState({
-      artifactPanel: {
-        isOpen: true,
-        activeArtifact: null,
-        history: [],
-        activeTab: "files",
-        lastArtifact: null,
-        mode: "computer",
-        computer: null,
-        isComputerOpen: true,
-      },
-    });
-    const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-
-  it("requests the file list only while the card is open", async () => {
-    let listRequests = 0;
-    server.use(
-      getListWorkspaceFilesMockHandler200(() => {
-        listRequests += 1;
-        return listResponse();
-      }),
-    );
-    closeFilesCard();
-    render(<WorkspaceFileCards sessionId={SESSION} />);
-    await flushRequests();
-    expect(listRequests).toBe(0);
-
-    act(() => openFilesCard());
-
-    expect(await screen.findByText("uploaded.png")).toBeDefined();
-    expect(listRequests).toBeGreaterThan(0);
   });
 
   it("opens a file as an artifact preview on click", async () => {
