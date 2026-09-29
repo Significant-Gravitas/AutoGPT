@@ -77,6 +77,7 @@ def sub(
     canceled_at: datetime | None = None,
     ended_at: datetime | None = None,
     enrollment: str | None = None,
+    trial_end: datetime | None = None,
 ) -> StripeSubscriptionFacts:
     return StripeSubscriptionFacts.model_validate(
         {
@@ -88,6 +89,8 @@ def sub(
             "created": int(start.timestamp()),
             "canceled_at": int(canceled_at.timestamp()) if canceled_at else None,
             "ended_at": int(ended_at.timestamp()) if ended_at else None,
+            "trial_start": int(start.timestamp()) if trial_end else None,
+            "trial_end": int(trial_end.timestamp()) if trial_end else None,
             "metadata": {"trial_enrollment_id": enrollment} if enrollment else {},
         }
     )
@@ -173,6 +176,25 @@ def test_failed_conversion_is_not_a_paid_subscription():
     )
     assert result.subscription_status == "trial_canceled"
     assert result.subscription_started_at is None
+
+
+def test_trial_awaiting_its_first_charge_is_still_in_trial():
+    """Stripe makes the subscription ``active`` at trial end and charges the
+    draft invoice about an hour later; until then it hasn't converted."""
+    t = trial(status="active", ends_at=NOW - timedelta(minutes=10))
+    live = sub("sub_trial", "active", start=TRIAL_START, enrollment="trial-1")
+    result = snapshot(u=user(SubscriptionTier.NO_TIER), t=t, subs=[live])
+    assert result == LifecycleSnapshot(
+        subscription_status="in_trial", signup_at=SIGNUP, trial_started_at=TRIAL_START
+    )
+
+    converted = NOW - timedelta(minutes=1)
+    paid = trial(
+        status="active", ends_at=NOW - timedelta(minutes=10), converted_at=converted
+    )
+    result = snapshot(u=user(SubscriptionTier.PRO), t=paid, subs=[live])
+    assert result.subscription_status == "subscribed"
+    assert result.subscription_started_at == converted
 
 
 def test_converted_trial_starts_its_subscription_at_conversion():
@@ -375,10 +397,82 @@ def test_enterprise_is_subscribed(customer):
     )
 
 
-def test_paid_tier_without_stripe_customer_is_a_manual_grant():
-    result = snapshot(u=user(SubscriptionTier.BUSINESS, customer=None))
-    assert result.subscription_status == "subscribed"
-    assert result.subscription_started_at is None
+def test_enterprise_with_a_live_subscription_keeps_its_start():
+    start = NOW - timedelta(days=40)
+    live = sub(start=start, cancel_at_period_end=True)
+    result = snapshot(u=user(SubscriptionTier.ENTERPRISE), subs=[live])
+    assert result == LifecycleSnapshot(
+        subscription_status="subscribed",
+        signup_at=SIGNUP,
+        subscription_started_at=start,
+    )
+
+
+def test_failed_renewal_after_an_upgrade_beats_the_older_canceled_sub():
+    """The old sub is canceled after the new one starts (stale cleanup), so
+    start and end dates alone would pick the old one."""
+    new_start = NOW - timedelta(days=31)
+    old = sub(
+        "old",
+        "canceled",
+        start=NOW - timedelta(days=60),
+        canceled_at=NOW - timedelta(days=30),
+        ended_at=NOW - timedelta(days=30),
+    )
+    new = sub("new", "past_due", start=new_start)
+    for order in permutations([old, new]):
+        result = snapshot(subs=list(order))
+        assert result.subscription_status == "payment_failed"
+        assert result.subscription_started_at == new_start
+        assert result.subscription_ended_at is None
+
+
+def test_stripe_native_trial_is_in_trial():
+    start = NOW - timedelta(days=2)
+    native = sub(
+        "sub_native", "trialing", start=start, trial_end=NOW + timedelta(days=5)
+    )
+    result = snapshot(subs=[native])
+    assert result == LifecycleSnapshot(
+        subscription_status="in_trial", signup_at=SIGNUP, trial_started_at=start
+    )
+
+
+def test_stripe_native_trial_set_to_cancel():
+    native = sub(
+        "sub_native",
+        "trialing",
+        cancel_at_period_end=True,
+        trial_end=NOW + timedelta(days=5),
+    )
+    assert snapshot(subs=[native]).subscription_status == "trial_canceled"
+
+
+def test_stripe_native_trial_past_its_end_is_not_in_trial():
+    native = sub("sub_native", "trialing", trial_end=NOW - timedelta(hours=1))
+    assert snapshot(subs=[native]).subscription_status == "signed"
+
+
+def test_our_trial_subscription_is_not_a_native_trial():
+    ours = sub(
+        "sub_trial", "trialing", enrollment="trial-1", trial_end=NOW + timedelta(days=1)
+    )
+    assert snapshot(subs=[ours]).subscription_status == "signed"
+
+
+@pytest.mark.parametrize(
+    "tier",
+    [
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    ],
+)
+def test_paid_tier_without_stripe_is_not_a_grant(tier):
+    """The tier column defaulted to PRO for signups from 2026-03-26 to
+    2026-05-01, so a paid tier with no Stripe customer usually never paid."""
+    assert snapshot(u=user(tier, customer=None)).subscription_status == "signed"
 
 
 def test_stale_paid_tier_with_stripe_customer_follows_stripe():
