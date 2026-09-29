@@ -216,8 +216,12 @@ export function useExpertChatDrawer({
       .then(async () => {
         const queued = takeQueued();
         if (!queued) return;
-        await sendMessage({ text: queued.text });
-        queued.resolve();
+        try {
+          await sendMessage({ text: queued.text });
+          queued.resolve();
+        } catch (err) {
+          queued.reject(err);
+        }
       });
   }, [hasAssistantReply, sendMessage, status]);
 
