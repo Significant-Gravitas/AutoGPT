@@ -1,7 +1,9 @@
 """Unit tests for the operator's dream marker command: what it lists, what a
 dry run would resolve, and what ``--apply`` resolves under the graph's write
 lock (a marker whose episode graphiti saved is completed, any other deleted
-only while no saved episode has its uuid). The live runs are in
+only while no saved episode has its uuid); a pending marker younger than the
+bound is refused unless ``--force``, saying what ``--force`` would do. The
+live runs are in
 ``recall_marker_integration_test.py`` and
 ``recall_marker_crash_integration_test.py``.
 """
@@ -88,7 +90,9 @@ class TestResolve:
         self,
     ) -> None:
         driver = _driver(_ROWS)
-        wanted = dream_markers.Selection(uuids={"landed", "young"}, expired=True)
+        wanted = dream_markers.Selection(
+            uuids={"landed", "young"}, expired=True, force=True
+        )
 
         found = await dream_markers.resolve_graph(driver, "user_a", wanted, apply=False)
 
@@ -112,7 +116,7 @@ class TestResolve:
             return row["uuid"] == "landed"
 
         wanted = dream_markers.Selection(
-            uuids={"landed", "partial", "young"}, expired=True
+            uuids={"landed", "partial", "young"}, expired=True, force=True
         )
         with patch.object(dream_markers, "complete", complete):
             found = await dream_markers.resolve_graph(
@@ -127,6 +131,37 @@ class TestResolve:
             if c.args[0] == DROP_UNLANDED_QUERY
         ]
         assert drops == [{"uuid": "young"}, {"uuid": "old"}]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("apply", [True, False], ids=["apply", "dry run"])
+    async def test_a_young_pending_marker_is_refused_without_force(
+        self, apply: bool
+    ) -> None:
+        """Its writer may still be writing. The refusal says what ``--force``
+        would do; a pending marker past the bound is resolved."""
+        stale = _row("stale", UNLANDED, hours=30)
+        driver = _driver([*_ROWS[:3], stale], [{"dropped": 1}])
+        wanted = dream_markers.Selection(uuids={"landed", "young", "stale"})
+
+        found = await dream_markers.resolve_graph(driver, "user_a", wanted, apply=apply)
+
+        assert (found.completed, found.deleted, found.refused) == (0, 1, 2)
+        landed, young = found.notes
+        assert landed.startswith("refused marker landed in graph user_a: pending ")
+        assert "under the 24h bound, so its writer may still be writing" in landed
+        assert landed.endswith(
+            "--force would complete it: record and settle its write, then delete it"
+        )
+        assert young.endswith(
+            "--force would delete it, and the episode its writer placed if none "
+            "under its uuid was saved by then"
+        )
+        drops = [
+            c.kwargs
+            for c in driver.execute_query.await_args_list
+            if c.args[0] == DROP_UNLANDED_QUERY
+        ]
+        assert drops == ([{"uuid": "stale"}] if apply else [])
 
     @pytest.mark.asyncio
     async def test_only_the_selected_markers_are_touched(self) -> None:
@@ -167,7 +202,7 @@ class TestCommandLine:
         bad.execute_query.side_effect = RuntimeError("down")
         opened = MagicMock(side_effect=[good, bad])
         args = dream_markers.parser().parse_args(
-            ["--resolve", "young", "--resolve", "other", "--apply"]
+            ["--resolve", "young", "--resolve", "other", "--force", "--apply"]
         )
 
         with (
@@ -188,6 +223,26 @@ class TestCommandLine:
         assert "skipped 0 busy and 1 failed graphs" in out
         good.close.assert_awaited_once()
         bad.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_refusal_is_printed_and_exits_1(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        driver = _driver([_ROWS[2]], [_ROWS[2]])
+        args = dream_markers.parser().parse_args(
+            ["--graph", "user_a", "--resolve", "young", "--apply"]
+        )
+
+        with patch.object(
+            dream_markers, "open_graph_driver", MagicMock(return_value=driver)
+        ):
+            code = await dream_markers.main(args)
+
+        out = capsys.readouterr().out
+        assert code == 1
+        assert "refused marker young in graph user_a" in out
+        assert "resolved: 0 completed, 0 deleted; 0 kept, 1 refused" in out
+        assert "a refused marker is resolved only with --force" in out
 
     def test_a_bare_run_only_lists(self) -> None:
         args = dream_markers.parser().parse_args([])

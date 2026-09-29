@@ -185,8 +185,11 @@ async def test_a_write_whose_marker_was_resolved_is_settled_by_its_writer(
     marker = await mark(driver, gid, "r-episode", "dream_resolved", cited)
     await placed(driver, gid, placed_payload("dream_resolved"), "r-episode")
 
-    resolved = await dream_markers.resolve_graph(
+    refused = await dream_markers.resolve_graph(
         driver, gid, dream_markers.Selection(uuids={marker}), apply=True
+    )
+    resolved = await dream_markers.resolve_graph(
+        driver, gid, dream_markers.Selection(uuids={marker}, force=True), apply=True
     )
     forgotten = await retract(scope, ["r-root"])
     await land(
@@ -199,6 +202,7 @@ async def test_a_write_whose_marker_was_resolved_is_settled_by_its_writer(
     )
     recorded = await record(driver, gid, marker, "r-episode", ["r-fact"], cited)
 
+    assert (refused.refused, refused.deleted) == (1, 0), "young: only with --force"
     assert resolved == dream_markers.Resolved(deleted=1)
     assert forgotten.failures == []
     assert recorded, "settled from the citations its writer holds"
