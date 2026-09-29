@@ -309,8 +309,9 @@ export function useExpertChatDrawer({
     const queued = takeQueued();
     if (!queued) return;
     try {
-      await startSession({ text: queued.text });
-      queued.resolve();
+      const started = await startSession({ text: queued.text });
+      if (started) queued.resolve();
+      else queued.reject(new Error("The chat was reset"));
     } catch (err) {
       queued.reject(err);
     }
