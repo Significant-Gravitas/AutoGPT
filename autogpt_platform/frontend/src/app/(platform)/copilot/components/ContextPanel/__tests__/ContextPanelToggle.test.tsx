@@ -1,7 +1,14 @@
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import { server } from "@/mocks/mock-server";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { useCopilotStreamStore } from "../../../copilotStreamStore";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelToggle } from "../ContextPanelToggle";
 
@@ -57,6 +64,8 @@ beforeEach(() => {
     isComputerOpen: false,
     computer: null,
   });
+  useCopilotUIStore.setState({ contextPanelExpert: null });
+  useCopilotStreamStore.setState({ messageSnapshots: {} });
 });
 
 afterEach(() => {
@@ -71,9 +80,107 @@ afterEach(() => {
     isComputerOpen: false,
     computer: null,
   });
+  useCopilotUIStore.setState({ contextPanelExpert: null });
+  useCopilotStreamStore.setState({ messageSnapshots: {} });
 });
 
 describe("ContextPanelToggle files button", () => {
+  test("shares the chat expert with the file panel", async () => {
+    render(
+      <ContextPanelToggle
+        sessionId="s1"
+        expert={{ id: "expert-maria", name: "Maria" }}
+      />,
+    );
+
+    await vi.waitFor(() =>
+      expect(useCopilotUIStore.getState().contextPanelExpert).toEqual({
+        id: "expert-maria",
+        name: "Maria",
+      }),
+    );
+  });
+
+  test("shows the number of documents generated in the chat", async () => {
+    const documentId = "aaaaaaaa-0000-0000-0000-000000000001";
+    const uploadId = "bbbbbbbb-0000-0000-0000-000000000002";
+    let hasGeneratedDocument = false;
+    server.use(
+      http.get("*/api/workspace/files", () =>
+        HttpResponse.json({
+          files: hasGeneratedDocument
+            ? [
+                {
+                  id: documentId,
+                  name: "brief.md",
+                  path: "/sessions/s1/brief.md",
+                  mime_type: "text/markdown",
+                  size_bytes: 128,
+                  origin: "generated",
+                  created_at: "2026-09-29T10:00:00Z",
+                },
+                {
+                  id: uploadId,
+                  name: "source.pdf",
+                  path: "/sessions/s1/source.pdf",
+                  mime_type: "application/pdf",
+                  size_bytes: 256,
+                  origin: "uploaded",
+                  created_at: "2026-09-29T09:00:00Z",
+                },
+                {
+                  id: "cccccccc-0000-0000-0000-000000000003",
+                  name: "tool.json",
+                  path: "/sessions/s1/tool-results/tool.json",
+                  mime_type: "application/json",
+                  size_bytes: 64,
+                  metadata: { purpose: "tool-output" },
+                  origin: "generated",
+                  created_at: "2026-09-29T08:00:00Z",
+                },
+              ]
+            : [],
+          offset: 0,
+          has_more: false,
+        }),
+      ),
+    );
+
+    render(<ContextPanelToggle sessionId="s1" />);
+    expect(await screen.findByLabelText("Open files")).toBeDefined();
+
+    hasGeneratedDocument = true;
+    act(() => {
+      useCopilotStreamStore.getState().setMessageSnapshot("s1", [
+        {
+          id: "assistant-message",
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: `Here is [the brief](workspace://${documentId}) and [the same brief](workspace://${documentId}).`,
+            },
+          ],
+        },
+        {
+          id: "user-message",
+          role: "user",
+          parts: [
+            {
+              type: "file",
+              mediaType: "application/pdf",
+              filename: "source.pdf",
+              url: `/api/proxy/api/workspace/files/${uploadId}/download`,
+            },
+          ],
+        },
+      ]);
+    });
+
+    const button = await screen.findByLabelText("Open files (1 document)");
+    expect(button.textContent).toBe("1");
+  });
+
   test("opens the files tab of the side panel", () => {
     render(<ContextPanelToggle sessionId="s1" />);
 
