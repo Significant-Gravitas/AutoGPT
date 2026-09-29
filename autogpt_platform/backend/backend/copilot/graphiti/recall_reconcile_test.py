@@ -4,9 +4,11 @@ by its episode's uuid, never its name) is recorded, settled and deleted; an
 aborted one without a saved episode is deleted with the episode its writer
 placed, the check and the delete in one statement; a pending one not landed
 waits, then expires, and is never deleted for its age; an expired one is
-kept. ``in_flight`` counts the writes that could still land. The reaper's sweep is in ``provenance_pending_test.py``;
-the live runs are ``recall_provenance_integration_test.py`` and
-``recall_marker_integration_test.py``.
+kept. ``in_flight`` counts the writes that could still land. The reaper's
+sweep is in ``provenance_pending_test.py``; the live runs are
+``recall_provenance_integration_test.py``,
+``recall_marker_integration_test.py`` and
+``recall_marker_crash_integration_test.py``.
 """
 
 from datetime import datetime, timedelta, timezone

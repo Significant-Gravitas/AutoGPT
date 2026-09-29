@@ -4,7 +4,8 @@ A forgotten fact softly, under the root its reason names; one a hard forget
 reached (purged, still being purged, or erased by its cascade) erasing; a
 hidden episode under the root it was hidden for, erasing when a hard forget
 emptied it, reached that root, or it is gone. The live runs are in
-``recall_marker_integration_test.py``.
+``recall_marker_integration_test.py`` and
+``recall_marker_race_integration_test.py``.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

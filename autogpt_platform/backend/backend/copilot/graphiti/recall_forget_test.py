@@ -4,7 +4,9 @@ in-memory write lock (``conftest.lock_redis``).
 Pin the Cypher each forget mode issues, its order, the write lock it holds
 around every write, and the per-uuid failure reporting. What hiding, the
 cascade and purging send is pinned in ``recall_hide_test.py``,
-``recall_cascade_test.py`` and ``recall_orphans_test.py``; the live runs are
+``recall_cascade_test.py`` and ``recall_orphans_test.py``, the forget's
+side of the dream markers in ``recall_forget_writes_test.py`` and of the
+cascade in ``recall_forget_cascade_test.py``; the live runs are
 ``recall_forget_integration_test.py``, ``recall_hard_forget_integration_test.py``,
 ``recall_cascade_integration_test.py``, ``recall_inflight_integration_test.py``
 and ``recall_integration_test.py``.
@@ -19,10 +21,8 @@ from . import (
     recall_cascade_queries,
     recall_erase,
     recall_forget,
-    recall_forget_writes,
     recall_hide,
     recall_orphans,
-    recall_reconcile,
     scope_lock,
 )
 from .memory_model import (
@@ -32,116 +32,47 @@ from .memory_model import (
 )
 from .recall import FORGOTTEN_FACT
 from .recall_fake_redis import FakeRedis
-from .scope import MemoryScope, write_lock_key
-
-_SCOPE = MemoryScope.for_user("user-abc")
-_LOCK = write_lock_key(_SCOPE.group_id)
-_CLEANUP = MemoryForgetFailureCode.CLEANUP_ERROR
-
-
-_MARKER_READS = (recall_reconcile.MARKERS_QUERY, recall_reconcile.IN_FLIGHT_QUERY)
-
-
-def _driver(*results, markers: object = None, in_flight: object = 0) -> AsyncMock:
-    """A driver whose queries return (or raise) ``results`` in order. The
-    two reads of the graph's dream markers answer apart: the one every
-    forget makes first ``markers`` (none by default), the one of the dream
-    writes still in flight ``in_flight`` (none)."""
-    driver = AsyncMock()
-    answers = iter(results)
-
-    async def answer(query: str, **params):
-        if query == recall_reconcile.MARKERS_QUERY:
-            value = [] if markers is None else markers
-        elif query == recall_reconcile.IN_FLIGHT_QUERY:
-            value = (
-                in_flight
-                if isinstance(in_flight, Exception)
-                else [{"count": in_flight}]
-            )
-        else:
-            value = next(answers)
-        if isinstance(value, Exception):
-            raise value
-        return value, [], None
-
-    driver.execute_query.side_effect = answer
-    return driver
-
-
-async def _retract(driver: AsyncMock, uuids: list[str], **kwargs):
-    with patch.object(recall_forget, "open_driver", MagicMock(return_value=driver)):
-        return await recall_forget.retract(_SCOPE, uuids, **kwargs)
-
-
-def _calls(driver: AsyncMock) -> list:
-    """The forget's own queries: every one but its reads of dream markers."""
-    return [
-        call
-        for call in driver.execute_query.await_args_list
-        if call.args[0] not in _MARKER_READS
-    ]
-
-
-def _queries(driver: AsyncMock) -> list[str]:
-    return [call.args[0] for call in _calls(driver)]
-
-
-def _call(driver: AsyncMock, index: int) -> tuple[str, dict]:
-    """The ``index``-th of the forget's own queries."""
-    call = _calls(driver)[index]
-    return call.args[0], call.kwargs
-
-
-def _in_flight_reads(driver: AsyncMock) -> list[dict]:
-    return [
-        call.kwargs
-        for call in driver.execute_query.await_args_list
-        if call.args[0] == recall_reconcile.IN_FLIGHT_QUERY
-    ]
-
-
-# lookup, retract, scrub facts, entity keys (none), redact
-_SOFT = (
-    [{"uuid": "u1"}],
-    [{"uuid": "u1"}],
-    [{"ends": []}],
-    [],
-    [{"uuid": "ep1", "via": ["u1"]}],
+from .recall_forget_fake import (
+    CLEANUP,
+    LOCK,
+    NOTHING_DERIVED,
+    SCOPE,
+    SOFT,
+    forget,
+    own_call,
+    own_queries,
+    scripted,
 )
-# The cascade finding nothing derived: no earlier try, the episodes citing
-# the forgotten fact, no derived fact, no derived dream episode.
-_NOTHING_DERIVED = ([], [{"uuid": "ep1", "via": ["u1"]}], [], [])
 
 
 class TestSoftRetract:
     @pytest.mark.asyncio
     async def test_marks_the_edge_forgotten_then_hides_its_text(self) -> None:
-        driver = _driver(*_SOFT, *_NOTHING_DERIVED)
+        driver = scripted(*SOFT, *NOTHING_DERIVED)
 
-        result = await _retract(driver, ["u1"])
+        result = await forget(driver, ["u1"])
 
         assert (result.deleted, result.failures) == (["u1"], [])
         assert result.redacted_episodes == ["ep1"]
         driver.close.assert_awaited_once()
-        lookup, lookup_kwargs = _call(driver, 0)
+        lookup, lookup_kwargs = own_call(driver, 0)
         assert "SET" not in lookup, "the lookup must be a read"
-        assert lookup_kwargs == {"uuids": ["u1"], "group_id": _SCOPE.group_id}
-        write, kwargs = _call(driver, 1)
+        assert lookup_kwargs == {"uuids": ["u1"], "group_id": SCOPE.group_id}
+        write, kwargs = own_call(driver, 1)
         assert "SET e.forgotten_at = coalesce(e.forgotten_at, $now)," in write
         assert "e.expired_at = coalesce(e.expired_at, $now)," in write
         assert "invalid_at" not in write, "a forget is not a world change"
         assert (kwargs["status"], kwargs["reason"]) == ("retracted", "user_signal")
         assert kwargs["hard"] is False, "no purge to come"
-        assert _call(driver, 2) == (
+        assert own_call(driver, 2) == (
             recall_hide.SCRUB_FACTS_QUERY,
             {"uuids": ["u1"], "placeholder": FORGOTTEN_FACT},
         )
-        assert _call(driver, 4) == (
+        assert own_call(driver, 4) == (
             recall_hide.REDACT_EPISODES_QUERY,
             {"uuids": ["u1"], "now": kwargs["now"]},
         )
-        assert _queries(driver)[5:] == [
+        assert own_queries(driver)[5:] == [
             recall_cascade.EARLIER_QUERY,
             recall_hide.REDACT_EPISODES_QUERY,
             recall_cascade.DERIVED_FACTS_QUERY,
@@ -151,33 +82,33 @@ class TestSoftRetract:
 
     @pytest.mark.asyncio
     async def test_reason_is_recorded(self) -> None:
-        driver = _driver(*_SOFT, *_NOTHING_DERIVED)
+        driver = scripted(*SOFT, *NOTHING_DERIVED)
 
-        await _retract(driver, ["u1"], reason="settings_page")
+        await forget(driver, ["u1"], reason="settings_page")
 
-        assert _call(driver, 1)[1]["reason"] == "settings_page"
+        assert own_call(driver, 1)[1]["reason"] == "settings_page"
 
     @pytest.mark.asyncio
     async def test_unknown_uuid_is_a_no_match_and_nothing_is_written(self) -> None:
-        driver = _driver([], [])  # the lookup, then nothing names it
+        driver = scripted([], [])  # the lookup, then nothing names it
 
-        result = await _retract(driver, ["missing"])
+        result = await forget(driver, ["missing"])
 
         assert result.deleted == [] and result.resumed == []
         assert [(f.uuid, f.code) for f in result.failures] == [
             ("missing", MemoryForgetFailureCode.NO_MATCH)
         ]
         assert result.failures[0].reason == FORGET_NO_MATCH_REASON
-        assert _queries(driver) == [
+        assert own_queries(driver) == [
             recall_forget._EXISTING_EDGES_QUERY,
             recall_cascade_queries.NAMED_ROOTS_QUERY,
         ], "reads only"
 
     @pytest.mark.asyncio
     async def test_lookup_error_fails_every_uuid_with_its_reason(self) -> None:
-        driver = _driver(RuntimeError("Unknown function 'datetime'"))
+        driver = scripted(RuntimeError("Unknown function 'datetime'"))
 
-        result = await _retract(driver, ["u1", "u2"])
+        result = await forget(driver, ["u1", "u2"])
 
         assert result.deleted == []
         assert [f.uuid for f in result.failures] == ["u1", "u2"]
@@ -190,52 +121,52 @@ class TestSoftRetract:
 
     @pytest.mark.asyncio
     async def test_write_error_and_vanished_edge_are_told_apart(self) -> None:
-        driver = _driver(
+        driver = scripted(
             [{"uuid": "errored"}, {"uuid": "vanished"}],
             RuntimeError("boom"),
             [],  # deleted between the lookup and the write
         )
 
-        result = await _retract(driver, ["errored", "vanished"])
+        result = await forget(driver, ["errored", "vanished"])
 
         by_uuid = {f.uuid: f for f in result.failures}
         assert by_uuid["errored"].code == MemoryForgetFailureCode.QUERY_ERROR
         assert "boom" in by_uuid["errored"].reason
         assert by_uuid["vanished"].code == MemoryForgetFailureCode.NO_MATCH
-        assert len(_queries(driver)) == 3, "nothing to hide"
+        assert len(own_queries(driver)) == 3, "nothing to hide"
 
     @pytest.mark.asyncio
     async def test_a_failed_hide_is_a_cleanup_error_on_each_edge(self) -> None:
-        driver = _driver(
+        driver = scripted(
             [{"uuid": "u1"}, {"uuid": "u2"}],
             [{"uuid": "u1"}],
             [{"uuid": "u2"}],
             RuntimeError("down"),
         )
 
-        result = await _retract(driver, ["u1", "u2"])
+        result = await forget(driver, ["u1", "u2"])
 
         assert result.deleted == ["u1", "u2"], "the facts themselves are forgotten"
         assert [(f.uuid, f.code) for f in result.failures] == [
-            ("u1", _CLEANUP),
-            ("u2", _CLEANUP),
+            ("u1", CLEANUP),
+            ("u2", CLEANUP),
         ]
         assert "RuntimeError: down" in result.failures[0].reason
 
     @pytest.mark.asyncio
     async def test_repeated_uuids_are_forgotten_once(self) -> None:
-        driver = _driver(*_SOFT, *_NOTHING_DERIVED)
+        driver = scripted(*SOFT, *NOTHING_DERIVED)
 
-        result = await _retract(driver, ["u1", "u1"])
+        result = await forget(driver, ["u1", "u1"])
 
         assert result.deleted == ["u1"] and result.failures == []
-        assert _call(driver, 0)[1]["uuids"] == ["u1"]
+        assert own_call(driver, 0)[1]["uuids"] == ["u1"]
 
     @pytest.mark.asyncio
     async def test_empty_request_opens_no_driver(self) -> None:
         open_driver = MagicMock()
         with patch.object(recall_forget, "open_driver", open_driver):
-            result = await recall_forget.retract(_SCOPE, [])
+            result = await recall_forget.retract(SCOPE, [])
 
         assert result.deleted == [] and result.failures == []
         open_driver.assert_not_called()
@@ -247,34 +178,34 @@ class TestWriteLock:
         self, lock_redis: FakeRedis
     ) -> None:
         held: list[bool] = []
-        results = [[], *_SOFT, *_NOTHING_DERIVED, [{"count": 0}]]
+        results = [[], *SOFT, *NOTHING_DERIVED, [{"count": 0}]]
 
         async def query(cypher: str, **params: object):
-            held.append(_LOCK in lock_redis.values)
+            held.append(LOCK in lock_redis.values)
             return results.pop(0), [], None
 
         driver = AsyncMock()
         driver.execute_query.side_effect = query
 
-        await _retract(driver, ["u1"])
+        await forget(driver, ["u1"])
 
         assert held == [True] * (
-            2 + len(_SOFT) + len(_NOTHING_DERIVED)
+            2 + len(SOFT) + len(NOTHING_DERIVED)
         ), "reconcile, cascade and the read of writes in flight too"
-        assert _LOCK not in lock_redis.values, "released afterwards"
+        assert LOCK not in lock_redis.values, "released afterwards"
 
     @pytest.mark.asyncio
     async def test_a_lock_held_for_the_whole_wait_fails_as_busy_and_writes_nothing(
         self, lock_redis: FakeRedis
     ) -> None:
-        lock_redis.values[_LOCK] = "an ingestion's token"
+        lock_redis.values[LOCK] = "an ingestion's token"
         open_driver = MagicMock()
 
         with (
             patch.object(recall_forget, "FORGET_LOCK_WAIT_SECONDS", 0),
             patch.object(recall_forget, "open_driver", open_driver),
         ):
-            result = await recall_forget.retract(_SCOPE, ["u1", "u2"])
+            result = await recall_forget.retract(SCOPE, ["u1", "u2"])
 
         assert result.deleted == []
         assert [(f.uuid, f.code) for f in result.failures] == [
@@ -283,17 +214,17 @@ class TestWriteLock:
         ]
         assert result.failures[0].reason == FORGET_BUSY_REASON
         open_driver.assert_not_called()
-        assert lock_redis.values[_LOCK] == "an ingestion's token", "left alone"
+        assert lock_redis.values[LOCK] == "an ingestion's token", "left alone"
 
     @pytest.mark.asyncio
     async def test_redis_unreachable_forgets_without_the_lock(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        driver = _driver(*_SOFT, *_NOTHING_DERIVED)
+        driver = scripted(*SOFT, *NOTHING_DERIVED)
         down = AsyncMock(side_effect=ConnectionError("redis down"))
 
         with patch.object(scope_lock, "get_redis_async", down):
-            result = await _retract(driver, ["u1"])
+            result = await forget(driver, ["u1"])
 
         assert (result.deleted, result.failures) == (["u1"], [])
         assert "write lock unavailable" in caplog.text
@@ -303,8 +234,8 @@ class TestHardRetract:
     @pytest.mark.asyncio
     async def test_hides_everything_before_it_purges_anything(self) -> None:
         redacted = [{"uuid": "ep1", "via": ["u1"]}, {"uuid": "ep2", "via": ["u1"]}]
-        driver = _driver(
-            *_SOFT[:4],
+        driver = scripted(
+            *SOFT[:4],
             redacted,  # redact
             [],  # the cascade: no earlier try,
             redacted,  # the episodes citing the fact,
@@ -316,16 +247,16 @@ class TestHardRetract:
             [{"uuid": "u1", "deleted_entities": ["alice", "carol"]}],  # delete
         )
 
-        result = await _retract(driver, ["u1"], hard=True)
+        result = await forget(driver, ["u1"], hard=True)
 
         assert result.deleted == ["u1"] and result.failures == []
-        write, kwargs = _call(driver, 1)
+        write, kwargs = own_call(driver, 1)
         assert "e.hard_forgotten_at = CASE WHEN $hard" in write
         assert kwargs["hard"] is True, "stamped before the purge, for a late settle"
         assert result.tombstoned_episodes == ["ep1"]
         assert result.redacted_episodes == ["ep2"], "kept for another edge, hidden"
         assert result.deleted_entities == ["alice", "carol"]
-        assert _queries(driver)[4:] == [
+        assert own_queries(driver)[4:] == [
             recall_hide.REDACT_EPISODES_QUERY,
             recall_cascade.EARLIER_QUERY,
             recall_hide.REDACT_EPISODES_QUERY,
@@ -339,176 +270,20 @@ class TestHardRetract:
 
     @pytest.mark.asyncio
     async def test_a_failed_hide_stops_it_before_any_purge(self) -> None:
-        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], RuntimeError("down"))
+        driver = scripted([{"uuid": "u1"}], [{"uuid": "u1"}], RuntimeError("down"))
 
-        result = await _retract(driver, ["u1"], hard=True)
+        result = await forget(driver, ["u1"], hard=True)
 
         assert result.deleted == [], "a deleted edge could no longer hide its text"
-        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-        assert len(_queries(driver)) == 3
+        assert [(f.uuid, f.code) for f in result.failures] == [("u1", CLEANUP)]
+        assert len(own_queries(driver)) == 3
 
     @pytest.mark.asyncio
     async def test_unmatched_delete_is_a_no_match(self) -> None:
-        driver = _driver(*_SOFT[:4], [], [], [], [], [], [], [], [])
+        driver = scripted(*SOFT[:4], [], [], [], [], [], [], [], [])
 
-        result = await _retract(driver, ["u1"], hard=True)
+        result = await forget(driver, ["u1"], hard=True)
 
         assert result.deleted == []
         assert [f.code for f in result.failures] == [MemoryForgetFailureCode.NO_MATCH]
-        assert len(_queries(driver)) == 12
-
-
-class TestPendingDreamRecords:
-    """Every forget completes the graph's pending dream records first
-    (``recall_reconcile.py``, pinned in ``recall_reconcile_test.py``), so
-    its cascade sees them."""
-
-    @pytest.mark.asyncio
-    async def test_it_reads_them_before_anything_else(self) -> None:
-        driver = _driver(*_SOFT, *_NOTHING_DERIVED)
-
-        await _retract(driver, ["u1"])
-
-        first = driver.execute_query.await_args_list[0]
-        assert first.args[0] == recall_reconcile.MARKERS_QUERY
-
-    @pytest.mark.asyncio
-    async def test_a_failed_read_forgets_anyway_and_asks_for_a_retry(self) -> None:
-        driver = _driver(*_SOFT, *_NOTHING_DERIVED, markers=RuntimeError("down"))
-
-        result = await _retract(driver, ["u1"])
-
-        assert result.deleted == ["u1"], "the fact itself is forgotten"
-        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-        assert "RuntimeError: down" in result.failures[0].reason
-
-    @pytest.mark.asyncio
-    async def test_more_than_one_forget_takes_asks_for_a_retry(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.side_effect = [
-            (r, [], None) for r in (*_SOFT, *_NOTHING_DERIVED)
-        ]
-
-        with patch.object(
-            recall_forget_writes,
-            "reconcile",
-            AsyncMock(return_value=recall_reconcile.Reconciled(left=True)),
-        ):
-            result = await _retract(driver, ["u1"])
-
-        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-        assert "without a record" in result.failures[0].reason
-
-    @pytest.mark.asyncio
-    async def test_a_write_in_flight_citing_what_it_reached_asks_for_a_retry(
-        self,
-    ) -> None:
-        """Its write could land after the forget, and only its own settle
-        would retract it. The forget reads what it reached: its roots, the
-        derived facts it retracted or walked through, the episodes it hid."""
-
-        async def cascade(driver, group_id, roots, now, result, *, erase) -> None:
-            result.derived.append("d1")
-            result.passed.append("p1")
-            result.redacted_episodes.append("dream-ep")
-
-        driver = _driver(*_SOFT, in_flight=1)
-
-        with patch.object(recall_forget, "cascade", cascade):
-            result = await _retract(driver, ["u1"])
-
-        assert result.deleted == ["u1"], "the fact itself is forgotten"
-        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-        assert "may still land" in result.failures[0].reason
-        [read] = _in_flight_reads(driver)
-        assert (read["facts"], read["episodes"], read["state"]) == (
-            ["u1", "d1", "p1"],
-            ["ep1", "dream-ep"],
-            "pending",
-        )
-
-    @pytest.mark.asyncio
-    async def test_a_failed_in_flight_read_asks_for_a_retry(self) -> None:
-        driver = _driver(*_SOFT, *_NOTHING_DERIVED, in_flight=RuntimeError("down"))
-
-        result = await _retract(driver, ["u1"])
-
-        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-        assert "RuntimeError: down" in result.failures[0].reason
-
-    @pytest.mark.asyncio
-    async def test_nothing_forgotten_reads_no_write_in_flight(self) -> None:
-        driver = _driver([], [])  # the lookup, then nothing names it
-
-        await _retract(driver, ["missing"])
-
-        assert _in_flight_reads(driver) == []
-
-
-class TestCascade:
-    """The forget hands the facts it retracted and hid to
-    ``recall_cascade.cascade`` (pinned in ``recall_cascade_test.py``)."""
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("hard", [False, True], ids=["soft", "hard"])
-    async def test_it_runs_on_what_was_retracted_and_its_count_is_returned(
-        self, hard: bool
-    ) -> None:
-        """A hard forget's cascade erases the text it reaches as well."""
-        seen: list[tuple[list[str], bool]] = []
-
-        async def cascade(driver, group_id, roots, now, result, *, erase) -> None:
-            seen.append((roots, erase))
-            result.derived.extend(["d1", "d2"])
-
-        purged = ([], [], [{"uuid": "u1", "deleted_entities": []}]) if hard else ()
-        driver = _driver(*_SOFT, *purged)
-
-        with patch.object(recall_forget, "cascade", cascade):
-            result = await _retract(driver, ["u1"], hard=hard)
-
-        assert seen == [(["u1"], hard)]
-        assert (result.deleted, result.derived) == (["u1"], ["d1", "d2"])
-
-    @pytest.mark.asyncio
-    async def test_a_failed_hide_leaves_it_for_the_next_forget(self) -> None:
-        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], RuntimeError("down"))
-        cascade = AsyncMock()
-
-        with patch.object(recall_forget, "cascade", cascade):
-            result = await _retract(driver, ["u1"])
-
-        cascade.assert_not_awaited()
-        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-
-    @pytest.mark.asyncio
-    async def test_a_purged_root_something_names_resumes_its_cascade_erasing(
-        self,
-    ) -> None:
-        """``gone`` was purged by a hard forget whose cascade stopped short; a
-        record still names it. ``never`` names nothing and stays no match."""
-        seen: list[tuple[list[str], bool]] = []
-
-        async def cascade(driver, group_id, roots, now, result, *, erase) -> None:
-            seen.append((roots, erase))
-            result.derived.append("d1")
-
-        driver = _driver([], [{"uuid": "gone"}])  # the lookup, the names
-
-        with patch.object(recall_forget, "cascade", cascade):
-            result = await _retract(driver, ["gone", "never"])
-
-        assert seen == [(["gone"], True)], "the root is gone: it was hard"
-        assert (result.resumed, result.derived, result.deleted) == (
-            ["gone"],
-            ["d1"],
-            [],
-        )
-        assert [(f.uuid, f.code) for f in result.failures] == [
-            ("never", MemoryForgetFailureCode.NO_MATCH)
-        ]
-        _, names = _call(driver, 1)
-        assert names == {
-            "uuids": ["gone", "never"],
-            "prefix": "derived_from_forgotten:",
-        }
+        assert len(own_queries(driver)) == 12

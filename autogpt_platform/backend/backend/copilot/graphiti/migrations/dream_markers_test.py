@@ -1,8 +1,9 @@
 """Unit tests for the operator's dream marker command: what it lists, what a
 dry run would resolve, and what ``--apply`` resolves under the graph's write
 lock (a marker whose episode graphiti saved is completed, any other deleted
-only while no saved episode has its uuid). The live run is in
-``recall_marker_integration_test.py``.
+only while no saved episode has its uuid). The live runs are in
+``recall_marker_integration_test.py`` and
+``recall_marker_crash_integration_test.py``.
 """
 
 from datetime import datetime, timedelta, timezone
