@@ -16,17 +16,17 @@ export function AuthSplitLayout({ marketing, children, className }: Props) {
       <aside className="relative hidden flex-1 overflow-hidden bg-slate-950 text-white lg:flex">
         {marketing}
       </aside>
-      <section className="relative flex flex-1 flex-col items-center justify-center bg-white px-6 py-12 sm:px-10">
+      <section className="relative flex flex-1 flex-col items-center bg-white px-6 pb-4 pt-12 sm:px-10">
         <AuroraBackground
           aria-hidden
           showRadialGradient={false}
           className="absolute inset-0 h-full w-full lg:hidden"
         />
-        <div className="relative z-10 flex w-full max-w-[26rem] flex-col">
+        <div className="relative z-10 flex w-full max-w-[26rem] flex-1 flex-col justify-center">
           <AutoGPTLogo className="mx-auto mb-10 h-auto w-32 sm:w-40 lg:hidden" />
           {children}
         </div>
-        <CookieSettingsLink className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2" />
+        <CookieSettingsLink className="relative z-10 mt-6" />
       </section>
     </div>
   );

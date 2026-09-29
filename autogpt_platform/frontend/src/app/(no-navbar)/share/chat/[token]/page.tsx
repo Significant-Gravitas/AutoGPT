@@ -45,7 +45,7 @@ function SharedChatChrome({
       <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-background">
         {children}
       </div>
-      <CookieSettingsLink className="shrink-0 self-center py-1.5" />
+      <CookieSettingsLink className="mb-1 shrink-0 self-center" />
     </div>
   );
 }

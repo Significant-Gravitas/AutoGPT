@@ -32,7 +32,7 @@ function ExecutionShareChrome({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">{children}</div>
       </div>
-      <CookieSettingsLink className="shrink-0 self-center py-1.5" />
+      <CookieSettingsLink className="mb-1 shrink-0 self-center" />
     </div>
   );
 }
