@@ -52,12 +52,11 @@ export function trackAdsConversion(
   return gtag("event", "conversion", params);
 }
 
-// An unanswered banner is not a yes. In the US the Consent Mode default is
-// `granted`, but that exception lives in the tag's `region` parameter and
-// Google resolves it by IP. So treating "no answer" as consent would hand
-// Google an email it was told to redact for every unanswered visitor outside
-// the US, which is the vendor dependency this gate exists to remove. Cookiebot's own answer (including "no consent required here") is
-// what counts.
+// An unanswered banner is not a yes. Consent Mode starts every visitor with
+// ad_user_data denied, so treating "no answer" as consent would hand Google an
+// email it was told to redact and leave the redaction up to the vendor, which
+// is the dependency this gate exists to remove. Cookiebot's own answer
+// (including "no consent required here") is what counts.
 function mayReportIdentifiers(): boolean {
   return hasConsentFor("advertising");
 }

@@ -7,7 +7,6 @@ import {
 } from "@/tests/integrations/cookiebot";
 import {
   buildConsentDefaultsScript,
-  CONSENT_GRANTED_BY_DEFAULT_REGIONS,
   followConsentForGoogleTag,
 } from "./consent-mode";
 
@@ -46,35 +45,11 @@ function runDefaultsScript(): unknown[][] {
   );
 }
 
-type ConsentDefault = Record<string, unknown> & { region?: string[] };
-
-// Google's rule: the default whose region lists the visitor's country wins,
-// and the one without a region covers everyone else.
-function defaultsFor(country: string) {
-  const defaults = dataLayerEntries()
-    .filter(
-      ([command, action]) => command === "consent" && action === "default",
-    )
-    .map(([, , params]) => params as ConsentDefault);
-  const regional = defaults.find((params) => params.region?.includes(country));
-  const { region: _region, ...signals } =
-    regional ?? defaults.find((params) => !params.region) ?? {};
-  return signals;
-}
-
 const ALL_DENIED = {
   ad_storage: "denied",
   ad_user_data: "denied",
   ad_personalization: "denied",
   analytics_storage: "denied",
-  wait_for_update: 500,
-};
-
-const ALL_GRANTED = {
-  ad_storage: "granted",
-  ad_user_data: "granted",
-  ad_personalization: "granted",
-  analytics_storage: "granted",
   wait_for_update: 500,
 };
 
@@ -84,32 +59,17 @@ describe("buildConsentDefaultsScript", () => {
     delete window.gtag;
   });
 
-  it("grants only in the US, denies everywhere else, and passes click IDs through URLs", () => {
+  it("denies every signal for every visitor and passes click IDs through URLs", () => {
     expect(runDefaultsScript()).toEqual([
-      [
-        "consent",
-        "default",
-        { ...ALL_GRANTED, region: CONSENT_GRANTED_BY_DEFAULT_REGIONS },
-      ],
       ["consent", "default", ALL_DENIED],
       ["set", "url_passthrough", true],
     ]);
-    expect(CONSENT_GRANTED_BY_DEFAULT_REGIONS).toEqual(["US"]);
   });
 
-  it.each(["BR", "CA", "IN", "DE", "GB", "CH", "AU"])(
-    "starts a visitor in %s with every signal denied",
-    (country) => {
-      runDefaultsScript();
-
-      expect(defaultsFor(country)).toEqual(ALL_DENIED);
-    },
-  );
-
-  it("starts a US visitor with every signal granted", () => {
-    runDefaultsScript();
-
-    expect(defaultsFor("US")).toEqual(ALL_GRANTED);
+  it("sets no region-specific default", () => {
+    // The vendored gtag.js resolves every visitor to the location baked into
+    // it, so a region-specific default would apply to everyone.
+    expect(buildConsentDefaultsScript()).not.toContain("region");
   });
 
   it("only sets defaults; updates come from the visitor's answer", () => {
@@ -153,24 +113,46 @@ describe("followConsentForGoogleTag", () => {
     unfollow();
   });
 
-  it("follows the defaults with the visitor's answer", () => {
+  it("grants consent once the visitor allows it", () => {
     runDefaultsScript();
     configureCookiebot();
     installCookiebot();
 
     const unfollow = followConsentForGoogleTag();
+    expect(consentUpdates()).toEqual([]);
+
     answerCookiebot({ statistics: true, marketing: true });
 
     expect(dataLayerEntries()).toEqual([
-      ["consent", "default", expect.objectContaining({ region: ["US"] })],
       ["consent", "default", ALL_DENIED],
       ["set", "url_passthrough", true],
-      update(true, true),
+      [
+        "consent",
+        "update",
+        {
+          analytics_storage: "granted",
+          ad_storage: "granted",
+          ad_user_data: "granted",
+          ad_personalization: "granted",
+        },
+      ],
     ]);
     unfollow();
   });
 
-  it("leaves the region defaults alone until the visitor answers", () => {
+  it("keeps every signal denied when the visitor declines", () => {
+    runDefaultsScript();
+    configureCookiebot();
+    installCookiebot();
+
+    const unfollow = followConsentForGoogleTag();
+    answerCookiebot({});
+
+    expect(consentUpdates()).toEqual([update(false, false)]);
+    unfollow();
+  });
+
+  it("leaves the denied defaults alone until the visitor answers", () => {
     configureCookiebot();
     installCookiebot();
 
