@@ -147,6 +147,7 @@ async def test_webhook_survives_posthog_and_stripe_failures():
         await sync_subscription_from_stripe(TRIAL_SUB)
         while lifecycle._background_tasks:
             await asyncio.gather(*list(lifecycle._background_tasks))
+            await asyncio.sleep(0)
 
     client.capture.assert_not_called()
 

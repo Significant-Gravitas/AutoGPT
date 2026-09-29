@@ -194,8 +194,10 @@ async def test_sync_of_a_deleted_user_sends_nothing(posthog):
 
 
 async def _drain() -> None:
+    # Done tasks leave the set in a callback, so yield to let it run.
     while lifecycle._background_tasks:
         await asyncio.gather(*list(lifecycle._background_tasks))
+        await asyncio.sleep(0)
 
 
 async def test_schedule_runs_the_sync_in_the_background(posthog):
@@ -499,3 +501,61 @@ async def test_customer_hooks_are_coordinated_per_user(posthog):
         lifecycle.schedule_posthog_lifecycle_sync(stripe_customer_id="cus_1")
         await _drain()
     schedule_user.assert_called_once_with("user-1")
+
+
+async def test_a_sync_cancelled_while_waiting_for_a_slot_does_not_block_the_user(
+    posthog,
+):
+    release = asyncio.Event()
+    synced: list[str] = []
+
+    async def sync(user_id: str):
+        if user_id.startswith("busy-"):
+            await release.wait()
+        synced.append(user_id)
+
+    with patch(f"{MODULE}.sync_posthog_lifecycle", side_effect=sync):
+        for index in range(lifecycle._MAX_CONCURRENT_SYNCS):
+            lifecycle.schedule_posthog_lifecycle_sync(f"busy-{index}")
+        await asyncio.sleep(0)
+        before = set(lifecycle._background_tasks)
+        lifecycle.schedule_posthog_lifecycle_sync("user-1")
+        (waiting,) = lifecycle._background_tasks - before
+        await asyncio.sleep(0)
+        assert lifecycle._syncs["user-1"] == "queued"
+
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        lifecycle.schedule_posthog_lifecycle_sync("user-1")
+        release.set()
+        await _drain()
+
+    assert synced.count("user-1") == 1
+    assert not lifecycle._syncs
+
+
+async def test_a_cancelled_running_sync_keeps_a_requested_rerun(posthog):
+    started = asyncio.Event()
+    calls = 0
+
+    async def sync(user_id: str):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            started.set()
+            await asyncio.Event().wait()
+
+    with patch(f"{MODULE}.sync_posthog_lifecycle", side_effect=sync):
+        lifecycle.schedule_posthog_lifecycle_sync("user-1")
+        (running,) = lifecycle._background_tasks
+        await started.wait()
+        lifecycle.schedule_posthog_lifecycle_sync("user-1")
+        assert lifecycle._syncs["user-1"] == "rerun"
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+        await _drain()
+
+    assert calls == 2
+    assert not lifecycle._syncs

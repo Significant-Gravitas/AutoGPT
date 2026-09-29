@@ -114,10 +114,14 @@ async def _resolve_customer(stripe_customer_id: str) -> None:
 
 
 async def _run_user_sync(user_id: str) -> None:
-    # Bounded so a burst of hooks can't fan out into a burst of Stripe calls
-    # that rate-limits the billing code sharing the same Stripe account.
-    async with _sync_slot():
-        try:
+    # Cleanup wraps the slot as well: a task cancelled while waiting for a
+    # slot must not leave its entry behind, or every later request for this
+    # user would see "queued" and never run.
+    cancelled = False
+    try:
+        # Bounded so a burst of hooks can't fan out into a burst of Stripe
+        # calls that rate-limits the billing code sharing the Stripe account.
+        async with _sync_slot():
             while True:
                 _syncs[user_id] = "running"
                 try:
@@ -130,8 +134,21 @@ async def _run_user_sync(user_id: str) -> None:
                     )
                 if _syncs.get(user_id) != "rerun":
                     return
-        finally:
-            _syncs.pop(user_id, None)
+    except asyncio.CancelledError:
+        cancelled = True
+        raise
+    finally:
+        state = _syncs.pop(user_id, None)
+        if cancelled and state in ("queued", "rerun"):
+            # Requests absorbed by this task would otherwise be lost.
+            _requeue(user_id)
+
+
+def _requeue(user_id: str) -> None:
+    try:
+        _schedule_user(user_id)
+    except Exception:
+        logger.warning(f"Lifecycle sync: can't requeue user {user_id}", exc_info=True)
 
 
 def _sync_slot() -> asyncio.Semaphore:
