@@ -114,6 +114,18 @@ def test_classify(statuses, standing):
         # The trial group is "currently on a trial": cancelling means leaving.
         (["trialing+cancel"], _audience(trial=["a@x.io"]), [Decision.REMOVE_TRIAL]),
         (["trialing+cancel"], _audience(), [Decision.ALREADY_CORRECT]),
+        # A trial cancel only leaves the trial group live; the changelog is
+        # for churn, and a trialist has not churned.
+        (
+            ["trialing+cancel"],
+            _audience(changelog=["a@x.io"]),
+            [Decision.ALREADY_CORRECT],
+        ),
+        (
+            ["trialing+cancel"],
+            _audience(changelog=["a@x.io"], trial=["a@x.io"]),
+            [Decision.REMOVE_TRIAL],
+        ),
         # A failed conversion is neither on a trial nor paying.
         (
             ["past_due+trial"],
