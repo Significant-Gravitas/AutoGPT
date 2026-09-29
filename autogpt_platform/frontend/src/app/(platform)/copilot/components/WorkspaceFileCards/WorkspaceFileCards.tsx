@@ -58,7 +58,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
       )}
       {showFilesCard && (
         <StackSection
-          title="Files"
+          title="Files in this chat"
           icon={File02Icon}
           count={files.length || undefined}
           action={
@@ -93,6 +93,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
         <StackSection
           title={`All ${expert.name}'s documents`}
           icon={File02Icon}
+          plain
         >
           <WorkspaceFilesContent
             files={expertDocuments}
@@ -105,6 +106,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
             onDownloadAll={() => undefined}
             emptyMessage={`${expert.name} hasn't created any documents yet.`}
             showHeader={false}
+            rowStyle="detailed"
           />
         </StackSection>
       )}

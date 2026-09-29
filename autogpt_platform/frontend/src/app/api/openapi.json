@@ -12005,7 +12005,8 @@
                 "CAPABILITY_CARDS",
                 "AGENTS_TAB_INTRO",
                 "MARKETPLACE_TAB_INTRO",
-                "BUILD_TAB_INTRO"
+                "BUILD_TAB_INTRO",
+                "WORKFLOWS_MOVED"
               ],
               "type": "string",
               "title": "Step"
@@ -26744,7 +26745,8 @@
           "CAPABILITY_CARDS",
           "AGENTS_TAB_INTRO",
           "MARKETPLACE_TAB_INTRO",
-          "BUILD_TAB_INTRO"
+          "BUILD_TAB_INTRO",
+          "WORKFLOWS_MOVED"
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
