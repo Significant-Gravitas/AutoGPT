@@ -7,6 +7,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { environment } from "@/services/environment";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { PaywallModal } from "./PaywallModal";
+import { WorkflowsMovedNotice } from "../components/WorkflowsMovedNotice/WorkflowsMovedNotice";
 
 // Routes that bypass the paywall regardless of subscription state — primarily
 // the credits page itself (the modal would render on top of itself), auth
@@ -62,6 +63,9 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     <>
       {children}
       {shouldGate && <PaywallModal />}
+      {!shouldGate && (!isPaymentEnabled || !isLoading) && (
+        <WorkflowsMovedNotice />
+      )}
     </>
   );
 }

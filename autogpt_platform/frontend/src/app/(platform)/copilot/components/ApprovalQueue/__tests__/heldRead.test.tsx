@@ -87,3 +87,52 @@ test("a read the check could not assess says so and quotes nothing", async () =>
   expect(screen.queryByText("What it says")).toBeNull();
   expect(screen.queryByText(/contains instructions/)).toBeNull();
 });
+
+function readBy(reader: string | null, judged: boolean) {
+  const review = heldRead("r", "a.example");
+  const payload = review.payload as Record<string, unknown>;
+  return {
+    ...review,
+    payload: {
+      ...payload,
+      ...(reader ? { reader } : {}),
+      ...(judged ? {} : { judged: false, passage: "" }),
+    },
+  };
+}
+
+test.each([
+  [
+    "Nadia",
+    true,
+    "It contains instructions aimed at Nadia, so it was held back. Nadia hasn't seen it.",
+    "Release to Nadia",
+  ],
+  [
+    "Nadia",
+    false,
+    "Otto could not check this, so he asks. Nadia hasn't seen it.",
+    "Release to Nadia",
+  ],
+  [
+    "Otto",
+    true,
+    "It contains instructions aimed at Otto, so it was held back. Otto hasn't seen it.",
+    "Release to Otto",
+  ],
+  [
+    null,
+    false,
+    "Otto could not check this, so he asks. Otto hasn't seen it.",
+    "Release to Otto",
+  ],
+])(
+  "a read held for %s (judged: %s) names the reader, and Otto only as the judge",
+  async (reader, judged, reason, release) => {
+    serve([readBy(reader, judged)]);
+    renderQueue();
+
+    expect(await screen.findByText(reason)).toBeDefined();
+    expect(screen.getByRole("button", { name: release })).toBeDefined();
+  },
+);
