@@ -248,10 +248,10 @@ class TestOAuthExchangeFailed:
 
         assert resp.status_code == 500
         failure = _only_failure(capture)
-        # The step that raised stays the class; only the status says it was
-        # unexpected.
+        # The step that raised stays the class. The status comes from the app's
+        # exception handlers, which this router does not know, so it is left out.
         assert failure["failure_class"] == "credential_merge"
-        assert failure["status_code"] == 500
+        assert "status_code" not in failure
         assert failure["detail"] == "RuntimeError"
 
     def test_success_reports_connected_and_no_failure(self, capture: Mock):

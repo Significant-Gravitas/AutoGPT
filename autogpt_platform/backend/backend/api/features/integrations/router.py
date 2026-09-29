@@ -468,10 +468,13 @@ def _track_oauth_exchange_failed(
     """Report a failed callback to PostHog, which the browser cannot do reliably
     because its events wait for analytics consent."""
     try:
+        status_code: int | None
         if not isinstance(error, HTTPException):
             # An unexpected error's message can carry anything; keep its class.
-            # The step it happened in stays the failure_class.
-            status_code = 500
+            # The step it happened in stays the failure_class. Its status is set
+            # later by rest_api's exception handlers (ValueError -> 400, ...),
+            # so leave it out rather than guess.
+            status_code = None
             detail = type(error).__name__
         else:
             status_code = error.status_code

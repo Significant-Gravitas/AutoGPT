@@ -1,5 +1,6 @@
 """Tests for the activation event vocabulary and its emitters."""
 
+import time
 from unittest.mock import Mock
 
 import pytest
@@ -345,3 +346,22 @@ def test_safe_error_detail_removes_secrets(detail: str, expected: str) -> None:
 
 def test_safe_error_detail_is_truncated() -> None:
     assert len(product_analytics.safe_error_detail("word " * 100)) == 200
+
+
+def test_safe_error_detail_is_fast_on_a_huge_body() -> None:
+    body = "a" * 200_000 + " alice@example.com"
+    start = time.monotonic()
+    assert product_analytics.safe_error_detail(body) == "a" * 200
+    assert time.monotonic() - start < 1
+
+
+def test_safe_error_detail_drops_a_word_cut_by_the_scan_limit() -> None:
+    # The query string shrinks to a placeholder, which would pull the start of
+    # the cut token into the first 200 characters.
+    url = "https://example.com/token?" + "q" * 1960
+    token = "ya29" + "x" * 40
+    assert len(url) < 2000 < len(url) + 1 + len(token)
+    assert (
+        product_analytics.safe_error_detail(f"{url} {token}")
+        == "https://example.com/token?[redacted]"
+    )

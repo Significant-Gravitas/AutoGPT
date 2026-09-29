@@ -76,7 +76,7 @@ Every event carries `environment` and `source: "platform"`.
 | — | `expert_hired` | A user hires an expert from a template. | `expert_id`, `template_id` |
 | — | `integration_connected` | A user connects a credential, by OAuth or by pasting a key. | `provider`, `credential_type`, `method` |
 | — | `credential_oauth_started` | The backend issues an OAuth login URL (`GET /api/integrations/{provider}/login`). Not Codex, which signs in with a device login. | `provider` |
-| — | `credential_oauth_exchange_failed` | `POST /api/integrations/{provider}/callback` returns an error, on any path. Not Codex. | `provider`, `status_code`, `failure_class`, `detail` (error message or class, secrets removed, at most 200 characters) |
+| — | `credential_oauth_exchange_failed` | `POST /api/integrations/{provider}/callback` returns an error, on any path. Not Codex. | `provider`, `status_code` (unset for an unexpected error), `failure_class`, `detail` (error message or class, secrets removed, at most 200 characters) |
 | agent_idle, stale account | *(not events)* | Computed states, see `agent_health` and `user_lifecycle`. | — |
 
 `credential_oauth_started`, `integration_connected` (`method: oauth`) and
@@ -92,8 +92,9 @@ browser's analytics consent. `failure_class` says where the callback failed:
 | `credential_merge` | 400 | The new token could not be stored on an existing credential (username or provider mismatch, managed or system credential). |
 
 An unexpected error (not an HTTP error we raise, e.g. a database error) keeps
-the class of the step it happened in, with `status_code` 500 and only the
-exception class as `detail`.
+the class of the step it happened in, with only the exception class as
+`detail` and no `status_code`: the app's exception handlers pick the response
+status later (`ValueError` is a 400, for example).
 
 A granted scope set narrower than the one requested is not a callback
 failure: the credential is stored and `integration_connected` fires.

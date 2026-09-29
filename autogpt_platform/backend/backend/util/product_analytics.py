@@ -73,6 +73,9 @@ OAuthExchangeFailureClass = Literal[
 ]
 
 _DETAIL_MAX_CHARS = 200
+# The patterns below backtrack on long runs, and an error can embed a whole
+# response body, so they only ever see this much of it.
+_DETAIL_SCAN_MAX_CHARS = 2000
 _URL_QUERY_RE = re.compile(r"(https?://[^\s?#]+)[?#]\S*")
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 # Long runs with a digit look like codes, tokens or ids; words and exception
@@ -359,7 +362,7 @@ def track_credential_oauth_exchange_failed(
     user_id: str,
     provider: str,
     failure_class: OAuthExchangeFailureClass,
-    status_code: int,
+    status_code: int | None,
     detail: str,
     redact: Iterable[str] = (),
 ) -> None:
@@ -381,8 +384,12 @@ def safe_error_detail(detail: str, redact: Iterable[str] = ()) -> str:
     for secret in redact:
         if secret:
             detail = detail.replace(secret, "[redacted]")
+    detail = " ".join(detail.split())
+    if len(detail) > _DETAIL_SCAN_MAX_CHARS:
+        # Drop the word cut in half: a partial token or email would no longer
+        # match the patterns below.
+        detail = detail[:_DETAIL_SCAN_MAX_CHARS].rsplit(" ", 1)[0]
     detail = _URL_QUERY_RE.sub(r"\1?[redacted]", detail)
     detail = _EMAIL_RE.sub("[email]", detail)
     detail = _TOKEN_RE.sub("[redacted]", detail)
-    detail = " ".join(detail.split())
     return detail[:_DETAIL_MAX_CHARS]
