@@ -103,8 +103,8 @@ export type CopilotLlmAuthSelection =
  *  artifacts library, or the chat's expert's integrations. */
 export type ContextPanelTab = "files" | "artifacts" | "integrations";
 
-/** The expert whose integrations the panel lists. */
-export interface IntegrationsPanelExpert {
+/** The expert whose files and integrations the context panel lists. */
+export interface ContextPanelExpert {
   id: string;
   name: string;
 }
@@ -232,9 +232,10 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
-  integrationsPanelExpert: IntegrationsPanelExpert | null;
+  contextPanelExpert: ContextPanelExpert | null;
+  setContextPanelExpert: (expert: ContextPanelExpert | null) => void;
   /** The integrations tab for `expert`, toggled like any other tab. */
-  toggleIntegrationsPanel: (expert: IntegrationsPanelExpert) => void;
+  toggleIntegrationsPanel: (expert: ContextPanelExpert) => void;
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
@@ -568,8 +569,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }),
   clearLastArtifact: () =>
     set((state) => ({
-      // The integrations tab belongs to the previous chat's expert.
-      integrationsPanelExpert: null,
+      // Expert-wide panel sections belong to the previous chat's expert.
+      contextPanelExpert: null,
       artifactPanel: {
         ...state.artifactPanel,
         activeTab:
@@ -617,9 +618,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
-  integrationsPanelExpert: null,
+  contextPanelExpert: null,
+  setContextPanelExpert: (expert) => set({ contextPanelExpert: expert }),
   toggleIntegrationsPanel: (expert) => {
-    set({ integrationsPanelExpert: expert });
+    set({ contextPanelExpert: expert });
     get().toggleContextPanelTab("integrations");
   },
   openContextPanelForFiles: () => {
@@ -739,7 +741,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,
-      integrationsPanelExpert: null,
+      contextPanelExpert: null,
       artifactPanel: {
         isOpen: false,
         activeArtifact: null,

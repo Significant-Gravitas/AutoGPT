@@ -11,16 +11,13 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
-import {
-  useCopilotUIStore,
-  type IntegrationsPanelExpert,
-} from "../../../../store";
+import { useCopilotUIStore, type ContextPanelExpert } from "../../../../store";
 import { useExpertIntegrations } from "./useExpertIntegrations";
 
 const VISIBLE_LOGOS = 2;
 
 interface Props {
-  expert: IntegrationsPanelExpert;
+  expert: ContextPanelExpert;
   className?: string;
 }
 

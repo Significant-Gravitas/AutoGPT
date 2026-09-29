@@ -529,7 +529,7 @@ describe("lastArtifact session scoping", () => {
     useCopilotUIStore.getState().closeArtifactPanel();
     useCopilotUIStore.getState().clearLastArtifact();
     const s = useCopilotUIStore.getState();
-    expect(s.integrationsPanelExpert).toBeNull();
+    expect(s.contextPanelExpert).toBeNull();
     expect(s.artifactPanel.activeTab).toBe("files");
   });
 
