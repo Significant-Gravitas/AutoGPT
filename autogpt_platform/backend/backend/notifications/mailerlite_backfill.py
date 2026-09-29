@@ -43,13 +43,14 @@ OTHER_BATCH_INTERVAL_SECONDS = 1.0
 PAGE_SIZE = 1000
 MEMBER_STATUSES = ("active", "unsubscribed", "unconfirmed", "bounced", "junk")
 
-_PAYING = {"active", "past_due"}
 _ENDED = {"canceled", "incomplete_expired"}
 
 
 class Standing(str, Enum):
     PAYING = "paying"
     TRIALING = "trialing"
+    # Still trialing, but set to cancel: no longer "currently on a trial".
+    TRIAL_CANCELLING = "trial_cancelling"
     CHURNED = "churned"
     # incomplete, unpaid, paused: no lifecycle event has settled these yet.
     UNSETTLED = "unsettled"
@@ -74,12 +75,20 @@ CHANGES = (
 )
 
 
+class Subscription(BaseModel):
+    status: str
+    cancel_at_period_end: bool = False
+    # Born from a card-required trial. Past due on one of these may be a
+    # failed conversion rather than a paying customer's missed renewal.
+    from_trial: bool = False
+
+
 class Customer(BaseModel):
-    """A platform account and the statuses of all its Stripe subscriptions."""
+    """A platform account and all of its Stripe subscriptions."""
 
     user_id: str
     email: str
-    statuses: list[str]
+    subscriptions: list[Subscription]
 
 
 class Audience(BaseModel):
@@ -102,21 +111,30 @@ class ApplyResult(BaseModel):
     failed: dict[Decision, int]
 
 
-def classify(statuses: list[str]) -> Standing:
+def classify(subscriptions: list[Subscription]) -> Standing:
     """A customer who pays on any subscription is a subscriber, whatever the
     state of their others."""
-    found = set(statuses)
-    if found & _PAYING:
+    if any(_paying(s) for s in subscriptions):
         return Standing.PAYING
-    if "trialing" in found:
+    trialing = [s for s in subscriptions if s.status == "trialing"]
+    if any(not s.cancel_at_period_end for s in trialing):
         return Standing.TRIALING
-    if found and found <= _ENDED:
+    if trialing:
+        return Standing.TRIAL_CANCELLING
+    statuses = {s.status for s in subscriptions}
+    if statuses and statuses <= _ENDED:
         return Standing.CHURNED
     return Standing.UNSETTLED
 
 
+def _paying(subscription: Subscription) -> bool:
+    if subscription.status == "active":
+        return True
+    return subscription.status == "past_due" and not subscription.from_trial
+
+
 def decide(customer: Customer, audience: Audience, trial_enabled: bool) -> PlannedChange:
-    standing = classify(customer.statuses)
+    standing = classify(customer.subscriptions)
     email = customer.email.strip().lower()
     in_tour = email in audience.tour
     in_changelog = email in audience.changelog

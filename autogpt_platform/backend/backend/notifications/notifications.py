@@ -369,6 +369,8 @@ class NotificationManager(AppService):
             AudienceAction.ENROLL_TOUR: mailerlite.enroll_in_onboarding,
             AudienceAction.ADD_CHANGELOG: mailerlite.add_to_changelog,
             AudienceAction.REMOVE_CHANGELOG: mailerlite.remove_from_changelog,
+            AudienceAction.ADD_TRIAL: mailerlite.add_to_trial,
+            AudienceAction.REMOVE_TRIAL: mailerlite.remove_from_trial,
         }[event.action]
         await handler(event.email)
         return True

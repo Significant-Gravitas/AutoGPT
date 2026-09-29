@@ -12,6 +12,7 @@ from backend.notifications.mailerlite_backfill import (
     Customer,
     Decision,
     Standing,
+    Subscription,
 )
 
 TOUR, CHANGELOG, TRIAL = "grp_tour", "grp_changelog", "grp_trial"
@@ -39,8 +40,19 @@ def no_sleep(monkeypatch):
     return sleep
 
 
+def _sub(status: str) -> Subscription:
+    """`trialing+cancel` is a trial set to cancel; `past_due+trial` is past due
+    on a subscription that started as a trial."""
+    name, _, flag = status.partition("+")
+    return Subscription(
+        status=name, cancel_at_period_end=flag == "cancel", from_trial=flag == "trial"
+    )
+
+
 def _customer(email: str, *statuses: str) -> Customer:
-    return Customer(user_id=f"u-{email}", email=email, statuses=list(statuses))
+    return Customer(
+        user_id=f"u-{email}", email=email, subscriptions=[_sub(s) for s in statuses]
+    )
 
 
 def _audience(tour=(), changelog=(), trial=()) -> Audience:
@@ -71,6 +83,10 @@ def _batch_ok(requests: list[dict], code: int = 201) -> MagicMock:
         (["canceled", "active"], Standing.PAYING),
         (["trialing"], Standing.TRIALING),
         (["canceled", "trialing"], Standing.TRIALING),
+        (["trialing+cancel"], Standing.TRIAL_CANCELLING),
+        (["trialing+cancel", "trialing"], Standing.TRIALING),
+        (["past_due+trial"], Standing.UNSETTLED),
+        (["past_due+trial", "active"], Standing.PAYING),
         (["canceled"], Standing.CHURNED),
         (["canceled", "incomplete_expired"], Standing.CHURNED),
         (["unpaid"], Standing.UNSETTLED),
@@ -80,7 +96,7 @@ def _batch_ok(requests: list[dict], code: int = 201) -> MagicMock:
     ],
 )
 def test_classify(statuses, standing):
-    assert mailerlite_backfill.classify(statuses) is standing
+    assert mailerlite_backfill.classify([_sub(s) for s in statuses]) is standing
 
 
 @pytest.mark.parametrize(
@@ -97,6 +113,15 @@ def test_classify(statuses, standing):
         ),
         (["trialing"], _audience(), [Decision.ADD_TRIAL]),
         (["trialing"], _audience(trial=["a@x.io"]), [Decision.ALREADY_CORRECT]),
+        # The trial group is "currently on a trial": cancelling means leaving.
+        (["trialing+cancel"], _audience(trial=["a@x.io"]), [Decision.REMOVE_TRIAL]),
+        (["trialing+cancel"], _audience(), [Decision.ALREADY_CORRECT]),
+        # A failed conversion is neither on a trial nor paying.
+        (
+            ["past_due+trial"],
+            _audience(trial=["a@x.io"]),
+            [Decision.REMOVE_TRIAL, Decision.SKIP_UNSETTLED],
+        ),
         (["canceled"], _audience(changelog=["a@x.io"]), [Decision.REMOVE_CHANGELOG]),
         (
             ["canceled"],

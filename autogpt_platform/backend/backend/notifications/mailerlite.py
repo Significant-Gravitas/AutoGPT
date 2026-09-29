@@ -12,6 +12,9 @@ transition:
 2. ENTER · resubscribers and pre-tour users → changelog: owned here.
 3. LEAVE · churn: owned here. Churned users get win-back only, never the
    monthly update.
+4. ENTER and LEAVE · the trial group: both owned here. It holds exactly the
+   customers currently on a trial, so any MailerLite automation on it may send
+   mail but must never move people in or out.
 
 If both sides managed the same edge we would double-add or fight over
 removals, so nothing in this module touches the tour → changelog handoff.
@@ -71,8 +74,23 @@ async def add_to_changelog(email: str) -> None:
 
 async def remove_from_changelog(email: str) -> None:
     """The day a plan ends."""
-    group_id = settings.config.mailerlite_changelog_group_id
-    _require_config(group_id, "changelog")
+    await _remove_from_group(
+        email, settings.config.mailerlite_changelog_group_id, "changelog"
+    )
+
+
+async def add_to_trial(email: str) -> None:
+    """A trial started, or a cancelled one was resumed."""
+    await _add_to_group(email, settings.config.mailerlite_trial_group_id, "trial")
+
+
+async def remove_from_trial(email: str) -> None:
+    """The trial was cancelled, converted, or ended unpaid."""
+    await _remove_from_group(email, settings.config.mailerlite_trial_group_id, "trial")
+
+
+async def _remove_from_group(email: str, group_id: str, description: str) -> None:
+    _require_config(group_id, description)
 
     subscriber_id = await _find_subscriber_id(email)
     if subscriber_id is None:
@@ -88,10 +106,12 @@ async def remove_from_changelog(email: str) -> None:
     # 404 means they are already out of the group, which is the desired state.
     if response.status not in _OK_STATUSES and response.status != 404:
         raise MailerLiteError(
-            f"Removing subscriber {_pseudonym(email)} from the changelog group "
+            f"Removing subscriber {_pseudonym(email)} from the {description} group "
             f"failed with {response.status}"
         )
-    logger.info("Removed %s from the MailerLite changelog group", _pseudonym(email))
+    logger.info(
+        f"Removed {_pseudonym(email)} from the MailerLite {description} group"
+    )
 
 
 async def _add_to_group(email: str, group_id: str, description: str) -> None:

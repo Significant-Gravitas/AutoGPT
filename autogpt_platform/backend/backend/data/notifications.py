@@ -411,11 +411,14 @@ class NotificationResult(BaseModel):
 
 class AudienceAction(Enum):
     """Membership changes the backend owns. The tour → changelog handoff is
-    deliberately absent: MailerLite's automation owns that edge."""
+    deliberately absent: MailerLite's automation owns that edge. Both edges of
+    the trial group are the backend's."""
 
     ENROLL_TOUR = "enroll_tour"
     ADD_CHANGELOG = "add_changelog"
     REMOVE_CHANGELOG = "remove_changelog"
+    ADD_TRIAL = "add_trial"
+    REMOVE_TRIAL = "remove_trial"
 
 
 class AudienceEventModel(BaseModel):

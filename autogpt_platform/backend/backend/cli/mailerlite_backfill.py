@@ -18,8 +18,9 @@ def mailerlite_backfill_command(apply: bool, yes: bool):
     lifecycle code would have put them in.
 
     Paying customers join the changelog unless they are in the onboarding
-    tour; churned customers leave it; trialing customers join the trial group
-    when MAILERLITE_TRIAL_GROUP_ID is set. Dry run by default: prints counts
+    tour; churned customers leave it. When MAILERLITE_TRIAL_GROUP_ID is set,
+    the trial group ends up holding exactly the customers on a trial that is
+    not set to cancel. Dry run by default: prints counts
     and one pseudonymised line per customer, and writes nothing. Idempotent,
     so a partial or repeated --apply is safe.
     """
@@ -74,18 +75,23 @@ async def _customers() -> "tuple[list[Customer], int]":
     import stripe
 
     from backend.data.stripe_client import stripe_call, stripe_list_items
-    from backend.notifications.mailerlite_backfill import Customer
+    from backend.notifications.mailerlite_backfill import Customer, Subscription
     from backend.util.settings import Settings
 
     stripe.api_key = Settings().secrets.stripe_api_key
-    statuses: dict[str, list[str]] = {}
+    subscriptions: dict[str, list[Subscription]] = {}
     page = await stripe_call(stripe.Subscription.list_async, status="all", limit=100)
-    async for subscription in stripe_list_items(page):
+    async for sub in stripe_list_items(page):
         # Not expanded, so this is the customer ID.
-        customer_id = str(subscription.customer)
-        statuses.setdefault(customer_id, []).append(str(subscription.status))
+        subscriptions.setdefault(str(sub.customer), []).append(
+            Subscription(
+                status=str(sub.status),
+                cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
+                from_trial=bool((sub.get("metadata") or {}).get("trial_enrollment_id")),
+            )
+        )
 
-    ids = list(statuses)
+    ids = list(subscriptions)
     users = [
         user
         for start in range(0, len(ids), _ACCOUNT_LOOKUP_CHUNK)
@@ -94,7 +100,11 @@ async def _customers() -> "tuple[list[Customer], int]":
         )
     ]
     customers = [
-        Customer(user_id=u.id, email=u.email, statuses=statuses[u.stripeCustomerId])
+        Customer(
+            user_id=u.id,
+            email=u.email,
+            subscriptions=subscriptions[u.stripeCustomerId],
+        )
         for u in users
         if u.stripeCustomerId
     ]
@@ -108,7 +118,7 @@ def _report(changes: "list[PlannedChange]", unmatched: int) -> None:
 
     for change in changes:
         click.echo(
-            f"{_pseudonym(change.customer.email)}  {change.standing.value:<9}  "
+            f"{_pseudonym(change.customer.email)}  {change.standing.value:<16}  "
             + ", ".join(d.value for d in change.decisions)
         )
     counts = Counter(d.value for c in changes for d in c.decisions)
