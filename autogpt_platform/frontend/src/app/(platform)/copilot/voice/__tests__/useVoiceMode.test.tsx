@@ -611,6 +611,25 @@ describe("useVoiceMode", () => {
     });
   });
 
+  it("does not complete a turn whose reply was still playing on unmount", async () => {
+    const play = vi
+      .spyOn(window.HTMLMediaElement.prototype, "play")
+      .mockImplementation(() => Promise.resolve());
+    const view = render({});
+    await enable(view);
+    await speak();
+    await reply(view, "On it. Building that now.");
+    await waitFor(() => expect(play).toHaveBeenCalled());
+    expect(view.result.current.state).toBe("speaking");
+
+    view.unmount();
+    await act(async () => undefined);
+
+    const events = tracked.map(([e]) => e);
+    expect(events).not.toContain("voice_turn_completed");
+    expect(events.filter((e) => e === "voice_turn_dropped")).toHaveLength(1);
+  });
+
   it("drops nothing when voice mode is switched off between turns", async () => {
     const view = render({});
     await enable(view);
