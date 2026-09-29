@@ -80,6 +80,7 @@ class TestQueries:
         query = recall_erase.ERASE_FACTS_QUERY
         assert "e.fact = $placeholder" in query and "e.name = $placeholder" in query
         assert "e.fact_redacted = ''" in query and "e.name_redacted = ''" in query
+        assert "e.fact_embedding = NULL" in query, "the vector encodes the sentence"
 
     def test_only_the_dreams_episodes_are_emptied(self) -> None:
         query = recall_erase.ERASE_DREAM_EPISODES_QUERY

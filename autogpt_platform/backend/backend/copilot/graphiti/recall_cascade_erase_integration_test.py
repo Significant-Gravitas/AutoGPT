@@ -22,6 +22,7 @@ from pytest_mock import MockerFixture
 
 from backend.copilot.dream import apply
 
+from . import recall
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall import FORGOTTEN_FACT
 from .recall_cascade_fixtures import (
@@ -34,8 +35,10 @@ from .recall_cascade_fixtures import (
 )
 from .recall_forget import retract
 from .recall_integration_fixtures import (
+    Fact,
     edge_row,
     episode_row,
+    ingest_facts,
     live_facts,
     patch_recall_boundaries,
     rows,
@@ -74,6 +77,26 @@ async def _user_turn(driver: AutoGPTFalkorDriver, fact: str) -> str:
     return row["uuid"]
 
 
+# Said after the forget, between the entities the erased facts still join, so
+# graphiti's dedup compares it with them, embeddings gone.
+_PAYS: Fact = (
+    "Sunrise Bakery",
+    "Hill Country Mills",
+    "Sunrise Bakery pays Hill Country Mills every month",
+)
+
+
+async def _keys(driver: AutoGPTFalkorDriver, uuids: list[str]) -> dict[str, set[str]]:
+    """Every property each of the edges ``uuids`` holds."""
+    found = await rows(
+        driver,
+        "MATCH ()-[e:RELATES_TO]->() WHERE e.uuid IN $uuids "
+        "RETURN e.uuid AS uuid, keys(e) AS keys",
+        uuids=uuids,
+    )
+    return {row["uuid"]: set(row["keys"]) for row in found}
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
@@ -83,9 +106,11 @@ async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
     derived is retracted softly, its edges and reasons kept, and its text
     erased: each derived fact reads the placeholder with blank audit copies,
     the superseded proposal the walk only went through included, and each
-    dream episode loses its body and rationale. The user's turn about the
-    boule, hidden too because graphiti listed the consolidation among its
-    edges (as it lists an edge an episode invalidated), keeps its text."""
+    dream episode loses its body and rationale. Each derived fact's
+    embedding goes too, and graphiti's searches still run past it. The
+    user's turn about the boule, hidden too because graphiti listed the
+    consolidation among its edges (as it lists an edge an episode
+    invalidated), keeps its text."""
     driver, scope = scope_graph
     bakery = await build_bakery(driver, scope, stub_graphiti_client)
     await driver.execute_query(
@@ -103,6 +128,9 @@ async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
         edge=bakery.supplies,
     )
 
+    before = await _keys(driver, bakery.derived())
+    assert all("fact_embedding" in keys for keys in before.values())
+
     result = await retract(scope, [bakery.flour], hard=True)
 
     assert (result.deleted, result.failures) == ([bakery.flour], [])
@@ -118,6 +146,14 @@ async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
     for row in retired.values():
         assert (row["fact"], row["fact_redacted"]) == (FORGOTTEN_FACT, "")
         assert (row["name"], row["name_redacted"]) == (FORGOTTEN_FACT, "")
+    after = await _keys(driver, bakery.derived())
+    assert {uuid: before[uuid] - keys for uuid, keys in after.items()} == dict.fromkeys(
+        bakery.derived(), {"fact_embedding"}
+    ), "the embedding goes, and nothing else the edge had"
+    searched = await recall.search_facts(scope, "Sunrise Bakery flour", limit=10)
+    assert {fact.uuid for fact in searched} <= {bakery.boule, bakery.cafe}
+    _, pays = await ingest_facts(driver, scope, stub_graphiti_client, [_PAYS])
+    assert pays[_PAYS[2]] in await live_facts(driver), "dedup ran past them"
     for sentence in (FLOUR[2], SUPPLIES[2], BOULE_FLOUR[2], WEEKLY[2]):
         assert await sentence_properties(driver, sentence) == set(), sentence
     dream_texts = await rows(
@@ -138,4 +174,4 @@ async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
     ]
     turn = await episode_row(driver, boule_turn)
     assert turn["redacted_at"] is not None and BOULE[2] in turn["content"]
-    assert set(await live_facts(driver)) == {bakery.boule, bakery.cafe}
+    assert set(await live_facts(driver)) == {bakery.boule, bakery.cafe, pays[_PAYS[2]]}

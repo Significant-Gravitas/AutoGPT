@@ -11,7 +11,11 @@ erases here:
 
 - every derived fact the walk reached, retracted or walked through: its
   ``fact`` and ``name`` read ``recall.FORGOTTEN_FACT``, as the scrub leaves
-  them, and both audit copies are blank;
+  them, both audit copies are blank, and its ``fact_embedding``, the vector
+  graphiti computed from the sentence, is removed. FalkorDB's vector
+  similarity reads a missing embedding as no score, so graphiti's searches
+  and its dedup simply pass the edge by. Nothing else on the edge holds the
+  sentence: its other properties are uuids, times and ``MemoryFact`` fields;
 - every dream episode it hid: its body, and the rationale and citations its
   ``source_description`` listed after the kind (``dream-pass proposal``).
   Only an episode carrying a dream's record (``recall_derivation.py``) is the
@@ -44,7 +48,8 @@ WHERE e.uuid IN $uuids
 SET e.fact = $placeholder,
     e.name = $placeholder,
     e.fact_redacted = '',
-    e.name_redacted = ''
+    e.name_redacted = '',
+    e.fact_embedding = NULL
 """
 
 # The description keeps what precedes its first ``;``: the kind of write.
