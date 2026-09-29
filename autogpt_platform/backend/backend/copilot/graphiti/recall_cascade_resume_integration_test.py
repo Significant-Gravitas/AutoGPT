@@ -13,7 +13,9 @@ between rounds, at the item bound and at the round bound) is resumed both
 ways, until everything the dream derived from the bakery's flour supplier
 is retracted and erased under that root's name. ``echo`` cites only the
 user's chat turn, which the purge emptied: only ``redacted_for`` links it to
-the forgotten fact.
+the forgotten fact. When that turn also stated another fact, the purge hides
+it without emptying it, so no emptied episode carries the erasure: the
+backfill must find the root gone from what names it and erase from there.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -51,6 +53,7 @@ from .recall_forget import retract
 from .recall_integration_fixtures import (
     Fact,
     edge_row,
+    episode_row,
     live_facts,
     patch_recall_boundaries,
     rows,
@@ -212,3 +215,43 @@ async def test_a_hard_forget_that_stopped_short_is_resumed_and_erases_everything
         uuids=episodes,
     )
     assert [row["content"] for row in bodies] == [""] * len(episodes)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_backfill_erases_from_a_purged_root_whose_chat_turn_stays(
+    scope_graph, stub_graphiti_client, dream_apply
+) -> None:
+    """The flour supplier's chat turn also named the cafe, so the hard forget
+    hides the turn but keeps its text for the cafe and empties no episode:
+    no hard seed carries the erasure. The backfill finds the purged root
+    from the records and the ``redacted_for`` that name it, and erases
+    every derived fact under its name."""
+    driver, scope = scope_graph
+    bakery, echo, _ = await _with_echo(driver, scope, stub_graphiti_client)
+    await driver.execute_query(
+        "MATCH (ep:Episodic {uuid: $said}), ()-[e:RELATES_TO {uuid: $cafe}]->() "
+        "SET ep.entity_edges = ep.entity_edges + [$cafe], "
+        "e.episodes = e.episodes + [$said]",
+        said=bakery.said,
+        cafe=bakery.cafe,
+    )
+    derived = [*bakery.derived(), echo]
+
+    with _stop("first_query"):
+        first = await retract(scope, [bakery.flour], hard=True)
+
+    assert first.failures and await edge_row(driver, bakery.flour) == {}
+    turn = await episode_row(driver, bakery.said)
+    assert turn["redacted_at"] is not None and turn["hard_deleted_at"] is None
+
+    tries = await _resume(scope, driver, bakery.flour, "backfill")
+
+    assert tries[0]["roots"] >= 1
+    assert set(await live_facts(driver)) == {bakery.boule, bakery.cafe}
+    for uuid in derived:
+        row = await edge_row(driver, uuid)
+        assert row["reason"] == f"derived_from_forgotten:{bakery.flour}", uuid
+        assert (row["fact"], row["fact_redacted"]) == (FORGOTTEN_FACT, ""), uuid
+    for sentence in (SUPPLIES[2], BOULE_FLOUR[2], WEEKLY[2], _ECHO[2]):
+        assert await sentence_properties(driver, sentence) == set(), sentence
