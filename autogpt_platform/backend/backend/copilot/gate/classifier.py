@@ -28,10 +28,7 @@ ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
     encoding="utf-8"
 )
 
-# UTF-8 bytes, Jev's own unit: the largest call it reads whole beside a full
-# request (~24.5k); Haiku alone missed a buried `curl | sh` 1 in 10 at 40k.
-_MAX_ARG_BYTES = 24_000
-# Shares Jev's input budget with the call: each char here is one less there.
+# Shares Jev's input budget with the call: each byte here is one less there.
 _MAX_REQUEST_CHARS = 1_000
 _FALLBACK_REASON = "Could not verify this action automatically."
 
@@ -60,15 +57,16 @@ async def supervise(
         default=str,
         ensure_ascii=False,
     )
-    size = len(call.encode())
-    # A cut call would be judged on its head while its tail runs.
-    if size > _MAX_ARG_BYTES:
-        return Judgement(allowed=False, reason=too_long_reason(size))
     prompt = (
         fence("USER REQUEST", user_message[:_MAX_REQUEST_CHARS])
         + "\n\n"
         + fence("PROPOSED CALL", call)
     )
+    # A cut call would be judged on its head while its tail runs. Jev's budget is
+    # the ceiling even with Jev off: Haiku alone missed a buried `curl | sh` 1 in
+    # 10 past it (40k chars), and caught it every time within it.
+    if over := jev.overflow(prompt):
+        return Judgement(allowed=False, reason=too_long_reason(over))
     first = await jev.judge(prompt) if jev.enabled() else None
     if first is None:
         allowed, reason = await _llm_verdict(prompt, tool_name)
@@ -136,10 +134,10 @@ async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
     return verdict
 
 
-def too_long_reason(size: int) -> str:
+def too_long_reason(over: int) -> str:
     return (
-        f"This action is {size / 1000:.1f} KB; the automatic check reads up to "
-        f"{_MAX_ARG_BYTES // 1000} KB. Approve it yourself, or ask for it in "
+        "This action is too long for the automatic check to read whole "
+        f"({over / 1000:.1f} KB over). Approve it yourself, or ask for it in "
         "smaller pieces."
     )
 
