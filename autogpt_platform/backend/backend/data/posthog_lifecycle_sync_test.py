@@ -52,9 +52,9 @@ def posthog():
 
 @pytest.fixture(autouse=True)
 def clean_background_state():
-    lifecycle._pending.clear()
+    lifecycle._syncs.clear()
     yield
-    lifecycle._pending.clear()
+    lifecycle._syncs.clear()
 
 
 # ---- send_lifecycle_snapshot ------------------------------------------------
@@ -194,7 +194,8 @@ async def test_sync_of_a_deleted_user_sends_nothing(posthog):
 
 
 async def _drain() -> None:
-    await asyncio.gather(*list(lifecycle._background_tasks))
+    while lifecycle._background_tasks:
+        await asyncio.gather(*list(lifecycle._background_tasks))
 
 
 async def test_schedule_runs_the_sync_in_the_background(posthog):
@@ -249,7 +250,7 @@ async def test_schedule_is_a_no_op_when_analytics_is_off():
 
 def test_schedule_without_a_running_loop_does_not_raise(posthog):
     lifecycle.schedule_posthog_lifecycle_sync("user-1")
-    assert not lifecycle._pending
+    assert not lifecycle._syncs
 
 
 def test_schedule_swallows_client_errors():
@@ -425,3 +426,76 @@ async def test_sweep_failure_stays_in_the_background():
     ):
         assert await lifecycle.start_posthog_lifecycle_sweep() is True
         await asyncio.gather(*list(lifecycle._sweeps))
+
+
+async def test_scheduled_syncs_run_at_most_four_at_a_time(posthog):
+    running = 0
+    peak = 0
+    release = asyncio.Event()
+
+    async def slow_sync(user_id: str):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await release.wait()
+        running -= 1
+
+    with patch(f"{MODULE}.sync_posthog_lifecycle", side_effect=slow_sync) as sync:
+        for index in range(12):
+            lifecycle.schedule_posthog_lifecycle_sync(f"user-{index}")
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert peak == lifecycle._MAX_CONCURRENT_SYNCS
+        release.set()
+        await _drain()
+    assert sync.await_count == 12
+    assert peak == lifecycle._MAX_CONCURRENT_SYNCS
+
+
+async def test_a_request_during_a_running_sync_runs_once_more_never_overlapping(
+    posthog,
+):
+    """The race: a sync that started before a write must not be the last
+    one sent, and two syncs for one user must never overlap."""
+    running = 0
+    overlap = False
+    started = asyncio.Event()
+    release = asyncio.Event()
+    reads: list[int] = []
+    state = {"version": 1}
+
+    async def sync(user_id: str):
+        nonlocal running, overlap
+        running += 1
+        overlap = overlap or running > 1
+        reads.append(state["version"])
+        started.set()
+        await release.wait()
+        running -= 1
+
+    with patch(f"{MODULE}.sync_posthog_lifecycle", side_effect=sync) as run:
+        lifecycle.schedule_posthog_lifecycle_sync("user-1")
+        await started.wait()
+        state["version"] = 2
+        lifecycle.schedule_posthog_lifecycle_sync("user-1")
+        lifecycle.schedule_posthog_lifecycle_sync("user-1")
+        release.set()
+        await _drain()
+
+    assert run.await_count == 2
+    assert reads == [1, 2]
+    assert not overlap
+    assert not lifecycle._syncs
+
+
+async def test_customer_hooks_are_coordinated_per_user(posthog):
+    """A customer id is resolved first, then goes through the same per-user
+    queue as a user-id hook, so the two can't overlap for one user."""
+    find_first = AsyncMock(return_value=MagicMock(id="user-1"))
+    with (
+        patch(f"{MODULE}.User.prisma", return_value=MagicMock(find_first=find_first)),
+        patch(f"{MODULE}._schedule_user") as schedule_user,
+    ):
+        lifecycle.schedule_posthog_lifecycle_sync(stripe_customer_id="cus_1")
+        await _drain()
+    schedule_user.assert_called_once_with("user-1")

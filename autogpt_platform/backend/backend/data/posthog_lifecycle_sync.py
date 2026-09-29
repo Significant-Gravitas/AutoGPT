@@ -17,9 +17,11 @@ Three ways in, all best-effort (a failure is logged, never raised):
 
 import asyncio
 import logging
+import weakref
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Coroutine, Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 import stripe
 from prisma.models import SubscriptionTrial, User
@@ -39,6 +41,7 @@ from backend.util.posthog_client import get_posthog_client
 logger = logging.getLogger(__name__)
 
 _SYNC_TIMEOUT_SECONDS = 60
+_MAX_CONCURRENT_SYNCS = 4
 
 
 def schedule_posthog_lifecycle_sync(
@@ -47,52 +50,96 @@ def schedule_posthog_lifecycle_sync(
     """Sync one user in the background, after the caller's write.
 
     Never raises and never makes the caller wait. Pass the user id, or the
-    Stripe customer id when that is all the caller has. A sync already queued
-    for the same user that hasn't started yet covers this call as well: it
-    reads the state when it starts, so it will see this write.
+    Stripe customer id when that is all the caller has; a customer id is
+    resolved to its user first, so both end up coordinated per user:
+
+    - a sync that is queued and hasn't started covers this call, because it
+      reads the state when it starts;
+    - a sync that is already running is followed by exactly one more, so the
+      last one sent always read the state after this write;
+    - two syncs for one user never run at the same time, so an older read
+      can't be sent after a newer one.
     """
     try:
         if get_posthog_client() is None:
             return
         if user_id:
-            key = f"user:{user_id}"
+            _schedule_user(user_id)
         elif stripe_customer_id:
-            key = f"customer:{stripe_customer_id}"
-        else:
-            return
-        if key in _pending:
-            return
-        task = asyncio.get_running_loop().create_task(
-            _run_scheduled_sync(key, user_id, stripe_customer_id)
-        )
-        _pending.add(key)
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+            _spawn(_resolve_customer(stripe_customer_id))
     except Exception:
         logger.warning("Failed to schedule a lifecycle sync", exc_info=True)
 
 
-_pending: set[str] = set()
+# Per user id: "queued", "running", or "rerun" (running, then run once more).
+_syncs: dict[str, str] = {}
 _background_tasks: set[asyncio.Task] = set()
+# One per event loop: an asyncio.Semaphore binds to the loop it is first used in.
+_slots: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+    weakref.WeakKeyDictionary()
+)
 
 
-async def _run_scheduled_sync(
-    key: str, user_id: str | None, stripe_customer_id: str | None
-) -> None:
-    _pending.discard(key)
+def _schedule_user(user_id: str) -> None:
+    state = _syncs.get(user_id)
+    if state == "running":
+        _syncs[user_id] = "rerun"
+    elif state is None:
+        _spawn(_run_user_sync(user_id))
+        _syncs[user_id] = "queued"
+
+
+def _spawn(coro: Coroutine[Any, Any, None]) -> None:
     try:
-        if not user_id:
-            user = await User.prisma().find_first(
-                where={"stripeCustomerId": stripe_customer_id}
-            )
-            if user is None:
-                return
-            user_id = user.id
-        await asyncio.wait_for(
-            sync_posthog_lifecycle(user_id), timeout=_SYNC_TIMEOUT_SECONDS
+        task = asyncio.get_running_loop().create_task(coro)
+    except RuntimeError:
+        coro.close()
+        raise
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+async def _resolve_customer(stripe_customer_id: str) -> None:
+    try:
+        user = await User.prisma().find_first(
+            where={"stripeCustomerId": stripe_customer_id}
         )
+        if user is not None:
+            _schedule_user(user.id)
     except Exception:
-        logger.warning(f"Lifecycle sync failed for {key}", exc_info=True)
+        logger.warning(
+            f"Lifecycle sync: can't resolve customer {stripe_customer_id}",
+            exc_info=True,
+        )
+
+
+async def _run_user_sync(user_id: str) -> None:
+    # Bounded so a burst of hooks can't fan out into a burst of Stripe calls
+    # that rate-limits the billing code sharing the same Stripe account.
+    async with _sync_slot():
+        try:
+            while True:
+                _syncs[user_id] = "running"
+                try:
+                    await asyncio.wait_for(
+                        sync_posthog_lifecycle(user_id), timeout=_SYNC_TIMEOUT_SECONDS
+                    )
+                except Exception:
+                    logger.warning(
+                        f"Lifecycle sync failed for user {user_id}", exc_info=True
+                    )
+                if _syncs.get(user_id) != "rerun":
+                    return
+        finally:
+            _syncs.pop(user_id, None)
+
+
+def _sync_slot() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    slot = _slots.get(loop)
+    if slot is None:
+        slot = _slots[loop] = asyncio.Semaphore(_MAX_CONCURRENT_SYNCS)
+    return slot
 
 
 async def sync_posthog_lifecycle(

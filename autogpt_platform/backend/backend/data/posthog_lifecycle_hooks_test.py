@@ -12,6 +12,7 @@ from backend.copilot.rate_limit import set_user_tier
 from backend.data import posthog_lifecycle_sync as lifecycle
 from backend.data import user as user_module
 from backend.data.credit import set_subscription_tier, sync_subscription_from_stripe
+from backend.data.stripe_reconciliation import _collect_status_page
 
 TRIAL_SUB = {
     "id": "sub_trial",
@@ -33,6 +34,39 @@ async def test_subscription_sync_schedules_by_customer():
 
     inner.assert_awaited_once_with(TRIAL_SUB)
     schedule.assert_called_once_with(stripe_customer_id="cus_1")
+
+
+async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
+    """The 6-hourly tier sweep re-syncs every trial; scheduling from there
+    would fan out one Stripe call per trial and could rate-limit the sweep's
+    own listing. The daily lifecycle sweep covers those users."""
+    page = MagicMock(
+        data=[stripe.Subscription.construct_from(TRIAL_SUB, "k")], has_more=False
+    )
+    user = MagicMock(subscriptionTier=SubscriptionTier.TRIAL)
+    with (
+        patch(
+            "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=page,
+        ),
+        patch(
+            "backend.data.credit._sync_subscription_tier_from_stripe",
+            new_callable=AsyncMock,
+        ) as inner,
+        patch(
+            "backend.data.stripe_reconciliation.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=user)),
+        ),
+        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
+    ):
+        tiers: dict[str, SubscriptionTier] = {}
+        incomplete = await _collect_status_page("trialing", {}, tiers)
+
+    assert incomplete is False
+    inner.assert_awaited_once()
+    schedule.assert_not_called()
+    assert tiers == {"cus_1": SubscriptionTier.TRIAL}
 
 
 async def test_failed_subscription_sync_raises_as_before_and_schedules_nothing():
@@ -90,7 +124,7 @@ async def test_webhook_survives_posthog_and_stripe_failures():
         find_first=AsyncMock(return_value=user_row),
         find_unique=AsyncMock(return_value=user_row),
     )
-    lifecycle._pending.clear()
+    lifecycle._syncs.clear()
     with (
         patch(
             "backend.data.credit._sync_subscription_tier_from_stripe",
@@ -111,7 +145,8 @@ async def test_webhook_survives_posthog_and_stripe_failures():
         ),
     ):
         await sync_subscription_from_stripe(TRIAL_SUB)
-        await asyncio.gather(*list(lifecycle._background_tasks))
+        while lifecycle._background_tasks:
+            await asyncio.gather(*list(lifecycle._background_tasks))
 
     client.capture.assert_not_called()
 

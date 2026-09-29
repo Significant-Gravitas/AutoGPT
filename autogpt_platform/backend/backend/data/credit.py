@@ -2669,7 +2669,9 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
-async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
+async def sync_subscription_from_stripe(
+    stripe_subscription: dict, *, track_lifecycle: bool = True
+) -> None:
     """Update User.subscriptionTier from a Stripe subscription object.
 
     Expected shape of stripe_subscription (subset of Stripe's Subscription object):
@@ -2681,11 +2683,15 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
     Every ``customer.subscription.*`` webhook and every trial transition ends
     up here, so this is also where the PostHog lifecycle properties are
     refreshed (in the background, from the customer's current state).
+    ``track_lifecycle=False`` is for the periodic tier sweep, which would
+    otherwise fan out one Stripe call per trial; the daily lifecycle sweep
+    covers those users.
     """
     await _sync_subscription_tier_from_stripe(stripe_subscription)
-    schedule_posthog_lifecycle_sync(
-        stripe_customer_id=stripe_subscription.get("customer")
-    )
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(
+            stripe_customer_id=stripe_subscription.get("customer")
+        )
 
 
 async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
