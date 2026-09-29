@@ -15,15 +15,21 @@ reaches the facts it names, as after any write.
 
 A write rests on a forget when a fact it cites is forgotten or gone (a hard
 forget deletes it, a forget's cascade retracts it), or an episode it cites is
-no longer recallable or gone. apply only sends writes that cite something
-their pass read (``dream/citations.py``); a write carrying a ``statement``
-instead, citing nothing, would have it compared with the sentence every
-forgotten fact keeps for audit, lower-cased and with its whitespace
-collapsed, as graphiti's own exact-match dedup compares. It has no endpoints
-until graphiti extracts it, so that comparison spans the graph: it drops
-more than a same-endpoints one would, never less. Once written, what a dream
-write cites is recorded where a later forget finds it
-(``recall_derivation.py``).
+no longer recallable or gone.
+
+The ``statement`` comparison is kept as defence in depth. apply no longer
+sends a write that cites nothing: it drops one before it is queued
+(``dream/citations.py``), so nothing in the codebase sets ``statement``
+today. Should a write carrying only a ``statement`` reach the worker, it is
+compared with the sentence every forgotten fact keeps for audit, lower-cased
+and with its whitespace collapsed, as graphiti's own exact-match dedup
+compares. It has no endpoints until graphiti extracts it, so that comparison
+spans the graph: it drops more than a same-endpoints one would, never less.
+A sentence a hard forget erased (``recall_erase.py``) is no longer there to
+compare with.
+
+Once written, what a dream write cites is recorded where a later forget
+finds it (``recall_derivation.py``).
 """
 
 from graphiti_core.driver.driver import GraphDriver
@@ -42,7 +48,8 @@ class Citations(BaseModel):
     fact_uuids: list[str] = Field(default_factory=list)
     episode_uuids: list[str] = Field(default_factory=list)
     # Set on a write that cites nothing itself: compared with the sentences
-    # forgotten facts keep for audit.
+    # forgotten facts keep for audit. apply sends none; kept as defence in
+    # depth (see the module docstring).
     statement: str | None = None
 
 
