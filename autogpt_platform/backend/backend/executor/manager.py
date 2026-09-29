@@ -18,7 +18,7 @@ from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
 
-from backend.blocks import get_block
+from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
@@ -81,6 +81,7 @@ from backend.util.file import clean_exec_files
 from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
+from backend.util.posthog_events import PostHogEvent
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
     continuous_retry,
@@ -1134,7 +1135,7 @@ class ExecutionProcessor:
             if run_event is not None:
                 emit_funnel_event(
                     graph_exec.user_id,
-                    "expert_run_completed",
+                    PostHogEvent.EXPERT_RUN_COMPLETED,
                     run_event,
                     f"expert_run_completed:{graph_exec.graph_exec_id}",
                 )
@@ -1647,6 +1648,16 @@ class ExecutionManager(AppProcess):
         start_http_server(
             settings.config.execution_manager_port,
             addr=settings.config.pyro_host,
+        )
+
+        # Load the block registry before taking runs. Otherwise the first runs
+        # on a fresh pod load it inside get_block(), which takes tens of seconds
+        # on a busy host, and a stop request for such a run times out meanwhile.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"[{self.service_name}] Loaded {block_count} blocks in "
+            f"{time.monotonic() - load_started:.1f}s"
         )
 
         self.cancel_thread.start()
