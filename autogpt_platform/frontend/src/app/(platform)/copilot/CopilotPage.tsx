@@ -55,7 +55,7 @@ export function CopilotPage() {
 
   if (isUserLoading || !isLoggedIn) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f8f8f9]">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f5f7fb]">
         <ScaleLoader className="text-neutral-400" />
       </div>
     );
@@ -118,7 +118,7 @@ function MainArea({
 }: MainAreaProps) {
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
-      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-zinc-50">
+      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#f5f7fb]">
         <FileDropZone
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-0"
           onFilesDropped={setDroppedFiles}
