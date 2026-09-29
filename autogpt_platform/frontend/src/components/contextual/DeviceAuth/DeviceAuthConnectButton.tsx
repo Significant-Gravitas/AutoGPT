@@ -72,13 +72,13 @@ export function DeviceAuthConnectButton({
           <Text variant="small" className="font-medium text-zinc-500">
             Your code
           </Text>
-          {/* unmask={false}: Text unmasks for session replay by default, and
-              this is a live authorization code — it must not be recorded. */}
+          {/* unmask={false} and ph-no-capture: this is a live authorization
+              code, so neither Sentry nor PostHog replays may record it. */}
           <Text
             variant="h3"
             as="p"
             unmask={false}
-            className="select-all text-center font-mono text-2xl tracking-widest text-zinc-800"
+            className="ph-no-capture select-all text-center font-mono text-2xl tracking-widest text-zinc-800"
           >
             {userCode}
           </Text>

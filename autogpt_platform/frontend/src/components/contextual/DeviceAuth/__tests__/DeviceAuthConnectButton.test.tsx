@@ -54,6 +54,7 @@ describe("DeviceAuthConnectButton", () => {
 
     const code = screen.getByText("glow-relish-chaste-soft");
     expect(code.className).not.toContain("sentry-unmask");
+    expect(code.closest(".ph-no-capture")).not.toBeNull();
   });
 
   // Between clicking Connect and the initiate call returning there is no code
