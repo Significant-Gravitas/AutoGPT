@@ -48,6 +48,15 @@ interface KickoffAttempt {
   token: KickoffAttemptToken;
 }
 
+/** A prompt sent while the kickoff is being decided. Its send settles only
+ *  once the prompt went out, so a failed kickoff hands the failure back to
+ *  the composer or card that sent it instead of dropping the words. */
+interface QueuedSend {
+  text: string;
+  resolve: () => void;
+  reject: (err: unknown) => void;
+}
+
 interface Args {
   target: ChatTarget | null;
   isOpen: boolean;
@@ -77,7 +86,7 @@ export function useExpertChatDrawer({
     null,
   );
   const pendingPromptRef = useRef<PendingSend | null>(null);
-  const pendingAfterKickoffRef = useRef<string | null>(null);
+  const queuedBehindKickoffRef = useRef<QueuedSend | null>(null);
   const kickoffAttemptRef = useRef<KickoffAttempt | null>(null);
   // Every thread reset bumps the generation; a session create that resolves
   // for an older generation is ignored so its prompt never lands in the new
@@ -122,12 +131,22 @@ export function useExpertChatDrawer({
   startKickoffRef.current = startKickoff;
   const startSessionRef = useRef(startSession);
   startSessionRef.current = startSession;
+  const sendQueuedInNewThreadRef = useRef(sendQueuedInNewThread);
+  sendQueuedInNewThreadRef.current = sendQueuedInNewThread;
   useEffect(() => {
     if (!wantsKickoff || !userId || !expertId) return;
     if (kickoffCheckQuery.isFetching) return;
-    if (kickoffCheckQuery.data?.status !== 200) return;
+    const settled = kickoffCheckQuery.data;
+    if (!settled && !kickoffCheckQuery.isError) return;
+    if (!settled || settled.status !== 200) {
+      // Without the list there is no telling whether the expert was onboarded
+      // elsewhere, so this open skips the kickoff rather than risk asking
+      // twice; a prompt queued behind it opens a plain thread instead.
+      void sendQueuedInNewThreadRef.current();
+      return;
+    }
     setKickoffCheckedFor(expertId);
-    if (kickoffCheckQuery.data.data.sessions.length > 0) {
+    if (settled.data.sessions.length > 0) {
       void withKickoffLock(userId, expertId, async () => {
         if (getKickoffStatus(userId, expertId) === "idle") {
           markKickoffDone(
@@ -137,19 +156,15 @@ export function useExpertChatDrawer({
           );
         }
       })
-        .then(() => {
-          const pending = pendingAfterKickoffRef.current;
-          if (!pending) return;
-          pendingAfterKickoffRef.current = null;
-          return startSessionRef.current({ text: pending });
-        })
-        .catch(notifyStartFailed);
+        .catch(() => undefined)
+        .then(() => sendQueuedInNewThreadRef.current());
       return;
     }
     void startKickoffRef.current(userId, expertId).catch(notifyStartFailed);
   }, [
     expertId,
     kickoffCheckQuery.data,
+    kickoffCheckQuery.isError,
     kickoffCheckQuery.isFetching,
     userId,
     wantsKickoff,
@@ -199,10 +214,10 @@ export function useExpertChatDrawer({
     })
       .catch(() => undefined)
       .then(async () => {
-        const pending = pendingAfterKickoffRef.current;
-        if (!pending) return;
-        pendingAfterKickoffRef.current = null;
-        await sendMessage({ text: pending });
+        const queued = takeQueued();
+        if (!queued) return;
+        await sendMessage({ text: queued.text });
+        queued.resolve();
       });
   }, [hasAssistantReply, sendMessage, status]);
 
@@ -210,7 +225,7 @@ export function useExpertChatDrawer({
     const attempt = kickoffAttemptRef.current;
     if (!error || !attempt) return;
     kickoffAttemptRef.current = null;
-    pendingAfterKickoffRef.current = null;
+    takeQueued()?.reject(error);
     void withKickoffLock(attempt.userId, attempt.expertId, async () => {
       clearKickoffPending(attempt.userId, attempt.expertId, attempt.token);
     }).catch(() => undefined);
@@ -236,7 +251,7 @@ export function useExpertChatDrawer({
     setMessages([]);
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
-    pendingAfterKickoffRef.current = null;
+    takeQueued()?.reject(new Error("The chat was reset"));
     kickoffAttemptRef.current = null;
     setSeedToSend(seedPrompt);
     setSuppressOnboarding(!!seedPrompt);
@@ -265,18 +280,45 @@ export function useExpertChatDrawer({
     setMessages([]);
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
-    pendingAfterKickoffRef.current = null;
+    takeQueued()?.reject(new Error("The chat was reset"));
     kickoffAttemptRef.current = null;
+  }
+
+  function queueBehindKickoff(text: string): Promise<void> {
+    if (queuedBehindKickoffRef.current) throw new SessionStartingError();
+    const settled = new Promise<void>((resolve, reject) => {
+      queuedBehindKickoffRef.current = { text, resolve, reject };
+    });
+    // The sender awaits `settled`; this handler only keeps a rejection that
+    // lands before it does from surfacing as unhandled.
+    settled.catch(() => undefined);
+    return settled;
+  }
+
+  function takeQueued(): QueuedSend | null {
+    const queued = queuedBehindKickoffRef.current;
+    queuedBehindKickoffRef.current = null;
+    return queued;
+  }
+
+  async function sendQueuedInNewThread() {
+    const queued = takeQueued();
+    if (!queued) return;
+    try {
+      await startSession({ text: queued.text });
+      queued.resolve();
+    } catch (err) {
+      queued.reject(err);
+    }
   }
 
   async function startKickoff(ownerId: string, id: string): Promise<boolean> {
     let attemptToken: KickoffAttemptToken | null = null;
-    function abandonAttempt() {
+    function clearAttempt() {
       if (!attemptToken) return;
       if (kickoffAttemptRef.current?.token === attemptToken) {
         kickoffAttemptRef.current = null;
       }
-      pendingAfterKickoffRef.current = null;
       clearKickoffPending(ownerId, id, attemptToken);
     }
     let started: boolean | undefined;
@@ -295,11 +337,19 @@ export function useExpertChatDrawer({
         });
       });
     } catch (err) {
-      abandonAttempt();
-      throw err;
+      clearAttempt();
+      const queued = takeQueued();
+      if (!queued) throw err;
+      // The queued sender surfaces the failure and gets its words back.
+      queued.reject(err);
+      return false;
     }
-    if (!started) abandonAttempt();
-    return started ?? false;
+    if (started) return true;
+    // Another tab onboarded this expert first, or the thread was reset
+    // mid-create: nothing to wait for, so a queued prompt goes out plainly.
+    clearAttempt();
+    await sendQueuedInNewThread();
+    return false;
   }
 
   async function startSession(
@@ -350,11 +400,8 @@ export function useExpertChatDrawer({
   async function onSend(message: string) {
     const trimmed = message.trim();
     if (!trimmed) return;
-    if (!sessionId && (isCheckingKickoff || isCreating)) {
-      // One message rides along behind the kickoff; a second sender must not
-      // silently replace it, so it rejects like a send during creation.
-      if (pendingAfterKickoffRef.current) throw new SessionStartingError();
-      pendingAfterKickoffRef.current = trimmed;
+    if (!sessionId && isCheckingKickoff) {
+      await queueBehindKickoff(trimmed);
       return;
     }
     if (
@@ -363,8 +410,9 @@ export function useExpertChatDrawer({
       kickoffCheckedFor === expertId &&
       getKickoffStatus(userId, expertId) === "idle"
     ) {
-      pendingAfterKickoffRef.current = trimmed;
+      const sent = queueBehindKickoff(trimmed);
       await startKickoff(userId, expertId);
+      await sent;
       return;
     }
     if (!sessionId) {
@@ -409,7 +457,8 @@ export function useExpertChatDrawer({
 
   const isCheckingKickoff =
     wantsKickoff &&
-    (kickoffCheckQuery.isFetching || !kickoffCheckQuery.isError);
+    (kickoffCheckQuery.isFetching ||
+      (!kickoffCheckQuery.isError && !kickoffCheckQuery.data));
   const isResolvingSession =
     (!sessionId && wantsLatest && latestQuery.isLoading) || isCheckingKickoff;
 

@@ -306,6 +306,95 @@ describe("ExpertChatDrawer", () => {
     );
   });
 
+  test("returns a prompt queued behind the kickoff when its stream fails", async () => {
+    const user = userEvent.setup();
+    const streamBodies: string[] = [];
+    let createAttempts = 0;
+    server.use(
+      http.post("/api/proxy/api/chat/sessions", () => {
+        createAttempts += 1;
+        if (createAttempts === 1) {
+          return HttpResponse.json(
+            { detail: "Could not create session" },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json(
+          getPostV2CreateSessionResponseMock200({ id: ERROR_SESSION_ID }),
+        );
+      }),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${ERROR_SESSION_ID}/stream`,
+        async ({ request }) => {
+          streamBodies.push(await request.clone().text());
+          return HttpResponse.json(
+            { detail: "Could not start stream" },
+            { status: 500 },
+          );
+        },
+      ),
+      ...freshThreadHandlers([], [], ERROR_SESSION_ID),
+    );
+
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        onClose={() => {}}
+        resumeLatest={false}
+      />,
+    );
+
+    await waitFor(() => expect(createAttempts).toBe(1));
+    const input = (await screen.findByPlaceholderText(
+      "Message Zara…",
+    )) as HTMLTextAreaElement;
+    await waitFor(() => expect(input).toHaveProperty("disabled", false));
+    await user.type(input, "Plan my launch{Enter}");
+
+    await waitFor(() => expect(streamBodies.length).toBe(1));
+    expect(JSON.parse(streamBodies[0]).expert_kickoff).toBe(true);
+    await waitFor(() => expect(input.value).toBe("Plan my launch"));
+    expect(await screen.findByText("Couldn't send message")).toBeDefined();
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
+  });
+
+  test("opens a plain thread when the kickoff check fails", async () => {
+    const user = userEvent.setup();
+    const createBodies: unknown[] = [];
+    const streamBodies: string[] = [];
+    server.use(
+      ...freshThreadHandlers(createBodies, streamBodies),
+      http.get("/api/proxy/api/chat/sessions", () =>
+        HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
+      ),
+    );
+
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        onClose={() => {}}
+        resumeLatest={false}
+      />,
+    );
+
+    expect(await screen.findByText("What can I do for you?")).toBeDefined();
+    const input = await screen.findByPlaceholderText("Message Zara…");
+    await waitFor(() =>
+      expect(input as HTMLTextAreaElement).toHaveProperty("disabled", false),
+    );
+    await user.type(input, "Plan my launch{Enter}");
+
+    await waitFor(() =>
+      expect(createBodies).toEqual([{ expert_id: EXPERT_ID }]),
+    );
+    await waitFor(() => expect(streamBodies.length).toBe(1));
+    expect(JSON.parse(streamBodies[0])).toMatchObject({
+      expert_kickoff: false,
+      message: "Plan my launch",
+    });
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
+  });
+
   test("kicks off onboarding the first time an expert's thread opens", async () => {
     const createBodies: unknown[] = [];
     const streamBodies: string[] = [];
