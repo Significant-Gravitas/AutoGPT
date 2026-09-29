@@ -41,7 +41,7 @@ export function EmptyHero({
       ) : recipientPicker ? (
         <div className="mb-8 text-[1.375rem] leading-relaxed tracking-normal text-zinc-900">
           {isExpert ? "I'm" : "Tell"}{" "}
-          <span className="inline-block align-middle [&_button]:ml-0 [&_button]:text-lg">
+          <span className="mr-1 inline-block align-middle [&_button]:ml-0 [&_button]:text-lg">
             {recipientPicker}
           </span>
           {isExpert
