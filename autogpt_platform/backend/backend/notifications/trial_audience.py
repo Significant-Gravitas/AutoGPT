@@ -7,16 +7,20 @@ and end. The backend owns both edges of this group (see `mailerlite.py`).
 
 A conversion is also the customer's first paid subscription, so it joins the
 paying audience the way a first checkout does.
+
+The subscriber's status and dates (`subscriber_fields.py`) ride on the same
+event, or on a field update of their own while the trial group is not
+configured.
 """
 
 import logging
-from collections.abc import Mapping
-
-from pydantic import ValidationError
+from collections.abc import Callable, Mapping
 
 from backend.data.db_accessors import user_db
-from backend.data.notifications import AudienceAction, AudienceEventModel
+from backend.data.notifications import AudienceAction
+from backend.notifications import subscriber_fields
 from backend.notifications.queue import queue_audience_change
+from backend.notifications.subscriber_fields import Fields, audience_event
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -31,19 +35,40 @@ _TRIAL_GROUP_CHANGES: Mapping[str, AudienceAction] = {
     "ended": AudienceAction.REMOVE_TRIAL,
 }
 
+# Each from the live Stripe subscription at the moment the notice applies.
+_TRIAL_FIELDS: Mapping[str, Callable[[dict], Fields]] = {
+    "started": lambda sub: subscriber_fields.trial_started(sub.get("trial_start")),
+    "resumed": lambda _: subscriber_fields.trial_resumed(),
+    "canceled": lambda _: subscriber_fields.trial_canceled(),
+    "payment_failed": lambda _: subscriber_fields.trial_canceled(),
+    "ended": lambda _: subscriber_fields.trial_canceled(),
+    # The trial's end is when the first paid period began.
+    "converted": lambda sub: subscriber_fields.subscribed(sub.get("trial_end")),
+}
 
-async def queue_trial_group_change(kind: str, user_id: str, email: str) -> None:
-    """Queue the trial group change for this notice, if it has one.
+
+async def queue_trial_audience_change(
+    kind: str, user_id: str, email: str, subscription: dict
+) -> None:
+    """Queue the trial group change and field update for this notice, if it
+    has either.
 
     Raises when it cannot be queued, so the caller releases the notice claim
-    and Stripe's retry makes the change. Both changes are idempotent, so a
-    retry that repeats one is harmless. Nothing is queued while the trial group
-    is not configured: a change could never succeed and would only retry.
+    and Stripe's retry makes the change. Both are idempotent, so a retry that
+    repeats one is harmless. No group change is queued while the trial group
+    is not configured: it could never succeed and would only retry.
     """
-    action = _TRIAL_GROUP_CHANGES.get(kind)
-    if action is None or not settings.config.mailerlite_trial_group_id:
+    action = (
+        _TRIAL_GROUP_CHANGES.get(kind)
+        if settings.config.mailerlite_trial_group_id
+        else None
+    )
+    fields = _TRIAL_FIELDS[kind](subscription) if kind in _TRIAL_FIELDS else {}
+    if action is None and fields and subscriber_fields.enabled():
+        action = AudienceAction.UPDATE_FIELDS
+    if action is None:
         return
-    event = _event(action, email, user_id)
+    event = audience_event(action, email, user_id, fields)
     if event is None:
         return
     result = await queue_audience_change(event)
@@ -64,7 +89,7 @@ async def join_paying_audience(user_id: str, email: str) -> None:
     try:
         first = await user_db().claim_welcome_email(user_id)
         action = AudienceAction.ENROLL_TOUR if first else AudienceAction.ADD_CHANGELOG
-        event = _event(action, email, user_id)
+        event = audience_event(action, email, user_id)
         if event is None:
             return
         result = await queue_audience_change(event)
@@ -77,17 +102,3 @@ async def join_paying_audience(user_id: str, email: str) -> None:
             f"queued: {result.message}"
         )
 
-
-def _event(
-    action: AudienceAction, email: str, user_id: str
-) -> AudienceEventModel | None:
-    """None for an address MailerLite would refuse, such as a reserved domain:
-    no retry can ever deliver that change, so it must not hold up the notice."""
-    try:
-        return AudienceEventModel(action=action, email=email, user_id=user_id)
-    except ValidationError:
-        logger.warning(
-            f"User {user_id}'s email cannot be a MailerLite subscriber; "
-            f"skipping {action.value}"
-        )
-        return None

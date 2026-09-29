@@ -26,7 +26,7 @@ from backend.notifications.lifecycle_plan import format_amount
 from backend.notifications.queue import queue_notification_async
 from backend.notifications.trial_audience import (
     join_paying_audience,
-    queue_trial_group_change,
+    queue_trial_audience_change,
 )
 from backend.util.posthog_events import PostHogEvent
 
@@ -88,7 +88,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if not await claim_once(claim):
         return True
     try:
-        await queue_trial_group_change(kind, user_id, user.email)
+        await queue_trial_audience_change(kind, user_id, user.email, current)
         result = await queue_notification_async(
             NotificationEventModel[TrialUpdateData](
                 user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data

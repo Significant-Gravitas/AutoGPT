@@ -571,12 +571,12 @@ async def test_audience_changes_for_one_email_keep_their_published_order():
     manager = _manager()
     applied: list[str] = []
 
-    async def remove(_: str) -> None:
+    async def remove(_: str, __: object = None) -> None:
         # A removal is a lookup and then a delete; an add is one call.
         await asyncio.sleep(0.02)
         applied.append("remove")
 
-    async def add(_: str) -> None:
+    async def add(_: str, __: object = None) -> None:
         applied.append("add")
 
     messages = [

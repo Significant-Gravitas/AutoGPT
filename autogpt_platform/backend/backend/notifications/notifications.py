@@ -371,8 +371,9 @@ class NotificationManager(AppService):
             AudienceAction.REMOVE_CHANGELOG: mailerlite.remove_from_changelog,
             AudienceAction.ADD_TRIAL: mailerlite.add_to_trial,
             AudienceAction.REMOVE_TRIAL: mailerlite.remove_from_trial,
+            AudienceAction.UPDATE_FIELDS: mailerlite.update_fields,
         }[event.action]
-        await handler(event.email)
+        await handler(event.email, event.fields or None)
         return True
 
     def _parse_message(self, message: str) -> NotificationEventModel | None:

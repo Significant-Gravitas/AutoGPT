@@ -77,10 +77,20 @@ CHANGES = (
 
 class Subscription(BaseModel):
     status: str
+    id: str = ""
     cancel_at_period_end: bool = False
     # Born from a card-required trial. Past due on one of these may be a
     # failed conversion rather than a paying customer's missed renewal.
     from_trial: bool = False
+    # A trial whose first payment cleared, from our own trial record. Stripe
+    # alone cannot tell an ended converted trial from an unpaid one.
+    converted: bool = False
+    # Stripe's timestamps, for the subscriber's dates.
+    start_date: int | None = None
+    trial_start: int | None = None
+    trial_end: int | None = None
+    canceled_at: int | None = None
+    ended_at: int | None = None
 
 
 class Customer(BaseModel):

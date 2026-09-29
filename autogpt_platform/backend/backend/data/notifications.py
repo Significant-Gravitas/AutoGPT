@@ -419,6 +419,31 @@ class AudienceAction(Enum):
     REMOVE_CHANGELOG = "remove_changelog"
     ADD_TRIAL = "add_trial"
     REMOVE_TRIAL = "remove_trial"
+    # No group change: only the subscriber's fields.
+    UPDATE_FIELDS = "update_fields"
+
+
+class SubscriberField(str, Enum):
+    """MailerLite custom field keys the backend writes. GTM segments on these,
+    so a key is renamed only together with MailerLite."""
+
+    STATUS = "subscription_status"
+    SIGNUP = "signup_date"
+    TRIAL_STARTED = "trial_started_date"
+    SUBSCRIPTION_STARTED = "subscription_started_date"
+    SUBSCRIPTION_CANCELED = "subscription_canceled_date"
+    SUBSCRIPTION_ENDED = "subscription_ended_date"
+
+
+class SubscriptionStatus(str, Enum):
+    """Exactly one of these is a subscriber's `subscription_status`."""
+
+    SIGNED = "signed"
+    IN_TRIAL = "in_trial"
+    TRIAL_CANCELED = "trial_canceled"
+    SUBSCRIBED = "subscribed"
+    SUBSCRIPTION_CANCELED = "subscription_canceled"
+    SUBSCRIPTION_ENDED = "subscription_ended"
 
 
 class AudienceEventModel(BaseModel):
@@ -428,6 +453,9 @@ class AudienceEventModel(BaseModel):
     action: AudienceAction
     email: EmailStr
     user_id: str
+    # Written with the group change, or alone for UPDATE_FIELDS. A date is
+    # YYYY-MM-DD; None clears the field, and a field left out is untouched.
+    fields: dict[SubscriberField, str | None] = Field(default_factory=dict)
 
 
 class NotificationPreference(BaseModel):

@@ -606,6 +606,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Blank leaves trial customers out of MailerLite."
         ),
     )
+    mailerlite_api_url: str = Field(
+        default="https://connect.mailerlite.com/api",
+        description=(
+            "MailerLite API base URL. Only a test stack changes it, to point "
+            "at a stub."
+        ),
+    )
 
     expert_avatar_model: str = Field(
         default="gpt-image-2-2026-04-21",
