@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import { isIdKey } from "@/components/organisms/ApprovalFields/helpers";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
 import { realCardSchemaHandler, realCards, CHAT_SESSION } from "./fixtures";
@@ -82,13 +82,37 @@ test("a held command reads as its text, not as a JSON string", async () => {
       <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
     </CopilotChatActionsProvider>,
   );
+  const command = (card.review.payload as { arguments: { command: string } })
+    .arguments.command;
   const code = (await screen.findByText(/post2-hooks-that-convert/)).closest(
     "pre",
   )!;
-  const text = code.textContent ?? "";
-  expect(text.startsWith("cd /home/user/workspace/blog")).toBe(true);
-  expect(text).toContain("'EOF'\n# How to Write");
-  expect(text).toContain('"Your posts get likes but no customers."');
-  expect(text).not.toContain("\\n");
-  expect(text).not.toContain('\\"');
+  expect(command.length).toBeGreaterThan(20_000);
+  expect(code.textContent).toBe(command);
+  expect(code.textContent).toContain("'EOF'\n# How to Write");
+  expect(code.textContent).toContain(
+    '"Your posts get likes but no customers."',
+  );
+  expect(code.textContent).not.toContain("\\n");
+});
+
+test("a long body opens whole, in a box that scrolls", async () => {
+  const card = cards.find((c) => c.story === "Gmail Newsletter")!;
+  server.use(
+    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+      HttpResponse.json([card.review]),
+    ),
+    realCardSchemaHandler(cards),
+  );
+  render(
+    <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
+    </CopilotChatActionsProvider>,
+  );
+  const body = (card.review.payload as { arguments: { body: string } })
+    .arguments.body;
+  fireEvent.click(await screen.findByRole("button", { name: /Show all/ }));
+  const text = screen.getByText(/How to Write Social Posts/);
+  expect(text.textContent).toBe(body);
+  expect(text.parentElement!.className).toContain("overflow-y-auto");
 });

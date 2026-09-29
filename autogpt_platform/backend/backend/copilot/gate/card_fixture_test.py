@@ -42,10 +42,10 @@ _POST = (
     'hashtags."\n'
     '- **Make a promise.** "Three edits that turn a lecture into a thread."\n\n'
 )
-# Long enough that the card holds a shortened copy, as a real post does.
+# About 20k characters: under the supervisor's ceiling, so the card holds it whole.
 _COMMAND = (
     "cd /home/user/workspace/blog && cat > post2-hooks-that-convert.md << 'EOF'\n"
-    + _POST * 6
+    + _POST * 39
     + "EOF"
 )
 _BLOCKS: list[tuple[str, Any, dict[str, Any]]] = [
@@ -109,6 +109,15 @@ _BLOCKS: list[tuple[str, Any, dict[str, Any]]] = [
             "media_urls": ["https://cdn.acme.com/q3-chart.png"],
             "alt_text": ["Bar chart of Q3 revenue by month"],
             "shorten_links": True,
+        },
+    ),
+    (
+        "Gmail Newsletter",
+        GmailSendBlock(),
+        {
+            "to": ["subscribers@acme.com"],
+            "subject": "How to write social posts people actually stop for",
+            "body": _POST * 39,
         },
     ),
 ]
