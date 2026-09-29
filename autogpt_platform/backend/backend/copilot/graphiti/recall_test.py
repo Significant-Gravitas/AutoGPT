@@ -159,6 +159,7 @@ class TestRecallableEpisodePredicate:
     def test_cypher(self) -> None:
         assert recall.recallable_episode_predicate("ep", "gone") == (
             "ep.redacted_at IS NULL"
+            " AND ep.write_pending IS NULL"
             " AND none(x IN coalesce(ep.entity_edges, []) WHERE x IN gone)"
         )
 
@@ -169,19 +170,22 @@ class TestRecallableEpisodePredicate:
         assert clause.rstrip().endswith("WITH collect(forgotten_fact.uuid) AS gone")
 
     @pytest.mark.parametrize(
-        ("entity_edges", "redacted", "recallable"),
+        ("entity_edges", "redacted", "pending", "recallable"),
         [
-            (["e1", "e2"], False, True),
-            (["e1", "gone-1"], False, False),  # one forgotten fact hides it all
-            ([], True, False),  # stamped by a forget
-            ([], False, True),
+            (["e1", "e2"], False, False, True),
+            (["e1", "gone-1"], False, False, False),  # one forgotten fact hides it
+            ([], True, False, False),  # stamped by a forget
+            ([], False, True, False),  # a dream write still being written
+            ([], False, False, True),
         ],
     )
     def test_is_recallable_episode(
-        self, entity_edges: list[str], redacted: bool, recallable: bool
+        self, entity_edges: list[str], redacted: bool, pending: bool, recallable: bool
     ) -> None:
         assert (
-            recall.is_recallable_episode(entity_edges, {"gone-1"}, redacted=redacted)
+            recall.is_recallable_episode(
+                entity_edges, {"gone-1"}, redacted=redacted, write_pending=pending
+            )
             is recallable
         )
 

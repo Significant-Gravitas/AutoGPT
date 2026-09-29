@@ -6,16 +6,18 @@ graph write itself raises after its marker was written, the ingestion worker
 (``marked_write.py``) notes the graph here: a Redis set of graph names,
 ``PENDING_KEY``. Each run of the dream reaper (``dream/reaper.py``) sweeps
 up to ``SWEEP_MAX_GRAPHS`` of them: it takes the graph's write lock,
-completes its markers (``recall_reconcile.reconcile``) and, once none is
-left, removes the graph from the set while it still holds the lock, so a
-failure noted meanwhile (also under that lock) is never lost. A graph it
-cannot lock, or whose reconcile fails, stays for the next run.
+completes or resolves its markers (``recall_reconcile.reconcile``) and,
+once none is left that it could still act on (a write that landed but is
+not yet recorded, or one that could still land), removes the graph from the
+set while it still holds the lock, so a failure noted meanwhile (also under
+that lock) is never lost. A graph it cannot lock, or whose reconcile fails,
+stays for the next run.
 
 This is the background path; the guarantee does not rest on it. A marker no
 failure noted (a worker that died between its marker and its record) and one
 whose note was lost (Redis unreachable) are completed by the next forget in
-their graph, which reconciles before it cascades (``recall_forget.py``), or
-by the derivation backfill.
+their graph, which reconciles before it cascades (``recall_forget.py``), by
+the derivation backfill, or by an operator (``migrations/dream_markers.py``).
 """
 
 import asyncio
@@ -97,7 +99,7 @@ async def _sweep_graph(redis: Any, group_id: str, swept: Swept) -> None:
                 await driver.close()
             swept.graphs += 1
             swept.completed += done.completed
-            if not (done.left or done.waiting):
+            if not (done.incomplete() or done.waiting):
                 await asyncio.wait_for(
                     redis.srem(PENDING_KEY, group_id), _REDIS_TIMEOUT_SECONDS
                 )

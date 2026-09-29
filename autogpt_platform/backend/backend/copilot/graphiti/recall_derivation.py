@@ -5,18 +5,26 @@ A dream write cites the facts and episodes it rests on
 for the whole write (``ingest._write_locked``), and inside it
 (``marked_write.py``):
 
-1. before ``add_episode``, ``mark`` writes the write's complete citations to
-   a ``DreamCitations`` marker in the same graph: the dream episode's name,
-   ``derived_from_facts``, ``derived_from_episodes``, the graph's
-   ``group_id`` and when it was written, uuids and names only, never text.
-   If the marker cannot be written the write is not made: it fails closed.
-   So the provenance of every dream fact is in the graph before the fact is;
+1. first, ``mark`` writes the write's complete citations to a
+   ``DreamCitations`` marker in the same graph, ``pending``: the uuid the
+   write's episode is given (drawn before the marker and handed to graphiti,
+   so the marker names its episode exactly), the episode's name for people
+   reading the graph (never used to find it), ``derived_from_facts``,
+   ``derived_from_episodes``, the graph's ``group_id`` and when it was
+   written; uuids and names only, never text. If the marker cannot be
+   written the write is not made: it fails closed. So the provenance of
+   every dream fact is in the graph before the fact is. Then the write is
+   checked against the forgets made since the pass read the graph
+   (``recall_citations.rests_on_a_forget``); one it drops has its marker
+   deleted (``withdraw``). Marking first means a forget landing after that
+   check, where the lock does not hold, finds the marker;
 2. after ``add_episode``, ``record`` stores those citations as
    ``derived_from_facts`` and ``derived_from_episodes``:
 
-   - on the dream's episode. graphiti never saves an episode node again once
-     ``add_episode`` has written it, so this is the lasting record of the
-     write, and it marks the episode as the dream's;
+   - on the dream's episode, found by its uuid in its graph. graphiti never
+     saves an episode node again once ``add_episode`` has written it, so
+     this is the lasting record of the write, and it marks the episode as
+     the dream's;
    - on every fact the write produced or merged into whose source episodes
      (``episodes``) are all the dream's: the union of their records. A fact
      the write alone produced gets the write's citations. A fact it merged
@@ -24,14 +32,18 @@ for the whole write (``ingest._write_locked``), and inside it
      that no forget of what the dream cited reaches, and so it is never
      retracted for one;
 
-   then deletes the marker: a marker only ever exists while a record is
-   pending. A failure leaves it, and the worker reports the write as
-   ``provenance_pending``.
+   then settles the write (``recall_landing.settle``): a source it cites
+   that a forget reached while it was being written (only where the lock
+   did not hold) is cascaded from, which retracts the write's own facts,
+   erasing them for a source a hard forget reached; and only then deletes
+   the marker. A failure at any step leaves the marker, and the worker
+   reports the write as ``provenance_pending``. A write whose
+   ``add_episode`` raised marks its marker ``aborted`` (``abort``).
 
-``recall_reconcile.reconcile`` completes whatever markers a graph still
-holds, and every forget runs it before its cascade (``recall_forget.py``),
-so a forget always sees complete provenance; the dream reaper runs it for
-the graphs whose record failed (``provenance_pending.py``).
+``recall_reconcile.reconcile`` completes or resolves whatever markers a
+graph still holds, before every forget's cascade (``recall_forget.py``),
+from the dream reaper (``provenance_pending.py``) and in the derivation
+backfill.
 
 graphiti rewrites a fact's attributes whenever its model merges a new
 statement into it (``SET r = edge``), which drops the record. A later dream
@@ -51,30 +63,66 @@ from datetime import datetime, timezone
 from graphiti_core.driver.driver import GraphDriver
 
 from .recall_citations import Citations
+from .recall_landing import settle
 
 logger = logging.getLogger(__name__)
 
-# The label of a pending record's marker.
+# The label of a pending record's marker, and the states it is in.
 MARKER_LABEL = "DreamCitations"
+PENDING = "pending"
+ABORTED = "aborted"
+EXPIRED = "expired"
 
 
 async def mark(
-    driver: GraphDriver, group_id: str, episode_name: str, citations: Citations
+    driver: GraphDriver,
+    group_id: str,
+    episode_uuid: str,
+    episode_name: str,
+    citations: Citations,
 ) -> str:
-    """Write the marker of the dream write about to be made as
-    ``episode_name``; its uuid. Raises when it cannot be written: the caller
-    must not make the write."""
+    """Write the ``pending`` marker of the dream write about to be made under
+    ``episode_uuid``; the marker's uuid. Raises when it cannot be written:
+    the caller must not make the write."""
     marker = str(uuidlib.uuid4())
     await driver.execute_query(
         MARK_QUERY,
         uuid=marker,
         group_id=group_id,
+        episode=episode_uuid,
         name=episode_name,
         facts=list(dict.fromkeys(citations.fact_uuids)),
         episodes=list(dict.fromkeys(citations.episode_uuids)),
+        state=PENDING,
         now=datetime.now(timezone.utc).isoformat(),
     )
     return marker
+
+
+async def abort(driver: GraphDriver, marker: str) -> None:
+    """Mark ``marker``'s write as one whose ``add_episode`` raised, for
+    reconcile to resolve once it has found no episode under its uuid. Never
+    raises: a marker left ``pending`` waits and then expires instead."""
+    try:
+        await driver.execute_query(
+            ABORT_QUERY,
+            uuid=marker,
+            state=ABORTED,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception:
+        logger.warning(f"Could not mark dream marker {marker} aborted", exc_info=True)
+
+
+async def withdraw(driver: GraphDriver, marker: str) -> None:
+    """Delete the marker of a write dropped before ``add_episode``; one that
+    cannot be deleted is marked aborted, for reconcile to drop. Never
+    raises."""
+    try:
+        await driver.execute_query(DROP_MARKER_QUERY, uuid=marker)
+    except Exception:
+        logger.warning(f"Could not withdraw dream marker {marker}", exc_info=True)
+        await abort(driver, marker)
 
 
 async def record(
@@ -85,14 +133,16 @@ async def record(
     edge_uuids: list[str],
     citations: Citations,
 ) -> bool:
-    """Record ``citations`` on the dream episode just written, then on each of
-    ``edge_uuids`` (the facts it produced or merged into) whose sources are
-    all dream episodes, then delete the write's ``marker``. False, the
-    marker left for ``recall_reconcile.reconcile``, when a step failed."""
+    """Record ``citations`` on the dream episode ``episode_uuid``, then on
+    each of ``edge_uuids`` (the facts it produced or merged into) whose
+    sources are all dream episodes, settle the write, then delete its
+    ``marker`` (gone already is fine). False, the marker left for
+    ``recall_reconcile.reconcile``, when a step failed."""
     try:
         await driver.execute_query(
             RECORD_EPISODE_QUERY,
             episode=episode_uuid,
+            group_id=group_id,
             facts=list(dict.fromkeys(citations.fact_uuids)),
             episodes=list(dict.fromkeys(citations.episode_uuids)),
         )
@@ -100,6 +150,8 @@ async def record(
             await driver.execute_query(
                 STAMP_FACTS_QUERY, uuids=edge_uuids, group_id=group_id
             )
+        if not await settle(driver, group_id, citations):
+            return False
         await driver.execute_query(DROP_MARKER_QUERY, uuid=marker)
     except Exception:
         logger.warning(
@@ -115,11 +167,18 @@ MARK_QUERY = f"""
 CREATE (:{MARKER_LABEL} {{
     uuid: $uuid,
     group_id: $group_id,
+    episode_uuid: $episode,
     episode_name: $name,
     derived_from_facts: $facts,
     derived_from_episodes: $episodes,
+    state: $state,
     created_at: $now
 }})
+"""
+
+ABORT_QUERY = f"""
+MATCH (m:{MARKER_LABEL} {{uuid: $uuid}})
+SET m.state = $state, m.aborted_at = $now
 """
 
 DROP_MARKER_QUERY = f"""
@@ -129,6 +188,7 @@ DELETE m
 
 RECORD_EPISODE_QUERY = """
 MATCH (ep:Episodic {uuid: $episode})
+WHERE ep.group_id = $group_id
 SET ep.derived_from_facts = $facts,
     ep.derived_from_episodes = $episodes
 """

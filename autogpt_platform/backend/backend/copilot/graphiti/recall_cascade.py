@@ -81,15 +81,24 @@ async def cascade(
     *,
     erase: bool = False,
     seeds: Mapping[str, str] | None = None,
+    named: Mapping[str, str] | None = None,
 ) -> None:
     """Retract what the dream derived from ``roots``, the facts this forget
     has just retracted and hidden, or that are gone: ``result.derived`` gets
-    each fact it retracts and ``result.redacted_episodes`` each episode it
-    hides; with ``erase`` (a hard forget, or a root that is gone), their text
-    goes too. ``seeds`` are hidden episodes to start from as well, each
-    mapped to the root it names. A failed step or a bound reached is a
-    failure on every root."""
-    walk = Walk.start(roots, dict(seeds or {}), budget=CASCADE_MAX_ITEMS, erase=erase)
+    each fact it retracts, ``result.passed`` each derived fact it only walks
+    through and ``result.redacted_episodes`` each episode it hides; with
+    ``erase`` (a hard forget, or a root that is gone), their text goes too.
+    ``seeds`` are hidden episodes to start from as well, each mapped to the
+    root it names, and ``named`` maps a root that is not itself the fact the
+    user forgot (a derived fact a cascade retracted) to the one it names. A
+    failed step or a bound reached is a failure on every root."""
+    walk = Walk.start(
+        roots,
+        dict(seeds or {}),
+        named=dict(named or {}),
+        budget=CASCADE_MAX_ITEMS,
+        erase=erase,
+    )
     if not walk.names:
         return
     try:
@@ -195,6 +204,7 @@ async def _retire(
     retracted = walk.reach([row for row in found.facts if row["uuid"] in landed])
     passed = walk.reach([row for row in found.facts if row["uuid"] not in landed])
     result.derived.extend(retracted)
+    result.passed.extend(passed)
     tainted = walk.reach(found.episodes)
     mentioned: list[str] = []
     if tainted:

@@ -231,6 +231,7 @@ class TestForgetFailuresAreActionable:
             [],  # no episode citing it,
             [],  # nothing derived from it
             [],
+            [{"count": 0}],  # no dream write still in flight cites it
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (

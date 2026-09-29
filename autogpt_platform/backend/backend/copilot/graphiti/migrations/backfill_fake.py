@@ -6,7 +6,7 @@ for ``backfill_derivations_test.py``, ``legacy_citations_test.py`` and
 from typing import Any
 from unittest.mock import AsyncMock
 
-from backend.copilot.graphiti.recall_reconcile import PENDING_MARKERS_QUERY
+from backend.copilot.graphiti.recall_reconcile import MARKERS_QUERY
 
 from . import backfill_cascade
 from . import backfill_derivations as backfill
@@ -42,7 +42,7 @@ class BackfillGraph:
         self.close = AsyncMock()
 
     async def execute_query(self, query: str, **params: Any):
-        if query == PENDING_MARKERS_QUERY:
+        if query == MARKERS_QUERY:
             self.reconciled = True
             return [], [], None
         if query == backfill_cascade.MARKER_NAMES_QUERY:

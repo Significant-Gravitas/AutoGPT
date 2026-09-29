@@ -71,13 +71,17 @@ async def dream_apply(mocker: MockerFixture) -> AsyncIterator[None]:
 
 
 @contextmanager
-def _failing(query: str) -> Iterator[None]:
-    """Every run of ``query`` raises while the block is open."""
+def _failing(query: str, times: int | None = None) -> Iterator[None]:
+    """Every run of ``query`` raises while the block is open, or only its
+    first ``times`` runs."""
     original = AutoGPTFalkorDriver.execute_query
+    runs = [0]
 
     async def failing(self, cypher_query_, **params):
         if cypher_query_ == query:
-            raise RuntimeError("injected failure")
+            runs[0] += 1
+            if times is None or runs[0] <= times:
+                raise RuntimeError("injected failure")
         return await original(self, cypher_query_, **params)
 
     with patch.object(AutoGPTFalkorDriver, "execute_query", failing):
@@ -220,7 +224,7 @@ async def test_a_forget_waiting_for_a_write_whose_record_fails_retracts_it(
     read = await gather(scope)
 
     with (
-        _failing(RECORD_EPISODE_QUERY),
+        _failing(RECORD_EPISODE_QUERY, times=1),
         _forget_while_saving(scope, flour) as (started, waited),
     ):
         stats = await dream(

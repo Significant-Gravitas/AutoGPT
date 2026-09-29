@@ -383,10 +383,10 @@ async def _write_locked(
     """Write one episode holding the graph's write lock (``scope_lock.py``),
     so no forget lands between what graphiti reads and what it saves over
     it; False, writing nothing, when another writer kept it for the wait.
-    A dream write resting on a forget is dropped under the same lock; one
-    that is written has its citations marked before the write, failing
-    closed, and recorded after it (``marked_write.py``), so a forget
-    waiting for the lock finds them."""
+    A dream write has its citations marked first, failing closed; one
+    resting on a forget is then dropped under the same lock, its marker
+    withdrawn; one that is written is recorded after it
+    (``marked_write.py``), so a forget waiting for the lock finds them."""
     wait = INGEST_LOCK_WAIT_SECONDS
     async with graph_write_lock(group_id, wait_seconds=wait) as lock:
         if lock is LockState.BUSY:
@@ -395,19 +395,24 @@ async def _write_locked(
         # Sidecars (not add_episode kwargs), present only for dream writes.
         citations: Citations | None = payload.pop("_citations", None)
         edge_metadata = payload.pop("_edge_metadata", None)
-        if await _dropped_as_forgotten(client, payload, citations, completion):
-            return True
         # This is the write path, so materializing the graph is intended
         # here — unlike driver construction, which must never create one.
         # Once per group per loop.
         await ensure_indices_once(group_id, client)
-        marker = await marked_write.marked(
+        marked = await marked_write.marked(
             client, group_id, payload, citations, completion
         )
-        if citations is not None and marker is None:
+        if citations is not None and marked is None:
             return True
+        if await _dropped_as_forgotten(client, payload, citations, completion):
+            await marked_write.withdrawn(client.driver, marked)
+            return True
+        episode = marked.episode if marked is not None else None
         result = await marked_write.added(
-            _add_episode(client, group_id, payload), group_id, marker
+            _add_episode(client, group_id, payload, episode),
+            client.driver,
+            group_id,
+            marked,
         )
         # graphiti's attribute extraction fills MemoryFact fields from the
         # episode text, not the envelope, so dream metadata doesn't survive:
@@ -415,9 +420,9 @@ async def _write_locked(
         # ``_stamp_edge_metadata`` for the dedup-safety invariant).
         if edge_metadata:
             await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
-        if citations is not None and marker is not None:
+        if citations is not None and marked is not None:
             await marked_write.recorded(
-                client, group_id, marker, result, citations, completion
+                client, group_id, marked, result, citations, completion
             )
     return True
 
@@ -466,7 +471,10 @@ def _requeue_once(
 
 
 async def _add_episode(
-    client: Graphiti, group_id: str, payload: dict[str, Any]
+    client: Graphiti,
+    group_id: str,
+    payload: dict[str, Any],
+    episode: str | None = None,
 ) -> AddEpisodeResults:
     """graphiti's ``add_episode`` with our types, under the recall policy.
 
@@ -482,12 +490,19 @@ async def _add_episode(
     found them. (graphiti's exact-text match, which runs before the model,
     can still list a new episode on a forgotten edge whose ``[forgotten]``
     text the statement repeats word for word.)
+
+    A marked dream write's ``episode`` uuid is its marker's: the episode is
+    placed under it first (``marked_write.placed``), after the earlier
+    episodes are read, and graphiti writes over it.
     """
     previous = await previous_episode_uuids(
         client.driver, group_id, payload["reference_time"], payload["source"]
     )
+    if episode is not None:
+        await marked_write.placed(client.driver, group_id, payload, episode)
     return await client.add_episode(
         **payload,
+        uuid=episode,
         previous_episode_uuids=previous,
         entity_types=ENTITY_TYPES,
         edge_types=EDGE_TYPES,

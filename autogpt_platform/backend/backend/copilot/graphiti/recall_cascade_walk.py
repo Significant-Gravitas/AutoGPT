@@ -40,11 +40,14 @@ class Walk(BaseModel):
         roots: list[str],
         seeds: dict[str, str],
         *,
+        named: dict[str, str] | None = None,
         budget: int,
         erase: bool,
     ) -> "Walk":
-        names = list(dict.fromkeys([*roots, *seeds.values()]))
-        root_of = {root: root for root in roots} | seeds
+        """A walk from ``roots``, each naming itself unless ``named`` maps it
+        to another root, and from ``seeds``."""
+        root_of = {root: (named or {}).get(root, root) for root in roots} | seeds
+        names = list(dict.fromkeys([*(root_of[r] for r in roots), *seeds.values()]))
         return cls(
             roots=roots,
             seeds=seeds,

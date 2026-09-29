@@ -30,9 +30,9 @@ from .recall import USER_FORGET_REASON
 from .recall_cascade import cascade
 from .recall_cascade_queries import NAMED_ROOTS_QUERY
 from .recall_cascade_walk import derived_reason
+from .recall_forget_writes import provenance_incomplete, still_landing, unreconciled
 from .recall_hide import hide
 from .recall_orphans import purge
-from .recall_reconcile import reconcile
 from .scope import MemoryScope
 from .scope_lock import FORGET_LOCK_WAIT_SECONDS, LockState, graph_write_lock
 
@@ -52,10 +52,14 @@ async def retract(
     lands while an ingestion is between reading the graph and saving over
     it; when the lock stays busy for ``FORGET_LOCK_WAIT_SECONDS`` every uuid
     fails as ``busy`` and nothing is written. It first completes the
-    derivation records of every dream write still marked in the graph
-    (``recall_reconcile.reconcile``), so its cascade sees complete
-    provenance; if that fails or leaves markers, each fact forgotten is a
-    ``cleanup_error`` and forgetting it again finishes the job.
+    derivation records of every dream write still marked in the graph whose
+    write landed (``recall_reconcile.reconcile``), so its cascade sees their
+    provenance; if that fails or leaves one, each fact forgotten is a
+    ``cleanup_error`` and forgetting it again finishes the job. So is each
+    when, after its cascade, a dream write that could still land cites
+    something the forget reached (``recall_forget_writes.py``): the write's
+    own settle retracts it when it lands (``recall_landing.py``), and
+    forgetting again once it has reports the forget done.
 
     Soft (the default) stamps ``forgotten_at``, sets ``status='retracted'``
     and ``expiration_reason``, keeps an earlier ``expired_at`` and leaves
@@ -65,14 +69,16 @@ async def retract(
     the fact; edges and episodes stay for audit. Then, under the same lock,
     ``recall_cascade.cascade`` retracts the facts the dream derived from the
     forgotten ones, transitively, and hides the dream episodes that did
-    (``ForgetResult.derived``). Hard does all that first, the cascade soft
-    too but erasing the derived text it reaches (``recall_erase.py``), then
-    empties and deletes what only the forgotten edges kept, the edges last
+    (``ForgetResult.derived``). Hard does all that first, stamping
+    ``hard_forgotten_at`` on each fact it retracts (a dream write landing
+    before the purge, where the lock does not hold, is then erased as one
+    landing after it would be), the cascade soft too but erasing the
+    derived text it reaches (``recall_erase.py``), then empties and deletes
+    what only the forgotten edges kept, the edges last
     (``recall_orphans.purge``), so forgetting again after any failure
     finishes the job, a purged fact's cascade included (below). A failed
-    step after the edge write is a
-    ``cleanup_error`` on each edge it concerned; recall hides the fact and
-    its text regardless.
+    step after the edge write is a ``cleanup_error`` on each edge it
+    concerned; recall hides the fact and its text regardless.
 
     A uuid that is no longer in the graph but that a derivation record, a
     citation marker, an episode's ``redacted_for`` or an earlier cascade's
@@ -100,18 +106,21 @@ async def _forget(
 ) -> ForgetResult:
     result = ForgetResult()
     now = datetime.now(timezone.utc).isoformat()
-    unreconciled = await _reconciled(driver, group_id)
+    missing = await unreconciled(driver, group_id)
     found = await _existing_edges(driver, group_id, uuids, result)
     result.resumed = await _purged_roots(driver, result)
-    retracted = await _retract_edges(driver, group_id, found, reason, now, result)
+    retracted = await _retract_edges(
+        driver, group_id, found, reason, now, result, hard=hard
+    )
     hidden = await hide(driver, group_id, retracted, now, result)
     if hidden and retracted:
         await cascade(driver, group_id, retracted, now, result, erase=hard)
     if result.resumed:
         await cascade(driver, group_id, result.resumed, now, result, erase=True)
-    if unreconciled is not None:
-        roots = [*retracted, *result.resumed]
-        _provenance_incomplete(result, roots, unreconciled)
+    roots = [*retracted, *result.resumed]
+    pending = missing or await still_landing(driver, group_id, result, roots)
+    if pending is not None:
+        provenance_incomplete(result, roots, pending)
     if not hard:
         result.deleted = retracted
     elif hidden:
@@ -137,35 +146,6 @@ async def _purged_roots(driver: GraphDriver, result: ForgetResult) -> list[str]:
     named = {row["uuid"] for row in rows}
     result.failures = [f for f in result.failures if f.uuid not in named]
     return [uuid for uuid in missing if uuid in named]
-
-
-async def _reconciled(driver: GraphDriver, group_id: str) -> Exception | None:
-    """Complete the graph's pending dream records before anything else; what
-    went wrong, when some may still be missing: the error, or ``None``."""
-    try:
-        done = await reconcile(driver, group_id)
-    except Exception as exc:
-        logger.warning(
-            f"Could not reconcile graph {group_id[:20]} before a forget",
-            exc_info=True,
-        )
-        return exc
-    if done.left:
-        return RuntimeError("more dream writes pending a record than one forget takes")
-    return None
-
-
-def _provenance_incomplete(
-    result: ForgetResult, retracted: list[str], exc: Exception
-) -> None:
-    """A ``cleanup_error`` on each fact forgotten that has no failure yet: its
-    cascade may have missed a dream fact whose record was still pending."""
-    failed = {failure.uuid for failure in result.failures}
-    result.failures.extend(
-        MemoryForgetFailure.cleanup_error(uuid, exc)
-        for uuid in retracted
-        if uuid not in failed
-    )
 
 
 async def _existing_edges(
@@ -207,8 +187,11 @@ async def _retract_edges(
     reason: str,
     now: str,
     result: ForgetResult,
+    *,
+    hard: bool = False,
 ) -> list[str]:
-    """Mark each edge forgotten and retracted; the uuids that were.
+    """Mark each edge forgotten and retracted (``hard``: by a hard forget);
+    the uuids that were.
 
     One query per uuid, so one bad edge cannot hide what happened to the
     others (SECRT-2371); failures are recorded on ``result``.
@@ -224,6 +207,7 @@ async def _retract_edges(
                     now=now,
                     status=MemoryStatus.retracted.value,
                     reason=reason,
+                    hard=hard,
                 )
             )
         except Exception as exc:
@@ -255,12 +239,16 @@ RETURN DISTINCT e.uuid AS uuid
 # ``coalesce`` keeps the first forget's ``forgotten_at`` and the first
 # retirement time on an edge that already had one (a graphiti expiry, a
 # dream demotion or an earlier forget), so a repeat is harmless.
+# ``hard_forgotten_at`` says a hard forget is purging the fact.
 _RETRACT_EDGE_QUERY = """
 MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
 WHERE e.group_id = $group_id OR e.group_id IS NULL
 SET e.forgotten_at = coalesce(e.forgotten_at, $now),
     e.expired_at = coalesce(e.expired_at, $now),
     e.status = $status,
-    e.expiration_reason = $reason
+    e.expiration_reason = $reason,
+    e.hard_forgotten_at = CASE WHEN $hard
+        THEN coalesce(e.hard_forgotten_at, $now)
+        ELSE e.hard_forgotten_at END
 RETURN e.uuid AS uuid
 """

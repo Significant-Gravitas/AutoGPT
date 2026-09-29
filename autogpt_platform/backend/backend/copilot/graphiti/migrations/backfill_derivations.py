@@ -104,7 +104,7 @@ async def backfill_graph(
         pending = await reconcile(driver, graph)
         found = await _derive(driver, apply=True, cascade_forgets=cascade_forgets)
         found.reconciled = pending.completed
-        if pending.left:
+        if pending.incomplete():
             found.failed = 1
         return found
 
@@ -213,6 +213,7 @@ async def _memory_graph_names() -> list[str]:
 DREAM_EPISODES_QUERY = """
 MATCH (ep:Episodic)
 WHERE ep.uuid > $after
+  AND ep.write_pending IS NULL
   AND (ep.derived_from_facts IS NOT NULL
        OR ep.name STARTS WITH 'dream_'
        OR ep.source_description STARTS WITH 'dream-pass')

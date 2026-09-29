@@ -161,7 +161,8 @@ class ForgetResult(BaseModel):
     edge whose clean-up failed, which is in ``deleted`` too when its own write
     landed. ``derived`` lists the facts the dream derived from them that the
     forget retracted with them (``recall_cascade.py``), a soft retraction in
-    either mode, a hard one erasing their text (``recall_erase.py``). The
+    either mode, a hard one erasing their text (``recall_erase.py``), and
+    ``passed`` the derived facts no longer live it walked through. The
     episode and entity lists record the clean-up done: a hard forget empties
     an episode nothing else cites into a tombstone rather than deleting it,
     so the chat session it came from stays known. ``resumed`` lists the
@@ -172,6 +173,7 @@ class ForgetResult(BaseModel):
     deleted: list[str] = Field(default_factory=list)
     failures: list[MemoryForgetFailure] = Field(default_factory=list)
     derived: list[str] = Field(default_factory=list)
+    passed: list[str] = Field(default_factory=list)
     resumed: list[str] = Field(default_factory=list)
     redacted_episodes: list[str] = Field(default_factory=list)
     tombstoned_episodes: list[str] = Field(default_factory=list)
