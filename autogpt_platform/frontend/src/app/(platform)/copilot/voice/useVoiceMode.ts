@@ -521,6 +521,9 @@ export function useVoiceMode({
     activation.current += 1;
     setVoiceTurnActive(false);
     clearTimers();
+    // Off before the player stops: its idle callback would otherwise finish
+    // the turn it just reported as dropped.
+    dispatch({ type: "DISABLE" });
     playerRef.current?.destroy();
     void vadRef.current?.destroy();
   }
