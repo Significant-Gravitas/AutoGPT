@@ -13,7 +13,9 @@ doesn't apply is ``$unset``, never sent as null):
 
 - ``subscription_status``: one of ``signed``, ``in_trial``,
   ``trial_canceled``, ``subscribed``, ``subscription_canceled`` (canceled,
-  still active until the period ends), ``subscription_ended``. Rules in
+  still active until the period ends), ``payment_failed`` (renewal payment
+  failed; Stripe ``past_due`` or ``unpaid``, access lost),
+  ``subscription_ended``. Rules in
   ``compute_lifecycle_snapshot``.
 - ``signup_at``: ``User.createdAt``.
 - ``trial_started_at``: ``SubscriptionTrial.startedAt``, for a trial whose
@@ -41,12 +43,15 @@ LifecycleStatus = Literal[
     "trial_canceled",
     "subscribed",
     "subscription_canceled",
+    "payment_failed",
     "subscription_ended",
 ]
 
 # Stripe statuses in which a paid subscriber still has a subscription.
-# ``past_due`` is in while product confirms it (SECRT-2778, question 3).
-_LIVE_STATUSES = frozenset({"active", "past_due"})
+_LIVE_STATUSES = frozenset({"active"})
+# A renewal payment failed. The backend drops the user to NO_TIER, so they have
+# lost access, but they didn't choose to leave (SECRT-2778, question 3).
+_PAYMENT_FAILED_STATUSES = frozenset({"past_due", "unpaid"})
 # A subscription in one of these was never paid for.
 _NEVER_PAID_STATUSES = frozenset({"trialing", "incomplete", "incomplete_expired"})
 _SELF_SERVE_PAID_TIERS = frozenset(
@@ -132,12 +137,14 @@ def compute_lifecycle_snapshot(
        ``credit._is_stripe_reconcilable`` uses to leave a tier alone.
     1. Live paid subscription set to cancel at period end
        -> ``subscription_canceled``
-    2. Live paid subscription (``active`` or ``past_due``) -> ``subscribed``
+    2. Live paid subscription (``active``) -> ``subscribed``
     3. In trial and set to cancel -> ``trial_canceled``
     4. In trial -> ``in_trial``
-    5. A paid subscription that has ended -> ``subscription_ended``
-    6. A trial that ended without converting -> ``trial_canceled``
-    7. Otherwise -> ``signed``
+    5. The most recent paid subscription is ``past_due`` or ``unpaid``
+       -> ``payment_failed``
+    6. A paid subscription that has ended -> ``subscription_ended``
+    7. A trial that ended without converting -> ``trial_canceled``
+    8. Otherwise -> ``signed``
 
     A trial's own Stripe subscription counts as paid only once the trial has
     converted, and its paid start is then the conversion, not the trial start.
@@ -177,8 +184,14 @@ def _after_access_ended(
     trial_started: bool,
     common: dict[str, Any],
 ) -> LifecycleSnapshot:
-    """Rules 5-7: nothing live, no trial running."""
+    """Rules 5-8: nothing live, no trial running."""
     ended = max(paid, key=_ended_order, default=None)
+    if ended is not None and ended.status in _PAYMENT_FAILED_STATUSES:
+        return LifecycleSnapshot(
+            subscription_status="payment_failed",
+            subscription_started_at=_paid_start(ended, trial),
+            **common,
+        )
     if ended is not None:
         return LifecycleSnapshot(
             subscription_status="subscription_ended",

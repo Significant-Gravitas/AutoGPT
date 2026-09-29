@@ -246,8 +246,28 @@ def test_subscribed():
     )
 
 
-def test_past_due_counts_as_subscribed():
-    assert snapshot(subs=[sub(status="past_due")]).subscription_status == "subscribed"
+@pytest.mark.parametrize("status", ["past_due", "unpaid"])
+def test_a_failed_renewal_is_payment_failed(status: str):
+    # Lost access (the backend drops them to NO_TIER), but didn't choose to leave.
+    start = NOW - timedelta(days=40)
+    result = snapshot(subs=[sub(status=status, start=start)])
+    assert result == LifecycleSnapshot(
+        subscription_status="payment_failed",
+        signup_at=SIGNUP,
+        subscription_started_at=start,
+    )
+
+
+def test_a_canceled_subscription_after_a_failed_payment_has_ended():
+    # Stripe cancels after its retries run out; the newest state wins.
+    ended = NOW - timedelta(days=1)
+    result = snapshot(subs=[sub(status="canceled", canceled_at=ended, ended_at=ended)])
+    assert result.subscription_status == "subscription_ended"
+
+
+def test_an_active_subscription_wins_over_an_old_past_due_one():
+    result = snapshot(subs=[sub("sub_old", "past_due"), sub("sub_new", "active")])
+    assert result.subscription_status == "subscribed"
 
 
 def test_subscription_set_to_cancel():
@@ -269,12 +289,6 @@ def test_subscription_ended():
     assert result.subscription_status == "subscription_ended"
     assert result.subscription_canceled_at == canceled
     assert result.subscription_ended_at == ended
-
-
-def test_unpaid_subscription_has_ended():
-    assert snapshot(subs=[sub(status="unpaid")]).subscription_status == (
-        "subscription_ended"
-    )
 
 
 def test_never_paid_subscriptions_are_ignored():
