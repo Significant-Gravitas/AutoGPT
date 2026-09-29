@@ -107,7 +107,8 @@ async def create_new_graph(
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
-    graph.validate_graph(for_run=False)
+    if errors := graph.validate_graph_get_errors(for_run=False):
+        raise HTTPException(status_code=422, detail=errors)
 
     # Validate node credentials (and clear stale optional ones) BEFORE
     # persisting, so a credential issue can't leave the graph/library agent
@@ -171,7 +172,8 @@ async def update_graph(
 
     graph = graph_db.make_graph_model(graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
-    graph.validate_graph(for_run=False)
+    if errors := graph.validate_graph_get_errors(for_run=False):
+        raise HTTPException(status_code=422, detail=errors)
 
     # If this new version is going to be active, validate node credentials
     # BEFORE persisting so a credential issue can't leave a half-saved version

@@ -309,7 +309,7 @@ class BaseGraph(GraphBaseMeta):
         schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
             try:
-                schema_fields.append(type_class.model_construct(**input_default))
+                schema_fields.append(type_class(**input_default))
             except Exception as e:
                 logger.error(f"Invalid {type_class}: {input_default}, {e}")
 
