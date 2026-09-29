@@ -4,7 +4,6 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useLayoutEffect, useState, type ReactNode } from "react";
@@ -119,16 +118,6 @@ export function EmptySession({
 
   return (
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      {!isBrainDumpEnabled && (
-        <DotDistortionShader
-          dotGap={14}
-          dotSize={1}
-          opacity={0.2}
-          enableMouseInteraction={false}
-          breathingSpeed={0.4}
-          className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
-        />
-      )}
       <OnboardingWelcomeDialog
         isOpen={intro.isWelcomeOpen}
         onClose={intro.closeWelcome}

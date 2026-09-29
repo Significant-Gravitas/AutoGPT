@@ -11,8 +11,7 @@ import { NowNext } from "../NowNext/NowNext";
 import { RecentWork } from "../RecentWork/RecentWork";
 import { useHomePage } from "../../useHomePage";
 
-const SHELL_CLASS =
-  "relative mt-10 rounded-3xl bg-zinc-50 px-4 pb-8 pt-6 text-left sm:px-6";
+const SHELL_CLASS = "relative mt-10 px-4 pb-8 pt-6 text-left sm:px-6";
 const CONTENT_CLASS = "relative mx-auto w-full max-w-[1120px]";
 const GRID_CLASS = "grid grid-cols-1 items-start gap-4 xl:grid-cols-12";
 
