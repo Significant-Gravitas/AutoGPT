@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
@@ -10,7 +10,12 @@ import type { SharedChatMessagesPage } from "@/app/api/__generated__/models/shar
 import type { SharedChatSession } from "@/app/api/__generated__/models/sharedChatSession";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import SharedChatPage from "../page";
 
 const mockUseParams = vi.hoisted(() => vi.fn());
@@ -365,5 +370,31 @@ describe("SharedChatPage", () => {
     render(<SharedChatPage />);
     await screen.findByRole("heading", { level: 1 });
     expect(screen.queryByText(/older history is not visible/i)).toBeNull();
+  });
+
+  describe("Cookie settings", () => {
+    afterEach(() => {
+      removeCookiebot();
+      vi.unstubAllEnvs();
+    });
+
+    test("opens the Cookiebot dialog from the page footer", async () => {
+      configureCookiebot();
+      const { renew } = installCookiebot();
+      server.use(
+        http.get(
+          "*/api/public/shared/chats/:token",
+          () => new HttpResponse(null, { status: 404 }),
+        ),
+      );
+
+      render(<SharedChatPage />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Cookie settings" }),
+      );
+
+      expect(renew).toHaveBeenCalledOnce();
+    });
   });
 });

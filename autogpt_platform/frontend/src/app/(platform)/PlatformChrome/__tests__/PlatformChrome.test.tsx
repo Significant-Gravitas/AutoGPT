@@ -8,6 +8,11 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTourStore } from "@/app/(public)/tour/chat/tourStore";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 import { PlatformChrome } from "../PlatformChrome";
 
 const showNewLayoutMock = vi.fn<() => boolean>(() => false);
@@ -59,6 +64,8 @@ vi.mock("../../components/GlobalSearchModal/GlobalSearchOverlay", () => ({
 
 afterEach(() => {
   vi.clearAllMocks();
+  removeCookiebot();
+  vi.unstubAllEnvs();
 });
 
 describe("PlatformChrome", () => {
@@ -114,5 +121,22 @@ describe("PlatformChrome", () => {
     expect(pushMock).toHaveBeenCalledWith(
       "/tour/chat?utm_source=platform_marketplace",
     );
+  });
+
+  it("offers cookie settings to signed-out visitors in the tour sidebar shell", async () => {
+    configureCookiebot();
+    const { renew } = installCookiebot();
+    showTourSidebarMock.mockReturnValue(true);
+    render(
+      <PlatformChrome>
+        <div data-testid="child">content</div>
+      </PlatformChrome>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Cookie settings" }),
+    );
+
+    expect(renew).toHaveBeenCalledOnce();
   });
 });

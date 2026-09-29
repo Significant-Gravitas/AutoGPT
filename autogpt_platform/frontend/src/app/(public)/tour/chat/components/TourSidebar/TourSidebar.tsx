@@ -42,6 +42,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 
 // Visual clone of the logged-in AppSidebar for the public tour demo. Only
 // Marketplace navigates; every other destination needs an account, so those
@@ -231,11 +232,10 @@ export function TourSidebar({ variant = "tour" }: Props) {
         </motion.div>
       </SidebarContent>
 
-      {!isDemoComplete && (
-        <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
-          <TourUpsellCard />
-        </SidebarFooter>
-      )}
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+        {!isDemoComplete && <TourUpsellCard />}
+        <CookieSettingsLink className="self-center" />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ export function AuthSplitLayout({ marketing, children, className }: Props) {
           <AutoGPTLogo className="mx-auto mb-10 h-auto w-32 sm:w-40 lg:hidden" />
           {children}
         </div>
+        <CookieSettingsLink className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2" />
       </section>
     </div>
   );

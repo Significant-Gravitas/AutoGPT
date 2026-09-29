@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { sharedChatFilePattern, sharedChatFileUrl } from "@/lib/share/routes";
 import { cn } from "@/lib/utils";
 import { ShareActions } from "../../components/ShareHeader/ShareActions";
@@ -44,6 +45,7 @@ function SharedChatChrome({
       <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-background">
         {children}
       </div>
+      <CookieSettingsLink className="shrink-0 self-center py-1.5" />
     </div>
   );
 }
