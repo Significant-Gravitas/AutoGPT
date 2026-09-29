@@ -54,7 +54,10 @@ from backend.copilot.graphiti.context_marker import (
 from backend.copilot.legacy_first_turn_memory_test_data import (
     BUDGET_BLOCK,
     bucket_storage,
+    folded_query,
+    history_query,
     legacy_first_message,
+    master_warm,
     session_file,
 )
 from backend.copilot.model import ChatMessage, ChatSession
@@ -3455,6 +3458,9 @@ _BASELINE = "backend.copilot.baseline.service"
 _ALICE = "Alice works on Atlas"
 _NOVA_FORGOTTEN = "the Nova recovery password is violet-913"
 _NOVA_KEPT = "Hector supervises the Nova recovery"
+# The first message of a session the SDK engine began before this change, as
+# production stored it, the backfill not yet run.
+_OLD_FIRST = legacy_first_message(master_warm((_NOVA_FORGOTTEN, _NOVA_KEPT)))
 
 
 def _block(*facts: str) -> str:
@@ -3734,13 +3740,12 @@ class TestBaselineFirstTurnWarmContextIsEphemeral:
         ``download_transcript`` restores its CLI session file without the
         block the file's first entry stored, so the fact the user forgot
         since is in nothing this turn sends the model, nor in its upload."""
-        old_first = legacy_first_message(_block(_NOVA_FORGOTTEN, _NOVA_KEPT))
         storage = bucket_storage(
-            session_file(("user", BUDGET_BLOCK + old_first), ("assistant", "done"))
+            session_file(("user", BUDGET_BLOCK + _OLD_FIRST), ("assistant", "done"))
         )
 
         turn = await _run_baseline_turn(
-            _baseline_session(old_first, "done", "what do you know about Nova now"),
+            _baseline_session(_OLD_FIRST, "done", "what do you know about Nova now"),
             first_block=None,
             refresh=_refresh_nothing,
             storage=storage,
@@ -3751,3 +3756,62 @@ class TestBaselineFirstTurnWarmContextIsEphemeral:
         assert "violet-913" not in read
         assert "memory_context" not in read
         assert b"violet-913" not in turn.uploaded()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "stored",
+        [folded_query, history_query, None],
+        ids=["pending-folded", "history", "no-file"],
+    )
+    async def test_an_old_session_rebuilt_from_the_database(self, stored):
+        """No file this engine can use: the old one holds the block where it
+        cannot be stripped, or there is none. The turn reads its history from
+        the database, the first message without the block the backfill has
+        not removed yet, and its upload carries that history, not only this
+        turn."""
+        storage = (
+            bucket_storage(
+                session_file(("user", stored(_OLD_FIRST)), ("assistant", "done"))
+            )
+            if stored
+            else None
+        )
+
+        turn = await _run_baseline_turn(
+            _baseline_session(
+                _OLD_FIRST, "done, as stored", "what do you know about Nova now"
+            ),
+            first_block=None,
+            refresh=_refresh_nothing,
+            storage=storage,
+        )
+
+        read = turn.model_input()
+        assert "what is Alice working on" in read and "done, as stored" in read
+        uploaded = turn.uploaded()
+        assert b"what is Alice working on" in uploaded
+        assert b"done, as stored" in uploaded
+        for text in (read.encode(), uploaded):
+            assert b"violet-913" not in text
+
+    @pytest.mark.asyncio
+    async def test_a_paste_in_an_old_file_is_read_as_it_is(self):
+        """A later message holding a copy of the block, pasted by the user,
+        is theirs: the transcript is used and the paste kept."""
+        storage = bucket_storage(
+            session_file(
+                ("user", "hello"),
+                ("assistant", "hi"),
+                ("user", _OLD_FIRST),
+                ("assistant", "noted"),
+            )
+        )
+
+        turn = await _run_baseline_turn(
+            _baseline_session("hello", "hi", "thanks"),
+            first_block=None,
+            refresh=_refresh_nothing,
+            storage=storage,
+        )
+
+        assert "violet-913" in turn.model_input()

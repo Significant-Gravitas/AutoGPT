@@ -49,7 +49,10 @@ from backend.copilot.graphiti.context_marker import (
 from backend.copilot.legacy_first_turn_memory_test_data import (
     BUDGET_BLOCK,
     bucket_storage,
+    folded_query,
+    history_query,
     legacy_first_message,
+    master_warm,
     session_file,
 )
 from backend.copilot.model import ChatMessage, ChatSession
@@ -78,6 +81,7 @@ from .service import (
     _build_query_message,
     _maybe_prepend_skills_update,
     _reduce_context,
+    _seed_transcript,
 )
 from .transcript import compact_transcript, validate_transcript
 from .transcript_builder import TranscriptBuilder
@@ -1699,6 +1703,43 @@ def _nova_block(*, forgotten: bool) -> str:
     return f"<temporal_context>\n<FACTS>\n{lines}</FACTS>\n</temporal_context>"
 
 
+# The first message of a session whose first turn ran before this change, as
+# production stored it, the backfill not yet run: it holds a fact the user has
+# since forgotten.
+_OLD_FIRST = legacy_first_message(master_warm((_NOVA_FORGOTTEN, _NOVA_KEPT)))
+
+
+class _OldSessionTurn:
+    """What one SDK turn on an old session resumed from, sent and uploaded."""
+
+    def __init__(self) -> None:
+        self.resumed_from: list[str] = []
+        self.queries: list[str] = []
+        self.upload = AsyncMock()
+
+    def restore(self, cli_restore, *_args, **_kwargs):
+        content = cli_restore.content.decode()
+        self.resumed_from.append(content)
+        return content, True
+
+    def read_back(self, *_args, **_kwargs) -> bytes:
+        """The CLI's file after the turn: the session it resumed from, if
+        any, plus the query it was sent last."""
+        prior = self.resumed_from[-1].encode() if self.resumed_from else b""
+        entry = {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": self.queries[-1]}],
+            },
+        }
+        return prior + json.dumps(entry).encode() + b"\n"
+
+    def uploaded(self) -> str:
+        assert self.upload.await_args is not None, "the turn uploaded its file"
+        return self.upload.await_args.kwargs["content"].decode()
+
+
 class TestFirstTurnWarmContextIsEphemeral:
     """The first turn's warm context, driven through the REAL generator.
 
@@ -2027,58 +2068,103 @@ class TestFirstTurnWarmContextIsEphemeral:
         assert "Alice works on Atlas" not in queries_two[0]
         assert "temporal_context" not in queries_two[0]
 
-    @pytest.mark.asyncio
-    async def test_an_old_session_resumes_without_its_stored_block(self):
-        """A session whose first turn ran before this change, and that the
-        backfill has not reached: its stored first message and the first
-        entry of its uploaded CLI session file both hold the block, and the
-        user has since forgotten a fact in it. Turn 2 restores the file
-        through the real ``download_transcript``: the fact is in neither what
-        the CLI resumes from nor the query, and the file turn 2 uploads no
-        longer holds it."""
-        old_first = legacy_first_message(_nova_block(forgotten=False))
-        storage = bucket_storage(
-            session_file(("user", BUDGET_BLOCK + old_first), ("assistant", "done"))
-        )
-        resumed_from: list[str] = []
-
-        def _restore(cli_restore, *_args, **_kwargs):
-            content = cli_restore.content.decode()
-            resumed_from.append(content)
-            return content, True
-
-        queries: list[str] = []
-
-        def _read_back(*_args, **_kwargs) -> bytes:
-            """The CLI's file after the turn: the session it resumed from,
-            plus the query it was sent."""
-            return self._cli_file(queries, prior=resumed_from[-1].encode())()
-
-        upload = AsyncMock()
+    async def _on_old_session(
+        self, stored: bytes, *, first: str = _OLD_FIRST, fail_first: bool = False
+    ) -> _OldSessionTurn:
+        """Turn 2 of an old session whose stored first message is ``first``,
+        restoring the uploaded file ``stored`` through the real
+        ``download_transcript``."""
+        turn = _OldSessionTurn()
         await self._run(
-            self._second_turn(old_first, "what do you know about Nova now"),
-            TestFollowUpWarmContextCallSite._clients(queries),
+            self._second_turn(first, "what do you know about Nova now"),
+            TestFollowUpWarmContextCallSite._clients(
+                turn.queries, fail_first=fail_first
+            ),
             first_block=None,
             refresh=self._no_refresh,
             extra=[
                 (f"{_SVC}.download_transcript", dict(new=download_transcript)),
                 (
                     "backend.copilot.transcript.get_workspace_storage",
-                    dict(new=AsyncMock(return_value=storage)),
+                    dict(new=AsyncMock(return_value=bucket_storage(stored))),
                 ),
-                (f"{_SVC}.process_cli_restore", dict(new=_restore)),
-                (f"{_SVC}.read_cli_session_from_disk", dict(new=_read_back)),
-                (f"{_SVC}.upload_transcript", dict(new=upload)),
+                (f"{_SVC}.process_cli_restore", dict(new=turn.restore)),
+                (f"{_SVC}.read_cli_session_from_disk", dict(new=turn.read_back)),
+                (f"{_SVC}.upload_transcript", dict(new=turn.upload)),
             ],
         )
+        return turn
 
-        assert len(resumed_from) == 1 and len(queries) == 1
-        assert "what is Alice working on" in resumed_from[0]
-        assert "memory_context" not in resumed_from[0]
-        assert upload.await_args is not None
-        uploaded = upload.await_args.kwargs["content"].decode()
-        for text in (resumed_from[0], queries[0], uploaded):
+    @pytest.mark.asyncio
+    async def test_an_old_session_resumes_without_its_stored_block(self):
+        """A session whose first turn ran before this change, and that the
+        backfill has not reached: its stored first message and the first
+        entry of its uploaded CLI session file both hold the block, and the
+        user has since forgotten a fact in it. Turn 2 resumes from the file
+        without the block: the fact is in neither what the CLI resumes from
+        nor the query, and the file turn 2 uploads no longer holds it."""
+        turn = await self._on_old_session(
+            session_file(("user", BUDGET_BLOCK + _OLD_FIRST), ("assistant", "done"))
+        )
+
+        assert len(turn.resumed_from) == 1 and len(turn.queries) == 1
+        assert "what is Alice working on" in turn.resumed_from[0]
+        assert "memory_context" not in turn.resumed_from[0]
+        for text in (turn.resumed_from[0], turn.queries[0], turn.uploaded()):
             assert "violet-913" not in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "shape", [folded_query, history_query], ids=["pending-folded", "history"]
+    )
+    async def test_an_old_file_it_cannot_clean_is_not_resumed(self, shape):
+        """The old file holds the block where it cannot be stripped: behind a
+        pending message folded in front, or in a history rebuilt from the
+        database. Turn 2 does not resume from it; it rebuilds its history
+        from the database, reading the first message without the block, and
+        its upload replaces the file."""
+        turn = await self._on_old_session(
+            session_file(("user", shape(_OLD_FIRST)), ("assistant", "done"))
+        )
+
+        assert turn.resumed_from == [] and len(turn.queries) == 1
+        assert "<conversation_history>" in turn.queries[0]
+        assert "what is Alice working on" in turn.queries[0]
+        for text in (turn.queries[0], turn.uploaded()):
+            assert "violet-913" not in text
+
+    @pytest.mark.asyncio
+    async def test_a_paste_in_an_old_file_is_resumed_as_it_is(self):
+        """A later message holding a copy of the block, pasted by the user,
+        is theirs: the file is resumed from and the paste kept."""
+        turn = await self._on_old_session(
+            session_file(
+                ("user", "hello"),
+                ("assistant", "hi"),
+                ("user", _OLD_FIRST),
+                ("assistant", "noted"),
+            ),
+            first="hello",
+        )
+
+        assert len(turn.resumed_from) == 1
+        assert "violet-913" in turn.resumed_from[0]
+
+    @pytest.mark.asyncio
+    async def test_an_overflow_retry_rebuilds_without_the_stored_block(self):
+        """Prompt too long on turn 2 of an old session: the retry drops the
+        resumed file and rebuilds from the database, reading the first
+        message without the block the backfill has not removed yet."""
+        turn = await self._on_old_session(
+            session_file(("user", BUDGET_BLOCK + _OLD_FIRST), ("assistant", "done")),
+            fail_first=True,
+        )
+
+        assert len(turn.queries) == 2
+        assert "<conversation_history>" in turn.queries[1]
+        assert "what is Alice working on" in turn.queries[1]
+        for query in turn.queries:
+            assert "violet-913" not in query
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -2143,6 +2229,37 @@ class TestFirstTurnWarmContextIsEphemeral:
         assert "Bob leads Atlas" in queries[1]
         assert "Alice works on Atlas" not in queries[1]
         assert len(INJECTED_MEMORY_BLOCK_RE.findall(queries[1])) == 1
+
+
+class TestHistoryRebuiltFromTheDatabase:
+    """The SDK's rebuilds of history from stored messages read the session's
+    first message without the block an older session stored in it, before
+    anything (the summarizer included) reads it."""
+
+    @staticmethod
+    def _old_session() -> ChatSession:
+        return TestFirstTurnWarmContextIsEphemeral._second_turn(_OLD_FIRST, "now?")
+
+    @pytest.mark.asyncio
+    async def test_the_query_rebuilt_without_resume(self):
+        query, _ = await _build_query_message(
+            "now?", self._old_session(), False, 0, "test-session-id"
+        )
+
+        assert "<conversation_history>" in query
+        assert "what is Alice working on" in query
+        assert "violet-913" not in query
+
+    @pytest.mark.asyncio
+    async def test_the_transcript_seeded_for_the_next_turn(self):
+        session = self._old_session()
+
+        seeded, _, _ = await _seed_transcript(
+            session, TranscriptBuilder(), False, 0, "[test]", len(session.messages)
+        )
+
+        assert "what is Alice working on" in seeded
+        assert "violet-913" not in seeded
 
 
 class TestStreamChatCompletionRetryIntegration:

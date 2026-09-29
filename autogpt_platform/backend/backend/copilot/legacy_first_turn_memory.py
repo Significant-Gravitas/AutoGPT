@@ -1,136 +1,154 @@
-"""The first-turn memory block older sessions still hold, and how to find it.
+"""The first-turn memory block older sessions still hold: how to prove the
+platform wrote it, and how to read a stored message without it.
 
 Until warm context became query-only (``graphiti/context_marker.py``), the SDK
 engine wrote a session's first-turn Graphiti warm context into the session's
-first user message (``inject_user_context(warm_ctx=...)``, since #12790),
-right after the skill index::
+first user message (``inject_user_context(warm_ctx=...)``, from #12790),
+wrapped in ``<memory_context>`` and followed by a blank line, after the skill
+index when there was one::
 
     <memory_context>
     <temporal_context>
     <FACTS>
-      - ...
+      - Alice works on Atlas (2025-06-01 00:00:00+00:00 — present)
     </FACTS>
 
     <RECENT_EPISODES>
-      - ...
+      - [2025-06-01 00:00:00+00:00] what is Alice working on
     </RECENT_EPISODES>
     </temporal_context>
     </memory_context>
 
-followed by a blank line and the rest of the message. Two copies of it are
-still read back:
+The renderer that wrote it, ``graphiti/context._format_context`` with the
+helpers of ``graphiti/_format.py``, did not change on master from #12720 to
+this change: ``  - {fact} ({valid_from} — {valid_to})`` for a fact and
+``  - [{created_at}] {body}`` for an episode, the times ``str()`` of a
+datetime (``unknown`` and ``present`` when unset), the sections in that order
+with at least one line each. This stack's recall policy
+(``graphiti/recall_render.py``) writes ``(valid: {from} — {to})`` or how and
+when the fact was retired instead; a block it wrote is matched as well.
 
-- the stored first message, which history rebuilt from the database and the
-  dream read: ``first_turn_memory_backfill.py`` strips it there, once;
-- the first user entry of the CLI session file uploaded for ``--resume``,
-  which recorded the first turn's query as sent: ``download_transcript``
-  strips it there on every restore (``strip_first_turn_memory_from_session``),
-  for both engines, so the session's next upload no longer carries it.
+``strip_first_turn_memory`` removes the block only where the platform put it,
+and only when every part of it is what that renderer writes:
 
-``strip_first_turn_memory`` is the one matcher for both. It removes exactly
-the block the platform wrote, where it wrote it, and nothing else:
+- at the start of the text or right after the platform's ``<available_skills>``
+  block; in a CLI session entry also after the query-only blocks the engine
+  put in front of the stored message (``<skills_update>``,
+  ``<builder_context>``, ``<budget_status>``), which a stored message never
+  holds;
+- the wrapper and the sections exactly as rendered, every fact line ending in
+  a validity or retirement stamp, every episode line starting with a
+  bracketed ``created_at``;
+- nothing after the block holding a ``<memory_context>`` tag: the inbound
+  sanitizer removes those from a user's words, so one there means the text is
+  not the platform's own, or that stored memory forged an early close.
 
-- only at the start of the stored message, or right after the platform's
-  ``<available_skills>`` block; in a CLI session entry, also after the
-  query-only blocks the engine put in front of the stored message
-  (``<skills_update>``, ``<builder_context>``, ``<budget_status>``), which a
-  stored message never holds;
-- only the exact structure ``graphiti/context.py`` rendered: both wrapping
-  tags on lines of their own, ``<FACTS>`` and/or ``<RECENT_EPISODES>`` in that
-  order, each opening on a ``  - `` item, and the blank line after the block;
-- only when nothing after the block holds a ``<memory_context>`` or
-  ``</memory_context>`` tag. ``inject_user_context`` stripped every such tag
-  from the user's words before it wrote the message, so one there means the
-  text is not the platform's own (a first turn that never reached injection
-  keeps the user's raw text), or that stored memory forged an early close.
+Text that fails any of these is left as it is, however much it looks like the
+block: a raw first message that never reached the sanitizer, or an imported
+row, can hold a ``<memory_context>`` block a user wrote.
 
-It reads the text once, front to back, and never backtracks: each leading
-block ends at the first closing tag of its own name, and the memory block at
-the first ``</temporal_context>`` / ``</memory_context>`` pair. A user can
-type ``<budget_status>`` and the section tags, and a pattern that tried every
-way to split such text would take exponential time on a few kilobytes of it;
-this takes linear time, and leaves text that is not unambiguously the
-platform's alone.
+It reads the text once and never backtracks: a leading block ends at the first
+closing tag of its name, the memory block at the first ``</temporal_context>``
+and ``</memory_context>`` pair. The sanitizer leaves ``<budget_status>`` in a
+user's words, and a pattern that tried every way to split such text into
+blocks took time exponential in their number.
 
-In a CLI session file only the first user entry is looked at, the first
-turn's query: a copy the user pasted into a later message is theirs.
-
-The tag names are literals: they are the ones the old code wrote, and must not
-follow a later rename.
+``without_stored_first_turn_memory`` applies it wherever a stored first
+message becomes model input. The tag names are literals: they are the ones
+the old code wrote, and must not follow a later rename.
 """
 
-import json
 import re
 
-from .cli_session_entry import is_user_entry, rewrite_user_entry
+from .model import ChatMessage
 
+MEMORY_OPEN = "<memory_context>\n<temporal_context>\n"
+MEMORY_CLOSE = "\n</temporal_context>\n</memory_context>\n\n"
 _QUERY_TAGS = ("skills_update", "builder_context", "budget_status")
 _SKILLS_TAG = "available_skills"
-_MEMORY_OPEN = "<memory_context>\n<temporal_context>\n"
-_MEMORY_CLOSE = "\n</temporal_context>\n</memory_context>\n\n"
-_FACTS_OPEN = "<FACTS>\n  - "
-_FACTS_CLOSE = "\n</FACTS>"
-_EPISODES_OPEN = "<RECENT_EPISODES>\n  - "
-_EPISODES_CLOSE = "\n</RECENT_EPISODES>"
-_BETWEEN_SECTIONS = f"{_FACTS_CLOSE}\n\n{_EPISODES_OPEN}"
+_FACTS = ("<FACTS>\n", "\n</FACTS>")
+_EPISODES = ("<RECENT_EPISODES>\n", "\n</RECENT_EPISODES>")
+_BETWEEN_SECTIONS = f"{_FACTS[1]}\n\n{_EPISODES[0]}"
+_ITEM = "  - "
+# ``str()`` of a datetime: microseconds when set, the offset when aware.
+_DATETIME = (
+    r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{6})?"
+    r"(?:[+-]\d{2}:\d{2}(?::\d{2}(?:\.\d{6})?)?)?"
+)
+# What closes a fact line: when it holds (``valid: `` since the recall
+# policy), or how and when it was retired.
+_FACT_STAMP_RE = re.compile(
+    rf"(?:valid: )?(?:{_DATETIME}|unknown) — (?:{_DATETIME}|present)"
+    rf"|(?:superseded|contradicted|retracted|expired)"
+    rf" (?:{_DATETIME}|at an unknown time)"
+)
+_EPISODE_STAMP_RE = re.compile(rf"\[{_DATETIME}\] ")
 # The tags the inbound sanitizer removes from a user's words
 # (``service.strip_server_injected_tags``).
 _MEMORY_TAG_RE = re.compile(r"</?memory_context>", re.IGNORECASE)
-_PROBE = b"<memory_context>"
 
 
 def strip_first_turn_memory(
     content: str, *, after_query_blocks: bool = False
 ) -> str | None:
     """``content`` without the platform's first-turn memory block, or ``None``
-    when it does not hold exactly that block where the platform wrote it (see
-    the module docstring).
+    when it does not hold a block the renderer provably wrote, where the
+    platform put it (see the module docstring).
 
     ``after_query_blocks`` is for a CLI session entry, which may open with the
     engine's query-only blocks; a stored message never does, so the backfill
-    leaves it False.
+    and the history readers leave it False.
     """
-    start = _after_query_blocks(content) if after_query_blocks else 0
-    skills_end = _block_end(content, start, _SKILLS_TAG)
-    block_start = start if skills_end is None else skills_end
-    if not content.startswith(_MEMORY_OPEN, block_start):
+    block_start = memory_block_start(content, after_query_blocks=after_query_blocks)
+    if not content.startswith(MEMORY_OPEN, block_start):
         return None
-    body_start = block_start + len(_MEMORY_OPEN)
-    body_end = content.find(_MEMORY_CLOSE, body_start)
+    body_start = block_start + len(MEMORY_OPEN)
+    body_end = content.find(MEMORY_CLOSE, body_start)
     if body_end == -1 or not _is_rendered(content[body_start:body_end]):
         return None
-    rest = content[body_end + len(_MEMORY_CLOSE) :]
+    rest = content[body_end + len(MEMORY_CLOSE) :]
     if _MEMORY_TAG_RE.search(rest):
         return None
     return content[:block_start] + rest
 
 
-def strip_first_turn_memory_from_session(content: bytes) -> bytes:
-    """``content``, a CLI session file, without the first-turn block in its
-    first user entry.
+def without_stored_first_turn_memory(
+    messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    """``messages`` as a model may read them: the session's first message
+    (sequence 0, a user row) without the block the platform stored in it when
+    it provably holds one, every other message as it is. The list itself comes
+    back when nothing changes.
 
-    Every other line, and the whole file when that entry does not hold
-    exactly the block, comes back byte for byte. Lines are split on bytes, as
-    the CLI wrote them: a string split would also break a line at a U+2028
-    inside a JSON string, and could take a later entry for the first.
+    Model input never reads the old block, whatever the storage holds: a row
+    the backfill has not reached, or a stale cached session.
     """
-    if _PROBE not in content:
-        return content
-    lines = content.splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        entry = _parse(line)
-        if not is_user_entry(entry):
+    for index, message in enumerate(messages):
+        if message.sequence != 0:
             continue
-        rewritten = rewrite_user_entry(entry, _strip_query_text)
-        if rewritten is None:
-            return content
-        end = b"\n" if line.endswith(b"\n") else b""
-        lines[index] = json.dumps(rewritten, ensure_ascii=False).encode() + end
-        return b"".join(lines)
-    return content
+        stripped = (
+            strip_first_turn_memory(message.content)
+            if message.role == "user" and message.content
+            else None
+        )
+        if stripped is None:
+            return messages
+        readable = list(messages)
+        readable[index] = message.model_copy(update={"content": stripped})
+        return readable
+    return messages
 
 
-def _after_query_blocks(content: str) -> int:
+def memory_block_start(content: str, *, after_query_blocks: bool = False) -> int:
+    """Where the platform put the block in ``content``: past the query-only
+    blocks (with ``after_query_blocks``) and past the ``<available_skills>``
+    block."""
+    start = after_query_blocks_end(content) if after_query_blocks else 0
+    skills_end = block_end(content, start, _SKILLS_TAG)
+    return start if skills_end is None else skills_end
+
+
+def after_query_blocks_end(content: str) -> int:
     """Where ``content`` goes on past the query-only blocks it opens with."""
     position = 0
     while (end := _query_block_end(content, position)) is not None:
@@ -138,12 +156,7 @@ def _after_query_blocks(content: str) -> int:
     return position
 
 
-def _query_block_end(content: str, position: int) -> int | None:
-    ends = (_block_end(content, position, tag) for tag in _QUERY_TAGS)
-    return next((end for end in ends if end is not None), None)
-
-
-def _block_end(content: str, position: int, tag: str) -> int | None:
+def block_end(content: str, position: int, tag: str) -> int | None:
     """Where the ``<tag>`` block opening at ``position`` ends, its blank line
     included, or None when none opens there. It ends at the first closing
     tag of its name."""
@@ -154,28 +167,65 @@ def _block_end(content: str, position: int, tag: str) -> int | None:
     return None if end == -1 else end + len(closing)
 
 
+def _query_block_end(content: str, position: int) -> int | None:
+    ends = (block_end(content, position, tag) for tag in _QUERY_TAGS)
+    return next((end for end in ends if end is not None), None)
+
+
 def _is_rendered(body: str) -> bool:
     """Whether ``body`` is ``<FACTS>``, ``<RECENT_EPISODES>`` or both, in that
-    order, each opening on a ``  - `` item, as ``graphiti/context.py``
-    rendered them."""
-    if body.startswith(_EPISODES_OPEN):
-        return body.endswith(_EPISODES_CLOSE)
-    if not body.startswith(_FACTS_OPEN):
+    order, as the renderer wrote them."""
+    if body.startswith(_EPISODES[0]):
+        return _are_episodes(_lines(body, _EPISODES))
+    if not body.startswith(_FACTS[0]):
         return False
-    if body.endswith(_FACTS_CLOSE):
+    if body.endswith(_FACTS[1]) and _are_facts(_lines(body, _FACTS)):
         return True
-    between = body.find(_BETWEEN_SECTIONS, len(_FACTS_OPEN))
-    return between != -1 and body.endswith(_EPISODES_CLOSE)
+    between = body.find(_BETWEEN_SECTIONS)
+    if between == -1:
+        return False
+    facts = body[: between + len(_FACTS[1])]
+    episodes = body[between + len(_BETWEEN_SECTIONS) - len(_EPISODES[0]) :]
+    return _are_facts(_lines(facts, _FACTS)) and _are_episodes(
+        _lines(episodes, _EPISODES)
+    )
 
 
-def _strip_query_text(text: str) -> str:
-    stripped = strip_first_turn_memory(text, after_query_blocks=True)
-    return text if stripped is None else stripped
-
-
-def _parse(line: bytes) -> object:
-    """A line's JSON value, or None when it is not JSON (or not UTF-8)."""
-    try:
-        return json.loads(line)
-    except ValueError:
+def _lines(section: str, tags: tuple[str, str]) -> str | None:
+    """What is between a section's tags, or None when it is not wrapped in
+    them."""
+    opening, closing = tags
+    if len(section) < len(opening) + len(closing):
         return None
+    if not (section.startswith(opening) and section.endswith(closing)):
+        return None
+    return section[len(opening) : -len(closing)]
+
+
+def _are_facts(lines: str | None) -> bool:
+    items = _items(lines)
+    return bool(items) and all(_ends_with_fact_stamp(item) for item in items)
+
+
+def _are_episodes(lines: str | None) -> bool:
+    items = _items(lines)
+    return bool(items) and all(_EPISODE_STAMP_RE.match(item) for item in items)
+
+
+def _items(lines: str | None) -> list[str]:
+    """A section's ``  - `` items without the marker; none when the section
+    does not open on one."""
+    if lines is None or not lines.startswith(_ITEM):
+        return []
+    return lines[len(_ITEM) :].split(f"\n{_ITEM}")
+
+
+def _ends_with_fact_stamp(item: str) -> bool:
+    """Whether ``item`` ends with `` (stamp)``: when the fact holds, or how
+    it was retired."""
+    opening = item.rfind(" (")
+    return (
+        opening != -1
+        and item.endswith(")")
+        and _FACT_STAMP_RE.fullmatch(item, opening + 2, len(item) - 1) is not None
+    )

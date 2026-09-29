@@ -3,31 +3,33 @@
 Until warm context became query-only (``graphiti/context_marker.py``), the SDK
 engine wrote a session's first-turn Graphiti warm context into the session's
 first user message, wrapped in ``<memory_context>`` (see
-``legacy_first_turn_memory.py`` for the exact structure). Every later turn read
-it back wherever history is rebuilt from the database (a turn without
-``--resume``, a context-overflow retry, a baseline turn, the transcript seeded
-from it), and so did the dream's recent-session bodies: a fact the user forgot
-mid-session stayed in front of the model. This script removes that block from
-the rows that still hold it. The CLI session files uploaded for those sessions
-hold a copy too; ``download_transcript`` removes that one on every restore.
+``legacy_first_turn_memory.py`` for the renderer's format). Every reader that
+turns that message into model input now reads it without the block
+(``without_stored_first_turn_memory``: history rebuilt from the database on
+both engines, the dream's session bodies), whatever the storage holds, and a
+restore strips or drops the CLI session file's copies
+(``legacy_session_file.py``). This script is the storage cleanup: it removes
+the block from the rows that still hold it, so the database stops holding the
+forgotten text at all.
 
-It strips exactly what the platform wrote, where it wrote it, with the matcher
-the restore uses (``legacy_first_turn_memory.strip_first_turn_memory``): only a
+It strips a block only when it proves the platform wrote it, with the matcher
+the readers use (``legacy_first_turn_memory.strip_first_turn_memory``): only a
 session's first message, only a ``user`` row (``inject_user_context`` wrote no
-other), only the exact structure at the start of the message or right after
-the platform's ``<available_skills>`` block, and only when nothing after it
-holds a ``<memory_context>`` tag. A row that holds the tag but not exactly that
-block is counted ``left`` and not touched. A ``<memory_context>`` tag anywhere
-else is left alone. The chat view has always hidden a leading
-``<memory_context>`` block on any user message
-(``strip_injected_context_for_display``), and still does.
+other), only at the start of the message or right after the platform's
+``<available_skills>`` block, only when every fact line carries the renderer's
+validity or retirement stamp and every episode line its ``[created_at]``, and
+only when nothing after the block holds a ``<memory_context>`` tag. A row that
+holds the tag but not a block so proved is counted ``left`` and not touched: a
+raw first message that never reached the sanitizer, or an imported row, can
+hold a block a user wrote. A ``<memory_context>`` tag anywhere else is left
+alone. The chat view has always hidden a leading ``<memory_context>`` block on
+any user message (``strip_injected_context_for_display``), and still does.
 
 A row is written only while its session is idle, and only if it still holds
 what was read. The session's cached copy in Redis (``copilot/model.py``) is
-evicted right after the write and again at the end of the run: the next turn
-would otherwise load the old first message from the cache, and a session in
-use keeps refreshing that copy. A session with a turn queued or running, or a
-row that changed since it was read, is skipped with nothing written and
+evicted right after the write and again at the end of the run, so the cache
+stops holding the old message too. A session with a turn queued or running,
+or a row that changed since it was read, is skipped with nothing written and
 counted busy; a write that raises, or an eviction that still fails at the end
 of the run, is counted failed. Either makes the script exit 1: run it again.
 Every step is idempotent, so a re-run only picks up what is left.
@@ -35,11 +37,12 @@ Every step is idempotent, so a re-run only picks up what is left.
 What it does not reach:
 
 - Text derived from the block before it was removed: compaction summaries,
-  the assistant's own replies and tool results in the session, Langfuse
-  traces, and a copy of the first message embedded in a later query's
-  rebuilt ``<conversation_history>`` and recorded in a CLI session file.
+  the assistant's own replies and tool results in the session, and Langfuse
+  traces.
 - A request that loaded an idle session before its row was written and saves
-  it after the run's final eviction: it caches the old first message again.
+  it after the run's final eviction: it caches the old first message again,
+  until the entry expires or is evicted. Model input still reads it without
+  the block.
 
 Dry run by default: it only counts. Pass ``--apply`` to write.
 
@@ -72,15 +75,15 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BATCH_SIZE = 200
 
-# What the scan looks for before matching exactly.
+# What the scan looks for before the matcher proves the block.
 _MEMORY_OPEN_TAG = "<memory_context>"
 
 
 class BackfillCounts(BaseModel):
     """What a run found. ``scanned`` counts the first messages holding a
     ``<memory_context>`` tag, ``stripped`` those whose block was removed (in a
-    dry run, would be), ``left`` those that do not hold exactly the platform's
-    block; ``busy`` and ``failed`` are what a re-run must pick up."""
+    dry run, would be), ``left`` those that hold no block the platform provably
+    wrote; ``busy`` and ``failed`` are what a re-run must pick up."""
 
     scanned: int = 0
     stripped: int = 0
@@ -122,7 +125,10 @@ async def _handle(
     stripped = strip_first_turn_memory(row.content)
     if stripped is None:
         counts.left += 1
-        logger.info(f"Left message {row.id}: not the platform's first-turn block")
+        logger.info(
+            f"Left message {row.id}: holds no first-turn block the platform"
+            " provably wrote"
+        )
         return
     if not apply:
         counts.stripped += 1
@@ -235,7 +241,7 @@ async def main(args: argparse.Namespace) -> int:
     print(
         f"{verb} the first-turn memory block from {counts.stripped} of "
         f"{counts.scanned} first messages holding {_MEMORY_OPEN_TAG}; "
-        f"left {counts.left} that do not hold exactly the platform's block"
+        f"left {counts.left} that hold no block the platform provably wrote"
     )
     if not (counts.busy or counts.failed):
         return 0

@@ -1,6 +1,6 @@
 """Old first messages and CLI session files for the tests of
-``legacy_first_turn_memory.py``, ``first_turn_memory_backfill.py`` and the
-engines' restores."""
+``legacy_first_turn_memory.py``, ``legacy_session_file.py``,
+``first_turn_memory_backfill.py`` and the engines' restores."""
 
 import json
 from datetime import datetime, timezone
@@ -35,6 +35,34 @@ BUILDER_BLOCK = (
     'edge_count="0"/>\n<nodes>\n- n1: AgentInputBlock\n</nodes>\n'
     "</builder_context>\n\n"
 )
+# The review's counterexample: a body the old renderer could never have
+# written (a fact line with no validity stamp), which an earlier matcher
+# stripped.
+USER_AUTHORED_BLOCK = (
+    "<memory_context>\n<temporal_context>\n<FACTS>\n"
+    "  - user-authored bare fact with no renderer validity suffix\n"
+    "</FACTS>\n</temporal_context>\n</memory_context>\n\n"
+    "keep this request"
+)
+_STAMP = f"{NOW} — present"
+# ``<temporal_context>`` bodies no renderer wrote, each one line or section
+# away from one that did.
+RENDERER_IMPOSSIBLE = {
+    "bare-fact": "<FACTS>\n  - Alice works on Atlas\n</FACTS>",
+    "date-only-stamp": "<FACTS>\n  - Alice works on Atlas (2025-06-01 — present)\n</FACTS>",
+    "words-for-a-time": "<FACTS>\n  - Alice works on Atlas (valid: yesterday — present)\n</FACTS>",
+    "no-such-retirement": f"<FACTS>\n  - Alice works on Atlas (forgotten {NOW})\n</FACTS>",
+    "one-bare-fact-of-two": f"<FACTS>\n  - Alice ({_STAMP})\n  - Bob leads Atlas\n</FACTS>",
+    "bare-episode": "<RECENT_EPISODES>\n  - asked about Atlas\n</RECENT_EPISODES>",
+    "date-only-episode": "<RECENT_EPISODES>\n  - [2025-06-01] asked\n</RECENT_EPISODES>",
+    "episodes-before-facts": (
+        f"<RECENT_EPISODES>\n  - [{NOW}] asked\n</RECENT_EPISODES>\n\n"
+        f"<FACTS>\n  - Alice ({_STAMP})\n</FACTS>"
+    ),
+    "no-item-marker": f"<FACTS>\nAlice works on Atlas ({_STAMP})\n</FACTS>",
+    "empty-section": "<FACTS>\n</FACTS>",
+    "unknown-section": f"<FACTS>\n  - Alice ({_STAMP})\n</FACTS>\n\n<NOTES>\n  - x\n</NOTES>",
+}
 
 
 def edge(fact: str) -> EntityEdge:
@@ -64,12 +92,26 @@ def episode(content: str) -> EpisodicNode:
 
 
 def warm(facts: tuple[str, ...] = (), episodes: tuple[str, ...] = ()) -> str:
-    """A warm-context block as graphiti renders it."""
+    """A warm-context block as this stack's renderer writes it."""
     block = _format_context(
         [edge(fact) for fact in facts], [episode(body) for body in episodes]
     )
     assert block is not None
     return block
+
+
+def master_warm(facts: tuple[str, ...] = (), episodes: tuple[str, ...] = ()) -> str:
+    """A warm-context block as production wrote it: master's
+    ``graphiti/context._format_context`` from #12720 on, with no ``valid:``
+    label and no tag neutralising."""
+    sections = []
+    if facts:
+        lines = "\n".join(f"  - {fact} ({NOW} — present)" for fact in facts)
+        sections.append(f"<FACTS>\n{lines}\n</FACTS>")
+    if episodes:
+        lines = "\n".join(f"  - [{NOW}] {body}" for body in episodes)
+        sections.append(f"<RECENT_EPISODES>\n{lines}\n</RECENT_EPISODES>")
+    return "<temporal_context>\n" + "\n\n".join(sections) + "\n</temporal_context>"
 
 
 def legacy_first_message(
@@ -78,6 +120,21 @@ def legacy_first_message(
     """A first message as ``inject_user_context(warm_ctx=...)`` stored it."""
     prefix = SKILLS_BLOCK if skills else ""
     return f"{prefix}<memory_context>\n{warm_block}\n</memory_context>\n\n{rest}"
+
+
+def folded_query(first_message: str) -> str:
+    """The first turn's query when a message the user sent meanwhile was
+    folded in front of the stored first message."""
+    return BUDGET_BLOCK + "one more thing while you start\n\n" + first_message
+
+
+def history_query(first_message: str, current: str = "and now?") -> str:
+    """A query rebuilt from the database, as a turn without ``--resume`` sent
+    it: its history opens with the stored first message."""
+    return (
+        f"<conversation_history>\nUser: {first_message}\nYou responded: done\n"
+        f"</conversation_history>\n\nNow, the user says:\n{BUDGET_BLOCK}{current}"
+    )
 
 
 def built_to_backtrack(pairs: int) -> str:

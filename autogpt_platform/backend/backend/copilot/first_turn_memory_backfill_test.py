@@ -22,9 +22,12 @@ from backend.copilot.first_turn_memory_backfill import BackfillCounts, backfill,
 from backend.copilot.legacy_first_turn_memory_test_data import (
     ALICE,
     BUDGET_BLOCK,
+    RENDERER_IMPOSSIBLE,
     REST,
     SKILLS_BLOCK,
+    USER_AUTHORED_BLOCK,
     legacy_first_message,
+    master_warm,
     warm,
 )
 
@@ -195,13 +198,16 @@ async def test_a_dry_run_counts_and_writes_nothing(owner, evict):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_strips_the_first_message_and_no_other_row(owner, evict):
-    """The first message loses the platform's block. A later user message
-    that begins with an exact copy of it (the user pasted it; nothing ever
-    rewrote that row) and the assistant's reply are untouched, and the
-    session's cached copy is evicted."""
+@pytest.mark.parametrize("render", [master_warm, warm], ids=["master", "stack"])
+async def test_strips_the_first_message_and_no_other_row(owner, evict, render):
+    """The first message loses the platform's block, as production's
+    renderer or this stack's wrote it. A later user message that begins with
+    an exact copy of it (the user pasted it; nothing ever rewrote that row)
+    and the assistant's reply are untouched, and the session's cached copy
+    is evicted."""
+    first = legacy_first_message(render(("Alice works on Atlas",)))
     pasted = legacy_first_message(ALICE, rest="is this what you saw?")
-    session_id = await _session(owner, legacy_first_message(ALICE), "done", pasted)
+    session_id = await _session(owner, first, "done", pasted)
 
     counts = await backfill(apply=True, session_id=session_id)
 
@@ -220,6 +226,24 @@ async def test_leaves_first_messages_the_platform_did_not_write(owner, evict):
     forged = legacy_first_message(ALICE, rest="about </memory_context> tags")
     queried = BUDGET_BLOCK + legacy_first_message(ALICE)
     contents = (typed, forged, queried)
+    sessions = [await _session(owner, content) for content in contents]
+
+    for session_id, content in zip(sessions, contents):
+        counts = await backfill(apply=True, session_id=session_id)
+        assert counts == BackfillCounts(scanned=1, left=1)
+        assert await _contents(session_id) == [content]
+    evict.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_leaves_every_body_no_renderer_wrote(owner, evict):
+    """The review's counterexample, which an ``--apply`` run once cut down to
+    its last line, and every other body a renderer could not have written:
+    the row is not provably the platform's, so it is left as it is."""
+    contents = [USER_AUTHORED_BLOCK] + [
+        legacy_first_message(f"<temporal_context>\n{body}\n</temporal_context>")
+        for body in RENDERER_IMPOSSIBLE.values()
+    ]
     sessions = [await _session(owner, content) for content in contents]
 
     for session_id, content in zip(sessions, contents):

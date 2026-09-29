@@ -4,12 +4,13 @@ The CLI keeps a session as JSONL, one entry per line, and records every query
 the engine sends as a ``{"type": "user", ...}`` entry whose ``message.content``
 is a string or a list of content blocks. Two scrubs rewrite the text of such
 entries: the upload scrub in ``sdk/service.py``, which removes the marked
-warm-context block every turn now carries, and the restore scrub in
-``legacy_first_turn_memory.py``, which removes the first-turn block older
-sessions stored. Both go through ``rewrite_user_entry``, so an entry either
-comes back rewritten or, when nothing in it changed or it is not a user entry,
-not at all: the caller then keeps the original line byte for byte, and no
-untouched entry is ever reformatted.
+warm-context block every turn now carries, and the restore in
+``legacy_session_file.py``, which removes the first-turn block older sessions
+stored. Both go through ``rewrite_user_entry``, so an entry either comes back
+rewritten or, when nothing in it changed or it is not a user entry, not at
+all: the caller then keeps the original line byte for byte, and no untouched
+entry is ever reformatted. The restore reads entries with
+``user_entry_texts``.
 """
 
 from collections.abc import Callable
@@ -34,6 +35,17 @@ def rewrite_user_entry(entry: object, rewrite: TextRewrite) -> dict[str, object]
     if message is None:
         return None
     return parsed.model_copy(update={"message": message}).model_dump()
+
+
+def user_entry_texts(entry: object) -> list[str]:
+    """The texts of *entry*'s message: its bare string or its text blocks.
+
+    Empty when *entry* is not a CLI user entry of a shape the models read.
+    """
+    try:
+        return CLIUserEntry.model_validate(entry).message.texts()
+    except ValidationError:
+        return []
 
 
 def is_user_entry(entry: object) -> bool:
@@ -70,12 +82,18 @@ class CLITextBlock(BaseModel):
             return None
         return self.model_copy(update={"text": text})
 
+    def texts(self) -> list[str]:
+        return [self.text]
+
 
 class CLIOpaqueBlock(RootModel[object]):
     """Any other content block (image, tool_result, …), passed through as-is."""
 
     def rewritten(self, rewrite: TextRewrite) -> "CLIOpaqueBlock | None":
         return self
+
+    def texts(self) -> list[str]:
+        return []
 
 
 # Left to right, so a well-formed text block never falls through to the
@@ -102,6 +120,9 @@ class CLIUserTextMessage(BaseModel):
             return None
         return self.model_copy(update={"content": content})
 
+    def texts(self) -> list[str]:
+        return [self.content]
+
 
 class CLIUserBlocksMessage(BaseModel):
     """A user message whose content is a list of content blocks."""
@@ -123,6 +144,9 @@ class CLIUserBlocksMessage(BaseModel):
             return None
         message = self.model_copy(update={"content": kept})
         return None if message == self else message
+
+    def texts(self) -> list[str]:
+        return [text for block in self.content for text in block.texts()]
 
 
 class CLIUserEntry(BaseModel):

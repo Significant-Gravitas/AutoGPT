@@ -57,6 +57,7 @@ from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.context_marker import append_injected_memory_block
 from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
@@ -1595,8 +1596,12 @@ async def _load_prior_transcript(
 
     if restore is None:
         logger.debug("[Baseline] No CLI session available — will upload fresh")
-        # Nothing in GCS to protect; allow upload so the first baseline turn
-        # writes the initial transcript snapshot.
+        # Nothing in GCS worth keeping (no file, or one the restore would
+        # not resume from): allow upload, with the session's history so far
+        # in the builder so the upload covers every turn, not just this one.
+        _append_gap_to_builder(
+            _history_before_turn(session_messages), transcript_builder
+        )
         return True, None
 
     content_bytes = restore.content
@@ -1655,6 +1660,14 @@ async def _load_prior_transcript(
         mode=restore.mode,
     )
     return True, str_restore
+
+
+def _history_before_turn(session_messages: list[ChatMessage]) -> list[ChatMessage]:
+    """The session's messages before the current turn, as the model reads
+    them (``extract_context_messages`` without a transcript)."""
+    return without_stored_first_turn_memory(
+        [m for m in session_messages if m.role != "reasoning"][:-1]
+    )
 
 
 async def _upload_final_transcript(

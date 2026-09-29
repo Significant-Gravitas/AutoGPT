@@ -166,9 +166,9 @@ USER_CONTEXT_TAG = "user_context"
 # block (``graphiti/context_marker.py``), and nothing writes this tag any
 # more. It stays server-only: user-supplied occurrences are stripped before
 # the message reaches the LLM, and the display strip hides it on messages
-# stored before the change (``copilot/first_turn_memory_backfill.py`` removes
-# it from them, and ``download_transcript`` from their CLI session files
-# on restore).
+# stored before the change. Those are read without it wherever they become
+# model input, and cleaned from storage and restored CLI session files
+# (``copilot/legacy_first_turn_memory.py``).
 MEMORY_CONTEXT_TAG = "memory_context"
 
 # Tag name for the environment context block prepended on first turn.

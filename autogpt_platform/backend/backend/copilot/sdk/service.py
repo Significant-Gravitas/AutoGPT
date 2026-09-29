@@ -55,6 +55,7 @@ from backend.copilot.model_router import (
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.cli_session_entry import rewrite_user_entry
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.context_marker import (
     INJECTED_MEMORY_NONCE,
@@ -3392,7 +3393,11 @@ async def _build_query_message(
     # watermark-alignment check trips on a reasoning row (instead of the
     # expected assistant) and the gap injection is skipped, dropping real
     # mid-turn user rows from the next LLM query.
-    prior = [m for m in prior if m.role != "reasoning"]
+    # The first message is read without the memory block an older session
+    # stored in it, before anything (the summarizer included) reads it.
+    prior = without_stored_first_turn_memory(
+        [m for m in prior if m.role != "reasoning"]
+    )
 
     # Every branch below makes at most one ``_compress_messages`` call and then
     # returns, so this is written exactly once per invocation.
@@ -4400,7 +4405,7 @@ async def _seed_transcript(
     if msg_ceiling <= 1:
         return "", transcript_covers_prefix, transcript_msg_count
 
-    _prior = session.messages[: msg_ceiling - 1]
+    _prior = without_stored_first_turn_memory(session.messages[: msg_ceiling - 1])
     _comp, _, _ = await _compress_messages(_prior, _SEED_TARGET_TOKENS)
     if not _comp:
         return "", transcript_covers_prefix, transcript_msg_count
