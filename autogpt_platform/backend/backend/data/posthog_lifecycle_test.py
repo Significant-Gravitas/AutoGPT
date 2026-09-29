@@ -169,13 +169,24 @@ def test_trial_that_ran_out_on_the_clock():
     assert result.subscription_status == "trial_canceled"
 
 
-def test_failed_conversion_is_not_a_paid_subscription():
+@pytest.mark.parametrize("status", ["past_due", "unpaid"])
+def test_a_failed_first_charge_after_the_trial_is_payment_failed(status: str):
+    # Stripe is still retrying, as with a failed renewal; the backend sends
+    # payment_failed for this state too. It was never paid, so no start date.
     result = snapshot(
-        t=trial(status="past_due", ends_at=NOW - timedelta(days=1)),
-        subs=[sub("sub_trial", "past_due", enrollment="trial-1")],
+        t=trial(status=status, ends_at=NOW - timedelta(days=1)),
+        subs=[sub("sub_trial", status, enrollment="trial-1")],
+    )
+    assert result.subscription_status == "payment_failed"
+    assert result.subscription_started_at is None
+
+
+def test_a_trial_canceled_after_its_first_charge_failed_is_trial_canceled():
+    result = snapshot(
+        t=trial(status="canceled", ends_at=NOW - timedelta(days=1)),
+        subs=[sub("sub_trial", "canceled", enrollment="trial-1")],
     )
     assert result.subscription_status == "trial_canceled"
-    assert result.subscription_started_at is None
 
 
 def test_trial_awaiting_its_first_charge_is_still_in_trial():
@@ -410,7 +421,7 @@ def test_enterprise_with_a_live_subscription_keeps_its_start():
 
 def test_failed_renewal_after_an_upgrade_beats_the_older_canceled_sub():
     """The old sub is canceled after the new one starts (stale cleanup), so
-    start and end dates alone would pick the old one."""
+    end dates would pick the old one; the newer start wins."""
     new_start = NOW - timedelta(days=31)
     old = sub(
         "old",
@@ -425,6 +436,24 @@ def test_failed_renewal_after_an_upgrade_beats_the_older_canceled_sub():
         assert result.subscription_status == "payment_failed"
         assert result.subscription_started_at == new_start
         assert result.subscription_ended_at is None
+
+
+def test_a_newer_ended_sub_beats_an_older_failed_one():
+    # A's renewal failed and stayed past_due; the user then took out B, which
+    # ended. B is where they are now.
+    failed = sub("a", "past_due", start=NOW - timedelta(days=90))
+    ended_at = NOW - timedelta(days=2)
+    newer = sub(
+        "b",
+        "canceled",
+        start=NOW - timedelta(days=40),
+        canceled_at=ended_at,
+        ended_at=ended_at,
+    )
+    for order in permutations([failed, newer]):
+        result = snapshot(subs=list(order))
+        assert result.subscription_status == "subscription_ended"
+        assert result.subscription_ended_at == ended_at
 
 
 def test_stripe_native_trial_is_in_trial():

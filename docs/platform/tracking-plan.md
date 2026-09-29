@@ -305,7 +305,7 @@ replaying events.
 
 | Property | Value |
 | --- | --- |
-| `subscription_status` | `signed`, `in_trial`, `trial_canceled`, `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (renewal failed, access lost), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
+| `subscription_status` | `signed`, `in_trial`, `trial_canceled`, `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
 | `signup_at` | When the user row was created. |
 | `trial_started_at` | When the trial started. |
 | `subscription_started_at` | Start of the current or last paid subscription; for a converted trial, the conversion. |

@@ -1551,6 +1551,8 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 async def set_subscription_tier(
     user_id: str,
     tier: SubscriptionTier,
+    *,
+    track_lifecycle: bool = True,
 ) -> None:
     """Set the user's subscription tier."""
     data: UserUpdateInput = {
@@ -1558,7 +1560,8 @@ async def set_subscription_tier(
     }
     await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
-    schedule_posthog_lifecycle_sync(user_id)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(user_id)
 
 
 def invalidate_subscription_caches(user_id: str) -> None:
@@ -2715,14 +2718,18 @@ async def sync_subscription_from_stripe(
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
     covers those users.
     """
-    await _sync_subscription_tier_from_stripe(stripe_subscription)
+    await _sync_subscription_tier_from_stripe(
+        stripe_subscription, track_lifecycle=track_lifecycle
+    )
     if track_lifecycle:
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
         )
 
 
-async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
+async def _sync_subscription_tier_from_stripe(
+    stripe_subscription: dict, *, track_lifecycle: bool = True
+) -> None:
     customer_id = stripe_subscription.get("customer")
     if not customer_id:
         logger.warning(
@@ -2887,7 +2894,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    await set_subscription_tier(user.id, tier, track_lifecycle=track_lifecycle)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None

@@ -32,8 +32,29 @@ async def test_subscription_sync_schedules_by_customer():
     ):
         await sync_subscription_from_stripe(TRIAL_SUB)
 
-    inner.assert_awaited_once_with(TRIAL_SUB)
+    inner.assert_awaited_once_with(TRIAL_SUB, track_lifecycle=True)
     schedule.assert_called_once_with(stripe_customer_id="cus_1")
+
+
+async def test_a_tier_change_honours_track_lifecycle_false():
+    """The tier sweep's opt-out must reach set_subscription_tier too, or a
+    tier change inside the sweep schedules a sync anyway."""
+    update = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(update=update),
+        ),
+        patch("backend.data.credit.invalidate_subscription_caches"),
+        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
+    ):
+        await set_subscription_tier(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
+        schedule.assert_not_called()
+        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+        schedule.assert_called_once_with("user-1")
+    assert update.await_count == 2
 
 
 async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
@@ -65,6 +86,7 @@ async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
 
     assert incomplete is False
     inner.assert_awaited_once()
+    assert inner.await_args.kwargs == {"track_lifecycle": False}
     schedule.assert_not_called()
     assert tiers == {"cus_1": SubscriptionTier.TRIAL}
 

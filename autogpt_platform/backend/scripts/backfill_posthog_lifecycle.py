@@ -99,7 +99,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Include users with no Stripe customer and no trial.",
     )
     parser.add_argument("--batch-size", type=int, default=500)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.batch_size <= 0:
+        parser.error("--batch-size must be greater than zero")
+    return args
 
 
 if __name__ == "__main__":

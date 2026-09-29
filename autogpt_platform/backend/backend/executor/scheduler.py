@@ -940,6 +940,9 @@ def _morning_briefing_crontab(user_id: str) -> str:
     return f"{minute} 9 * * *"
 
 
+_POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
+
+
 def _job_timezone_name(job: JobObj) -> str | None:
     """IANA name of a cron job's trigger timezone, if it has one."""
     if isinstance(job.trigger, CronTrigger):
@@ -2101,19 +2104,7 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # PostHog lifecycle properties: daily, the safety net behind the
-            # webhook/signup hooks, and what moves a trial that ran out on the
-            # clock to its next status. Cron rather than an interval because
-            # replace_existing re-arms an interval job from every restart, so
-            # a 24h interval would never fire on a day with a deploy.
-            self.scheduler.add_job(
-                sync_posthog_lifecycles,
-                CronTrigger.from_crontab("15 4 * * *"),
-                id="sync_posthog_lifecycles",
-                replace_existing=True,
-                max_instances=1,
-                jobstore=Jobstores.EXECUTION.value,
-            )
+            self._register_posthog_lifecycle_sweep()
 
             # Execution Accuracy Monitoring - configurable interval
             self.scheduler.add_job(
@@ -2819,6 +2810,32 @@ class Scheduler(AppService):
     # rebuild — there's no registration-time flag check here.
 
     @expose
+    def _register_posthog_lifecycle_sweep(self) -> None:
+        """Daily PostHog lifecycle sweep: the safety net behind the webhook and
+        signup hooks, and what moves a trial that ran out on the clock on.
+
+        Cron rather than an interval, because replace_existing re-arms an
+        interval from every restart. An unchanged job isn't re-registered
+        either: replacing it recomputes ``next_run_time``, so a restart after
+        04:15 but before the overdue run fires would skip that day's sweep.
+        Left in place, the overdue run fires on start (``coalesce``, no
+        misfire limit).
+        """
+        trigger = CronTrigger.from_crontab("15 4 * * *")
+        existing = self.scheduler.get_job(
+            _POSTHOG_LIFECYCLE_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            sync_posthog_lifecycles,
+            trigger,
+            id=_POSTHOG_LIFECYCLE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
     def add_morning_briefing_schedule(
         self,
         user_id: str,

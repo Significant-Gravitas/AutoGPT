@@ -182,6 +182,8 @@ def compute_lifecycle_snapshot(
     ):
         status = "trial_canceled" if trial.cancel_at_period_end else "in_trial"
         return LifecycleSnapshot(subscription_status=status, **common)
+    if trial and started and _first_charge_failed(trial, all_subs):
+        return LifecycleSnapshot(subscription_status="payment_failed", **common)
     native = _native_trial(all_subs, now)
     if native is not None:
         status = "trial_canceled" if native.cancel_at_period_end else "in_trial"
@@ -281,6 +283,19 @@ def _awaiting_conversion(
     )
 
 
+def _first_charge_failed(
+    trial: TrialState, subscriptions: Sequence[StripeSubscriptionFacts]
+) -> bool:
+    """The trial's first charge failed and Stripe is still retrying it: the
+    same state the backend reports as ``payment_failed``."""
+    return trial.converted_at is None and any(
+        sub.id == trial.subscription_id
+        and sub.trial_enrollment_id == trial.id
+        and sub.status in _PAYMENT_FAILED_STATUSES
+        for sub in subscriptions
+    )
+
+
 def _is_paid(sub: StripeSubscriptionFacts, trial: TrialState | None) -> bool:
     if sub.trial_enrollment_id:
         return (
@@ -334,14 +349,11 @@ def _native_trial(
     )
 
 
-def _ended_order(sub: StripeSubscriptionFacts) -> tuple[bool, datetime]:
-    # A failed renewal hasn't ended, so it is more recent than anything that
-    # has, whatever the start dates say: after an upgrade the old
-    # subscription is canceled after the new one started.
-    return (
-        sub.status in _PAYMENT_FAILED_STATUSES,
-        _utc(sub.ended_at or sub.canceled_at or sub.started_at),
-    )
+def _ended_order(sub: StripeSubscriptionFacts) -> tuple[datetime, bool]:
+    # The most recently started subscription is the one the user is on. Not
+    # the end date: after an upgrade the old subscription is canceled after
+    # the new one started, and a failed renewal has no end date at all.
+    return (_utc(sub.started_at), sub.status in _PAYMENT_FAILED_STATUSES)
 
 
 def _paid_start(
