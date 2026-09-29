@@ -14,6 +14,7 @@ from backend.copilot.legacy_first_turn_memory_test_data import (
     ALICE,
     BUDGET_BLOCK,
     BUILDER_BLOCK,
+    RENDERER_IMPOSSIBLE,
     REST,
     SKILLS_BLOCK,
     USER_AUTHORED_BLOCK,
@@ -43,6 +44,18 @@ def _text(entry: dict) -> str:
 
 _FIRST = legacy_first_message(master_warm(("Alice works on Atlas",)))
 _OLD_QUERY = BUILDER_BLOCK + BUDGET_BLOCK + _FIRST
+# First queries whose block no renderer wrote, where the platform put its
+# own: the review's counterexample, then each body of ``RENDERER_IMPOSSIBLE``
+# behind the engine's query-only blocks, as a CLI session file records them.
+_UNPROVEN = {
+    "review-counterexample": USER_AUTHORED_BLOCK,
+    **{
+        name: BUILDER_BLOCK
+        + BUDGET_BLOCK
+        + legacy_first_message(f"<temporal_context>\n{body}\n</temporal_context>")
+        for name, body in RENDERER_IMPOSSIBLE.items()
+    },
+}
 
 
 class TestTheFirstQuery:
@@ -94,10 +107,11 @@ class TestTheFirstQuery:
         assert first["message"]["content"][0] == image
         assert "memory_context" not in _text(first)
 
-    def test_a_block_the_renderer_never_wrote_is_left_and_resumed(self):
+    @pytest.mark.parametrize("first", _UNPROVEN.values(), ids=_UNPROVEN)
+    def test_a_block_the_renderer_never_wrote_is_left_and_resumed(self, first):
         """Not provably the platform's, so not stripped; where the platform
         would have put it, so not a reason to drop the file either."""
-        typed = session_file(("user", USER_AUTHORED_BLOCK), ("assistant", "ok"))
+        typed = session_file(("user", first), ("assistant", "ok"))
 
         restored = restore_session_file(typed)
 
@@ -271,6 +285,18 @@ class TestDownloadTranscript:
         assert await self._download(old, caplog) is None
         lines = [r for r in caplog.records if "Not resuming" in r.getMessage()]
         assert len(lines) == 1 and lines[0].levelno == logging.WARNING
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("first", _UNPROVEN.values(), ids=_UNPROVEN)
+    async def test_a_block_no_renderer_wrote_restores_byte_for_byte(
+        self, first, caplog
+    ):
+        typed = session_file(("user", first), ("assistant", "ok"))
+
+        download = await self._download(typed, caplog)
+
+        assert download is not None and download.content == typed
+        assert "first-turn memory" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_a_new_session_restores_byte_for_byte(self, caplog):

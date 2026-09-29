@@ -3,27 +3,33 @@
 Until warm context became query-only (``graphiti/context_marker.py``), the SDK
 engine wrote a session's first-turn Graphiti warm context into the session's
 first user message, wrapped in ``<memory_context>`` (see
-``legacy_first_turn_memory.py`` for the renderer's format). Every reader that
-turns that message into model input now reads it without the block
-(``without_stored_first_turn_memory``: history rebuilt from the database on
-both engines, the dream's session bodies), whatever the storage holds, and a
-restore strips or drops the CLI session file's copies
+``legacy_first_turn_memory_body.py`` for what the renderers wrote). Every
+reader that turns that message into model input or a tool's output now reads
+it without the block (``without_stored_first_turn_memory``: history rebuilt
+from the database on both engines, the title, the action supervisor's
+prompt, a sub-session's progress, the dream's session bodies), whatever the
+storage holds, and a restore strips or drops the CLI session file's copies
 (``legacy_session_file.py``). This script is the storage cleanup: it removes
 the block from the rows that still hold it, so the database stops holding the
 forgotten text at all.
 
-It strips a block only when it proves the platform wrote it, with the matcher
-the readers use (``legacy_first_turn_memory.strip_first_turn_memory``): only a
-session's first message, only a ``user`` row (``inject_user_context`` wrote no
-other), only at the start of the message or right after the platform's
-``<available_skills>`` block, only when every fact line carries the renderer's
-validity or retirement stamp and every episode line its ``[created_at]``, and
-only when nothing after the block holds a ``<memory_context>`` tag. A row that
-holds the tag but not a block so proved is counted ``left`` and not touched: a
-raw first message that never reached the sanitizer, or an imported row, can
-hold a block a user wrote. A ``<memory_context>`` tag anywhere else is left
-alone. The chat view has always hidden a leading ``<memory_context>`` block on
-any user message (``strip_injected_context_for_display``), and still does.
+It strips a block only when a renderer could have written it where it sits,
+with the matcher the readers use
+(``legacy_first_turn_memory.strip_first_turn_memory``): only a session's first
+message, only a ``user`` row (``inject_user_context`` wrote no other), only at
+the start of the message or right after the platform's ``<available_skills>``
+block, only when every fact line carries one renderer's validity or
+retirement stamp, every episode line its ``[created_at]`` and a body no
+longer than the renderer's cut, every time is ``str()`` of a real datetime,
+and only when nothing after the block holds a ``<memory_context>`` tag. A row
+that holds the tag but not a block so proved is counted ``left`` and not
+touched: a raw first message that never reached the sanitizer, or an imported
+row, can hold a block a user wrote. Text alone cannot prove who wrote it,
+though: a byte-for-byte copy of such a block at that position, in an imported
+row or one that bypassed the inbound sanitizer, is removed as well. A
+``<memory_context>`` tag anywhere else is left alone. The chat view has
+always hidden a leading ``<memory_context>`` block on any user message
+(``strip_injected_context_for_display``), and still does.
 
 A row is written only while its session is idle, and only if it still holds
 what was read. The session's cached copy in Redis (``copilot/model.py``) is

@@ -8,6 +8,7 @@ would only restate it.
 """
 
 import argparse
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -217,6 +218,36 @@ async def test_strips_the_first_message_and_no_other_row(owner, evict, render):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_strips_blocks_at_the_edges_of_what_a_renderer_wrote(owner, evict):
+    """A time ``str()`` wrote with offset seconds and microseconds, an
+    episode cut to exactly 500 characters, and one this stack's renderer
+    lengthened by neutralising its tags after the cut."""
+    moment = datetime(
+        2025,
+        6,
+        1,
+        12,
+        0,
+        0,
+        5,
+        timezone(timedelta(hours=5, seconds=15, microseconds=7)),
+    )
+    blocks = [
+        "<temporal_context>\n<FACTS>\n"
+        f"  - Alice works on Atlas ({moment} — present)\n"
+        "</FACTS>\n</temporal_context>",
+        master_warm(("Alice works on Atlas",), ("e" * 500,)),
+        warm(("Alice works on Atlas",), ("<b>" + "e" * 600,)),
+    ]
+
+    for block in blocks:
+        session_id = await _session(owner, legacy_first_message(block), "done")
+        counts = await backfill(apply=True, session_id=session_id)
+        assert counts == BackfillCounts(scanned=1, stripped=1)
+        assert await _contents(session_id) == [SKILLS_BLOCK + REST, "done"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_leaves_first_messages_the_platform_did_not_write(owner, evict):
     """Neither a tag the user typed nor a forged close is the platform's
     block, and nor is one behind a ``<budget_status>`` block: the engine put
@@ -237,8 +268,9 @@ async def test_leaves_first_messages_the_platform_did_not_write(owner, evict):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_leaves_every_body_no_renderer_wrote(owner, evict):
-    """The review's counterexample, which an ``--apply`` run once cut down to
-    its last line, and every other body a renderer could not have written:
+    """The review's counterexamples, which ``--apply`` runs once cut down or
+    stripped (a bare fact; an impossible time, non-ASCII digits, an episode
+    past the cut), and every other body a renderer could not have written:
     the row is not provably the platform's, so it is left as it is."""
     contents = [USER_AUTHORED_BLOCK] + [
         legacy_first_message(f"<temporal_context>\n{body}\n</temporal_context>")

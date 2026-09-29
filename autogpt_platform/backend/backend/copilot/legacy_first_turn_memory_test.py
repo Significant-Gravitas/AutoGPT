@@ -1,10 +1,12 @@
 """Tests for the one matcher of the first-turn block older sessions stored,
-``legacy_first_turn_memory.strip_first_turn_memory``, which the backfill uses
+``legacy_first_turn_memory.strip_first_turn_memory``, and the grammar of the
+body it proves (``legacy_first_turn_memory_body.py``). The backfill uses it
 on a stored first message, the history readers on the first message they
 read, and the restore on a CLI session file's first user entry
 (``legacy_first_turn_memory_restore_test.py``)."""
 
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -80,6 +82,74 @@ class TestStripFirstTurnMemory:
     )
     def test_every_stamp_a_renderer_wrote_is_proof(self, line):
         block = f"<temporal_context>\n<FACTS>\n{line}\n</FACTS>\n</temporal_context>"
+
+        assert strip_first_turn_memory(legacy_first_message(block)) == (
+            SKILLS_BLOCK + REST
+        )
+
+    @pytest.mark.parametrize(
+        "moment",
+        [
+            datetime(2025, 6, 1, 12, 34, 56),
+            datetime(1, 1, 1, tzinfo=timezone.utc),
+            datetime(9999, 12, 31, 23, 59, 59, 999999, timezone(-timedelta(hours=11))),
+            datetime(2024, 2, 29, 8, 0, 0, 1, timezone(timedelta(hours=5, minutes=45))),
+            datetime(
+                2025,
+                6,
+                1,
+                tzinfo=timezone(timedelta(hours=5, seconds=15, microseconds=7)),
+            ),
+            datetime(2025, 6, 1, tzinfo=timezone(timedelta(microseconds=325513))),
+        ],
+        ids=[
+            "naive",
+            "first-day-utc",
+            "last-moment-west",
+            "leap-day-nepal",
+            "offset-seconds",
+            "offset-under-a-second",
+        ],
+    )
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "  - Alice works on Atlas ({moment} — present)",
+            "  - Alice works on Atlas (valid: unknown — {moment})",
+            "  - Alice worked on Atlas (retracted {moment})",
+        ],
+        ids=["production", "stack", "retired"],
+    )
+    def test_every_time_str_writes_is_proof(self, moment, line):
+        """Whatever the datetime, ``str()`` of it is what the renderers
+        wrote, in a fact's stamp and an episode's."""
+        block = (
+            f"<temporal_context>\n<FACTS>\n{line.format(moment=moment)}\n</FACTS>\n\n"
+            f"<RECENT_EPISODES>\n  - [{moment}] asked\n</RECENT_EPISODES>\n"
+            "</temporal_context>"
+        )
+
+        assert strip_first_turn_memory(legacy_first_message(block)) == (
+            SKILLS_BLOCK + REST
+        )
+
+    @pytest.mark.parametrize("render", [master_warm, warm], ids=["master", "stack"])
+    @pytest.mark.parametrize(
+        "body",
+        ["e" * 500, "line\n" * 100, ""],
+        ids=["500-characters", "500-over-lines", "empty"],
+    )
+    def test_an_episode_as_long_as_the_cut_left_it_is_proof(self, render, body):
+        content = legacy_first_message(render(("Alice works on Atlas",), (body,)))
+
+        assert strip_first_turn_memory(content) == SKILLS_BLOCK + REST
+
+    def test_an_episode_the_neutraliser_lengthened_after_the_cut_is_proof(self):
+        """This stack's renderer cuts a body to 500 characters, then turns
+        each tag start into ``<!``: its lines can run longer, by one
+        character a tag."""
+        block = warm(("Alice uses <i>Atlas</i>",), ("<b>" + "e" * 600, "</p> " * 300))
+        assert "<!b>" + "e" * 497 in block
 
         assert strip_first_turn_memory(legacy_first_message(block)) == (
             SKILLS_BLOCK + REST
@@ -217,6 +287,24 @@ class TestLinearTime:
         assert stripped is None
         assert time.perf_counter() - started < 1.0
 
+    def test_a_tag_start_before_a_long_run_of_spaces_is_read_at_once(self):
+        """A block only this stack's renderer could have written is searched
+        for a tag start it would have neutralised. The renderer's own pattern
+        backtracks over a run of whitespace in time quadratic in its length;
+        this one reads it once."""
+        fact = f"x<{' ' * 50_000}! (valid: unknown — present)"
+        block = (
+            f"<temporal_context>\n<FACTS>\n  - {fact}\n</FACTS>\n\n"
+            f"<RECENT_EPISODES>\n  - [{NOW}] <!b>{'e' * 497}\n</RECENT_EPISODES>\n"
+            "</temporal_context>"
+        )
+        started = time.perf_counter()
+
+        stripped = strip_first_turn_memory(legacy_first_message(block))
+
+        assert stripped == SKILLS_BLOCK + REST
+        assert time.perf_counter() - started < 1.0
+
 
 def _history(*contents: str) -> list[ChatMessage]:
     return [
@@ -262,5 +350,14 @@ class TestWithoutStoredFirstTurnMemory:
     )
     def test_anything_else_comes_back_as_it_was(self, first):
         messages = [first, ChatMessage(role="user", content="next", sequence=1)]
+
+        assert without_stored_first_turn_memory(messages) is messages
+
+    @pytest.mark.parametrize(
+        "body", RENDERER_IMPOSSIBLE.values(), ids=RENDERER_IMPOSSIBLE
+    )
+    def test_a_first_message_no_renderer_wrote_is_read_as_it_is(self, body):
+        first = legacy_first_message(f"<temporal_context>\n{body}\n</temporal_context>")
+        messages = _history(first, "ok")
 
         assert without_stored_first_turn_memory(messages) is messages

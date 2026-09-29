@@ -45,23 +45,68 @@ USER_AUTHORED_BLOCK = (
     "keep this request"
 )
 _STAMP = f"{NOW} — present"
-# ``<temporal_context>`` bodies no renderer wrote, each one line or section
-# away from one that did.
+_ARABIC_INDIC = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
+_FULLWIDTH = str.maketrans("0123456789", "０１２３４５６７８９")
+_LINES = "line\n" * 101
+
+
+def _fact_stamped(stamp: str) -> str:
+    return f"<FACTS>\n  - Alice works on Atlas ({stamp})\n</FACTS>"
+
+
+def _episode(body: str, created_at: str = str(NOW)) -> str:
+    return f"<RECENT_EPISODES>\n  - [{created_at}] {body}\n</RECENT_EPISODES>"
+
+
+# ``<temporal_context>`` bodies no renderer wrote, each one line, time or
+# section away from one that did.
 RENDERER_IMPOSSIBLE = {
     "bare-fact": "<FACTS>\n  - Alice works on Atlas\n</FACTS>",
-    "date-only-stamp": "<FACTS>\n  - Alice works on Atlas (2025-06-01 — present)\n</FACTS>",
-    "words-for-a-time": "<FACTS>\n  - Alice works on Atlas (valid: yesterday — present)\n</FACTS>",
-    "no-such-retirement": f"<FACTS>\n  - Alice works on Atlas (forgotten {NOW})\n</FACTS>",
+    "date-only-stamp": _fact_stamped("2025-06-01 — present"),
+    "words-for-a-time": _fact_stamped("valid: yesterday — present"),
+    "no-such-retirement": _fact_stamped(f"forgotten {NOW}"),
     "one-bare-fact-of-two": f"<FACTS>\n  - Alice ({_STAMP})\n  - Bob leads Atlas\n</FACTS>",
     "bare-episode": "<RECENT_EPISODES>\n  - asked about Atlas\n</RECENT_EPISODES>",
-    "date-only-episode": "<RECENT_EPISODES>\n  - [2025-06-01] asked\n</RECENT_EPISODES>",
+    "date-only-episode": _episode("asked", "2025-06-01"),
     "episodes-before-facts": (
-        f"<RECENT_EPISODES>\n  - [{NOW}] asked\n</RECENT_EPISODES>\n\n"
-        f"<FACTS>\n  - Alice ({_STAMP})\n</FACTS>"
+        f"{_episode('asked')}\n\n<FACTS>\n  - Alice ({_STAMP})\n</FACTS>"
     ),
     "no-item-marker": f"<FACTS>\nAlice works on Atlas ({_STAMP})\n</FACTS>",
     "empty-section": "<FACTS>\n</FACTS>",
     "unknown-section": f"<FACTS>\n  - Alice ({_STAMP})\n</FACTS>\n\n<NOTES>\n  - x\n</NOTES>",
+    # Times: the renderer wrote ``str()`` of a datetime, in ASCII digits.
+    "arabic-indic-digits": _fact_stamped(_STAMP.translate(_ARABIC_INDIC)),
+    "fullwidth-digits": _fact_stamped(_STAMP.translate(_FULLWIDTH)),
+    "no-such-month": _fact_stamped("2025-13-01 00:00:00+00:00 — present"),
+    "no-such-day": _fact_stamped("2025-02-31 00:00:00+00:00 — present"),
+    "no-such-hour": _fact_stamped("2025-06-01 24:00:00 — present"),
+    "no-such-offset": _fact_stamped("2025-06-01 00:00:00+99:99 — present"),
+    "no-such-end": _fact_stamped("unknown — 2025-06-31 00:00:00"),
+    "no-such-retirement-time": _fact_stamped("superseded 2025-00-10 00:00:00"),
+    "zero-offset-written-negative": _fact_stamped(
+        "2025-06-01 00:00:00-00:00 — present"
+    ),
+    "zero-microseconds-written": _fact_stamped("2025-06-01 00:00:00.000000 — present"),
+    "episode-arabic-indic-digits": _episode("asked", str(NOW).translate(_ARABIC_INDIC)),
+    "episode-no-such-time": _episode("asked", "2025-99-99 99:99:99+99:99"),
+    # Episodes: the renderer cut the body to 500 characters.
+    "episode-past-the-cut": _episode("e" * 501),
+    "episode-far-past-the-cut": _episode("e" * 100_000),
+    "multiline-episode-past-the-cut": _episode(_LINES),
+    # One renderer per block, and only this stack's renderer writes a body
+    # past the cut: by neutralising tag starts, in every line.
+    "two-renderers-stamps": (
+        f"<FACTS>\n  - Alice ({_STAMP})\n  - Bob (valid: {_STAMP})\n</FACTS>"
+    ),
+    "neutralised-past-the-cut-beside-production-stamps": (
+        f"<FACTS>\n  - Alice ({_STAMP})\n</FACTS>\n\n{_episode('<!b>' + 'e' * 497)}"
+    ),
+    "neutralised-past-the-cut-beside-a-tag-left-as-is": (
+        f"<FACTS>\n  - <b>Alice</b> (valid: {_STAMP})\n</FACTS>\n\n"
+        f"{_episode('<!b>' + 'e' * 497)}"
+    ),
+    "past-the-cut-with-a-tag-left-as-is": _episode("<b>" + "e" * 498),
+    "past-the-cut-even-without-the-marks": _episode("<!b>" + "e" * 498),
 }
 
 
