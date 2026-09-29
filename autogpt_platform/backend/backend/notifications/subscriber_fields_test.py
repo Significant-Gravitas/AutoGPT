@@ -267,6 +267,53 @@ async def test_a_field_under_another_key_fails_loudly(mailerlite_configured):
 
 
 @pytest.mark.asyncio
+async def test_reading_fields_stops_on_an_empty_page(mailerlite_configured):
+    """An empty page is the end, whatever last_page claims."""
+    client = MagicMock(
+        get=AsyncMock(
+            side_effect=[
+                _response(200, _all_fields() | {"meta": {"last_page": 1000}}),
+                _response(200, {"data": [], "meta": {"last_page": 1000}}),
+            ]
+            + [AssertionError("requested a page after an empty one")] * 1000
+        ),
+    )
+    with patch.object(mailerlite, "_client", return_value=client):
+        fields = await mailerlite.read_fields()
+    assert set(fields) == {f.value for f in mailerlite.FIELD_TYPES}
+    assert client.get.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_reading_fields_stops_when_last_page_keeps_growing(
+    mailerlite_configured, monkeypatch
+):
+    monkeypatch.setattr(mailerlite, "_MAX_FIELD_PAGES", 3)
+    calls = 0
+
+    def page(url, **kw):
+        nonlocal calls
+        calls += 1
+        if calls > 10:
+            raise AssertionError("still paging")
+        return _response(
+            200,
+            {
+                "data": [{"key": f"f{calls}", "type": "text"}],
+                "meta": {"last_page": calls + 1},
+            },
+        )
+
+    client = MagicMock(get=AsyncMock(side_effect=page))
+    with (
+        patch.object(mailerlite, "_client", return_value=client),
+        pytest.raises(mailerlite.MailerLiteError, match="pages"),
+    ):
+        await mailerlite.read_fields()
+    assert calls == 3
+
+
+@pytest.mark.asyncio
 async def test_fields_land_even_while_the_group_is_unconfigured(
     mailerlite_configured,
 ):

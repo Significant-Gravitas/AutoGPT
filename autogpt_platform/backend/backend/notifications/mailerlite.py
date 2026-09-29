@@ -193,11 +193,16 @@ async def ensure_fields() -> list[SubscriberField]:
     return created
 
 
+# An account holds far fewer fields than this many pages of 100; more means
+# MailerLite's last_page keeps moving.
+_MAX_FIELD_PAGES = 50
+
+
 async def read_fields() -> dict[str, str]:
-    """Every custom field MailerLite has, as key → type."""
+    """Every custom field MailerLite has, as key → type. An empty page ends the
+    read whatever last_page says."""
     fields: dict[str, str] = {}
-    page = 1
-    while True:
+    for page in range(1, _MAX_FIELD_PAGES + 1):
         response = await _client().get(
             f"{API_BASE}/fields?limit=100&page={page}", headers=_headers()
         )
@@ -206,11 +211,12 @@ async def read_fields() -> dict[str, str]:
                 f"Reading MailerLite fields failed with {response.status}"
             )
         body = response.json() or {}
-        for row in body.get("data") or []:
+        rows = body.get("data") or []
+        for row in rows:
             fields[str(row["key"])] = str(row.get("type") or "")
-        if page >= int((body.get("meta") or {}).get("last_page") or 1):
+        if not rows or page >= int((body.get("meta") or {}).get("last_page") or 1):
             return fields
-        page += 1
+    raise MailerLiteError(f"MailerLite still had fields after {_MAX_FIELD_PAGES} pages")
 
 
 async def _remove_from_group(
