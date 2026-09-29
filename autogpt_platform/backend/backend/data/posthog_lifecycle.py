@@ -187,7 +187,27 @@ def compute_lifecycle_snapshot(
         status = "trial_canceled" if native.cancel_at_period_end else "in_trial"
         common["trial_started_at"] = common["trial_started_at"] or native.trial_start
         return LifecycleSnapshot(subscription_status=status, **common)
-    return _after_access_ended(paid, trial, started, common)
+    ended_native = max(
+        (sub for sub in all_subs if _is_ended_native_trial(sub, trial)),
+        key=lambda sub: _utc(sub.trial_start),
+        default=None,
+    )
+    if ended_native is not None:
+        common["trial_started_at"] = (
+            common["trial_started_at"] or ended_native.trial_start
+        )
+    return _after_access_ended(paid, trial, started or ended_native is not None, common)
+
+
+def _is_ended_native_trial(
+    sub: StripeSubscriptionFacts, trial: TrialState | None
+) -> bool:
+    return (
+        not sub.trial_enrollment_id
+        and sub.trial_start is not None
+        and sub.status != "trialing"
+        and not _is_paid(sub, trial)
+    )
 
 
 def _after_access_ended(
@@ -269,7 +289,20 @@ def _is_paid(sub: StripeSubscriptionFacts, trial: TrialState | None) -> bool:
             and trial.subscription_id == sub.id
             and trial.converted_at is not None
         )
-    return sub.status not in _NEVER_PAID_STATUSES
+    if sub.status in _NEVER_PAID_STATUSES:
+        return False
+    return not _ended_during_native_trial(sub)
+
+
+def _ended_during_native_trial(sub: StripeSubscriptionFacts) -> bool:
+    """A Stripe-native trial canceled before its first charge was never paid."""
+    ended = sub.ended_at or sub.canceled_at
+    return (
+        sub.trial_end is not None
+        and sub.status not in _LIVE_STATUSES
+        and ended is not None
+        and _utc(ended) <= _utc(sub.trial_end)
+    )
 
 
 def _current_live(

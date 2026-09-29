@@ -58,8 +58,10 @@ def schedule_posthog_lifecycle_sync(
       reads the state when it starts;
     - a sync that is already running is followed by exactly one more, so the
       last one sent always read the state after this write;
-    - two syncs for one user never run at the same time, so an older read
-      can't be sent after a newer one.
+    - two syncs for one user never run at the same time in this process, so
+      an older read can't be sent after a newer one here. Another pod, or the
+      daily sweep (which reads Stripe once at its start), can still send an
+      older read; the next sync or sweep corrects it.
     """
     try:
         if get_posthog_client() is None:
@@ -277,9 +279,12 @@ _sweeps: set[asyncio.Task] = set()
 
 async def _run_sweep() -> None:
     try:
-        await sync_all_posthog_lifecycles()
+        summary = await sync_all_posthog_lifecycles()
     except Exception:
         logger.exception("Lifecycle sweep failed")
+        return
+    if summary.aborted:
+        logger.warning(f"Lifecycle sweep aborted: {summary.aborted}")
 
 
 class LifecycleSyncSummary(BaseModel):

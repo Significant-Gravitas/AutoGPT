@@ -453,6 +453,37 @@ def test_stripe_native_trial_past_its_end_is_not_in_trial():
     assert snapshot(subs=[native]).subscription_status == "signed"
 
 
+def test_stripe_native_trial_canceled_before_its_first_charge():
+    start = NOW - timedelta(days=10)
+    native = sub(
+        "sub_native",
+        "canceled",
+        start=start,
+        trial_end=NOW - timedelta(days=3),
+        canceled_at=NOW - timedelta(days=5),
+        ended_at=NOW - timedelta(days=5),
+    )
+    result = snapshot(subs=[native])
+    assert result == LifecycleSnapshot(
+        subscription_status="trial_canceled",
+        signup_at=SIGNUP,
+        trial_started_at=start,
+    )
+
+
+def test_stripe_native_trial_that_was_paid_then_canceled_has_ended():
+    ended = NOW - timedelta(days=1)
+    native = sub(
+        "sub_native",
+        "canceled",
+        start=NOW - timedelta(days=40),
+        trial_end=NOW - timedelta(days=26),
+        canceled_at=ended,
+        ended_at=ended,
+    )
+    assert snapshot(subs=[native]).subscription_status == "subscription_ended"
+
+
 def test_our_trial_subscription_is_not_a_native_trial():
     ours = sub(
         "sub_trial", "trialing", enrollment="trial-1", trial_end=NOW + timedelta(days=1)

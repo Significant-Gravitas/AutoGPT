@@ -378,6 +378,17 @@ async def test_sweep_aborts_before_stripe_when_posthog_is_off():
     list_async.assert_not_awaited()
 
 
+async def test_an_aborted_sweep_is_logged(caplog):
+    aborted = lifecycle.LifecycleSyncSummary(
+        dry_run=False, aborted="PostHog is not configured"
+    )
+    with patch(
+        f"{MODULE}.sync_all_posthog_lifecycles", AsyncMock(return_value=aborted)
+    ):
+        await lifecycle._run_sweep()
+    assert "Lifecycle sweep aborted: PostHog is not configured" in caplog.text
+
+
 async def test_sweep_skips_a_user_whose_trial_row_is_unreadable(posthog):
     broken = MagicMock(userId="u-trial", offer={"not": "an offer"})
     with (
@@ -409,6 +420,7 @@ async def test_sweep_starter_returns_at_once_and_never_runs_two():
 
     async def slow_sweep(**_):
         await release.wait()
+        return lifecycle.LifecycleSyncSummary(dry_run=False)
 
     with patch(f"{MODULE}.sync_all_posthog_lifecycles", side_effect=slow_sweep) as run:
         assert await lifecycle.start_posthog_lifecycle_sweep() is True
