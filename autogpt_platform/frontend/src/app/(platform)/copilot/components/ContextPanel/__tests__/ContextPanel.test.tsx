@@ -28,6 +28,8 @@ beforeEach(() => {
       isOpen: true,
       activeArtifact: null,
       activeTab: "artifacts",
+      mode: "artifact",
+      isComputerOpen: false,
     },
   }));
 });
@@ -61,7 +63,9 @@ describe("ContextPanel", () => {
     render(<ContextPanel sessionId="session-1" />);
 
     expect(await screen.findByText("Maria's Integrations")).toBeDefined();
-    expect(screen.getByRole("link", { name: "Open Maria's page" })).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Open Maria's page" }),
+    ).toBeDefined();
   });
 
   test("hides itself while an artifact is previewing (artifact takes over the region)", () => {
