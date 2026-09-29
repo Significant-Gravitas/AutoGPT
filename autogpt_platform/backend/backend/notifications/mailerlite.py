@@ -19,6 +19,10 @@ transition:
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.
 
+Only the notification service holds the MailerLite settings. Whatever queues an
+audience change does not ask whether MailerLite is configured; the consumer
+does (`configured()`).
+
 If both sides managed the same edge we would double-add or fight over
 removals, so nothing in this module touches the tour → changelog handoff.
 """
@@ -68,8 +72,14 @@ _fields_ready = False
 
 
 class MailerLiteNotConfigured(RuntimeError):
-    """Raised so a queued job retries once credentials are in place, rather
-    than silently reporting success."""
+    """Raised so a queued job retries once the missing setting is in place,
+    rather than silently reporting success."""
+
+
+def configured() -> bool:
+    """A stack without a token, such as a self-hosted one, has no MailerLite:
+    its audience changes are acknowledged and dropped, never retried."""
+    return bool(settings.secrets.mailerlite_api_token)
 
 
 class MailerLiteError(RuntimeError):
@@ -101,17 +111,24 @@ async def remove_from_changelog(email: str, fields: Fields | None = None) -> Non
 
 
 async def add_to_trial(email: str, fields: Fields | None = None) -> None:
-    """A trial started, or a cancelled one was resumed."""
-    await _add_to_group(
-        email, settings.config.mailerlite_trial_group_id, "trial", fields
-    )
+    """A trial started, or a cancelled one was resumed. Without a trial group
+    only the fields are written: the group is optional, so waiting for it
+    would only retry into the dead-letter queue."""
+    group_id = settings.config.mailerlite_trial_group_id
+    if not group_id:
+        await update_fields(email, fields)
+        return
+    await _add_to_group(email, group_id, "trial", fields)
 
 
 async def remove_from_trial(email: str, fields: Fields | None = None) -> None:
-    """The trial was cancelled, converted, or ended unpaid."""
-    await _remove_from_group(
-        email, settings.config.mailerlite_trial_group_id, "trial", fields
-    )
+    """The trial was cancelled, converted, or ended unpaid. Without a trial
+    group only the fields are written, as for `add_to_trial`."""
+    group_id = settings.config.mailerlite_trial_group_id
+    if not group_id:
+        await update_fields(email, fields)
+        return
+    await _remove_from_group(email, group_id, "trial", fields)
 
 
 async def update_fields(email: str, fields: Fields | None = None) -> None:

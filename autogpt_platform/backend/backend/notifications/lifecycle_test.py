@@ -8,7 +8,6 @@ every `subscription.updated` as a cancellation.
 
 import logging
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -446,11 +445,6 @@ async def test_a_failed_welcome_publish_gives_the_claim_back():
 
 @pytest.fixture
 def fields_on(monkeypatch):
-    monkeypatch.setattr(
-        subscriber_fields,
-        "settings",
-        SimpleNamespace(secrets=SimpleNamespace(mailerlite_api_token="token")),
-    )
     queued = AsyncMock(return_value=NotificationResult(success=True))
     monkeypatch.setattr(subscriber_fields, "queue_audience_change", queued)
     return queued

@@ -18,7 +18,8 @@ from backend.data.notifications import (
 )
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
-from backend.notifications import mailerlite, subscriber_fields
+from backend.notifications import mailerlite
+from backend.notifications import notifications as delivery
 from backend.notifications import trial as notices
 from backend.notifications import trial_audience
 from backend.notifications.notifications import NotificationManager
@@ -62,15 +63,6 @@ def trial() -> TrialState:
         cancel_at_period_end=False,
         cost_microdollars=0,
     )
-
-
-@pytest.fixture
-def trial_group(monkeypatch):
-    fake = SimpleNamespace(
-        config=SimpleNamespace(mailerlite_trial_group_id="grp_trial")
-    )
-    monkeypatch.setattr(trial_audience, "settings", fake)
-    return fake
 
 
 def _state(trial: TrialState, kind: str) -> tuple[TrialState, dict]:
@@ -162,9 +154,7 @@ async def _notify(
         ("ending", []),
     ],
 )
-async def test_each_trial_transition_moves_the_trial_group(
-    trial, trial_group, kind, actions
-):
+async def test_each_trial_transition_moves_the_trial_group(trial, kind, actions):
     trial, raw = _state(trial, kind)
     if kind == "ending":
         raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=1)).timestamp())
@@ -179,7 +169,7 @@ async def test_each_trial_transition_moves_the_trial_group(
     [(False, AudienceAction.ENROLL_TOUR), (True, AudienceAction.ADD_CHANGELOG)],
 )
 async def test_conversion_leaves_the_trial_and_joins_the_paying_audience(
-    trial, trial_group, welcomed, paying
+    trial, welcomed, paying
 ):
     trial, raw = _state(trial, "converted")
     got, notice, _ = await _notify(trial, raw, "converted", welcomed=welcomed)
@@ -188,34 +178,29 @@ async def test_conversion_leaves_the_trial_and_joins_the_paying_audience(
 
 
 @pytest.mark.asyncio
-async def test_conversion_joins_the_paying_audience_without_a_trial_group(
-    trial, monkeypatch
+@pytest.mark.parametrize(
+    "kind, actions",
+    [
+        ("started", [AudienceAction.ADD_TRIAL]),
+        ("converted", [AudienceAction.REMOVE_TRIAL, AudienceAction.ENROLL_TOUR]),
+    ],
+)
+async def test_the_api_server_queues_without_any_mailerlite_settings(
+    trial, kind, actions
 ):
-    monkeypatch.setattr(
-        trial_audience,
-        "settings",
-        SimpleNamespace(config=SimpleNamespace(mailerlite_trial_group_id="")),
-    )
-    trial, raw = _state(trial, "converted")
-    got, _, _ = await _notify(trial, raw, "converted")
-    assert got == [AudienceAction.ENROLL_TOUR]
-
-
-@pytest.mark.asyncio
-async def test_no_trial_group_means_no_trial_group_changes(trial, monkeypatch):
-    monkeypatch.setattr(
-        trial_audience,
-        "settings",
-        SimpleNamespace(config=SimpleNamespace(mailerlite_trial_group_id="")),
-    )
-    trial, raw = _state(trial, "started")
-    got, notice, _ = await _notify(trial, raw, "started")
-    assert got == []
+    """The API server, which handles the webhook, never holds the MailerLite
+    token or group IDs: only the notification service does. Its changes must
+    be queued anyway, with their fields, for the consumer to decide."""
+    trial, raw = _state(trial, kind)
+    audience = AsyncMock(return_value=NotificationResult(success=True))
+    got, notice, _ = await _notify(trial, raw, kind, audience=audience)
+    assert got == actions
+    assert audience.await_args_list[0].args[0].fields
     notice.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_a_replayed_event_changes_nothing(trial, trial_group):
+async def test_a_replayed_event_changes_nothing(trial):
     trial, raw = _state(trial, "canceled")
     got, notice, _ = await _notify(trial, raw, "canceled", claimed=False)
     assert got == []
@@ -223,9 +208,7 @@ async def test_a_replayed_event_changes_nothing(trial, trial_group):
 
 
 @pytest.mark.asyncio
-async def test_a_failed_group_change_releases_the_claim_so_stripe_retries(
-    trial, trial_group
-):
+async def test_a_failed_group_change_releases_the_claim_so_stripe_retries(trial):
     trial, raw = _state(trial, "canceled")
     failing = AsyncMock(return_value=NotificationResult(success=False, message="down"))
     _, notice, release = await _notify(
@@ -237,9 +220,7 @@ async def test_a_failed_group_change_releases_the_claim_so_stripe_retries(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["started", "converted"])
-async def test_an_email_mailerlite_cannot_take_never_blocks_the_notice(
-    trial, trial_group, kind
-):
+async def test_an_email_mailerlite_cannot_take_never_blocks_the_notice(trial, kind):
     """A reserved-domain address fails the audience event's email validation.
     That must cost the MailerLite change, not the customer's trial notice."""
     trial, raw = _state(trial, kind)
@@ -250,15 +231,18 @@ async def test_an_email_mailerlite_cannot_take_never_blocks_the_notice(
 
 
 @pytest.mark.asyncio
-async def test_joining_the_paying_audience_never_fails_the_sent_conversion(
-    trial, trial_group
-):
+async def test_joining_the_paying_audience_never_fails_the_sent_conversion(trial):
     trial, raw = _state(trial, "converted")
     broken = AsyncMock(side_effect=RuntimeError("database unavailable"))
     got, notice, release = await _notify(trial, raw, "converted", claim_welcome=broken)
     assert got == [AudienceAction.REMOVE_TRIAL]
     notice.assert_awaited_once()
     release.assert_not_awaited()
+
+
+@pytest.fixture
+def consumer_configured(monkeypatch):
+    monkeypatch.setattr(mailerlite, "configured", lambda: True)
 
 
 @pytest.mark.asyncio
@@ -269,13 +253,43 @@ async def test_joining_the_paying_audience_never_fails_the_sent_conversion(
         (AudienceAction.REMOVE_TRIAL, "remove_from_trial"),
     ],
 )
-async def test_the_consumer_routes_trial_changes_to_mailerlite(action, handler):
+async def test_the_consumer_routes_trial_changes_to_mailerlite(
+    consumer_configured, action, handler
+):
     event = AudienceEventModel(action=action, email=EMAIL, user_id="user-1")
     with patch.object(mailerlite, handler, AsyncMock()) as called:
         assert await NotificationManager._process_audience_change(
             MagicMock(), event.model_dump_json()
         )
     called.assert_awaited_once_with(EMAIL, None)
+
+
+@pytest.mark.asyncio
+async def test_without_a_token_the_consumer_drops_changes_quietly(monkeypatch, caplog):
+    """A self-hosted stack queues audience changes too. With no token they are
+    acknowledged, not retried into the dead-letter queue, and said once."""
+    monkeypatch.setattr(
+        mailerlite,
+        "settings",
+        SimpleNamespace(secrets=SimpleNamespace(mailerlite_api_token="")),
+    )
+    monkeypatch.setattr(delivery, "_mailerlite_off_logged", False)
+    event = AudienceEventModel(
+        action=AudienceAction.UPDATE_FIELDS,
+        email=EMAIL,
+        user_id="user-1",
+        fields={SubscriberField.STATUS: "signed"},
+    )
+    with (
+        patch.object(mailerlite, "update_fields", AsyncMock()) as called,
+        caplog.at_level("INFO"),
+    ):
+        for _ in range(2):
+            assert await NotificationManager._process_audience_change(
+                MagicMock(), event.model_dump_json()
+            )
+    called.assert_not_awaited()
+    assert caplog.text.count("MAILERLITE_API_TOKEN is not set") == 1
 
 
 @pytest.fixture
@@ -338,15 +352,6 @@ async def test_remove_from_trial_fails_loudly_so_the_job_retries(mailerlite_conf
 # ── subscriber fields ──────────────────────────────────────────────────────
 
 
-@pytest.fixture
-def fields_on(monkeypatch):
-    monkeypatch.setattr(
-        subscriber_fields,
-        "settings",
-        SimpleNamespace(secrets=SimpleNamespace(mailerlite_api_token="token")),
-    )
-
-
 def _day(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%d")
 
@@ -365,7 +370,7 @@ def _day(timestamp: int) -> str:
     ],
 )
 async def test_each_trial_transition_sets_the_status_on_its_group_change(
-    trial, trial_group, fields_on, kind, status
+    trial, kind, status
 ):
     trial, raw = _state(trial, kind)
     audience = AsyncMock(return_value=NotificationResult(success=True))
@@ -376,9 +381,7 @@ async def test_each_trial_transition_sets_the_status_on_its_group_change(
 
 
 @pytest.mark.asyncio
-async def test_a_trial_start_carries_stripes_trial_start_date(
-    trial, trial_group, fields_on
-):
+async def test_a_trial_start_carries_stripes_trial_start_date(trial):
     trial, raw = _state(trial, "started")
     raw["trial_start"] = 1788000000
     audience = AsyncMock(return_value=NotificationResult(success=True))
@@ -388,9 +391,7 @@ async def test_a_trial_start_carries_stripes_trial_start_date(
 
 
 @pytest.mark.asyncio
-async def test_a_conversion_starts_the_subscription_when_the_trial_ended(
-    trial, trial_group, fields_on
-):
+async def test_a_conversion_starts_the_subscription_when_the_trial_ended(trial):
     trial, raw = _state(trial, "converted")
     audience = AsyncMock(return_value=NotificationResult(success=True))
     await _notify(trial, raw, "converted", audience=audience)
@@ -400,26 +401,7 @@ async def test_a_conversion_starts_the_subscription_when_the_trial_ended(
 
 
 @pytest.mark.asyncio
-async def test_without_a_trial_group_the_status_still_goes_on_its_own(
-    trial, monkeypatch, fields_on
-):
-    monkeypatch.setattr(
-        trial_audience,
-        "settings",
-        SimpleNamespace(config=SimpleNamespace(mailerlite_trial_group_id="")),
-    )
-    trial, raw = _state(trial, "canceled")
-    audience = AsyncMock(return_value=NotificationResult(success=True))
-    got, notice, _ = await _notify(trial, raw, "canceled", audience=audience)
-    assert got == [AudienceAction.UPDATE_FIELDS]
-    assert audience.await_args.args[0].fields == {
-        SubscriberField.STATUS: SubscriptionStatus.TRIAL_CANCELED.value
-    }
-    notice.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_a_reminder_changes_no_fields(trial, trial_group, fields_on):
+async def test_a_reminder_changes_no_fields(trial):
     trial, raw = _state(trial, "started")
     raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=1)).timestamp())
     got, notice, _ = await _notify(trial, raw, "ending")
@@ -428,7 +410,7 @@ async def test_a_reminder_changes_no_fields(trial, trial_group, fields_on):
 
 
 @pytest.mark.asyncio
-async def test_the_consumer_writes_fields_with_no_group_change():
+async def test_the_consumer_writes_fields_with_no_group_change(consumer_configured):
     event = AudienceEventModel(
         action=AudienceAction.UPDATE_FIELDS,
         email=EMAIL,

@@ -22,11 +22,6 @@ EMAIL = "sam@example.com"
 
 @pytest.fixture
 def fields_on(monkeypatch):
-    monkeypatch.setattr(
-        subscriber_fields,
-        "settings",
-        SimpleNamespace(secrets=SimpleNamespace(mailerlite_api_token="token")),
-    )
     queued = AsyncMock(return_value=NotificationResult(success=True))
     monkeypatch.setattr(subscriber_fields, "queue_audience_change", queued)
     return queued
@@ -70,14 +65,11 @@ async def test_a_signup_queues_signed_with_the_account_creation_day(fields_on):
 
 
 @pytest.mark.asyncio
-async def test_without_a_token_nothing_is_queued(monkeypatch, fields_on):
-    monkeypatch.setattr(
-        subscriber_fields,
-        "settings",
-        SimpleNamespace(secrets=SimpleNamespace(mailerlite_api_token="")),
-    )
+async def test_a_signup_is_queued_without_any_mailerlite_settings(fields_on):
+    """Signup runs in the API server, which never holds the MailerLite token:
+    the notification service decides whether it goes anywhere."""
     await subscriber_fields.queue_signup("user-1", EMAIL, datetime.now(UTC))
-    fields_on.assert_not_awaited()
+    assert fields_on.await_args.args[0].fields[SubscriberField.STATUS] == "signed"
 
 
 @pytest.mark.asyncio
@@ -277,6 +269,7 @@ async def test_fields_land_even_while_the_group_is_unconfigured(
 ):
     """The status is not the group's to hold hostage: it is written, and the
     group change then retries as it always has."""
+    mailerlite_configured.config.mailerlite_changelog_group_id = ""
     client = MagicMock(
         get=AsyncMock(return_value=_response(200, _all_fields())),
         post=AsyncMock(return_value=_response(200)),
@@ -285,11 +278,37 @@ async def test_fields_land_even_while_the_group_is_unconfigured(
         patch.object(mailerlite, "_client", return_value=client),
         pytest.raises(mailerlite.MailerLiteNotConfigured),
     ):
-        await mailerlite.add_to_trial(EMAIL, STATUS)
+        await mailerlite.add_to_changelog(EMAIL, STATUS)
     assert client.post.await_args.kwargs["json"]["fields"] == {
         "subscription_status": "subscribed",
         "subscription_ended_date": None,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change", [mailerlite.add_to_trial, mailerlite.remove_from_trial]
+)
+async def test_without_a_trial_group_only_the_fields_are_written(
+    mailerlite_configured, change
+):
+    """The trial group is optional, so a trial change without one writes the
+    status and is done, instead of retrying into the dead-letter queue."""
+    client = MagicMock(
+        get=AsyncMock(return_value=_response(200, _all_fields())),
+        post=AsyncMock(return_value=_response(200)),
+        delete=AsyncMock(),
+    )
+    with patch.object(mailerlite, "_client", return_value=client):
+        await change(EMAIL, STATUS)
+    assert client.post.await_args.kwargs["json"] == {
+        "email": EMAIL,
+        "fields": {
+            "subscription_status": "subscribed",
+            "subscription_ended_date": None,
+        },
+    }
+    client.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio

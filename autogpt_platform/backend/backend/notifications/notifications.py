@@ -63,6 +63,8 @@ from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()
+# The missing MailerLite token is logged once per process, not per message.
+_mailerlite_off_logged = False
 
 
 def _utc_today() -> date:
@@ -364,6 +366,14 @@ class NotificationManager(AppService):
         except ValueError as e:
             logger.warning(f"Unparseable audience change (sending to DLQ): {e}")
             return False
+        if not mailerlite.configured():
+            global _mailerlite_off_logged
+            if not _mailerlite_off_logged:
+                logger.info(
+                    "MAILERLITE_API_TOKEN is not set; dropping audience changes"
+                )
+                _mailerlite_off_logged = True
+            return True
 
         handler = {
             AudienceAction.ENROLL_TOUR: mailerlite.enroll_in_onboarding,

@@ -585,6 +585,7 @@ async def test_audience_changes_for_one_email_keep_their_published_order():
     ]
 
     with (
+        patch.object(delivery.mailerlite, "configured", return_value=True),
         patch.object(delivery.mailerlite, "remove_from_changelog", remove),
         patch.object(delivery.mailerlite, "add_to_changelog", add),
     ):

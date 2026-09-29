@@ -9,8 +9,8 @@ A conversion is also the customer's first paid subscription, so it joins the
 paying audience the way a first checkout does.
 
 The subscriber's status and dates (`subscriber_fields.py`) ride on the same
-event, or on a field update of their own while the trial group is not
-configured.
+event. The notification service writes only the fields while the trial group
+is not configured.
 """
 
 import logging
@@ -21,10 +21,8 @@ from backend.data.notifications import AudienceAction
 from backend.notifications import subscriber_fields
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import Fields, audience_event
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 _TRIAL_GROUP_CHANGES: Mapping[str, AudienceAction] = {
     "started": AudienceAction.ADD_TRIAL,
@@ -55,20 +53,13 @@ async def queue_trial_audience_change(
 
     Raises when it cannot be queued, so the caller releases the notice claim
     and Stripe's retry makes the change. Both are idempotent, so a retry that
-    repeats one is harmless. No group change is queued while the trial group
-    is not configured: it could never succeed and would only retry.
+    repeats one is harmless. It is queued whatever this process's MailerLite
+    settings: only the notification service holds them.
     """
-    action = (
-        _TRIAL_GROUP_CHANGES.get(kind)
-        if settings.config.mailerlite_trial_group_id
-        else None
-    )
-    fields = _TRIAL_FIELDS[kind](subscription) if kind in _TRIAL_FIELDS else {}
-    if action is None and fields and subscriber_fields.enabled():
-        action = AudienceAction.UPDATE_FIELDS
+    action = _TRIAL_GROUP_CHANGES.get(kind)
     if action is None:
         return
-    event = audience_event(action, email, user_id, fields)
+    event = audience_event(action, email, user_id, _TRIAL_FIELDS[kind](subscription))
     if event is None:
         return
     result = await queue_audience_change(event)

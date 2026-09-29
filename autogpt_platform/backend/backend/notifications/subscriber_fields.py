@@ -25,10 +25,8 @@ from backend.data.notifications import (
     SubscriptionStatus,
 )
 from backend.notifications.queue import queue_audience_change
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 Fields = dict[SubscriberField, str | None]
 
@@ -97,23 +95,21 @@ def subscription_ended(ended_at: int | None) -> Fields:
     }
 
 
-def enabled() -> bool:
-    """Fields are written wherever MailerLite is: a stack without a token,
-    such as a self-hosted one, queues nothing that could only fail."""
-    return bool(settings.secrets.mailerlite_api_token)
-
-
 def audience_event(
     action: AudienceAction, email: str, user_id: str, fields: Fields | None = None
 ) -> AudienceEventModel | None:
     """None for an address MailerLite would refuse, such as a reserved domain:
-    no retry can ever deliver that change, so it must not hold anything up."""
+    no retry can ever deliver that change, so it must not hold anything up.
+
+    Whether MailerLite is configured is not asked here: the API server that
+    queues these never holds its settings. The notification service decides
+    (see `NotificationManager._process_audience_change`)."""
     try:
         return AudienceEventModel(
             action=action,
             email=email,
             user_id=user_id,
-            fields=fields if fields and enabled() else {},
+            fields=fields or {},
         )
     except ValidationError:
         logger.warning(
@@ -127,8 +123,6 @@ async def queue_fields(user_id: str, email: str, fields: Fields) -> None:
     """Queue a field update with no group change. Reports rather than raises:
     it follows a billing email that is already out, and a status must never
     cost one."""
-    if not enabled():
-        return
     event = audience_event(AudienceAction.UPDATE_FIELDS, email, user_id, fields)
     if event is None:
         return
