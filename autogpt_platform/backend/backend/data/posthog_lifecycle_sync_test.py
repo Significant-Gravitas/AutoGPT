@@ -525,8 +525,8 @@ async def test_a_sync_cancelled_while_waiting_for_a_slot_does_not_block_the_user
         assert lifecycle._syncs["user-1"] == "queued"
 
         waiting.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await waiting
+        await asyncio.gather(waiting, return_exceptions=True)
+        assert waiting.cancelled()
         lifecycle.schedule_posthog_lifecycle_sync("user-1")
         release.set()
         await _drain()
@@ -553,8 +553,8 @@ async def test_a_cancelled_running_sync_keeps_a_requested_rerun(posthog):
         lifecycle.schedule_posthog_lifecycle_sync("user-1")
         assert lifecycle._syncs["user-1"] == "rerun"
         running.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await running
+        await asyncio.gather(running, return_exceptions=True)
+        assert running.cancelled()
         await _drain()
 
     assert calls == 2
