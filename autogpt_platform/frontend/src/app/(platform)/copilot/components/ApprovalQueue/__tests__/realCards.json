@@ -1106,5 +1106,62 @@
       "status": "WAITING"
     },
     "schema": null
+  },
+  {
+    "story": "Sandbox Command",
+    "review": {
+      "node_exec_id": "copilot-node-gate-bash_exec:4c94ee5f0cd25c73",
+      "node_id": "copilot-node-gate-bash_exec",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "bash_exec",
+        "arguments": {
+          "command": "cd /home/user/workspace/blog && cat > post2-hooks-that-convert.md << 'EOF'\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising r…",
+          "timeout": 60
+        },
+        "clipped": ["command"],
+        "fields": [
+          {
+            "key": "command",
+            "label": "Command"
+          },
+          {
+            "key": "timeout",
+            "label": "Timeout"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-bash_exec",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "tool",
+          "key": "bash_exec",
+          "name": "Run a command in the sandbox",
+          "effect": "shell",
+          "irreversible": false,
+          "block_id": null
+        },
+        "reason": "This action is too long to check automatically.",
+        "reason_kind": "supervisor",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run a command in the sandbox",
+          "object": null,
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Run a command in the sandbox",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": null
   }
 ]

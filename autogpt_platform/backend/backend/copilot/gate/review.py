@@ -370,5 +370,6 @@ def _humanize(key: str) -> str:
 
 
 def _clip(value: Any, limit: int) -> Any:
-    text = json.dumps(value, default=str)
+    # A string is cut as its own text; its JSON form reaches the card escaped.
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
     return value if len(text) <= limit else text[:limit] + "…"

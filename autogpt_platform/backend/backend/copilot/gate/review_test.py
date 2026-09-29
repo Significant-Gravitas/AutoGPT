@@ -137,6 +137,18 @@ def test_a_clipped_argument_is_named_so_the_card_can_say_so():
     assert payload["clipped"] == ["content"]
 
 
+def test_a_clipped_string_stays_its_text_and_anything_else_stays_json():
+    command = "cat > a.md << 'EOF'\n# Say \"hi\"\n" + "x" * 5_000
+    payload = review_payload(
+        "bash_exec", {"command": command, "env": {"lines": ["y" * 5_000]}}
+    )
+    shown = payload["arguments"]
+    assert shown["command"].startswith("cat > a.md << 'EOF'\n# Say \"hi\"\n")
+    assert shown["command"].endswith("x…")
+    assert shown["env"].startswith('{"lines": ["yyy')
+    assert payload["clipped"] == ["command", "env"]
+
+
 def test_the_call_and_turn_are_on_the_row():
     """The tool call id links card, chain row and late result."""
     payload = review_payload("create_folder", {}, tool_call_id="call-7", turn=3)

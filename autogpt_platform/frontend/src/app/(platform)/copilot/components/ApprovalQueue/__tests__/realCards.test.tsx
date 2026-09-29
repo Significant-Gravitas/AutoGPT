@@ -25,12 +25,14 @@ test.each(cards.map((card) => [card.story, card] as const))(
     );
 
     const payload = card.review.payload as {
-      subject: { name: string };
+      headline: { ask: string; object: string | null };
       fields: { key: string; label: string }[];
     };
     expect(
       await screen.findByRole("heading", {
-        name: new RegExp(`Run ${payload.subject.name}`),
+        name: new RegExp(
+          [payload.headline.ask, payload.headline.object].join(" ").trim(),
+        ),
       }),
     ).toBeDefined();
     const card_ = screen.getByRole("region", { name: "Waiting for you" });
@@ -66,4 +68,27 @@ test("a code block's step renders as code", async () => {
   );
   const code = await screen.findByText(/import pandas as pd/);
   expect(code.closest("pre")).not.toBeNull();
+});
+
+test("a held command reads as its text, not as a JSON string", async () => {
+  const card = cards.find((c) => c.story === "Sandbox Command")!;
+  server.use(
+    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+      HttpResponse.json([card.review]),
+    ),
+  );
+  render(
+    <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
+    </CopilotChatActionsProvider>,
+  );
+  const code = (await screen.findByText(/post2-hooks-that-convert/)).closest(
+    "pre",
+  )!;
+  const text = code.textContent ?? "";
+  expect(text.startsWith("cd /home/user/workspace/blog")).toBe(true);
+  expect(text).toContain("'EOF'\n# How to Write");
+  expect(text).toContain('"Your posts get likes but no customers."');
+  expect(text).not.toContain("\\n");
+  expect(text).not.toContain('\\"');
 });
