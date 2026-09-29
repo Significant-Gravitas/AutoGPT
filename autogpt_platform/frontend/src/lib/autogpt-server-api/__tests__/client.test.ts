@@ -4,6 +4,10 @@ vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
 }));
 
+import {
+  clearWebSocketDisconnectIntent,
+  setWebSocketDisconnectIntent,
+} from "@/lib/auth/helpers";
 import BackendAPI, { buildOAuthLoginQuery } from "../client";
 
 describe("BackendAPI.oAuthLogin", () => {
@@ -153,6 +157,7 @@ describe("BackendAPI WebSocket failure logging", () => {
 
   afterEach(() => {
     sockets.length = 0;
+    clearWebSocketDisconnectIntent();
     vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -164,14 +169,14 @@ describe("BackendAPI WebSocket failure logging", () => {
     const api = new BackendAPI("http://test", "ws://test/ws");
     void api.connectWebSocket();
     await vi.waitFor(() => expect(sockets).toHaveLength(1), { interval: 1 });
-    return sockets[0];
+    return { api, socket: sockets[0] };
   }
 
   it("reports the close code and reason instead of the CloseEvent object", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
-    const socket = await connect();
+    const { socket } = await connect();
 
     socket.onclose!({ code: 4002, reason: "Invalid token", wasClean: true });
 
@@ -182,13 +187,16 @@ describe("BackendAPI WebSocket failure logging", () => {
     expect(message).toContain("4002");
     expect(message).toContain("Invalid token");
     expect(message).not.toContain("[object");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
   });
 
   it("reports a close on an established connection at warn level", async () => {
     const consoleWarn = vi
       .spyOn(console, "warn")
       .mockImplementation(() => undefined);
-    const socket = await connect();
+    const { socket } = await connect();
     socket.state = "connected";
 
     socket.onclose!({ code: 1006, reason: "", wasClean: false });
@@ -198,13 +206,52 @@ describe("BackendAPI WebSocket failure logging", () => {
     expect(message).toContain("1006");
     expect(message).toContain("abnormal closure");
     expect(message).not.toContain("[object");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
+  });
+
+  it("does not report a socket closed by logout before it finished connecting", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const consoleWarn = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    const { api, socket } = await connect();
+
+    api.disconnectWebSocket();
+    socket.onclose!({ code: 1006, reason: "", wasClean: false });
+
+    expect(socket.close).toHaveBeenCalledTimes(1);
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sockets).toHaveLength(1);
+  });
+
+  it("does not report a close after another tab logged out", async () => {
+    const consoleWarn = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    const { socket } = await connect();
+    socket.state = "connected";
+    setWebSocketDisconnectIntent();
+
+    socket.onclose!({ code: 1005, reason: "", wasClean: true });
+
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sockets).toHaveLength(1);
   });
 
   it("reports the socket state on an error event instead of the Event object", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
-    const socket = await connect();
+    const { socket } = await connect();
     socket.state = "connected";
     socket.readyState = FakeWebSocket.CLOSED;
 
