@@ -26,6 +26,7 @@ from backend.data.notifications import (
 )
 from backend.data.stripe_client import stripe_call
 from backend.data.user import BillingEmailRecipient
+from backend.notifications import subscriber_fields
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import (
     card_from_invoice,
@@ -34,7 +35,6 @@ from backend.notifications.lifecycle_plan import (
     plan_from_invoice,
     plan_from_subscription,
 )
-from backend.notifications import subscriber_fields
 from backend.notifications.queue import queue_audience_change, queue_notification_async
 from backend.notifications.subscriber_fields import audience_event
 from backend.notifications.trial import notify_trial, on_trial_subscription_updated

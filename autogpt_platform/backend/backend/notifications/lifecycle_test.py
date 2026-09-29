@@ -532,9 +532,7 @@ async def test_a_replayed_cancellation_writes_no_fields(fields_on):
 
 
 @pytest.mark.asyncio
-async def test_a_failed_field_update_never_fails_the_cancellation(
-    fields_on, caplog
-):
+async def test_a_failed_field_update_never_fails_the_cancellation(fields_on, caplog):
     fields_on.return_value = NotificationResult(success=False, message="down")
     with caplog.at_level(logging.ERROR):
         calls = await _run(

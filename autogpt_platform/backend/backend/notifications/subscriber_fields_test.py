@@ -112,12 +112,15 @@ def _prisma(existing):
         createdAt=datetime(2026, 9, 29, tzinfo=UTC),
         name=None,
     )
-    return MagicMock(
-        user=MagicMock(
-            find_unique=AsyncMock(return_value=existing),
-            create=AsyncMock(return_value=created),
-        )
-    ), created
+    return (
+        MagicMock(
+            user=MagicMock(
+                find_unique=AsyncMock(return_value=existing),
+                create=AsyncMock(return_value=created),
+            )
+        ),
+        created,
+    )
 
 
 async def _get_or_create(existing, queue_signup):
@@ -193,7 +196,10 @@ def _all_fields() -> dict:
     }
 
 
-STATUS = {SubscriberField.STATUS: "subscribed", SubscriberField.SUBSCRIPTION_ENDED: None}
+STATUS = {
+    SubscriberField.STATUS: "subscribed",
+    SubscriberField.SUBSCRIPTION_ENDED: None,
+}
 
 
 @pytest.mark.asyncio
@@ -209,7 +215,10 @@ async def test_a_group_add_carries_the_fields_in_the_same_upsert(
     assert client.post.await_args.kwargs["json"] == {
         "email": EMAIL,
         "groups": ["grp_changelog"],
-        "fields": {"subscription_status": "subscribed", "subscription_ended_date": None},
+        "fields": {
+            "subscription_status": "subscribed",
+            "subscription_ended_date": None,
+        },
     }
 
 
@@ -222,9 +231,11 @@ async def test_missing_fields_are_created_once_before_the_first_write(
         post=AsyncMock(
             side_effect=lambda url, **kw: _response(
                 201,
-                {"data": {"key": kw["json"].get("name")}}
-                if url.endswith("/fields")
-                else {},
+                (
+                    {"data": {"key": kw["json"].get("name")}}
+                    if url.endswith("/fields")
+                    else {}
+                ),
             )
         ),
     )

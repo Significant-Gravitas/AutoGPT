@@ -149,8 +149,7 @@ def test_a_second_run_finds_nothing_to_do():
     people = [_person("a@x.io"), _person("b@x.io", _trial("trialing"))]
     first = backfill.plan(people, {})
     held = {
-        c.person.email: {k.value: v for k, v in c.fields.items()}
-        for c in first.changes
+        c.person.email: {k.value: v for k, v in c.fields.items()} for c in first.changes
     }
     assert backfill.plan(people, held).changes == []
 
@@ -207,9 +206,7 @@ async def test_apply_counts_a_refused_upsert_without_logging_the_address(
     configured, monkeypatch, caplog
 ):
     client = MagicMock()
-    client.post = AsyncMock(
-        return_value=_response(200, {"responses": [{"code": 422}]})
-    )
+    client.post = AsyncMock(return_value=_response(200, {"responses": [{"code": 422}]}))
     monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
     changes = backfill.plan([_person("bad@x.io")], {}).changes
 

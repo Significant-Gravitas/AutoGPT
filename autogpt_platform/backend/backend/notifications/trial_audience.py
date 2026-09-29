@@ -101,4 +101,3 @@ async def join_paying_audience(user_id: str, email: str) -> None:
             f"Trial for user {user_id} converted but {action.value} could not be "
             f"queued: {result.message}"
         )
-
