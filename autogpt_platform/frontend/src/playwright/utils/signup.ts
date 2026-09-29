@@ -48,7 +48,7 @@ export async function signupTestUser(
       // Use a single waitForURL with a callback to avoid Promise.race race conditions
       await page.waitForURL(
         (url: URL) =>
-          /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+          /\/(onboarding|marketplace|copilot|home|library)/.test(url.pathname),
         { timeout: 15000 },
       );
     } catch (error) {

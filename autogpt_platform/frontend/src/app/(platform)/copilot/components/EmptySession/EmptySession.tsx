@@ -24,7 +24,7 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
-import { CopilotHome } from "../CopilotHome/CopilotHome";
+import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
@@ -140,20 +140,21 @@ export function EmptySession({
       </div>
       <motion.div
         className={cn(
-          "relative z-10 w-full max-w-[52rem] text-center",
+          "relative z-10 w-full text-center",
+          isExpertsEnabled ? "max-w-[1120px]" : "max-w-[52rem]",
           // The whole greeting flow reads top-down like a letter, so it
           // anchors to the top from its first visible frame; the regular
           // hero centers itself. `my-auto` rather than the parent's
           // `items-center`: auto margins collapse to 0 once the content is
           // taller than the scroller, where centering would push the top of
           // the page above the scroll origin and make it unreachable.
-          !intro.anchorTop && "my-auto",
+          !intro.anchorTop && !isExpertsEnabled && "my-auto",
         )}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="mx-auto max-w-[52rem]">
+        <div className="mx-auto max-w-[52rem] pt-6">
           {intro.isVisible ? (
             <OnboardingIntroCard
               name={greetingName}
@@ -229,19 +230,6 @@ export function EmptySession({
               </div>
             </div>
           )}
-
-          {/* The recap sits under the composer: the empty state's job is to
-              get a message typed, so the briefing reads as context below it
-              rather than as a wall above it. Workflow activity lives on
-              /home, under the briefing, so nothing stands in for a missing
-              recap here. */}
-          {!intro.isVisible &&
-            !intro.isAwaitingGreeting &&
-            isExpertsEnabled && (
-              <div className="mx-auto mb-6 w-full max-w-[42rem]">
-                <CopilotHome />
-              </div>
-            )}
         </div>
 
         {/* The greeting page is deliberately quiet: its own prompts are
@@ -262,6 +250,9 @@ export function EmptySession({
               disabled={isComposerDisabled}
             />
           ))}
+        {!intro.isVisible && !intro.isAwaitingGreeting && isExpertsEnabled && (
+          <HomeRecap />
+        )}
       </motion.div>
     </div>
   );
