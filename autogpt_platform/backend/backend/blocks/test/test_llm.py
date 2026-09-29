@@ -1886,6 +1886,16 @@ class TestLLMModelMissingHandler:
         assert llm.LLMModel("anthropic/claude-opus-4-7") is llm.LLMModel.CLAUDE_4_7_OPUS
         assert llm.LLMModel("anthropic/claude-opus-4-6") is llm.LLMModel.CLAUDE_4_6_OPUS
 
+    def test_dot_versioned_point_release_resolves(self) -> None:
+        # OpenRouter serves the point releases under dot-versioned slugs
+        # (``anthropic/claude-sonnet-5.5``) while the enum value hyphenates
+        # them; ``_missing_``'s prefix strip alone can't bridge that, so the
+        # alias map carries the dotted form.
+        assert (
+            llm.LLMModel("anthropic/claude-sonnet-5.5")
+            is llm.LLMModel.CLAUDE_5_5_SONNET
+        )
+
     def test_unknown_slug_raises(self) -> None:
         # Bare unknown strings still fail loudly — the alias map is an
         # additive shortcut, not a silent catch-all.

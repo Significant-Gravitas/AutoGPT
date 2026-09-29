@@ -108,7 +108,7 @@ class TestResolveBaselineModel:
 
         assert (
             ChatConfig.model_fields["fast_standard_model"].default
-            == "anthropic/claude-sonnet-5"
+            == "anthropic/claude-sonnet-5-5"
         )
 
     def test_fast_advanced_default_is_opus(self):

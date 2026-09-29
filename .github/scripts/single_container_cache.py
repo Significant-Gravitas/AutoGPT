@@ -7,8 +7,6 @@ import os
 def cache_settings(event: str, ref: str, image: str, arch: str) -> list[str]:
     if arch not in {"amd64", "arm64"}:
         raise ValueError(f"Unsupported cache architecture: {arch}")
-    if event == "pull_request":
-        return []
     shared = f"{image}:v4-{arch}"
     imports = [shared]
     export = None
@@ -20,7 +18,7 @@ def cache_settings(event: str, ref: str, image: str, arch: str) -> list[str]:
         export = shared
     settings = [
         f"{target}.cache-from=type=registry,ref={cache_ref}"
-        for target in ("backend-server", "single-container")
+        for target in ("backend-server-base", "backend-server", "single-container")
         for cache_ref in imports
     ]
     if export:
