@@ -23,8 +23,10 @@ EPISODE_DISPLAY_CHARS = 500
 # whitespace, an optional ``/``, optional whitespace, then a letter or an
 # underscore. Only the start is matched, never the closing ``>``, so a tag the
 # memory left unterminated, one that truncation cut short, and one the text
-# rendered after it would complete are all caught.
-_TAG_START_RE = re.compile(r"<(?=\s*/?\s*[^\W\d])")
+# rendered after it would complete are all caught. The optional ``/`` owns
+# the whitespace after it, so a ``<`` followed by a long run of whitespace
+# is scanned once: ``\s*/?\s*`` would try every split of that run.
+_TAG_START_RE = re.compile(r"<(?=\s*(?:/\s*)?[^\W\d])")
 
 _RETIRED_STATUSES = frozenset(
     status.value

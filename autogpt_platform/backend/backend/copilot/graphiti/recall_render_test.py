@@ -1,5 +1,6 @@
 """Unit tests for how recalled memory is written out (``recall_render.py``)."""
 
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -135,6 +136,19 @@ class TestNeutraliseTags:
     def test_neutralising_twice_changes_nothing_more(self) -> None:
         once = recall_render.neutralise_tags("<a> </b> < c")
         assert recall_render.neutralise_tags(once) == once
+
+    def test_a_long_whitespace_run_after_a_bracket_is_scanned_once(self) -> None:
+        """Fact text has no length cap: a ``<`` before a long run of
+        whitespace must not take quadratic time on the event loop (the
+        previous pattern took seconds for 20,000 spaces)."""
+        run = " " * 200_000
+        started = time.perf_counter()
+        untouched = recall_render.neutralise_tags("<" + run)
+        neutralised = recall_render.neutralise_tags("<" + run + "/" + run + "tag")
+        elapsed = time.perf_counter() - started
+        assert untouched == "<" + run
+        assert neutralised == "<!" + run + "/" + run + "tag"
+        assert elapsed < 1.0, f"neutralising took {elapsed:.2f}s"
 
 
 class TestEpisodeScope:
