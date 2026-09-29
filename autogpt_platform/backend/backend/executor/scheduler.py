@@ -1476,6 +1476,19 @@ def reconcile_stripe_tiers():
     run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
 
 
+def sync_posthog_lifecycles():
+    """Resend subscription status and lifecycle dates to PostHog (SECRT-2778).
+
+    Only starts the sweep; it runs inside the database manager.
+    """
+
+    async def _start():
+        db = get_database_manager_async_client()
+        return await db.start_posthog_lifecycle_sweep()
+
+    run_async(_start())
+
+
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
@@ -2085,6 +2098,20 @@ class Scheduler(AppService):
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping sweeps
                 seconds=config.stripe_tier_reconcile_interval_hours * 3600,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # PostHog lifecycle properties: daily, the safety net behind the
+            # webhook/signup hooks, and what moves a trial that ran out on the
+            # clock to its next status. Cron rather than an interval because
+            # replace_existing re-arms an interval job from every restart, so
+            # a 24h interval would never fire on a day with a deploy.
+            self.scheduler.add_job(
+                sync_posthog_lifecycles,
+                CronTrigger.from_crontab("15 4 * * *"),
+                id="sync_posthog_lifecycles",
+                replace_existing=True,
+                max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
 
