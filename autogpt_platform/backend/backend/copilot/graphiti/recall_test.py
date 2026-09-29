@@ -99,8 +99,8 @@ class TestForgottenFactPredicate:
     def test_cypher(self) -> None:
         assert recall.forgotten_fact_predicate("f") == (
             "(f.forgotten_at IS NOT NULL"
-            " OR f.status = 'retracted'"
-            " OR f.expiration_reason = 'user_signal'"
+            " OR coalesce(f.status, '') = 'retracted'"
+            " OR coalesce(f.expiration_reason, '') = 'user_signal'"
             " OR (f.expired_at IS NOT NULL AND f.invalid_at IS NULL"
             " AND f.expiration_reason IS NULL))"
         )

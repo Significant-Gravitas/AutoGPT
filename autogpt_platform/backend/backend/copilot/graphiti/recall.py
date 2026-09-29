@@ -98,11 +98,16 @@ def forgotten_fact_predicate(alias: str = "e") -> str:
     its ``expiration_reason`` is ``USER_FORGET_REASON`` (a dream demotion made
     on the user's word records that too), or it has the
     ``legacy_forget_predicate`` shape.
+
+    It is never null: a ``status`` or ``expiration_reason`` left unset reads
+    as matching neither value, so ``NOT`` it is the not-forgotten test on
+    every edge, a live one included (a bare ``e.status = 'retracted'`` is
+    null there, and so would the negation be).
     """
     return (
         f"({alias}.forgotten_at IS NOT NULL"
-        f" OR {alias}.status = '{MemoryStatus.retracted.value}'"
-        f" OR {alias}.expiration_reason = '{USER_FORGET_REASON}'"
+        f" OR coalesce({alias}.status, '') = '{MemoryStatus.retracted.value}'"
+        f" OR coalesce({alias}.expiration_reason, '') = '{USER_FORGET_REASON}'"
         f" OR ({legacy_forget_predicate(alias)}))"
     )
 

@@ -58,6 +58,8 @@ _LONG_AGO = "2025-01-01T00:00:00+00:00"
 # (status, expiration_reason, expired_at, invalid_at, forgotten_at) -> forgotten?
 _EDGE_SHAPES = {
     ("active", None, None, None, None): False,
+    (None, None, None, None, None): False,  # an edge from before MemoryFact
+    (None, None, _LONG_AGO, None, None): True,
     ("retracted", "user_signal", _LONG_AGO, None, _LONG_AGO): True,
     ("retracted", "user_signal", _LONG_AGO, None, None): True,
     ("superseded", "user_signal", _LONG_AGO, None, None): True,
@@ -268,15 +270,21 @@ async def test_the_forgotten_fact_cypher_and_python_agree(
             forgotten=forgotten,
         )
 
+    forgotten = forgotten_fact_predicate("e")
     found = await rows(
         driver,
         "MATCH ()-[e:RELATES_TO]->() RETURN e.uuid AS uuid, "
-        f"CASE WHEN {forgotten_fact_predicate('e')} THEN true ELSE false END AS f",
+        f"{forgotten} AS f, NOT ({forgotten}) AS kept",
     )
     in_cypher = {row["uuid"]: row["f"] for row in found}
     read_back = await EntityEdge.get_by_uuids(driver, uuids)
     assert in_cypher == {edge.uuid: is_forgotten(edge) for edge in read_back}
     assert [in_cypher[edge_uuid] for edge_uuid in uuids] == list(_EDGE_SHAPES.values())
+    # Never null, so its negation holds on every live edge, one with no
+    # status or reason set included.
+    kept = {row["uuid"]: row["kept"] for row in found}
+    assert kept == {edge_uuid: not f for edge_uuid, f in in_cypher.items()}
+    assert (kept[uuids[0]], kept[uuids[1]]) == (True, True)
 
 
 @pytest.mark.integration
