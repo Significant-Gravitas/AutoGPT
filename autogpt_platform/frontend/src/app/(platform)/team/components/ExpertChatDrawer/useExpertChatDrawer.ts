@@ -39,6 +39,7 @@ export function useExpertChatDrawer({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [skipLatest, setSkipLatest] = useState(false);
+  const [suppressOnboarding, setSuppressOnboarding] = useState(!!seedPrompt);
   const pendingPromptRef = useRef<string | null>(null);
   // Every thread reset bumps the generation; a session create that resolves
   // for an older generation is ignored so its prompt never lands in the new
@@ -114,6 +115,7 @@ export function useExpertChatDrawer({
     setMessages([]);
     pendingPromptRef.current = null;
     setSeedToSend(seedPrompt);
+    setSuppressOnboarding(!!seedPrompt);
   }, [threadKey, seedPrompt, setMessages]);
 
   const startSessionRef = useRef(startSession);
@@ -121,7 +123,7 @@ export function useExpertChatDrawer({
   useEffect(() => {
     if (!seedToSend) return;
     setSeedToSend(null);
-    void startSessionRef.current(seedToSend);
+    void startSessionRef.current(seedToSend).catch(() => undefined);
   }, [seedToSend]);
 
   useEffect(() => {
@@ -132,6 +134,7 @@ export function useExpertChatDrawer({
   }, [sessionId, sendMessage]);
 
   function startNewThread() {
+    setSuppressOnboarding(false);
     generationRef.current += 1;
     creatingGenerationRef.current = null;
     setIsCreating(false);
@@ -155,6 +158,7 @@ export function useExpertChatDrawer({
         throw new Error("Failed to create expert chat session");
       }
       pendingPromptRef.current = firstMessage;
+      setSuppressOnboarding(true);
       setSessionId(response.data.id);
     } catch (err) {
       if (generation !== generationRef.current) return;
@@ -164,6 +168,8 @@ export function useExpertChatDrawer({
         title: "Could not start the chat",
         description: "Please try sending your message again.",
       });
+      setSuppressOnboarding(false);
+      throw err;
     } finally {
       if (creatingGenerationRef.current === generation) {
         creatingGenerationRef.current = null;
@@ -216,6 +222,8 @@ export function useExpertChatDrawer({
     onSend,
     queuedMessages,
     isResolvingSession,
+    isLoadingSession: !!sessionId && sessionQuery.isLoading,
     isCreating,
+    suppressOnboarding,
   };
 }

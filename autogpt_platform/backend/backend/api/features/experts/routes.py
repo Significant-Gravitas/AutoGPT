@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
-from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts import experts_db, onboarding, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
@@ -56,6 +56,7 @@ router = APIRouter(
 )
 
 router.include_router(avatar_routes.router)
+router.include_router(onboarding.router)
 
 # Templates are marketplace content: the expert page shows them to signed-out
 # visitors, so they live on a router without the session requirement. It must
