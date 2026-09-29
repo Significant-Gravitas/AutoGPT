@@ -591,7 +591,13 @@ class TestReadSide:
 
     async def test_a_sync_outcome_reads_back_as_the_result_it_recorded(self, db):
         """What the orchestrator returned is what the eval driver reads."""
-        result = _complete_result()
+        result = _complete_result(
+            dropped_forgotten=1,
+            uncited_writes_dropped=2,
+            cross_scope_citations_dropped=3,
+            failed_writes=4,
+            provenance_pending=5,
+        )
         await store.record_sync_outcome(result)
         _, update = _update(db)
         assert update.operations is not None

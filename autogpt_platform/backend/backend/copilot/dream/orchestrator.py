@@ -51,6 +51,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
+from .citations import fact_scopes
 from .clamp import clamp_pass_operations
 from .fetch import (
     DreamInput,
@@ -644,6 +645,7 @@ async def _apply(
         ops,
         known_fact_uuids=input_bundle.known_fact_uuids,
         known_episode_uuids=input_bundle.known_episode_uuids,
+        fact_scopes=fact_scopes(input_bundle),
         lock_handle=lock_handle,
         lease=lease,
     )
@@ -680,6 +682,10 @@ def _applied_result(
         demotion_count=_as_int("demotion_count"),
         entity_invalidation_count=_as_int("entity_invalidation_count"),
         dropped_forgotten=_as_int("dropped_forgotten"),
+        failed_writes=_as_int("failed_writes"),
+        provenance_pending=_as_int("provenance_pending"),
+        uncited_writes_dropped=_as_int("uncited_writes_dropped"),
+        cross_scope_citations_dropped=_as_int("cross_scope_citations_dropped"),
         protected_demotions=_as_int("protected_demotions"),
         indeterminate_demotion_writes=_as_int("indeterminate_demotion_writes"),
         # Only apply's own False marks the count unconfirmed.

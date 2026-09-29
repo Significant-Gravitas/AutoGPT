@@ -364,10 +364,20 @@ def open_driver(
     ``AutoGPTFalkorDriver`` for why a bare construction must never create a
     graph.
     """
+    return open_graph_driver(scope.group_id, build_indices=build_indices)
+
+
+def open_graph_driver(
+    database: str, *, build_indices: bool = False
+) -> AutoGPTFalkorDriver:
+    """Open a Cypher driver on the graph named ``database``; the caller must
+    close it. For code that knows a graph only by its name (an expert
+    graph's name is a digest no scope can be rebuilt from): a migration, or
+    a sweep over graphs noted in Redis. Opening one creates no graph."""
     return AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
-        database=scope.group_id,
+        database=database,
         build_indices=build_indices,
     )

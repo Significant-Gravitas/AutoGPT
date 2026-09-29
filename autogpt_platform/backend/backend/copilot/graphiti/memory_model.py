@@ -131,6 +131,21 @@ class MemoryForgetFailure(BaseModel):
             ),
         )
 
+    @classmethod
+    def derived_left(cls, uuid: str) -> "MemoryForgetFailure":
+        """The fact is forgotten, but the forget stopped at its bound before
+        retracting everything the dream derived from it
+        (``recall_cascade.py``); forgetting it again continues."""
+        return cls(
+            uuid=uuid,
+            code=MemoryForgetFailureCode.CLEANUP_ERROR,
+            reason=(
+                "Forgotten and no longer recalled, but more facts derived from "
+                "it remain than one forget retracts. Forget it again to "
+                "continue."
+            ),
+        )
+
 
 def _describe(exc: Exception) -> str:
     detail = exc.args[0] if exc.args else type(exc).__name__
@@ -144,13 +159,22 @@ class ForgetResult(BaseModel):
     ``failures`` holds one entry per requested uuid that was not, in the
     shape ``memory_forget_confirm`` reports, plus a ``cleanup_error`` for an
     edge whose clean-up failed, which is in ``deleted`` too when its own write
-    landed. The episode and entity lists record the clean-up done: a hard
-    forget empties an episode nothing else cites into a tombstone rather than
-    deleting it, so the chat session it came from stays known.
+    landed. ``derived`` lists the facts the dream derived from them that the
+    forget retracted with them (``recall_cascade.py``), a soft retraction in
+    either mode, a hard one erasing their text (``recall_erase.py``), and
+    ``passed`` the derived facts no longer live it walked through. The
+    episode and entity lists record the clean-up done: a hard forget empties
+    an episode nothing else cites into a tombstone rather than deleting it,
+    so the chat session it came from stays known. ``resumed`` lists the
+    requested uuids that were already gone, purged by a hard forget, whose
+    cascade this forget went on with, erasing (``recall_forget.py``).
     """
 
     deleted: list[str] = Field(default_factory=list)
     failures: list[MemoryForgetFailure] = Field(default_factory=list)
+    derived: list[str] = Field(default_factory=list)
+    passed: list[str] = Field(default_factory=list)
+    resumed: list[str] = Field(default_factory=list)
     redacted_episodes: list[str] = Field(default_factory=list)
     tombstoned_episodes: list[str] = Field(default_factory=list)
     deleted_entities: list[str] = Field(default_factory=list)

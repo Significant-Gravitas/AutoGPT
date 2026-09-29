@@ -46,7 +46,11 @@ from .schemas import (
 
 _SCOPE = MemoryScope.for_user("u1")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
-_FACT = ConsolidatedFact(content="Nick ships on Fridays", confidence=0.9)
+# Cites the one episode each pass read (``_input``): a write citing nothing
+# the pass read is dropped before it is written.
+_FACT = ConsolidatedFact(
+    content="Nick ships on Fridays", confidence=0.9, source_episode_uuids=["e1"]
+)
 _OPS = DreamOperations(writes=[_FACT], summary_for_user="ok")
 _ANSWERS: tuple[BaseModel, ...] = (ConsolidationOutput(), RecombinationOutput(), _OPS)
 _BILLED = InferenceUsage(
@@ -277,7 +281,11 @@ async def _seed_batch_pass(fake_dream_db, fake_dream_redis) -> None:
     await persist_input_bundle(
         "p1",
         DreamInput(
-            user_id="u1", group_id=_SCOPE.group_id, window_start=now, window_end=now
+            user_id="u1",
+            group_id=_SCOPE.group_id,
+            window_start=now,
+            window_end=now,
+            known_episode_uuids={"e1"},
         ),
         lock_token="our-token",
     )
@@ -363,4 +371,5 @@ def _input() -> DreamInput:
         window_start=now,
         window_end=now,
         episodes=[episode],
+        known_episode_uuids={episode.uuid},
     )
