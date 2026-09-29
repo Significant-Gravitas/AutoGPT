@@ -1167,8 +1167,8 @@ def _build_catalog() -> CatalogPayload:
                 supports_reasoning=True,
                 cost=CatalogModelCost(
                     run_credits=5,
-                    input_credits_per_1m=240.0,
-                    output_credits_per_1m=720.0,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=900.0,
                     cache_read_credits_per_1m=60.0,
                 ),
             ),
