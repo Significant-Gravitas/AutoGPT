@@ -69,6 +69,23 @@ describe("the stream shadow", () => {
     expect(driftKinds()).toEqual(["finish"]);
   });
 
+  it("does not spend the finish check on a view whose window misses the turn", async () => {
+    await stream(body);
+    const afterTurnStart = turn.rows.filter((row) => (row.sequence ?? 0) > 1);
+    compareShadowWithSession(SESSION, {
+      messages: afterTurnStart,
+      active_stream: null,
+      has_more_messages: true,
+    });
+    expect(driftKinds()).toEqual([]);
+    const withoutReply = turn.rows.filter((row) => row.sequence !== 3);
+    compareShadowWithSession(SESSION, {
+      messages: withoutReply,
+      active_stream: null,
+    });
+    expect(driftKinds()).toEqual(["finish"]);
+  });
+
   it("waits while the session view still runs the turn", async () => {
     await stream(body);
     compareShadowWithSession(SESSION, {
