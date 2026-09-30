@@ -93,6 +93,21 @@ class ReviewTier(str, Enum):
     HIGH = "high"
 
 
+class AutomationTrigger(str, Enum):
+    SCHEDULE = "schedule"
+    GITHUB = "github"
+    SLACK = "slack"
+    SENTRY = "sentry"
+    LINEAR = "linear"
+    INCOMING_WEBHOOK = "incoming_webhook"
+    ON_DEMAND = "on_demand"
+
+
+class ThreadMode(str, Enum):
+    NEW = "new"
+    SINGLE = "single"
+
+
 class ProjectRepo(_CapyModel):
     repo_full_name: str
     base_branch: str = ""
@@ -261,3 +276,30 @@ class ReviewRound(_CapyModel):
     created_at: str = ""
     settled_at: Optional[str] = None
     findings: list[ReviewFinding] = Field(default_factory=list)
+
+
+class Automation(_CapyModel):
+    id: str
+    project_id: str = ""
+    name: str = ""
+    description: Optional[str] = None
+    prompt: str = ""
+    # Kept as Capy sends them: each trigger type has its own shape.
+    triggers: list[dict[str, Any]] = Field(default_factory=list)
+    model: Optional[dict[str, Any]] = None
+    thread_mode: str = ""
+    max_runs_per_day: Optional[int] = None
+    enabled: bool = False
+    deleted: bool = False
+    disabled_reason: Optional[str] = None
+    run_count: int = 0
+    last_triggered_at: Optional[str] = None
+    created_at: str = ""
+    updated_at: str = ""
+    webhook_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Where to POST events for an incoming_webhook trigger. Capy "
+            "returns it only when the automation is created."
+        ),
+    )

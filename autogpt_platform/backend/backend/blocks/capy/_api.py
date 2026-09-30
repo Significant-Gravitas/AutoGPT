@@ -160,7 +160,7 @@ class CapyClient:
         }
         if title:
             body["title"] = title
-        if model := _model_selection(model_id, reasoning):
+        if model := model_selection(model_id, reasoning):
             body["model"] = model
         if machine_size:
             body["machineSize"] = machine_size
@@ -244,7 +244,7 @@ class CapyClient:
         reasoning: str = "",
     ) -> MessageReceipt:
         body: dict[str, Any] = {"text": text, "delivery": delivery}
-        if model := _model_selection(model_id, reasoning):
+        if model := model_selection(model_id, reasoning):
             body["model"] = model
         return MessageReceipt.model_validate(
             await self._request(
@@ -307,7 +307,7 @@ class CapyClient:
         return await self._request("GET", "/usage", params={"from": from_, "to": to})
 
 
-def _model_selection(model_id: str, reasoning: str) -> Optional[dict[str, Any]]:
+def model_selection(model_id: str, reasoning: str) -> Optional[dict[str, Any]]:
     if not model_id:
         return None
     selection: dict[str, Any] = {"modelId": model_id}
@@ -341,6 +341,7 @@ def _error(response: Response) -> CapyAPIError:
         f"({body.get('feature', '')})",
         "capy/ProjectNotFound": "no project with that ID is visible to this key",
         "capy/ThreadNotFound": "no thread with that ID is visible to this key",
+        "capy/AutomationNotFound": "no automation with that ID is visible to this key",
         "capy/ReviewRoundNotFound": "no review round with that request ID",
         "capy/ReviewRefused": "Capy refused to review this pull request",
         "ModelSelection.Rejected": rejection_hint(

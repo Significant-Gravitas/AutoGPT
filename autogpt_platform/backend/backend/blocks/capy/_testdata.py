@@ -1,6 +1,7 @@
 """Canned Capy payloads shared by the block self-tests and unit tests."""
 
 from ._types import (
+    Automation,
     Message,
     MessageReceipt,
     Project,
@@ -113,3 +114,19 @@ TEST_USAGE_REPORT = {
     "models": [],
     "images": [],
 }
+
+TEST_AUTOMATION = Automation(
+    id="aut_01M3PQ8Z4Y7K2N5R9T1V3X6B8D",
+    project_id=TEST_PROJECT.id,
+    name="Fix new Sentry errors",
+    prompt=(
+        "Root-cause this Sentry issue. If it is fixable, open a pull request "
+        "with a regression test; otherwise explain why not."
+    ),
+    triggers=[{"type": "sentry", "event": "any_issue"}],
+    thread_mode="new",
+    max_runs_per_day=10,
+    enabled=True,
+    created_at="2026-09-30T09:00:00.000Z",
+    updated_at="2026-09-30T09:00:00.000Z",
+)
