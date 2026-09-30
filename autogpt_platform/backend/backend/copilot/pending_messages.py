@@ -26,7 +26,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -43,6 +43,8 @@ from backend.data.redis_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 # Per-session cap; typing faster than the copilot drains is already unusual.
 MAX_PENDING_MESSAGES = 10
@@ -193,6 +195,17 @@ async def claim_client_message(
         return "claimed"
 
 
+async def finish_despite_cancellation(work: "asyncio.Future[T]") -> T:
+    """Wait for shielded cleanup *work* however many times the caller is
+    cancelled meanwhile; the caller re-raises its own cancellation after."""
+    while True:
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            if work.done():
+                return work.result()
+
+
 async def accept_client_message(session_id: str, message_id: str, owner: str) -> None:
     """Mark a claimed send as taken, so its retransmits are skipped.  Also
     when the reservation has lapsed, unless another request holds it now.
@@ -206,7 +219,7 @@ async def accept_client_message(session_id: str, message_id: str, owner: str) ->
     try:
         await asyncio.shield(accept)
     except asyncio.CancelledError:
-        await accept
+        await finish_despite_cancellation(accept)
         raise
 
 

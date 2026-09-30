@@ -960,6 +960,39 @@ async def test_accepting_a_claim_finishes_when_the_request_is_cancelled(
 
 
 @pytest.mark.asyncio
+async def test_accepting_a_claim_finishes_when_the_request_is_cancelled_twice(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second cancellation while the accept is finishing must not cut it
+    short either, or the reservation is left to lapse."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    accepting = asyncio.Event()
+    finish = asyncio.Event()
+    settle = fake_redis.eval
+
+    async def slow_eval(*args: Any) -> int:
+        accepting.set()
+        await finish.wait()
+        return await settle(*args)
+
+    monkeypatch.setattr(fake_redis, "eval", slow_eval)
+    request = asyncio.create_task(accept_client_message("sess-1", "msg-a", "first"))
+    await accepting.wait()
+
+    request.cancel()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    request.cancel()
+    await asyncio.sleep(0)
+    finish.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    assert fake_redis.strings[key] == "accepted"
+
+
+@pytest.mark.asyncio
 async def test_copy_during_reservation_waits_for_acceptance(
     fake_redis: _FakeRedis, short_claim_wait: None
 ) -> None:

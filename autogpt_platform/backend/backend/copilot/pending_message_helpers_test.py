@@ -447,6 +447,42 @@ async def test_queue_pending_settles_the_claim_by_the_push_when_cancelled(
 
 
 @pytest.mark.asyncio
+async def test_queue_pending_settles_the_claim_when_cancelled_again_while_settling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second cancellation while the claim is being settled must not cut the
+    push or the settle short, or the reservation is left to lapse."""
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
+    appended = asyncio.Event()
+    published = asyncio.Event()
+
+    async def push(**_: Any) -> QueuePendingMessageResponse:
+        appended.set()
+        await published.wait()
+        return QueuePendingMessageResponse(
+            buffer_length=1,
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=True,
+        )
+
+    monkeypatch.setattr(helpers_module, "queue_user_message", push)
+    request = asyncio.create_task(_queue_with_client_id())
+    await appended.wait()
+    request.cancel()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    request.cancel()
+    await asyncio.sleep(0)
+    published.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_queue_pending_tells_a_copy_to_retry_while_the_first_is_unsettled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

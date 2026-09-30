@@ -29,6 +29,7 @@ from backend.copilot.pending_messages import (
     accept_client_message,
     claim_client_message,
     drain_pending_messages,
+    finish_despite_cancellation,
     format_pending_as_user_message,
     peek_pending_count,
     push_pending_message,
@@ -295,8 +296,12 @@ async def queue_pending_for_http(
         # SPUBLISH), so settle the claim by what the push did, not by the
         # cancellation: releasing it would let a retry queue a second copy.
         if client_message_id is not None:
-            await _settle_claim_of_cancelled_push(
-                push, session_id, client_message_id, claim_owner
+            await finish_despite_cancellation(
+                asyncio.ensure_future(
+                    _settle_claim_of_cancelled_push(
+                        push, session_id, client_message_id, claim_owner
+                    )
+                )
             )
         raise
     except BaseException:
