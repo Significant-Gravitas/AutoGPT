@@ -96,6 +96,7 @@ from backend.copilot.provider_failure import classify as classify_provider_failu
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
+    StreamCheckpoint,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -123,6 +124,7 @@ from backend.copilot.service import (
     strip_user_context_tags,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
+from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
@@ -2403,6 +2405,9 @@ async def stream_chat_completion_baseline(
     # and be lost on the final persist.  Wrap in a 1-element holder and read
     # the current binding lazily so the executor always sees the latest session.
     _session_holder: list[ChatSession] = [session]
+    # The stream's first row, for checkpoints; everything above is persisted.
+    turn_start = len(session.messages)
+    final_checkpoint: StreamCheckpoint | None = None
 
     async def _bound_tool_executor(
         tool_call: LLMToolCall, tools: Sequence[Any]
@@ -2603,6 +2608,9 @@ async def stream_chat_completion_baseline(
                         content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
                         on_rollback=_trim_openai_on_rollback,
                     )
+                    checkpoint = turn_checkpoint(current_session.messages, turn_start)
+                    if checkpoint is not None:
+                        _emit(state, checkpoint)
         finally:
             # Always post the sentinel so the outer consumer exits — even if
             # ``tool_call_loop`` raised.  ``_baseline_llm_caller``'s own
@@ -2903,6 +2911,7 @@ async def stream_chat_completion_baseline(
             )
         try:
             await upsert_chat_session(session)
+            final_checkpoint = turn_checkpoint(session.messages, turn_start)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
 
@@ -2957,6 +2966,8 @@ async def stream_chat_completion_baseline(
     # aclose() — doing so raises RuntimeError on client disconnect.
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
+    if final_checkpoint is not None:
+        yield final_checkpoint
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
         # Report uncached prompt tokens to match what was billed — both
         # cache_read and cache_creation are excluded so the three

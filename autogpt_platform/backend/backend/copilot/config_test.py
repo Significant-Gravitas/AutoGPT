@@ -751,11 +751,9 @@ class TestRenderReasoningInUi:
 
 
 class TestStreamReplayCount:
-    """``stream_replay_count`` caps the SSE reconnect replay batch size."""
+    """``stream_replay_count`` is the SSE reconnect replay batch size."""
 
     def test_default_is_200(self):
-        """200 covers a full Kimi turn after coalescing (~150 events) while
-        bounding the replay storm from 1000+ chunks."""
         cfg = ChatConfig()
         assert cfg.stream_replay_count == 200
 

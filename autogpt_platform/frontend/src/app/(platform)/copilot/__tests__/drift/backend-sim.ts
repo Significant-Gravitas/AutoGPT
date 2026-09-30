@@ -248,9 +248,10 @@ export function turnKeepsRunning() {
 /** The full text of each text block the turn streamed, in order. */
 export function streamedTextBlocks(turn: RecordedTurn) {
   const blocks = new Map<string, string>();
-  for (const { sse } of turn.frames) {
-    if (!sse.startsWith("data: ")) continue;
-    const chunk = JSON.parse(sse.slice("data: ".length));
+  for (const frame of turn.frames) {
+    const data = frameData(frame);
+    if (data === null) continue;
+    const chunk = JSON.parse(data);
     if (chunk.type === "text-start") blocks.set(chunk.id, "");
     if (chunk.type === "text-delta") {
       blocks.set(chunk.id, (blocks.get(chunk.id) ?? "") + chunk.delta);
@@ -260,7 +261,13 @@ export function streamedTextBlocks(turn: RecordedTurn) {
 }
 
 function isFinish(frame: { sse: string }) {
-  return frame.sse.startsWith('data: {"type":"finish"}');
+  return frameData(frame)?.startsWith('{"type":"finish"}') ?? false;
+}
+
+/** The JSON on a frame's `data:` line; entry frames lead with an `id:` line. */
+function frameData(frame: { sse: string }) {
+  const line = frame.sse.split("\n").find((l) => l.startsWith("data: "));
+  return line ? line.slice("data: ".length) : null;
 }
 
 function leadingUserRows(rows: Row[]) {

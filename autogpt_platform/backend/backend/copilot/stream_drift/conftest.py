@@ -6,10 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
+from backend.copilot import pending_message_helpers
 from backend.copilot.baseline import service as baseline
 from backend.copilot.context import set_execution_context
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
+
+from .recording import saving_into
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -26,11 +29,6 @@ async def graph_cleanup():  # type: ignore[override]
 def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     """Every session the baseline engine persists, with its I/O stubbed."""
     persisted: list[ChatSession] = []
-
-    async def save(session: ChatSession) -> ChatSession:
-        persisted.append(session.model_copy(deep=True))
-        return session
-
     monkeypatch.setattr(
         baseline,
         "config",
@@ -52,7 +50,10 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     }.items():
         monkeypatch.setattr(baseline, name, AsyncMock(return_value=value))
     monkeypatch.setattr(baseline, "_get_main_client", MagicMock())
-    monkeypatch.setattr(baseline, "upsert_chat_session", AsyncMock(side_effect=save))
+    save = AsyncMock(side_effect=saving_into(persisted))
+    # The mid-turn persist goes through ``persist_session_safe``.
+    monkeypatch.setattr(baseline, "upsert_chat_session", save)
+    monkeypatch.setattr(pending_message_helpers, "upsert_chat_session", save)
     try:
         yield persisted
     finally:

@@ -358,10 +358,6 @@ class ChatConfig(BaseSettings):
         description="TTL in seconds for stream lock (2 minutes). Short timeout allows "
         "reconnection after refresh/crash without long waits.",
     )
-    stream_max_length: int = Field(
-        default=10000,
-        description="Maximum number of messages to store per stream",
-    )
 
     # Redis key prefixes for stream registry
     session_meta_prefix: str = Field(
@@ -602,7 +598,7 @@ class ChatConfig(BaseSettings):
         default=200,
         ge=1,
         le=10000,
-        description="Max Redis stream entries replayed on SSE reconnect.",
+        description="Redis stream entries read per replay batch on SSE reconnect.",
     )
     claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
         # TODO: add xhigh when SDK support catches up
