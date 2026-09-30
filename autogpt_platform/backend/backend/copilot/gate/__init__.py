@@ -57,6 +57,8 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# A chat driven from these runs in Auto, and its cards are answered in the channel.
+LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
@@ -96,6 +98,8 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
 
 
 def resolve_mode(session: ChatSession) -> AutopilotMode:
+    if session.metadata.source_platform in LINKED_CHAT_PLATFORMS:
+        return "auto"
     return session.metadata.autopilot_mode or DEFAULT_MODE
 
 
@@ -283,6 +287,7 @@ def _last_user_message(session: ChatSession) -> str:
 
 __all__ = [
     "Decision",
+    "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
     "gate_active",
