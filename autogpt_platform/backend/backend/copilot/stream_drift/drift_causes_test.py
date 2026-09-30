@@ -208,7 +208,7 @@ async def test_a_silent_turn_keeps_publishing_within_the_stream_ttl(
     strict=True,
     raises=AssertionError,
     reason=(
-        "Approval wake (T134.67): the wake dispatches the follow-up turn while "
+        "Approval wake: the end-of-turn wake dispatches the follow-up turn while "
         "the ending turn is still registered, and the executor drops it as a "
         "duplicate without closing it, so the chat reads running forever"
     ),
