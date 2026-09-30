@@ -14,7 +14,7 @@
     "model": null,
     "llm_auth_provider": null,
     "llm_credential_id": null,
-    "session_id": null,
+    "session_id": "drift-session",
     "metadata": null
   },
   {
@@ -41,7 +41,7 @@
     "model": null,
     "llm_auth_provider": null,
     "llm_credential_id": null,
-    "session_id": null,
+    "session_id": "drift-session",
     "metadata": null
   },
   {
@@ -59,7 +59,7 @@
     "model": null,
     "llm_auth_provider": null,
     "llm_credential_id": null,
-    "session_id": null,
+    "session_id": "drift-session",
     "metadata": null
   },
   {
@@ -86,7 +86,7 @@
     "model": null,
     "llm_auth_provider": null,
     "llm_credential_id": null,
-    "session_id": null,
+    "session_id": "drift-session",
     "metadata": null
   },
   {
@@ -104,7 +104,7 @@
     "model": null,
     "llm_auth_provider": null,
     "llm_credential_id": null,
-    "session_id": null,
+    "session_id": "drift-session",
     "metadata": null
   },
   {
@@ -122,7 +122,7 @@
     "model": null,
     "llm_auth_provider": null,
     "llm_credential_id": null,
-    "session_id": null,
+    "session_id": "drift-session",
     "metadata": null
   }
 ]

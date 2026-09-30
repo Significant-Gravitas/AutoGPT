@@ -26,9 +26,21 @@ async def graph_cleanup():  # type: ignore[override]
 
 
 @pytest.fixture
-def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
-    """Every session the baseline engine persists, with its I/O stubbed."""
+def baseline_io(
+    monkeypatch: pytest.MonkeyPatch, baseline_offline: None
+) -> list[ChatSession]:
+    """Every session the baseline engine persists, with persistence stubbed too."""
     persisted: list[ChatSession] = []
+    save = AsyncMock(side_effect=saving_into(persisted))
+    # The mid-turn persist goes through ``persist_session_safe``.
+    monkeypatch.setattr(baseline, "upsert_chat_session", save)
+    monkeypatch.setattr(pending_message_helpers, "upsert_chat_session", save)
+    return persisted
+
+
+@pytest.fixture
+def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """The baseline engine with everything but its persistence stubbed."""
     monkeypatch.setattr(
         baseline,
         "config",
@@ -50,11 +62,7 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     }.items():
         monkeypatch.setattr(baseline, name, AsyncMock(return_value=value))
     monkeypatch.setattr(baseline, "_get_main_client", MagicMock())
-    save = AsyncMock(side_effect=saving_into(persisted))
-    # The mid-turn persist goes through ``persist_session_safe``.
-    monkeypatch.setattr(baseline, "upsert_chat_session", save)
-    monkeypatch.setattr(pending_message_helpers, "upsert_chat_session", save)
     try:
-        yield persisted
+        yield
     finally:
         set_execution_context(None, None)
