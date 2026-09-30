@@ -13,7 +13,11 @@ import aiohttp
 from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
-from backend.util.gcs_utils import download_with_fresh_session, generate_signed_url
+from backend.util.gcs_utils import (
+    download_with_fresh_session,
+    generate_signed_url,
+    is_not_found_error,
+)
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -544,7 +548,7 @@ class CloudStorageHandler:
 
         except Exception as e:
             # If file doesn't exist or we can't read metadata
-            if "404" in str(e) or "Not Found" in str(e):
+            if is_not_found_error(e):
                 logger.warning(
                     f"[CloudStorage] File not found during expiration check: {blob_name}"
                 )
