@@ -26,6 +26,7 @@ import {
 import {
   deduplicateMessages,
   extractSendMessageText,
+  getActiveBackendTurnId,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -150,6 +151,9 @@ export function useCopilotStream({
   // so every session-switch remounts and these refs reset naturally —
   // no cross-session bleed, no blanket "clearCoord" on the Zustand store.
   const hasResumedRef = useRef(false);
+  // The SDK does not abort a running resume, so a second replays the same turn
+  // into the same message. Reconnects bypass it: they replace a dead stream.
+  const openResumeRef = useRef<Promise<void> | null>(null);
   const hydrateCompletedRef = useRef(false);
   const pendingResumeRef = useRef<(() => void) | null>(null);
   // Synchronous flag read inside SDK callbacks — kept as a ref so callbacks
@@ -222,6 +226,11 @@ export function useCopilotStream({
         return;
       }
 
+      // Read before any await: an ended turn can wake the next one before its
+      // finish arrives, so a refetch may already show the chained turn.
+      const finishedTurnId = getActiveBackendTurnId({
+        data: queryClient.getQueryData(getGetV2GetSessionQueryKey(sessionId)),
+      });
       const attempts = pendingEngineSwitchRef.current
         ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
         : FINISH_REFETCH_ATTEMPTS_DEFAULT;
@@ -235,7 +244,13 @@ export function useCopilotStream({
           const result = await refetchSession();
           if (!isMountedRef.current) return;
           if (hasActiveBackendStream(result)) {
-            handleReconnectRef.current();
+            if (openResumeRef.current) return;
+            if (getActiveBackendTurnId(result) === finishedTurnId) {
+              handleReconnectRef.current();
+            } else {
+              hasResumedRef.current = true;
+              resumeStreamRef.current();
+            }
             return;
           }
         }
@@ -385,6 +400,7 @@ export function useCopilotStream({
   }, [
     chatRuntime,
     sessionId,
+    queryClient,
     refetchSession,
     setInitialPrompt,
     setMessages,
@@ -478,7 +494,11 @@ export function useCopilotStream({
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });
-    resumeStream();
+    const resume = resumeStream();
+    openResumeRef.current = resume;
+    void resume.finally(() => {
+      if (openResumeRef.current === resume) openResumeRef.current = null;
+    });
   }
   resumeStreamRef.current = resumeStreamFromStart;
   const sessionIdRef = useRef(sessionId);
@@ -766,6 +786,7 @@ export function useCopilotStream({
       if (hasResumedRef.current) return;
       if (isUserStoppingRef.current) return;
       hasResumedRef.current = true;
+      if (openResumeRef.current) return;
       resumeStreamRef.current();
     }
 

@@ -1,4 +1,5 @@
 import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getPostV2ProcessReviewActionMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { server } from "@/mocks/mock-server";
 import {
@@ -7,8 +8,10 @@ import {
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
-import { http } from "msw";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { folder } from "../components/ApprovalQueue/__tests__/fixtures";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
 import {
   renderHost,
@@ -47,6 +50,16 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   },
   useGetFlag: () => false,
 }));
+
+const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
+  const actual =
+    await importActual<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return { ...actual, toast: toastMock };
+});
 
 // Records the `isFinishProbing` prop on every render so the producer-side
 // lifecycle (set before the probe loop, reset in `finally`) is observable
@@ -93,9 +106,11 @@ function sessionJson(
 beforeEach(() => {
   resetCopilotChatRegistry();
   isFinishProbingHistory.length = 0;
+  toastMock.mockClear();
 });
 
 afterEach(() => {
+  heldStreams.splice(0).forEach((release) => release());
   resetCopilotChatRegistry();
 });
 
@@ -179,3 +194,196 @@ describe("useCopilotStream — isFinishProbing lifecycle", () => {
     },
   );
 });
+
+describe("useCopilotStream — a turn the server chains onto the one that ended", () => {
+  it(
+    "attaches to the chained turn once, without a connection-lost toast",
+    { timeout: 15000 },
+    async () => {
+      let activeTurn: string | null = "turn-1";
+      const resumedTurns: (string | null)[] = [];
+      server.use(
+        http.get(streamUrl(), () => {
+          const turn = activeTurn;
+          resumedTurns.push(turn);
+          if (turn === "turn-1") {
+            return turnResponse("First.", "m-1", () => {
+              activeTurn = "turn-2";
+            });
+          }
+          return turnResponse("Second.", "m-2", () => {
+            activeTurn = null;
+          });
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => activeTurn) });
+
+      // A reconnect would toast before its resume, so the turn's text
+      // appearing means the decision has been made.
+      await screen.findByText("Second.", undefined, { timeout: 5000 });
+
+      expect(resumedTurns).toEqual(["turn-1", "turn-2"]);
+      expect(connectionLostToasts()).toBe(0);
+    },
+  );
+
+  it(
+    "still reconnects with a toast when a stream ends while its own turn runs on",
+    { timeout: 15000 },
+    async () => {
+      let activeTurn: string | null = "turn-1";
+      const resumedTurns: (string | null)[] = [];
+      server.use(
+        http.get(streamUrl(), () => {
+          resumedTurns.push(activeTurn);
+          if (resumedTurns.length === 1) {
+            // Cut off before its finish: the backend turn is still running.
+            return streamSseResponse(
+              assistantTextChunks("Partial", { messageId: "m-1" }).slice(0, 5),
+            );
+          }
+          return turnResponse("Partial, then done.", "m-1", () => {
+            activeTurn = null;
+          });
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => activeTurn) });
+
+      await screen.findByText("Partial, then done.", undefined, {
+        timeout: 8000,
+      });
+
+      expect(resumedTurns).toEqual(["turn-1", "turn-1"]);
+      expect(connectionLostToasts()).toBe(1);
+    },
+  );
+
+  it(
+    "an approval answered mid-stream and the turn it chains on share one resume",
+    { timeout: 15000 },
+    async () => {
+      let activeTurn: string | null = "turn-1";
+      let approved = false;
+      const resumedTurns: (string | null)[] = [];
+      const turn1 = hold();
+      server.use(
+        http.get("*/api/review/session/:sessionId", () =>
+          HttpResponse.json(approved ? [] : [folder("a", "Q3 reports")]),
+        ),
+        getPostV2ProcessReviewActionMockHandler200(() => {
+          approved = true;
+          return { approved_count: 1, rejected_count: 0, failed_count: 0 };
+        }),
+        http.get(streamUrl(), () => {
+          const turn = activeTurn;
+          resumedTurns.push(turn);
+          if (turn === "turn-1") {
+            return turnResponse(
+              "Working.",
+              "m-1",
+              () => {
+                activeTurn = "turn-2";
+              },
+              turn1.released,
+            );
+          }
+          // Held open, so both triggers land while it is still streaming.
+          return turnResponse(
+            "Approved and done.",
+            "m-2",
+            () => {
+              activeTurn = null;
+            },
+            hold().released,
+          );
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => activeTurn) });
+
+      await screen.findByText("Working.", undefined, { timeout: 5000 });
+      await userEvent
+        .setup()
+        .click(await screen.findByRole("button", { name: "Approve" }));
+      await waitFor(() => expect(approved).toBe(true));
+      turn1.release();
+
+      await screen.findByText("Approved and done.", undefined, {
+        timeout: 5000,
+      });
+      await waitFor(
+        () => {
+          expect(isFinishProbingHistory).toContain(true);
+          expect(isFinishProbingHistory.at(-1)).toBe(false);
+        },
+        { timeout: 5000 },
+      );
+      // Past the 1 s reconnect delay, which is where the old second resume came from.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      expect(resumedTurns).toEqual(["turn-1", "turn-2"]);
+    },
+  );
+});
+
+const heldStreams: (() => void)[] = [];
+
+function hold() {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  heldStreams.push(release);
+  return { released, release };
+}
+
+function liveSession(activeTurn: () => string | null) {
+  return getGetV2GetSessionMockHandler200(() => {
+    const turn = activeTurn();
+    return sessionJson(turn ? { turn_id: turn, last_message_id: "0-0" } : null);
+  });
+}
+
+/** A turn's replay whose finish waits for `released`; `onEnd` runs just before
+ *  it, where the backend wakes the next turn. */
+function turnResponse(
+  text: string,
+  messageId: string,
+  onEnd: () => void,
+  released: Promise<void> = Promise.resolve(),
+) {
+  const chunks = assistantTextChunks(text, { messageId });
+  async function* frames() {
+    yield* chunks.slice(0, 4);
+    await released;
+    onEnd();
+    yield* chunks.slice(4);
+  }
+  const iterator = frames();
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await iterator.next();
+      if (next.done) {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+        return;
+      }
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`),
+      );
+    },
+  });
+  return new HttpResponse(stream, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "x-vercel-ai-ui-message-stream": "v1",
+    },
+  });
+}
+
+function connectionLostToasts() {
+  return toastMock.mock.calls.filter(
+    ([options]) => options?.title === "Connection lost",
+  ).length;
+}
