@@ -42,6 +42,7 @@ _MODES: tuple[AutopilotMode, ...] = ("ask_first", "auto", "unsupervised")
 def _session(
     mode: AutopilotMode | None = None,
     origin: ChatSessionOrigin | None = "interactive",
+    source_platform: str | None = None,
 ) -> ChatSession:
     return ChatSession(
         session_id="session-1",
@@ -49,7 +50,9 @@ def _session(
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata=ChatSessionMetadata(origin=origin, autopilot_mode=mode),
+        metadata=ChatSessionMetadata(
+            origin=origin, autopilot_mode=mode, source_platform=source_platform
+        ),
         messages=[ChatMessage(role="user", content="do the thing")],
     )
 
@@ -108,6 +111,17 @@ async def test_a_session_nobody_is_watching_is_inert_in_every_mode(
 
 async def test_gate_is_inactive_for_anonymous_turns(gate_on):
     assert not await gate_active(None, _session())
+
+
+@pytest.mark.parametrize("source_platform, gated", [(None, True), ("discord", False)])
+async def test_a_chat_driven_from_a_linked_bot_runs_ungated(
+    gate_on, clean_session_state, source_platform, gated
+):
+    """The channel cannot show a card, so a held call would strand the chat."""
+    session = _session("ask_first", source_platform=source_platform)
+    decision = await check_action("post_to_chat_platform", {"text": "hi"}, "u", session)
+    assert decision.allowed is not gated
+    assert (await active_mode("u", session) is not None) is gated
 
 
 async def test_the_default_mode_is_auto(gate_on):
