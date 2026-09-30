@@ -7484,14 +7484,14 @@ test = ["pytest", "tornado (>=4.5)", "typeguard"]
 
 [[package]]
 name = "tenki"
-version = "0.5.4"
+version = "1.4.0"
 description = "Tenki Cloud Python SDK — cloud sandboxes (microVMs) for AI agents and code execution"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "tenki-0.5.4-py3-none-any.whl", hash = "sha256:d5df29fa5f7f93fc6c420d3a0b50e68e0b35fda63e17ed57c0f302a522cbf9ef"},
-    {file = "tenki-0.5.4.tar.gz", hash = "sha256:3d900ca3eedf98aea0ace315246a3f2bbdc19149d966a320cdb99fd406b681fa"},
+    {file = "tenki-1.4.0-py3-none-any.whl", hash = "sha256:8a2c4da58d807313d6f4da7d0bc0aa7c3db4001bbd751f84aac0130437624b2f"},
+    {file = "tenki-1.4.0.tar.gz", hash = "sha256:eec11071341c2da5c439ad4316896c04bf29abe92e8ab4fd229011dd5499930e"},
 ]
 
 [package.dependencies]
@@ -8956,4 +8956,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "0fd339b498bd09b5c26bc355140a1bc242893db7ae877066ff725f37281b1366"
+content-hash = "efbf0cee2a00244065d295df2f906cd5df977c333e4c1a9965fe8dd34eae12bc"
