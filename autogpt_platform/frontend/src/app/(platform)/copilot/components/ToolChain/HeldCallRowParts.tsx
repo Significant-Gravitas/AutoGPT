@@ -61,8 +61,8 @@ interface HeldCallDetailProps {
 }
 
 export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
-  const args = showArgs ? held.args : undefined;
-  if (held.state === "approved" && !args) return null;
+  const card = showArgs ? held.card : undefined;
+  if (held.state === "approved" && !card) return null;
   const reviewId = held.reviewId;
   function goToApproval() {
     if (!reviewId) return;
@@ -75,9 +75,14 @@ export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
       {held.state !== "approved" && (
         <p>{(held.read && READ_DETAIL[held.state]) || DETAIL[held.state]}</p>
       )}
-      {args && (
+      {card && (
         <div className="w-full py-1">
-          <ApprovalFields fields={[]} values={args} idsWhenAlone />
+          <ApprovalFields
+            fields={card.fields}
+            values={card.args}
+            clipped={card.clipped}
+            idsWhenAlone
+          />
         </div>
       )}
       {held.state === "waiting" && reviewId && (

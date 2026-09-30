@@ -2,6 +2,7 @@
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { HeldCallDetail } from "./HeldCallRowParts";
+import { heldShowsOwnCall } from "./heldRow";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
@@ -510,8 +511,7 @@ export function ToolResult({ row, readOnly = false }: Props) {
 
   if (row.held) {
     const approved = row.held.state === "approved";
-    // The shell's card prints the command itself, run or not.
-    const ownCall = approved && capabilityTargetRow(row).tool === "bash_exec";
+    const ownCall = heldShowsOwnCall(row);
     const ran = row.output !== undefined && row.output !== "";
     return (
       <div className="flex flex-col gap-2">

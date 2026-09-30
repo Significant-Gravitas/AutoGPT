@@ -1,10 +1,9 @@
-import type { HeldOutcome } from "../ChatMessagesContainer/heldCallRows";
+import type {
+  HeldCard,
+  HeldOutcome,
+} from "../ChatMessagesContainer/heldCallRows";
 import type { HeldAnswer } from "../ApprovalQueue/heldAnswersStore";
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
-import {
-  redactSecrets,
-  visibleKeys,
-} from "@/components/organisms/ApprovalFields/helpers";
 import { fallbackAsk } from "../ApprovalQueue/helpers";
 import { capabilityTargetRow } from "./capabilityRow";
 import type { ChainRow } from "./helpers";
@@ -26,7 +25,7 @@ export interface HeldRowInfo {
   // A read held for carrying instructions, not an action held for approval.
   read?: boolean;
   // What a settled action was asked to do; a read's card shows no arguments either.
-  args?: Record<string, unknown>;
+  card?: HeldCard;
 }
 
 // A held call's row names the action while it waits, then what became of it.
@@ -68,26 +67,34 @@ export function applyHeldOutcome(
   }
   // It may have run; claim neither success nor a refusal.
   if (outcome.outcome === "unknown") {
-    return settle(row, ask, "unknown", reviewId, read);
+    return settle(row, ask, "unknown", reviewId, read, outcome.card);
   }
   if (outcome.outcome !== "approved") {
-    return settle(row, didnt, outcome.outcome, reviewId, read);
+    return settle(row, didnt, outcome.outcome, reviewId, read, outcome.card);
   }
   const result = asObject(outcome.output);
   const done = getCatalogLabel(tool, row.input, "done")?.text ?? ask;
   // It ran and failed: the normal error row, still marked as approved.
   if (result?.type === "error") {
     return {
-      ...settle(row, done, "approved", reviewId, read),
+      ...settle(row, done, "approved", reviewId, read, outcome.card),
       state: "error",
       detail: str(result, "message", "error") ?? undefined,
       output: outcome.output,
     };
   }
   return {
-    ...settle(row, done, "approved", reviewId, read),
+    ...settle(row, done, "approved", reviewId, read, outcome.card),
     output: outcome.output,
   };
+}
+
+// The shell's card prints the command itself, run or not, so it needs no card copy.
+export function heldShowsOwnCall(row: ChainRow) {
+  return (
+    row.held?.state === "approved" &&
+    capabilityTargetRow(row).tool === "bash_exec"
+  );
 }
 
 // The held call's own tool, which a capability row names only in its output.
@@ -111,32 +118,14 @@ function settle(
   state: HeldState,
   reviewId: string | null,
   read = false,
+  card?: HeldCard,
 ): ChainRow {
   return {
     ...row,
     text,
     requiresAction: false,
-    held: { state, reviewId, read, args: read ? undefined : heldArgs(row) },
+    held: { state, reviewId, read, card: read ? undefined : card },
   };
-}
-
-// A block or integration run through run_capability has its own arguments under
-// `input`, which is what its card lists; a deferred platform tool is unwrapped too.
-function heldArgs(row: ChainRow) {
-  const target = capabilityTargetRow(row);
-  const call = asObject(target.input);
-  const args =
-    target.tool === "run_capability" ? (asObject(call?.input) ?? call) : call;
-  if (!args) return undefined;
-  const shown = visibleKeys({
-    keys: Object.keys(args),
-    values: args,
-    hiddenKeys: [],
-    idsWhenAlone: true,
-  });
-  return shown.length > 0
-    ? (redactSecrets(args) as Record<string, unknown>)
-    : undefined;
 }
 
 function isHeldReadId(reviewId: string | null) {

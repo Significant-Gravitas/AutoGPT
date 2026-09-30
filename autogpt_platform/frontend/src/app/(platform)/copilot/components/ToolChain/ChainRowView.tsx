@@ -11,6 +11,7 @@ import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 import { SwapText } from "./SwapText";
 import { HeldTag } from "./HeldCallRowParts";
+import { heldShowsOwnCall } from "./heldRow";
 import { getCatalogLabel } from "./toolCatalog";
 import { ToolResult } from "./ToolResult";
 import { ToolStatusBadge } from "./ToolStatusBadge";
@@ -126,7 +127,8 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
     : !row.supersededSubSession &&
       ((row.output !== undefined && row.output !== "") ||
         liveSubSession ||
-        !!row.held?.args);
+        !!row.held?.card ||
+        heldShowsOwnCall(row));
   const showContent = liveReasoning || (open && hasContent);
   const rowText = (
     <SwapText
