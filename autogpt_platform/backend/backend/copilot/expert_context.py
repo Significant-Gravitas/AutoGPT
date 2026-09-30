@@ -48,9 +48,8 @@ OWNED_BLOCK_TAGS = (
 )
 
 
-# Where the approval gate holds this session's calls, asking in chat as well asks
-# twice. Without it (flag off, or nobody watching) review cards still hold the
-# irreversible blocks, so the ask is kept for outward steps nobody asked for.
+# Asking in chat where the gate holds the call asks twice. Without the gate, review
+# cards still hold irreversible blocks, so the ask stays for steps nobody asked for.
 GATED_WORK_RULE = (
     "Do the work you are given end to end. Actions that need the owner's approval "
     "pause for it automatically, so never ask for permission in chat first."

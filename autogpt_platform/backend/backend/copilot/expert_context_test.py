@@ -277,8 +277,8 @@ class TestBuildExpertIdentitySuffix:
     async def test_latest_soul_fields_and_protected_rules_are_rendered(
         self, gated: bool, told: str, not_told: str
     ):
-        """Only an ungated session keeps the ask before an outward step; a gated
-        one asking in chat as well would ask the owner twice."""
+        """A gated session asking in chat as well would ask the owner twice; an
+        ungated one keeps the ask for outward steps nobody asked for."""
         expert = _expert().model_copy(
             update={
                 "identity": "I help teams find the clearest strategy.",
