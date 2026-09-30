@@ -3921,6 +3921,12 @@ def _dispatch_response(
         )
 
     elif isinstance(response, StreamToolInputAvailable):
+        # A new assistant row opens after tool results, for a call as for text.
+        if acc.has_tool_results and acc.has_appended_assistant:
+            acc.assistant_response = ChatMessage(role="assistant", content="")
+            acc.accumulated_tool_calls = []
+            acc.has_appended_assistant = False
+            acc.has_tool_results = False
         acc.accumulated_tool_calls.append(
             {
                 "id": response.toolCallId,
