@@ -23,7 +23,6 @@ import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
 import { useHomeComposer } from "./useHomeComposer";
-import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 
 interface Props {
   isCreatingSession: boolean;
@@ -139,18 +138,13 @@ export function EmptySession({
             // moves it there rather than replacing it.
             <GreetingLoader />
           ) : (
-            <NewChatOnboarding
-              expertId={expertId}
-              enabled={!isInteractionLocked}
-            >
-              <EmptyHero
-                name={greetingName}
-                intro={introLine}
-                recipientPicker={recipientPicker}
-                isExpert={Boolean(selectedExpert)}
-                expertRole={selectedExpert?.role}
-              />
-            </NewChatOnboarding>
+            <EmptyHero
+              name={greetingName}
+              intro={introLine}
+              recipientPicker={recipientPicker}
+              isExpert={Boolean(selectedExpert)}
+              expertRole={selectedExpert?.role}
+            />
           )}
 
           {/* Held back while the greeting is on its way — it enters with
