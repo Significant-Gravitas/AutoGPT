@@ -12,7 +12,6 @@ parts the model reads; an undeclared one is judged whole.
 
 import asyncio
 import base64
-import dataclasses
 import json
 import logging
 import posixpath
@@ -371,8 +370,6 @@ def _locate(
         value = value.value
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="json")
-    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
-        value = dataclasses.asdict(value)
     if isinstance(value, bytes):
         value = value.decode("utf-8", errors="replace")
     if isinstance(value, str):
