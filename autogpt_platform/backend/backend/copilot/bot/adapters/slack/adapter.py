@@ -69,6 +69,8 @@ _UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
 
 # Matches both `<@U123>` and `<@U123|displayname>` mention forms.
 _USER_MENTION_RE = re.compile(r"<@(U[A-Z0-9]+)(?:\|[^>]+)?>")
+# A user (``<@U…>``/``<@W…>``) or user-group (``<!subteam^S…>``) mention.
+_ADDRESSEE_RE = re.compile(r"<@[UW][A-Z0-9]+(?:\|[^>]+)?>|<!subteam\^[A-Z0-9]+")
 
 # Slack channel/group/DM IDs — C/G/D + uppercase alphanumerics. Channel *names*
 # are lowercase-with-hyphens, so they never match; used by the proactive-post
@@ -445,6 +447,11 @@ class SlackAdapter(WebhookAdapter):
             username=await self._user_display_name(team, user),
             text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
+            # Our own mention routes through app_mention (bot_mentioned=True),
+            # so any user or user-group token left here names someone else.
+            addressed_to_others=(
+                not bot_mentioned and bool(_ADDRESSEE_RE.search(text))
+            ),
             thread_history=thread_history,
             mentionable_users=await self._collect_mentionable_users(team, text, user),
             attachments=attachments,

@@ -682,7 +682,8 @@ class TestThreadHistory:
         channel.parent = MagicMock(spec=discord.ForumChannel)
         message = _message("<@1000> can you file this?", [bot])
         message.id = 555
-        channel.starter_message = message
+        channel.starter_message = None
+        channel.fetch_message = AsyncMock(return_value=message)
         channel.history.return_value = _AsyncHistory([])
         message.channel = channel
 
@@ -1354,24 +1355,17 @@ class TestReplyContext:
         assert await adapter._resolve_reply(msg) is replied
         channel.fetch_message.assert_awaited_once_with(42)
 
-    @pytest.mark.asyncio
-    async def test_with_reply_context_prepends_quoted_message(self):
+    def test_with_reply_context_prepends_quoted_message(self):
         adapter, _ = _bare_adapter()
         replied = self._replied("fact about space", author_name="AutoBoostBot")
-        msg = MagicMock()
-        msg.message_snapshots = []
-        msg.reference = MagicMock(resolved=replied)
-        out = await adapter._with_reply_context(msg, "can you tell me?")
+        out = adapter._with_reply_context(replied, "can you tell me?")
         assert "[Replying to AutoBoostBot]" in out
         assert "fact about space" in out
         assert out.endswith("can you tell me?")
 
-    @pytest.mark.asyncio
-    async def test_with_reply_context_noop_without_reply(self):
+    def test_with_reply_context_noop_without_reply(self):
         adapter, _ = _bare_adapter()
-        msg = MagicMock()
-        msg.reference = None
-        assert await adapter._with_reply_context(msg, "hi") == "hi"
+        assert adapter._with_reply_context(None, "hi") == "hi"
 
     @pytest.mark.asyncio
     async def test_on_message_includes_replied_message(self):
@@ -2117,9 +2111,7 @@ def _ubbes_post() -> MagicMock:
     )
     starter.mentions = []
     starter.role_mentions = []
-    starter.author = MagicMock(
-        bot=False, id=558340740971757568, display_name="Ubbe"
-    )
+    starter.author = MagicMock(bot=False, id=558340740971757568, display_name="Ubbe")
     return starter
 
 
@@ -2164,9 +2156,7 @@ class TestFirstTurnInAFreshThread:
         assert ctx is not None
         assert ctx.channel_type == "thread"
         assert ctx.channel_id == str(thread.id)
-        assert [entry.text for entry in ctx.thread_history] == [
-            _ubbes_post().content
-        ]
+        assert [entry.text for entry in ctx.thread_history] == [_ubbes_post().content]
         client.fetch_channel.assert_awaited_once_with(thread.id)
 
     @pytest.mark.asyncio

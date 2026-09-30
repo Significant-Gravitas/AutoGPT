@@ -8,16 +8,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.tools.models import (
-    SetupInfo,
-    SetupRequirementsResponse,
-    UserReadiness,
-)
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+)
+from backend.copilot.tools.models import (
+    SetupInfo,
+    SetupRequirementsResponse,
+    UserReadiness,
 )
 from backend.platform_linking.models import (
     ChatTurnHandle,

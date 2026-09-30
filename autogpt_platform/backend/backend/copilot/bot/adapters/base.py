@@ -166,6 +166,11 @@ class MessageContext:
     username: str
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
+    # The message @-mentions someone other than the bot (a user, another bot
+    # or a role) and neither mentions the bot nor replies to one of its
+    # messages: it is addressed to them, not to us. The handler drops it even
+    # in a thread the bot owns, where un-addressed follow-ups still flow.
+    addressed_to_others: bool = False
     thread_history: tuple[MessageHistoryEntry, ...] = ()
     # Users the bot may @-mention back in this turn: the author and anyone
     # mentioned in the inbound message (excluding the bot itself), as

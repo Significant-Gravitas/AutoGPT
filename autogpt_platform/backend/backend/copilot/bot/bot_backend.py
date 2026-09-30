@@ -615,7 +615,30 @@ def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] 
         return None
     if parsed.get("type") != "setup_requirements":
         return None
+    if _needs_nothing_from_user(parsed):
+        # The "you're connected" card (run_mcp_tool answers a connection check
+        # with it). On the web it renders a Reconnect pill; here it would post
+        # "finish setup" for a setup that is already done.
+        logger.info("Not surfacing a setup card that needs no user action")
+        return None
     return parsed
+
+
+def _needs_nothing_from_user(card: dict[str, Any]) -> bool:
+    """True when a setup_requirements card reports everything in place:
+    ready to run, no missing credentials, no rejected credential. Only an
+    explicit readiness block counts; a bare card still asks for setup."""
+    if card.get("rejection"):
+        return False
+    info = card.get("setup_info")
+    readiness = info.get("user_readiness") if isinstance(info, dict) else None
+    if not isinstance(readiness, dict):
+        return False
+    return (
+        readiness.get("ready_to_run") is True
+        and readiness.get("has_all_credentials") is True
+        and not readiness.get("missing_credentials")
+    )
 
 
 def _extract_clarification_needed(

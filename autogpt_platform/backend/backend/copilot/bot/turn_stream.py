@@ -8,6 +8,8 @@ resolution) stays in ``handler``.
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
 from typing import Any
@@ -40,6 +42,12 @@ logger = logging.getLogger(__name__)
 
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
+
+# An identical setup card is not posted to the same conversation again within
+# this window: the earlier one is still on screen and its button opens the
+# same session. Long enough to cover a burst of follow-up turns, short enough
+# that coming back to the thread later re-surfaces it.
+SETUP_CARD_REPOST_SECONDS = 15 * 60
 
 # Cadence for live draft previews on platforms that support them — throttled
 # so a fast stream doesn't turn every chunk into an API call.
@@ -186,6 +194,14 @@ class TurnStreamer:
             # buffered workspace artifacts resolve instead of falling back to
             # the "no session" plain-text note.
             active_session_id = session_id
+            if not await _claim_setup_card(
+                redis, ctx.platform, target_id, session_id, setup_output
+            ):
+                # The same card is already up in this conversation and its
+                # button opens the same session. Count it as shown so a turn
+                # whose only output was the card doesn't report "no response".
+                sent_any_content = True
+                return
             # Drain any pending text first so the link button doesn't render
             # ahead of the message it belongs to.
             if buffer.strip():
@@ -545,6 +561,48 @@ class TurnStreamer:
             channel_type=ctx.channel_type,
             error_kind=error_kind,
         )
+
+
+async def _claim_setup_card(
+    redis: Any,
+    platform: str,
+    target_id: str,
+    session_id: str,
+    setup_output: dict[str, Any],
+) -> bool:
+    """Whether this setup card should be posted: True the first time it is
+    seen in this conversation within ``SETUP_CARD_REPOST_SECONDS``.
+
+    The per-turn guard stops a repeat inside one turn, but a follow-up turn
+    that runs the same blocked block again produces the same card, and the
+    thread filled up with identical sign-in prompts. The card's identity is
+    what it asks for (the agent/block and the missing credentials) plus the
+    session its button opens. Fails open: a Redis blip costs a duplicate card,
+    never a missing one.
+    """
+    info = setup_output.get("setup_info")
+    info = info if isinstance(info, dict) else {}
+    readiness = info.get("user_readiness")
+    readiness = readiness if isinstance(readiness, dict) else {}
+    missing = readiness.get("missing_credentials")
+    identity = json.dumps(
+        [
+            session_id,
+            str(info.get("agent_id") or ""),
+            sorted(missing) if isinstance(missing, dict) else [],
+            str(setup_output.get("message") or ""),
+        ]
+    )
+    digest = hashlib.sha256(identity.encode()).hexdigest()
+    key = f"copilot-bot:setup-card:{platform}:{target_id}:{digest}"
+    try:
+        claimed = await redis.set(key, "1", nx=True, ex=SETUP_CARD_REPOST_SECONDS)
+    except Exception:
+        logger.warning("Setup-card dedupe unavailable; posting the card anyway")
+        return True
+    if not claimed:
+        logger.info("Setup card already shown in target %s; not reposting", target_id)
+    return bool(claimed)
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
