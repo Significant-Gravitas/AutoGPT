@@ -1,0 +1,31 @@
+{
+  "part": {
+    "type": "tool-confirm_expert_change",
+    "toolCallId": "call-2",
+    "state": "output-available",
+    "input": {
+      "confirmation_id": "5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10"
+    },
+    "output": {
+      "type": "approval_required",
+      "message": "Held for the user's approval (review copilot-node-gate-confirm_expert_change:3e0a034f1d6b732f); nothing has run yet. Ask First is on for this chat, so this action needs your approval. If they approve, the result arrives later as a <held_call_result> naming this call. Carry on with whatever does not depend on it. Do not retry it or reach the same effect another way.",
+      "session_id": "session-1",
+      "tool_name": "confirm_expert_change",
+      "reason": "Ask First is on for this chat, so this action needs your approval.",
+      "review_id": "copilot-node-gate-confirm_expert_change:3e0a034f1d6b732f",
+      "ask": "Confirm the team change",
+      "object": null
+    }
+  },
+  "result": {
+    "content": "<held_call_result tool=\"confirm_expert_change\" tool_call_id=\"call-2\" review_id=\"copilot-node-gate-confirm_expert_change:3e0a034f1d6b732f\">\n{\"type\":\"expert_change_applied\",\"message\":\"Otto is raised and on the team. Tell the user who joined and what they own.\",\"session_id\":\"session-1\",\"applied\":true,\"kind\":\"raise\",\"expert\":{\"id\":\"exp-2\",\"name\":\"Otto\",\"role\":\"Market research\",\"tagline\":\"Tracks your competitors and reports what changed.\",\"about\":\"You track competitors.\",\"boundaries\":\"You never contact anyone outside the team.\",\"voice_preferences\":\"Short and factual.\",\"color\":\"sky-300\"},\"failed_workflows\":[]}\n</held_call_result>",
+    "metadata": {
+      "held_call": {
+        "review_id": "copilot-node-gate-confirm_expert_change:3e0a034f1d6b732f",
+        "tool_name": "confirm_expert_change",
+        "tool_call_id": "call-2",
+        "outcome": "approved"
+      }
+    }
+  }
+}

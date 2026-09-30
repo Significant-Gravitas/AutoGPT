@@ -1,8 +1,8 @@
 """A proposal card's Approve is the user's answer to the confirm it asks about.
 
-The hire/raise/update card sends the decision as a chat line naming the
-proposal's one-time id (``decisionLine`` in ``ToolChain/ExpertCards.tsx``), and
-the confirm takes nothing but that id, so a second card would ask the same
+A hire, raise, update or Soul-edit card sends the decision as a chat line naming
+the proposal's one-time id (``decisionLine`` in ``ToolChain/ExpertCards.tsx``),
+and the confirm takes nothing but that id, so a second card would ask the same
 question about the same change.
 """
 
@@ -12,7 +12,7 @@ from backend.copilot.model import ChatSession
 
 from .held import written_by_gate
 
-_CONFIRMS = frozenset({"confirm_expert_change"})
+_CONFIRMS = frozenset({"confirm_expert_change", "confirm_expert_soul_update"})
 
 
 def approved_on_card(

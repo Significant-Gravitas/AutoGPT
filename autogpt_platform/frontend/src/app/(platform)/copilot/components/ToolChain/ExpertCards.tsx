@@ -23,6 +23,7 @@ import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { describeSendFailure } from "../ChatInput/helpers";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 
 interface Props {
@@ -96,16 +97,24 @@ function headerFor(
 
 interface Proposal {
   toolCallId: string;
-  kind: ExpertKind | null;
+  kind: ExpertKind | "soul" | null;
   name: string;
   confirmationId: string;
 }
 
-/** A hire/raise preview the user can still say yes or no to. */
+/** A hire/raise/Soul preview the user can still say yes or no to. */
 function proposalOf(part: ToolUIPart): Proposal | null {
   const output = asObject(part.output);
   if (!output || output.applied === true) return null;
   const confirmationId = str(output, "confirmation_id");
+  if (confirmationId && isSoulChange(output)) {
+    return {
+      toolCallId: part.toolCallId,
+      kind: "soul",
+      name: "your Soul",
+      confirmationId,
+    };
+  }
   const preview = asObject(output.preview);
   if (!confirmationId || !preview) return null;
   return {
@@ -121,7 +130,7 @@ function decisionLine(proposal: Proposal, decision: Decision): string {
   const verb =
     proposal.kind === "hire"
       ? "hire"
-      : proposal.kind === "update"
+      : proposal.kind === "update" || proposal.kind === "soul"
         ? "update"
         : "create";
   return decision === "approved"
@@ -274,46 +283,145 @@ export function ExpertChangeCard({
         )}
       </div>
       {showFooter && (
-        <div className={FOOTER}>
-          <div className="min-w-0">{pager}</div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {decision && onUndo && (
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={onUndo}
-                leftIcon={<Icon icon={UndoIcon} size={14} />}
-                className="h-8 !min-w-0 px-3"
-              >
-                {decision === "approved" ? "Unapprove" : "Undo decline"}
-              </Button>
-            )}
-            {!decision && onDecide && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="small"
-                  onClick={() => onDecide("declined")}
-                  className="h-8 !min-w-0 px-3"
-                >
-                  Decline
-                </Button>
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={() => onDecide("approved")}
-                  className="h-8 !min-w-0 px-3"
-                >
-                  Approve
-                </Button>
-              </>
-            )}
-            {action}
-          </div>
-        </div>
+        <DecisionFooter
+          pager={pager}
+          decision={decision}
+          onDecide={onDecide}
+          onUndo={onUndo}
+          action={action}
+        />
       )}
     </div>
   );
+}
+
+const SOUL_LABELS: Record<string, string> = {
+  identity: "Identity and personality",
+  voice_preferences: "Voice",
+  boundaries: "Boundaries",
+};
+
+/** A Soul edit the expert proposes for itself, or the one it just saved:
+ *  each changed field as it will read, with what it was. Labels match the
+ *  team page's Soul editor (SoulDrawer). */
+function SoulChangeCard({
+  output,
+  pager,
+  decision = null,
+  onDecide,
+  onUndo,
+  action,
+}: Props) {
+  const showFooter = !!pager || !!onDecide || !!decision || !!action;
+  return (
+    <div className={SHELL}>
+      <div className={HEADER}>
+        <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-400" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
+          {output.applied === true ? "Soul updated" : "Update Soul"}
+        </span>
+      </div>
+      <div className="flex flex-col gap-3 px-4 py-3">
+        {soulChanges(output).map((change) => (
+          <section key={change.field} className="flex flex-col gap-0.5">
+            <p className="text-xs font-medium text-zinc-700">
+              {SOUL_LABELS[change.field] ?? change.field}
+            </p>
+            <p className="whitespace-pre-line text-sm text-zinc-700">
+              {change.after || "Empty"}
+            </p>
+            {change.before && (
+              <p className="line-clamp-2 text-xs text-zinc-400">
+                Was: {change.before}
+              </p>
+            )}
+          </section>
+        ))}
+      </div>
+      {showFooter && (
+        <DecisionFooter
+          pager={pager}
+          decision={decision}
+          onDecide={onDecide}
+          onUndo={onUndo}
+          action={action}
+        />
+      )}
+    </div>
+  );
+}
+
+type FooterProps = Pick<
+  Props,
+  "pager" | "decision" | "onDecide" | "onUndo" | "action"
+>;
+
+function DecisionFooter({
+  pager,
+  decision = null,
+  onDecide,
+  onUndo,
+  action,
+}: FooterProps) {
+  return (
+    <div className={FOOTER}>
+      <div className="min-w-0">{pager}</div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {decision && onUndo && (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={onUndo}
+            leftIcon={<Icon icon={UndoIcon} size={14} />}
+            className="h-8 !min-w-0 px-3"
+          >
+            {decision === "approved" ? "Unapprove" : "Undo decline"}
+          </Button>
+        )}
+        {!decision && onDecide && (
+          <>
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={() => onDecide("declined")}
+              className="h-8 !min-w-0 px-3"
+            >
+              Decline
+            </Button>
+            <Button
+              variant="primary"
+              size="small"
+              onClick={() => onDecide("approved")}
+              className="h-8 !min-w-0 px-3"
+            >
+              Approve
+            </Button>
+          </>
+        )}
+        {action}
+      </div>
+    </div>
+  );
+}
+
+function isSoulChange(output: Record<string, unknown>): boolean {
+  return str(output, "type") === "expert_soul_updated";
+}
+
+function soulChanges(output: Record<string, unknown>) {
+  const changes = Array.isArray(output.changes) ? output.changes : [];
+  return changes.flatMap((item) => {
+    const change = asObject(item);
+    const field = change ? str(change, "field") : null;
+    if (!change || !field) return [];
+    return [
+      {
+        field,
+        before: str(change, "before") ?? "",
+        after: str(change, "after") ?? "",
+      },
+    ];
+  });
 }
 
 export function ExpertChangeCardSkeleton() {
@@ -370,8 +478,9 @@ export function ExpertChangePart({
   if (part.state === "output-error") return <GenericTool part={part} />;
   const output = asObject(part.output);
   if (output) {
+    const Card = isSoulChange(output) ? SoulChangeCard : ExpertChangeCard;
     return (
-      <ExpertChangeCard
+      <Card
         output={output}
         artifactId={part.toolCallId}
         pager={pager}
@@ -383,7 +492,9 @@ export function ExpertChangePart({
       />
     );
   }
-  return isCurrentlyStreaming ? <ExpertChangeCardSkeleton /> : null;
+  // The skeleton is an expert's shape; a Soul edit waits for its diff.
+  const soul = SOUL_CHANGE_TOOLS.has(part.type.slice("tool-".length));
+  return isCurrentlyStreaming && !soul ? <ExpertChangeCardSkeleton /> : null;
 }
 
 function isVisibleExpertPart(
