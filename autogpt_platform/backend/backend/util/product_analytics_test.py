@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from backend.util import product_analytics
-from backend.util.product_analytics import ActivationEvent
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import AppEnvironment
 
 
@@ -24,17 +24,17 @@ def _only_call(capture: Mock) -> tuple[str, dict]:
 
 def test_track_is_a_noop_without_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(product_analytics, "get_posthog_client", lambda: None)
-    product_analytics.track("user-1", ActivationEvent.RUN_AGENT, {"graph_id": "g"})
+    product_analytics.track("user-1", PostHogEvent.RUN_AGENT, {"graph_id": "g"})
 
 
 def test_track_is_a_noop_without_user(capture: Mock) -> None:
-    product_analytics.track(None, ActivationEvent.RUN_AGENT, {"graph_id": "g"})
+    product_analytics.track(None, PostHogEvent.RUN_AGENT, {"graph_id": "g"})
     capture.assert_not_called()
 
 
 def test_track_adds_base_properties_and_drops_nulls(capture: Mock) -> None:
     product_analytics.track(
-        "user-1", ActivationEvent.RUN_AGENT, {"graph_id": "g", "expert_id": None}
+        "user-1", PostHogEvent.RUN_AGENT, {"graph_id": "g", "expert_id": None}
     )
 
     event, properties = _only_call(capture)
@@ -48,7 +48,7 @@ def test_track_adds_base_properties_and_drops_nulls(capture: Mock) -> None:
 
 def test_track_swallows_client_errors(capture: Mock) -> None:
     capture.side_effect = RuntimeError("posthog down")
-    product_analytics.track("user-1", ActivationEvent.RUN_AGENT)
+    product_analytics.track("user-1", PostHogEvent.RUN_AGENT)
 
 
 @pytest.mark.parametrize("trigger", ["manual", "api", "copilot"])
