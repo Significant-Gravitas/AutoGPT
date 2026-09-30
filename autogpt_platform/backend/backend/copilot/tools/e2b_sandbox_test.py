@@ -148,7 +148,15 @@ def _patch_redis(redis: AsyncMock):
 def _no_proxy_credentials():
     """Pause and kill revoke the box's proxy credential (``e2b_network``),
     which has its own Redis handle; ``TestProxyCredentialIsRevoked`` covers it."""
-    with patch("backend.copilot.tools.e2b_sandbox.forget_sandbox", AsyncMock()):
+    with (
+        patch("backend.copilot.tools.e2b_sandbox.forget_sandbox", AsyncMock()),
+        # A reconnect with no ceiling given keeps the box's recorded one;
+        # ``TestProviderCeilingIsPinned`` covers that read.
+        patch(
+            "backend.copilot.tools.e2b_sandbox.recorded_providers",
+            AsyncMock(return_value=None),
+        ),
+    ):
         yield
 
 
@@ -1985,7 +1993,7 @@ class TestCreationEnvBehindTheSwapProxy:
         kwargs = self._create(proxy="proxy:1080", user_id="user-a")
         assert kwargs["envs"]["GH_TOKEN"] == "hsurr:github:cred-default"
         assert kwargs["envs"]["GITHUB_TOKEN"] == "hsurr:github:cred-default"
-        self.lookup.assert_awaited_once_with("user-a")
+        self.lookup.assert_awaited_once_with("user-a", providers=None)
         self.grant.assert_awaited_once_with("sb-new", {"github": "cred-default"})
 
     def test_without_the_proxy_the_create_call_is_unchanged(self):
@@ -2042,3 +2050,86 @@ class TestGrantsAreRenewedOnReconnect:
     )
     def test_otherwise_nothing_is_renewed(self, kwargs):
         self._reconnect(**kwargs).assert_not_awaited()
+
+
+class TestProviderCeilingIsPinned:
+    """The turn's ceiling on connected accounts reaches the box's egress
+    record at create and at every reconnect (``e2b_network``)."""
+
+    def test_on_create(self):
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk(),
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.create_sandbox",
+                AsyncMock(return_value=_mock_sandbox("sb-new")),
+            ) as create,
+        ):
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    user_id="user-a",
+                    providers=("github",),
+                )
+            )
+        egress_owner = create.await_args.args[1]
+        assert egress_owner.user_id == "user-a"
+        assert egress_owner.providers == ("github",)
+
+    def test_on_reconnect(self):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=MagicMock()),
+            ) as connect,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=())
+            )
+        assert connect.await_args.args[2].providers == ()
+
+
+class TestNoCeilingGivenKeepsTheBoxs:
+    """``start_desktop`` and the UI screen-on re-pin a box without a ceiling of
+    their own: that must keep the turn's, not widen it to every provider."""
+
+    def _reconnect(self, **kwargs) -> tuple[MagicMock, AsyncMock]:
+        owner = SandboxOwner(kind="session", id=_SESSION_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=MagicMock()),
+            ) as connect,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.recorded_providers",
+                AsyncMock(return_value=()),
+            ) as recorded,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned("sb-1", owner, _API_KEY, user_id="user-a", **kwargs)
+            )
+        return connect, recorded
+
+    def test_a_re_pin_without_one_keeps_the_recorded_ceiling(self):
+        connect, recorded = self._reconnect()
+        recorded.assert_awaited_once_with("sb-1")
+        assert connect.await_args.args[2].providers == ()
+
+    def test_a_turn_that_gives_one_sets_it(self):
+        connect, recorded = self._reconnect(providers=("github",))
+        recorded.assert_not_awaited()
+        assert connect.await_args.args[2].providers == ("github",)
+
+    def test_a_connect_that_does_not_pin_reads_nothing(self):
+        _, recorded = self._reconnect(pin_egress=False)
+        recorded.assert_not_awaited()

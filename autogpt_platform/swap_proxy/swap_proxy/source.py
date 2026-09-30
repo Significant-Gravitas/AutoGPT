@@ -84,7 +84,8 @@ class BackendCredentialSource:
     ) -> Optional[Credential]:
         """*user_id*'s credential *name* for *host*, asked for the box whose
         proxy credential is *box*: the backend answers only for a live box of
-        that user's, with what was granted to that box."""
+        that user's, with what was granted to that box, within the providers
+        that box may use."""
         key = (user_id, name, host.lower(), box)
         now = time.monotonic()
         cached = self._credentials.get(key)

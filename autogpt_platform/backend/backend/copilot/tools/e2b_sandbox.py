@@ -101,6 +101,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     forget_sandbox,
     proxy_address,
+    recorded_providers,
 )
 from backend.util.e2b_template import ensure_template, forget_template
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
@@ -110,6 +111,20 @@ logger = logging.getLogger(__name__)
 _SANDBOX_KEY_PREFIX = "copilot:e2b:sandbox:"
 _EXPERT_KEY_PREFIX = "copilot:e2b:expert:"
 _CREATING_SENTINEL = "creating"
+
+
+class _KeepCeiling:
+    """No ceiling given: keep the one the box already has."""
+
+    def __repr__(self) -> str:
+        return "KEEP_CEILING"
+
+
+# A re-pin from outside a turn (turning the screen on from the UI) or by a
+# tool that has no ceiling of its own at hand (``start_desktop``) must not
+# widen what the turn that pinned the box last allowed.
+KEEP_CEILING = _KeepCeiling()
+Ceiling = tuple[str, ...] | None | _KeepCeiling
 
 # E2B sandbox metadata that lets an owner find its box without Redis.
 METADATA_OWNER = "autogpt_owner"
@@ -253,9 +268,14 @@ class SandboxOwner(BaseModel):
         """
         return f"{self.key()}:stream"
 
-    def egress_owner(self, user_id: str | None) -> EgressOwner:
-        """Who the egress proxy sees this box as (``backend.util.e2b_network``)."""
-        return EgressOwner(kind=self.kind, id=self.id, user_id=user_id)
+    def egress_owner(
+        self, user_id: str | None, providers: tuple[str, ...] | None = None
+    ) -> EgressOwner:
+        """Who the egress proxy sees this box as (``backend.util.e2b_network``),
+        and which of the user's providers it may use (``None``: every one)."""
+        return EgressOwner(
+            kind=self.kind, id=self.id, user_id=user_id, providers=providers
+        )
 
     def display_lock_key(self) -> str:
         """Redis key held by whoever is turning the screen on right now."""
@@ -309,6 +329,7 @@ async def connect_owned(
     *,
     timeout: int | None = None,
     user_id: str | None = None,
+    providers: "Ceiling" = KEEP_CEILING,
     pin_egress: bool = True,
 ) -> AsyncSandbox:
     """Connect to *sandbox_id* only if E2B says it belongs to *owner*.
@@ -323,7 +344,8 @@ async def connect_owned(
     id must be refused without ever waking someone else's box.  *timeout*
     is that limit for the owner's box (a resumed box would otherwise get the
     SDK's default).  A connect that will run work re-pins the box's egress
-    (``backend.util.e2b_network``) for *user_id*; one that only pauses or
+    (``backend.util.e2b_network``) for *user_id*, limited to *providers*
+    (by default the ceiling the box already has); one that only pauses or
     kills passes ``pin_egress=False``.
     """
     info = await _owned_info(sandbox_id, owner, api_key)
@@ -334,6 +356,7 @@ async def connect_owned(
         api_key,
         timeout=timeout,
         user_id=user_id,
+        providers=providers,
         pin_egress=pin_egress,
     )
 
@@ -358,9 +381,12 @@ async def _connect_pinned(
     *,
     timeout: int | None,
     user_id: str | None,
+    providers: "Ceiling" = KEEP_CEILING,
     pin_egress: bool,
 ) -> AsyncSandbox:
     """Connect to *sandbox_id*, which *info* already showed to be *owner*'s."""
+    if isinstance(providers, _KeepCeiling):
+        providers = await recorded_providers(sandbox_id) if pin_egress else None
     stamped = info.metadata or {}
     # Whose credentials the proxy may swap in is the box's own record too,
     # not the caller's word: processes of the user it was created for may
@@ -378,7 +404,7 @@ async def _connect_pinned(
     sandbox = await connect_sandbox(
         AsyncSandbox,
         sandbox_id,
-        owner.egress_owner(swap_user_id),
+        owner.egress_owner(swap_user_id, providers),
         apply_network=pin_egress,
         api_key=api_key,
         timeout=timeout,
@@ -503,6 +529,7 @@ async def _try_reconnect(
     *,
     timeout: int | None = None,
     user_id: str | None = None,
+    providers: "Ceiling" = KEEP_CEILING,
 ) -> "AsyncSandbox | None":
     """Reconnect to the owner's box, or ``None`` if it is gone.
 
@@ -526,6 +553,7 @@ async def _try_reconnect(
             api_key,
             timeout=timeout,
             user_id=user_id,
+            providers=providers,
             pin_egress=True,
         )
     except SandboxNotOwnedError as exc:
@@ -644,7 +672,9 @@ async def _placeholder_grants(egress_owner: EgressOwner) -> dict[str, str]:
         return {}
     assert egress_owner.user_id is not None  # ``swaps`` requires one
     try:
-        return await placeholder_grants(egress_owner.user_id)
+        return await placeholder_grants(
+            egress_owner.user_id, providers=egress_owner.providers
+        )
     except Exception as exc:
         # Commands still get theirs; a box without them is no less safe.
         logger.warning("[E2B] No placeholder env for %s: %s", egress_owner, exc)
@@ -662,6 +692,7 @@ async def get_or_create_owner_sandbox(
     user_id: str | None = None,
     session_id: str | None = None,
     count_turn: bool = True,
+    providers: "Ceiling" = KEEP_CEILING,
 ) -> AsyncSandbox:
     """Return the owner's E2B sandbox, creating it if needed.
 
@@ -683,6 +714,10 @@ async def get_or_create_owner_sandbox(
     from outside a turn (turning its screen on from the UI), or when the
     release is not yet guaranteed to run and ``count_expert_turn`` follows.
     *user_id* / *session_id* are provenance only, stamped on a newly created box.
+    *providers* is the turn's ceiling on the user's connected accounts
+    (``permissions.allowed_providers``), recorded when the box's egress is
+    pinned; ``None`` leaves every provider usable.  Left out, a reconnect
+    keeps the ceiling the box already has, and a new box gets none.
 
     Raises :class:`SandboxLookupError` when E2B cannot say whether an expert
     already has a box: a fresh box would fork the expert's durable state.
@@ -712,7 +747,12 @@ async def get_or_create_owner_sandbox(
             # Existing sandbox ID — try to reconnect (auto-resumes if paused).
             try:
                 sandbox = await _try_reconnect(
-                    value, owner, api_key, timeout=timeout, user_id=user_id
+                    value,
+                    owner,
+                    api_key,
+                    timeout=timeout,
+                    user_id=user_id,
+                    providers=providers,
                 )
             except Exception as exc:
                 if value in retried_ids:
@@ -775,7 +815,10 @@ async def get_or_create_owner_sandbox(
             # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
             # leak per incident.
             mounts = await _resolve_volume_mounts(volume_mounts, api_key)
-            box_grants = await _placeholder_grants(owner.egress_owner(user_id))
+            egress_owner = owner.egress_owner(
+                user_id, None if isinstance(providers, _KeepCeiling) else providers
+            )
+            box_grants = await _placeholder_grants(egress_owner)
             box_env = placeholder_env(box_grants) if box_grants else {}
             last_exc: Exception | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
@@ -783,7 +826,7 @@ async def get_or_create_owner_sandbox(
                     sandbox = await asyncio.wait_for(
                         create_sandbox(
                             AsyncSandbox,
-                            owner.egress_owner(user_id),
+                            egress_owner,
                             template=template,
                             api_key=api_key,
                             timeout=timeout,
@@ -901,6 +944,7 @@ async def get_or_create_sandbox(
     expert_id: str | None = None,
     user_id: str | None = None,
     count_turn: bool = True,
+    providers: "Ceiling" = KEEP_CEILING,
 ) -> AsyncSandbox:
     """The sandbox for this turn (the session's, or its expert's), counting the turn.
 
@@ -917,6 +961,7 @@ async def get_or_create_sandbox(
         user_id=user_id,
         session_id=session_id,
         count_turn=count_turn,
+        providers=providers,
     )
 
 
