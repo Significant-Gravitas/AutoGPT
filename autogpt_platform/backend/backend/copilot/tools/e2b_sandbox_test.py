@@ -29,6 +29,7 @@ from backend.blocks.desktop._common import (
 )
 from backend.util.sandbox_metadata import deployment_env
 
+from . import e2b_sandbox
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
@@ -263,6 +264,8 @@ class TestGetOrCreateSandbox:
         # A box whose screen was never on pays no command on the way back.
         sb.commands.run.assert_not_awaited()
         mock_cls.create.assert_not_called()
+        # One made before login baselines existed gets its baseline here.
+        e2b_sandbox.ensure_baseline.assert_awaited_once_with(sb)
         # redis.set called once to refresh TTL, not to claim a creation slot
         redis.set.assert_awaited_once()
 
@@ -281,6 +284,8 @@ class TestGetOrCreateSandbox:
 
         assert result is new_sb
         mock_cls.create.assert_awaited_once()
+        # Taken before the box is handed to anything the agent does.
+        e2b_sandbox.record_baseline.assert_awaited_once_with(new_sb)
         # Verify lifecycle: pause + auto_resume enabled
         _, kwargs = mock_cls.create.call_args
         assert kwargs.get("lifecycle") == {

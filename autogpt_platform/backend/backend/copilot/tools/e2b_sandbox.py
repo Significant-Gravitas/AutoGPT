@@ -96,6 +96,7 @@ from backend.util.e2b_network import (
     forget_sandbox,
 )
 from backend.util.e2b_template import ensure_template, forget_template
+from backend.util.sandbox_login import ensure_baseline, record_baseline, run_internal
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
 
 logger = logging.getLogger(__name__)
@@ -681,6 +682,7 @@ async def get_or_create_owner_sandbox(
                 continue
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
+                await _record_login_baseline(sandbox, only_if_missing=True)
                 if count_turn:
                     await _acquire_turn(owner)
                 return sandbox
@@ -783,10 +785,11 @@ async def get_or_create_owner_sandbox(
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
+            await _record_login_baseline(sandbox)
             if mounts:
                 with contextlib.suppress(Exception):
-                    await sandbox.commands.run(
-                        "mkdir -p " + " ".join(f"'{path}'" for path in mounts)
+                    await run_internal(
+                        sandbox, "mkdir -p " + " ".join(f"'{path}'" for path in mounts)
                     )
             try:
                 await _set_stored_sandbox_id(owner, sandbox.sandbox_id)
@@ -827,6 +830,23 @@ async def get_or_create_owner_sandbox(
         return sandbox
 
     raise RuntimeError(f"Could not acquire E2B sandbox for {owner}")
+
+
+async def _record_login_baseline(
+    sandbox: AsyncSandbox, *, only_if_missing: bool = False
+) -> None:
+    # Logged, not raised: the first check takes a missing baseline itself.
+    try:
+        if only_if_missing:
+            await ensure_baseline(sandbox)
+        else:
+            await record_baseline(sandbox)
+    except Exception:
+        logger.warning(
+            "[E2B] Could not record the login baseline for %.12s",
+            sandbox.sandbox_id,
+            exc_info=True,
+        )
 
 
 async def get_or_create_sandbox(

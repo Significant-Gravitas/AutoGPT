@@ -44,8 +44,10 @@ class TestEnsureDisplay:
             c.args[0] for c in run.await_args_list if c.kwargs.get("background")
         ]
         xvfb = next(c for c in background if c.startswith("Xvfb"))
-        xfce = next(c for c in background if c.startswith("startxfce4"))
+        xfce = next(c for c in background if "startxfce4" in c)
         assert "1280x720x24" in xvfb
+        # XFCE reads its settings from the real home, which the login skip hides.
+        assert xfce.startswith("export HOME=/home/user;")
         for command in (xvfb, xfce):
             assert "> /tmp/" in command and "2>&1" in command, command
 

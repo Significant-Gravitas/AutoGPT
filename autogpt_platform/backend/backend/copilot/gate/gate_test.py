@@ -166,6 +166,31 @@ async def test_the_supervisor_reads_the_files_a_command_runs_and_nothing_else(
     assert supervisor.await_args.kwargs["args"].get(RUN_FILES_KEY) == files
 
 
+async def test_a_file_the_command_runs_that_cannot_be_read_holds_it(
+    gate_on, clean_session_state
+):
+    """Unread is not harmless: `chmod 000` and `sudo bash x.sh` must not pass."""
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
+    files = {"/home/user/.profile": "ok", "/home/user/workspace/x.sh": None}
+    with (
+        patch(f"{_GATE}.supervise", supervisor),
+        patch(
+            f"{_GATE}.review_store.open_review",
+            AsyncMock(return_value=Headline(ask="Run it")),
+        ),
+    ):
+        decision = await check_action(
+            "bash_exec",
+            {"command": "sudo bash ~/workspace/x.sh"},
+            "u",
+            _session(),
+            context_of=AsyncMock(return_value=files),
+        )
+    assert not decision.allowed
+    assert "/home/user/workspace/x.sh" in decision.reason
+    supervisor.assert_not_awaited()
+
+
 async def test_a_supervisor_ask_parks_the_call(gate_on, clean_session_state):
     judged = Judgement(allowed=False, reason="out of scope", decided_by="jev+llm")
     with (

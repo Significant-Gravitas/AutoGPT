@@ -5,7 +5,7 @@ backend/conftest.py so that integration tests in this directory do not trigger
 the full SpinTestServer startup (which requires Postgres + RabbitMQ).
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -46,3 +46,19 @@ def stub_user_lookup_in_helpers(monkeypatch):
     client.get_user_by_id = AsyncMock(return_value=user)
     stub = MagicMock(return_value=client)
     monkeypatch.setattr("backend.copilot.tools.helpers.user_db", stub)
+
+
+@pytest.fixture(autouse=True)
+def login_chain_unchanged(request):
+    """Sandbox doubles hold no login files; tests of that check opt out."""
+    if request.node.get_closest_marker("real_login_chain"):
+        yield
+        return
+    unchanged = AsyncMock(return_value={})
+    with (
+        patch("backend.util.sandbox_login.changed_login_files", unchanged),
+        patch("backend.copilot.tools.bash_exec.changed_login_files", unchanged),
+        patch("backend.copilot.tools.e2b_sandbox.record_baseline", AsyncMock()),
+        patch("backend.copilot.tools.e2b_sandbox.ensure_baseline", AsyncMock()),
+    ):
+        yield

@@ -1,46 +1,151 @@
-"""The files a shell command runs directly (``bash x.sh``, ``python3 x.py``,
+"""The files a shell command runs directly (``bash x.sh``, ``python3 -W ignore x.py``,
 ``source x``, ``./x``), so the supervisor judges a script by what it does rather
-than by the line that starts it. A script run through ``make``, an npm script,
-a pipe, ``eval`` or another script is not found.
+than by the line that starts it. A run whose file cannot be told for certain is
+reported as unclear, never guessed; one through ``make``, a pipe, ``eval``, a
+wrapper not listed here or another script is not found.
 """
 
 import posixpath
 import re
 import shlex
+from typing import Literal
+
+from pydantic import BaseModel
 
 from backend.copilot.context import E2B_WORKDIR
 
-_SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "source", "."}
-_PYTHON = re.compile(r"python(\d+(\.\d+)?)?")
-# Options whose argument is inline code or a module: nothing on disk is run.
-_INLINE = {
-    "python": {"-c", "-m"},
-    "node": {"-e", "-p", "--eval", "--print"},
-    "tsx": {"-e", "-p", "--eval", "--print"},
-    "ts-node": {"-e", "-p", "--eval", "--print"},
-    "ruby": {"-e"},
-    "perl": {"-e", "-E"},
-    "php": {"-r"},
+OptionKind = Literal["flag", "attached", "valued", "inline", "script"]
+
+
+class RunTargets(BaseModel):
+    paths: list[str] = []
+    # Runs whose file could not be told: an unknown option or an unresolvable path.
+    unclear: list[str] = []
+
+
+class _Options(BaseModel):
+    flags: frozenset[str] = frozenset()
+    # Take the next word as their value.
+    valued: frozenset[str] = frozenset()
+    # The code is in the command itself, or on stdin: no file on disk runs.
+    inline: frozenset[str] = frozenset()
+    # Name the file that runs as their value (``php -f x.php``).
+    script: frozenset[str] = frozenset()
+    # Words before the file that are not it (``tsx watch x.ts``).
+    subcommands: frozenset[str] = frozenset()
+
+
+def _opts(
+    flags: str = "",
+    valued: str = "",
+    inline: str = "",
+    script: str = "",
+    subcommands: str = "",
+) -> _Options:
+    return _Options(
+        flags=frozenset(flags.split()),
+        valued=frozenset(valued.split()),
+        inline=frozenset(inline.split()),
+        script=frozenset(script.split()),
+        subcommands=frozenset(subcommands.split()),
+    )
+
+
+_SHELL = _opts(
+    flags="-a -b -e -f -h -i -k -l -m -n -p -r -t -u -v -x -B -C -E -H -P -T "
+    "--login --norc --noprofile --posix --restricted --verbose --noediting",
+    valued="-o +o -O +O --rcfile --init-file",
+    inline="-c -s",
+)
+_NODE = _opts(
+    flags="--inspect --inspect-brk --no-warnings --no-deprecation --enable-source-maps "
+    "--trace-warnings --trace-uncaught --throw-deprecation --preserve-symlinks "
+    "--expose-gc --abort-on-uncaught-exception --watch --no-addons --check -c "
+    "--transpile-only -T --files --swc --esm --skip-project --no-cache",
+    valued="-r --require --import --loader --experimental-loader --inspect-port "
+    "--title --env-file --conditions -C --input-type --tsconfig -P --project -O "
+    "--compiler-options --dir --cwd",
+    inline="-e --eval -p --print -i --interactive",
+)
+_INTERPRETERS = {
+    **dict.fromkeys(("bash", "sh", "zsh", "dash", "ksh"), _SHELL),
+    "node": _NODE.model_copy(update={"subcommands": frozenset({"inspect"})}),
+    "tsx": _NODE.model_copy(update={"subcommands": frozenset({"watch"})}),
+    "ts-node": _NODE,
+    "python": _opts(
+        flags="-b -B -d -E -I -i -O -OO -P -q -s -S -u -v -x",
+        valued="-W -X --check-hash-based-pycs",
+        inline="-c -m -",
+    ),
+    "ruby": _opts(
+        flags="-a -c -d -l -n -p -s -v -w -W -y --verbose",
+        valued="-r -I -C -E -F",
+        inline="-e",
+    ),
+    "perl": _opts(
+        flags="-a -c -i -l -n -p -s -t -T -u -U -v -w -W -X -0",
+        valued="-I -M -m -D",
+        inline="-e -E",
+    ),
+    "php": _opts(
+        flags="-a -e -h -H -i -l -m -n -q -s -v",
+        valued="-c -d -z",
+        inline="-r -R -B -E",
+        script="-f -F",
+    ),
+    # The file comes first, with no options.
+    "source": _opts(),
+    ".": _opts(),
 }
-_PREFIXES = {"sudo", "env", "nohup", "time", "exec", "command", "timeout"}
+# Words that run the rest of the command, with the options each takes.
+_PREFIXES = {
+    "sudo": _opts(
+        flags="-E -H -n -S -b -i -s -P -k", valued="-u -g -C -D -h -p -r -t -U -T"
+    ),
+    "env": _opts(flags="-i -0 -v --ignore-environment", valued="-u --unset"),
+    "nohup": _opts(),
+    "time": _opts(flags="-p -v -a -q", valued="-o -f"),
+    "exec": _opts(flags="-c -l", valued="-a"),
+    # `command -v x` prints where x is and runs nothing.
+    "command": _opts(flags="-p", inline="-v -V"),
+    "nice": _opts(valued="-n --adjustment"),
+    "stdbuf": _opts(valued="-i -o -e"),
+    "setsid": _opts(flags="-f -w -c"),
+    "timeout": _opts(
+        flags="--preserve-status --foreground -v", valued="-s --signal -k --kill-after"
+    ),
+}
+_PYTHON_NAME = re.compile(r"python(\d+(\.\d+)?)?")
 _OPERATORS = {"&&", "||", ";", "|", "&", ";;", "|&"}
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
-_DURATION = re.compile(r"\d+(\.\d+)?[smhd]?")
 
 
-def executed_paths(command: str) -> list[str]:
-    """Absolute paths of the files ``command`` runs directly."""
-    paths: list[str] = []
+class _Unclear(Exception):
+    pass
+
+
+def run_targets(command: str) -> RunTargets:
+    """The absolute paths of the files ``command`` runs directly, and the runs it
+    could not resolve."""
+    targets = RunTargets()
     cwd: str | None = E2B_WORKDIR
     for words in _simple_commands(command):
         if words[0] == "cd":
             cwd = _resolve(cwd, words[1]) if len(words) > 1 else E2B_WORKDIR
             continue
-        path = _run_target(words)
-        resolved = _resolve(cwd, path) if path else None
-        if resolved and resolved not in paths:
-            paths.append(resolved)
-    return paths
+        try:
+            path = _run_target(words)
+        except _Unclear:
+            targets.unclear.append(shlex.join(words))
+            continue
+        if path is None:
+            continue
+        resolved = _resolve(cwd, path)
+        if resolved is None:
+            targets.unclear.append(shlex.join(words))
+        elif resolved not in targets.paths:
+            targets.paths.append(resolved)
+    return targets
 
 
 def _simple_commands(command: str) -> list[list[str]]:
@@ -65,37 +170,96 @@ def _simple_commands(command: str) -> list[list[str]]:
 
 
 def _run_target(words: list[str]) -> str | None:
-    """The script a simple command runs, or None when it runs none from disk."""
-    while words and (
-        _ASSIGNMENT.match(words[0])
-        or words[0] in _PREFIXES
-        or words[0].startswith("-")
-        or _DURATION.fullmatch(words[0])
-    ):
-        words = words[1:]
+    """The script a simple command runs, None when it runs none from disk; raises
+    ``_Unclear`` when its options leave that uncertain."""
+    words = _strip_prefixes(words)
     if not words:
         return None
     program = posixpath.basename(words[0])
-    if _PYTHON.fullmatch(program):
-        program = "python"
-    if program in _SHELLS or program in _INLINE:
-        for index, word in enumerate(words[1:], start=1):
-            if word in _INLINE.get(program, ()) or _shell_inline(program, word):
-                return None
-            if word == "<":
-                return words[index + 1] if index + 1 < len(words) else None
-            if not word.startswith("-"):
-                return word
-        return None
-    # A program named by path is itself the file that runs.
-    return words[0] if "/" in words[0] else None
+    key = "python" if _PYTHON_NAME.fullmatch(program) else program
+    options = _INTERPRETERS.get(key)
+    if options is None:
+        # A program named by path is itself the file that runs.
+        return words[0] if "/" in words[0] else None
+    rest = iter(words[1:])
+    for word in rest:
+        if word == "<":
+            return next(rest, None)
+        if word == "--":
+            return next(rest, None)
+        if word in options.inline:
+            return None
+        if word in options.subcommands:
+            continue
+        if not word.startswith(("-", "+")):
+            return word
+        kind = _option_kind(word, options)
+        if kind == "inline":
+            return None
+        if kind == "script":
+            return next(rest, None)
+        if kind == "valued":
+            next(rest, None)
+    return None
 
 
-def _shell_inline(program: str, word: str) -> bool:
-    # `bash -c`, and combined short flags such as `bash -ec`.
-    return (
-        program in _SHELLS and re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", word) is not None
-    )
+def _strip_prefixes(words: list[str]) -> list[str]:
+    while words:
+        if _ASSIGNMENT.match(words[0]):
+            words = words[1:]
+            continue
+        options = _PREFIXES.get(words[0])
+        if options is None:
+            return words
+        prefix, words = words[0], words[1:]
+        while words and words[0].startswith("-") and words[0] != "--":
+            kind = _option_kind(words[0], options)
+            if kind == "inline":
+                return []
+            words = words[2:] if kind == "valued" else words[1:]
+        if words[:1] == ["--"]:
+            words = words[1:]
+        if prefix == "timeout":
+            words = words[1:]  # the duration
+    return words
+
+
+def _option_kind(word: str, options: _Options) -> OptionKind:
+    """How an option treats what follows it; raises ``_Unclear`` when it is unknown."""
+    name, attached = word.split("=", 1)[0], "=" in word
+    if name in options.inline:
+        return "inline"
+    if name in options.script:
+        return "script"
+    if name in options.valued:
+        return "attached" if attached else "valued"
+    if name in options.flags or (attached and word.startswith("--")):
+        return "flag"
+    if not word.startswith("--") and len(word) > 2:
+        return _cluster_kind(word, options)
+    raise _Unclear(word)
+
+
+def _cluster_kind(word: str, options: _Options) -> OptionKind:
+    """Combined short options (``-euo``) or one with its value attached (``-Wignore``)."""
+    head = word[:2]
+    if head in options.inline:
+        return "inline"
+    if head in options.valued:
+        return "attached"
+    if head in options.script:
+        raise _Unclear(word)
+    for index, letter in enumerate(word[1:], start=1):
+        short = word[0] + letter
+        if short in options.inline:
+            return "inline"
+        if short in options.valued or short in options.script:
+            if index != len(word) - 1:
+                raise _Unclear(word)
+            return "script" if short in options.script else "valued"
+        if short not in options.flags:
+            raise _Unclear(word)
+    return "flag"
 
 
 def _resolve(cwd: str | None, word: str) -> str | None:

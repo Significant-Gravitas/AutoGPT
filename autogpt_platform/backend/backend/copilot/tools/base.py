@@ -380,8 +380,9 @@ class BaseTool:
         """
         return None
 
-    async def gate_context(self, args: dict[str, Any]) -> dict[str, str] | None:
-        """The content of files this call runs, by path, for the supervisor."""
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
+        """The content of files this call runs, by path, for the supervisor; None
+        for one that could not be read, which holds the call."""
         return None
 
     def as_openai_tool(self) -> ChatCompletionToolParam:

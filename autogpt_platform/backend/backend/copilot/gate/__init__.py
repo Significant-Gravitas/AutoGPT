@@ -115,7 +115,7 @@ async def check_action(
     session: ChatSession,
     tool_call_id: str = "",
     subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
-    context_of: Callable[[], Awaitable[dict[str, str] | None]] | None = None,
+    context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None = None,
 ) -> Decision:
     """``subject_of`` resolves what the call acts on; it runs only once no
     approval answers the call, so an approved call is never re-derived.
@@ -195,14 +195,20 @@ async def check_action(
         reason_kind = "mode"
     else:
         reason_kind = "supervisor"
-        judgement = await supervise(
-            tool_name=tool_name,
-            args=await _judged_args(args, context_of),
-            user_message=_last_user_message(session),
-        )
-        if judgement.allowed:
-            return ALLOW
-        reason, decided_by = judgement.reason, judgement.decided_by
+        files = await context_of() if context_of is not None else None
+        if unread := [path for path, text in (files or {}).items() if text is None]:
+            reason = (
+                f"Could not read {', '.join(unread)}, so this could not be checked."
+            )
+        else:
+            judgement = await supervise(
+                tool_name=tool_name,
+                args=_judged_args(args, files),
+                user_message=_last_user_message(session),
+            )
+            if judgement.allowed:
+                return ALLOW
+            reason, decided_by = judgement.reason, judgement.decided_by
     call = held.HeldCall(
         review_id=review_id,
         tool_name=tool_name,
@@ -278,13 +284,11 @@ def _dollars(microdollars: int) -> str:
     return f"${max(microdollars, 0) / 1_000_000:,.2f}"
 
 
-async def _judged_args(
-    args: dict[str, Any],
-    context_of: Callable[[], Awaitable[dict[str, str] | None]] | None,
+def _judged_args(
+    args: dict[str, Any], files: dict[str, str | None] | None
 ) -> dict[str, Any]:
     # Dropped first, so a model cannot hand the supervisor a harmless copy.
     judged = {key: value for key, value in args.items() if key != RUN_FILES_KEY}
-    files = await context_of() if context_of is not None else None
     if files:
         judged[RUN_FILES_KEY] = files
     return judged
