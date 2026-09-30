@@ -31,7 +31,7 @@ def _info(sandbox_id: str, state: SandboxState, mounts: str = "attached"):
         started_at=datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc),
         cpu_count=1,
         memory_mb=2048,
-        template_id="agpt-desktop-1x2",
+        template_id="agpt-desktop-1x2-68f7fe36",
         metadata={"autogpt_kind": "shell", "autogpt_mounts": mounts},
     )
 
@@ -189,7 +189,7 @@ class TestOpenDesktop:
         redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
         with redis_p, get_p as get_mock, cls_p as desktop_cls, cfg_p as cfg:
             cfg.e2b_sandbox_timeout = 420
-            cfg.e2b_sandbox_template = "agpt-desktop-1x2"
+            cfg.e2b_sandbox_template = "agpt-desktop-1x2-68f7fe36"
             cfg.e2b_sandbox_on_timeout = "pause"
             stream, first_time, shared = await open_desktop(
                 owner, mounts, "k", user_id=_USER, session_id=_SESSION
@@ -202,7 +202,7 @@ class TestOpenDesktop:
             owner,
             "k",
             timeout=420,
-            template="agpt-desktop-1x2",
+            template="agpt-desktop-1x2-68f7fe36",
             on_timeout="pause",
             volume_mounts=mounts,
             user_id=_USER,

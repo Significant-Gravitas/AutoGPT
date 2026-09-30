@@ -6,13 +6,16 @@ re-snapshot it at 1 vCPU / 2 GiB under our own alias, which is cheaper to
 run than E2B's ``base`` (2 vCPU / 512 MiB) with four times the RAM, and it
 already carries XFCE, Chrome, Firefox and VS Code, so a box can later turn a
 screen on without changing image.  Nothing graphical starts at boot: a shell
-box on this image idles at about 90 MiB.
+box on this image idles at about 90 MiB.  On top of it we install the
+developer tools ``base`` gave agents and ``desktop`` lacks (``desktop_image``).
 
 Template aliases live per E2B team, so the first sandbox on a new team (or
 key) has to build it.  ``ensure_template`` checks the alias and builds it
-from ``desktop`` when missing (12-25 s, once per team), serialised through
+from ``desktop`` when missing (about 50 s, once per team), serialised through
 Redis so parallel first turns don't each start a build.  Templates we don't
-manage are left alone.
+manage are left alone.  A team keeps a ready alias forever, so the alias ends
+in a digest of the image's build steps: changing them renames the image and
+every team builds the new one on first use.
 
 "Exists" is not "ready": E2B registers an alias the moment a build is
 requested, before the build has run, and a failed build leaves the alias in
@@ -39,6 +42,7 @@ from e2b.api.client.models import (
 )
 from e2b.api.client_async import get_api_client
 from e2b.connection_config import ConnectionConfig
+from e2b.template.main import TemplateBuilder
 from e2b.template.types import BuildInfo
 from pydantic import BaseModel, ConfigDict
 
@@ -70,14 +74,14 @@ class TemplateSpec(BaseModel):
 
 
 DESKTOP_IMAGE = TemplateSpec(
-    alias="agpt-desktop-1x2", source="desktop", cpu_count=1, memory_mb=2048
+    alias="agpt-desktop-1x2-68f7fe36", source="desktop", cpu_count=1, memory_mb=2048
 )
 MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE}
 
-# A build takes 12-25 s.  The build is cut off before the lock can expire, so
-# the lock is only ever released by its owner (or by the TTL after a crash).
-# Followers wait as long as the lock can live, so they never give up on a
-# build that is still allowed to finish.
+# A build takes under a minute.  The build is cut off before the lock can
+# expire, so the lock is only ever released by its owner (or by the TTL after
+# a crash).  Followers wait as long as the lock can live, so they never give
+# up on a build that is still allowed to finish.
 _BUILD_LOCK_TTL_SECONDS = 300
 _BUILD_TIMEOUT_SECONDS = 240
 _BUILD_WAIT_SECONDS = _BUILD_LOCK_TTL_SECONDS
@@ -193,7 +197,7 @@ async def build_template(spec: TemplateSpec, api_key: str) -> BuildInfo:
         spec.source,
     )
     info = await AsyncTemplate.build(
-        Template().from_template(spec.source),
+        desktop_image(spec.source),
         spec.alias,
         tags=spec.tags,
         cpu_count=spec.cpu_count,
@@ -202,6 +206,51 @@ async def build_template(spec: TemplateSpec, api_key: str) -> BuildInfo:
     )
     logger.info("[E2B] Built template %s (%s)", spec.alias, info.template_id)
     return info
+
+
+def desktop_image(source: str) -> TemplateBuilder:
+    """*source* plus the tools E2B's ``base`` image gave agents and it lacks.
+
+    Changing these steps changes ``DESKTOP_IMAGE``'s alias (its test says to).
+    """
+    return (
+        Template()
+        .from_template(source)
+        .run_cmd(
+            [
+                "install -d -m 755 /etc/apt/keyrings",
+                f"curl -fsSL -o {_GH_KEYRING} {_GH_KEY}",
+                f"curl -fsSL {_NODE_KEY} | gpg --dearmor -o {_NODE_KEYRING}",
+                f"chmod go+r {_GH_KEYRING} {_NODE_KEYRING}",
+                f"echo '{_GH_REPO}' > /etc/apt/sources.list.d/github-cli.list",
+                f"echo '{_NODE_REPO}' > /etc/apt/sources.list.d/nodesource.list",
+            ],
+            user="root",
+        )
+        .apt_install(
+            [
+                "gh",
+                "nodejs",
+                "python-is-python3",
+                "python3-venv",
+                "file",
+                "pkg-config",
+                "imagemagick",
+            ],
+            no_install_recommends=True,
+        )
+        .npm_install("yarn@1", g=True)
+    )
+
+
+# Ubuntu 22.04's own gh is 2.4 (2022) and it ships Node 12, so both come
+# from their vendors' apt repositories.
+_GH_KEY = "https://cli.github.com/packages/githubcli-archive-keyring.gpg"
+_GH_KEYRING = "/etc/apt/keyrings/githubcli.gpg"
+_GH_REPO = f"deb [signed-by={_GH_KEYRING}] https://cli.github.com/packages stable main"
+_NODE_KEY = "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
+_NODE_KEYRING = "/etc/apt/keyrings/nodesource.gpg"
+_NODE_REPO = f"deb [signed-by={_NODE_KEYRING}] https://deb.nodesource.com/node_24.x nodistro main"
 
 
 async def get_template_state(spec: TemplateSpec, api_key: str) -> TemplateState:
