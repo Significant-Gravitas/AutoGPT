@@ -45,6 +45,7 @@ Each run starts from `prompt` in the project's repositories and shows up as a Ca
 | error | Error message if the operation failed | str |
 | automation | The created automation | Automation |
 | automation_id | Pass to Capy Set Automation Enabled or Capy Delete Automation | str |
+| automation_url | The automation in the Capy app, with its runs and settings | str |
 | enabled | Whether it is listening for its trigger | bool |
 | webhook_url | For an incoming_webhook trigger: POST events here to start runs. Keep it private, since every request can start a paid run. | str |
 
