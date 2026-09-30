@@ -968,3 +968,40 @@ def test_target_encode_decode_roundtrip():
     # Back-compat: the old single-workspace two-part form decodes with no team.
     assert _decode_target("C1|1.2") == ("", "C1", "1.2")
     assert _decode_target("D1") == ("", "D1", None)
+
+
+class TestAddressedToOthers:
+    @staticmethod
+    def _thread_reply(text: str) -> dict:
+        return {
+            "type": "message",
+            "channel_type": "channel",
+            "channel": "C1",
+            "ts": "2.0",
+            "thread_ts": "1.0",
+            "user": "U1",
+            "text": text,
+            "team": "T1",
+        }
+
+    async def _ctx_for(self, adapter: SlackAdapter, text: str):
+        cb = AsyncMock()
+        adapter.on_message(cb)
+        await adapter._dispatch_event(self._thread_reply(text))
+        cb.assert_awaited_once()
+        return cb.await_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_thread_reply_mentioning_someone_else(self, adapter):
+        ctx = await self._ctx_for(adapter, "<@U2> can you look at this?")
+        assert ctx.addressed_to_others is True
+
+    @pytest.mark.asyncio
+    async def test_thread_reply_mentioning_a_user_group(self, adapter):
+        ctx = await self._ctx_for(adapter, "<!subteam^S123|@eng> anyone?")
+        assert ctx.addressed_to_others is True
+
+    @pytest.mark.asyncio
+    async def test_plain_thread_reply(self, adapter):
+        ctx = await self._ctx_for(adapter, "and file it under Internal")
+        assert ctx.addressed_to_others is False
