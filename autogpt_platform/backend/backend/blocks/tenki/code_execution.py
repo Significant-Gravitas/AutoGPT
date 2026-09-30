@@ -10,6 +10,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -22,6 +23,10 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, create_client, te
 logger = logging.getLogger(__name__)
 SANDBOX_CLEANUP_MARGIN_SECONDS = 60
 SANDBOX_NAME_SUFFIX_LENGTH = 12
+
+
+class CommandNotCompletedError(Exception):
+    """The command timed out or never started, so there is no result to emit."""
 
 
 class SandboxExecution(BaseModel):
@@ -93,6 +98,7 @@ class TenkiRunCodeBlock(Block):
                 "is always terminated after the command finishes or fails."
             ),
             categories={BlockCategory.DEVELOPER_TOOLS},
+            effect=BlockEffect.EXTERNAL,
             input_schema=self.Input,
             output_schema=self.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -125,6 +131,9 @@ class TenkiRunCodeBlock(Block):
     ) -> BlockOutput:
         try:
             result = await self.execute_in_sandbox(input_data, credentials)
+        except CommandNotCompletedError as error:
+            yield "error", str(error)
+            return
         except Exception as error:
             yield "error", f"Tenki sandbox execution failed: {error}"
             return
@@ -163,6 +172,14 @@ class TenkiRunCodeBlock(Block):
                 env=input_data.environment,
                 timeout=input_data.timeout_seconds,
             )
+            if result.timed_out:
+                raise CommandNotCompletedError(
+                    f"Command timed out after {input_data.timeout_seconds} seconds"
+                )
+            if result.exit_code < 0 and not result.signal:
+                raise CommandNotCompletedError(
+                    f"Command could not start: {result.reason or 'no reason given'}"
+                )
             return SandboxExecution(
                 sandbox_id=sandbox.id,
                 stdout=result.stdout_text,

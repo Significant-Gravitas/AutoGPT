@@ -17,11 +17,17 @@ class FakeResult:
         stdout: str = "hello",
         stderr: str = "",
         duration_ms: int | None = 125,
+        signal: str | None = None,
+        reason: str | None = "exit",
+        timed_out: bool = False,
     ):
         self.exit_code = exit_code
         self.stdout_text = stdout
         self.stderr_text = stderr
         self.duration_ms = duration_ms
+        self.signal = signal
+        self.reason = reason
+        self.timed_out = timed_out
 
 
 class FakeSandbox:
@@ -191,6 +197,51 @@ async def test_command_failure_returns_outputs_and_closes(monkeypatch):
     ]
     assert sandbox.close_calls == 1
     assert client.closed
+
+
+async def test_timed_out_command_reports_error_and_closes(monkeypatch):
+    sandbox = FakeSandbox(
+        FakeResult(
+            exit_code=-1,
+            stdout="start\n",
+            signal="terminated",
+            reason="timeout",
+            timed_out=True,
+        )
+    )
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+
+    outputs = await _outputs(TenkiRunCodeBlock(), _input(timeout_seconds=5))
+
+    assert outputs == [("error", "Command timed out after 5 seconds")]
+    assert sandbox.close_calls == 1
+    assert client.closed
+
+
+async def test_command_that_cannot_start_reports_reason(monkeypatch):
+    reason = "cwd /missing: stat /missing: no such file or directory"
+    sandbox = FakeSandbox(FakeResult(exit_code=-1, stdout="", reason=reason))
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+
+    outputs = await _outputs(TenkiRunCodeBlock(), _input(working_directory="/missing"))
+
+    assert outputs == [("error", f"Command could not start: {reason}")]
+    assert sandbox.close_calls == 1
+    assert client.closed
+
+
+async def test_signaled_command_returns_outputs(monkeypatch):
+    sandbox = FakeSandbox(
+        FakeResult(exit_code=-1, stdout="x\n", signal="killed", reason="signaled")
+    )
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+
+    outputs = await _outputs(TenkiRunCodeBlock())
+
+    assert outputs[0:3] == [("stdout", "x\n"), ("stderr", ""), ("exit_code", -1)]
 
 
 async def test_missing_command_duration_returns_zero(monkeypatch):
