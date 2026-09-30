@@ -16,7 +16,9 @@ finds nothing to do and a failed call is simply picked up by the next run.
 
 import asyncio
 import logging
+import re
 from enum import Enum
+from typing import Any
 from urllib.parse import urlencode
 
 from pydantic import BaseModel
@@ -121,6 +123,14 @@ class ApplyResult(BaseModel):
     failed: dict[Decision, int]
 
 
+class BatchAnswer(BaseModel):
+    """MailerLite's answer to one call in a /batch request."""
+
+    code: int
+    # Why it was refused, when it was: see `_failure_reason`.
+    body: Any = None
+
+
 def classify(subscriptions: list[Subscription]) -> Standing:
     """A customer who pays on any subscription is a subscriber, whatever the
     state of their others."""
@@ -205,11 +215,11 @@ async def apply(changes: list[PlannedChange], audience: Audience) -> ApplyResult
     for index, (decision, chunk) in enumerate(batches):
         if index:
             await asyncio.sleep(_interval_before(decision))
-        codes = await _send_batch(
+        answers = await _send_batch(
             [_call_for(decision, c.customer.email, audience) for c in chunk]
         )
-        for change, code in zip(chunk, codes):
-            _record(result, decision, change, code)
+        for change, answer in zip(chunk, answers):
+            _record(result, decision, change, answer)
     return result
 
 
@@ -252,23 +262,62 @@ def _upsert(email: str, group_id: str) -> dict:
 
 
 def _record(
-    result: ApplyResult, decision: Decision, change: PlannedChange, code: int
+    result: ApplyResult, decision: Decision, change: PlannedChange, answer: BatchAnswer
 ) -> None:
     # 404 on a removal means they already left, which is the desired state.
-    ok = code in (200, 201, 202, 204) or (
-        code == 404 and decision in (Decision.REMOVE_CHANGELOG, Decision.REMOVE_TRIAL)
+    ok = answer.code in (200, 201, 202, 204) or (
+        answer.code == 404
+        and decision in (Decision.REMOVE_CHANGELOG, Decision.REMOVE_TRIAL)
     )
     if ok:
         result.succeeded[decision] += 1
         return
     result.failed[decision] += 1
     logger.warning(
-        f"{decision.value} failed for {_pseudonym(change.customer.email)} "
-        f"with {code}; the next run retries it"
+        f"{decision.value} failed for {_refusal(change.customer.email, answer)}; "
+        "the next run retries it"
     )
 
 
-async def _send_batch(requests: list[dict]) -> list[int]:
+def _refusal(email: str, answer: BatchAnswer) -> str:
+    """A refused call, for the log: the pseudonym, the top-level domain and
+    MailerLite's reason. Enough to spot a pattern without naming anyone."""
+    return (
+        f"{_pseudonym(email)} at {_top_level_domain(email)} with {answer.code} "
+        f"({_failure_reason(answer.body, email)})"
+    )
+
+
+# Labels that sit under a country code as part of its suffix: .co.uk, .com.au.
+_SECOND_LEVEL = {"ac", "co", "com", "edu", "gov", "net", "org"}
+
+
+def _top_level_domain(email: str) -> str:
+    labels = email.strip().lower().rpartition("@")[2].split(".")
+    if len(labels) < 2 or not labels[-1]:
+        return "no TLD"
+    if len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL:
+        return f".{labels[-2]}.{labels[-1]}"
+    return f".{labels[-1]}"
+
+
+def _failure_reason(body: Any, email: str) -> str:
+    """What MailerLite said was wrong with a refused call: its message and
+    per-field errors. The address is swapped for its pseudonym in case
+    MailerLite echoed it back."""
+    if not isinstance(body, dict):
+        return "no reason given"
+    parts = [str(body["message"])] if body.get("message") else []
+    errors = body.get("errors")
+    if isinstance(errors, dict):
+        for field, problems in errors.items():
+            listed = problems if isinstance(problems, list) else [problems]
+            parts.append(f"{field}: {'; '.join(str(p) for p in listed)}")
+    reason = " | ".join(parts) or "no reason given"
+    return re.sub(re.escape(email.strip()), _pseudonym(email), reason, flags=re.I)
+
+
+async def _send_batch(requests: list[dict]) -> list[BatchAnswer]:
     """One /batch call. Requests retries a 429 with backoff before this sees
     it, so a status here is final."""
     response = await _client().post(
@@ -281,7 +330,9 @@ async def _send_batch(requests: list[dict]) -> list[int]:
         raise MailerLiteError(
             f"MailerLite answered {len(responses)} of {len(requests)} batched calls"
         )
-    return [int(r.get("code") or 0) for r in responses]
+    return [
+        BatchAnswer(code=int(r.get("code") or 0), body=r.get("body")) for r in responses
+    ]
 
 
 async def _read_group(group_id: str) -> dict[str, str]:
