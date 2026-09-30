@@ -383,6 +383,93 @@ class TestOAuthLogin:
         data = response.json()
         assert "autogpt-platform" in data["login_url"]
 
+    @staticmethod
+    def _mock_slack_discovery(MockClient):
+        # What mcp.slack.com serves: no registration_endpoint, confidential
+        # clients only.
+        instance = MockClient.return_value
+        instance.discover_auth = AsyncMock(
+            return_value={
+                "authorization_servers": ["https://mcp.slack.com"],
+                "resource": "https://mcp.slack.com",
+                "scopes_supported": ["search:read.public", "users:read"],
+            }
+        )
+        instance.discover_auth_server_metadata = AsyncMock(
+            return_value=(
+                {
+                    "issuer": "https://mcp.slack.com",
+                    "authorization_endpoint": "https://slack.com/oauth/v2_user/authorize",
+                    "token_endpoint": "https://slack.com/api/oauth.v2.user.access",
+                    "token_endpoint_auth_methods_supported": ["client_secret_post"],
+                },
+                "https://mcp.slack.com",
+            )
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_slack_uses_configured_client(self, client):
+        """Slack has no DCR, so sign-in must send the platform's Slack app id,
+        not the placeholder Slack rejects with "Invalid client_id parameter"."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(MockClient)
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = "1234.5678"
+            mock_settings.secrets.slack_mcp_client_secret = "slack-secret"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.slack.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        login_url = response.json()["login_url"]
+        assert login_url.startswith("https://slack.com/oauth/v2_user/authorize?")
+        assert "client_id=1234.5678" in login_url
+        assert "autogpt-platform" not in login_url
+        assert "slack-secret" not in login_url
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["client_id"] == "1234.5678"
+        assert state_metadata["client_secret"] == "slack-secret"
+        assert state_metadata["token_endpoint_auth_method"] == "client_secret_post"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_slack_unconfigured_is_no_oauth(self, client):
+        """Without a Slack app configured, say so instead of sending Slack a
+        client id it will reject after the user has left the platform."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(MockClient)
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = ""
+            mock_settings.secrets.slack_mcp_client_secret = ""
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.slack.com/mcp"},
+            )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["code"] == NO_OAUTH_CODE
+        assert "mcp.slack.com" in detail["message"]
+        mock_cm.store.store_state_token.assert_not_called()
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_binds_issuer_and_iss_requirement(self, client):
         with (
