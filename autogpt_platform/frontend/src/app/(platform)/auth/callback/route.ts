@@ -3,6 +3,7 @@ import { getOnboardingStatus } from "@/app/api/helpers";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
+import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
   scheduleAccountCreatedGoal,
   wasAccountCreated,
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
       const createUserResponse = await postV1GetOrCreateUser();
       if (wasAccountCreated(createUserResponse)) {
         await scheduleAccountCreatedGoal("google");
+        await markAccountCreated("google");
       }
 
       const { shouldShowOnboarding } = await getOnboardingStatus();

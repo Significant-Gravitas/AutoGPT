@@ -1,4 +1,4 @@
-from typing import overload
+from typing import Callable, Optional, overload
 from urllib.parse import urlparse
 
 from backend.blocks.github._auth import (
@@ -6,6 +6,8 @@ from backend.blocks.github._auth import (
     GithubFineGrainedAPICredentials,
 )
 from backend.util.request import URL, Requests
+
+GITHUB_API_URL = "https://api.github.com"
 
 
 @overload
@@ -28,7 +30,7 @@ def _convert_to_api_url(url: str | URL) -> str | URL:
 
     if len(path_parts) >= 2:
         owner, repo = path_parts[0], path_parts[1]
-        api_base = f"https://api.github.com/repos/{owner}/{repo}"
+        api_base = f"{GITHUB_API_URL}/repos/{owner}/{repo}"
 
         if len(path_parts) > 2:
             additional_path = "/".join(path_parts[2:])
@@ -79,9 +81,7 @@ def convert_comment_url_to_api_endpoint(comment_url: str) -> str:
         owner, repo = path_parts[0], path_parts[1]
 
         # Construct API URL for issue comments
-        return (
-            f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{comment_id}"
-        )
+        return f"{GITHUB_API_URL}/repos/{owner}/{repo}/issues/comments/{comment_id}"
 
     # Handle PR review comments (#discussion_r)
     elif "#discussion_r" in comment_url:
@@ -94,9 +94,7 @@ def convert_comment_url_to_api_endpoint(comment_url: str) -> str:
         owner, repo = path_parts[0], path_parts[1]
 
         # Construct API URL for PR review comments
-        return (
-            f"https://api.github.com/repos/{owner}/{repo}/pulls/comments/{comment_id}"
-        )
+        return f"{GITHUB_API_URL}/repos/{owner}/{repo}/pulls/comments/{comment_id}"
 
     # If no specific comment identifiers are found, use the general URL conversion
     return _convert_to_api_url(comment_url)
@@ -107,7 +105,38 @@ def get_api(
     convert_urls: bool = True,
 ) -> Requests:
     return Requests(
-        trusted_origins=["https://api.github.com", "https://github.com"],
+        trusted_origins=[GITHUB_API_URL, "https://github.com"],
         extra_url_validator=_convert_to_api_url if convert_urls else None,
         extra_headers=_get_headers(credentials),
     )
+
+
+async def get_paginated(
+    api: Requests,
+    url: str,
+    *,
+    limit: int,
+    params: Optional[dict[str, str]] = None,
+    keep: Optional[Callable[[dict], bool]] = None,
+    max_page_size: int = 100,
+    start_page: int = 1,
+) -> list[dict]:
+    """
+    Fetches items from a paginated GitHub list endpoint until `limit` items
+    are collected or no pages are left. Items are filtered by `keep` (if given)
+    before counting towards `limit`. Fetching starts at `start_page`.
+    """
+    items: list[dict] = []
+    page_size = max_page_size if keep else min(limit, max_page_size)
+    page = start_page
+    while len(items) < limit:
+        response = await api.get(
+            url,
+            params={**(params or {}), "per_page": str(page_size), "page": str(page)},
+        )
+        batch = response.json()
+        items.extend(item for item in batch if keep is None or keep(item))
+        if len(batch) < page_size:
+            break
+        page += 1
+    return items[:limit]

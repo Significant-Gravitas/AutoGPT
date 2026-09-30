@@ -1,8 +1,9 @@
 import json
+import logging
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -20,6 +21,8 @@ from pydantic_settings import (
 )
 
 from backend.util.data import get_data_path
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -44,6 +47,33 @@ class AppEnvironment(str, Enum):
 class BehaveAs(str, Enum):
     LOCAL = "local"
     CLOUD = "cloud"
+
+
+class FeatureFlagBackend(str, Enum):
+    """Which vendor answers a feature flag read.
+
+    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
+    disagreement is measurable before the switch. The backend always serves
+    LaunchDarkly in this mode; the frontend falls back to PostHog where
+    LaunchDarkly is not configured, because there its answer never arrives.
+    """
+
+    LAUNCHDARKLY = "launchdarkly"
+    POSTHOG = "posthog"
+    DUAL = "dual"
+
+
+class FlagDefinitionCacheBackend(str, Enum):
+    """Where PostHog flag definitions are shared between processes.
+
+    PostHog bills one definitions fetch as ten flag requests, so a poller in
+    every process makes the bill scale with replica count. ``REDIS`` elects one
+    refresher and serves every other process from its copy.
+    """
+
+    REDIS = "redis"
+    MEMORY = "memory"
+    NONE = "none"
 
 
 class UpdateTrackingModel(BaseModel, Generic[T]):
@@ -144,13 +174,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=21600,
         ge=60,
         le=21600,
-        description="Hard timeout for one native Codex AutoPilot turn.",
+        description="Hard timeout for one native Codex expert turn.",
     )
     codex_copilot_tool_timeout_seconds: int = Field(
         default=900,
         ge=10,
         le=3600,
-        description="Maximum wait for one AutoPilot dynamic tool callback.",
+        description="Maximum wait for one dynamic tool callback during an expert turn.",
     )
     codex_login_timeout_seconds: int = Field(
         default=900,
@@ -177,6 +207,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     rpc_client_call_timeout: int = Field(
         default=300,
         description="The default timeout in seconds, for RPC client calls.",
+    )
+    llm_request_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        # Literal rather than an import of DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+        # (1800): util must not import blocks. test_llm.py asserts this bound
+        # stays under that cap, whatever it is set to.
+        le=1500,
+        description=(
+            "Wall-clock cap on a single LLM provider request, covering the whole "
+            "generation (the block path is non-streaming). Raising it lengthens how "
+            "long a stalled provider holds one of `num_graph_workers` slots. "
+            "AgentExecutor and expert blocks opt out of the per-node cap, so for those "
+            "this is the only per-call wall-clock bound."
+        ),
     )
     enable_auth: bool = Field(
         default=True,
@@ -209,6 +254,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
+    )
+    expert_spend_approval_threshold_default: int = Field(
+        default=250,
+        ge=0,
+        description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
+    )
+    expert_spend_approval_window: Literal["week", "day"] = Field(
+        default="week",
+        description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
@@ -253,7 +307,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "Hard cap on in-flight (running + queued) AutoPilot/CoPilot "
+            "Hard cap on in-flight (running + queued) expert "
             "chat turns per user. Once running >= "
             "``max_running_copilot_turns_per_user`` and the queue brings the "
             "total to this number, ``POST /chat/stream`` returns 429. "
@@ -267,7 +321,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "Soft cap on concurrently *running* AutoPilot/CoPilot chat "
+            "Soft cap on concurrently *running* expert chat "
             "turns per user. Tasks submitted while the user is at this cap "
             "are queued in ``CopilotTaskQueue`` (FIFO) up to "
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
@@ -394,6 +448,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    e2b_egress_proxy_address: str = Field(
+        default="",
+        description="host:port of the SOCKS5 credential swap proxy every E2B box "
+        "egresses through (see backend.util.e2b_network). Empty leaves egress "
+        "direct. Do not set it before the proxy exists: E2B fails closed, so a "
+        "box pointed at nothing has no egress at all.",
+    )
+
     frontend_base_url: str = Field(
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
@@ -482,9 +544,91 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Separated so each kind carries its own reputation. Marketing mail goes
+    # from MailerLite as hello@news.agpt.co and has no sender here.
+    billing_sender_email: str = Field(
+        default="AutoGPT <billing@agpt.co>",
+        description="Sender for subscription and account service messages",
+    )
+    product_sender_email: str = Field(
+        default="AutoGPT <notify@agpt.co>",
+        description="Sender for the Briefing, Alert and Verdict families",
+    )
+    ops_sender_email: str = Field(
+        default="AutoGPT Platform <platform@agpt.co>",
+        description="Sender for internal ops mail to the refunds team",
+    )
+    postmark_transactional_stream: str = Field(
+        default="outbound",
+        description=(
+            "Postmark message stream for Alerts, Briefings and account mail. "
+            "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    email_asset_base_url: str = Field(
+        default="https://platform.agpt.co/email",
+        description=(
+            "Base URL the email hero art and logo are served from. Outlook "
+            "does not render inline SVG and Gmail does not display data-URI "
+            "images, so these must be hosted files."
+        ),
+    )
+    docs_base_url: str = Field(
+        default="https://docs.agpt.co",
+        description="Documentation site linked from emails",
+    )
+    discord_invite_url: str = Field(
+        default="https://discord.gg/autogpt",
+        description="Discord invite linked from email footers",
+    )
+    admin_panel_base_url: str = Field(
+        default="https://admin.agpt.co",
+        description="Admin panel base URL, deep-linked from internal ops mail",
+    )
+
+    # MailerLite owns the onboarding tour and the monthly changelog. The
+    # backend's only job is managing who is in each audience.
+    mailerlite_onboarding_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group whose membership triggers the six-email "
+            "'Subscription Onboarding — White Glove Tour' automation"
+        ),
+    )
+    mailerlite_changelog_group_id: str = Field(
+        default="",
+        description="MailerLite group that receives the monthly changelog campaign",
+    )
+    mailerlite_trial_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding customers in a card-required trial. "
+            "Blank leaves trial customers out of MailerLite."
+        ),
+    )
+    mailerlite_api_url: str = Field(
+        default="https://connect.mailerlite.com/api",
+        description=(
+            "MailerLite API base URL. Only a test stack changes it, to point "
+            "at a stub."
+        ),
+    )
+
+    expert_avatar_model: str = Field(
+        default="gpt-image-2-2026-04-21",
+        description=(
+            "OpenAI image-edit model for brand-constrained Expert avatar candidates; "
+            "the design system pins this dated snapshot"
+        ),
+    )
+
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",
+    )
+    marketplace_require_canonical_category: bool = Field(
+        default=False,
+        description="Hide listings without a canonical category from the marketplace's default view. Turn on only once the category backfill has run, or real listings disappear.",
     )
     enable_agent_input_subtype_blocks: bool = Field(
         default=True,
@@ -567,6 +711,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
+    scheduler_startup_embedding_backfill: bool = Field(
+        default=True,
+        description=(
+            "Run the first search embedding coverage backfill in the background "
+            "when the scheduler starts instead of waiting six hours"
+        ),
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
@@ -626,9 +778,82 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the app environment: local or dev or prod",
     )
 
+    feature_flag_backend: FeatureFlagBackend = Field(
+        default=FeatureFlagBackend.LAUNCHDARKLY,
+        description="Which vendor answers feature flag reads: launchdarkly "
+        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
+        "every disagreement).",
+    )
+
+    @field_validator("feature_flag_backend", mode="before")
+    @classmethod
+    def _default_unknown_flag_backend(cls, v):
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
+        if not isinstance(v, str):
+            return v
+        try:
+            return FeatureFlagBackend(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
+                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+            )
+            return FeatureFlagBackend.LAUNCHDARKLY
+
+    posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
+        default=FlagDefinitionCacheBackend.REDIS,
+        description="Where PostHog flag definitions are shared: redis "
+        "(default; one elected refresher, every other process reads its copy), "
+        "memory (process-local), or none (every process polls PostHog itself). "
+        "Only read when PostHog answers flag reads.",
+    )
+
+    @field_validator("posthog_flag_definition_cache", mode="before")
+    @classmethod
+    def _default_unknown_definition_cache(cls, v):
+        """Same reasoning as ``_default_unknown_flag_backend`` above."""
+        if not isinstance(v, str):
+            return v
+        try:
+            return FlagDefinitionCacheBackend(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown POSTHOG_FLAG_DEFINITION_CACHE {v!r}, "
+                f"falling back to {FlagDefinitionCacheBackend.REDIS.value}"
+            )
+            return FlagDefinitionCacheBackend.REDIS
+
+    posthog_flag_definition_refresh_seconds: int = Field(
+        default=30,
+        ge=1,
+        description="How often the elected refresher fetches PostHog flag "
+        "definitions, and how often every other process re-reads the shared copy.",
+    )
+
+    posthog_flag_definition_cache_ttl_seconds: int = Field(
+        default=600,
+        ge=1,
+        description="How long a shared copy of the PostHog flag definitions stays "
+        "readable. Past it the cache is empty and the next process to poll fetches "
+        "from PostHog directly.",
+    )
+
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
+    )
+
+    autopilot_bot_teams_allow_unverified: bool = Field(
+        default=False,
+        description="Local dev only: accept Teams activities that carry no Bot "
+        "Connector token, so the Microsoft 365 Agents Playground can drive the "
+        "bot without a Teams tenant. Ignored unless app_env is 'local' — it "
+        "disables inbound authentication and must never take effect on a "
+        "deployed environment.",
     )
 
     execution_event_bus_name: str = Field(
@@ -660,7 +885,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     external_oauth_callback_origins: List[str] = Field(
         default=["http://localhost:3000"],
         description="Allowed callback URL origins for external OAuth flows. "
-        "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
+        "External apps must have their callback URLs start with one of these origins.",
     )
 
     @field_validator("trusted_frontend_origins")
@@ -773,6 +998,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The token to use for the Postmark webhook",
     )
 
+    mailerlite_api_token: str = Field(
+        default="",
+        description="MailerLite API token used to manage tour and changelog audiences",
+    )
+
     unsubscribe_secret_key: str = Field(
         default="",
         description="The secret key to use for the unsubscribe user by token",
@@ -820,6 +1050,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    typesafe_jev_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("TYPESAFE_API_KEY", "TYPESAFE_JEV_API_KEY"),
+        description="TypeSafe Jev key: the first stage of the action supervisor and the content judge",
+    )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
     webshare_proxy_username: str = Field(
@@ -894,6 +1129,25 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="The bot's public @username (without the @) — used to "
         "build the t.me add-to-group link on the Bots settings page.",
+    )
+    microsoft_client_id: str = Field(
+        default="",
+        description="Entra application (client) ID, shared by Microsoft "
+        "integrations. Microsoft 365 Copilot device auth falls back to "
+        "AutoGPT's public client ID when this is empty; set it together with "
+        "the server-only client secret and tenant ID to mount the Teams bot "
+        "adapter.",
+    )
+    microsoft_client_secret: str = Field(
+        default="",
+        description="Entra client secret for the shared Microsoft app, used "
+        "by the Teams bot to mint outbound Bot Connector tokens.",
+    )
+    microsoft_tenant_id: str = Field(
+        default="",
+        description="Tenant the Entra app belongs to. Required for the Teams "
+        "bot: single-tenant bots mint tokens against their own tenant "
+        "authority, and new registrations can no longer be multi-tenant.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
@@ -981,6 +1235,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_api_key: str = Field(default="", description="PostHog API key")
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
+    )
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key. Only used for local feature-flag "
+        "evaluation; without it flag reads fall back to a remote /flags call.",
     )
 
     # Add more secret fields as needed

@@ -7,6 +7,7 @@ import fastapi
 import prisma.errors
 import prisma.models
 import prisma.types
+from starlette.datastructures import Headers
 
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
@@ -15,9 +16,6 @@ import backend.data.integrations as integrations_db
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
-)
-from backend.api.features.store.store_listing_versions import (
-    installable_store_version_where,
 )
 from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
@@ -32,6 +30,7 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
@@ -72,51 +71,6 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
         row["agentGraphId"]: int((row.get("_count") or {}).get("_all") or 0)
         for row in rows
     }
-
-
-async def _fetch_matching_store_version_ids(
-    agents: list[prisma.models.LibraryAgent],
-) -> dict[tuple[str, int], str]:
-    """Map (graph_id, graph_version) → approved StoreListingVersion id.
-
-    Only approved, non-deleted versions are returned so the ids are always
-    valid install targets. Matching on the exact graph version keeps installs
-    version-stable: the id refers to the snapshot the library agent holds,
-    not the listing's current active version.
-    """
-    pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
-    if not pairs:
-        return {}
-    pair_filters = [
-        {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
-        for graph_id, graph_version in sorted(pairs)
-    ]
-    try:
-        versions = await prisma.models.StoreListingVersion.prisma().find_many(
-            where={
-                "OR": pair_filters,
-                **installable_store_version_where(),
-            },
-            distinct=["agentGraphId", "agentGraphVersion"],
-            order=[
-                {"agentGraphId": "asc"},
-                {"agentGraphVersion": "asc"},
-                {"createdAt": "desc"},
-                {"id": "desc"},
-            ],
-        )
-    except Exception:
-        logger.warning(
-            "Failed to fetch store listing versions for library agents",
-            exc_info=True,
-        )
-        return {}
-    matches: dict[tuple[str, int], str] = {}
-    for version in versions:
-        pair = (version.agentGraphId, version.agentGraphVersion)
-        if pair in pairs and pair not in matches:
-            matches[pair] = version.id
-    return matches
 
 
 async def _fetch_marketplace_details(
@@ -281,10 +235,9 @@ async def list_library_agents(
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
+    execution_counts, schedule_info = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
-        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -296,9 +249,6 @@ async def list_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -372,10 +322,9 @@ async def list_favorite_library_agents(
     )
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
+    execution_counts, schedule_info = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
-        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -387,9 +336,6 @@ async def list_favorite_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -442,12 +388,10 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     (
         marketplace_details,
         schedule_info,
-        store_version_ids,
         sub_graphs,
     ) = await asyncio.gather(
         _fetch_marketplace_details(library_agent.AgentGraph.id),
         _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
-        _fetch_matching_store_version_ids([library_agent]),
         graph_db.get_sub_graphs(library_agent.AgentGraph),
     )
     store_listing, profile = marketplace_details
@@ -458,9 +402,6 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         store_listing=store_listing,
         profile=profile,
         schedule_info=schedule_info,
-        store_listing_version_id=store_version_ids.get(
-            (library_agent.agentGraphId, library_agent.agentGraphVersion)
-        ),
     )
 
 
@@ -512,7 +453,7 @@ async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str |
 
 
 async def get_library_agent_refs_by_graph_ids(
-    user_id: str, graph_ids: list[str]
+    user_id: str, graph_ids: list[str], *, include_deleted: bool = False
 ) -> list[library_model.LibraryAgentRef]:
     """Resolve display name + id for the given graphs in one query.
 
@@ -523,20 +464,30 @@ async def get_library_agent_refs_by_graph_ids(
     ``@@unique([userId, agentGraphId, agentGraphVersion])`` allows several
     rows per graph, so exactly one ref per graph is returned — the newest
     version — instead of whichever row the DB happened to return last.
+
+    With ``include_deleted`` a graph whose every library row was removed
+    still resolves to its last name, marked ``is_deleted``; a live row
+    always wins over a removed one.
     """
     if not graph_ids:
         return []
+    where: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": {"in": graph_ids},
+    }
+    if not include_deleted:
+        where["isDeleted"] = False
     agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where={
-            "userId": user_id,
-            "agentGraphId": {"in": graph_ids},
-            "isDeleted": False,
-        },
-        order=[{"agentGraphVersion": "asc"}],
+        where=where,
+        order=[{"isDeleted": "desc"}, {"agentGraphVersion": "asc"}],
     )
     newest_by_graph = {
         agent.agentGraphId: library_model.LibraryAgentRef(
-            id=agent.id, graph_id=agent.agentGraphId, name=agent.name or ""
+            id=agent.id,
+            graph_id=agent.agentGraphId,
+            name=agent.name or "",
+            image_url=agent.imageUrl,
+            is_deleted=agent.isDeleted,
         )
         for agent in agents
     }
@@ -593,7 +544,11 @@ async def add_generated_agent_image(
             image = await store_image_gen.generate_agent_image(graph)
 
             # Create UploadFile with the correct filename and content_type
-            image_file = fastapi.UploadFile(file=image, filename=filename)
+            image_file = fastapi.UploadFile(
+                file=image,
+                filename=filename,
+                headers=Headers({"content-type": "image/jpeg"}),
+            )
 
             image_url = await store_media.upload_media(
                 user_id=user_id, file=image_file, use_file_name=True
@@ -845,6 +800,8 @@ async def create_graph_in_library(
     # to a user-friendly response.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -882,6 +839,8 @@ async def update_graph_in_library(
     # version half-saved. Raises GraphActivationError for the caller.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -906,7 +865,7 @@ async def update_graph_in_library(
 
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
-        # This path is only reached from the CoPilot/AutoPilot agent-update
+        # This path is only reached from the CoPilot/Otto agent-update
         # flow, which has no user-facing channel for skipped-preset warnings,
         # so the migration result is intentionally discarded here. Skipped
         # presets are surfaced on the interactive graph-activation endpoints
@@ -2004,7 +1963,7 @@ async def list_presets(
         graph_id: Agent Graph ID to filter by.
         expert_id: Expert ID to match when expert filtering is enabled.
         filter_by_expert: Whether to filter by the exact expert scope. This allows
-            ``None`` to select AutoPilot presets instead of disabling the filter.
+            ``None`` to select Otto presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -2129,8 +2088,8 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
-    # A preset may only reference a graph the caller can access (own / store /
-    # library); get_graph() enforces that and a foreign/unknown graph is None.
+    # A preset may only reference a graph the caller can access (owned, or in
+    # their library and submitted); get_graph() enforces that, None if not.
     # The preset then inherits the graph's org/team (resource-follows-parent),
     # resolved here so callers can't forget it.
     graph = await graph_db.get_graph(

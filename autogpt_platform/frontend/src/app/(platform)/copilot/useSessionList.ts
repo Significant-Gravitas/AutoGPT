@@ -68,7 +68,7 @@ export interface SidebarSessions {
   pinned: SessionSummaryResponse[];
   groups: SessionGroup[];
   /** Headers only earn their space once there is an expert group to
-   *  distinguish from Autopilot. */
+   *  distinguish from Otto. */
   showHeaders: boolean;
 }
 

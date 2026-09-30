@@ -1,8 +1,13 @@
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # Runtime import would cycle: data.execution imports backend.blocks.
+    from backend.data.execution import ExecutionContext
 
 from backend.blocks._base import (
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -129,14 +134,16 @@ class AIConditionBlock(AIBlockBase):
                     reasoning=None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         llm_model: LLMModel,
         prompt: list,
         max_tokens: int,
+        execution_context: "ExecutionContext | None" = None,
     ) -> LLMResponse:
         """Wrapper method for llm_call to enable mocking in tests."""
         return await llm_call(
@@ -145,10 +152,15 @@ class AIConditionBlock(AIBlockBase):
             prompt=prompt,
             force_json_output=False,
             max_tokens=max_tokens,
+            execution_context=execution_context,
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         """
         Evaluate the AI condition and return appropriate outputs.
@@ -195,6 +207,7 @@ class AIConditionBlock(AIBlockBase):
             llm_model=input_data.model,
             prompt=prompt,
             max_tokens=MIN_LLM_OUTPUT_TOKENS,
+            execution_context=kwargs.get("execution_context"),
         )
 
         # Extract the boolean result from the response

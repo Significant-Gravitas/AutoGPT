@@ -9,17 +9,16 @@ import type {
   TabIntroCta,
   TabIntroTab,
 } from "@/app/(platform)/components/TabIntroCard/helpers";
+import {
+  TabIntroEvent,
+  type EventName,
+} from "@/services/analytics/posthog-events";
 import posthog from "posthog-js";
 
-type TabIntroEvent =
-  | "tab_intro_shown"
-  // The card's primary CTA was used, as opposed to any of the ways out
-  // ("Got it", Escape, the backdrop) that all land on `tab_intro_dismissed`.
-  | "tab_intro_cta_clicked"
-  | "tab_intro_dismissed";
+type TabIntroEventName = EventName<typeof TabIntroEvent>;
 
 export function trackTabIntro(
-  event: TabIntroEvent,
+  event: TabIntroEventName,
   properties: { tab: TabIntroTab; cta?: TabIntroCta },
 ) {
   try {

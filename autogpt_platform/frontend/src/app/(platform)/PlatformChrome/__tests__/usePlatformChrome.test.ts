@@ -145,3 +145,10 @@ describe("usePlatformChrome", () => {
     });
   });
 });
+
+it("gives home the chat controls and floating header", () => {
+  pathnameMock.mockReturnValue("/home");
+  const { result } = renderHook(() => usePlatformChrome());
+  expect(result.current.isCopilotRoute).toBe(true);
+  expect(result.current.overlayInsetHeader).toBe(true);
+});

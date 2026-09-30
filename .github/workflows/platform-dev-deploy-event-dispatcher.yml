@@ -29,12 +29,18 @@ jobs:
             const commentUser = context.payload.comment.user.login;
             const prAuthor = context.payload.issue.user.login;
             const authorAssociation = context.payload.comment.author_association;
-            
+
+            // Trusted bots comment as their app identity, so author_association is
+            // 'NONE' — allowlist them by login. The batch-deploy bot posts !deploy on
+            // its own isolated rollup previews (a rollup PR it authored).
+            const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];
+
             // Check permissions
             const hasPermission = (
               authorAssociation === 'OWNER' ||
               authorAssociation === 'MEMBER' ||
-              authorAssociation === 'COLLABORATOR'
+              authorAssociation === 'COLLABORATOR' ||
+              BOT_ALLOWLIST.includes(commentUser)
             );
             
             core.setOutput('comment_body', commentBody);
@@ -239,8 +245,10 @@ jobs:
             // drive-by !deploy comment (ignored by the comment handler's
             // permission gate) would arm auto-redeploy for the next push.
             const allowed = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+            // Trusted bots comment as 'NONE'; allowlist by login (see comment handler).
+            const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];
             comments.forEach((comment, index) => {
-              if (!allowed.includes(comment.author_association)) return;
+              if (!allowed.includes(comment.author_association) && !BOT_ALLOWLIST.includes(comment.user.login)) return;
               if (comment.body.trim() === '!deploy') {
                 lastDeployIndex = index;
               } else if (comment.body.trim() === '!undeploy') {

@@ -6,6 +6,7 @@ import { useRef } from "react";
 import { useTextReveal } from "../../useTextReveal";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   prompt: string | null;
@@ -33,7 +34,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Enter" || event.key === " ") {
+    if (isKey(event, "Enter", " ")) {
       event.preventDefault();
       send();
     }
@@ -46,7 +47,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       ref={ref}
       role="button"
       tabIndex={isDisabled ? -1 : 0}
-      aria-label={prompt ? `Send: ${prompt}` : "Autopilot is working"}
+      aria-label={prompt ? `Send: ${prompt}` : "Otto is working"}
       aria-disabled={isDisabled}
       onKeyDown={handleKeyDown}
       onClick={send}

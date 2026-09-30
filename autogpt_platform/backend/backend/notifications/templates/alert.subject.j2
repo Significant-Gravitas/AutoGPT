@@ -1,0 +1,5 @@
+{#- Renders two lines: line 1 = subject, line 2 = preheader.
+    primary.subject / primary.preheader may be set by the cause
+    catalog; both fall back to headline/body. -#}
+{{ primary.subject | default(primary.headline) }}
+{{ primary.preheader | default(primary.body) }}

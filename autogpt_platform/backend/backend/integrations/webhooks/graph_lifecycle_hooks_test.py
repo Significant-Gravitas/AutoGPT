@@ -1,10 +1,16 @@
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.basic import StoreValueBlock
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.data.graph import Graph, Node, make_graph_model
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     GraphActivationError,
     _before_graph_activate,
+    before_graph_activate,
+    on_graph_deactivate,
 )
 
 
@@ -120,3 +126,141 @@ async def test_before_graph_activate_succeeds_when_credentials_resolve():
         await _before_graph_activate(graph, "user-1")
 
     assert node.input_default["credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_ignores_credential_meta_without_id():
+    """A credentials value that is truthy but carries no `id` means "nothing
+    selected", not "resolve this". It must be skipped like an absent field
+    rather than indexed — indexing raised KeyError('id'), surfacing to the user
+    as a bare 500 on POST /api/graphs that named neither block nor field."""
+    node = _make_node(creds_field="codex_credentials", required=False)
+    node.input_default = {"codex_credentials": {"provider": "codex", "type": "oauth2"}}
+    graph = MagicMock(nodes=[node])
+
+    getter = AsyncMock(return_value=MagicMock())
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        await _before_graph_activate(graph, "user-1")
+
+    getter.assert_not_awaited()
+
+
+def _graph_of(*nodes: tuple[str, dict[str, Any]]):
+    graph = Graph(
+        id="graph-1",
+        name="Test",
+        description="Test",
+        nodes=[
+            Node(id=f"node-{i}", block_id=block_id, input_default=input_default)
+            for i, (block_id, input_default) in enumerate(nodes)
+        ],
+    )
+    return make_graph_model(graph, user_id="user-1")
+
+
+def _sheets_node(credentials_id: str) -> tuple[str, dict[str, Any]]:
+    spreadsheet = {
+        "_credentials_id": credentials_id,
+        "id": "sheet-1",
+        "name": "test",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+    }
+    return GoogleSheetsReadBlock().id, {"spreadsheet": spreadsheet, "range": "A1"}
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_keeps_only_files_picked_with_own_credentials():
+    """[SECRT-1772] A save keeps the file the user picked with their own Google
+    account. A file embedding someone else's credentials, as in an agent
+    imported from another user's export, is cleared so they pick it again."""
+    graph = _graph_of(_sheets_node("own-cred"), _sheets_node("someone-elses-cred"))
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.store.get_all_creds = AsyncMock(return_value=[MagicMock(id="own-cred")])
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        await before_graph_activate(graph, "user-1")
+
+    own, foreign = graph.nodes
+    assert own.input_default["spreadsheet"]["_credentials_id"] == "own-cred"
+    assert own.input_default["range"] == "A1"
+    assert foreign.input_default["spreadsheet"] is None
+    mgr.store.get_all_creds.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_skips_the_lookup_without_picked_files():
+    """Saving a graph without any picked file must not load the user's
+    credentials just to check ownership, and must leave inputs that aren't
+    pickers alone even when they hold a `_credentials_id` key."""
+    data = {"_credentials_id": "someone-elses-cred"}
+    graph = _graph_of((StoreValueBlock().id, {"data": data}))
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.store.get_all_creds = AsyncMock(return_value=[])
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        await before_graph_activate(graph, "user-1")
+
+    mgr.store.get_all_creds.assert_not_awaited()
+    assert graph.nodes[0].input_default == {"data": data}
+
+
+@pytest.mark.asyncio
+async def test_on_graph_deactivate_ignores_credential_meta_without_id():
+    """Deactivation had the same `creds_meta["id"]` indexing as activation.
+    Graphs persisted with the id-less shape hit it on delete, so the guard
+    needs its own regression test rather than relying on the activation one."""
+    node = _make_node(creds_field="codex_credentials", required=False)
+    node.input_default = {"codex_credentials": {"provider": "codex", "type": "oauth2"}}
+    node.block.webhook_config = None
+    graph = MagicMock(nodes=[node])
+
+    getter = AsyncMock(return_value=MagicMock())
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        await on_graph_deactivate(graph, "user-1")
+
+    getter.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_graph_deactivate_keeps_first_resolved_credential():
+    """A failed lookup on a later field must not discard a credential an
+    earlier field already resolved."""
+    node = _make_node(required=False)
+    node.input_default = {
+        "credentials": {"id": "good", "provider": "github", "type": "api_key"},
+        "other_credentials": {"id": "gone", "provider": "github", "type": "api_key"},
+    }
+    node.block.webhook_config = None
+    schema = node.block.input_schema
+    schema.get_credentials_fields.return_value = {
+        "credentials": object(),
+        "other_credentials": object(),
+    }
+
+    resolved = MagicMock()
+
+    async def getter(creds_id):
+        return resolved if creds_id == "good" else None
+
+    graph = MagicMock(nodes=[node])
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        with patch(
+            "backend.integrations.webhooks.graph_lifecycle_hooks.on_node_deactivate",
+            new=AsyncMock(return_value=node),
+        ) as deactivate:
+            await on_graph_deactivate(graph, "user-1")
+
+    assert deactivate.await_args.kwargs["credentials"] is resolved

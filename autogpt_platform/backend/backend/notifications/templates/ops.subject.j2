@@ -1,0 +1,17 @@
+{#- Two lines: subject, then preheader. Amount leads, because that is what the
+    person on call triages by. -#}
+{%- set is_request = (kind == 'request') -%}
+{%- set amount_str = '$' ~ '{:,.2f}'.format(amount_cents / 100) -%}
+{%- set balance_str = '$' ~ '{:,.2f}'.format(balance_cents / 100) -%}
+{%- import "_ui.j2" as ui -%}
+{%- set name = ui.trunc(user_name, 38) -%}
+{%- set has_reason = reason and reason | trim | length > 0 -%}
+{%- set r = (reason | trim | replace('\n', ' ')) if has_reason else '' -%}
+{%- set r_short = ui.trunc(r, 105) -%}
+{%- if is_request -%}
+Refund needs a decision: {{ amount_str }} for {{ name }}
+{% if has_reason %}{{ r_short }}{% else %}No reason given. Balance now {{ balance_str }}.{% endif %}
+{%- else -%}
+Refunded {{ amount_str }} to {{ name }}
+{% if has_reason %}{{ r_short }}{% else %}Balance after refund {{ balance_str }}. Logged, nothing to do.{% endif %}
+{%- endif -%}

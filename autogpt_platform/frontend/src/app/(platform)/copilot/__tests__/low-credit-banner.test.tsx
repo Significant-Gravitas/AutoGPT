@@ -91,7 +91,7 @@ vi.mock("nuqs", () => ({
 }));
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the
-// real `Flag` enum so the page's other flag reads (e.g. ARTIFACTS) resolve.
+// real `Flag` enum so the page's other flag reads resolve.
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
@@ -126,7 +126,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("Autopilot low-credit banner", () => {
+describe("Otto low-credit banner", () => {
   test("shows the banner when the user is out of credits", async () => {
     // Suppress the daily auto-opener so only the banner is under test.
     localStorage.setItem(

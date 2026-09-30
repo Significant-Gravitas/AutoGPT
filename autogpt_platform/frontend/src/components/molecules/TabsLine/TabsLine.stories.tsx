@@ -1,5 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import {
+  Briefcase01Icon,
+  Calendar03Icon,
+  SparklesIcon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
+import {
   TabsLine,
   TabsLineContent,
   TabsLineList,
@@ -255,4 +261,51 @@ export const FullWidth: Story = {
       </TabsLine>
     </div>
   ),
+};
+
+function CompactDemo() {
+  return (
+    <div className="p-8">
+      <TabsLine variant="compact" defaultValue="basics" className="w-full">
+        <TabsLineList className="overflow-x-auto">
+          <TabsLineTrigger value="basics" icon={UserIcon}>
+            Basics
+          </TabsLineTrigger>
+          <TabsLineTrigger value="work" icon={Briefcase01Icon}>
+            Work
+          </TabsLineTrigger>
+          <TabsLineTrigger value="schedules" icon={Calendar03Icon}>
+            Schedules
+          </TabsLineTrigger>
+          <TabsLineTrigger value="skills" icon={SparklesIcon}>
+            Skills
+          </TabsLineTrigger>
+        </TabsLineList>
+        <TabsLineContent value="basics">
+          <div className="text-sm text-zinc-600">Basics panel</div>
+        </TabsLineContent>
+        <TabsLineContent value="work">
+          <div className="text-sm text-zinc-600">Work panel</div>
+        </TabsLineContent>
+        <TabsLineContent value="schedules">
+          <div className="text-sm text-zinc-600">Schedules panel</div>
+        </TabsLineContent>
+        <TabsLineContent value="skills">
+          <div className="text-sm text-zinc-600">Skills panel</div>
+        </TabsLineContent>
+      </TabsLine>
+    </div>
+  );
+}
+
+export const Compact: Story = {
+  render: () => <CompactDemo />,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '`variant="compact"` is the dense neutral style used on Team pages: flush, zinc underline, 14px triggers. Pass `icon` on a trigger for a 14px Hugeicon.',
+      },
+    },
+  },
 };

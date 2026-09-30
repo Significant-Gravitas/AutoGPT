@@ -32,6 +32,10 @@ interface Props {
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
+  /** Hosts that call agents something else (the expert page's workflows)
+   *  override the dialog title. */
+  title?: string;
+  dialogVariant?: "default" | "compact";
 }
 
 export function RunAgentModal({
@@ -42,6 +46,8 @@ export function RunAgentModal({
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
+  title = "Run Agent",
+  dialogVariant = "default",
 }: Props) {
   const {
     // UI state
@@ -201,7 +207,8 @@ export function RunAgentModal({
   return (
     <>
       <Dialog
-        title="Run Agent"
+        title={title}
+        variant={dialogVariant}
         controlled={{ isOpen, set: handleSetOpen }}
         styling={{ maxWidth: "600px", maxHeight: "90vh" }}
       >

@@ -27,8 +27,12 @@ let mockSubscriptionResult: {
   data: MockSubscription | null | undefined;
   isLoading: boolean;
 } = { data: null, isLoading: false };
+let subscriptionQueryEnabled: boolean | undefined;
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  useGetSubscriptionStatus: () => mockSubscriptionResult,
+  useGetSubscriptionStatus: (options: { query?: { enabled?: boolean } }) => {
+    subscriptionQueryEnabled = options.query?.enabled;
+    return mockSubscriptionResult;
+  },
 }));
 
 // Mock environment — default to cloud so the gate logic is exercised; flip to
@@ -46,6 +50,12 @@ vi.mock("../PaywallModal", () => ({
   PaywallModal: () => <div data-testid="paywall-modal">paywall</div>,
 }));
 
+vi.mock("../../components/WorkflowsMovedNotice/WorkflowsMovedNotice", () => ({
+  WorkflowsMovedNotice: () => (
+    <div data-testid="migration-notice">migration</div>
+  ),
+}));
+
 import { PaywallGate } from "../PaywallGate";
 
 describe("PaywallGate", () => {
@@ -54,6 +64,7 @@ describe("PaywallGate", () => {
     mockIsLoggedIn = true;
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: null, isLoading: false };
+    subscriptionQueryEnabled = undefined;
     mockIsLocal = false;
   });
 
@@ -67,6 +78,7 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
   });
 
   it("renders modal over children when paid cohort + tier is NO_TIER", () => {
@@ -79,6 +91,7 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.getByTestId("paywall-modal")).toBeDefined();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
   });
 
   it("does not render modal once the user is logged out, even when paid cohort + tier is NO_TIER", () => {
@@ -92,6 +105,7 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(subscriptionQueryEnabled).toBe(false);
   });
 
   it("does not render modal in local dev even when paid cohort + tier is NO_TIER", () => {
@@ -117,6 +131,7 @@ describe("PaywallGate", () => {
         </PaywallGate>,
       );
       expect(screen.queryByTestId("paywall-modal")).toBeNull();
+      expect(screen.getByTestId("migration-notice")).toBeDefined();
       unmount();
     }
   });
@@ -156,5 +171,23 @@ describe("PaywallGate", () => {
       </PaywallGate>,
     );
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+  });
+
+  it("defers the migration notice until the paywall clears", () => {
+    mockIsPaymentEnabled = true;
+    mockSubscriptionResult = { data: undefined, isLoading: true };
+    const { rerender } = render(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    rerender(<PaywallGate>protected</PaywallGate>);
+    expect(screen.getByTestId("paywall-modal")).toBeDefined();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+
+    mockSubscriptionResult = { data: { tier: "PRO" }, isLoading: false };
+    rerender(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
   });
 });

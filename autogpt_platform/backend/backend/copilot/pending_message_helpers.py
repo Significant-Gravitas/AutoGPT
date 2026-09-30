@@ -8,7 +8,7 @@ routes.py stays free of Redis/Lua details.
 """
 
 import logging
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -34,9 +34,13 @@ from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
-from backend.data.workspace import resolve_workspace_files
+from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
+from backend.data.workspace_folder import resolve_attachable_workspace_folders
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 if TYPE_CHECKING:
+    from prisma.models import UserWorkspaceFile
+
     from backend.copilot.model import ChatSession
     from backend.copilot.transcript_builder import TranscriptBuilder
 
@@ -138,6 +142,7 @@ async def queue_user_message(
     context: PendingMessageContext | None = None,
     file_ids: list[str] | None = None,
     require_turn_in_flight: bool = False,
+    metadata: dict[str, Any] | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -145,11 +150,16 @@ async def queue_user_message(
     called from the HTTP pending-message path and the autopilot block.
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
+
+    ``metadata`` lands on the user row the message is persisted as. It is
+    for internal senders only (a session messaging another session); the
+    HTTP path never passes it.
     """
     pending = PendingMessage(
         content=message,
         file_ids=file_ids or [],
         context=context,
+        metadata=metadata or None,
     )
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
@@ -171,6 +181,23 @@ async def queue_user_message(
     )
 
 
+async def resolve_attachments_for_http(
+    user_id: str,
+    file_ids: list[str],
+    *,
+    session_id: str,
+    expert_id: str | None,
+) -> list["UserWorkspaceFile"]:
+    """Resolve attachment IDs for an HTTP request, mapping an expert-scope
+    violation to a 400 so the stream and pending routes answer alike."""
+    try:
+        return await resolve_attachable_workspace_files(
+            user_id, file_ids, session_id=session_id, expert_id=expert_id
+        )
+    except WorkspaceAccessDeniedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 async def queue_pending_for_http(
     *,
     session_id: str,
@@ -178,24 +205,38 @@ async def queue_pending_for_http(
     message: str,
     context: dict[str, str] | None,
     file_ids: list[str] | None,
+    folder_ids: list[str] | None,
+    expert_id: str | None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
     Owns the HTTP-only concerns for the pending-message route:
 
     1. Per-user call-rate cap (429 on overflow).
-    2. File-ID sanitisation against the user's own workspace.
+    2. File-ID sanitisation against the user's own workspace and, for an
+       expert session, the expert's file scope (400 on a foreign file).
     3. ``{url, content}`` dict → ``PendingMessageContext`` coercion.
     4. Push via ``queue_user_message``.
 
-    Raises :class:`HTTPException` with status 429 if the rate cap is hit;
-    otherwise returns the ``QueuePendingMessageResponse`` the handler can
-    serialise 1:1.
+    Attached folders are appended to the message text here rather than carried
+    as a field: a pending message is rendered from ``content`` when the turn
+    drains it, and entries written by older workers are still in Redis.
+
+    Raises :class:`HTTPException` with status 429 if the rate cap is hit or
+    400 if an expert session attaches a file outside its scope; otherwise
+    returns the ``QueuePendingMessageResponse`` the handler can serialise 1:1.
     """
     sanitized_file_ids: list[str] | None = None
     if file_ids:
-        files = await resolve_workspace_files(user_id, file_ids)
+        files = await resolve_attachments_for_http(
+            user_id, file_ids, session_id=session_id, expert_id=expert_id
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
+    if folder_ids:
+        folders = await resolve_attachable_workspace_folders(
+            user_id, folder_ids, expert_id=expert_id
+        )
+        message += build_files_block([], folders)
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
     # unknown keys in the loose HTTP-level ``context`` dict are silently
@@ -437,7 +478,9 @@ async def persist_pending_as_user_rows(
 
     for pm in pending:
         content = content_of(pm)
-        session.messages.append(ChatMessage(role="user", content=content))
+        session.messages.append(
+            ChatMessage(role="user", content=content, metadata=pm.metadata or None)
+        )
         if transcript_builder is not None:
             transcript_builder.append_user(content=content)
 

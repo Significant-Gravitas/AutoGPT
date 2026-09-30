@@ -40,7 +40,7 @@ prepare_directories() {
   for managed_path in \
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
-    /data/workspaces /data/home /data/frontend-home \
+    /data/workspaces /data/store-media /data/home /data/frontend-home \
     /data/cache /data/cache/backend /data/cache/next \
     "${CODEX_TEMP_ROOT}"; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
@@ -54,6 +54,7 @@ prepare_directories() {
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17002
   install -d -m 0750 -o autogpt-falkor -g autogpt-falkor /data/falkordb
   install -d -m 0750 -o autogpt -g autogpt /data/workspaces
+  install -d -m 0750 -o autogpt -g autogpt /data/store-media
   install -d -m 0750 -o autogpt -g autogpt /data/home
   install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/frontend-home
   install -d -m 0711 -o root -g root /data/cache
@@ -135,6 +136,15 @@ configure_environment() {
   # The appliance bundles no antivirus daemon. Force the scanner off so uploads
   # short-circuit as clean instead of failing on an unreachable ClamAV service.
   export CLAMAV_SERVICE_ENABLED=false
+  # mem0 and graphiti-core ship their own PostHog keys and report anonymous
+  # usage to their vendors by default. A self-hosted appliance must not phone
+  # home to third parties the operator never chose, so opt both out.
+  #
+  # This suppresses the events, not the client. mem0 constructs its PostHog
+  # client at import and only sets .disabled afterwards, so its atexit join
+  # still costs seconds on every service shutdown regardless of this flag.
+  export MEM0_TELEMETRY=false
+  export GRAPHITI_TELEMETRY_ENABLED=false
 
   export PYRO_HOST=127.0.0.1
   export AGENTSERVER_HOST=127.0.0.1 SCHEDULER_HOST=127.0.0.1
@@ -157,7 +167,29 @@ configure_environment() {
   export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
-  export APP_ENV=dev BEHAVE_AS=local ENABLE_AUTH=true
+  # BEHAVE_AS defaults to local (self-hosted product behavior) but stays
+  # overridable: entitlement policies with allow_local=True grant every user
+  # access under `local`, so gating cannot be exercised without injecting
+  # `cloud`. APP_ENV stays dev to keep LOCAL-only API docs and asyncio debug
+  # mode off the public REST process.
+  #
+  # ⚠️ OPERATORS: `local` disables entitlement gating for EVERY user — the
+  # allow_local carve-out grants plan-gated features (e.g. the ChatGPT/Codex
+  # transport) regardless of subscription tier. That is correct for a
+  # single-tenant self-hosted install. Any multi-tenant or hosted deployment
+  # MUST set BEHAVE_AS=cloud, or every user gets every gated capability.
+  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
+
+  # AutoPilot's daily/weekly USD spend caps are tuned for AutoGPT Cloud
+  # tiers. Without LaunchDarkly every account resolves to NO_TIER, which
+  # falls back to the BASIC multiplier and would inherit the cloud ceilings
+  # from ChatConfig. A self-hosted operator pays the model provider directly,
+  # so both caps are off unless the operator sets them. -1 is the "no cap"
+  # sentinel; a positive microdollar amount (1 USD = 1000000) re-enables a
+  # spend guard for that window. An empty value also means "unset" so a
+  # blank template field never reaches Pydantic as a non-integer.
+  export CHAT_DAILY_COST_LIMIT_MICRODOLLARS="${CHAT_DAILY_COST_LIMIT_MICRODOLLARS:--1}"
+  export CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS="${CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS:--1}"
 
   export BETTER_AUTH_URL="${AUTOGPT_PUBLIC_URL}"
   export BETTER_AUTH_INTERNAL_URL=http://127.0.0.1:3001

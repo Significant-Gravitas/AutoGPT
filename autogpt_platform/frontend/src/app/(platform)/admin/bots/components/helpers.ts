@@ -11,6 +11,7 @@ export const PLATFORM_OPTIONS = [
   { value: "DISCORD", label: "Discord" },
   { value: "SLACK", label: "Slack" },
   { value: "TELEGRAM", label: "Telegram" },
+  { value: "TEAMS", label: "Microsoft Teams" },
 ];
 
 export function formatNumber(value: number | null | undefined): string {

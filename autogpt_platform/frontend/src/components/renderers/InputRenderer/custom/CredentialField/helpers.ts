@@ -83,7 +83,7 @@ export function toDisplayName(provider: string): string {
     .join(" ");
 }
 
-export function isCredentialFieldSchema(schema: any): boolean {
+export function isCredentialFieldSchema(schema: unknown): boolean {
   return (
     typeof schema === "object" &&
     schema !== null &&
@@ -134,21 +134,24 @@ export const providerIcons: Partial<Record<string, IconSvgElement>> = {
 };
 
 export const getDiscriminatorValue = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
 ): string | undefined => {
   const discriminator = schema.discriminator;
   const discriminatorValues = schema.discriminator_values;
 
-  return [
+  const value = [
     discriminator ? formData[discriminator] : null,
     ...(discriminatorValues || []),
   ].find(Boolean);
+
+  return value === undefined || value === null ? undefined : String(value);
 };
 
 export const getCredentialProviderFromSchema = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
 ) => {
   const discriminator = schema.discriminator;
   const discriminatorMapping = schema.discriminator_mapping;
@@ -160,6 +163,15 @@ export const getCredentialProviderFromSchema = (
     ? discriminatorMapping[discriminatorValue ?? ""]
     : null;
 
+  const legacySelectedProvider = providers.find(
+    (provider) =>
+      discriminator &&
+      discriminatorMapping &&
+      discriminatorValue === undefined &&
+      provider === selectedProvider,
+  );
+  if (legacySelectedProvider) return legacySelectedProvider;
+
   if (providers.length > 1) {
     if (!discriminator) {
       throw new Error(
@@ -167,14 +179,43 @@ export const getCredentialProviderFromSchema = (
       );
     }
     if (!discriminatedProvider) {
-      console.warn(
-        `Missing discriminator value from '${discriminator}': ` +
-          "hiding credentials input until it is set.",
-      );
       return null;
     }
     return discriminatedProvider;
-  } else {
-    return providers[0];
   }
+
+  if (discriminator && discriminatorMapping) {
+    return discriminatedProvider ?? null;
+  }
+
+  return providers[0];
 };
+
+export const credentialNotApplicable = (
+  formData: Record<string, unknown>,
+  schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
+): boolean => {
+  const mapping = schema.discriminator_mapping;
+  if (!schema.discriminator || !mapping) return false;
+
+  const value = getDiscriminatorValue(formData, schema);
+  if (value === undefined || value === null) return !selectedProvider;
+
+  return (
+    schema.credential_free_discriminator_values?.some(
+      (freeValue) => String(freeValue) === value,
+    ) ?? false
+  );
+};
+
+export function credentialRequiredForSelection(
+  formData: Record<string, unknown>,
+  schema: BlockIOCredentialsSubSchema,
+): boolean {
+  return (
+    schema.credential_free_discriminator_values !== undefined &&
+    getDiscriminatorValue(formData, schema) !== undefined &&
+    !credentialNotApplicable(formData, schema)
+  );
+}

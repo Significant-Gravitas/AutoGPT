@@ -16,7 +16,7 @@ const meta: Meta<typeof SearchInput> = {
   argTypes: {
     size: {
       control: { type: "radio" },
-      options: ["small", "medium"],
+      options: ["xsmall", "small", "medium"],
     },
     disabled: { control: "boolean" },
   },

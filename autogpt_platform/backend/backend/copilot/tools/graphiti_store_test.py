@@ -28,8 +28,46 @@ def _make_session(
     )
 
 
+@pytest.fixture(autouse=True)
+def _display_name():
+    with patch(
+        "backend.copilot.tools.graphiti_store.resolve_user_name",
+        new_callable=AsyncMock,
+        return_value="Alice",
+    ):
+        yield
+
+
 class TestMemoryStoreTool:
     """Tests for MemoryStoreTool._execute."""
+
+    @pytest.mark.asyncio
+    async def test_store_names_the_user_as_subject(self):
+        """A JSON episode has no speaker, so the envelope must name the user
+        for the extractor to have a second entity to relate the fact to."""
+        tool = MemoryStoreTool()
+        mock_enqueue = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            await tool._execute(
+                user_id="user-1",
+                session=_make_session(),
+                name="crm_is_hubspot",
+                content="CRM used is HubSpot.",
+            )
+
+        envelope = json.loads(mock_enqueue.await_args.kwargs["episode_body"])
+        assert envelope["user"] == "Alice"
 
     @pytest.mark.asyncio
     async def test_store_no_user_returns_error(self):

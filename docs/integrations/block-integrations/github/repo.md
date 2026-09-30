@@ -145,7 +145,12 @@ You can limit the number of discussions retrieved with the num_discussions param
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
-| num_discussions | Number of discussions to fetch | int | No |
+| num_discussions | Maximum number of discussions to fetch | int | No |
+| category | Only include discussions in the category with this name | str | No |
+| answered | Only include discussions that are (un)answered | "all" \| "answered" \| "unanswered" | No |
+| state | Only include discussions in this state | "all" \| "open" \| "closed" | No |
+| order_by | What to sort the discussions by | "created" \| "updated" | No |
+| direction | Sort direction | "asc" \| "desc" | No |
 
 ### Outputs
 
@@ -169,7 +174,7 @@ You can limit the number of discussions retrieved with the num_discussions param
 ## Github List Releases
 
 ### What it is
-This block lists all releases for a specified GitHub repository.
+This block lists releases for a specified GitHub repository, optionally filtered by type and date range.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -183,14 +188,18 @@ The block returns release information including names and URLs, outputting both 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
+| release_type | Only include releases of this type | "all" \| "stable" \| "prerelease" \| "draft" | No |
+| limit | Maximum number of releases to fetch | int | No |
+| published_after | Only include releases published after the given ISO 8601 timestamp | str | No |
+| published_before | Only include releases published before the given ISO 8601 timestamp | str | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| release | Releases with their name and file tree browser URL | Release |
-| releases | List of releases with their name and file tree browser URL | List[ReleaseItem] |
+| release | Releases with their name, tag, URL, publish date, and type | Release |
+| releases | List of releases with their name, tag, URL, publish date, and type | List[ReleaseItem] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -220,6 +229,7 @@ Each stargazer entry includes their username and a link to their GitHub profile.
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
+| limit | Maximum number of stargazers to fetch | int | No |
 
 ### Outputs
 
@@ -257,6 +267,7 @@ Each tag includes its name and a URL to browse the repository files at that tag.
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
+| limit | Maximum number of tags to fetch | int | No |
 
 ### Outputs
 

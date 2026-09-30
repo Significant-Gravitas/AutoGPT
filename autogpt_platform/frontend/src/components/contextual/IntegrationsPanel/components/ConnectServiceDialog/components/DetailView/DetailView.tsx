@@ -1,6 +1,7 @@
 "use client";
 import { motion, useReducedMotion } from "framer-motion";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -12,6 +13,7 @@ import {
 
 import { AuthType, ConnectableProvider, type AuthMethod } from "../../helpers";
 import { McpConnectPanel } from "./McpConnectPanel";
+import { MCPPresetPanel } from "./MCPPresetPanel";
 import { getAuthMethodLabel, MethodPanel } from "./MethodPanel";
 import { ProviderAvatar } from "./ProviderAvatar";
 import { UnsupportedNotice } from "./UnsupportedNotice";
@@ -23,11 +25,12 @@ const MCP_PROVIDER_ID = "mcp";
 interface Props {
   provider: ConnectableProvider;
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 const TAB_PRIORITY: AuthMethod[] = [
   AuthType.oauth2,
+  AuthType.device_code,
   AuthType.api_key,
   AuthType.user_password,
   AuthType.host_scoped,
@@ -64,20 +67,28 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
         >
           <Icon icon={ArrowLeft02Icon} size={18} />
         </Button>
-        <ProviderAvatar id={provider.id} name={provider.name} />
+        <ProviderAvatar
+          id={
+            provider.mcpServer?.icon_id ??
+            (provider.mcpServer ? "mcp" : provider.id)
+          }
+          name={provider.name}
+        />
         <div className="flex min-w-0 flex-col gap-1">
           <Text variant="h4" as="h2" className="text-[#1F1F20]">
             {provider.name}
           </Text>
           {description ? (
-            <Text variant="small" className="truncate text-[#83838C]">
+            <Text variant="small" className="text-[#83838C]">
               {description}
             </Text>
           ) : null}
         </div>
       </div>
 
-      {provider.id === MCP_PROVIDER_ID ? (
+      {provider.mcpServer ? (
+        <MCPPresetPanel server={provider.mcpServer} onSuccess={onSuccess} />
+      ) : provider.id === MCP_PROVIDER_ID ? (
         <McpConnectPanel onSuccess={onSuccess} />
       ) : tabs.length === 0 ? (
         <UnsupportedNotice providerName={provider.name} />

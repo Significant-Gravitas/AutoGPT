@@ -1,21 +1,30 @@
 """AskQuestionTool - Ask the user one or more clarifying questions."""
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, PendingQuestion
+from backend.data.db_accessors import chat_db
 
 from .base import BaseTool
 from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
+# The model can be steered by untrusted page content (agent_browser, MCP tools),
+# and every option is replayed into context on each subsequent turn.
+MAX_QUESTIONS = 10
+MAX_OPTIONS = 25
+MAX_OPTION_LENGTH = 200
+MAX_OPTION_SCAN = 500
+
 
 class AskQuestionTool(BaseTool):
     """Ask the user one or more clarifying questions and wait for answers.
 
     Use this tool when the user's request is ambiguous and you need more
-    information before proceeding.  Call find_block or other discovery tools
+    information before proceeding.  Call find_capability or other discovery tools
     first to ground your questions in real platform options, then call this
     tool with concrete questions listing those options.
     """
@@ -49,7 +58,21 @@ class AskQuestionTool(BaseTool):
                             "options": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Options for this question.",
+                                "description": (
+                                    "Options for this question, offered to the "
+                                    "user as choices; they can always type a "
+                                    "custom answer instead."
+                                ),
+                            },
+                            "allow_multiple": {
+                                "type": "boolean",
+                                "description": (
+                                    "Let the user pick several of 'options'. "
+                                    "Set it when the answers combine ('which "
+                                    "roles?'); leave it out for a choice "
+                                    "between alternatives. Ignored without "
+                                    "options."
+                                ),
                             },
                             "keyword": {
                                 "type": "string",
@@ -60,7 +83,8 @@ class AskQuestionTool(BaseTool):
                     },
                     "description": (
                         "One or more clarifying questions. Each item has "
-                        "'question' (required), 'options', and 'keyword'."
+                        "'question' (required), 'options', 'allow_multiple' "
+                        "and 'keyword'."
                     ),
                 },
             },
@@ -88,17 +112,42 @@ class AskQuestionTool(BaseTool):
                 "ask_question requires at least one valid question in 'questions'"
             )
 
+        text = "; ".join(q.question for q in questions)
+        if session:
+            await _mark_pending(session, text)
         return ClarificationNeededResponse(
-            message="; ".join(q.question for q in questions),
+            message=text,
             session_id=session.session_id if session else None,
             questions=questions,
+        )
+
+
+async def _mark_pending(session: ChatSession, text: str) -> None:
+    """Park the question on the session so Home can surface it.
+
+    Best-effort: a failure here costs the user a "Needs You" row, and must
+    never cost them the answer they were about to be asked for.
+    """
+    asked_at = datetime.now(UTC)
+    session.metadata.pending_question = PendingQuestion(text=text, asked_at=asked_at)
+    try:
+        await chat_db().set_session_pending_question(
+            session.session_id, session.user_id, text, asked_at
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not record pending question for session %s: %s",
+            session.session_id,
+            e,
         )
 
 
 def _parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
     """Parse and validate raw question dicts into ClarifyingQuestion objects."""
     return [
-        q for idx, item in enumerate(raw) if (q := _parse_one(item, idx)) is not None
+        q
+        for idx, item in enumerate(raw[:MAX_QUESTIONS])
+        if (q := _parse_one(item, idx)) is not None
     ]
 
 
@@ -123,15 +172,50 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         else f"question-{idx}"
     )
 
-    raw_options = item.get("options")
-    options = (
-        [str(o) for o in raw_options if o is not None and str(o).strip()]
-        if isinstance(raw_options, list)
-        else []
-    )
+    options = _parse_options(item.get("options"))
 
     return ClarifyingQuestion(
         question=text.strip(),
         keyword=keyword,
         example=", ".join(options) if options else None,
+        options=options,
+        # A free-text question has nothing to multi-select, so the flag is
+        # dropped rather than sent on for the card to render a lone checkbox.
+        allow_multiple=bool(options) and _parse_allow_multiple(item),
     )
+
+
+def _parse_options(raw: Any) -> list[str]:
+    """Strip the option strings and drop repeats, keeping the model's order.
+
+    Repeats would otherwise reach `example` as "Yes, Yes". Non-strings are
+    dropped rather than coerced: the schema declares strings, and `str()` would
+    surface a Python repr like "['a']" as a tappable choice. Capped because the
+    options are LLM-controlled and get replayed into context every turn.
+    """
+    if not isinstance(raw, list):
+        return []
+    unique: dict[str, None] = {}
+    # Collect up to the cap rather than normalizing everything and slicing
+    # after: a huge array would otherwise cost a strip per entry. Blanks and
+    # repeats drop out, so the scan needs its own bound to stay finite.
+    for option in raw[:MAX_OPTION_SCAN]:
+        if not isinstance(option, str):
+            continue
+        if trimmed := option.strip()[:MAX_OPTION_LENGTH]:
+            unique[trimmed] = None
+            if len(unique) == MAX_OPTIONS:
+                break
+    return list(unique)
+
+
+def _parse_allow_multiple(item: dict[str, Any]) -> bool:
+    """Read the multi-select flag, tolerating the string a model may send.
+
+    Anything else is False: a question defaults to one answer, and guessing
+    at a truthy value would silently change what the card asks for.
+    """
+    raw = item.get("allow_multiple")
+    if isinstance(raw, bool):
+        return raw
+    return isinstance(raw, str) and raw.strip().lower() == "true"

@@ -1,4 +1,5 @@
 import {
+  downloadCopilotSkillPackage,
   getListCopilotSkillsQueryKey,
   readCopilotSkill,
   useDeleteCopilotSkill,
@@ -10,8 +11,9 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
+  buildSkillFileRows,
   describeSkill,
-  downloadTextFile,
+  downloadFile,
   renderSkillMarkdown,
 } from "./helpers";
 
@@ -35,7 +37,7 @@ export function useSkillListItem({ skill }: Args) {
     data: detailRes,
     isLoading: isDetailLoading,
     error: detailError,
-  } = useReadCopilotSkill(skill.name, {
+  } = useReadCopilotSkill(skill.name, undefined, {
     query: {
       enabled: isViewOpen,
       staleTime: 60_000,
@@ -72,6 +74,8 @@ export function useSkillListItem({ skill }: Args) {
     setIsViewOpen(open);
   }
 
+  // A package downloads as the zip the upload endpoint takes back; a skill
+  // that is only a SKILL.md stays a .md, which is what most users exported.
   async function handleDownload() {
     setIsDownloading(true);
     try {
@@ -80,7 +84,20 @@ export function useSkillListItem({ skill }: Args) {
         throw new Error(`Failed to download skill (HTTP ${res.status})`);
       }
       const skillDetail = res.data as CopilotSkillDetail;
-      downloadTextFile(`${skill.name}.md`, renderSkillMarkdown(skillDetail));
+      if (skillDetail.files?.length) {
+        const archive = await downloadCopilotSkillPackage(skill.name);
+        if (archive.status !== 200) {
+          throw new Error(`Failed to download skill (HTTP ${archive.status})`);
+        }
+        downloadFile(`${skill.name}.zip`, archive.data);
+        return;
+      }
+      downloadFile(
+        `${skill.name}.md`,
+        new Blob([renderSkillMarkdown(skillDetail)], {
+          type: "text/markdown;charset=utf-8",
+        }),
+      );
     } catch (error) {
       toast({
         title: "Failed to download skill",
@@ -118,6 +135,7 @@ export function useSkillListItem({ skill }: Args) {
   return {
     descriptionPreview,
     triggers,
+    fileRows: buildSkillFileRows(detail?.files),
     isDeleteOpen,
     openDelete,
     closeDelete,

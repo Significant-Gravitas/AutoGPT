@@ -155,6 +155,7 @@ export default function UserIntegrationsPage() {
                 api_key: IconKey,
                 user_password: IconKey,
                 host_scoped: IconKey,
+                device_code: IconUser,
               }[credentials.type],
             })),
         )
@@ -192,6 +193,7 @@ export default function UserIntegrationsPage() {
                       api_key: "API key",
                       user_password: "Username & password",
                       host_scoped: "Host-scoped credentials",
+                      device_code: "Device auth credentials",
                     }[cred.type]
                   }{" "}
                   - <code>{cred.id}</code>

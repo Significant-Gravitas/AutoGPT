@@ -8,6 +8,21 @@ function isComplexType(schema: RJSFSchema): boolean {
   return schema.type === "object" || schema.type === "array";
 }
 
+/**
+ * True for object schemas that describe a known shape (a model with named
+ * properties), as opposed to a free-form dict. These can be rendered as a real
+ * sub-form — each property gets its proper widget, so enums become dropdowns
+ * instead of hand-typed JSON.
+ */
+function hasNamedProperties(schema: RJSFSchema): boolean {
+  return (
+    schema.type === "object" &&
+    !!schema.properties &&
+    typeof schema.properties === "object" &&
+    Object.keys(schema.properties).length > 0
+  );
+}
+
 function hasComplexAnyOfOptions(schema: RJSFSchema): boolean {
   const options = schema.anyOf || schema.oneOf;
   if (!Array.isArray(options)) return false;
@@ -25,6 +40,10 @@ function hasComplexAnyOfOptions(schema: RJSFSchema): boolean {
  *
  * Nested complex types (arrays/objects inside arrays/objects) are rendered as JsonTextField
  * to avoid deeply nested form UIs. Users can enter raw JSON for these fields.
+ *
+ * Exception: array items that describe a known object shape (named properties) are
+ * rendered as a real sub-form, one row per item, so each property keeps its proper
+ * widget — an enum property becomes a dropdown rather than hand-typed JSON.
  *
  * @param schema - The JSON schema
  * @param existingUiSchema - Existing uiSchema to merge with
@@ -114,8 +133,14 @@ export function generateUiSchemaForCustomFields(
                   "ui:field": itemsCustomFieldId,
                 },
               };
-            } else if (isComplexType(itemsSchema)) {
-              // Array items that are complex types become JsonTextField
+            } else if (
+              isComplexType(itemsSchema) &&
+              !hasNamedProperties(itemsSchema)
+            ) {
+              // Array items that are complex types *without* a known shape —
+              // free-form dicts, arrays of arrays — stay as JsonTextField.
+              // Items that do have named properties fall through to the
+              // recursion below so each property keeps its real widget.
               uiSchema[key] = {
                 ...(uiSchema[key] as object),
                 items: {

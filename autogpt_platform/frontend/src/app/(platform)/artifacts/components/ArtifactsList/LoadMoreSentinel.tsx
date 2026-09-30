@@ -2,14 +2,22 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useEffect, useRef } from "react";
+import type { ArtifactsView } from "../../useArtifactsPage";
+import { SkeletonRow } from "./ArtifactsTable/SkeletonRow";
 
 interface Props {
   hasMore: boolean;
   isLoading: boolean;
   onLoadMore: () => void;
+  view: ArtifactsView;
 }
 
-export function LoadMoreSentinel({ hasMore, isLoading, onLoadMore }: Props) {
+export function LoadMoreSentinel({
+  hasMore,
+  isLoading,
+  onLoadMore,
+  view,
+}: Props) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
   onLoadMoreRef.current = onLoadMore;
@@ -28,6 +36,20 @@ export function LoadMoreSentinel({ hasMore, isLoading, onLoadMore }: Props) {
   }, [hasMore, isLoading]);
 
   if (!hasMore && !isLoading) return null;
+
+  if (view === "list") {
+    return (
+      <div
+        ref={sentinelRef}
+        className="divide-y divide-zinc-100 border-t border-zinc-100"
+        data-testid="artifacts-load-more-sentinel"
+      >
+        {isLoading
+          ? Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)
+          : null}
+      </div>
+    );
+  }
 
   return (
     <div

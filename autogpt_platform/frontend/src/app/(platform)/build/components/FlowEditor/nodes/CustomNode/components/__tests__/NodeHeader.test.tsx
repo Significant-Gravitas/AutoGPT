@@ -107,6 +107,40 @@ describe("NodeHeader", () => {
     });
   });
 
+  it("keeps editing when an IME owns the Enter", () => {
+    render(<NodeHeader data={makeData()} nodeId="node-1" />);
+    fireEvent.doubleClick(screen.getByText("Agent Executor"));
+
+    const input = screen.getByDisplayValue("AgentExecutorBlock");
+    fireEvent.change(input, { target: { value: "猫ノード" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    // Safari's confirming Enter arrives after compositionend with only the
+    // legacy keyCode left to identify it.
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+
+    expect(mockUpdateNodeData).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("猫ノード")).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mockUpdateNodeData).toHaveBeenCalledWith("node-1", {
+      metadata: { customized_name: "猫ノード" },
+    });
+  });
+
+  it("does not revert the title when an IME owns the Escape", () => {
+    render(<NodeHeader data={makeData()} nodeId="node-1" />);
+    fireEvent.doubleClick(screen.getByText("Agent Executor"));
+
+    const input = screen.getByDisplayValue("AgentExecutorBlock");
+    fireEvent.change(input, { target: { value: "猫ノード" } });
+    fireEvent.keyDown(input, { key: "Escape", isComposing: true });
+
+    // Escape dismissed the candidate window, not the rename.
+    expect(screen.getByDisplayValue("猫ノード")).toBeTruthy();
+    expect(mockUpdateNodeData).not.toHaveBeenCalled();
+  });
+
   it("cancels edit on Escape key", () => {
     render(<NodeHeader data={makeData()} nodeId="node-1" />);
     fireEvent.doubleClick(screen.getByText("Agent Executor"));

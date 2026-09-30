@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from backend.data.bot_analytics import record_guild_joined
@@ -45,6 +46,8 @@ _SCOPES = (
     "commands",
     "files:read",
     "files:write",
+    "groups:history",
+    "groups:read",
     "im:history",
     "im:read",
     "im:write",
@@ -119,15 +122,23 @@ async def _handle_callback(
     if not code:
         return PlainTextResponse("missing code", status_code=400)
 
-    resp = await AsyncWebClient().oauth_v2_access(
-        client_id=config.get_client_id(),
-        client_secret=config.get_client_secret(),
-        code=code,
-        redirect_uri=_redirect_uri(),
-    )
-    if not resp.get("ok"):
-        logger.warning("Slack oauth.v2.access failed: %s", resp.get("error"))
-        return _done(ok=False, detail=resp.get("error") or "exchange failed")
+    try:
+        resp = await AsyncWebClient().oauth_v2_access(
+            client_id=config.get_client_id(),
+            client_secret=config.get_client_secret(),
+            code=code,
+            redirect_uri=_redirect_uri(),
+        )
+    except SlackApiError as e:
+        # The SDK raises on ok:false (expired/reused code, bad secret); the
+        # error code is the one actionable signal an operator gets.
+        return _exchange_failed(_slack_error_code(e))
+    except Exception:
+        # slack_sdk re-raises raw aiohttp/asyncio errors on transport failure
+        # (timeout, DNS, proxy outage) — same graceful landing, never a 500.
+        # The log keeps the exception; the browser gets the generic detail.
+        logger.warning("Slack oauth.v2.access request failed", exc_info=True)
+        return _exchange_failed(None)
 
     team = resp.get("team") or {}
     install = _Install(
@@ -146,6 +157,22 @@ async def _handle_callback(
     if user_id:
         await _mark_install_pending(user_id, install)
     return _post_install_response(install)
+
+
+def _exchange_failed(error: str | None) -> Response:
+    detail = error or "exchange failed"
+    logger.warning("Slack oauth.v2.access failed: %s", detail)
+    return _done(ok=False, detail=detail)
+
+
+def _slack_error_code(e: SlackApiError) -> str | None:
+    # ``response`` indexes like a dict for a parsed ok:false body, but is a raw
+    # aiohttp response (or wraps a str body) for a malformed / non-JSON one.
+    try:
+        error = e.response["error"]
+    except (KeyError, TypeError, AttributeError, ValueError):
+        return None
+    return str(error) if error else None
 
 
 class _Install(BaseModel):

@@ -4,6 +4,7 @@ import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/au
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { auth } from "@/lib/auth/auth";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
+import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
   scheduleAccountCreatedGoal,
   wasAccountCreated,
@@ -77,6 +78,7 @@ export async function signup(
       const createUserResponse = await postV1GetOrCreateUser();
       if (wasAccountCreated(createUserResponse)) {
         await scheduleAccountCreatedGoal("email");
+        await markAccountCreated("email");
       }
     } catch (createUserError) {
       console.error("Error creating user during signup:", createUserError);

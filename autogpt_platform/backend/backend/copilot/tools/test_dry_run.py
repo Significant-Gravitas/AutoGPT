@@ -754,7 +754,7 @@ async def test_run_agent_session_dry_run_overrides_kwargs():
 
     captured_params = {}
 
-    async def capture_prerequisites(graph, user_id, params, session_id):
+    async def capture_prerequisites(graph, user_id, params, session_id, expert_id=None):
         captured_params["dry_run"] = params.dry_run
         return {}, None
 
@@ -796,7 +796,7 @@ async def test_run_agent_session_dry_run_false_allows_scheduling():
 
     captured_params = {}
 
-    async def capture_prerequisites(graph, user_id, params, session_id):
+    async def capture_prerequisites(graph, user_id, params, session_id, expert_id=None):
         captured_params["dry_run"] = params.dry_run
         return {}, None
 
@@ -840,7 +840,7 @@ async def test_run_agent_session_dry_run_false_allows_llm_dry_run_true():
 
     captured_params = {}
 
-    async def capture_prerequisites(graph, user_id, params, session_id):
+    async def capture_prerequisites(graph, user_id, params, session_id, expert_id=None):
         captured_params["dry_run"] = params.dry_run
         return {}, None
 

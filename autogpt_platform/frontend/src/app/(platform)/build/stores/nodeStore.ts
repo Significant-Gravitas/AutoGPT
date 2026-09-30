@@ -3,10 +3,11 @@ import { NodeChange, XYPosition, applyNodeChanges } from "@xyflow/react";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
+import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
 import {
-  convertBlockInfoIntoCustomNodeData,
   findFreePosition,
-} from "../components/helper";
+  getBlockPlacementDimensions,
+} from "../components/placementHelpers";
 import { Node } from "@/app/api/__generated__/models/node";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
@@ -222,21 +223,15 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     get().incrementNodeCounter();
     const nodeNumber = get().nodeCounter;
 
+    const dimensions = getBlockPlacementDimensions(block.uiType);
     const nodePosition =
       position ||
       findFreePosition(
-        get().nodes.map((node) => ({
-          position: node.position,
-          measured: {
-            width:
-              node.width ??
-              node.measured?.width ??
-              (node.data.uiType === BlockUIType.NOTE ? 300 : 500),
-            height: node.height ?? node.measured?.height ?? 400,
-          },
-        })),
-        block.uiType === BlockUIType.NOTE ? 300 : 400,
+        get().nodes,
+        dimensions.width,
         30,
+        undefined,
+        dimensions.height,
       );
 
     const customNode: CustomNode = {

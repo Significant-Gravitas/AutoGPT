@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { deriveAuthMethods } from "@/hooks/useCredentials";
 import {
   countSupportedTypes,
   getSupportedTypes,
@@ -70,6 +71,14 @@ describe("getSupportedTypes", () => {
       "api_key",
       "user_password",
       "host_scoped",
+    ]);
+  });
+
+  // A device-code provider shipped with no branch here, so its blocks offered
+  // no connect method at all and "Add account" fell through to OAuth.
+  it("returns device_code when supportsDeviceCode is true", () => {
+    expect(getSupportedTypes(false, false, false, false, true)).toEqual([
+      "device_code",
     ]);
   });
 });
@@ -471,6 +480,19 @@ describe("resolveActionTarget", () => {
     expect(resolveActionTarget(false, true, false, false, false)).toBe("oauth");
   });
 
+  it("returns device_code when only device auth is supported", () => {
+    expect(resolveActionTarget(false, false, false, false, false, true)).toBe(
+      "device_code",
+    );
+  });
+
+  // Device auth is only reachable if it also counts toward the multi-type
+  // check — otherwise a provider offering device auth plus an API key would
+  // silently skip the selector and open the API-key modal.
+  it("counts device auth toward the multi-type selector", () => {
+    expect(countSupportedTypes(false, true, false, false, true)).toBe(2);
+  });
+
   it("returns api_key when only API key is supported", () => {
     expect(resolveActionTarget(false, false, true, false, false)).toBe(
       "api_key",
@@ -487,6 +509,25 @@ describe("resolveActionTarget", () => {
     expect(resolveActionTarget(false, false, false, false, true)).toBe(
       "host_scoped",
     );
+  });
+
+  // A device-code provider advertises both types: the grant yields an
+  // oauth2-shaped credential, so `oauth2` must stay in the schema for saved
+  // credentials to match. `resolveActionTarget` checks OAuth first, so the
+  // device-code route depends on `deriveAuthMethods` shadowing `oauth2` out.
+  it("routes a provider advertising both types to device auth, not oauth", () => {
+    const methods = deriveAuthMethods(["oauth2", "device_code"]);
+
+    expect(
+      resolveActionTarget(
+        false,
+        methods.supportsOAuth2,
+        methods.supportsApiKey,
+        methods.supportsUserPassword,
+        methods.supportsHostScoped,
+        methods.supportsDeviceCode,
+      ),
+    ).toBe("device_code");
   });
 
   it("returns null when nothing is supported", () => {

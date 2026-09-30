@@ -63,6 +63,8 @@ def compose_run_outcome(
         duration_seconds=stats.duration if stats else 0,
         cost_cents=stats.cost if stats else 0,
         link=run_link(library_agent_id, execution.id),
+        schedule_id=execution.schedule_id,
+        webhook_id=execution.webhook_id,
     )
 
 

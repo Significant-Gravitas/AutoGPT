@@ -28,17 +28,15 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
-import { SidebarTeamMembers } from "./components/SidebarTeamMembers/SidebarTeamMembers";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import {
   ArrowDown01Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
-  Home01Icon,
-  NoteEditIcon,
+  Home10Icon,
   Store01Icon,
-  UserGroup02Icon,
+  AddTeamIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -54,10 +52,6 @@ const MAIN_LINKS: NavLink[] = [
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
-
-// /home 404s without the experts flag, so the entry only exists for the
-// cohort that has a home to go to.
-const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home01Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -83,9 +77,7 @@ function NavLinkLoader() {
   );
 }
 
-// Rendered inside the New Task <Link> — swap the sparkle for a spinner while
-// navigation to /copilot is pending, then back to the sparkle once it lands.
-function NewTaskIcon() {
+function HomeIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
@@ -99,14 +91,13 @@ function NewTaskIcon() {
 
   return (
     <Icon
-      icon={NoteEditIcon}
+      icon={Home10Icon}
       className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
     />
   );
 }
 
-// The stronger active state + grey shell ship with the brain-dump
-// experience; off keeps the original white sidebar.
+// The stronger active state ships with the brain-dump experience.
 function useNavItemClassName() {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   return cn(
@@ -117,9 +108,7 @@ function useNavItemClassName() {
   );
 }
 
-// New Task shares the nav-item styling with the main links so it sits in the
-// same section with a uniform gap, instead of being a standalone CTA button.
-function NewTaskItem() {
+function HomeItem() {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
@@ -127,13 +116,13 @@ function NewTaskItem() {
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
-        tooltip="New Task"
-        isActive={isLinkActive(pathname, "/copilot")}
+        tooltip="Home"
+        isActive={isLinkActive(pathname, "/home")}
         className={navItemClassName}
       >
-        <Link href="/copilot">
-          <NewTaskIcon />
-          <span className="truncate">New Task</span>
+        <Link href="/home">
+          <HomeIcon />
+          <span className="truncate">Home</span>
           <ShortcutHint letter="O" />
         </Link>
       </SidebarMenuButton>
@@ -143,10 +132,9 @@ function NewTaskItem() {
 
 interface NavItemProps {
   link: NavLink;
-  children?: ReactNode;
 }
 
-function NavItem({ link, children }: NavItemProps) {
+function NavItem({ link }: NavItemProps) {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
@@ -167,7 +155,6 @@ function NavItem({ link, children }: NavItemProps) {
           <NavLinkLoader />
         </Link>
       </SidebarMenuButton>
-      {children}
     </SidebarMenuItem>
   );
 }
@@ -175,19 +162,15 @@ function NavItem({ link, children }: NavItemProps) {
 function NavMenu({
   links,
   leading,
-  renderAfterItem,
 }: {
   links: NavLink[];
   leading?: ReactNode;
-  renderAfterItem?: (link: NavLink) => ReactNode;
 }) {
   return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
       {leading}
       {links.map((link) => (
-        <NavItem key={link.href} link={link}>
-          {renderAfterItem?.(link)}
-        </NavItem>
+        <NavItem key={link.href} link={link} />
       ))}
     </SidebarMenu>
   );
@@ -253,27 +236,25 @@ export function AppSidebar(props: Props) {
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
-  const workspaceLinks = isHireExpertsEnabled
-    ? [
-        { name: "Team", href: "/team", icon: UserGroup02Icon },
-        ...WORKSPACE_LINKS,
-      ]
-    : WORKSPACE_LINKS;
+  const filesEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+  const workspaceLinks = (
+    isHireExpertsEnabled
+      ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
+      : WORKSPACE_LINKS
+  ).filter((link) => link.href !== "/artifacts" || filesEnabled);
 
-  // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
-      if (event.key.toLocaleLowerCase() !== "o") return;
+      if (!event.key || event.key.toLocaleLowerCase() !== "o") return;
       if (!event.metaKey && !event.ctrlKey) return;
       if (!event.shiftKey) return;
       if (isEditableElement(document.activeElement)) return;
       event.preventDefault();
-      router.push("/copilot");
+      router.push("/home");
     }
 
     document.addEventListener("keydown", handleNewTaskShortcut);
@@ -284,11 +265,7 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className={
-        isBrainDumpEnabled
-          ? "[&_[data-sidebar=sidebar]]:bg-[#F4F4F4]"
-          : "[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
-      }
+      className="[&_[data-sidebar=sidebar]]:bg-[#fafafa]"
     >
       <AppSidebarHeader />
 
@@ -302,29 +279,18 @@ export function AppSidebar(props: Props) {
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
-                <NavMenu
-                  links={mainLinks}
-                  leading={
-                    <>
-                      {isHireExpertsEnabled && <NavItem link={HOME_LINK} />}
-                      <NewTaskItem />
-                    </>
-                  }
-                />
+                <NavMenu links={mainLinks} leading={<HomeItem />} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <CollapsibleNavGroup label="Workspace">
-              <NavMenu
-                links={workspaceLinks}
-                renderAfterItem={(link) =>
-                  link.href === "/team" ? <SidebarTeamMembers /> : null
-                }
-              />
-            </CollapsibleNavGroup>
-          </motion.div>
+          {workspaceLinks.length > 0 ? (
+            <motion.div variants={itemVariants}>
+              <CollapsibleNavGroup label="Workspace">
+                <NavMenu links={workspaceLinks} />
+              </CollapsibleNavGroup>
+            </motion.div>
+          ) : null}
 
           <motion.div
             variants={itemVariants}

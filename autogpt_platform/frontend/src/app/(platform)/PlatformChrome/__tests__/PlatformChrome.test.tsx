@@ -102,7 +102,7 @@ describe("PlatformChrome", () => {
       </PlatformChrome>,
     );
 
-    expect(screen.getByText("Try Autopilot")).toBeDefined();
+    expect(screen.getByText("Try Otto")).toBeDefined();
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
     expect(screen.queryByTestId("navbar")).toBeNull();
     expect(screen.queryByTestId("app-sidebar")).toBeNull();

@@ -101,9 +101,13 @@ def _make_preset(*, provider: str, url: str):
     return preset
 
 
-def _patches(graph, *, matched=None, available=None, preset=None):
-    """Patch graph resolution + credential matching + DB calls for the tool."""
-    mock_graph_db = MagicMock()
+def _patches(graph, *, matched=None, available=None, preset=None, graph_db_mock=None):
+    """Patch graph resolution + credential matching + DB calls for the tool.
+
+    Pass ``graph_db_mock`` to keep a reference for asserting how the graph was
+    loaded.
+    """
+    mock_graph_db = graph_db_mock or MagicMock()
     mock_graph_db.get_graph = AsyncMock(return_value=graph)
     mock_triggers = MagicMock()
     mock_triggers.setup_triggered_preset = AsyncMock(return_value=preset)
@@ -153,6 +157,25 @@ async def test_no_webhook_node(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_graph_is_loaded_with_subgraphs(tool, session):
+    """Without sub-graphs, a sub-agent's credentials are missing from the card
+    and the registered trigger fails on every firing."""
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = _make_preset(
+        provider="generic_webhook",
+        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
+    )
+    graph_db_mock = MagicMock()
+    ctxs, _ = _patches(graph, preset=preset, graph_db_mock=graph_db_mock)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert graph_db_mock.get_graph.await_args.kwargs["include_subgraphs"] is True
+
+
+@pytest.mark.asyncio
 async def test_manual_webhook_no_creds_proceeds(tool, session):
     """Manual webhook with no required credentials: create the preset, return URL."""
     graph = _make_graph(manual=True, regular_credentials={})
@@ -176,7 +199,9 @@ async def test_manual_webhook_no_creds_proceeds(tool, session):
 
 
 @pytest.mark.asyncio
-async def test_expert_session_passes_expert_scope_to_trigger_setup(tool, session):
+async def test_expert_session_passes_expert_scope_to_trigger_setup(
+    tool, session, request
+):
     session.expert_id = "expert-1"
     graph = _make_graph(manual=True, regular_credentials={})
     preset = _make_preset(
@@ -184,6 +209,12 @@ async def test_expert_session_passes_expert_scope_to_trigger_setup(tool, session
         url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
     )
     ctxs, setup_mock = _patches(graph, preset=preset)
+    installed = patch(
+        "backend.copilot.tools.setup_agent_webhook_trigger.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
         result = await tool._execute(
             user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
@@ -194,13 +225,19 @@ async def test_expert_session_passes_expert_scope_to_trigger_setup(tool, session
 
 
 @pytest.mark.asyncio
-async def test_expert_session_attributes_trigger_to_expert(tool):
+async def test_expert_session_attributes_trigger_to_expert(tool, request):
     """A trigger set up inside an expert chat threads that expert's id through
     to preset creation, so its webhook fires count as the expert's work."""
     session = make_session(_USER, expert_id="expert-1")
     graph = _make_graph(manual=True, regular_credentials={})
     preset = _make_preset(provider="generic_webhook", url="https://x/ingress")
     ctxs, setup_mock = _patches(graph, preset=preset)
+    installed = patch(
+        "backend.copilot.tools.setup_agent_webhook_trigger.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
         result = await tool._execute(
             user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"

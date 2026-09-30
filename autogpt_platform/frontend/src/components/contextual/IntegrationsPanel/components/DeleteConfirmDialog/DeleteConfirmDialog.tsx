@@ -11,6 +11,9 @@ interface Props {
   isPending?: boolean;
   onConfirm: () => void;
   variant?: "remove" | "force";
+  /** Provider-specific consequence, when the generic wording would overstate
+   *  or understate what actually stops working. */
+  notice?: string;
 }
 
 export function DeleteConfirmDialog({
@@ -20,6 +23,7 @@ export function DeleteConfirmDialog({
   isPending = false,
   onConfirm,
   variant = "remove",
+  notice,
 }: Props) {
   const count = itemNames.length;
   const isBulk = count > 1;
@@ -51,6 +55,12 @@ export function DeleteConfirmDialog({
           <Text variant="body" className="text-zinc-800">
             {message}
           </Text>
+
+          {notice && (
+            <Text variant="small" className="text-[#505057]">
+              {notice}
+            </Text>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button

@@ -23,7 +23,7 @@ _MAX_GROUP_ID_LEN = 128
 # "got Future attached to a different loop". Scope the cache (and its lock)
 # per running loop so each loop gets its own clients.
 class _LoopState:
-    __slots__ = ("cache", "lock")
+    __slots__ = ("cache", "lock", "indexed")
 
     def __init__(self) -> None:
         self.cache: TTLCache = _EvictingTTLCache(
@@ -31,6 +31,10 @@ class _LoopState:
             ttl=graphiti_config.client_cache_ttl,
         )
         self.lock = asyncio.Lock()
+        # group_ids whose indices this loop has already ensured. Unbounded
+        # but one short string per group actually *written* to, which is a
+        # far smaller set than the user base — see ``ensure_indices_once``.
+        self.indexed: set[str] = set()
 
 
 _loop_state: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
@@ -77,9 +81,9 @@ def derive_group_id(user_id: str) -> str:
 
 
 def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
-    """Derive the Graphiti namespace for an AutoPilot or expert session.
+    """Derive the Graphiti namespace for an Otto or expert session.
 
-    Plain AutoPilot sessions retain the exact legacy ``user_<user_id>``
+    Plain Otto sessions retain the exact legacy ``user_<user_id>``
     namespace so all existing user memories remain available. Expert sessions
     use a fixed-length digest of the globally unique Expert ID, so memory stays
     with the expert if authorized ownership changes later. Access remains a
@@ -111,7 +115,7 @@ def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
 def derive_memory_scope_key(user_id: str, expert_id: str | None = None) -> str:
     """Stable internal key for queues, locks, and background markers.
 
-    AutoPilot keeps the legacy raw user key where existing Redis contracts use
+    Otto keeps the legacy raw user key where existing Redis contracts use
     it. Expert scopes use the same opaque ID as their Graphiti namespace.
     """
     if expert_id is None:
@@ -270,6 +274,42 @@ async def get_graphiti_client(group_id: str):
         client = _build_graphiti(group_id, llm_client)
         cache[group_id] = client
         return client
+
+
+async def ensure_indices_once(group_id: str, client) -> None:
+    """Build a graph's indices the first time this loop writes to it.
+
+    ``AutoGPTFalkorDriver`` defaults to ``build_indices=False`` so that
+    constructing a driver can never materialize a graph (see its docstring —
+    an init-time ``CREATE INDEX`` is what produced ~13.7k empty graphs in
+    prod). Write paths call this instead: the graph is about to exist
+    anyway, so indexing it is free of that hazard.
+
+    Idempotent and best-effort. Memoized per event loop, so a graph is
+    indexed once per worker rather than on every episode. A failure here
+    must not fail the write, so it is logged and swallowed — the next
+    write for this group retries.
+    """
+    state = _get_loop_state()
+    if group_id in state.indexed:
+        return
+
+    driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
+    if driver is None:
+        return
+
+    try:
+        await driver.ensure_indices()
+    except Exception:
+        logger.warning(
+            "Index creation failed for group %s — memory writes continue "
+            "unindexed; will retry on next write",
+            group_id[:16],
+            exc_info=True,
+        )
+        return
+
+    state.indexed.add(group_id)
 
 
 async def make_flex_graphiti_client(group_id: str):

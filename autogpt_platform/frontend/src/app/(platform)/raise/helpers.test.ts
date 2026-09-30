@@ -14,6 +14,7 @@ import {
   VOICE_SKIPPED_LABEL,
   voiceSummaryLabel,
 } from "./helpers";
+import { colorForCategory } from "./components/CategoryStep/helpers";
 
 const samples: VoiceSample[] = [
   { label: "Direct", text: "Do this next." },
@@ -43,7 +44,7 @@ describe("raise helpers", () => {
 
   test("builds the same complete raised identity shown by the backend", () => {
     expect(raisedIdentity("Otto")).toBe(
-      "I'm Otto, raised by you. I learn how you work and grow with you.",
+      "I'm Otto, an AI Expert created by you. I use your instructions to help with your work.",
     );
   });
 
@@ -64,7 +65,7 @@ describe("raise helpers", () => {
       "No weekly limit",
     );
     expect(kitBudgetLabel({ weeklyBudget: 500, attachments: [] })).toBe(
-      "500 credits ($5/week)",
+      "$5 / week",
     );
     expect(
       kitToolsLabel({
@@ -139,19 +140,105 @@ describe("restoring a persisted draft", () => {
     expect(loadDraft().voiceLabel).toBe("Direct");
   });
 
+  test("answers the area from the role an earlier draft was started with", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "marketer",
+      color: "rose-300",
+      jobTitle: "Marketing Manager",
+      name: "Nova",
+      avatarUrl: "",
+      step: "about",
+    });
+
+    const draft = loadDraft();
+    expect(draft).toMatchObject({
+      category: "marketing",
+      color: "rose-300",
+      step: "about",
+    });
+    expect(draft).not.toHaveProperty("role");
+  });
+
+  test("reads a typed role for its area and colors the draft to match", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "Invoice chaser",
+      jobTitle: "",
+      step: "name",
+    });
+
+    expect(loadDraft()).toMatchObject({
+      category: "finance",
+      color: colorForCategory("finance"),
+      step: "name",
+    });
+  });
+
+  test("keeps a custom role when reopening a draft without a job title", () => {
+    saveDraftFromEarlierBuild({ role: "Invoice chaser", step: "avatar" });
+
+    const draft = loadDraft();
+    expect(draft).toMatchObject({
+      step: "jobTitle",
+      category: "finance",
+      legacyRole: "Invoice chaser",
+    });
+    saveDraft(draft);
+    expect(loadDraft()).toEqual(draft);
+  });
+
+  test("moves a draft parked on the old area beat on to the avatar", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "marketer",
+      jobTitle: "Marketing Manager",
+      name: "Nova",
+      step: "category",
+    });
+
+    expect(loadDraft()).toMatchObject({
+      category: "marketing",
+      step: "avatar",
+    });
+  });
+
+  test("opens a draft still on the retired role question at the area beat", () => {
+    saveDraftFromEarlierBuild({ hasStarted: true, role: null, step: "role" });
+
+    expect(loadDraft()).toMatchObject({ category: null, step: "category" });
+  });
+
   test("moves a draft parked on the retired kit step onto budget", () => {
-    saveStepFromEarlierBuild("kit");
+    saveDraftFromEarlierBuild({ step: "kit" });
 
     expect(loadDraft().step).toBe("budget");
   });
 
+  test("sends a draft from before the job title beat back to that beat", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "marketer",
+      name: "Nova",
+      step: "avatar",
+    });
+
+    expect(loadDraft()).toEqual({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      category: "marketing",
+      color: colorForCategory("marketing"),
+      step: "jobTitle",
+    });
+  });
+
   test("restarts the flow when the stored step is not a known step", () => {
-    saveStepFromEarlierBuild("space-invaders");
+    saveDraftFromEarlierBuild({ step: "space-invaders" });
 
     expect(loadDraft().step).toBe(EMPTY_DRAFT.step);
   });
 });
 
-function saveStepFromEarlierBuild(step: string) {
-  saveDraft({ ...EMPTY_DRAFT, step } as RaiseDraft);
+function saveDraftFromEarlierBuild(fields: object) {
+  saveDraft({ ...EMPTY_DRAFT, ...fields } as RaiseDraft);
 }

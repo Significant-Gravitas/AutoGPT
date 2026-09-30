@@ -1,19 +1,20 @@
 import logging
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from typing_extensions import TypedDict
 
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
-from ._api import get_api
+from ._api import get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -108,6 +109,8 @@ class GithubCreatePRReviewBlock(Block):
                     "https://github.com/owner/repo/pull/1#pullrequestreview-123456",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -213,6 +216,30 @@ class GithubListPRReviewsBlock(Block):
             description="Pull request number",
             placeholder="123",
         )
+        reviewer: str = SchemaField(
+            description="Only include reviews by this user",
+            placeholder="octocat",
+            default="",
+        )
+        state: Literal[
+            "all", "approved", "changes_requested", "commented", "dismissed", "pending"
+        ] = SchemaField(
+            description="Only include reviews with this state. "
+            "Note: 'pending' reviews are your own unsubmitted draft reviews, "
+            "which are excluded by any other choice.",
+            default="all",
+        )
+        latest_only: bool = SchemaField(
+            description="Only include each reviewer's latest review, "
+            "reflecting their current stance",
+            default=False,
+        )
+        limit: int = SchemaField(
+            description="Maximum number of reviews to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
 
     class Output(BlockSchemaOutput):
         class ReviewItem(TypedDict):
@@ -278,19 +305,50 @@ class GithubListPRReviewsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
     async def list_reviews(
-        credentials: GithubCredentials, repo: str, pr_number: int
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.ReviewItem]:
         api = get_api(credentials, convert_urls=False)
 
         # GitHub API endpoint for listing reviews
-        reviews_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
+        reviews_url = (
+            f"https://api.github.com/repos/{input_data.repo}"
+            f"/pulls/{input_data.pr_number}/reviews"
+        )
 
-        response = await api.get(reviews_url)
-        data = response.json()
+        # State filtering and per-reviewer deduplication can only be done after
+        # fetching, so in those cases the limit is applied at the end instead.
+        fetch_limit = (
+            input_data.limit
+            if input_data.state == "all" and not input_data.latest_only
+            else 1000
+        )
+        data = await get_paginated(
+            api,
+            reviews_url,
+            limit=fetch_limit,
+            keep=(
+                (lambda review: review["user"]["login"] == input_data.reviewer)
+                if input_data.reviewer
+                else None
+            ),
+        )
+
+        if input_data.latest_only:
+            latest_by_user: dict[str, dict] = {}
+            for review in data:
+                # A PENDING review is an unsubmitted draft, not a stance
+                if review["state"] == "PENDING":
+                    continue
+                latest_by_user[review["user"]["login"]] = review
+            data = list(latest_by_user.values())
+
+        if input_data.state != "all":
+            data = [r for r in data if r["state"] == input_data.state.upper()]
 
         reviews: list[GithubListPRReviewsBlock.Output.ReviewItem] = [
             {
@@ -300,7 +358,7 @@ class GithubListPRReviewsBlock(Block):
                 "body": review.get("body", ""),
                 "html_url": review["html_url"],
             }
-            for review in data
+            for review in data[: input_data.limit]
         ]
         return reviews
 
@@ -311,11 +369,7 @@ class GithubListPRReviewsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        reviews = await self.list_reviews(
-            credentials,
-            input_data.repo,
-            input_data.pr_number,
-        )
+        reviews = await self.list_reviews(credentials, input_data)
         yield "reviews", reviews
         for review in reviews:
             yield "review", review
@@ -376,6 +430,8 @@ class GithubSubmitPendingReviewBlock(Block):
                     "https://github.com/owner/repo/pull/1#pullrequestreview-123456",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -684,6 +740,7 @@ class GithubGetPRReviewCommentsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -811,6 +868,7 @@ class GithubCreateCommentObjectBlock(Block):
                     },
                 ),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(

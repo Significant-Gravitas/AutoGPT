@@ -1,0 +1,145 @@
+{#- ============================================================
+    lifecycle.html.j2 — billing & account emails, one template.
+    kind: welcome | drip1 | payment_failed | final_notice |
+          cancel_confirmed | cancel_reversed | ended | trial_ending
+    Plan-bearing kinds receive `plan`:
+      { name, label ("Pro — monthly"), price_display ("$50.00 / month"),
+        cycle ("monthly"|"yearly"), cycle_noun ("month"|"year") }
+    Every sentence is assembled from context slots — no per-scenario
+    copy edits. See make_lifecycle_scenarios.py for the context schema.
+    ============================================================ -#}
+{%- import "_lifecycle_ui.j2" as ui with context -%}
+<!doctype html>
+<html lang="en">
+<head>
+{{ ui.head_block(subject) }}
+</head>
+<body style="margin:0; padding:0; background-color:#f1efe9; -webkit-text-size-adjust:100%; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{%- if kind == 'welcome' %}
+{{ ui.hero('welcome') }}
+{%- elif kind == 'payment_failed' %}
+{{ ui.hero('payment_hiccup') }}
+{%- elif kind == 'final_notice' %}
+{{ ui.hero('final_notice') }}
+{%- elif kind == 'cancel_confirmed' %}
+{{ ui.hero('cancel_safe') }}
+{%- elif kind == 'cancel_reversed' %}
+{{ ui.hero('welcome_back') }}
+{%- elif kind == 'ended' %}
+{{ ui.hero('plan_asleep') }}
+{%- else %}
+{{ ui.hero('trial_headsup') }}
+{%- endif %}
+    <tr><td bgcolor="#ffffff" style="border-radius:0 0 14px 14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{%- if kind == 'welcome' %}
+{% call ui.eyebrow(color='#1c7a52') %}PLAN ACTIVE · {{ plan.label | upper }}{% endcall %}
+{% call ui.headline() %}You're in. Let's put an agent to work.{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — your {{ plan.name }} subscription is active and everything on your plan is unlocked. Here's your setup at a glance:{% endcall %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Price', plan.price_display, true), ('Renews', renews_label, true)]) }}
+{% call ui.para() %}The best first step takes about ten minutes: pick a ready-made agent from the Marketplace, connect it to something you actually use, and watch it run.{% endcall %}
+{{ ui.cta('Build your first agent', urls.marketplace, 'Takes about ten minutes with a Marketplace agent — no building on day one.') }}
+{{ ui.also_panel('Three good places to start', [
+    ('The quick-start guide', '— from zero to a running agent, step by step.', 'Open the guide', urls.docs),
+    ('The Marketplace', '— proven agents you can use as-is or remix.', 'Browse agents', urls.marketplace),
+    ('Discord', "— where builders share what's working.", 'Join in', urls.discord),
+]) }}
+{{ ui.signature('Toran Bruce Richards', 'Founder · AutoGPT') }}
+{{ ui.close_row('You can change or cancel your plan any time.', 'Billing settings', urls.billing) }}
+{%- elif kind == 'drip1' %}
+{% call ui.eyebrow(color='#5635b2') %}GETTING STARTED · {{ series.n }} OF {{ series.of }}{% endcall %}
+{% call ui.headline() %}Ten minutes to your first working agent{% endcall %}
+{% call ui.para() %}Yesterday you joined AutoGPT. Today, let's make it earn its keep. The fastest way to understand agents isn't reading about them — it's watching one do a job you'd rather not do yourself.{% endcall %}
+{{ ui.steps([
+    ('Pick a job, not a demo.', 'Something small and real: summarise your unread newsletters, watch a webpage for changes, draft replies to a form inbox.'),
+    ('Grab a Marketplace agent.', 'Search for that job — most agents work out of the box, no building required on day one.'),
+    ('Connect one thing.', 'A single account (say, Gmail or a webhook) is enough to see the whole loop run.'),
+    ('Press run, then schedule it.', "Run it once manually. Happy with the result? Set a schedule and it's off your plate for good."),
+]) }}
+{{ ui.cta('Open the Marketplace', urls.marketplace, "Tomorrow: how to read what your agent did while you weren't looking.") }}
+{{ ui.close_row('You are getting the getting-started series because you joined AutoGPT this week.', 'Choose which emails you get', urls.prefs) }}
+{%- elif kind == 'payment_failed' %}
+{{ ui.strip_amber('NEEDS YOU · PAYMENT DECLINED') }}
+{% call ui.headline(top=26) %}Your payment didn't go through{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — we tried to charge your card for this {{ plan.cycle_noun }}'s renewal on your {{ plan.name }} plan, and the payment was declined. This happens: cards expire, banks get cautious, limits get hit. Your plan and your agents keep running normally while we retry.{% endcall %}
+{{ ui.kvpanel([('Amount', amount_display, true), ('Card', card.brand ~ ' ···· ' ~ card.last4, true), ('Next retry', next_retry_label ~ ' · automatic', true)]) }}
+{% call ui.para() %}If the card details are out of date, fixing it takes about a minute:{% endcall %}
+{{ ui.cta('Update payment method', urls.billing, "Already updated your card? You're set — we'll charge the new one on the next retry.") }}
+{{ ui.close_row('You will only hear about this again if the automatic retries fail.', 'Billing settings', urls.billing) }}
+{%- elif kind == 'final_notice' %}
+{{ ui.strip_amber('FINAL NOTICE · PLAN PAUSES ' ~ (pauses_label | upper)) }}
+{% call ui.headline(top=26) %}Last try — let's keep your agents running{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — we've attempted this {{ plan.cycle_noun }}'s payment for your {{ plan.name }} plan several times over the past two weeks, and each attempt was declined. This is the final notice before your plan pauses.{% endcall %}
+{{ ui.kvpanel([('Amount due', amount_display, true), ('Plan pauses on', pauses_label, true), ('What pauses', 'Scheduled runs & ' ~ plan.name ~ ' features', false)]) }}
+{% call ui.note_card('If the plan pauses', tone='amber') %}Scheduled agents stop running until a payment succeeds — then everything picks up exactly where it left off. Your agents and their data are kept safe; nothing is deleted.{% endcall %}
+{{ ui.cta('Update payment method', urls.billing, 'Card working fine on your side? Banks sometimes block recurring charges — a quick call to yours usually clears it.') }}
+{{ ui.close_row('Stuck? Reply to this email — a human reads it.', 'Billing settings', urls.billing) }}
+{%- elif kind == 'cancel_confirmed' %}
+{% call ui.eyebrow() %}YOUR PLAN · ENDS {{ access_until_label | upper }}{% endcall %}
+{% call ui.headline() %}Cancellation confirmed{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — we've cancelled the renewal on your {{ plan.name }} plan, as requested. No further charges will be made, and you keep full {{ plan.name }} access for the time you've already paid for.{% endcall %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Access until', access_until_label, true), ('After that', 'Agents pause — work kept safe', false)]) }}
+{% call ui.para() %}When the plan ends, your agents and everything you've built stay saved in your account — they just stop running on schedule. Come back any time and switch them on again.{% endcall %}
+{{ ui.cta('Resume my plan', urls.billing, 'Only if you change your mind before ' ~ access_until_label ~ " — otherwise there's nothing more to do.") }}
+{% call ui.para(color='#575072', size=13, lh=20, top=20) %}Thanks for building with us. If something didn't work the way you needed, reply and tell us — it comes straight to me, and I read every one.{% endcall %}
+{{ ui.signature('John Ababseh', 'Product Manager · AutoGPT', 'john.ababseh@agpt.co', top=18) }}
+{{ ui.close_row('This confirmation was sent the moment you cancelled.', 'Billing settings', urls.billing) }}
+{%- elif kind == 'cancel_reversed' %}
+{% call ui.eyebrow(color='#1c7a52') %}YOUR PLAN · RESUMED{% endcall %}
+{% call ui.headline() %}Welcome back — your plan continues{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — you've resumed your {{ plan.name }} plan, so the cancellation is off. Nothing pauses, nothing changes: your agents keep running exactly as before.{% endcall %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Next renewal', renews_label, true), ('Price', plan.price_display, true)]) }}
+{% call ui.note_card('About that earlier email') %}The message saying your plan would end no longer applies — you can safely ignore it.{% endcall %}
+{{ ui.cta('Back to my agents', urls.dashboard) }}
+{{ ui.close_row('Glad to have you along.', 'Billing settings', urls.billing) }}
+{%- elif kind == 'ended' %}
+{% call ui.eyebrow() %}YOUR PLAN · ENDED {{ ended_label | upper }}{% endcall %}
+{% call ui.headline() %}Your plan has ended{% endcall %}
+{%- if due_to_payment %}
+{% call ui.para() %}Hi {{ user_name }} — we couldn't collect payment for your {{ plan.name }} plan after several attempts, so it ended today and paid features are now switched off. Here's exactly where things stand:{% endcall %}
+{{ ui.kvpanel([('Ended on', ended_label, true), ('Why', 'Payment could not be collected', false), ('Your agents', 'Paused — saved as you left them', false), ('Your data', 'Kept safe in your account', false)]) }}
+{%- else %}
+{% call ui.para() %}Hi {{ user_name }} — your {{ plan.name }} plan reached the end of its billing period today, as scheduled after your cancellation, so paid features are now switched off. Here's exactly where things stand:{% endcall %}
+{{ ui.kvpanel([('Ended on', ended_label, true), ('Your agents', 'Paused — saved as you left them', false), ('Your data', 'Kept safe in your account', false)]) }}
+{%- endif %}
+{% call ui.para() %}Everything you built is one click from running again. Restart whenever you're ready and your agents pick up where they left off — schedules, connections and all.{% endcall %}
+{%- if due_to_payment %}
+{{ ui.cta('Restart my plan', urls.billing, 'Restarting takes a working card — you can update it in the same place.') }}
+{%- else %}
+{{ ui.cta('Restart my plan', urls.billing, 'Your account stays free to use in the meantime.') }}
+{%- endif %}
+{% call ui.para(color='#575072', size=13, lh=20, top=20) %}Not the right time? I'd genuinely love to hear what would have made {{ plan.name }} worth keeping — just reply, it comes straight to me.{% endcall %}
+{{ ui.signature('John Ababseh', 'Product Manager · AutoGPT', 'john.ababseh@agpt.co', top=18) }}
+{{ ui.close_row("We don't delete your work when a plan ends.", 'Billing settings', urls.billing) }}
+{%- elif kind == 'trial_ending' %}
+{% call ui.eyebrow(color='#5635b2') %}YOUR TRIAL · {{ days_left }} DAYS LEFT{% endcall %}
+{% call ui.headline() %}{{ days_left_word }} days left on your trial{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — your AutoGPT {{ plan.name }} trial ends on <strong style="color:#070629;">{{ ends_label }}</strong>. No surprises; here's exactly what happens next:{% endcall %}
+{%- if has_payment_method %}
+{{ ui.kvpanel([('Trial ends', ends_label, true), ('Then', plan.name ~ ' continues at ' ~ plan.price_display, true), ('First charge', first_charge_label ~ ' · ' ~ card.brand ~ ' ···· ' ~ card.last4, true)]) }}
+{% call ui.para() %}If AutoGPT has been pulling its weight, you don't need to do a thing — your plan continues automatically and your agents never miss a run. Want a moment to decide? You can cancel in two clicks, keep everything you've built, and come back later.{% endcall %}
+{{ ui.cta('Review my plan', urls.billing, 'Cancel before ' ~ ends_label ~ " and you won't be charged anything.") }}
+{%- else %}
+{{ ui.kvpanel([('Trial ends', ends_label, true), ('To continue', plan.name ~ ' at ' ~ plan.price_display, true), ('Payment method', 'None on file yet', false)]) }}
+{% call ui.para() %}There's no card on file, so nothing will ever be charged automatically. If you want {{ plan.name }} to continue after the trial, add a payment method before {{ ends_label }} — otherwise your trial simply ends, and everything you've built stays saved on the free tier.{% endcall %}
+{{ ui.cta('Add a payment method', urls.billing, 'Takes about a minute — and nothing is charged until the trial actually ends.') }}
+{%- endif %}
+{{ ui.close_row('One email, ' ~ days_left ~ ' days ahead — that is the whole reminder.', 'Billing settings', urls.billing) }}
+{%- endif %}
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{%- if kind == 'drip1' %}
+{{ ui.legal_footer('This is part ' ~ series.n ~ ' of ' ~ series.of ~ ' of the getting-started series, for ' ~ user_email ~ '.', 'Unsubscribe', urls.unsubscribe, discord=true) }}
+{%- elif kind == 'welcome' %}
+{{ ui.legal_footer("This is a service message about the AutoGPT account for " ~ user_email ~ " — it's sent even if you've opted out of product news.", 'Email preferences', urls.prefs, discord=true) }}
+{%- else %}
+{{ ui.legal_footer("This is a service message about the AutoGPT account for " ~ user_email ~ " — it's sent even if you've opted out of product news.", 'Email preferences', urls.prefs, discord=false) }}
+{%- endif %}
+
+</td></tr>
+</table>
+</body></html>

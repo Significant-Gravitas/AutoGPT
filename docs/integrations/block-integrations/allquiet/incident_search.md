@@ -3,7 +3,7 @@
 Blocks that read All Quiet incidents — fetching a single incident by ID, or searching the incident list by status, severity, team, text or time range.
 <!-- END MANUAL -->
 
-## All Quiet Get Incident
+## AllQuiet Get Incident
 
 ### What it is
 Fetches a single All Quiet incident by ID
@@ -39,7 +39,7 @@ A triage agent receives an incident ID from the trigger block, fetches it with `
 
 ---
 
-## All Quiet List Incidents
+## AllQuiet List Incidents
 
 ### What it is
 Searches All Quiet incidents by status, severity, team or text

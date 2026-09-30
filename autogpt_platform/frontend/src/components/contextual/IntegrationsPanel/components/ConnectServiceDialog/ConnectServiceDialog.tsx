@@ -7,6 +7,7 @@ import {
   useReducedMotion,
 } from "framer-motion";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
@@ -18,7 +19,15 @@ import { useMeasuredHeight } from "./useMeasuredHeight";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  title?: React.ReactNode;
+  description?: string;
+  onConnected?: (credential: CredentialsMetaResponse) => void;
+  initialProviderId?: string | null;
 }
+
+const DEFAULT_TITLE = "Connect a service";
+const DEFAULT_DESCRIPTION =
+  "Choose a service to connect your account or view its setup instructions.";
 
 const TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
 const HEIGHT_TRANSITION = {
@@ -38,7 +47,14 @@ const reducedVariants = {
   exit: { opacity: 0 },
 };
 
-export function ConnectServiceDialog({ open, onOpenChange }: Props) {
+export function ConnectServiceDialog({
+  open,
+  onOpenChange,
+  title = DEFAULT_TITLE,
+  description = DEFAULT_DESCRIPTION,
+  onConnected,
+  initialProviderId,
+}: Props) {
   const {
     query,
     setQuery,
@@ -53,7 +69,12 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
     handleSelect,
     handleBack,
     handleSuccess,
-  } = useConnectServiceDialog({ open, onOpenChange });
+  } = useConnectServiceDialog({
+    open,
+    onOpenChange,
+    onConnected,
+    initialProviderId,
+  });
 
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
@@ -61,7 +82,7 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog
-      title="Connect a service"
+      title={title}
       styling={{ maxWidth: "40rem" }}
       controlled={{
         isOpen: open,
@@ -104,6 +125,7 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
                         setQuery={setQuery}
                         providers={providers}
                         onSelect={handleSelect}
+                        description={description}
                       />
                     )}
                   </motion.div>

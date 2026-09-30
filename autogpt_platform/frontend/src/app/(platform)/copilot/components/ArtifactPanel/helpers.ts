@@ -5,9 +5,11 @@ import {
   HtmlFile01Icon,
   Image01Icon,
   TableIcon,
+  UserIcon,
   Video01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { ArtifactRef } from "../../store";
 
 export interface ArtifactClassification {
   type:
@@ -21,7 +23,8 @@ export interface ArtifactClassification {
     | "video"
     | "pdf"
     | "text"
-    | "download-only";
+    | "download-only"
+    | "expert";
   icon: IconSvgElement;
   label: string;
   openable: boolean;
@@ -264,6 +267,20 @@ const NATIVELY_RENDERED = new Set<ArtifactClassification["type"]>([
   "video",
   "pdf",
 ]);
+
+const EXPERT_CLASSIFICATION: ArtifactClassification = {
+  type: "expert",
+  icon: UserIcon,
+  label: "Expert",
+  openable: true,
+  hasSourceToggle: false,
+};
+
+/** An expert ref is not a file — it skips the MIME/extension tables. */
+export function classifyArtifactRef(ref: ArtifactRef): ArtifactClassification {
+  if (ref.expert) return EXPERT_CLASSIFICATION;
+  return classifyArtifact(ref.mimeType, ref.title, ref.sizeBytes);
+}
 
 export function classifyArtifact(
   mimeType: string | null,

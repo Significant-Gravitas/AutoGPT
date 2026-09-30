@@ -12,9 +12,15 @@ from __future__ import annotations
 import json
 import sys
 
+import sentry_sdk
 from sentry_sdk.consts import DEFAULT_OPTIONS
-from sentry_sdk.utils import event_from_exception
+from sentry_sdk.serializer import serialize
+from sentry_sdk.utils import event_from_exception, json_dumps
 
+# Imported at module scope on purpose: AppProcess calls sentry_init() in its
+# class body, so the guard has to hold at collection time, not just in a test.
+import backend.util.process
+from backend.util import metrics
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -201,6 +207,44 @@ def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
     assert "safe-context-value" in serialized
 
 
+def test_before_send_output_survives_the_sdk_transport() -> None:
+    """The SDK runs ``before_send`` on the already-serialized event and then
+    ``json_dumps`` it for the envelope. A scrubbed event that is not plain JSON
+    is dropped there as an internal SDK error, so it never reaches Sentry.
+
+    A frame local named ``session`` (as in ``download_with_fresh_session``) and
+    an ``authorization`` request header are enough to trigger that."""
+
+    def download_with_fresh_session():
+        session = "aiohttp-client-session"
+        if session:
+            raise RuntimeError("Response payload is not completed")
+
+    try:
+        download_with_fresh_session()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+    event["request"] = {
+        "method": "GET",
+        "url": "http://backend/api/workspace/files/f/download",
+        "headers": {"authorization": "Bearer FAKE-TOKEN-1", "accept": "*/*"},
+    }
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    body = json.loads(json_dumps(scrubbed))
+    raising_frame = body["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert raising_frame["vars"]["session"] == "[Filtered]"
+    assert body["request"]["headers"]["authorization"] == "[Filtered]"
+    assert body["request"]["headers"]["accept"] == "*/*"
+    assert body["exception"]["values"][0]["value"] == (
+        "Response payload is not completed"
+    )
+
+
 def test_before_send_keeps_untyped_balance_message() -> None:
     try:
         raise RuntimeError("Third-party API reported insufficient balance")
@@ -312,3 +356,56 @@ def test_falkordb_teardown_signatures_cover_known_patterns() -> None:
     graphiti FalkorDB driver docstring pairs together."""
     expected = {"buffer is closed", "connection closed by server"}
     assert expected == set(_FALKORDB_TEARDOWN_SIGNATURES)
+
+
+# ---------- pytest runs must not reach Sentry ----------
+
+_FAKE_DSN = "https://key@o1.ingest.us.sentry.io/1"
+
+
+def _spy_on_sentry_init(monkeypatch) -> list[dict]:
+    calls: list[dict] = []
+    monkeypatch.setattr(metrics, "_sentry_init", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(metrics.settings.secrets, "sentry_dsn", _FAKE_DSN)
+    return calls
+
+
+def test_no_sentry_client_is_active_under_pytest() -> None:
+    """End-to-end. AppProcess runs sentry_init() in its class body, so this
+    module's import above is what a live client here would have come from."""
+    assert backend.util.process.AppProcess
+    assert sentry_sdk.get_client().is_active() is False
+
+
+def test_sentry_init_skipped_at_collection_time(monkeypatch) -> None:
+    """pytest only sets PYTEST_CURRENT_TEST once a test item runs, so the
+    import-time call that AppProcess makes is covered by sys.modules alone."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls == []
+
+
+def test_sentry_init_runs_outside_pytest(monkeypatch) -> None:
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    assert calls[0]["dsn"] == _FAKE_DSN
+
+
+def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
+    """A spawned service subprocess does not inherit sys.modules, but does
+    inherit PYTEST_CURRENT_TEST from the environment."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "backend/util/metrics_test.py::t (call)")
+
+    metrics.sentry_init()
+
+    assert calls == []

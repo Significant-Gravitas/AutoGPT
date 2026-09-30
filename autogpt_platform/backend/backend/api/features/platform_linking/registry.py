@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.bot.adapters.discord import config as discord_config
 from backend.copilot.bot.adapters.slack import config as slack_config
+from backend.copilot.bot.adapters.teams import config as teams_config
 from backend.copilot.bot.adapters.telegram import config as telegram_config
 from backend.util.settings import Settings
 
@@ -26,6 +27,7 @@ _SERVER_NOUNS = {
     "DISCORD": "server",
     "SLACK": "workspace",
     "TELEGRAM": "group",
+    "TEAMS": "team",
 }
 _DEFAULT_SERVER_NOUN = "server"
 
@@ -49,7 +51,12 @@ def enabled_platforms() -> list[PlatformMeta]:
     Platforms whose adapter isn't configured (missing credentials) are
     omitted entirely so the Bots page hides them.
     """
-    all_platforms = [_discord_meta(), _slack_meta(), _telegram_meta()]
+    all_platforms = [
+        _discord_meta(),
+        _slack_meta(),
+        _telegram_meta(),
+        _teams_meta(),
+    ]
     return [platform for platform in all_platforms if platform.enabled]
 
 
@@ -114,6 +121,20 @@ def _telegram_meta() -> PlatformMeta:
             if (enabled and username)
             else None
         ),
+    )
+
+
+def _teams_meta() -> PlatformMeta:
+    # Enabled on the same gate the webhook adapter mounts on. Teams has no
+    # invite URL to build: installing means sideloading the app package (see
+    # adapters/teams/manifest.json) or publishing it to the org's app catalog.
+    return PlatformMeta(
+        platform="TEAMS",
+        display_name="Microsoft Teams",
+        icon="teams.png",
+        server_noun=_SERVER_NOUNS["TEAMS"],
+        enabled=teams_config.is_configured(),
+        add_bot_url=None,
     )
 
 

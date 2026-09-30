@@ -1,9 +1,18 @@
-import { beforeEach, describe, expect, test } from "vitest";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanel } from "../ContextPanel";
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => false };
+});
 
 beforeEach(() => {
   server.use(
@@ -14,28 +23,56 @@ beforeEach(() => {
     }),
   );
   useCopilotUIStore.setState((s) => ({
+    contextPanelExpert: null,
     artifactPanel: {
       ...s.artifactPanel,
       isOpen: true,
       activeArtifact: null,
-      activeTab: "files",
+      activeTab: "artifacts",
+      mode: "artifact",
+      isComputerOpen: false,
     },
   }));
 });
 
 describe("ContextPanel", () => {
-  test("renders the tab switcher and active tab when open with no artifact", async () => {
+  test("docks for the artifacts tab and renders the artifacts library", async () => {
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
+    );
+    expect(await screen.findByText("Nothing to preview yet.")).toBeDefined();
+  });
+
+  test("docks for the files tab and lists the chat's files", async () => {
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
+    );
+    expect(await screen.findByText("Nothing here yet.")).toBeDefined();
+  });
+
+  test("docks for the integrations tab with the expert's integrations", async () => {
+    server.use(getListExpertCredentialsMockHandler([]));
+    useCopilotUIStore.setState((s) => ({
+      contextPanelExpert: { id: "expert-maria", name: "Maria" },
+      artifactPanel: { ...s.artifactPanel, activeTab: "integrations" },
+    }));
     render(<ContextPanel sessionId="session-1" />);
-    expect(await screen.findByRole("tablist")).toBeDefined();
-    expect(screen.getByRole("tab", { name: /^Files \(\d+\)$/ })).toBeDefined();
-    expect(await screen.findByText(/No files yet/i)).toBeDefined();
+
+    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Open Maria's page" }),
+    ).toBeDefined();
   });
 
   test("hides itself while an artifact is previewing (artifact takes over the region)", () => {
     useCopilotUIStore.setState((s) => ({
       artifactPanel: {
         ...s.artifactPanel,
-        isOpen: true,
         activeArtifact: {
           id: "f1",
           title: "doc.md",
@@ -47,7 +84,19 @@ describe("ContextPanel", () => {
     }));
     const { container } = render(<ContextPanel sessionId="session-1" />);
     expect(container.querySelector("[data-context-panel]")).toBeNull();
-    expect(screen.queryByRole("tablist")).toBeNull();
+  });
+
+  test("hides itself while the computer face is showing, whatever tab is remembered", () => {
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: {
+        ...s.artifactPanel,
+        activeTab: "artifacts",
+        mode: "computer",
+        isComputerOpen: true,
+      },
+    }));
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    expect(container.querySelector("[data-context-panel]")).toBeNull();
   });
 
   test("renders nothing when closed", () => {
@@ -60,5 +109,20 @@ describe("ContextPanel", () => {
     }));
     const { container } = render(<ContextPanel sessionId="session-1" />);
     expect(container.querySelector("[data-context-panel]")).toBeNull();
+  });
+
+  test("mobile: opens the sheet on the files tab", async () => {
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    render(<ContextPanel sessionId="session-1" mobile />);
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Files" })).toBeDefined();
+  });
+
+  test("mobile: opens the sheet on the artifacts tab", async () => {
+    render(<ContextPanel sessionId="session-1" mobile />);
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Artifacts" })).toBeDefined();
   });
 });
