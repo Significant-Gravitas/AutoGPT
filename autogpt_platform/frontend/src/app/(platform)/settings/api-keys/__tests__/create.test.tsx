@@ -332,6 +332,12 @@ describe("SettingsApiKeysPage - create flow", () => {
       });
     });
 
+    test("keeps the plaintext key out of session replays", async () => {
+      await submitUntilSuccessView();
+
+      expect(screen.getByText(plain).closest(".ph-no-capture")).not.toBeNull();
+    });
+
     test("shows a destructive toast when the clipboard write fails", async () => {
       writeTextSpy = vi.fn().mockRejectedValue(new Error("denied"));
       installClipboard(writeTextSpy);

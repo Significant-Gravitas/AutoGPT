@@ -35,6 +35,7 @@ interface LinkCardProps {
   url: string;
   title?: string;
   meta?: string;
+  secret?: boolean;
 }
 
 export const CARD = "rounded-xl bg-white ring-1 ring-zinc-200/70";
@@ -122,11 +123,18 @@ export function ChipList({ label, items }: ChipListProps) {
   );
 }
 
-export function LinkCard({ url, title, meta }: LinkCardProps) {
+export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
   const domain = safeHostname(url) ?? url;
 
   return (
-    <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
+    <div
+      className={cn(
+        CARD,
+        HALF,
+        "flex items-center gap-2.5 p-2.5",
+        secret && "ph-no-capture",
+      )}
+    >
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
         <Icon icon={GlobeIcon} size={15} className="shrink-0 text-zinc-400" />
       </div>
