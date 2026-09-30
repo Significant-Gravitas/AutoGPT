@@ -394,7 +394,7 @@ describe("the cursor guard", () => {
 });
 
 describe("the row rules", () => {
-  it("text after tool results opens a new assistant row; a call with no text between joins the old one", () => {
+  it("after tool results, the next text or call opens a new assistant row", () => {
     const log = fold([
       ...text("a", "First."),
       ...call("c1"),
@@ -404,8 +404,9 @@ describe("the row rules", () => {
       ...text("b", "Then."),
     ]);
     expect(rowsOf(log)).toEqual([
-      { role: "assistant", content: "First.", calls: ["c1", "c2"] },
+      { role: "assistant", content: "First.", calls: ["c1"] },
       { role: "tool", content: "ok", calls: [], toolCallId: "c1" },
+      { role: "assistant", content: "", calls: ["c2"] },
       { role: "tool", content: "ok", calls: [], toolCallId: "c2" },
       { role: "assistant", content: "Then.", calls: [] },
     ]);

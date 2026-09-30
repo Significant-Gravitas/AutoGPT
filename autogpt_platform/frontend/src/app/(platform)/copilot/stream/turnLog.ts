@@ -149,19 +149,20 @@ export function appendReasoning(log: TurnLog, row: number, delta: string) {
   return patchRow(log, row, { content: log.rows[row].content + delta });
 }
 
-/** Row rule 4: a tool call joins the current assistant row, opening one if needed. */
+/** Row rule 4: a tool call joins the current assistant row, or opens one after tool results. */
 export function addToolCall(
   log: TurnLog,
   call: Omit<LogToolCall, "displayName">,
 ) {
   const toolCall = { ...call, displayName: log.displayNames[call.id] ?? null };
-  if (log.assistantRow === null) {
+  if (log.assistantRow === null || log.hasToolResults) {
     return {
       ...pushRow(log, {
         ...assistantRow(`assistant:${call.id}`, ""),
         toolCalls: [toolCall],
       }),
       assistantRow: log.rows.length,
+      hasToolResults: false,
     };
   }
   const row = log.rows[log.assistantRow];
