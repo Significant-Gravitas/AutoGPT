@@ -67,7 +67,11 @@ export function ExpertIdentityDetails({
             variant="body"
             tone="secondary"
             unmask={false}
-            className={cn("min-w-0 truncate", areaClassName)}
+            className={cn(
+              "min-w-0 truncate",
+              size === "card" && "text-[13px]",
+              areaClassName,
+            )}
             title={titleOnNameLine}
           >
             {"•"} {titleOnNameLine}

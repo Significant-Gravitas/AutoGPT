@@ -817,6 +817,23 @@
     }
   },
   {
+    "name": "mcp_openseo",
+    "display_name": "OpenSEO",
+    "description": "Research keywords, SERPs, backlinks and competitor domains, run site audits, track rankings, and build SEO reports.",
+    "mcp_server": {
+      "server_url": "https://app.openseo.so/mcp",
+      "documentation_url": "https://openseo.so/docs/mcp",
+      "setup_instructions": "Sign in to OpenSEO, or use an OpenSEO API key. OpenSEO's cloud service requires an active subscription; keyword, SERP, backlink, local SEO and rank tracking tools spend OpenSEO credits. Self-hosting OpenSEO on Cloudflare? Replace the server URL with your instance's /mcp URL and sign in; turn on Managed OAuth in its Cloudflare Access application first.",
+      "connection_mode": "hosted",
+      "allow_custom_url": true,
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "openseo"
+    }
+  },
+  {
     "name": "mcp_opsera",
     "display_name": "Opsera",
     "description": "Use DevSecOps investigation, architecture, compliance, and security tools.",

@@ -21,7 +21,11 @@ export function ExpertPageHeader({ expert, actions }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           color={expert.color}
-          backgroundColor={getExpertTopicHex(expert.role, expert.categories)}
+          backgroundColor={getExpertTopicHex({
+            avatarUrl: expert.avatar_url,
+            categories: expert.categories,
+            role: expert.role,
+          })}
           size={96}
         />
         <div className="min-w-0 flex-1">

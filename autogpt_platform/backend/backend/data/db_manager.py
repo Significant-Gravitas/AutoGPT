@@ -44,6 +44,7 @@ from backend.api.features.search.embeddings import (
     get_embedding_stats,
 )
 from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.store import skill_db as marketplace_skill_db
 from backend.api.features.store.db import (
     get_agent,
     get_available_graph,
@@ -54,6 +55,7 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_credential
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
@@ -147,6 +149,7 @@ from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
+from backend.data.posthog_lifecycle_sync import start_posthog_lifecycle_sweep
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -361,6 +364,12 @@ class DatabaseManager(AppService):
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
+    # ============ Credential Swap Proxy ============ #
+    # Called by the swap proxy (autogpt_platform/swap_proxy), which has no
+    # database access of its own; see backend/copilot/swap_credentials.py.
+    get_swap_bindings = _(get_swap_bindings)
+    resolve_swap_credential = _(resolve_swap_credential)
+
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
     get_user_email_by_id = _(get_user_email_by_id)
@@ -494,6 +503,7 @@ class DatabaseManager(AppService):
     # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
+    start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -583,6 +593,14 @@ class DatabaseManager(AppService):
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
+
+    # ============ Marketplace skills ============ #
+    # The copy reconcile in copilot.tools.skills runs in Prisma-less
+    # processes; it compares copies against these and fetches packages to
+    # fast-forward or merge them.
+    get_active_versions = _(marketplace_skill_db.get_active_versions)
+    get_version_packages = _(marketplace_skill_db.get_version_packages)
+    find_version_by_hash = _(marketplace_skill_db.find_version_by_hash)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -876,6 +894,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Search ============ #
     unified_hybrid_search = d.unified_hybrid_search
 
+    # ============ Marketplace skills ============ #
+    get_active_versions = d.get_active_versions
+    get_version_packages = d.get_version_packages
+    find_version_by_hash = d.find_version_by_hash
+
     # ============ Chat Sharing ============ #
     link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
 
@@ -921,6 +944,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
+    start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner

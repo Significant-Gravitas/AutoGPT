@@ -17,11 +17,17 @@ class ProviderEntry(TypedDict):
             connected (e.g. ``["GH_TOKEN", "GITHUB_TOKEN"]``).
         default_scopes: Default OAuth scopes requested when the agent does not
             specify any.
+        swap_hosts: The only hosts the credential swap proxy may send this
+            provider's token to (exact names, or ``.example.com`` for every
+            subdomain).  Empty means the token is never swapped in.  List the
+            hosts that *take* the token, not every host the provider serves
+            from: a redirect target with a signed URL needs none.
     """
 
     name: str
     env_vars: list[str]
     default_scopes: list[str]
+    swap_hosts: list[str]
 
 
 def _is_github_oauth_configured() -> bool:
@@ -45,6 +51,7 @@ SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
         "name": "GitHub",
         "env_vars": ["GH_TOKEN", "GITHUB_TOKEN"],
         "default_scopes": ["repo"],
+        "swap_hosts": ["github.com", "api.github.com", "uploads.github.com"],
     },
 }
 
