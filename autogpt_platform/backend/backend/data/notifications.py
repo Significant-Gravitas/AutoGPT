@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Generic, Literal, Optional, TypeVar, Union
 
 from prisma.enums import BriefingFrequency, NotificationType
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from backend.util.logging import TruncatedLogger
 
@@ -454,8 +454,7 @@ class AudienceEventModel(BaseModel):
     MailerLite outage can never fail payment processing."""
 
     action: AudienceAction
-    # Built from the stored address; EmailStr rejects reserved domains on read.
-    email: str
+    email: EmailStr
     user_id: str
     # Written with the group change, or alone for UPDATE_FIELDS and SIGNUP. A
     # date is YYYY-MM-DD; None clears the field, and a field left out is
