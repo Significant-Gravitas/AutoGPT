@@ -185,6 +185,8 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
 | `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
 | `integration_connected` | backend | live | `provider`, `credential_type`, `method` | A credential is stored (OAuth, key, device code). |
+| `credential_oauth_started` | backend | live | `provider` | The backend issues an OAuth login URL (`GET /api/integrations/{provider}/login`). Not Codex. |
+| `credential_oauth_exchange_failed` | backend | live | `provider`, `status_code` (unset for an unexpected error), `failure_class` (`invalid_state`, `provider_unavailable`, `token_exchange`, `credential_merge`), `detail` (redacted, at most 200 characters) | `POST /api/integrations/{provider}/callback` returns an error, on any path. Not Codex. |
 | `credential_card_never_rendered` | browser | live | `provider`, `failure_class` | A provider is missing from the provider map. |
 | `credential_oauth_popup_blocked` | browser | live | `provider`, `failure_class` | Both the popup and the new tab were blocked. |
 | `credential_oauth_flow_timed_out` | browser | live | `provider`, `failure_class` | The OAuth flow timed out. |

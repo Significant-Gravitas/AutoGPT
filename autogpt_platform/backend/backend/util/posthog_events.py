@@ -29,6 +29,8 @@ class PostHogEvent(StrEnum):
     TRIGGER_FIRED = "trigger_fired"
     EXPERT_HIRED = "expert_hired"
     INTEGRATION_CONNECTED = "integration_connected"
+    CREDENTIAL_OAUTH_STARTED = "credential_oauth_started"
+    CREDENTIAL_OAUTH_EXCHANGE_FAILED = "credential_oauth_exchange_failed"
 
     # Experts loop: backend/util/funnel_analytics.py
     HIRE_FAILED = "hire_failed"
