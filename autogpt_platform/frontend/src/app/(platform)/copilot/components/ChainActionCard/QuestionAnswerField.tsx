@@ -79,7 +79,8 @@ export function QuestionAnswerField({
   // A second edit adds to the draft rather than replacing it, so the user
   // can build one answer out of several options.
   function handleOptionEdit(option: string) {
-    const draft = typing && value.trim() ? `${value.trimEnd()}\n${option}` : option;
+    const draft =
+      typing && value.trim() ? `${value.trimEnd()}\n${option}` : option;
     onChange(draft);
     setToggled(true);
     setTyping(true);

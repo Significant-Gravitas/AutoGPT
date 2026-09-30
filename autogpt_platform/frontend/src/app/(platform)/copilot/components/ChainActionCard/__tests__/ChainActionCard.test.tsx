@@ -1312,9 +1312,9 @@ describe("ChainActionCard", () => {
       fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
 
       // Remounted: "Email" matches neither option here, so the field opens in
-      // free text with the stray value visible instead of silently hiding it.
+      // free text with the stray value visible next to the new options.
       expect(screen.getByDisplayValue("Email")).toBeDefined();
-      expect(screen.queryByRole("radio", { name: "Notion" })).toBeNull();
+      expect(screen.getByRole("radio", { name: "Notion" })).toBeDefined();
     });
 
     it("keeps the questions card sendable when an unready sibling exists", () => {

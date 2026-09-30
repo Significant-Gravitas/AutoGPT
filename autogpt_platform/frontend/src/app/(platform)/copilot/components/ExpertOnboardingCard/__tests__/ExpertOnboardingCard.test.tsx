@@ -138,9 +138,9 @@ describe("ExpertOnboardingCard", () => {
       screen.getByRole("button", { name: "Edit Campaign briefs" }),
     );
 
-    expect(
-      (screen.getByRole("textbox") as HTMLTextAreaElement).value,
-    ).toBe("Social listening\nCampaign briefs");
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "Social listening\nCampaign briefs",
+    );
     expect(screen.getAllByRole("radio")).toHaveLength(2);
     expect(screen.getByText("1 of 2")).toBeDefined();
   });
