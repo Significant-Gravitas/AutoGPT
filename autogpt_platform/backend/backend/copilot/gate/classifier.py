@@ -10,6 +10,7 @@ With Jev configured (``jev.py``) Jev decides and the LLM only explains an ask.
 import asyncio
 import json
 import logging
+import re
 import secrets
 from pathlib import Path
 from typing import Any, Literal
@@ -28,8 +29,12 @@ ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
     encoding="utf-8"
 )
 
-# Shares Jev's input budget with the call: each byte here is one less there.
-_MAX_REQUEST_CHARS = 1_000
+# The least of the request a call must leave room for; below it the judge cannot
+# tell what was asked, so the call is held as too long instead.
+_MIN_REQUEST_CHARS = 1_000
+_OMITTED = "\n[… part of the user's message omitted by the system …]\n"
+_PARTIAL_LAST_WORD = re.compile(r"(?<=\s)\S+\Z")
+_PARTIAL_FIRST_WORD = re.compile(r"\A\S+(?=\s)")
 _FALLBACK_REASON = "Could not verify this action automatically."
 
 DecidedBy = Literal["llm", "jev", "jev+llm"]
@@ -57,15 +62,11 @@ async def supervise(
         default=str,
         ensure_ascii=False,
     )
-    prompt = (
-        fence("USER REQUEST", user_message[:_MAX_REQUEST_CHARS])
-        + "\n\n"
-        + fence("PROPOSED CALL", call)
-    )
     # A cut call would be judged on its head while its tail runs. Jev's budget is
     # the ceiling even with Jev off: Haiku alone missed a buried `curl | sh` 1 in
     # 10 past it (40k chars), and caught it every time within it.
-    if over := jev.overflow(prompt):
+    prompt, over = _fit(user_message, fence("PROPOSED CALL", call))
+    if over:
         return Judgement(allowed=False, reason=too_long_reason(over))
     first = await jev.judge(prompt) if jev.enabled() else None
     if first is None:
@@ -140,6 +141,39 @@ def too_long_reason(over: int) -> str:
         f"({over / 1000:.1f} KB over). Approve it yourself, or ask for it in "
         "smaller pieces."
     )
+
+
+def _fit(request: str, proposed: str) -> tuple[str, int]:
+    """The prompt with as much of ``request`` as Jev reads beside the whole call,
+    and the bytes still over when even ``_MIN_REQUEST_CHARS`` of it does not fit."""
+    whole = _prompt(request, proposed)
+    if not jev.overflow(whole):
+        return whole, 0
+    low = min(len(request), _MIN_REQUEST_CHARS)
+    if over := jev.overflow(_prompt(_shorten(request, low), proposed)):
+        return whole, over
+    high = len(request) - 1
+    while low < high:
+        middle = (low + high + 1) // 2
+        if jev.overflow(_prompt(_shorten(request, middle), proposed)):
+            high = middle - 1
+        else:
+            low = middle
+    return _prompt(_shorten(request, low), proposed), 0
+
+
+def _prompt(request: str, proposed: str) -> str:
+    return fence("USER REQUEST", request) + "\n\n" + proposed
+
+
+def _shorten(text: str, keep: int) -> str:
+    """The start and end of ``text`` in about ``keep`` characters, cut between
+    words; the end gets more because an instruction usually follows its material."""
+    if keep >= len(text):
+        return text
+    head = _PARTIAL_LAST_WORD.sub("", text[: keep // 4])
+    tail = _PARTIAL_FIRST_WORD.sub("", text[len(text) - (keep - keep // 4) :])
+    return head + _OMITTED + tail
 
 
 def fence(label: str, body: str) -> str:

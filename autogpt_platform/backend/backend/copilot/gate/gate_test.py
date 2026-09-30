@@ -394,3 +394,46 @@ async def test_a_rule_set_on_a_bare_tool_card_decides_its_next_call(
     assert decision.allowed
     assert supervisor.await_count == int(judged)
     assert reviews.get_or_create_human_review.await_count == 1
+
+
+async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
+    gate_on, clean_session_state
+):
+    from backend.copilot.service import inject_user_context
+    from backend.data.understanding import BusinessUnderstanding
+
+    words = "Hey Otto, I need a programmer to work on the AutoGPT platform"
+    session = _session()
+    session.messages = [ChatMessage(role="user", content=words, sequence=None)]
+    understanding = BusinessUnderstanding(
+        id="u-1",
+        user_id="u",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        business_name="AutoGPT",
+        pain_points=["Shipping features fast"],
+    )
+    await inject_user_context(
+        understanding,
+        words,
+        "session-1",
+        session.messages,
+        env_ctx="/home/user",
+        session_ctx="session_id: session-1",
+        skills_ctx="- skill: " + "summarise a document. " * 60,
+    )
+    assert session.messages[-1].content.startswith("<available_skills>")
+
+    provider = AsyncMock(side_effect=RuntimeError("stop after the prompt"))
+    with (
+        patch(f"{_GATE}.classifier.call_provider_openai_compat_sync", provider),
+        patch("backend.copilot.service._get_aux_client", MagicMock()),
+        patch(f"{_GATE}.classifier.jev.enabled", return_value=False),
+    ):
+        await check_action("bash_exec", {"command": "ls"}, "u", session)
+
+    prompt = provider.await_args.kwargs["messages"][1]["content"]
+    request = prompt.split("<<<BEGIN USER REQUEST ")[1].split("<<<END USER REQUEST")[0]
+    assert words in request
+    assert "<available_skills>" not in request
+    assert "<user_context>" not in request

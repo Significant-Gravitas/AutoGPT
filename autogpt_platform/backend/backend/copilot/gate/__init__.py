@@ -275,9 +275,13 @@ def _dollars(microdollars: int) -> str:
 
 
 def _last_user_message(session: ChatSession) -> str:
+    # Deferred: copilot.service imports the tool registry, which imports this gate.
+    from backend.copilot.service import strip_injected_context_for_display
+
     for message in reversed(session.messages):
         if message.role == "user" and message.content:
-            return message.content
+            # A first turn's row starts with the server's context blocks.
+            return strip_injected_context_for_display(message.content)
     return ""
 
 
