@@ -22,13 +22,17 @@ from backend.copilot.context import E2B_WORKDIR
 # A literal path: quoted with nothing the quotes still expand, or bare with no
 # glob, expansion, operator or quote character.
 _WORD = r"""(?:'[^'\n]*'|"[^"$`\\\n]*"|[\w./~+,@%:=-]+)"""
-_CD = rf"(?:cd\s+(?P<dir>{_WORD})\s*&&\s*)?"
+# Bash splits words on a space or a tab only; a newline ends the command, and
+# ``\s`` would also accept that and the characters bash keeps inside a word.
+_GAP = r"[ \t]"
+_CD = rf"(?:cd{_GAP}+(?P<dir>{_WORD}){_GAP}*&&{_GAP}*)?"
 _HEREDOC = re.compile(
-    rf"{_CD}(?:cat\s*>>?\s*(?P<cat>{_WORD})|tee\s+(?:-a\s+)?(?P<tee>{_WORD}))"
-    rf"\s*<<(?P<strip>-?)\s*(?P<q>['\"]?)(?P<tag>\w+)(?P=q)"
+    rf"{_CD}(?:cat{_GAP}*>>?{_GAP}*(?P<cat>{_WORD})"
+    rf"|tee{_GAP}+(?:-a{_GAP}+)?(?P<tee>{_WORD}))"
+    rf"{_GAP}*<<(?P<strip>-?){_GAP}*(?P<q>['\"]?)(?P<tag>\w+)(?P=q)"
 )
 _PRINT = re.compile(
-    rf"{_CD}(?:printf|echo)\s+'[^']*'\s*>>?\s*(?P<path>{_WORD})", re.DOTALL
+    rf"{_CD}(?:printf|echo){_GAP}+'[^']*'{_GAP}*>>?{_GAP}*(?P<path>{_WORD})"
 )
 _EXPANDS = re.compile(r"[$`\\]")
 _ROOTS = (WORKSPACE_PATH + "/", SHARED_PATH + "/")
@@ -36,14 +40,16 @@ _ROOTS = (WORKSPACE_PATH + "/", SHARED_PATH + "/")
 
 def workspace_write_target(command: str) -> str | None:
     """The absolute path ``command`` writes, or None if it does anything else."""
-    command = command.strip()
+    # Only what bash itself skips: ``str.strip`` also drops word characters,
+    # and trailing blanks on a heredoc's last line change its terminator.
+    command = command.lstrip(" \t\n").rstrip("\n")
     head, _, body = command.partition("\n")
-    heredoc = _HEREDOC.fullmatch(head.strip())
+    heredoc = _HEREDOC.fullmatch(head.rstrip(" \t"))
     if heredoc is not None:
         if not _body_ends_at_terminator(body, heredoc):
             return None
         return _in_workspace(heredoc["dir"], heredoc["cat"] or heredoc["tee"])
-    printed = _PRINT.fullmatch(command)
+    printed = _PRINT.fullmatch(command.rstrip(" \t"))
     if printed is not None:
         return _in_workspace(printed["dir"], printed["path"])
     return None
@@ -51,7 +57,7 @@ def workspace_write_target(command: str) -> str | None:
 
 def _body_ends_at_terminator(body: str, heredoc: re.Match[str]) -> bool:
     """The shell runs whatever follows the first terminator line as commands."""
-    lines = body.rstrip().split("\n")
+    lines = body.split("\n")
     strip = "\t" if heredoc["strip"] else ""
     ends = [i for i, line in enumerate(lines) if line.lstrip(strip) == heredoc["tag"]]
     if not ends or ends[0] != len(lines) - 1:
