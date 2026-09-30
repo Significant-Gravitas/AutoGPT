@@ -206,12 +206,21 @@ async def test_apply_counts_a_refused_upsert_without_logging_the_address(
     configured, monkeypatch, caplog
 ):
     client = MagicMock()
-    client.post = AsyncMock(return_value=_response(200, {"responses": [{"code": 422}]}))
+    refusal = {
+        "message": "The given data was invalid.",
+        "errors": {"email": ["bad@x.io is not a deliverable address."]},
+    }
+    client.post = AsyncMock(
+        return_value=_response(200, {"responses": [{"code": 422, "body": refusal}]})
+    )
     monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
     changes = backfill.plan([_person("bad@x.io")], {}).changes
 
     assert await backfill.apply(changes) == (0, 1)
     assert "bad@x.io" not in caplog.text
+    assert " at .io with 422 " in caplog.text
+    assert "The given data was invalid." in caplog.text
+    assert "is not a deliverable address" in caplog.text
 
 
 @pytest.mark.asyncio

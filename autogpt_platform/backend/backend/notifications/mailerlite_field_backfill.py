@@ -25,7 +25,6 @@ from backend.notifications.mailerlite import (
     MailerLiteError,
     _client,
     _headers,
-    _pseudonym,
     _require_token,
 )
 from backend.notifications.mailerlite_backfill import (
@@ -34,6 +33,7 @@ from backend.notifications.mailerlite_backfill import (
     PAGE_SIZE,
     UPSERT_BATCH_INTERVAL_SECONDS,
     Subscription,
+    _refusal,
     _send_batch,
     next_cursor,
 )
@@ -183,15 +183,15 @@ async def apply(
         if start:
             await asyncio.sleep(UPSERT_BATCH_INTERVAL_SECONDS)
         chunk = changes[start : start + BATCH_SIZE]
-        codes = await _send_batch([_upsert(c) for c in chunk])
-        for change, code in zip(chunk, codes):
-            if code in (200, 201, 202, 204):
+        answers = await _send_batch([_upsert(c) for c in chunk])
+        for change, answer in zip(chunk, answers):
+            if answer.code in (200, 201, 202, 204):
                 succeeded += 1
                 continue
             failed += 1
             logger.warning(
-                f"Field update failed for {_pseudonym(change.person.email)} "
-                f"with {code}; the next run retries it"
+                f"Field update failed for {_refusal(change.person.email, answer)}; "
+                "the next run retries it"
             )
         if on_progress:
             on_progress(start + len(chunk), len(changes))
