@@ -542,8 +542,7 @@ def _teammate(expert: Expert) -> _Found:
 
 
 async def _template(template_id: str, user_id: str) -> ExpertTemplate | None:
-    templates = await experts_db().list_templates()
-    template = next((t for t in templates if t.id == template_id), None)
+    template = await experts_db().get_template(template_id)
     if template is None:
         return None
     [card] = await experts_db().with_bundled_skills([template], user_id)

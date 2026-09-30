@@ -199,7 +199,9 @@ def _experts() -> MagicMock:
     grace = _template(
         "tpl-grace", "Grace", "Ships on Thursdays.", "Release manager", "Engineering"
     )
-    experts.list_templates = AsyncMock(return_value=[grace])
+    experts.get_template = AsyncMock(
+        side_effect=lambda template_id: grace if template_id == grace.id else None
+    )
     experts.with_bundled_skills = AsyncMock(
         side_effect=lambda templates, user_id: templates
     )

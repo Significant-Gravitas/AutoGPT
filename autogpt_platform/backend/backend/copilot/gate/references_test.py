@@ -243,6 +243,42 @@ async def test_a_pending_team_change_is_named_only_in_its_own_chat(
     redis.delete.assert_not_called()
 
 
+async def test_a_held_hire_is_named_however_slow_the_whole_roster_is():
+    """Prod timed out listing every template inside the budget and showed the
+    raw id instead of the name (2026-09-30); the template is read by id now."""
+    from backend.copilot.tools.expert_proposal import ExpertChangeProposal
+    from backend.copilot.tools.models import ExpertChangePreview
+
+    session = _session()
+    proposal = ExpertChangeProposal(
+        user_id="user-1",
+        session_id=session.session_id,
+        preview=ExpertChangePreview(kind="hire", name="Ada", template_id="tpl-ada"),
+    )
+    redis = MagicMock(get=AsyncMock(return_value=proposal.model_dump_json()))
+    template = MagicMock(id="tpl-ada", categories=["Finance"])
+    template.bundled_skills = [MagicMock(title="Payroll")]
+
+    async def list_the_roster():
+        await asyncio.sleep(references.LOOKUP_SECONDS * 10)
+        return [template]
+
+    experts = MagicMock()
+    experts.list_templates = AsyncMock(side_effect=list_the_roster)
+    experts.get_template = AsyncMock(return_value=template)
+    experts.with_bundled_skills = AsyncMock(side_effect=lambda ts, _: ts)
+    with (
+        patch.object(references, "get_redis_async", AsyncMock(return_value=redis)),
+        patch.object(references, "experts_db", return_value=experts),
+    ):
+        [ref] = await resolve_references(
+            "confirm_expert_change", {"confirmation_id": "c-1"}, "user-1", session
+        )
+
+    assert ref.name == "Ada"
+    assert ref.skills == ["Payroll"]
+
+
 def _session() -> ChatSession:
     return ChatSession.new(user_id="user-1", dry_run=False)
 
