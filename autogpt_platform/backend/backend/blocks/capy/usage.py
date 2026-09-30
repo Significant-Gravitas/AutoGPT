@@ -17,6 +17,7 @@ from backend.sdk import (
 from ._api import CapyClient
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, capy_credentials_field
 from ._testdata import TEST_USAGE_REPORT
+from ._types import UsageReport
 
 
 class CapyGetUsageBlock(Block):
@@ -75,6 +76,7 @@ class CapyGetUsageBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         report = await self.get_usage(credentials, input_data.start, input_data.end)
-        total = (report.get("totals") or {}).get("totalDollars") or 0
-        yield "total_dollars", float(total)
+        # A budget check may act on the total, so a missing one fails the
+        # block instead of reading as no spend.
+        yield "total_dollars", UsageReport.model_validate(report).totals.total_dollars
         yield "report", report

@@ -9,10 +9,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from backend.blocks.capy import _api
 from backend.blocks.capy._api import CapyAPIError, CapyClient, _error
 from backend.blocks.capy._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.capy._pull_requests import newest_pull_request_ref
 from backend.blocks.capy._types import (
     Message,
     MessagePage,
@@ -21,6 +23,7 @@ from backend.blocks.capy._types import (
     Thread,
 )
 from backend.blocks.capy.messages import CapyListThreadMessagesBlock
+from backend.blocks.capy.usage import CapyGetUsageBlock
 from backend.blocks.capy.wait import CapyWaitForThreadBlock
 
 # Trimmed from a live GET /threads response.
@@ -197,6 +200,55 @@ class TestClient:
         with pytest.raises(CapyAPIError):
             await client.newest_messages("t1", limit=5)
 
+    async def test_newest_messages_fails_rather_than_return_an_older_page(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        client = CapyClient(TEST_CREDENTIALS)
+        pages_read = 0
+
+        async def list_messages(thread_id, *, limit, after="", before=""):
+            nonlocal pages_read
+            if before:
+                raise CapyAPIError(400, "capy/InvalidRequest", "bad cursor")
+            pages_read += 1
+            return MessagePage(
+                items=[Message(id=f"m{pages_read}", source="assistant", text="x")],
+                cursor=f"c{pages_read}",
+            )
+
+        monkeypatch.setattr(client, "list_messages", list_messages)
+        monkeypatch.setattr(_api, "_MAX_FORWARD_PAGES", 3)
+
+        with pytest.raises(RuntimeError, match="newest messages"):
+            await client.newest_messages("t1", limit=2)
+        assert pages_read == 3
+
+
+class TestPullRequestRefs:
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            (
+                "Closed https://github.com/acme/app/pull/7; opened PR #12.",
+                ("", "12"),
+            ),
+            (
+                "Opened https://github.com/acme/app/pull/12 (PR #12).",
+                ("https://github.com/acme/app/pull/12", ""),
+            ),
+            (
+                "PR #7 is replaced by https://github.com/acme/app/pull/12.",
+                ("https://github.com/acme/app/pull/12", ""),
+            ),
+        ],
+    )
+    def test_the_last_reference_in_a_reply_wins(
+        self, text: str, expected: tuple[str, str]
+    ):
+        message = Message(id="1", source="assistant", text=text)
+
+        assert newest_pull_request_ref([message]) == expected
+
 
 async def _run(block, **inputs) -> dict[str, Any]:
     collected: dict[str, Any] = {}
@@ -277,6 +329,106 @@ class TestWaitForThread:
         assert get_thread.await_count == 3
         assert out["finished"] is True
         assert out["last_reply"] == "pong"
+
+    async def test_stops_once_a_failed_thread_still_has_not_replied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # A thread that failed before answering won't pick the brief up on
+        # its own, so the second check ends the wait instead of the timeout.
+        failed = Thread.model_validate(
+            {**LIVE_THREAD, "status": "failed", "needsYou": False}
+        )
+        # Two reads only: a third means the wait kept polling.
+        get_thread = AsyncMock(side_effect=[failed, failed])
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[Message(id="1", source="user", text="Fix the bug")]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
+
+        assert get_thread.await_count == 2
+        assert out["finished"] is True
+        assert out["status"] == "failed"
+
+    async def test_keeps_waiting_when_a_failed_thread_takes_a_new_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # A failed thread sent a follow-up reads failed until the agent picks
+        # it up, just as an idle one reads idle.
+        failed, working, idle = (
+            Thread.model_validate({**LIVE_THREAD, "status": s, "needsYou": False})
+            for s in ("failed", "working", "idle")
+        )
+        get_thread = AsyncMock(side_effect=[failed, working, idle])
+        retry = Message(id="1", source="user", text="Try again")
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                side_effect=[
+                    MessagePage(items=[retry]),
+                    MessagePage(
+                        items=[retry, Message(id="2", source="assistant", text="Done")]
+                    ),
+                ]
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
+
+        assert get_thread.await_count == 3
+        assert out["finished"] is True
+        assert out["last_reply"] == "Done"
+
+    async def test_a_follow_up_in_progress_keeps_the_threads_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # The newest reply is from the turn before the follow-up, so its model
+        # says nothing about the one working now.
+        working = Thread.model_validate(
+            {
+                **LIVE_THREAD,
+                "status": "working",
+                "needsYou": False,
+                "lastModelId": "supergrok/grok-4.5",
+            }
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", AsyncMock(return_value=working))
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(
+                            id="1",
+                            source="assistant",
+                            text="ok",
+                            model="meta/muse-spark-1.3",
+                        ),
+                        Message(id="2", source="user", text="Redo it on Grok."),
+                    ]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=0)
+
+        assert out["finished"] is False
+        assert out["model_id"] == "supergrok/grok-4.5"
 
     async def test_reports_the_model_that_wrote_the_reply(
         self, monkeypatch: pytest.MonkeyPatch
@@ -489,3 +641,56 @@ class TestListThreadMessages:
 
         assert out["next_cursor"] == "01OLD"
         assert out["messages"] == []
+
+    async def test_pages_back_from_a_before_cursor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        list_messages = AsyncMock(
+            return_value=MessagePage(
+                items=[Message(id="01B", source="assistant", text="earlier")],
+                cursor="01B",
+                before_cursor="01A",
+            )
+        )
+        monkeypatch.setattr(CapyClient, "list_messages", list_messages)
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+
+        out = await _run(
+            CapyListThreadMessagesBlock(), thread_id="t1", before_cursor="01C"
+        )
+
+        list_messages.assert_awaited_once_with("t1", limit=20, after="", before="01C")
+        assert out["last_reply"] == "earlier"
+        assert out["older_cursor"] == "01A"
+
+
+class TestGetUsage:
+    async def test_reports_a_genuine_zero(self, monkeypatch: pytest.MonkeyPatch):
+        block = CapyGetUsageBlock()
+        monkeypatch.setattr(
+            block,
+            "get_usage",
+            AsyncMock(return_value={"totals": {"totalDollars": 0}}),
+        )
+
+        out = await _run(block)
+
+        assert out["total_dollars"] == 0.0
+
+    @pytest.mark.parametrize(
+        "report",
+        [
+            {},
+            {"totals": {"totalDollars": None}},
+            {"totals": {"totalDollars": "NaN"}},
+        ],
+    )
+    async def test_refuses_a_missing_or_non_finite_total(
+        self, monkeypatch: pytest.MonkeyPatch, report: dict
+    ):
+        # A budget check reading 0.0 here would treat unknown spend as none.
+        block = CapyGetUsageBlock()
+        monkeypatch.setattr(block, "get_usage", AsyncMock(return_value=report))
+
+        with pytest.raises(ValidationError):
+            await _run(block)

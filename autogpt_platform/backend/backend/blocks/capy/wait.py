@@ -20,7 +20,7 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, capy_credentials_
 from ._models import billed_via
 from ._pull_requests import find_pull_request_url
 from ._testdata import TEST_IDLE_THREAD, TEST_MESSAGES, TEST_THREAD
-from ._types import ACTIVE_THREAD_STATUSES, Message, Thread
+from ._types import ACTIVE_THREAD_STATUSES, STOPPED_THREAD_STATUSES, Message, Thread
 from .threads import MAX_WAIT_SECONDS, _last_assistant, _thread_id_field
 
 
@@ -164,16 +164,25 @@ async def _poll(
     client: CapyClient, thread_id: str, timeout_seconds: int, poll_interval: int
 ) -> tuple[Thread, list[Message], bool]:
     deadline = time.monotonic() + timeout_seconds
+    stopped_checks = 0
     while True:
         thread = await client.get_thread(thread_id)
         finished = thread.needs_you
         if not finished and thread.status not in ACTIVE_THREAD_STATUSES:
             page = await client.newest_messages(thread_id, limit=50)
-            # A thread reads idle for a moment after it is created or sent a
-            # message, before the agent picks the message up. The agent has
-            # only finished once something follows the last user entry.
+            # A thread keeps its previous status (usually idle) for a moment
+            # after it is created or sent a message, before the agent picks
+            # the message up. The agent has only finished once something
+            # follows the last user entry.
             if not page.items or page.items[-1].source != "user":
                 return thread, page.items, True
+            # A failed or archived thread won't pick the message up on its
+            # own, so a second check that still finds it unanswered ends the
+            # wait rather than the timeout.
+            if thread.status in STOPPED_THREAD_STATUSES:
+                stopped_checks += 1
+                if stopped_checks >= 2:
+                    return thread, page.items, True
         remaining = deadline - time.monotonic()
         if finished or remaining <= 0:
             break
@@ -183,15 +192,27 @@ async def _poll(
 
 
 def _with_reply(thread: Thread, messages: list[Message]) -> tuple[Thread, str]:
-    """Pair the thread with its last reply, taking the model from that reply.
+    """Pair the thread with its last reply, taking the model from that reply
+    when it answers the latest user entry.
 
     Capy stamps each assistant message with the model that wrote it, while the
     thread's ``lastModelId`` can still name the previous model right after a
-    switch; the reply is the reliable record.
+    switch; the reply is the reliable record. A reply from before the latest
+    user entry belongs to an earlier turn and says nothing about the model
+    working on this one.
     """
     reply = _last_assistant(messages)
     if reply is None:
         return thread, ""
-    if reply.model:
+    if reply.model and _replied_since_last_user_entry(messages):
         thread = thread.model_copy(update={"last_model_id": reply.model})
     return thread, reply.text
+
+
+def _replied_since_last_user_entry(messages: list[Message]) -> bool:
+    for message in reversed(messages):
+        if message.source == "user":
+            return False
+        if message.source == "assistant" and message.text:
+            return True
+    return False

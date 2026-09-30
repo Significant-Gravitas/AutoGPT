@@ -25,7 +25,8 @@ API_URL = "https://api.capy.ai/api/v1"
 _NEWEST_EVENT_CURSOR = "7" + "Z" * 25
 
 # How many forward pages to walk when looking for the newest messages without
-# the backward cursor. Bounds the cost on very long threads.
+# the backward cursor. Bounds the cost on very long threads; a longer one
+# fails instead of returning an older page as the newest.
 _MAX_FORWARD_PAGES = 50
 
 
@@ -203,10 +204,14 @@ class CapyClient:
             page = await self.list_messages(thread_id, limit=100, after=cursor)
             tail = (tail + page.items)[-limit:]
             if not page.cursor or page.cursor == cursor:
-                cursor = page.cursor or cursor
-                break
+                return MessagePage(items=tail, cursor=page.cursor or cursor or None)
             cursor = page.cursor
-        return MessagePage(items=tail, cursor=cursor or None)
+        # Returning the tail now would pass an older page off as the newest.
+        raise RuntimeError(
+            "Capy rejected the newest-first transcript cursor, and the "
+            f"transcript runs past {_MAX_FORWARD_PAGES * 100} entries, so its "
+            "newest messages can't be reached by reading forward"
+        )
 
     async def send_message(
         self,

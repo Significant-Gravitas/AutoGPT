@@ -45,6 +45,14 @@ class CapyListThreadMessagesBlock(Block):
             default="",
             advanced=True,
         )
+        before_cursor: str = SchemaField(
+            description=(
+                "Return the entries just before this cursor (a previous call's "
+                "older_cursor), to read back through a long transcript"
+            ),
+            default="",
+            advanced=True,
+        )
         include_tool_steps: bool = SchemaField(
             description=(
                 "Include the one-line tool activity entries alongside user and "
@@ -69,6 +77,12 @@ class CapyListThreadMessagesBlock(Block):
                 "Pass back as after_cursor to read only newer entries next time"
             )
         )
+        older_cursor: str = SchemaField(
+            description=(
+                "Pass back as before_cursor to read the entries before this "
+                "page; empty once the page starts at the transcript's beginning"
+            )
+        )
 
     def __init__(self):
         super().__init__(
@@ -76,7 +90,8 @@ class CapyListThreadMessagesBlock(Block):
             description=(
                 "Reads a Capy thread's transcript: your brief, the agent's replies "
                 "(including pull request links and questions), and optionally its "
-                "tool steps. Returns the newest entries by default."
+                "tool steps. Returns the newest entries by default, and pages "
+                "forward or back from a cursor."
             ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=CapyListThreadMessagesBlock.Input,
@@ -97,10 +112,13 @@ class CapyListThreadMessagesBlock(Block):
                 ),
                 ("last_reply", TEST_MESSAGES[-1].text),
                 ("next_cursor", TEST_MESSAGES[-1].id),
+                ("older_cursor", TEST_MESSAGES[0].id),
             ],
             test_mock={
                 "list_messages": lambda *args, **kwargs: MessagePage(
-                    items=TEST_MESSAGES, cursor=TEST_MESSAGES[-1].id
+                    items=TEST_MESSAGES,
+                    cursor=TEST_MESSAGES[-1].id,
+                    before_cursor=TEST_MESSAGES[0].id,
                 )
             },
             effect=BlockEffect.READ,
@@ -108,24 +126,24 @@ class CapyListThreadMessagesBlock(Block):
 
     @staticmethod
     async def list_messages(
-        credentials: APIKeyCredentials, thread_id: str, limit: int, after_cursor: str
+        credentials: APIKeyCredentials, input_data: "CapyListThreadMessagesBlock.Input"
     ) -> MessagePage:
         client = CapyClient(credentials)
-        if after_cursor:
-            return await client.list_messages(
-                thread_id, limit=limit, after=after_cursor
+        if not (input_data.after_cursor or input_data.before_cursor):
+            return await client.newest_messages(
+                input_data.thread_id, limit=input_data.limit
             )
-        return await client.newest_messages(thread_id, limit=limit)
+        return await client.list_messages(
+            input_data.thread_id,
+            limit=input_data.limit,
+            after=input_data.after_cursor,
+            before=input_data.before_cursor,
+        )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        page = await self.list_messages(
-            credentials,
-            input_data.thread_id,
-            input_data.limit,
-            input_data.after_cursor,
-        )
+        page = await self.list_messages(credentials, input_data)
         items = [
             m for m in page.items if input_data.include_tool_steps or m.source != "tool"
         ]
@@ -140,6 +158,7 @@ class CapyListThreadMessagesBlock(Block):
             or (page.items[-1].id if page.items else "")
             or input_data.after_cursor
         )
+        yield "older_cursor", page.before_cursor or ""
 
 
 class CapySendMessageBlock(Block):

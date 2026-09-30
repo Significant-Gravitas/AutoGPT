@@ -11,6 +11,8 @@ Gets a Capy review round's status and its findings, each with severity, confiden
 ### How it works
 <!-- MANUAL: how_it_works -->
 Calls `GET /api/v1/reviews/rounds/{requestId}` and returns the round's status and findings. `is_settled` is true once the round has completed, failed or gone stale; `high_severity_count` counts high-severity issues, not notes.
+
+Only a `completed` round has reviewed the code. A round that failed or went stale settles with no findings, so treat it as unreviewed, not clean.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -28,11 +30,11 @@ Calls `GET /api/v1/reviews/rounds/{requestId}` and returns the round's status an
 | status | pending, running, completed, failed or stale | str |
 | is_settled | True once the round has completed, failed or gone stale | bool |
 | findings | Findings with severity, confidence, category, file and line | List[ReviewFinding] |
-| high_severity_count | Number of high-severity issues | int |
+| high_severity_count | Number of high-severity issues. Zero means a clean review only when status is completed; a failed or stale round reviewed nothing. | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Merge Blocking**: Hold a merge while `high_severity_count` is above zero.
+**Merge Blocking**: Allow a merge only when `status` is `completed` and `high_severity_count` is zero, so a failed or stale round never passes as clean.
 
 **Findings Report**: Send the confirmed issues, with file and line, to the author.
 

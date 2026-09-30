@@ -145,7 +145,11 @@ class CapyGetReviewRoundBlock(Block):
             description="Findings with severity, confidence, category, file and line"
         )
         high_severity_count: int = SchemaField(
-            description="Number of high-severity issues"
+            description=(
+                "Number of high-severity issues. Zero means a clean review only "
+                "when status is completed; a failed or stale round reviewed "
+                "nothing."
+            )
         )
 
     def __init__(self):

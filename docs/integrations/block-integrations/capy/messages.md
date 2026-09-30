@@ -40,11 +40,11 @@ Calls `POST /api/v1/threads/{id}/interrupt`, which stops the agent's current wor
 ## Capy List Thread Messages
 
 ### What it is
-Reads a Capy thread's transcript: your brief, the agent's replies (including pull request links and questions), and optionally its tool steps. Returns the newest entries by default.
+Reads a Capy thread's transcript: your brief, the agent's replies (including pull request links and questions), and optionally its tool steps. Returns the newest entries by default, and pages forward or back from a cursor.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Reads `GET /api/v1/threads/{id}/messages`. With no cursor it returns the newest entries; with `after_cursor` it returns only what came after it, so a loop that feeds `next_cursor` back in reads each new entry once. Tool entries are one-line activity summaries and are left out unless `include_tool_steps` is on.
+Reads `GET /api/v1/threads/{id}/messages`. With no cursor it returns the newest entries; with `after_cursor` it returns only what came after it, so a loop that feeds `next_cursor` back in reads each new entry once. To read further back, feed `older_cursor` in as `before_cursor` until it comes back empty at the start of the transcript. Tool entries are one-line activity summaries and are left out unless `include_tool_steps` is on.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -54,6 +54,7 @@ Reads `GET /api/v1/threads/{id}/messages`. With no cursor it returns the newest 
 | thread_id | The Capy thread ID (starts with jam_) | str | Yes |
 | limit | Maximum number of transcript entries to return | int | No |
 | after_cursor | Return only entries after this cursor (a previous call's next_cursor), oldest first. Leave empty for the newest entries. | str | No |
+| before_cursor | Return the entries just before this cursor (a previous call's older_cursor), to read back through a long transcript | str | No |
 | include_tool_steps | Include the one-line tool activity entries alongside user and assistant messages | bool | No |
 
 ### Outputs
@@ -64,6 +65,7 @@ Reads `GET /api/v1/threads/{id}/messages`. With no cursor it returns the newest 
 | messages | Transcript entries, oldest first, each with id, source (user, assistant or tool), text, and created_at | List[Dict[str, Any]] |
 | last_reply | The agent's most recent reply on this page, if any | str |
 | next_cursor | Pass back as after_cursor to read only newer entries next time | str |
+| older_cursor | Pass back as before_cursor to read the entries before this page; empty once the page starts at the transcript's beginning | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

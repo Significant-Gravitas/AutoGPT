@@ -9,7 +9,7 @@ must not break a running graph.
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, FiniteFloat, model_validator
 from pydantic.alias_generators import to_snake
 
 from backend.sdk import BaseModel, Field
@@ -39,6 +39,9 @@ class ThreadStatus(str, Enum):
 # A thread in one of these states is still doing work; anything else means the
 # agent has stopped and either delivered, asked a question, or failed.
 ACTIVE_THREAD_STATUSES = {ThreadStatus.WORKING.value, ThreadStatus.WAITING.value}
+
+# In these states the agent won't pick up a new message on its own.
+STOPPED_THREAD_STATUSES = {ThreadStatus.FAILED.value, ThreadStatus.ARCHIVED.value}
 
 
 class MachineSize(str, Enum):
@@ -96,6 +99,17 @@ class Usage(_CapyModel):
     image_credits: float = 0
     vm_credits: float = 0
     total_credits: float = 0
+
+
+class UsageTotals(_CapyModel):
+    total_dollars: FiniteFloat
+
+
+class UsageReport(_CapyModel):
+    """The part of Capy's usage report the blocks read. A missing or
+    non-finite total fails validation instead of reading as no spend."""
+
+    totals: UsageTotals
 
 
 class Thread(_CapyModel):

@@ -30,16 +30,21 @@ def newest_pull_request_ref(messages: list[Message]) -> tuple[str, str]:
     """The newest (url, number) an assistant entry mentions.
 
     Scans from the newest entry back, because the agent names its PR once and
-    may reply several more times after. A full URL wins over a bare number in
-    the same entry.
+    may reply several more times after. Within an entry the last reference
+    wins ("closed .../pull/7; opened PR #12" means 12), and a bare number takes
+    the entry's URL for the same pull request when it has one.
     """
     for message in reversed(messages):
         if message.source != "assistant":
             continue
-        if urls := _PR_URL.findall(message.text):
-            return urls[-1], ""
-        if numbers := _PR_NUMBER.findall(message.text):
-            return "", numbers[-1]
+        urls = [(m.start(), m.group(0)) for m in _PR_URL.finditer(message.text)]
+        numbers = [(m.start(), m.group(1)) for m in _PR_NUMBER.finditer(message.text)]
+        if numbers and (not urls or numbers[-1][0] > urls[-1][0]):
+            number = numbers[-1][1]
+            same_pr = [url for _, url in urls if url.endswith(f"/pull/{number}")]
+            return (same_pr[-1], "") if same_pr else ("", number)
+        if urls:
+            return urls[-1][1], ""
     return "", ""
 
 
