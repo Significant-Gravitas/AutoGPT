@@ -90,9 +90,9 @@ export function compareShadowWithSession(
   const { log } = shadow;
   if (log.status !== "finished" && log.status !== "failed") return;
   if (session.active_stream?.turn_id === log.turnId) return;
-  shadow.compared = true;
   const last = log.checkpoints[log.checkpoints.length - 1];
   if (!last) {
+    shadow.compared = true;
     reportDrift("finish_without_checkpoint", log, { rows: log.rows.length });
     return;
   }
@@ -104,6 +104,7 @@ export function compareShadowWithSession(
   const windowStart = numbered[0]?.sequence ?? Infinity;
   if (session.has_more_messages !== false && windowStart > last.sequence)
     return;
+  shadow.compared = true;
   const turnRows = numbered
     .filter((row) => (row.sequence ?? -1) >= last.sequence)
     .slice(0, last.rows)
