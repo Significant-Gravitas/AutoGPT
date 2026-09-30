@@ -23,7 +23,11 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.model import RECOGNIZED_TERMS_VERSIONS, UserConsentResponse
 from backend.api.rest_api import app as real_app
 from backend.data.model import User
-from backend.data.notifications import AudienceAction, NotificationResult
+from backend.data.notifications import (
+    AudienceAction,
+    NotificationPreference,
+    NotificationResult,
+)
 from backend.data.user import (
     generate_preference_link,
     get_or_create_user,
@@ -478,6 +482,33 @@ def test_the_frontend_terms_version_is_recognized() -> None:
 
     assert shown is not None
     assert shown.group(1) in RECOGNIZED_TERMS_VERSIONS
+
+
+def test_update_preferences_never_writes_the_posted_address(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """The settings pages post the account's own address back. Validating it
+    failed every save with a 422 for a stored address EmailStr rejects, such
+    as a reserved `.test` domain (AUTOGPT-SERVER-5E4)."""
+    stored = NotificationPreference(user_id=test_user_id, email="test-1@autogpt.test")
+    update = mocker.patch(
+        "backend.api.features.user.routes.update_user_notification_preference",
+        return_value=stored,
+    )
+
+    response = client.post(
+        "/auth/user/preferences",
+        json={
+            "email": "test-1@autogpt.test",
+            "briefing_frequency": "WEEKLY",
+            "alerts_enabled": True,
+            "store_verdicts_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "test-1@autogpt.test"
+    assert update.call_args.args[1].email == ""
 
 
 # Invalid request tests
