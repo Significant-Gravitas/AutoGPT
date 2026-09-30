@@ -731,7 +731,7 @@ describe("ChainActionCard", () => {
       ).toBe("false");
     });
 
-    it("swaps to free text via Type something and clears a picked option", () => {
+    it("opens free text via Type something, clears a picked option and keeps the options on screen", () => {
       const request = questionRequest({
         questions: [
           {
@@ -747,9 +747,8 @@ describe("ChainActionCard", () => {
       fireEvent.click(screen.getByText("Type something…"));
       expect(request.onAnswer).toHaveBeenCalledWith("region", "");
       expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
-
-      fireEvent.click(screen.getByText("Choose from options instead"));
       expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
+      expect(screen.getByRole("radio", { name: "Americas" })).toBeDefined();
     });
 
     it("opens in free text when the answer matches no option", () => {
@@ -771,7 +770,7 @@ describe("ChainActionCard", () => {
       expect(screen.getByDisplayValue("Antarctica")).toBeDefined();
     });
 
-    it("clears a custom answer when going back to the options", () => {
+    it("replaces a custom answer and closes the textarea when an option is picked", () => {
       const request = questionRequest({
         questions: [
           {
@@ -784,8 +783,10 @@ describe("ChainActionCard", () => {
       });
       renderCard({ questions: [request] });
 
-      fireEvent.click(screen.getByText("Choose from options instead"));
-      expect(request.onAnswer).toHaveBeenCalledWith("region", "");
+      fireEvent.click(screen.getByRole("radio", { name: "Americas" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(screen.queryByDisplayValue("Antarctica")).toBeNull();
+      expect(screen.getByText("Type something…")).toBeDefined();
     });
 
     it("names the option group after the question", () => {
