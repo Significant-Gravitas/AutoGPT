@@ -81,7 +81,7 @@ Reads `GET /api/v1/threads/{id}/messages`. With no cursor it returns the newest 
 ## Capy Send Message
 
 ### What it is
-Sends a message to the agent in a Capy thread: a follow-up instruction, a correction, or the answer to its question. The agent resumes work on it.
+Sends a message to the agent in a Capy thread: a follow-up instruction, a correction, or the answer to its question. The agent resumes work on it; wait for its reply with Capy Wait For Thread, passing message_id as after_message_id.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -105,7 +105,7 @@ Calls `POST /api/v1/threads/{id}/message`. `interrupt` (the default) stops curre
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| message_id | ID of the admitted message; a queued one can be cancelled in Capy | str |
+| message_id | ID of the admitted message. Pass it to Capy Wait For Thread as after_message_id, so the wait ends on the reply to this message. | str |
 | deduped | True when Capy recognised this as a repeat of a message it already had | bool |
 | model_id | The model the thread was switched to; empty when the thread kept its model | str |
 

@@ -194,7 +194,10 @@ class CapySendMessageBlock(Block):
 
     class Output(BlockSchemaOutput):
         message_id: str = SchemaField(
-            description="ID of the admitted message; a queued one can be cancelled in Capy"
+            description=(
+                "ID of the admitted message. Pass it to Capy Wait For Thread as "
+                "after_message_id, so the wait ends on the reply to this message."
+            )
         )
         deduped: bool = SchemaField(
             description="True when Capy recognised this as a repeat of a message it already had"
@@ -212,7 +215,8 @@ class CapySendMessageBlock(Block):
             description=(
                 "Sends a message to the agent in a Capy thread: a follow-up "
                 "instruction, a correction, or the answer to its question. The "
-                "agent resumes work on it."
+                "agent resumes work on it; wait for its reply with Capy Wait "
+                "For Thread, passing message_id as after_message_id."
             ),
             categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.AGENT},
             input_schema=CapySendMessageBlock.Input,
