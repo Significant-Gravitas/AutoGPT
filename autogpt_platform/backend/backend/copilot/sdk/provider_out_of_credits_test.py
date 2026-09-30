@@ -68,6 +68,8 @@ async def _run_turn(messages: list):
 
         async def _receive():
             for message in messages:
+                if isinstance(message, BaseException):
+                    raise message
                 yield message
 
         client = MagicMock()
@@ -90,6 +92,9 @@ async def _run_turn(messages: list):
     )
     events = []
     with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            patch("backend.copilot.sdk.service.asyncio.sleep", new_callable=AsyncMock)
+        )
         for target, kwargs in patches:
             stack.enter_context(patch(target, **kwargs))
         async for event in stream_chat_completion_sdk(
@@ -230,6 +235,75 @@ def test_raised_billing_error_maps_to_platform_message():
         code="provider_unavailable",
         retryable=True,
     )
+
+
+def _raised_402_quoting_a_rate_limit() -> ResultError:
+    # A billing refusal whose text also matches a transient pattern, so the
+    # turn retries it as transient until the retries run out.
+    text = f"{_OPENROUTER_402} (upstream: rate limit)"
+    return ResultError(
+        f"Claude Code returned an error result: {text}",
+        data={
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "result": text,
+            "api_error_status": 402,
+            "terminal_reason": "api_error",
+        },
+        exit_code=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "attempts_exhausted,transient_exhausted",
+    [
+        pytest.param(False, True, id="transient-retries-exhausted"),
+        pytest.param(True, False, id="context-attempts-exhausted"),
+    ],
+)
+def test_billing_refusal_outranks_an_exhausted_retry_verdict(
+    attempts_exhausted, transient_exhausted
+):
+    failure = _classify_final_failure(
+        _InterruptedAttempt(),
+        attempts_exhausted=attempts_exhausted,
+        transient_exhausted=transient_exhausted,
+        stream_err=_raised_402_quoting_a_rate_limit(),
+    )
+    assert failure == _FinalFailure(
+        display_msg=PROVIDER_UNAVAILABLE_MESSAGE,
+        code="provider_unavailable",
+        retryable=True,
+    )
+
+
+def test_codex_billing_refusal_after_transient_retries_stays_transient():
+    failure = _classify_final_failure(
+        _InterruptedAttempt(),
+        attempts_exhausted=False,
+        transient_exhausted=True,
+        stream_err=_raised_402_quoting_a_rate_limit(),
+        platform_route=False,
+    )
+    assert failure is not None
+    assert failure.code == "transient_api_error"
+
+
+@pytest.mark.asyncio
+async def test_raised_billing_refusal_retried_as_transient_ends_as_billing():
+    with patch("backend.copilot.sdk.service.report_provider_out_of_credits") as report:
+        events, attempts, session = await _run_turn(
+            [_raised_402_quoting_a_rate_limit()]
+        )
+
+    assert attempts == 2  # the one transient retry the test config allows
+    errors = [e for e in events if isinstance(e, StreamError)]
+    assert [e.code for e in errors] == ["provider_unavailable"]
+    assert "openrouter" not in errors[0].errorText.lower()
+    report.assert_called_once()
+    marker = session.messages[-1].content or ""
+    assert "temporarily unavailable" in marker
 
 
 def test_codex_billing_error_keeps_the_providers_wording():
