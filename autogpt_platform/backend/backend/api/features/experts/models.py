@@ -27,13 +27,14 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-# Only some outward calls are actually gated for approval — is_irreversible_action
-# (backend/blocks/_base.py) marks only the irreversible blocks — so this is
-# phrased as expert behaviour, not a platform guarantee.
-EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
-# Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
-# instruction text. Reword for one audience without silently breaking the other.
-PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
+# Soul-drawer copy, true whether or not the chat has an approval gate. The prompt
+# states it per session instead (expert_context.GATED_WORK_RULE and its twin).
+DELEGATED_WORK_RULE = (
+    "The expert does the work you give it end to end, and gets your approval "
+    "before acting externally on anything you did not ask for, unless you turn "
+    "approvals off."
+)
+PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, DELEGATED_WORK_RULE)
 
 EXPERT_NAME_MAX_LENGTH = 100
 EXPERT_TAGLINE_MAX_LENGTH = 160

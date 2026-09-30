@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.experts.models import (
+    AI_DISCLOSURE_RULE,
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertRoutine,
@@ -26,7 +27,9 @@ from backend.api.features.experts.models import (
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
+    GATED_WORK_RULE,
     OWNED_BLOCK_TAGS,
+    UNGATED_WORK_RULE,
     ExpertSessionUnavailableError,
     build_expert_identity_suffix,
 )
@@ -264,7 +267,18 @@ class TestBuildExpertIdentitySuffix:
         )
 
     @pytest.mark.asyncio
-    async def test_latest_soul_fields_and_protected_rules_are_rendered(self):
+    @pytest.mark.parametrize(
+        "gated, told, not_told",
+        [
+            (True, GATED_WORK_RULE, UNGATED_WORK_RULE),
+            (False, UNGATED_WORK_RULE, GATED_WORK_RULE),
+        ],
+    )
+    async def test_latest_soul_fields_and_protected_rules_are_rendered(
+        self, gated: bool, told: str, not_told: str
+    ):
+        """Only an ungated session keeps the ask before an outward step; a gated
+        one asking in chat as well would ask the owner twice."""
         expert = _expert().model_copy(
             update={
                 "identity": "I help teams find the clearest strategy.",
@@ -283,6 +297,7 @@ class TestBuildExpertIdentitySuffix:
                 "exp-1",
                 organization_id="personal-org",
                 team_id="personal-team",
+                gated=gated,
             )
 
         assert "I help teams find the clearest strategy." in result
@@ -290,8 +305,9 @@ class TestBuildExpertIdentitySuffix:
         assert "Never invent customer evidence." in result
         assert "<what_ive_learned>" not in result
         assert "Nothing recorded yet." not in result
-        for rule in PROTECTED_SOUL_RULES:
-            assert rule and rule in result
+        assert AI_DISCLOSURE_RULE in result
+        assert told in result
+        assert not_told not in result
 
     @pytest.mark.asyncio
     async def test_voice_preferences_are_fenced_as_untrusted_quoted_data(self):

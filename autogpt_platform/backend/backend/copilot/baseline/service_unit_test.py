@@ -55,7 +55,10 @@ from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallRe
 
 
 @pytest.mark.asyncio
-async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None:
+@pytest.mark.parametrize("gated", [True, False])
+async def test_expert_identity_failure_precedes_baseline_turn_mutation(
+    gated: bool,
+) -> None:
     session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
     identity_mock = AsyncMock(
         side_effect=ExpertSessionUnavailableError(
@@ -64,6 +67,10 @@ async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None
     )
 
     with (
+        patch(
+            "backend.copilot.baseline.service.gate_active",
+            new=AsyncMock(return_value=gated),
+        ),
         patch(
             "backend.copilot.baseline.service.build_expert_identity_suffix",
             new=identity_mock,
@@ -79,7 +86,7 @@ async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None
             pass
 
     identity_mock.assert_awaited_once_with(
-        "user-1", "expert-1", organization_id=None, team_id=None
+        "user-1", "expert-1", organization_id=None, team_id=None, gated=gated
     )
     assert session.messages == []
 
