@@ -89,3 +89,17 @@ def test_get_swap_bindings_answers(client):
     response = client.post("/get_swap_bindings", json={})
     assert response.status_code == 200
     assert "github" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_health_check_runs_a_query_not_just_the_connected_flag():
+    """``is_connected`` only says an engine object exists, so a wedged one
+    would read healthy."""
+    query = AsyncMock(side_effect=RuntimeError("engine is wedged"))
+    with (
+        patch("backend.copilot.swap_service.db.is_connected", return_value=True),
+        patch("backend.copilot.swap_service.db.query_raw_with_schema", query),
+        pytest.raises(RuntimeError, match="wedged"),
+    ):
+        await SwapCredentialService().health_check()
+    query.assert_awaited_once()

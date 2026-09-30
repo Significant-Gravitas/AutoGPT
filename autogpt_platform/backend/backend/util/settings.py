@@ -405,9 +405,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     swap_credential_service_port: int = Field(
         default=8012,
-        description="The port for the service the credential swap proxy calls "
-        "(backend.copilot.swap_service). It exposes only the two swap methods, "
-        "so this port is the only one the proxy needs to reach.",
+        description="The port for the swap proxy's service "
+        "(backend.copilot.swap_service)",
     )
 
     agent_api_host: str = Field(

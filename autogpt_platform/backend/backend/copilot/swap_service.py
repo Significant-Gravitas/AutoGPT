@@ -1,16 +1,6 @@
-"""The only backend service the credential swap proxy calls.
-
-The proxy (``autogpt_platform/swap_proxy``) sits next to every box, which makes
-it the component most likely to be compromised.  It needs two answers from the
-backend, and this service gives those and nothing else: its HTTP app has one
-route per method below, plus the health checks and metrics every service has.
-Everything else the backend can do (credits, integrations, graphs) is on other
-services' ports, which the proxy has no reason to reach.
-
-Hosted beside ``DatabaseManager`` (``backend.db``), not as a deployment of its
-own: it needs what that process has (the database and the encryption key) and
-serves little traffic, since the proxy caches both answers.
-"""
+"""The only backend service the credential swap proxy calls: the two swap
+methods and nothing else.  Hosted beside ``DatabaseManager`` (``backend.db``);
+see ``swap_proxy/README.md`` for why."""
 
 import logging
 from contextlib import asynccontextmanager
@@ -47,6 +37,7 @@ class SwapCredentialService(AppService):
     async def health_check(self) -> str:
         if not db.is_connected():
             raise UnhealthyServiceError("Database is not connected")
+        await db.query_raw_with_schema("SELECT 1 as health_check")
         return await super().health_check()
 
     @expose
