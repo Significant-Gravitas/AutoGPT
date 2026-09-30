@@ -24,6 +24,7 @@ from backend.data.model import CredentialsFieldInfo, CredentialsType
 from backend.integrations.providers import ProviderName
 
 from .base import BaseTool
+from .credential_gaps import annotate_credential_gaps, credentials_for_gaps
 from .expert_scope import annotate_expert_grants
 
 CONNECT_INTEGRATION_TOOL = "connect_integration"
@@ -138,8 +139,8 @@ class ConnectIntegrationTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         # Require auth so only authenticated users can trigger the setup card.
-        # The card itself is user-agnostic (no per-user data needed), so
-        # user_id is intentionally unused in _execute.
+        # user_id is read only to explain why an existing credential falls
+        # short (missing scopes, refused refresh).
         return True
 
     async def _execute(
@@ -226,6 +227,16 @@ class ConnectIntegrationTool(BaseTool):
         missing_credentials[field_key]["title"] = f"{display_name} Credentials"
         missing_credentials[field_key]["provider_name"] = display_name
         if user_id:
+            # An account that is connected but short of a scope, or whose
+            # refresh the provider refused, is not "not connected": say which,
+            # and make the reconnect ask for everything it needs.
+            missing_credentials, gap_messages = annotate_credential_gaps(
+                await credentials_for_gaps(user_id, session.expert_id),
+                {field_key: field_info},
+                missing_credentials,
+            )
+            if gap_messages:
+                message_parts[0] = " ".join(gap_messages)
             missing_credentials = await annotate_expert_grants(
                 user_id, session.expert_id, missing_credentials
             )
