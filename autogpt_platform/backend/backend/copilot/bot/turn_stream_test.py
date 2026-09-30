@@ -581,7 +581,7 @@ class TestFailureReply:
             )
 
         reply = adapter.send_message.await_args.args[1]
-        assert "AutoGPT hit an internal error" in reply
+        assert "an internal error occurred" in reply
         assert "secret_path" not in reply
         assert "KeyError" not in reply
 

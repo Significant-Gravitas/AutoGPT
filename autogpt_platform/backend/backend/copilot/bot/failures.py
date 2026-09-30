@@ -35,7 +35,7 @@ class FailureCategory(BaseModel):
 
 
 INTERNAL = FailureCategory(
-    key="internal", reason="AutoGPT hit an internal error", advice=AGAIN_SOON
+    key="internal", reason="an internal error occurred", advice=AGAIN_SOON
 )
 PROVIDER_BUSY = FailureCategory(
     key="provider_busy", reason="the model provider is busy", advice=AGAIN_SOON
@@ -85,12 +85,12 @@ STOPPED = FailureCategory(
 )
 START_FAILED = FailureCategory(
     key="start_failed",
-    reason="AutoGPT couldn't start this conversation",
+    reason="the conversation couldn't be started",
     advice=AGAIN_SOON,
 )
 LINK_CHECK_FAILED = FailureCategory(
     key="link_check_failed",
-    reason="AutoGPT couldn't check this account's link",
+    reason="the account link couldn't be checked",
     advice=AGAIN_SOON,
 )
 

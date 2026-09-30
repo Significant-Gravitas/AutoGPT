@@ -300,7 +300,7 @@ class TestEnsureLinked:
         await handler.handle(_ctx(), adapter)
         adapter.send_message.assert_awaited_once()
         reply = adapter.send_message.await_args.args[1]
-        assert "couldn't check this account's link" in reply
+        assert "the account link couldn't be checked" in reply
         assert "(ref " in reply
         assert "boom" not in reply
 
