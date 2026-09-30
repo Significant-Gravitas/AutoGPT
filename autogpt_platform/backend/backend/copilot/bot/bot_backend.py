@@ -59,12 +59,15 @@ class BotStreamError(Exception):
     """A copilot stream couldn't produce a successful reply.
 
     Carries a bounded ``error_kind`` so the handler can attribute analytics
-    accurately instead of guessing from the inline text.
+    accurately instead of guessing from the inline text, and the backend's
+    ``code`` (when the stream sent one) so the user can be told what kind of
+    failure it was.
     """
 
-    def __init__(self, error_kind: str, message: str):
+    def __init__(self, error_kind: str, message: str, code: str | None = None):
         super().__init__(message)
         self.error_kind = error_kind
+        self.code = code
 
 
 class ChatTurnDeniedError(Exception):
@@ -559,10 +562,17 @@ class BotBackend:
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
-                    logger.error("Stream error from backend: %s", chunk.errorText)
+                    # Reported once, with its chat reference, by the turn
+                    # streamer; logging it at error here too would double it.
+                    logger.warning(
+                        "Stream error from backend: %s (code=%s)",
+                        chunk.errorText,
+                        chunk.code,
+                    )
                     raise BotStreamError(
                         "backend_stream_error",
                         chunk.errorText,
+                        code=chunk.code,
                     )
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and
