@@ -6,10 +6,13 @@ A recorded turn is three files under ``test/fixtures/copilot_stream/<name>/``:
   completion trims it, ``{id, data}`` per line with ``data`` parsed from the
   stored JSON;
 - ``frames.jsonl``: the SSE frame the stream routes write for each entry;
-- ``rows.json``: the rows the session GET returns once the turn persisted.
+- ``rows.json``: the rows the session GET reads back from Postgres once the
+  turn persisted.
 
 Backend tests check the pipeline still records these files; the frontend drift
-suite replays them. Set ``RECORD_COPILOT_STREAM_FIXTURES=1`` to rewrite them.
+suite replays them. To rewrite them, run ``recorded_turns_test.py`` with
+``RECORD_COPILOT_STREAM_FIXTURES=1`` and ``DATABASE_URL``/``DIRECT_URL`` on a
+throwaway Postgres migrated from the branch (``prisma migrate deploy``).
 """
 
 import json
@@ -24,8 +27,10 @@ import orjson
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
+from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import stream_registry
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.db import get_chat_messages_paginated
+from backend.copilot.model import ChatMessage, ChatSession, upsert_chat_session
 from backend.copilot.response_model import StreamBaseResponse, StreamError, StreamStatus
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.data.redis_client import get_redis_async
@@ -50,11 +55,12 @@ class RecordedTurn(BaseModel):
 async def record_turn(
     engine: AsyncGenerator[StreamBaseResponse, None],
     *,
-    session_id: str,
+    session: ChatSession,
     turn_id: str,
-    persisted: Callable[[], Sequence[ChatMessage]],
 ) -> RecordedTurn:
-    """Run ``engine`` through the route's and the executor's publishing path."""
+    """Run ``engine`` through the route's and the executor's publishing path,
+    then read the turn's rows back from the database."""
+    session_id = session.session_id
     await stream_registry.create_session(session_id, None, "", "", turn_id=turn_id)
     for status in ("Message received…", "Setting up your environment…"):
         await stream_registry.publish_chunk(
@@ -88,12 +94,29 @@ async def record_turn(
     await redis.delete(stream_registry._get_turn_meta_key(turn_id))
     await redis.delete(stream_registry.get_session_meta_key(session_id))
     entries, rows = canonical(
-        entries,
-        [jsonable_encoder(message.model_dump()) for message in persisted()],
-        session_id=session_id,
-        turn_id=turn_id,
+        entries, await persisted_rows(session), session_id=session_id, turn_id=turn_id
     )
     return RecordedTurn(entries=entries, frames=frames_for(entries), rows=rows)
+
+
+async def persisted_session(user_id: str, prompt: str) -> ChatSession:
+    """A session whose prompt is already persisted, as the POST route leaves it."""
+    session = ChatSession.new(user_id, dry_run=False)
+    session.messages.append(ChatMessage(role="user", content=prompt))
+    await upsert_chat_session(session)
+    return session
+
+
+async def persisted_rows(session: ChatSession) -> list[dict[str, Any]]:
+    """The session's rows as ``GET /sessions/{id}`` returns them."""
+    page = await get_chat_messages_paginated(
+        session.session_id, limit=200, user_id=session.user_id
+    )
+    assert page is not None, "the session was never persisted"
+    return [
+        jsonable_encoder(_strip_injected_context(message.model_dump()))
+        for message in page.messages
+    ]
 
 
 async def read_turn_entries(turn_id: str, after: str = "0-0") -> list[dict[str, Any]]:

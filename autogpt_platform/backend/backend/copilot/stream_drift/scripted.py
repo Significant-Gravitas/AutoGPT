@@ -32,7 +32,7 @@ async def baseline_turn(
     """The baseline engine; its provider and I/O come from the ``baseline_io`` fixture."""
     async for event in baseline.stream_chat_completion_baseline(
         session.session_id,
-        user_id="drift-user",
+        user_id=session.user_id,
         session=session,
         is_user_message=False,
         envelope=root_envelope(turn_id, session_id=session.session_id),
