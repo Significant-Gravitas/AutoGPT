@@ -74,9 +74,13 @@ class TemplateSpec(BaseModel):
 
 
 DESKTOP_IMAGE = TemplateSpec(
-    alias="agpt-desktop-1x2-68f7fe36", source="desktop", cpu_count=1, memory_mb=2048
+    alias="agpt-desktop-1x2-004d6e73", source="desktop", cpu_count=1, memory_mb=2048
 )
 MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE}
+# Images whose boxes are replaced on their next reconnect because they lack
+# tools agents rely on.  Not every new image is worth that: a replacement
+# keeps only the box's volumes.
+SUPERSEDED_TEMPLATES = frozenset({"agpt-desktop-1x2"})
 
 # A build takes under a minute.  The build is cut off before the lock can
 # expire, so the lock is only ever released by its owner (or by the TTL after
@@ -240,6 +244,9 @@ def desktop_image(source: str) -> TemplateBuilder:
             no_install_recommends=True,
         )
         .npm_install("yarn@1", g=True)
+        # apt-get update only warns about an unreachable repository, and gh and
+        # nodejs then resolve from Ubuntu's archive: fail the build instead.
+        .run_cmd(_VERIFY_IMAGE, user="user")
     )
 
 
@@ -251,6 +258,21 @@ _GH_REPO = f"deb [signed-by={_GH_KEYRING}] https://cli.github.com/packages stabl
 _NODE_KEY = "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
 _NODE_KEYRING = "/etc/apt/keyrings/nodesource.gpg"
 _NODE_REPO = f"deb [signed-by={_NODE_KEYRING}] https://deb.nodesource.com/node_24.x nodistro main"
+_VERIFY_IMAGE = [
+    "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' gh)\" ge 2.100",
+    "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' nodejs)\" ge 24",
+    "gh --version",
+    "node --version",
+    "npm --version",
+    "npx --version",
+    "yarn --version",
+    "python --version",
+    "python3 -m venv /tmp/venv-check",
+    "rm -rf /tmp/venv-check",
+    "file --version",
+    "pkg-config --version",
+    "convert --version",
+]
 
 
 async def get_template_state(spec: TemplateSpec, api_key: str) -> TemplateState:
