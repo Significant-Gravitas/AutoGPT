@@ -23,10 +23,11 @@ from backend.copilot.baseline import service as baseline
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk import dummy
+from backend.copilot.sdk import service as sdk
 from backend.data import redis_client
 from backend.util.testing import is_tcp_port_reachable
 
-from .recording import check_fixture, record_turn
+from .recording import check_fixture, record_turn, saving_into
 from .scripted import baseline_turn, provider_round, sdk_turn, session_with_prompt
 
 pytestmark = pytest.mark.skipif(
@@ -38,12 +39,7 @@ pytestmark = pytest.mark.skipif(
 async def test_dummy_text_turn(monkeypatch: pytest.MonkeyPatch) -> None:
     session = session_with_prompt("Count to three")
     persisted: list[ChatSession] = []
-
-    async def save(saved: ChatSession) -> ChatSession:
-        persisted.append(saved.model_copy(deep=True))
-        return saved
-
-    monkeypatch.setattr(dummy, "upsert_chat_session", save)
+    monkeypatch.setattr(dummy, "upsert_chat_session", saving_into(persisted))
 
     recorded = await record_turn(
         dummy.stream_chat_completion_dummy(
@@ -90,9 +86,11 @@ async def test_baseline_tool_turn(
     check_fixture("baseline-tool-turn", recorded)
 
 
-async def test_sdk_late_tool_result_turn() -> None:
+async def test_sdk_late_tool_result_turn(monkeypatch: pytest.MonkeyPatch) -> None:
     """Dev session c68992f9's order: a tool result lands after the next text."""
     session = session_with_prompt("Check the task and list the files")
+    persisted: list[ChatSession] = []
+    monkeypatch.setattr(sdk, "upsert_chat_session", saving_into(persisted))
     messages = [
         SystemMessage(subtype="init", data={}),
         AssistantMessage(
@@ -127,7 +125,7 @@ async def test_sdk_late_tool_result_turn() -> None:
         sdk_turn(session, messages),
         session_id=session.session_id,
         turn_id=str(uuid.uuid4()),
-        persisted=lambda: session.messages,
+        persisted=lambda: persisted[-1].messages,
     )
 
     check_fixture("sdk-late-tool-result", recorded)

@@ -138,6 +138,7 @@ from ..rate_limit import (
 )
 from ..response_model import (
     StreamBaseResponse,
+    StreamCheckpoint,
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
@@ -172,6 +173,7 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..stream_checkpoint import turn_checkpoint
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import (
@@ -922,6 +924,7 @@ async def _consume_sdk_until_done(
             loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
             or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
         ):
+            checkpoint = None
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
                 logger.debug(
@@ -931,6 +934,7 @@ async def _consume_sdk_until_done(
                     loop_state.msgs_since_flush,
                     now - loop_state.last_flush_time,
                 )
+                checkpoint = turn_checkpoint(ctx.session.messages, ctx.turn_start)
             except Exception as flush_err:
                 logger.warning(
                     "%s Intermediate flush failed: %s",
@@ -939,6 +943,8 @@ async def _consume_sdk_until_done(
                 )
             loop_state.last_flush_time = now
             loop_state.msgs_since_flush = 0
+            if checkpoint is not None:
+                yield checkpoint
 
         # --- Building-mode switch (enter_agent_building_mode) ---
         # Restart the attempt with the guide in the system prompt.
@@ -1031,10 +1037,13 @@ def _intermediate_flush_blocked(
     has_unsealed_assistant = (
         acc.has_appended_assistant and not acc.accumulated_tool_calls
     )
-    has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
+    return has_pending_tools or has_unsealed_assistant or _has_open_block(adapter)
+
+
+def _has_open_block(adapter: SDKResponseAdapter) -> bool:
+    return (adapter.has_started_text and not adapter.has_ended_text) or (
         adapter.has_started_reasoning and not adapter.has_ended_reasoning
     )
-    return has_pending_tools or has_unsealed_assistant or has_open_block
 
 
 def _hidden_short_names_for_permissions(
@@ -1184,6 +1193,7 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 # ``None`` when ``events_yielded > 0``.
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
+    StreamCheckpoint,
     StreamToolDisplayAvailable,
     # Compaction UI events are cosmetic and must not block retry — they're
     # emitted before the SDK query on compacted attempts.
@@ -1415,6 +1425,8 @@ class _StreamContext:
     # text, and the gateway holds the last point at which it was typed.
     codex_gateway: "CodexAnthropicGateway | None" = None
     tool_display: SDKToolDisplayBridge | None = None
+    # Index in ``session.messages`` of the stream's first row, for checkpoints.
+    turn_start: int = 0
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -4546,6 +4558,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
     message_metadata: dict[str, Any] | None = None,
+    turn_start: int | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4780,6 +4793,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # the loop (post-stream upload guards, finally-block bookkeeping) sees a
     # bound name even when the loop never enters its happy path.
     ended_with_stream_error = False
+    final_checkpoint: StreamCheckpoint | None = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -5507,6 +5521,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Build the per-request context carrier (shared across attempts).
         # Scalar fields are immutable; session/compaction/lock are shared
         # mutable references (see `_StreamContext` docstring for details).
+        # An auto-continue call streams into the same turn, so it keeps the
+        # first row of the call that started it.
+        if turn_start is None:
+            turn_start = len(session.messages)
         stream_ctx = _StreamContext(
             session=session,
             session_id=session_id,
@@ -5520,6 +5538,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             lock=lock,
             codex_gateway=codex_gateway,
             tool_display=tool_display_bridge,
+            turn_start=turn_start,
         )
 
         # ---------------------------------------------------------------
@@ -6287,6 +6306,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix,
                     len(session.messages),
                 )
+                if turn_start is not None and not (
+                    state is not None and _has_open_block(state.adapter)
+                ):
+                    final_checkpoint = turn_checkpoint(session.messages, turn_start)
             except Exception as persist_err:
                 logger.error(
                     "%s Failed to persist session in finally: %s",
@@ -6453,6 +6476,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             turn_error,
         )
 
+    # Yielded here, not in ``finally``: an async generator cannot yield while
+    # it is being closed, and a closed turn has nobody left to read it.
+    if final_checkpoint is not None:
+        yield final_checkpoint
+
     # -------------------------------------------------------------------------
     # Auto-continue: drain any messages the user queued AFTER the turn-start
     # drain window and process them as a new turn automatically.
@@ -6521,6 +6549,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     organization_id=organization_id,
                     team_id=team_id,
                     credential_lease=credential_lease,
+                    turn_start=turn_start,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False

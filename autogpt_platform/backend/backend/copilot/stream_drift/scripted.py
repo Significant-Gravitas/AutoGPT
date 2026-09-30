@@ -1,9 +1,10 @@
 """Copilot engines driven by a script instead of a model, for the drift suite."""
 
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from claude_agent_sdk import Message
 from openai.types.chat import ChatCompletionChunk
@@ -11,8 +12,10 @@ from openai.types.chat import ChatCompletionChunk
 from backend.copilot.baseline import service as baseline
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamBaseResponse, StreamStart
+from backend.copilot.sdk import service as sdk
+from backend.copilot.sdk.compaction import CompactionTracker
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
-from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
+from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.tree import root_envelope
 
 
@@ -72,22 +75,60 @@ def provider_round(
 async def sdk_turn(
     session: ChatSession, messages: list[Message]
 ) -> AsyncGenerator[StreamBaseResponse, None]:
-    """The SDK engine's own adapter and row builder over a scripted CLI."""
+    """The SDK engine's consume loop, flushes included, over a scripted CLI;
+    then the turn-end persist and checkpoint of its ``finally``.
+
+    Persistence goes through ``sdk.upsert_chat_session``; patch it to record.
+    """
     message_id = str(uuid.uuid4())
-    adapter = SDKResponseAdapter(message_id=message_id, session_id=session.session_id)
-    acc = _StreamAccumulator(
+    turn_start = len(session.messages)
+    ctx = sdk._StreamContext(
+        session=session,
+        session_id=session.session_id,
+        log_prefix="[drift]",
+        sdk_cwd="/tmp/drift",
+        current_message="",
+        file_ids=None,
+        message_id=message_id,
+        attachments=MagicMock(image_blocks=[]),
+        compaction=CompactionTracker(),
+        lock=MagicMock(refresh=AsyncMock()),
+        turn_start=turn_start,
+    )
+    state = sdk._RetryState(
+        options=MagicMock(),
+        query_message="",
+        compaction_stats=None,
+        use_resume=False,
+        resume_file=None,
+        transcript_msg_count=0,
+        adapter=SDKResponseAdapter(
+            message_id=message_id, session_id=session.session_id
+        ),
+        transcript_builder=MagicMock(),
+        usage=sdk._TokenUsage(),
+    )
+    acc = sdk._StreamAccumulator(
         assistant_response=ChatMessage(role="assistant", content=""),
         accumulated_tool_calls=[],
     )
-    ctx = MagicMock(session=session, log_prefix="[drift]")
+    now = time.monotonic()
+    loop_state = sdk._SDKLoopState(last_real_msg_time=now, last_flush_time=now)
+
+    async def scripted_cli(*_: Any, **__: Any) -> AsyncGenerator[Message, None]:
+        for message in messages:
+            yield message
+
     yield StreamStart(messageId=message_id, sessionId=session.session_id)
-    for message in messages:
-        for response in adapter.convert_message(message):
-            dispatched = _dispatch_response(
-                response, acc, ctx, MagicMock(), False, "[drift]"
-            )
-            if dispatched is not None:
-                yield dispatched
+    with patch.object(sdk, "_iter_sdk_messages", scripted_cli):
+        async for event in sdk._consume_sdk_until_done(
+            MagicMock(), ctx, state, acc, loop_state
+        ):
+            yield event
+    await sdk.upsert_chat_session(session)
+    checkpoint = turn_checkpoint(session.messages, turn_start)
+    if checkpoint is not None:
+        yield checkpoint
 
 
 def _chunk(
