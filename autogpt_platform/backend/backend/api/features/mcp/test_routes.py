@@ -5,6 +5,7 @@ to avoid creating blocking portals that can corrupt pytest-asyncio's session eve
 """
 
 import asyncio
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -14,6 +15,7 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 from pydantic import SecretStr
 
+from backend.api.features.mcp.oauth_registration import preregistered_client
 from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
@@ -430,11 +432,14 @@ class TestOAuthLogin:
             )
 
         assert response.status_code == 200
-        login_url = response.json()["login_url"]
-        assert login_url.startswith("https://slack.com/oauth/v2_user/authorize?")
-        assert "client_id=1234.5678" in login_url
-        assert "autogpt-platform" not in login_url
-        assert "slack-secret" not in login_url
+        login_url = urlsplit(response.json()["login_url"])
+        assert login_url.scheme == "https"
+        assert login_url.hostname == "slack.com"
+        assert login_url.path == "/oauth/v2_user/authorize"
+        query = parse_qs(login_url.query)
+        assert query["client_id"] == ["1234.5678"]
+        assert "client_secret" not in query
+        assert "slack-secret" not in login_url.query
         state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
             "state_metadata"
         ]
@@ -467,8 +472,30 @@ class TestOAuthLogin:
         assert response.status_code == 400
         detail = response.json()["detail"]
         assert detail["code"] == NO_OAUTH_CODE
-        assert "mcp.slack.com" in detail["message"]
+        assert detail["message"] == (
+            "Sign-in to mcp.slack.com is not set up on this platform yet: the "
+            "server only accepts an OAuth app registered with it in advance. "
+            "You may need to provide an auth credential manually."
+        )
         mock_cm.store.store_state_token.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "server_url",
+        [
+            "https://mcp.slack.com.evil.example/mcp",
+            "https://evilmcp.slack.com/mcp",
+            "https://mcp.slack.com@evil.example/mcp",
+        ],
+    )
+    def test_preregistered_client_matches_exact_host(self, server_url):
+        secrets = MagicMock(
+            slack_mcp_client_id="1234.5678", slack_mcp_client_secret="slack-secret"
+        )
+        assert preregistered_client(server_url, secrets) is None
+        assert preregistered_client("https://mcp.slack.com/mcp", secrets) == (
+            "1234.5678",
+            "slack-secret",
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_binds_issuer_and_iss_requirement(self, client):

@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
 from backend.blocks.mcp.oauth import MCPTokenEndpointAuthMethod
@@ -42,11 +44,21 @@ def select_client_auth_method(
     )
 
 
-def preregistered_client(host: str, secrets: Secrets) -> tuple[str, str] | None:
+def preregistered_client(
+    server_url: str, secrets: Secrets
+) -> tuple[str, str] | None:
     """The configured ``(client_id, client_secret)`` for a server that needs a
     pre-registered OAuth app, ``("", "")`` when it needs one but none is
-    configured, or ``None`` when the server is not one of them."""
-    fields = PREREGISTERED_CLIENT_SECRETS.get(host)
+    configured, or ``None`` when the server is not one of them.
+
+    Matches the URL's exact hostname, so a look-alike such as
+    ``mcp.slack.com.evil.example`` never receives the platform's Slack app.
+    """
+    try:
+        host = urlsplit(server_url).hostname
+    except ValueError:
+        return None
+    fields = PREREGISTERED_CLIENT_SECRETS.get(host or "")
     if not fields:
         return None
     id_field, secret_field = fields
