@@ -1579,6 +1579,23 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6.1-sol",
+                display_name="GPT-6.1 Sol",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $2/1M in, $10/1M out — same list price as gpt-6-sol,
+                # live OpenRouter rate as of 2026-09-30. Tier 2 like
+                # gpt-6-sol.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-6-luna",
                 display_name="GPT-6 Luna",
                 provider="openai",

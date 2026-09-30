@@ -274,6 +274,24 @@ def test_gpt6_sol_bills_at_authored_rates():
     assert sol_entry.context_window == 1050000
 
 
+def test_gpt6_1_sol_bills_at_authored_rates():
+    """GPT-6.1 Sol (OpenAI list price $2/$10 per 1M, same as GPT-6 Sol) —
+    flat tier and per-1M projections must match the authored catalog
+    entry."""
+    sol = LLMModel("gpt-6.1-sol")
+    assert MODEL_COST[sol] == 4
+    assert TOKEN_COST[sol].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[sol].max_output_tokens == 128000
+    sol_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-sol")
+    assert sol_entry.price_tier == 2
+    assert sol_entry.context_window == 1050000
+
+
 def test_gpt6_luna_bills_at_authored_rates():
     """GPT-6 Luna (OpenAI list price $0.10/$0.50 per 1M, the fast/cheapest
     GPT-6 tier) — flat tier and per-1M projections must match the
