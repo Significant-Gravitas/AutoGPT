@@ -391,3 +391,13 @@ export function isEngineSwitchPart(dataPart: {
   const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
   return mode === "extended_thinking" || mode === "fast";
 }
+
+export const CREATE_SESSION_RETRY_DELAY_MS = 500;
+
+// A network error on create ("Load failed" on Safari, "Failed to fetch" on
+// Chrome) can mean the server committed and only the response was lost. The
+// request names its session id, so one retry adopts that session instead of
+// bouncing the message back to the composer.
+export function retryLostCreateResponse(failureCount: number, error: unknown) {
+  return failureCount < 1 && error instanceof TypeError;
+}

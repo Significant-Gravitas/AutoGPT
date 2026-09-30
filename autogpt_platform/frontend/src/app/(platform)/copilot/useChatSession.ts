@@ -14,12 +14,17 @@ import { trackFunnel } from "@/services/experts/experts-analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
+import { v4 as uuidv4 } from "uuid";
 import { useEffect, useMemo, useRef } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
-import { resolveSessionDryRun } from "./helpers";
+import {
+  CREATE_SESSION_RETRY_DELAY_MS,
+  resolveSessionDryRun,
+  retryLostCreateResponse,
+} from "./helpers";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
@@ -223,7 +228,12 @@ export function useChatSession({
     }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
-    usePostV2CreateSession();
+    usePostV2CreateSession({
+      mutation: {
+        retry: retryLostCreateResponse,
+        retryDelay: CREATE_SESSION_RETRY_DELAY_MS,
+      },
+    });
 
   async function createSession(options?: { expertKickoff?: boolean }) {
     if (sessionId) return sessionId;
@@ -298,12 +308,11 @@ export function useChatSession({
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
+      // Naming the session up front lets a retry after a lost response adopt
+      // it. Kickoff is already get-or-create on the server.
       if (options?.expertKickoff) sessionData.expert_kickoff = true;
-      const body =
-        Object.keys(sessionData).length > 0
-          ? { data: sessionData }
-          : { data: null };
-      const response = await createSessionMutation(body);
+      else sessionData.session_id = uuidv4({});
+      const response = await createSessionMutation({ data: sessionData });
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {
