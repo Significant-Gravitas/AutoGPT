@@ -26718,10 +26718,16 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
+          },
+          "redirect_uris": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Redirect Uris",
+            "description": "Registered redirect URIs for the consent screen to validate redirect_uri client-side"
           }
         },
         "type": "object",
-        "required": ["name", "scopes"],
+        "required": ["name", "scopes", "redirect_uris"],
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },

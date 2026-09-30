@@ -88,6 +88,8 @@ class OAuthApplicationPublicInfo(BaseModel):
     description: Optional[str] = None
     logo_url: Optional[str] = None
     scopes: list[str]
+    # Authenticated consent screen only — used to validate redirect_uri client-side
+    redirect_uris: list[str]
 
 
 # ============================================================================
@@ -127,6 +129,7 @@ async def get_oauth_app_info(
         description=app.description,
         logo_url=app.logo_url,
         scopes=[s.value for s in app.scopes],
+        redirect_uris=list(app.redirect_uris),
     )
 
 
@@ -185,47 +188,45 @@ async def authorize(
     Returns:
     - redirect_url: The URL to redirect the user to (includes authorization code)
 
-    Error cases return a redirect_url with error parameters, or raise HTTPException
-    for critical errors (like invalid redirect_uri).
+    Error cases: unknown/inactive client and unregistered redirect_uri raise
+    HTTPException (JSON, no redirect). Other OAuth errors return a redirect_url
+    with error parameters to the registered redirect_uri only.
     """
+    # Resolve the OAuth application first. Unknown/inactive clients must not
+    # redirect (RFC 6749 §4.1.2.1) — return a JSON error instead.
+    app = await get_oauth_application(request.client_id)
+    if not app:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unknown client_id",
+        )
+
+    if not app.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Application is not active",
+        )
+
+    # Validate redirect URI before any redirect responses. An unregistered
+    # redirect_uri must never appear in redirect_url.
+    if not validate_redirect_uri(app, request.redirect_uri):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Invalid redirect_uri. "
+                f"Must be one of: {', '.join(app.redirect_uris)}"
+            ),
+        )
+
     try:
-        # Validate response_type
+        # Validate response_type (only after redirect_uri is confirmed registered)
         if request.response_type != "code":
             return _error_redirect_url(
+                app,
                 request.redirect_uri,
                 request.state,
                 "unsupported_response_type",
                 "Only 'code' response type is supported",
-            )
-
-        # Get application
-        app = await get_oauth_application(request.client_id)
-        if not app:
-            return _error_redirect_url(
-                request.redirect_uri,
-                request.state,
-                "invalid_client",
-                "Unknown client_id",
-            )
-
-        if not app.is_active:
-            return _error_redirect_url(
-                request.redirect_uri,
-                request.state,
-                "invalid_client",
-                "Application is not active",
-            )
-
-        # Validate redirect URI
-        if not validate_redirect_uri(app, request.redirect_uri):
-            # For invalid redirect_uri, we can't redirect safely
-            # Must return error instead
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Invalid redirect_uri. "
-                    f"Must be one of: {', '.join(app.redirect_uris)}"
-                ),
             )
 
         # Parse and validate scopes
@@ -233,6 +234,7 @@ async def authorize(
             requested_scopes = [APIKeyPermission(s.strip()) for s in request.scopes]
         except ValueError as e:
             return _error_redirect_url(
+                app,
                 request.redirect_uri,
                 request.state,
                 "invalid_scope",
@@ -241,6 +243,7 @@ async def authorize(
 
         if not requested_scopes:
             return _error_redirect_url(
+                app,
                 request.redirect_uri,
                 request.state,
                 "invalid_scope",
@@ -249,6 +252,7 @@ async def authorize(
 
         if not validate_scopes(app, requested_scopes):
             return _error_redirect_url(
+                app,
                 request.redirect_uri,
                 request.state,
                 "invalid_scope",
@@ -284,7 +288,9 @@ async def authorize(
         raise
     except Exception as e:
         logger.error(f"Error in authorization endpoint: {e}", exc_info=True)
+        # redirect_uri was validated above; still pass app for defense in depth
         return _error_redirect_url(
+            app,
             request.redirect_uri,
             request.state,
             "server_error",
@@ -293,12 +299,26 @@ async def authorize(
 
 
 def _error_redirect_url(
+    app: OAuthApplicationInfo,
     redirect_uri: str,
     state: str,
     error: str,
     error_description: Optional[str] = None,
 ) -> AuthorizeResponse:
-    """Helper to build redirect URL with OAuth error parameters"""
+    """Build redirect URL with OAuth error parameters.
+
+    Defense in depth: refuse to emit a redirect_url unless the URI is
+    registered for the application.
+    """
+    if not validate_redirect_uri(app, redirect_uri):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Invalid redirect_uri. "
+                f"Must be one of: {', '.join(app.redirect_uris)}"
+            ),
+        )
+
     params = {
         "error": error,
         "state": state,
