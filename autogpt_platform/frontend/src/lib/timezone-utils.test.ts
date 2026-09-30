@@ -121,12 +121,8 @@ describe("formatInTimezone", () => {
   });
 
   it("formats a valid ISO string in the given timezone", () => {
-    expect(
-      formatInTimezone("2024-01-15T12:00:00Z", "UTC", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }),
-    ).toBe("Jan 15, 2024");
+    expect(formatInTimezone("2024-01-15T12:00:00Z", "UTC")).toBe(
+      "Jan 15, 2024, 12:00 PM",
+    );
   });
 });
