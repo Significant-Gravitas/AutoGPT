@@ -53,6 +53,9 @@ from .text import mention_entities, mention_token, to_teams_markdown
 logger = logging.getLogger(__name__)
 
 MESSAGES_PATH = "/api/copilot-webhooks/teams/messages"
+_UNREADABLE_CLICK = (
+    "Couldn't read this click, so nothing ran. Answer in AutoGPT instead."
+)
 
 # Conversations we keep a learned serviceUrl for. Evicting one is cheap:
 # the next reply falls back to the default host until it is relearned.
@@ -243,6 +246,11 @@ class TeamsAdapter(WebhookAdapter):
             return
         ctx = await self._build_context(activity)
         if ctx is None:
+            # Only a turn posts a button, and _build_context admitted that
+            # turn's message; a click it refuses is still owed an answer.
+            await self._post(
+                conversation_id, {"type": "message", "text": _UNREADABLE_CLICK}
+            )
             return
         answer = await choices.answer_button(
             self._api, "teams", kind, token, index, ctx.user_id, ctx.server_id
