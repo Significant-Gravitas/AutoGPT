@@ -86,6 +86,32 @@ describe("the stream shadow", () => {
     expect(driftKinds()).toEqual(["finish"]);
   });
 
+  it("keeps a finished turn's check when the next turn starts before the view arrives", async () => {
+    await stream(body);
+    const next = body.replaceAll("drift-turn:", "next-turn:");
+    const nextTurn = createShadowFetch(SESSION, async () => new Response(next));
+    await (await nextTurn("http://x/stream", {})).text();
+    await vi.waitFor(() =>
+      expect(getShadowLog(SESSION)?.turnId).toBe("next-turn"),
+    );
+    const withoutReply = turn.rows.filter((row) => row.sequence !== 3);
+    compareShadowWithSession(SESSION, {
+      messages: withoutReply,
+      active_stream: { turn_id: "next-turn" },
+    });
+    expect(driftKinds()).toEqual(["finish"]);
+  });
+
+  it("keeps a shadow for the most recent sessions only", async () => {
+    for (const id of ["s-1", "s-2", "s-3", "s-4", "s-5", "s-6"]) {
+      const shadowFetch = createShadowFetch(id, async () => new Response(body));
+      await (await shadowFetch("http://x/stream", {})).text();
+      await vi.waitFor(() => expect(getShadowLog(id)?.status).toBe("finished"));
+    }
+    expect(getShadowLog("s-1")).toBeNull();
+    expect(getShadowLog("s-6")?.status).toBe("finished");
+  });
+
   it("waits while the session view still runs the turn", async () => {
     await stream(body);
     compareShadowWithSession(SESSION, {
