@@ -258,14 +258,24 @@ describe("useCopilotStream — a turn the server chains onto the one that ended"
     },
   );
 
-  it(
-    "an approval answered mid-stream and the turn it chains on share one resume",
-    { timeout: 15000 },
-    async () => {
-      let activeTurn: string | null = "turn-1";
+  it.each(["resumed", "sent"] as const)(
+    "an approval answered mid-stream and the turn it chains on share one resume (%s turn)",
+    async (start) => {
+      let activeTurn: string | null = start === "resumed" ? "turn-1" : null;
       let approved = false;
       const resumedTurns: (string | null)[] = [];
       const turn1 = hold();
+      function firstTurn() {
+        // The trailing space lets the POST path's smoother release the word.
+        return turnResponse(
+          "Working on it ",
+          "m-1",
+          () => {
+            activeTurn = "turn-2";
+          },
+          turn1.released,
+        );
+      }
       server.use(
         http.get("*/api/review/session/:sessionId", () =>
           HttpResponse.json(approved ? [] : [folder("a", "Q3 reports")]),
@@ -274,19 +284,13 @@ describe("useCopilotStream — a turn the server chains onto the one that ended"
           approved = true;
           return { approved_count: 1, rejected_count: 0, failed_count: 0 };
         }),
+        http.post(streamUrl(), () => {
+          activeTurn = "turn-1";
+          return firstTurn();
+        }),
         http.get(streamUrl(), () => {
-          const turn = activeTurn;
-          resumedTurns.push(turn);
-          if (turn === "turn-1") {
-            return turnResponse(
-              "Working.",
-              "m-1",
-              () => {
-                activeTurn = "turn-2";
-              },
-              turn1.released,
-            );
-          }
+          resumedTurns.push(activeTurn);
+          if (activeTurn === "turn-1") return firstTurn();
           // Held open, so both triggers land while it is still streaming.
           return turnResponse(
             "Approved and done.",
@@ -299,8 +303,9 @@ describe("useCopilotStream — a turn the server chains onto the one that ended"
         }),
       );
       renderHost({ sessionResponse: liveSession(() => activeTurn) });
+      if (start === "sent") await typeAndSend("Make the folder");
 
-      await screen.findByText("Working.", undefined, { timeout: 5000 });
+      await screen.findByText("Working on it", undefined, { timeout: 5000 });
       await userEvent
         .setup()
         .click(await screen.findByRole("button", { name: "Approve" }));
@@ -310,17 +315,37 @@ describe("useCopilotStream — a turn the server chains onto the one that ended"
       await screen.findByText("Approved and done.", undefined, {
         timeout: 5000,
       });
-      await waitFor(
-        () => {
-          expect(isFinishProbingHistory).toContain(true);
-          expect(isFinishProbingHistory.at(-1)).toBe(false);
-        },
-        { timeout: 5000 },
-      );
+      await waitForProbeToSettle();
       // Past the 1 s reconnect delay, which is where the old second resume came from.
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      expect(resumedTurns).toEqual(["turn-1", "turn-2"]);
+      expect(resumedTurns.filter((turn) => turn === "turn-2")).toHaveLength(1);
+    },
+    15000,
+  );
+
+  it(
+    "a stalled restore is still replaced, and the stream it replaced ending late starts nothing",
+    { timeout: 20000 },
+    async () => {
+      let resumes = 0;
+      const stalled = hold();
+      server.use(
+        http.get(streamUrl(), () => {
+          resumes += 1;
+          if (resumes === 1) return stalledResponse(stalled.released);
+          return turnResponse("Recovered.", "m-1", () => {}, hold().released);
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => "turn-1") });
+
+      // The 6 s restore watchdog reconnects past the resume that never streamed.
+      await screen.findByText("Recovered.", undefined, { timeout: 12000 });
+      stalled.release();
+      await waitForProbeToSettle();
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+
+      expect(resumes).toBe(2);
     },
   );
 });
@@ -335,6 +360,11 @@ function hold() {
   heldStreams.push(release);
   return { released, release };
 }
+
+const SSE_HEADERS = {
+  "content-type": "text/event-stream",
+  "x-vercel-ai-ui-message-stream": "v1",
+};
 
 function liveSession(activeTurn: () => string | null) {
   return getGetV2GetSessionMockHandler200(() => {
@@ -373,13 +403,27 @@ function turnResponse(
       );
     },
   });
-  return new HttpResponse(stream, {
-    status: 200,
-    headers: {
-      "content-type": "text/event-stream",
-      "x-vercel-ai-ui-message-stream": "v1",
+  return new HttpResponse(stream, { status: 200, headers: SSE_HEADERS });
+}
+
+function stalledResponse(released: Promise<void>) {
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      await released;
+      controller.close();
     },
   });
+  return new HttpResponse(stream, { status: 200, headers: SSE_HEADERS });
+}
+
+async function waitForProbeToSettle() {
+  await waitFor(
+    () => {
+      expect(isFinishProbingHistory).toContain(true);
+      expect(isFinishProbingHistory.at(-1)).toBe(false);
+    },
+    { timeout: 5000 },
+  );
 }
 
 function connectionLostToasts() {
