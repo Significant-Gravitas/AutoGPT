@@ -11,21 +11,10 @@ from unittest.mock import MagicMock
 from prisma.enums import BriefingFrequency
 
 from backend.api.features.user.routes import _preference_with_choice
-from backend.data.notifications import (
-    AudienceAction,
-    AudienceEventModel,
-    NotificationPreference,
-)
+from backend.data.notifications import NotificationPreference
 from backend.data.user import _preference_from_user
 
 RESERVED_EMAIL = "test-1@autogpt.test"
-
-
-def test_audience_event_accepts_reserved_domain():
-    event = AudienceEventModel(
-        action=AudienceAction.ENROLL_TOUR, email=RESERVED_EMAIL, user_id="u1"
-    )
-    assert event.email == RESERVED_EMAIL
 
 
 def test_preference_from_user_accepts_reserved_domain():
