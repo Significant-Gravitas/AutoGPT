@@ -21,6 +21,7 @@ from backend.api.features.integrations.router import (
 )
 from backend.api.features.mcp.oauth_registration import (
     MCPClientRegistration,
+    preregistered_client,
     select_client_auth_method,
 )
 from backend.blocks.mcp.client import (
@@ -408,6 +409,27 @@ async def mcp_oauth_login(
             client_id = registration.client_id
             client_secret = registration.client_secret.get_secret_value()
             token_endpoint_auth_method = registration.token_endpoint_auth_method
+    elif (
+        preregistered := preregistered_client(
+            server_host(server_url), settings.secrets
+        )
+    ) is not None:
+        client_id, client_secret = preregistered
+        if not (client_id and client_secret):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"Sign-in to {server_host(server_url)} is not "
+                    "set up on this platform yet: the server only accepts an "
+                    "OAuth app registered with it in advance. "
+                    "You may need to provide an auth credential manually.",
+                },
+            )
+        try:
+            token_endpoint_auth_method = select_client_auth_method(metadata)
+        except ValueError as e:
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
 
     if not client_id:
         client_id = "autogpt-platform"

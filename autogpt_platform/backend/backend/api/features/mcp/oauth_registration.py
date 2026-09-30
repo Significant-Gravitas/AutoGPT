@@ -1,6 +1,14 @@
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
 from backend.blocks.mcp.oauth import MCPTokenEndpointAuthMethod
+from backend.util.settings import Secrets
+
+# MCP servers that refuse Dynamic Client Registration and only accept an OAuth
+# app registered with them in advance, keyed by server host. Each maps to the
+# ``Secrets`` fields holding that app's client id and secret.
+PREREGISTERED_CLIENT_SECRETS: dict[str, tuple[str, str]] = {
+    "mcp.slack.com": ("slack_mcp_client_id", "slack_mcp_client_secret"),
+}
 
 
 class MCPClientRegistration(BaseModel):
@@ -32,3 +40,14 @@ def select_client_auth_method(
     raise ValueError(
         "This MCP server requires an unsupported client authentication method"
     )
+
+
+def preregistered_client(host: str, secrets: Secrets) -> tuple[str, str] | None:
+    """The configured ``(client_id, client_secret)`` for a server that needs a
+    pre-registered OAuth app, ``("", "")`` when it needs one but none is
+    configured, or ``None`` when the server is not one of them."""
+    fields = PREREGISTERED_CLIENT_SECRETS.get(host)
+    if not fields:
+        return None
+    id_field, secret_field = fields
+    return getattr(secrets, id_field), getattr(secrets, secret_field)
