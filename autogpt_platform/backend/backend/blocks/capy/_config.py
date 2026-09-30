@@ -8,8 +8,8 @@ from backend.sdk import APIKeyCredentials, ProviderBuilder, SecretStr
 capy = (
     ProviderBuilder("capy")
     .with_description(
-        "Cloud coding agents: start and steer agent threads on your repos, "
-        "and run pull request reviews"
+        "AI software engineer: background coding agents that fix bugs, build "
+        "features and open pull requests on your repos"
     )
     .with_supported_auth_types("api_key")
     .build()
@@ -34,7 +34,7 @@ TEST_CREDENTIALS_INPUT = {
 def capy_credentials_field():
     return capy.credentials_field(
         description=(
-            "A Capy API key, minted in the Capy app under Settings → API. "
+            "A Capy API key, created at https://capy.ai/settings/api. "
             "Threads it creates belong to the key's principal."
         )
     )

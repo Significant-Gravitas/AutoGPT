@@ -211,14 +211,16 @@ def _answered(messages: list[Message], after_message_id: str) -> bool:
 
     Transcript IDs are ULIDs, so they sort by time: a reply to the given
     message sorts after it. Without one, the latest user entry is the message,
-    and it is answered once anything follows it.
+    and it is answered once anything follows it. An empty transcript isn't an
+    answer: right after a thread is created Capy reports it idle before the
+    brief even reaches the transcript.
     """
     if after_message_id:
         return any(
             m.source == "assistant" and m.text and m.id > after_message_id
             for m in messages
         )
-    return not messages or messages[-1].source != "user"
+    return bool(messages) and messages[-1].source != "user"
 
 
 def _with_reply(

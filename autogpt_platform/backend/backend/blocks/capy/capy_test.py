@@ -380,6 +380,37 @@ class TestWaitForThread:
         assert out["finished"] is True
         assert out["last_reply"] == "pong"
 
+    async def test_a_brand_new_thread_with_no_transcript_is_not_finished(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Seen live: two seconds after Create Thread, Capy reported the thread
+        # idle while its transcript was still empty, and the wait returned
+        # finished with no reply.
+        idle = Thread.model_validate(
+            {**LIVE_THREAD, "status": "idle", "needsYou": False}
+        )
+        brief = Message(id="1", source="user", text="Count the files")
+        get_thread = AsyncMock(side_effect=[idle, idle, idle])
+        newest = AsyncMock(
+            side_effect=[
+                MessagePage(items=[]),
+                MessagePage(items=[brief]),
+                MessagePage(
+                    items=[brief, Message(id="2", source="assistant", text="12")]
+                ),
+            ]
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(CapyClient, "newest_messages", newest)
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
+
+        assert get_thread.await_count == 3
+        assert out["finished"] is True
+        assert out["last_reply"] == "12"
+
     async def test_stops_once_a_failed_thread_still_has_not_replied(
         self, monkeypatch: pytest.MonkeyPatch
     ):
