@@ -299,7 +299,10 @@ class TestEnsureLinked:
         adapter = _adapter()
         await handler.handle(_ctx(), adapter)
         adapter.send_message.assert_awaited_once()
-        assert "went wrong" in adapter.send_message.await_args.args[1].lower()
+        reply = adapter.send_message.await_args.args[1]
+        assert "couldn't check this account's link" in reply
+        assert "(ref " in reply
+        assert "boom" not in reply
 
 
 class TestResolveTarget:
