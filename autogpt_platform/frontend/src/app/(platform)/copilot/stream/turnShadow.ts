@@ -24,7 +24,16 @@ interface ShadowTurn {
   compared: boolean;
 }
 
-const shadows = new Map<string, ShadowTurn>();
+/** A finished turn keeps its slot until compared, so the next turn's entries
+ *  cannot take it before the session view that checks it arrives. */
+interface SessionShadow {
+  current: ShadowTurn;
+  previous: ShadowTurn | null;
+}
+
+// Each slot holds a whole turn's rows; only the most recent sessions keep one.
+const MAX_SESSIONS = 5;
+const shadows = new Map<string, SessionShadow>();
 
 /** Wrap the transport's fetch so every stream response is teed into the shadow. */
 export function createShadowFetch(
@@ -60,16 +69,7 @@ export function createShadowFetch(
 
 export function applyShadowEntry(sessionId: string, entry: StreamEntry) {
   try {
-    let shadow = shadows.get(sessionId);
-    if (!shadow || shadow.log.turnId !== entry.turn) {
-      shadow = {
-        log: emptyTurnLog(),
-        verified: 0,
-        reportedErrors: 0,
-        compared: false,
-      };
-      shadows.set(sessionId, shadow);
-    }
+    const shadow = shadowFor(sessionId, entry.turn);
     shadow.log = applyEntry(shadow.log, entry);
     if (!isWholeTurn(shadow.log)) return;
     reportProtocolErrors(shadow);
@@ -79,17 +79,70 @@ export function applyShadowEntry(sessionId: string, entry: StreamEntry) {
   }
 }
 
-/** Once the DB view no longer runs the shadow's finished turn, diff its rows. */
+/** Once the DB view no longer runs a shadowed finished turn, diff its rows. */
 export function compareShadowWithSession(
   sessionId: string,
-  session: {
-    messages?: readonly unknown[] | null;
-    active_stream?: { turn_id: string } | null;
-    has_more_messages?: boolean;
-  },
+  session: SessionView,
 ) {
-  const shadow = shadows.get(sessionId);
-  if (!shadow || shadow.compared || !isWholeTurn(shadow.log)) return;
+  const slot = shadows.get(sessionId);
+  if (!slot) return;
+  if (slot.previous) compareTurn(slot.previous, session);
+  if (slot.previous?.compared) slot.previous = null;
+  compareTurn(slot.current, session);
+}
+
+export function getShadowLog(sessionId: string): TurnLog | null {
+  return shadows.get(sessionId)?.current.log ?? null;
+}
+
+export function resetShadows() {
+  shadows.clear();
+}
+
+/** One entry per differing row, with the fields that differ. */
+export function diffRows(
+  live: readonly LogRow[],
+  persisted: readonly LogRow[],
+) {
+  const diffs: { index: number; fields: string[] }[] = [];
+  for (let i = 0; i < Math.max(live.length, persisted.length); i++) {
+    const fields = rowDifferences(live[i], persisted[i]);
+    if (fields.length > 0) diffs.push({ index: i, fields });
+  }
+  return diffs;
+}
+
+interface SessionView {
+  messages?: readonly unknown[] | null;
+  active_stream?: { turn_id: string } | null;
+  has_more_messages?: boolean;
+}
+
+function shadowFor(sessionId: string, turnId: string): ShadowTurn {
+  const slot = shadows.get(sessionId);
+  if (slot?.current.log.turnId === turnId) return slot.current;
+  if (slot?.previous?.log.turnId === turnId) return slot.previous;
+  const current = {
+    log: emptyTurnLog(),
+    verified: 0,
+    reportedErrors: 0,
+    compared: false,
+  };
+  const pending = slot && !slot.current.compared ? slot.current : null;
+  shadows.delete(sessionId);
+  shadows.set(sessionId, {
+    current,
+    previous: pending ?? slot?.previous ?? null,
+  });
+  const oldest = shadows.keys().next().value;
+  if (shadows.size > MAX_SESSIONS && oldest !== undefined) {
+    shadows.delete(oldest);
+  }
+  return current;
+}
+
+function compareTurn(shadow: ShadowTurn, session: SessionView) {
+  if (shadow.compared || !isWholeTurn(shadow.log)) return;
   const { log } = shadow;
   if (log.status !== "finished" && log.status !== "failed") return;
   if (session.active_stream?.turn_id === log.turnId) return;
@@ -114,27 +167,6 @@ export function compareShadowWithSession(
     .map(logRowFromPersisted);
   const diffs = diffRows(log.rows, turnRows);
   if (diffs.length > 0) reportDrift("finish", log, { diffs });
-}
-
-export function getShadowLog(sessionId: string): TurnLog | null {
-  return shadows.get(sessionId)?.log ?? null;
-}
-
-export function resetShadows() {
-  shadows.clear();
-}
-
-/** One entry per differing row, with the fields that differ. */
-export function diffRows(
-  live: readonly LogRow[],
-  persisted: readonly LogRow[],
-) {
-  const diffs: { index: number; fields: string[] }[] = [];
-  for (let i = 0; i < Math.max(live.length, persisted.length); i++) {
-    const fields = rowDifferences(live[i], persisted[i]);
-    if (fields.length > 0) diffs.push({ index: i, fields });
-  }
-  return diffs;
 }
 
 // A replay that opens past the turn's `start` (a trimmed stream) is a tail,
