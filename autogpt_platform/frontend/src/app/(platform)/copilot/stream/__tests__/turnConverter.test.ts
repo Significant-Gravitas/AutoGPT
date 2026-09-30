@@ -67,6 +67,19 @@ describe("the converter table", () => {
     });
   });
 
+  it("a start for a second message in the turn opens a new assistant row", () => {
+    const log = fold([
+      { type: "start", messageId: "m1" },
+      ...text("a", "First reply."),
+      { type: "start", messageId: "m2" },
+      ...text("b", "Second reply."),
+    ]);
+    expect(rowsOf(log)).toEqual([
+      { role: "assistant", content: "First reply.", calls: [] },
+      { role: "assistant", content: "Second reply.", calls: [] },
+    ]);
+  });
+
   it("start-step opens a step and finish-step closes it", () => {
     const opened = fold([{ type: "start-step" }]);
     expect(opened.openStep).not.toBeNull();

@@ -62,7 +62,7 @@ export function compareEntryIds(a: string, b: string): number {
 function applyChunk(log: TurnLog, entryId: string, chunk: WireChunk): TurnLog {
   switch (chunk.type) {
     case "start":
-      return { ...log, messageId: str(chunk.messageId) || log.messageId };
+      return startMessage(log, str(chunk.messageId));
     case "finish":
       return {
         ...log,
@@ -114,6 +114,13 @@ function applyChunk(log: TurnLog, entryId: string, chunk: WireChunk): TurnLog {
         return addOverlay(log, entryId, chunk);
       return protocolError(log, entryId, chunk.type, "unknown chunk type");
   }
+}
+
+// An auto-continue streams a second message into the same turn; the engine
+// gives each message a fresh assistant row, as it does each call.
+function startMessage(log: TurnLog, messageId: string): TurnLog {
+  if (!messageId || messageId === log.messageId) return log;
+  return { ...log, messageId, assistantRow: null, hasToolResults: false };
 }
 
 // The backend ends every open block before a step closes (#14762).
