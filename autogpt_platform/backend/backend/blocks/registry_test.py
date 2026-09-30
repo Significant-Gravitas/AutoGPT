@@ -1,3 +1,4 @@
+import inspect
 from unittest.mock import patch
 
 import pytest
@@ -53,16 +54,15 @@ def test_is_test_module(file_name: str, is_test: bool):
 
 
 def test_load_all_blocks_skips_test_modules():
-    blocks.load_all_blocks.cache_clear()
-    try:
-        with (
-            patch.object(blocks, "importlib") as importlib,
-            patch.object(blocks, "_all_subclasses", return_value=[]),
-        ):
-            blocks.load_all_blocks()
-        imported = {call.args[0] for call in importlib.import_module.call_args_list}
-    finally:
-        blocks.load_all_blocks.cache_clear()
+    # Bypass the cache instead of clearing it: a refill would pick up Block
+    # subclasses that other test modules define, e.g. test_sdk_webhooks.py.
+    load_all_blocks_uncached = inspect.unwrap(blocks.load_all_blocks)
+    with (
+        patch.object(blocks, "importlib") as importlib,
+        patch.object(blocks, "_all_subclasses", return_value=[]),
+    ):
+        load_all_blocks_uncached()
+    imported = {call.args[0] for call in importlib.import_module.call_args_list}
 
     assert ".llm" in imported
     assert ".slant3d.webhook" in imported
