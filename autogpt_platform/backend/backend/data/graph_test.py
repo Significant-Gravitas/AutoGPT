@@ -3394,6 +3394,6 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
 
     slots = _slots(graph)
     assert list(slots) == [
-        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
+        "aiml_api-anthropic-google-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
     ]
     assert next(iter(slots.values()))[2] is True
