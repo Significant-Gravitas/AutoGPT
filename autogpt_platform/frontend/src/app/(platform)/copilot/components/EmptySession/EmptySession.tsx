@@ -6,11 +6,10 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useLayoutEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
-  getInputPlaceholder,
   getIntroLine,
   getSuggestionThemes,
 } from "./helpers";
@@ -27,6 +26,7 @@ import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap"
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
+import { useHomeComposer } from "./useHomeComposer";
 
 interface Props {
   isCreatingSession: boolean;
@@ -86,39 +86,28 @@ export function EmptySession({
     />
   ) : undefined;
 
+  const { inputPlaceholder, showStarterPrompts } = useHomeComposer({
+    enabled:
+      isExpertsEnabled &&
+      !intro.isVisible &&
+      !intro.isAwaitingGreeting &&
+      !isKickoffStarting,
+  });
+
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
-      query: { staleTime: Infinity, gcTime: Infinity, refetchOnMount: false },
+      query: {
+        enabled: showStarterPrompts,
+        staleTime: Infinity,
+        gcTime: Infinity,
+        refetchOnMount: false,
+      },
     });
   const themes = getSuggestionThemes(
     suggestedPromptsResponse?.status === 200
       ? suggestedPromptsResponse.data.themes
       : undefined,
   );
-
-  const [inputPlaceholder, setInputPlaceholder] = useState(
-    getInputPlaceholder(),
-  );
-
-  // Layout effect (not a regular effect) so the width-dependent placeholder
-  // is swapped in before the browser paints — otherwise the shorter default
-  // string flashes on screen first and visibly reflows into the longer one,
-  // which is what caused the placeholder to jump between wrapping above the
-  // icons and sitting next to them.
-  useLayoutEffect(() => {
-    function handleResize() {
-      setInputPlaceholder(getInputPlaceholder(window.innerWidth));
-    }
-    handleResize();
-    const mql = window.matchMedia("(max-width: 500px)");
-    mql.addEventListener("change", handleResize);
-    const mql2 = window.matchMedia("(max-width: 1080px)");
-    mql2.addEventListener("change", handleResize);
-    return () => {
-      mql.removeEventListener("change", handleResize);
-      mql2.removeEventListener("change", handleResize);
-    };
-  }, []);
 
   if (isKickoffStarting) {
     return <ExpertKickoffLoader expertName={expertName} />;
@@ -231,7 +220,8 @@ export function EmptySession({
         {/* The greeting page is deliberately quiet: its own prompts are
             the suggestions, so the theme chips stay out of the way. Also
             held while the greeting decision is pending. */}
-        {!intro.isVisible &&
+        {showStarterPrompts &&
+          !intro.isVisible &&
           !intro.isAwaitingGreeting &&
           (isLoadingPrompts ? (
             <div className="flex flex-wrap items-center justify-center gap-3">

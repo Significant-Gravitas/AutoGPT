@@ -1,5 +1,6 @@
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, delay } from "msw";
+import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
@@ -225,4 +226,138 @@ it("switches recipients from the intro with no duplicate picker in the composer"
   expect(
     screen.getByRole("button", { name: "Sending to Maria — change recipient" }),
   ).toBeDefined();
+});
+
+const teamPlaceholder =
+  "What should the team work on? e.g. 'Follow up with yesterday's leads'";
+
+function mockDashboard(dashboard: HomeDashboardResponse) {
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+      HttpResponse.json(dashboard),
+    ),
+  );
+}
+
+it("keeps starter pills and the discovery prompt for an empty account", async () => {
+  renderEmptySession("");
+  expect(await screen.findByRole("button", { name: "Learn" })).toBeDefined();
+  expect(screen.getByPlaceholderText(/What's your role/)).toBeDefined();
+  expect(screen.getByRole("button", { name: "Automate" })).toBeDefined();
+});
+
+it.each([
+  [
+    "an expert hired during onboarding",
+    { team: { total: 1, ready: 1, working: 0, needs_attention: 0 } },
+  ],
+  [
+    "running work",
+    {
+      active_tasks: [
+        { id: "run-1", title: "Weekly report", status: "running" },
+      ],
+    },
+  ],
+  [
+    "scheduled work",
+    {
+      upcoming_tasks: [
+        {
+          id: "schedule-1",
+          title: "Weekly report",
+          kind: "agent",
+          next_run_time: new Date(),
+        },
+      ],
+    },
+  ],
+  [
+    "work awaiting attention",
+    {
+      attention: [
+        {
+          id: "attention-1",
+          kind: "setup",
+          priority: "normal",
+          title: "Finish setup",
+          description: "Connect an account",
+          why_it_matters: "Setup is incomplete",
+          primary_action: { label: "Open", href: "/team" },
+        },
+      ],
+    },
+  ],
+  [
+    "completed work",
+    { week: { ...makeDashboard([]).week, run_count: 1, completed_count: 1 } },
+  ],
+  ["recent chat output", { recent_work: { total_count: 1, groups: [] } }],
+] satisfies [string, Partial<HomeDashboardResponse>][])(
+  "uses the team prompt without starter pills for users with %s",
+  async (_label, activity) => {
+    mockDashboard({ ...makeDashboard([]), ...activity });
+    renderEmptySession("");
+    expect(await screen.findByPlaceholderText(teamPlaceholder)).toBeDefined();
+    for (const name of ["Learn", "Create", "Automate", "Organize"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    expect(
+      screen.getByRole("button", {
+        name: "Sending to Otto — change recipient",
+      }),
+    ).toBeDefined();
+  },
+);
+
+it("withholds starter pills while the account state loads", async () => {
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, async () => {
+      await delay(100);
+      return HttpResponse.json({
+        ...makeDashboard([]),
+        team: { total: 1, ready: 1, working: 0, needs_attention: 0 },
+      });
+    }),
+  );
+  renderEmptySession("");
+  expect(screen.queryByRole("button", { name: "Learn" })).toBeNull();
+  await screen.findByPlaceholderText(teamPlaceholder);
+  expect(screen.queryByRole("button", { name: "Learn" })).toBeNull();
+});
+
+it("keeps the chosen expert's prompt for an existing account", async () => {
+  mockDashboard({
+    ...makeDashboard([]),
+    team: { total: 1, ready: 1, working: 0, needs_attention: 0 },
+  });
+  renderEmptySession("?expertId=expert-maria");
+  await screen.findByRole("heading", { name: "Your recap" });
+  expect(
+    await screen.findByPlaceholderText("What should Maria work on?"),
+  ).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Learn" })).toBeNull();
+});
+
+it("opens a fresh Home visit on Otto after choosing another recipient", async () => {
+  const user = userEvent.setup();
+  const firstVisit = renderEmptySession("");
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Sending to Otto — change recipient",
+    }),
+  );
+  await user.click(await screen.findByRole("menuitem", { name: /Maria/ }));
+  await screen.findByPlaceholderText("What should Maria work on?");
+  firstVisit.unmount();
+
+  renderEmptySession("");
+  expect(
+    await screen.findByRole("button", {
+      name: "Sending to Otto — change recipient",
+    }),
+  ).toBeDefined();
+  expect(
+    screen.queryByPlaceholderText("What should Maria work on?"),
+  ).toBeNull();
 });
