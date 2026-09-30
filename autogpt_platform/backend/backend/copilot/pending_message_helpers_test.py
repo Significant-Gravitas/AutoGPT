@@ -1,5 +1,6 @@
 """Unit tests for pending_message_helpers."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock
@@ -404,6 +405,45 @@ async def test_queue_pending_releases_the_claim_when_the_push_fails(
 
     release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
     accept.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("landed", [True, False])
+async def test_queue_pending_settles_the_claim_by_the_push_when_cancelled(
+    monkeypatch: pytest.MonkeyPatch, landed: bool
+) -> None:
+    """The request is cancelled after the append, while the push still awaits
+    its SPUBLISH: the push finishes and the claim follows its real outcome,
+    so a retry of a message that is already queued is not pushed again."""
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
+    appended = asyncio.Event()
+    published = asyncio.Event()
+
+    async def push(**_: Any) -> QueuePendingMessageResponse:
+        appended.set()
+        await published.wait()
+        return QueuePendingMessageResponse(
+            buffer_length=1 if landed else 0,
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=landed,
+        )
+
+    monkeypatch.setattr(helpers_module, "queue_user_message", push)
+    request = asyncio.create_task(_queue_with_client_id())
+    await appended.wait()
+    request.cancel()
+    await asyncio.sleep(0)
+    published.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    if landed:
+        accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+        release.assert_not_awaited()
+    else:
+        release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+        accept.assert_not_awaited()
 
 
 @pytest.mark.asyncio

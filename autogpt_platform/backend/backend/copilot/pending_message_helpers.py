@@ -7,6 +7,7 @@ Also provides the call-rate-limit check for the queue endpoint so
 routes.py stays free of Redis/Lua details.
 """
 
+import asyncio
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Callable
@@ -278,14 +279,26 @@ async def queue_pending_for_http(
         if claim == "reserved":
             raise client_message_in_progress_error()
 
-    try:
-        response = await queue_user_message(
+    push = asyncio.ensure_future(
+        queue_user_message(
             session_id=session_id,
             message=message,
             context=queue_context,
             file_ids=sanitized_file_ids,
             require_turn_in_flight=True,
         )
+    )
+    try:
+        response = await asyncio.shield(push)
+    except asyncio.CancelledError:
+        # The append may already have landed (the push still awaits its
+        # SPUBLISH), so settle the claim by what the push did, not by the
+        # cancellation: releasing it would let a retry queue a second copy.
+        if client_message_id is not None:
+            await _settle_claim_of_cancelled_push(
+                push, session_id, client_message_id, claim_owner
+            )
+        raise
     except BaseException:
         if client_message_id is not None:
             await release_client_message(session_id, client_message_id, claim_owner)
@@ -315,6 +328,23 @@ async def queue_pending_for_http(
         )
 
     return response
+
+
+async def _settle_claim_of_cancelled_push(
+    push: "asyncio.Future[QueuePendingMessageResponse]",
+    session_id: str,
+    client_message_id: str,
+    owner: str,
+) -> None:
+    try:
+        response = await push
+    except Exception:
+        await release_client_message(session_id, client_message_id, owner)
+        return
+    if response.turn_in_flight:
+        await accept_client_message(session_id, client_message_id, owner)
+    else:
+        await release_client_message(session_id, client_message_id, owner)
 
 
 def client_message_in_progress_error() -> HTTPException:
