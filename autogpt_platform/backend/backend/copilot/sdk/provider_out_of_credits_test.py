@@ -43,7 +43,23 @@ def _session() -> ChatSession:
     )
 
 
-async def _run_turn(refusal: AssistantMessage, result_text: str):
+def _result(
+    text: str, usage: dict | None = None, cost_usd: float | None = None
+) -> ResultMessage:
+    return ResultMessage(
+        subtype="success",
+        result=text,
+        duration_ms=100,
+        duration_api_ms=0,
+        is_error=True,
+        num_turns=1,
+        session_id="test-session-id",
+        total_cost_usd=cost_usd,
+        usage=usage,
+    )
+
+
+async def _run_turn(messages: list):
     session = _session()
     attempts = [0]
 
@@ -51,16 +67,8 @@ async def _run_turn(refusal: AssistantMessage, result_text: str):
         attempts[0] += 1
 
         async def _receive():
-            yield refusal
-            yield ResultMessage(
-                subtype="success",
-                result=result_text,
-                duration_ms=100,
-                duration_api_ms=0,
-                is_error=True,
-                num_turns=1,
-                session_id="test-session-id",
-            )
+            for message in messages:
+                yield message
 
         client = MagicMock()
         client._transport = MagicMock()
@@ -120,7 +128,7 @@ async def _run_turn(refusal: AssistantMessage, result_text: str):
     ],
 )
 async def test_billing_refusal_shows_platform_message(refusal, result_text):
-    events, attempts, session = await _run_turn(refusal, result_text)
+    events, attempts, session = await _run_turn([refusal, _result(result_text)])
 
     streamed_text = "".join(
         e.delta for e in events if isinstance(e, StreamTextDelta)
@@ -139,6 +147,59 @@ async def test_billing_refusal_shows_platform_message(refusal, result_text):
     marker = session.messages[-1].content or ""
     assert "temporarily unavailable" in marker
     assert "openrouter" not in marker.lower()
+
+
+_ROUNDS_USAGE = {
+    "input_tokens": 1200,
+    "output_tokens": 300,
+    "cache_read_input_tokens": 50,
+    "cache_creation_input_tokens": 10,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "messages",
+    [
+        pytest.param(
+            [
+                AssistantMessage(
+                    content=[TextBlock(text="Let me look that up.")],
+                    model="claude-sonnet-4-6",
+                ),
+                AssistantMessage(
+                    content=[TextBlock(text="Credit balance is too low")],
+                    model="<synthetic>",
+                    error="billing_error",
+                ),
+                _result("Credit balance is too low", _ROUNDS_USAGE, 0.042),
+            ],
+            id="refusal-after-a-paid-round",
+        ),
+        pytest.param(
+            [_result(_OPENROUTER_402, _ROUNDS_USAGE, 0.042)],
+            id="refusal-is-the-result",
+        ),
+    ],
+)
+async def test_billing_refusal_still_records_the_turns_usage(messages):
+    # Rounds the provider already served in this turn are billed on the
+    # final ResultMessage, which must still be read after the refusal.
+    with patch(
+        "backend.copilot.sdk.service.persist_and_record_usage",
+        new_callable=AsyncMock,
+    ) as persist:
+        events, _, _ = await _run_turn(messages)
+
+    errors = [e for e in events if isinstance(e, StreamError)]
+    assert [e.code for e in errors] == ["provider_unavailable"]
+    persist.assert_awaited_once()
+    usage = persist.await_args.kwargs
+    assert usage["prompt_tokens"] == 1200
+    assert usage["completion_tokens"] == 300
+    assert usage["cache_read_tokens"] == 50
+    assert usage["cache_creation_tokens"] == 10
+    assert usage["cost_usd"] == 0.042
 
 
 def _raised_402() -> Exception:

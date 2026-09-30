@@ -24,6 +24,32 @@ def _openai_error(
     return cls(message, response=response, body=body)
 
 
+def _openrouter_upstream_error(
+    status: int, upstream_raw: str, provider_name: str
+) -> openai.APIStatusError:
+    """How the OpenAI SDK raises an error OpenRouter relays from an upstream."""
+    body = {
+        "message": "Provider returned error",
+        "code": status,
+        "metadata": {"raw": upstream_raw, "provider_name": provider_name},
+    }
+    return _openai_error(status, body, f"Error code: {status} - {{'error': {body}}}")
+
+
+_GEMINI_QUOTA_429 = (
+    '{"error": {"code": 429, "message": "You exceeded your current quota, please '
+    'check your plan and billing details. For more information on this error, '
+    'head to: https://ai.google.dev/gemini-api/docs/rate-limits.", '
+    '"status": "RESOURCE_EXHAUSTED"}}'
+)
+
+
+def _wrapped(cause: BaseException) -> RuntimeError:
+    error = RuntimeError("LLM call failed")
+    error.__cause__ = cause
+    return error
+
+
 def _anthropic_error(status: int, body: dict, message: str) -> anthropic.APIStatusError:
     response = httpx.Response(
         status, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -64,6 +90,31 @@ def _anthropic_error(status: int, body: dict, message: str) -> anthropic.APIStat
                 "Your credit balance is too low to access the Anthropic API.",
             ),
             id="anthropic-credit-balance",
+        ),
+        pytest.param(
+            _anthropic_error(
+                402,
+                {
+                    "type": "error",
+                    "error": {"type": "billing_error", "message": "Billing issue"},
+                },
+                "Billing issue",
+            ),
+            id="anthropic-billing-error-type",
+        ),
+        pytest.param(
+            # Mid-stream, the OpenAI SDK raises a bare APIError with the
+            # error object as its body, so there is no status to read.
+            openai.APIError(
+                "Insufficient credits",
+                httpx.Request("POST", "https://openrouter.ai/api/v1/chat"),
+                body={"message": "Insufficient credits", "code": 402},
+            ),
+            id="openrouter-402-mid-stream",
+        ),
+        pytest.param(
+            _wrapped(_openai_error(402, {"message": "x", "code": 402}, "x")),
+            id="wrapped-openrouter-402",
         ),
         pytest.param(
             'API Error: 402 {"error":{"message":"This request requires more '
@@ -108,6 +159,48 @@ def test_provider_billing_refusals_are_recognised(error):
             id="plain-rate-limit",
         ),
         pytest.param(_openai_error(500, None, "Error code: 500"), id="server-error"),
+        pytest.param(
+            # Gemini's ordinary rate limit uses OpenAI's out-of-quota wording.
+            _openrouter_upstream_error(429, _GEMINI_QUOTA_429, "Google AI Studio"),
+            id="gemini-rate-limit-via-openrouter",
+        ),
+        pytest.param(
+            _wrapped(
+                _openrouter_upstream_error(429, _GEMINI_QUOTA_429, "Google AI Studio")
+            ),
+            id="wrapped-gemini-rate-limit",
+        ),
+        pytest.param(
+            f"429 RESOURCE_EXHAUSTED. {_GEMINI_QUOTA_429}",
+            id="gemini-rate-limit-text",
+        ),
+        pytest.param(
+            _openai_error(
+                400,
+                {
+                    "message": "Invalid schema for function 'report': "
+                    "'billing_error' is not of type 'object'",
+                    "code": "invalid_request_error",
+                },
+                "Error code: 400 - Invalid schema for function 'report': "
+                "'billing_error' is not of type 'object'",
+            ),
+            id="openai-400-mentioning-billing-error",
+        ),
+        pytest.param(
+            _anthropic_error(
+                400,
+                {
+                    "type": "error",
+                    "error": {
+                        "type": "invalid_request_error",
+                        "message": "tools.0.name: 'billing_error' is reserved",
+                    },
+                },
+                "tools.0.name: 'billing_error' is reserved",
+            ),
+            id="anthropic-400-mentioning-billing-error",
+        ),
         pytest.param(
             "Tool output: at this price you can only afford two seats",
             id="unrelated-can-only-afford",
