@@ -24,6 +24,8 @@ export type FieldKind =
 export interface FieldSpec {
   key: string;
   label: string;
+  // How the value is worded, from the tool's schema; anything else shows as is.
+  format?: string | null;
 }
 
 // What an id argument names, resolved by the server when the call was held.
@@ -67,6 +69,45 @@ function cronText(cron: string) {
   } catch {
     return null;
   }
+}
+
+export function formattedText(
+  format: string | null | undefined,
+  value: unknown,
+) {
+  if (format === "seconds" && typeof value === "number" && value >= 0)
+    return durationText(value);
+  if (format !== "cron") return null;
+  const crons = Array.isArray(value) ? value : [value];
+  const texts = crons.map((cron) =>
+    typeof cron === "string" ? cronText(cron) : null,
+  );
+  return texts.every(Boolean) ? listText(texts) : null;
+}
+
+const UNITS = [
+  ["day", 86_400],
+  ["hour", 3_600],
+  ["minute", 60],
+  ["second", 1],
+] as const;
+
+// The two largest units, the smaller one rounded: 183420 is "2 days 3 hours".
+function durationText(seconds: number) {
+  const at = UNITS.findIndex(([, size]) => seconds >= size);
+  if (at === -1 || at === UNITS.length - 1)
+    return unitText(Math.round(seconds), "second");
+  const [big, bigSize] = UNITS[at];
+  const [small, smallSize] = UNITS[at + 1];
+  const total = Math.round(seconds / smallSize);
+  const perBig = bigSize / smallSize;
+  const rest = total % perBig;
+  const head = unitText(Math.floor(total / perBig), big);
+  return rest ? `${head} ${unitText(rest, small)}` : head;
+}
+
+function unitText(count: number, unit: string) {
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
 }
 
 export function fieldKind(key: string, value: unknown): FieldKind {

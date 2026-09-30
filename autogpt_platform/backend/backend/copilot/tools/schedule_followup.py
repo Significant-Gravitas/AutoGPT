@@ -116,6 +116,8 @@ class ScheduleFollowupTool(BaseTool):
                         "Mutually exclusive with cron."
                     ),
                     "minimum": 60,
+                    "title": "Runs in",
+                    "format": "seconds",
                 },
                 "cron": {
                     "type": "string",
@@ -125,6 +127,8 @@ class ScheduleFollowupTool(BaseTool):
                         "(e.g. '0 9 * * 1' = Mondays at 9am). Mutually "
                         "exclusive with delay_seconds."
                     ),
+                    "title": "Repeats",
+                    "format": "cron",
                 },
                 "session_id": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
@@ -142,6 +146,8 @@ class ScheduleFollowupTool(BaseTool):
                         "or in a different expert scope are rejected as "
                         "'session_not_found'."
                     ),
+                    "title": "Lands in",
+                    "entity": "chat_session",
                 },
                 "name": {
                     "type": "string",

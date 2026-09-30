@@ -473,7 +473,7 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
     """
     return {
         "type": "object",
-        "properties": base_tool.parameters.get("properties", {}),
+        "properties": base_tool.model_parameters.get("properties", {}),
     }
 
 
