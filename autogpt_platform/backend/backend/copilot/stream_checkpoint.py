@@ -14,12 +14,18 @@ def turn_checkpoint(
 ) -> StreamCheckpoint | None:
     """The checkpoint for ``messages[turn_start:]``, or None unless all of them landed.
 
-    A row without a sequence failed to persist, and a gap in the sequences
-    means the DB rows from the first one are not these rows.
+    A row without a sequence failed to persist, a row still flagged
+    ``tool_calls_pending_save`` holds tool calls its back-fill has not written,
+    and a gap in the sequences means the DB rows from the first one are not
+    these rows.
     """
     rows = messages[turn_start:]
     sequences = [row.sequence for row in rows if row.sequence is not None]
-    if not rows or len(sequences) != len(rows):
+    if (
+        not rows
+        or len(sequences) != len(rows)
+        or any(row.tool_calls_pending_save for row in rows)
+    ):
         return None
     first = sequences[0]
     if sequences != list(range(first, first + len(rows))):
