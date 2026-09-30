@@ -60,6 +60,10 @@ class PostHogEvent(StrEnum):
     TRIAL_CONVERTED = "trial_converted"
     PAYMENT_FAILED = "payment_failed"
 
+    # Person properties: backend/data/posthog_lifecycle_sync.py. PostHog's own
+    # person-update event, not a user action; keep it out of funnels.
+    SET_PERSON_PROPERTIES = "$set"
+
 
 class PlannedPostHogEvent(StrEnum):
     """Planned in the tracking plan and NOT emitted yet (SECRT-2723).

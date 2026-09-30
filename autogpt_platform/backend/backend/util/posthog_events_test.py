@@ -38,6 +38,7 @@ LIVE_EVENT_NAMES = {
     "trial_ended",
     "trial_converted",
     "payment_failed",
+    "$set",
 }
 
 PLANNED_EVENT_NAMES = {
