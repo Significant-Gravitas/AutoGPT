@@ -160,7 +160,7 @@ def describe_skill(entry: CapabilityEntry, session_id: str) -> ToolResponseBase:
         capability=entry.listing(),
         parameters=NO_INPUT,
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 def _describe_tool(
