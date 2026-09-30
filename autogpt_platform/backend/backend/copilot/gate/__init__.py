@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
+from backend.platform_linking.models import Platform
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
@@ -57,6 +58,9 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# A chat driven from a linked bot cannot show a card, so it runs ungated until
+# the channel gets its own approval buttons (plan layer L7c).
+CARDLESS_PLATFORMS = frozenset(p.value.lower() for p in Platform)
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
@@ -91,6 +95,8 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
     """The gate runs only where a signed-in user can answer; sessions nobody
     is watching stay ungated until they get their own path."""
     if not user_id or session.metadata.origin != "interactive":
+        return False
+    if session.metadata.source_platform in CARDLESS_PLATFORMS:
         return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
 

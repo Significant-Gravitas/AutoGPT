@@ -65,8 +65,8 @@ describe("trackAdsConversion", () => {
   });
 
   it("withholds the identifiers until the banner is answered", () => {
-    // Unanswered: Consent Mode denies ad_user_data in the EEA/UK/CH and the
-    // browser can't tell which region it's in, so nothing identifying goes out.
+    // Unanswered: Consent Mode denies ad_user_data for every visitor until
+    // the banner is answered, so nothing identifying goes out.
     removeCookiebot();
     installCookiebot();
 
