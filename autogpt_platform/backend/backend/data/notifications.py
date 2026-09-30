@@ -481,10 +481,13 @@ class NotificationPreference(BaseModel):
 
 
 class NotificationPreferenceDTO(BaseModel):
-    # Accepted and ignored: the settings pages send the account's own address
-    # back, and this endpoint never changes it, so a stored address EmailStr
-    # would reject can't fail a save.
-    email: str = ""
+    # Not validated: the settings pages echo the stored address, which
+    # EmailStr may reject (reserved domains).
+    email: str = Field(
+        default="",
+        description="Ignored: saving preferences never changes the account's "
+        "email address. Use POST /auth/user/email for that.",
+    )
     briefing_frequency: BriefingFrequency
     alerts_enabled: bool
     store_verdicts_enabled: bool
