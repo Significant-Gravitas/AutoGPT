@@ -22,7 +22,7 @@ _POST = "/home/user/workspace/blog/post.md"
         (f"tee -a '{_POST}' << 'EOF'\nbody\nEOF", _POST),
         ("printf '%s\\n' > ~/workspace/notes.txt", "/home/user/workspace/notes.txt"),
         ("echo 'hi\nthere' >> ~/shared/out.md", "/home/user/shared/out.md"),
-        ("cd ~/workspace && echo 'x' > a/../b.txt", "/home/user/workspace/b.txt"),
+        ("cd ~/workspace && echo 'x' > ./a//b.txt", "/home/user/workspace/a/b.txt"),
     ],
 )
 def test_the_write_shapes_are_recognised(command, target):
@@ -55,6 +55,9 @@ def test_the_write_shapes_are_recognised(command, target):
         "cd - && cat > p.md << 'EOF'\nx\nEOF",
         "cat > ~root/workspace/p.md << 'EOF'\nx\nEOF",
         "cat > notes.md << 'EOF'\nx\nEOF",
+        # A symlinked directory before a ``..`` moves where it lands.
+        "cd ~/workspace/link && cat > ../p.md << 'EOF'\nx\nEOF",
+        "cat > ~/workspace/link/../p.md << 'EOF'\nx\nEOF",
         # No terminator, so the shell reads to the end.
         f"cat > {_POST} << 'EOF'\nbody",
         "ls ~/workspace",

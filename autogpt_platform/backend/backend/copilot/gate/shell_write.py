@@ -9,7 +9,8 @@ Recognised, with nothing else in the command:
 
 The body must end at the first terminator line, and an unquoted terminator
 only passes when the body has nothing the shell would expand. Anything else,
-a path outside ``WORKSPACE_PATH``/``SHARED_PATH`` included, is not a write.
+a path outside ``WORKSPACE_PATH``/``SHARED_PATH`` or through ``..`` included, is
+not a write. Symlinks live on the sandbox's disk, so the caller checks those.
 """
 
 import posixpath
@@ -65,11 +66,14 @@ def _in_workspace(directory: str | None, path: str) -> str | None:
 
 
 def _resolve(base: str, word: str) -> str | None:
-    """None where the shell would read the word differently: ``~user``, ``cd -``."""
+    """None where the shell would read the word differently: ``~user``, ``cd -``,
+    and ``..``, which the kernel takes from wherever a symlink before it points."""
     if word[:1] in "'\"":
         word = word[1:-1]
     elif word == "~" or word.startswith("~/"):
         word = E2B_WORKDIR + word[1:]
     elif word.startswith(("~", "-")):
+        return None
+    if ".." in word.split("/"):
         return None
     return posixpath.normpath(posixpath.join(base, word))

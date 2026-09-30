@@ -119,7 +119,7 @@ class BashExecTool(BaseTool):
         """A command that only writes one workspace file is judged as that write."""
         command = args.get("command")
         target = workspace_write_target(command) if isinstance(command, str) else None
-        if target is None:
+        if target is None or not await _resolves_to_itself(target):
             return None
         return Subject(key="write_workspace_file", name=target, effect=Effect.WORKSPACE)
 
@@ -271,3 +271,19 @@ class BashExecTool(BaseTool):
                 error="e2b_execution_error",
                 session_id=session_id,
             )
+
+
+async def _resolves_to_itself(path: str) -> bool:
+    """No symlink anywhere on ``path`` in the sandbox, so a shell write to it
+    lands there. Same accepted race as ``_check_sandbox_symlink_escape``."""
+    sandbox = get_current_sandbox()
+    if sandbox is None:
+        return False
+    try:
+        result = await sandbox.commands.run(
+            f"readlink -m -- {shlex.quote(path)}", cwd=E2B_WORKDIR, timeout=5
+        )
+    except Exception:
+        logger.warning("Could not resolve a bash_exec write target", exc_info=True)
+        return False
+    return result.exit_code == 0 and (result.stdout or "").strip() == path
