@@ -348,7 +348,7 @@ async def test_the_owners_approve_runs_the_call_in_the_channels_next_turn(
     await linked.click(card, linked.owner)
 
     assert await _status(review_id, test_user_id) == ReviewStatus.APPROVED
-    assert "✅ Approved: Post a message" in linked.shown()
+    assert "✅ Post a message · Approved" in linked.shown()
     linked.on_message.assert_awaited_once()
     ctx, _ = linked.on_message.await_args.args
     assert ctx.text == held.WAKE_MESSAGE

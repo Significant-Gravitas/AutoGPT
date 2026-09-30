@@ -32,11 +32,11 @@ _ANSWERS: dict[Choice, tuple[bool, chat_rules.ChatRule | None, chat_rules.Scope]
     "reject": (False, None, "chat"),
 }
 _RECEIPTS: dict[Choice, str] = {
-    "approve": "✅ Approved",
-    "approve_chat": "✅ Approved for this chat",
-    "judge": f"✅ Approved; {AUTOPILOT_NAME} judges this from now on",
-    "always_allow": "✅ Always allowed",
-    "reject": "✖️ Rejected",
+    "approve": "Approved",
+    "approve_chat": "Approved for this chat",
+    "judge": f"Approved, and {AUTOPILOT_NAME} judges it from now on",
+    "always_allow": "Always allowed",
+    "reject": "Rejected",
 }
 _PASSAGE_CHARS = 500
 
@@ -66,8 +66,12 @@ def card_for(row: PendingHumanReviewModel) -> CardView:
     return CardView(
         text="\n".join(lines),
         options=[
-            CardOption(choice=choice, label=label, receipt=f"{receipt}: {headline}")
-            for choice, label, receipt in _offered(payload)
+            CardOption(
+                choice=choice,
+                label=label,
+                receipt=f"{'✅' if _ANSWERS[choice][0] else '✖️'} {headline} · {said}",
+            )
+            for choice, label, said in _offered(payload)
         ],
     )
 
@@ -109,8 +113,8 @@ def _offered(payload: dict[str, Any]) -> list[tuple[Choice, str, str]]:
     if _is_held_read(payload):
         reader = str(payload.get("reader") or AUTOPILOT_NAME)
         return [
-            ("approve", f"Release to {reader}", "✅ Released"),
-            ("reject", "Keep it out", "✖️ Kept out"),
+            ("approve", f"Release to {reader}", "Released"),
+            ("reject", "Keep it out", "Kept out"),
         ]
     rules = payload.get("chat_rules_allowed") or []
     offered: list[tuple[Choice, str]] = [("approve", "Approve")]
