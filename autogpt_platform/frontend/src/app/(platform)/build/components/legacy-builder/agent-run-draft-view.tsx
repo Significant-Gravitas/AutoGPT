@@ -656,7 +656,7 @@ export function AgentRunDraftView({
                   <div className="nodrag mt-5 flex flex-col gap-1">
                     Webhook URL:
                     <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                      <code className="select-all text-sm">
+                      <code className="ph-no-capture select-all text-sm">
                         {agentPreset.webhook.url}
                       </code>
                       <Button
