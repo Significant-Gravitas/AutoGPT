@@ -78,11 +78,12 @@ async def test_baseline_tool_turn(
         )
 
     monkeypatch.setattr(baseline, "execute_tool", AsyncMock(side_effect=execute))
+    turn_id = str(uuid.uuid4())
 
     recorded = await record_turn(
-        baseline_turn(session),
+        baseline_turn(session, turn_id),
         session_id=session.session_id,
-        turn_id=str(uuid.uuid4()),
+        turn_id=turn_id,
         persisted=lambda: baseline_io[-1].messages,
     )
 

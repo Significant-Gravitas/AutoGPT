@@ -13,6 +13,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamBaseResponse, StreamStart
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
+from backend.copilot.tree import root_envelope
 
 
 def session_with_prompt(prompt: str) -> ChatSession:
@@ -23,7 +24,7 @@ def session_with_prompt(prompt: str) -> ChatSession:
 
 
 async def baseline_turn(
-    session: ChatSession,
+    session: ChatSession, turn_id: str
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """The baseline engine; its provider and I/O come from the ``baseline_io`` fixture."""
     async for event in baseline.stream_chat_completion_baseline(
@@ -31,6 +32,7 @@ async def baseline_turn(
         user_id="drift-user",
         session=session,
         is_user_message=False,
+        envelope=root_envelope(turn_id, session_id=session.session_id),
     ):
         yield event
 

@@ -266,7 +266,8 @@ async def test_a_reply_that_failed_to_persist_ends_the_turn_in_error(
     persist = AsyncMock(side_effect=ConnectionError("database unavailable"))
     monkeypatch.setattr(baseline, "upsert_chat_session", persist)
 
-    events = [event async for event in baseline_turn(session_with_prompt("Why?"))]
+    turn = baseline_turn(session_with_prompt("Why?"), str(uuid.uuid4()))
+    events = [event async for event in turn]
 
     streamed = "".join(e.delta for e in events if isinstance(e, StreamTextDelta))
     if streamed != "The answer is 42." or not persist.await_count:

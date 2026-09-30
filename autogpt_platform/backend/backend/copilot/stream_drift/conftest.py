@@ -44,6 +44,7 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
         "_build_system_prompt": ("System prompt", None),
+        "build_turn_budget_block": "",
         "is_enabled_for_user": False,
         "is_feature_enabled": False,
         "persist_and_record_usage": None,
