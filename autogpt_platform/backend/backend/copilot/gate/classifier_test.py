@@ -6,7 +6,7 @@ import pytest
 
 from backend.blocks.typesafe._budget import prepare_state
 from backend.copilot.gate import jev
-from backend.copilot.gate.classifier import ACTION_RUBRIC, supervise
+from backend.copilot.gate.classifier import ACTION_RUBRIC, supervise, too_long_reason
 
 _MOD = "backend.copilot.gate.classifier"
 
@@ -206,6 +206,34 @@ async def test_a_shortened_request_keeps_a_pasted_blob_it_cuts_through():
     prompt = call.await_args.kwargs["messages"][1]["content"]
     assert "y" * 10_000 in prompt
     assert "Now hire a dev." in prompt
+
+
+@pytest.mark.parametrize(
+    "args, request_text",
+    [({"command": "echo \ud83d"}, "run it"), ({"command": "ls"}, "run \ud83d")],
+    ids=["lone-surrogate-in-call", "lone-surrogate-in-request"],
+)
+async def test_a_lone_surrogate_is_judged_escaped(args, request_text):
+    (allowed, _), call = await _classify(
+        "allow\nreason: asked", args=args, user_message=request_text
+    )
+
+    assert allowed
+    assert "\\ud83d" in call.await_args.kwargs["messages"][1]["content"]
+
+
+async def test_a_sizing_failure_asks_instead_of_raising():
+    with patch(f"{_MOD}.jev.overflow", side_effect=RuntimeError("encoder broke")):
+        (allowed, reason), call = await _classify("allow\nreason: fine")
+
+    assert not allowed
+    assert reason == "Could not verify this action automatically."
+    call.assert_not_awaited()
+
+
+@pytest.mark.parametrize("over, shown", [(1, "0.1 KB over"), (7_150, "7.2 KB over")])
+def test_the_overflow_is_rounded_up(over, shown):
+    assert f"({shown})" in too_long_reason(over)
 
 
 async def _largest_judged(unit: str, request: str) -> int:

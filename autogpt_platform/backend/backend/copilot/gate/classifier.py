@@ -10,6 +10,7 @@ With Jev configured (``jev.py``) Jev decides and the LLM only explains an ask.
 import asyncio
 import json
 import logging
+import math
 import re
 import secrets
 from pathlib import Path
@@ -66,7 +67,11 @@ async def supervise(
     # A cut call would be judged on its head while its tail runs. Jev's budget is
     # the ceiling even with Jev off: Haiku alone missed a buried `curl | sh` 1 in
     # 10 past it (40k chars), and caught it every time within it.
-    prompt, over = _fit(user_message, fence("PROPOSED CALL", call))
+    try:
+        prompt, over = _fit(_utf8(user_message), fence("PROPOSED CALL", _utf8(call)))
+    except Exception:
+        logger.warning(f"Gate could not size the call for {tool_name}", exc_info=True)
+        return Judgement(allowed=False, reason=_FALLBACK_REASON)
     if over:
         return Judgement(allowed=False, reason=too_long_reason(over))
     first = await jev.judge(prompt) if jev.enabled() else None
@@ -137,11 +142,16 @@ async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
 
 
 def too_long_reason(over: int) -> str:
+    kb = math.ceil(over / 100) / 10
     return (
         "This action is too long for the automatic check to read whole "
-        f"({over / 1000:.1f} KB over). Approve it yourself, or ask for it in "
-        "smaller pieces."
+        f"({kb:.1f} KB over). Approve it yourself, or ask for it in smaller pieces."
     )
+
+
+def _utf8(text: str) -> str:
+    # A lone surrogate is valid JSON but not UTF-8: show it escaped, as ASCII JSON did.
+    return text.encode("utf-8", "backslashreplace").decode("utf-8")
 
 
 def _fit(request: str, proposed: str) -> tuple[str, int]:
