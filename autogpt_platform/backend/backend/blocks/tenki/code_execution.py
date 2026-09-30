@@ -4,7 +4,7 @@ import time
 import uuid
 
 from pydantic import BaseModel
-from tenki import AsyncClient, AsyncSandbox
+from tenki import AsyncClient, AsyncSandbox, CommandResult
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -23,10 +23,23 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, create_client, te
 logger = logging.getLogger(__name__)
 SANDBOX_CLEANUP_MARGIN_SECONDS = 60
 SANDBOX_NAME_SUFFIX_LENGTH = 12
+TIMEOUT_OUTPUT_TAIL_CHARS = 1000
 
 
 class CommandNotCompletedError(Exception):
     """The command timed out or never started, so there is no result to emit."""
+
+
+def _timeout_message(timeout_seconds: int, result: CommandResult) -> str:
+    message = f"Command timed out after {timeout_seconds} seconds"
+    for stream, text in (
+        ("stdout", result.stdout_text),
+        ("stderr", result.stderr_text),
+    ):
+        if text.strip():
+            tail = text[-TIMEOUT_OUTPUT_TAIL_CHARS:]
+            message += f"\n{stream} before the timeout:\n{tail}"
+    return message
 
 
 class SandboxExecution(BaseModel):
@@ -174,7 +187,7 @@ class TenkiRunCodeBlock(Block):
             )
             if result.timed_out:
                 raise CommandNotCompletedError(
-                    f"Command timed out after {input_data.timeout_seconds} seconds"
+                    _timeout_message(input_data.timeout_seconds, result)
                 )
             if result.exit_code < 0 and not result.signal:
                 raise CommandNotCompletedError(

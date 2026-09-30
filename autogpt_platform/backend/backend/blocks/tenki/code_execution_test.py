@@ -214,9 +214,39 @@ async def test_timed_out_command_reports_error_and_closes(monkeypatch):
 
     outputs = await _outputs(TenkiRunCodeBlock(), _input(timeout_seconds=5))
 
-    assert outputs == [("error", "Command timed out after 5 seconds")]
+    assert outputs == [
+        (
+            "error",
+            "Command timed out after 5 seconds\nstdout before the timeout:\nstart\n",
+        )
+    ]
     assert sandbox.close_calls == 1
     assert client.closed
+
+
+async def test_timeout_error_keeps_only_the_output_tail(monkeypatch):
+    sandbox = FakeSandbox(
+        FakeResult(
+            exit_code=-1,
+            stdout="",
+            stderr="x" * 5000 + "last line",
+            signal="terminated",
+            reason="timeout",
+            timed_out=True,
+        )
+    )
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+
+    [(pin, message)] = await _outputs(TenkiRunCodeBlock(), _input(timeout_seconds=5))
+
+    assert pin == "error"
+    assert message.startswith(
+        "Command timed out after 5 seconds\nstderr before the timeout:\n"
+    )
+    assert "stdout" not in message
+    assert message.endswith("last line")
+    assert len(message) < 2200
 
 
 async def test_command_that_cannot_start_reports_reason(monkeypatch):
