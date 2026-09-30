@@ -28,6 +28,7 @@ import {
 import { useAutopilotModeStore } from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
+import { compareShadowWithSession } from "./stream/turnShadow";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -170,6 +171,12 @@ export function useChatSession({
     !!sessionId && sessionQuery.data?.status === 200 && !sessionQuery.isFetching
       ? sessionQuery.data.data
       : null;
+
+  useEffect(() => {
+    if (sessionId && freshSessionData) {
+      compareShadowWithSession(sessionId, freshSessionData);
+    }
+  }, [sessionId, freshSessionData]);
 
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
