@@ -410,9 +410,7 @@ async def mcp_oauth_login(
             client_secret = registration.client_secret.get_secret_value()
             token_endpoint_auth_method = registration.token_endpoint_auth_method
     elif (
-        preregistered := preregistered_client(
-            server_host(server_url), settings.secrets
-        )
+        preregistered := preregistered_client(server_host(server_url), settings.secrets)
     ) is not None:
         client_id, client_secret = preregistered
         if not (client_id and client_secret):
