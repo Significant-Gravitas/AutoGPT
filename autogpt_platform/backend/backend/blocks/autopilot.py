@@ -264,7 +264,8 @@ class AutoPilotBlock(Block):
                 "True (default): 'providers' is a deny-list — listed providers "
                 "are blocked, all others are allowed. An empty 'providers' list "
                 "means allow everything. False: 'providers' is an allow-list — "
-                "only listed providers are permitted."
+                "of the supported connected-account providers, only listed "
+                "ones are permitted. Other providers are not covered."
             ),
             default=True,
             advanced=True,
