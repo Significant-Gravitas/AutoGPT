@@ -131,6 +131,21 @@ class TestErrors:
         assert "not connected" in str(err)
         assert "openai/gpt-6" in str(err)
 
+    @pytest.mark.parametrize(
+        "candidates", [["openai/gpt-6", {"name": "Grok"}], "openai/gpt-6, Grok"]
+    )
+    def test_model_rejection_tolerates_plain_candidates(self, candidates):
+        # A rejection must stay a tagged CapyAPIError whatever shape the
+        # candidates take, or the balance fallback never sees the tag.
+        err = _error(
+            _response(
+                400, {"_tag": "ModelSelection.Rejected", "candidates": candidates}
+            )
+        )
+
+        assert err.tag == "ModelSelection.Rejected"
+        assert "openai/gpt-6" in str(err) and "Grok" in str(err)
+
     def test_non_json_error_body(self):
         response = _response(502, None)
         response.json.side_effect = ValueError("not json")

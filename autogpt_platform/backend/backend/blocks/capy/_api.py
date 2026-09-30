@@ -328,7 +328,10 @@ def _error(response: Response) -> CapyAPIError:
     if detail:
         message += f": {detail}"
     if candidates := body.get("candidates"):
-        names = ", ".join(str(c.get("entryId", c.get("name"))) for c in candidates)
+        names = ", ".join(
+            str(c.get("entryId", c.get("name"))) if isinstance(c, dict) else str(c)
+            for c in (candidates if isinstance(candidates, list) else [candidates])
+        )
         message += f". Available models: {names}"
     return CapyAPIError(
         response.status,
