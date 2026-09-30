@@ -8,6 +8,7 @@ import pytest
 from backend.blocks.desktop._api import (
     WORKSPACE_PATH,
     DesktopSession,
+    PersistenceInfo,
     _create_sandbox_with_volumes,
 )
 from backend.util.e2b_network import EgressOwner
@@ -77,7 +78,38 @@ async def test_a_create_that_hangs_is_cut_off():
 
 @pytest.mark.asyncio
 async def test_connect_rearms_the_running_time_limit():
-    with patch(f"{_M}.AsyncSandbox") as cls:
-        cls.connect = AsyncMock(return_value=MagicMock())
+    box = MagicMock()
+    with (
+        patch(f"{_M}.AsyncSandbox") as cls,
+        patch(f"{_M}.take_baseline", AsyncMock()) as baseline,
+    ):
+        cls.connect = AsyncMock(return_value=box)
         await DesktopSession.connect("sb-1", "k", timeout_seconds=900, owner=_OWNER)
     cls.connect.assert_awaited_once_with("sb-1", api_key="k", timeout=900)
+    # One made before login baselines existed gets its baseline here.
+    baseline.assert_awaited_once_with(box, only_if_missing=True)
+
+
+@pytest.mark.asyncio
+async def test_a_desktop_takes_its_login_baseline_before_its_first_command():
+    """Without one every internal command refuses, the display's included."""
+    order: list[str] = []
+    box = MagicMock()
+    with (
+        patch(
+            f"{_M}._create_sandbox_with_volumes",
+            AsyncMock(return_value=(box, PersistenceInfo())),
+        ),
+        patch(
+            f"{_M}.take_baseline",
+            AsyncMock(side_effect=lambda *_a, **_k: order.append("baseline")),
+        ),
+        patch.object(
+            DesktopSession,
+            "ensure_display",
+            AsyncMock(side_effect=lambda *_a: order.append("display")),
+        ),
+        patch.object(DesktopSession, "run_command", AsyncMock()),
+    ):
+        await DesktopSession.create("k", 900, 1280, 720, owner=_OWNER)
+    assert order[:2] == ["baseline", "display"]

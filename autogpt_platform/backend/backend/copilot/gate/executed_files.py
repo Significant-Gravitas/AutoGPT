@@ -119,7 +119,6 @@ _PREFIXES = {
 }
 _PYTHON_NAME = re.compile(r"python(\d+(\.\d+)?)?")
 _PUNCTUATION = set("();<>|&")
-_SEPARATES = set("();|&")
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 _HEREDOC = re.compile(r"<<(?P<strip>-?)\s*['\"]?(?P<tag>\w+)['\"]?")
 
@@ -219,13 +218,20 @@ def _simple_commands(command: str) -> list[list[str]]:
 
 
 def _is_separator(token: str) -> bool:
-    # shlex fuses adjacent punctuation (`);`, `)&&`), so match any such run.
-    return bool(token) and set(token) <= _PUNCTUATION and bool(set(token) & _SEPARATES)
+    # shlex fuses adjacent punctuation (`);`, `)&&`), so match any such run; a
+    # redirect such as `&>` or `>&` is not one.
+    if not token or not set(token) <= _PUNCTUATION or _is_redirect(token):
+        return False
+    return bool(set(token) & set(";()|")) or token in ("&", "&&")
+
+
+def _is_redirect(token: str) -> bool:
+    return set(token) <= _PUNCTUATION and bool(set(token) & set("<>"))
 
 
 def _run_target(words: list[str]) -> str | None:
     """The script a simple command runs, None when it runs none from disk; raises
-    ``_Unclear`` when its options leave that uncertain."""
+    ``_Unclear`` when its options or redirects leave that uncertain."""
     words = _strip_prefixes(words)
     if not words:
         return None
@@ -235,15 +241,31 @@ def _run_target(words: list[str]) -> str | None:
     if options is None:
         # A program named by path is itself the file that runs.
         return words[0] if "/" in words[0] else None
-    rest = iter(words[1:])
-    for word in rest:
-        if word == "<":
-            return next(rest, None)
+    script = _script_word(words[1:], options)
+    if script is None and "<" in words:
+        # No script named, so the code comes in on stdin (`bash < x.sh`).
+        after = words.index("<") + 1
+        return words[after] if after < len(words) else None
+    return script
+
+
+def _script_word(args: list[str], options: _Options) -> str | None:
+    index = 0
+    while index < len(args):
+        word, following = args[index], args[index + 1 : index + 2]
+        if word == "<" or word.startswith("<<"):
+            # stdin feeds the code: the caller reads `<`; a heredoc is in the command.
+            return None
+        if _is_redirect(word) or (
+            word.isdigit() and following and _is_redirect(following[0])
+        ):
+            raise _Unclear(word)
         if word == "--":
-            return next(rest, None)
+            return following[0] if following else None
         if word in options.inline:
             return None
         if word in options.subcommands:
+            index += 1
             continue
         if not word.startswith(("-", "+")):
             return word
@@ -251,9 +273,8 @@ def _run_target(words: list[str]) -> str | None:
         if kind == "inline":
             return None
         if kind == "script":
-            return next(rest, None)
-        if kind == "valued":
-            next(rest, None)
+            return following[0] if following else None
+        index += 2 if kind == "valued" else 1
     return None
 
 

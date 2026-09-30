@@ -12,5 +12,8 @@ def login_chain_unchanged(request):
         yield
         return
     unchanged = AsyncMock(return_value={})
-    with (patch("backend.util.sandbox_login.changed_login_files", unchanged),):
+    with (
+        patch("backend.util.sandbox_login.changed_login_files", unchanged),
+        patch("backend.blocks.desktop._api.take_baseline", AsyncMock()),
+    ):
         yield

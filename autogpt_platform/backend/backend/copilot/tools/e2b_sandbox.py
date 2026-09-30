@@ -100,7 +100,7 @@ from backend.util.e2b_template import (
     ensure_template,
     forget_template,
 )
-from backend.util.sandbox_login import ensure_baseline, record_baseline, run_internal
+from backend.util.sandbox_login import run_internal, take_baseline
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
 
 logger = logging.getLogger(__name__)
@@ -757,7 +757,7 @@ async def get_or_create_owner_sandbox(
                 continue
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
-                await _record_login_baseline(sandbox, only_if_missing=True)
+                await take_baseline(sandbox, only_if_missing=True)
                 if count_turn:
                     await _acquire_turn(owner)
                 return sandbox
@@ -860,7 +860,7 @@ async def get_or_create_owner_sandbox(
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
-            await _record_login_baseline(sandbox)
+            await take_baseline(sandbox)
             if mounts:
                 with contextlib.suppress(Exception):
                     await run_internal(
@@ -905,24 +905,6 @@ async def get_or_create_owner_sandbox(
         return sandbox
 
     raise RuntimeError(f"Could not acquire E2B sandbox for {owner}")
-
-
-async def _record_login_baseline(
-    sandbox: AsyncSandbox, *, only_if_missing: bool = False
-) -> None:
-    # Logged, not raised: without a baseline every login file reads as changed,
-    # so judged commands carry them all and internal ones refuse.
-    try:
-        if only_if_missing:
-            await ensure_baseline(sandbox)
-        else:
-            await record_baseline(sandbox)
-    except Exception:
-        logger.error(
-            "[E2B] Could not record the login baseline for %.12s",
-            sandbox.sandbox_id,
-            exc_info=True,
-        )
 
 
 async def get_or_create_sandbox(

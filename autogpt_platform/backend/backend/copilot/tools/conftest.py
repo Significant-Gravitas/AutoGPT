@@ -58,7 +58,6 @@ def login_chain_unchanged(request):
     with (
         patch("backend.util.sandbox_login.changed_login_files", unchanged),
         patch("backend.copilot.tools.bash_exec.changed_login_files", unchanged),
-        patch("backend.copilot.tools.e2b_sandbox.record_baseline", AsyncMock()),
-        patch("backend.copilot.tools.e2b_sandbox.ensure_baseline", AsyncMock()),
+        patch("backend.copilot.tools.e2b_sandbox.take_baseline", AsyncMock()),
     ):
         yield

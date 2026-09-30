@@ -45,6 +45,9 @@ _W = f"{_HOME}/workspace"
             [f"{_W}/d.py"],
         ),
         ("bash x.sh '(literal)'", [f"{_HOME}/x.sh"]),
+        # Code on stdin is the file that runs; a redirect after the script is not.
+        ("python - < x.py", [f"{_HOME}/x.py"]),
+        ("python x.py < data.csv > out.log 2>&1", [f"{_HOME}/x.py"]),
         ("echo ${HOME}; bash x.sh", [f"{_HOME}/x.sh"]),
     ],
 )
@@ -65,6 +68,7 @@ def test_a_direct_run_names_the_file(command, paths):
         "php -r 'echo 1;'",
         "python -m http.server",
         "command -v jq",
+        "bash <<'EOF'\necho hi\nEOF",
         # Not a run.
         "cat x.sh",
         "echo bash x.sh",
@@ -93,6 +97,10 @@ def test_other_commands_name_nothing(command):
         "{ cd /tmp; }; bash run.sh",
         'python x.py --out "$(date)"',
         "bash `echo x.sh`",
+        # A redirect before the script could hide which word is the file.
+        "bash > out x.sh",
+        "bash 2> err x.sh",
+        "bash &> log x.sh",
     ],
 )
 def test_a_run_it_cannot_resolve_is_unclear_not_guessed(command):

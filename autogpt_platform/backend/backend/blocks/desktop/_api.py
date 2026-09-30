@@ -23,7 +23,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     kill_sandbox,
 )
-from backend.util.sandbox_login import run_internal
+from backend.util.sandbox_login import run_internal, take_baseline
 
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
@@ -121,6 +121,7 @@ class DesktopSession:
         sandbox, persistence = await _create_sandbox_with_volumes(
             volume_mounts, api_key, timeout_seconds, template, metadata, owner=owner
         )
+        await take_baseline(sandbox)
         session = cls(sandbox)
         try:
             await session.ensure_display(width, height)
@@ -158,6 +159,7 @@ class DesktopSession:
         sandbox = await connect_sandbox(
             AsyncSandbox, sandbox_id, owner, api_key=api_key, timeout=timeout_seconds
         )
+        await take_baseline(sandbox, only_if_missing=True)
         return cls(sandbox)
 
     async def start_stream(

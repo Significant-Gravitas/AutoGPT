@@ -40,6 +40,10 @@ class LoginChainChanged(RuntimeError):
     """``/etc``'s login files differ from the sandbox's baseline."""
 
 
+class _TooLong(Exception):
+    """A login file past ``READ_CAP``, which cannot be compared whole."""
+
+
 async def run_internal(
     sandbox: AsyncSandbox,
     command: str,
@@ -66,6 +70,24 @@ async def run_internal(
     return await sandbox.commands.run(
         command, user=user, envs={**(envs or {}), "HOME": _NO_HOME}, **kwargs
     )
+
+
+async def take_baseline(
+    sandbox: AsyncSandbox, *, only_if_missing: bool = False
+) -> None:
+    """Called by whatever creates or reconnects a sandbox, before any agent action.
+    Logged, not raised: without a baseline every login file reads as changed, so
+    judged commands carry them all and internal ones refuse."""
+    try:
+        if only_if_missing:
+            await ensure_baseline(sandbox)
+        else:
+            await record_baseline(sandbox)
+    except Exception:
+        logger.error(
+            f"Could not record the login baseline for {sandbox.sandbox_id[:12]}",
+            exc_info=True,
+        )
 
 
 async def record_baseline(sandbox: AsyncSandbox) -> None:
@@ -157,7 +179,18 @@ async def _snapshot(
     contents = await asyncio.gather(
         *(read_capped(sandbox, path) for path in paths), return_exceptions=True
     )
-    return {**listing, **dict(zip(paths, contents))}
+    # Only a prefix would be hashed, and a change past it would go unseen.
+    return {
+        **listing,
+        **{
+            path: (
+                _TooLong(path)
+                if isinstance(raw, bytes) and len(raw) > READ_CAP
+                else raw
+            )
+            for path, raw in zip(paths, contents)
+        },
+    }
 
 
 def _key(sandbox: AsyncSandbox) -> str:
