@@ -31,6 +31,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ResultError,
     ResultMessage,
     StreamEvent,
     TextBlock,
@@ -1984,6 +1985,27 @@ class _FinalFailure:
     retryable: bool
 
 
+def _is_raised_billing_refusal(err: BaseException) -> bool:
+    """A billing refusal that reached us raised rather than streamed.
+
+    Only a typed provider error or the CLI's own error result, which the SDK
+    raises as ``ResultError`` once the CLI exits, is judged; ``str()`` of any
+    other exception can quote the user's input or a page a tool fetched.
+    """
+    if is_provider_out_of_credits(err):
+        return True
+    seen: set[int] = set()
+    current: BaseException | None = err
+    while current is not None and id(current) not in seen:
+        if isinstance(current, ResultError):
+            return current.api_error_status == 402 or is_provider_out_of_credits(
+                current.result
+            )
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def _classify_final_failure(
     interrupted: _InterruptedAttempt,
     attempts_exhausted: bool,
@@ -2022,7 +2044,7 @@ def _classify_final_failure(
     if (
         stream_err is not None
         and platform_route
-        and is_provider_out_of_credits(stream_err)
+        and _is_raised_billing_refusal(stream_err)
     ):
         return _FinalFailure(
             display_msg=PROVIDER_UNAVAILABLE_MESSAGE,

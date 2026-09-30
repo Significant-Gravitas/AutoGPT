@@ -62,18 +62,18 @@ _BARE_402_RE = re.compile(
 def is_provider_out_of_credits(error: BaseException | str | None) -> bool:
     """True when a provider refused because the account it bills is empty.
 
-    A typed SDK error anywhere in the chain is judged on its structured
-    fields alone: its text can quote an upstream (OpenRouter relays Gemini's
-    rate limit verbatim in ``metadata.raw``) or the caller's own input.
+    An exception counts only through a typed SDK error in its chain, judged on
+    its structured fields alone: any error's text can quote an upstream
+    (OpenRouter relays Gemini's rate limit verbatim in ``metadata.raw``), the
+    user's own input or a fetched page. A ``str`` is for the Claude CLI's own
+    error result, which only reaches us as text.
     """
     if error is None:
         return False
     if isinstance(error, str):
         return _text_matches(error)
     typed = _typed_provider_error(error)
-    if typed is not None:
-        return _typed_error_is_billing(typed)
-    return _text_matches(str(error))
+    return typed is not None and _typed_error_is_billing(typed)
 
 
 def _typed_provider_error(
