@@ -1,7 +1,5 @@
 "use client";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   Flag,
@@ -100,9 +98,6 @@ export const MainMarkeplacePage = () => {
               <div className="mb-20" id={AGENTS_SECTION_ID}>
                 <AgentsSection
                   sectionTitle="All AI Workflows"
-                  titleIcon={
-                    <Icon icon={UserAiIcon} size="2.2rem" aria-hidden />
-                  }
                   subtitle="Ready-made automations from the community."
                   agents={topAgents.agents}
                 >

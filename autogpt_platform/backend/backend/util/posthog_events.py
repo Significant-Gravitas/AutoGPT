@@ -29,6 +29,8 @@ class PostHogEvent(StrEnum):
     TRIGGER_FIRED = "trigger_fired"
     EXPERT_HIRED = "expert_hired"
     INTEGRATION_CONNECTED = "integration_connected"
+    CREDENTIAL_OAUTH_STARTED = "credential_oauth_started"
+    CREDENTIAL_OAUTH_EXCHANGE_FAILED = "credential_oauth_exchange_failed"
 
     # Experts loop: backend/util/funnel_analytics.py
     HIRE_FAILED = "hire_failed"
@@ -67,6 +69,10 @@ class PostHogEvent(StrEnum):
     SUBSCRIPTION_TRIAL_ENDED = "subscription_trial_ended"
     SUBSCRIPTION_TRIAL_CONVERTED = "subscription_trial_converted"
     SUBSCRIPTION_TRIAL_PAYMENT_FAILED = "subscription_trial_payment_failed"
+
+    # Person properties: backend/data/posthog_lifecycle_sync.py. PostHog's own
+    # person-update event, not a user action; keep it out of funnels.
+    SET_PERSON_PROPERTIES = "$set"
 
 
 class PlannedPostHogEvent(StrEnum):
