@@ -19,6 +19,8 @@ describe("the recorded turns through the AI SDK's own parser", () => {
     "baseline-drain-turn",
     "sdk-reasoning-turn",
     "sdk-auto-continue-turn",
+    "baseline-consecutive-tools-turn",
+    "sdk-consecutive-tools-turn",
   ])("%s: entry ids and the checkpoint change nothing", async (name) => {
     const { frames } = loadRecordedTurn(name);
     const bare = frames
