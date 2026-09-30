@@ -198,6 +198,16 @@ async def test_a_request_too_long_to_fit_keeps_its_start_and_end():
     assert "Now hire a developer." in prompt
 
 
+async def test_a_shortened_request_keeps_a_pasted_blob_it_cuts_through():
+    request = "Review this: " + "x" * 30_000 + " " + "y" * 30_000 + " Now hire a dev."
+
+    _, call = await _classify("allow\nreason: asked", user_message=request)
+
+    prompt = call.await_args.kwargs["messages"][1]["content"]
+    assert "y" * 10_000 in prompt
+    assert "Now hire a dev." in prompt
+
+
 async def _largest_judged(unit: str, request: str) -> int:
     low, high = 1, 40_000
     while low < high:

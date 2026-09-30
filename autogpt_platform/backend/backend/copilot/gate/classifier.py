@@ -33,8 +33,9 @@ ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
 # tell what was asked, so the call is held as too long instead.
 _MIN_REQUEST_CHARS = 1_000
 _OMITTED = "\n[… part of the user's message omitted by the system …]\n"
-_PARTIAL_LAST_WORD = re.compile(r"(?<=\s)\S+\Z")
-_PARTIAL_FIRST_WORD = re.compile(r"\A\S+(?=\s)")
+# A longer "word" is a URL or a pasted blob: cut through it rather than drop it.
+_PARTIAL_LAST_WORD = re.compile(r"(?<=\s)\S{1,40}\Z")
+_PARTIAL_FIRST_WORD = re.compile(r"\A\S{1,40}(?=\s)")
 _FALLBACK_REASON = "Could not verify this action automatically."
 
 DecidedBy = Literal["llm", "jev", "jev+llm"]
