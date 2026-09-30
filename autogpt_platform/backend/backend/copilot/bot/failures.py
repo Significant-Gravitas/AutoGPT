@@ -34,19 +34,65 @@ class FailureCategory(BaseModel):
     advice: str
 
 
-INTERNAL = FailureCategory(key="internal", reason="AutoGPT hit an internal error", advice=AGAIN_SOON)
-PROVIDER_BUSY = FailureCategory(key="provider_busy", reason="the model provider is busy", advice=AGAIN_SOON)
-PROVIDER_LIMIT = FailureCategory(key="provider_limit", reason="the model provider's usage limit was reached", advice="Try again later.")
-SERVICE_REJECTED = FailureCategory(key="service_rejected", reason="a connected service rejected the request", advice="Check your connected accounts in AutoGPT, then try again.")
-REQUEST_DECLINED = FailureCategory(key="request_declined", reason="the model provider declined this request", advice="Try rephrasing it.")
-MODEL_UNAVAILABLE = FailureCategory(key="model_unavailable", reason="the model isn't available right now", advice="Try again later.")
-NOT_IN_PLAN = FailureCategory(key="not_in_plan", reason="your plan doesn't include this", advice="Check your plan in AutoGPT.")
-TOO_LONG = FailureCategory(key="too_long", reason="the request took too long", advice="Try again, or break it into smaller steps.")
-STEP_LIMIT = FailureCategory(key="step_limit", reason="the task hit its step limit", advice="Break it into smaller steps and try again.")
-EMPTY_REPLY = FailureCategory(key="empty_reply", reason="the model returned an empty reply", advice=AGAIN_SOON)
-STOPPED = FailureCategory(key="stopped", reason="the run was stopped before it finished", advice="Send it again to retry.")
-START_FAILED = FailureCategory(key="start_failed", reason="AutoGPT couldn't start this conversation", advice=AGAIN_SOON)
-LINK_CHECK_FAILED = FailureCategory(key="link_check_failed", reason="AutoGPT couldn't check this account's link", advice=AGAIN_SOON)
+INTERNAL = FailureCategory(
+    key="internal", reason="AutoGPT hit an internal error", advice=AGAIN_SOON
+)
+PROVIDER_BUSY = FailureCategory(
+    key="provider_busy", reason="the model provider is busy", advice=AGAIN_SOON
+)
+PROVIDER_LIMIT = FailureCategory(
+    key="provider_limit",
+    reason="the model provider's usage limit was reached",
+    advice="Try again later.",
+)
+SERVICE_REJECTED = FailureCategory(
+    key="service_rejected",
+    reason="a connected service rejected the request",
+    advice="Check your connected accounts in AutoGPT, then try again.",
+)
+REQUEST_DECLINED = FailureCategory(
+    key="request_declined",
+    reason="the model provider declined this request",
+    advice="Try rephrasing it.",
+)
+MODEL_UNAVAILABLE = FailureCategory(
+    key="model_unavailable",
+    reason="the model isn't available right now",
+    advice="Try again later.",
+)
+NOT_IN_PLAN = FailureCategory(
+    key="not_in_plan",
+    reason="your plan doesn't include this",
+    advice="Check your plan in AutoGPT.",
+)
+TOO_LONG = FailureCategory(
+    key="too_long",
+    reason="the request took too long",
+    advice="Try again, or break it into smaller steps.",
+)
+STEP_LIMIT = FailureCategory(
+    key="step_limit",
+    reason="the task hit its step limit",
+    advice="Break it into smaller steps and try again.",
+)
+EMPTY_REPLY = FailureCategory(
+    key="empty_reply", reason="the model returned an empty reply", advice=AGAIN_SOON
+)
+STOPPED = FailureCategory(
+    key="stopped",
+    reason="the run was stopped before it finished",
+    advice="Send it again to retry.",
+)
+START_FAILED = FailureCategory(
+    key="start_failed",
+    reason="AutoGPT couldn't start this conversation",
+    advice=AGAIN_SOON,
+)
+LINK_CHECK_FAILED = FailureCategory(
+    key="link_check_failed",
+    reason="AutoGPT couldn't check this account's link",
+    advice=AGAIN_SOON,
+)
 
 # Stream error codes, from the copilot's StreamError.code: the SDK/baseline
 # codes plus ProviderFailureKind values. An unlisted code is INTERNAL.

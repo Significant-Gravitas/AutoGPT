@@ -78,9 +78,7 @@ def test_report_logs_the_reference_and_the_raw_error(
     exc = BotStreamError("backend_stream_error", "provider said 529", code="x")
 
     with caplog.at_level(logging.ERROR, logger=failures.__name__):
-        failures.report_failure(
-            exc, failures.INTERNAL, "3f9a2c1d", platform="discord"
-        )
+        failures.report_failure(exc, failures.INTERNAL, "3f9a2c1d", platform="discord")
 
     [record] = caplog.records
     assert "ref=3f9a2c1d" in record.getMessage()
