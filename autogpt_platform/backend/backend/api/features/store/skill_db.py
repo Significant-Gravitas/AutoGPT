@@ -1,0 +1,611 @@
+"""Database access for marketplace skill listings.
+
+Browse is rooted at :class:`SkillListingVersion` rather than the listing because
+every filter and the ordering read version columns; ``ActiveFor`` constrains the
+row to the listing's live version. Install count is displayed but is not a sort
+key — a catalogue this size gains nothing from it, and it lives on the listing
+because installs accumulate across versions. It counts distinct installs per
+owner (personal library or expert): a re-install overwrites that copy and is
+not counted again.
+"""
+
+import hashlib
+import json
+import logging
+
+import prisma.enums
+import prisma.models
+import prisma.types
+
+from backend.copilot.tools.skills import (
+    SKILL_ORIGIN_MARKETPLACE,
+    SkillBaseline,
+    SkillFile,
+    SkillWrite,
+    StoredSkill,
+    store_user_skills,
+)
+from backend.data.db import query_raw_with_schema
+from backend.data.redis_client import get_redis_async
+from backend.util.exceptions import NotFoundError
+from backend.util.models import Pagination
+
+from . import skill_model
+from .categories import category_filter_values
+
+logger = logging.getLogger(__name__)
+
+_LISTING_INCLUDE: prisma.types.SkillListingInclude = {
+    "ActiveVersion": True,
+    "CreatorProfile": True,
+}
+
+# One map for the whole marketplace, slug → active version, read by every
+# copy reconcile. Refreshed on a TTL and dropped by the catalog publisher.
+ACTIVE_VERSIONS_CACHE_KEY = "copilot:skills_active_versions:v1"
+ACTIVE_VERSIONS_CACHE_TTL_S = 60
+
+
+async def get_active_versions(
+    slugs: list[str],
+) -> dict[str, skill_model.ActiveSkillVersion]:
+    """The active version per listing slug, for the slugs that exist.
+
+    Serves the per-turn reconcile in ``copilot.tools.skills``, so it reads
+    one cached map of every listing rather than a query per copy. A slug
+    with no listing is absent; a delisted one is present with ``retired``.
+    """
+    if not slugs:
+        return {}
+    versions = await _read_active_versions_cache()
+    if versions is None:
+        versions = await _load_active_versions()
+        await _write_active_versions_cache(versions)
+    return {slug: versions[slug] for slug in slugs if slug in versions}
+
+
+async def _load_active_versions() -> dict[str, skill_model.ActiveSkillVersion]:
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where={"activeVersionId": {"not": None}}, include={"ActiveVersion": True}
+    )
+    unhashed = [
+        listing.ActiveVersion.id
+        for listing in listings
+        if listing.ActiveVersion is not None
+        and listing.ActiveVersion.packageSha256 is None
+    ]
+    file_hashes = await _file_hashes(unhashed)
+    versions: dict[str, skill_model.ActiveSkillVersion] = {}
+    for listing in listings:
+        active = listing.ActiveVersion
+        if active is None:
+            continue
+        live = (
+            not listing.isDeleted
+            and listing.hasApprovedVersion
+            and active.isAvailable
+            and not active.isDeleted
+            and active.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+        )
+        versions[listing.slug] = skill_model.ActiveSkillVersion(
+            listing_id=listing.id,
+            version_id=active.id,
+            package_sha256=active.packageSha256
+            or skill_model.package_sha256_of(
+                skill_model.legacy_skill_markdown(active, listing.slug),
+                file_hashes.get(active.id, []),
+            ),
+            retired=not live,
+        )
+    return versions
+
+
+async def _file_hashes(
+    version_ids: list[str],
+) -> dict[str, list[tuple[str, str, bool]]]:
+    """``(path, sha256, executable)`` per version, without loading the bytes:
+    the identity of a creator-published version, whose rows carry no stored
+    package hash, is computed from these."""
+    if not version_ids:
+        return {}
+    rows = await query_raw_with_schema(
+        'SELECT "skillListingVersionId" AS version_id, "relativePath" AS path, '
+        'sha256, "isExecutable" AS executable FROM {schema_prefix}"SkillListingFile" '
+        'WHERE "skillListingVersionId" = ANY($1::text[]) ORDER BY "relativePath"',
+        version_ids,
+    )
+    hashes: dict[str, list[tuple[str, str, bool]]] = {}
+    for row in rows:
+        hashes.setdefault(row["version_id"], []).append(
+            (row["path"], row["sha256"], bool(row["executable"]))
+        )
+    return hashes
+
+
+def _hashed_files(files: list[SkillFile]) -> list[tuple[str, str, bool]]:
+    return [
+        (f.relative_path, hashlib.sha256(f.content).hexdigest(), f.is_executable)
+        for f in files
+    ]
+
+
+async def _read_active_versions_cache() -> (
+    dict[str, skill_model.ActiveSkillVersion] | None
+):
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(ACTIVE_VERSIONS_CACHE_KEY)
+        if not raw:
+            return None
+        payload = json.loads(raw)
+        return {
+            slug: skill_model.ActiveSkillVersion.model_validate(item)
+            for slug, item in payload.items()
+        }
+    except Exception:
+        # Best-effort cache: a miss or a malformed entry costs one query.
+        return None
+
+
+async def _write_active_versions_cache(
+    versions: dict[str, skill_model.ActiveSkillVersion],
+) -> None:
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            ACTIVE_VERSIONS_CACHE_KEY,
+            json.dumps({slug: v.model_dump() for slug, v in versions.items()}),
+            ex=ACTIVE_VERSIONS_CACHE_TTL_S,
+        )
+    except Exception:
+        pass
+
+
+async def invalidate_active_versions_cache() -> None:
+    """Drop the slug → active version map so copies see a publish at once
+    rather than after the TTL. Best-effort: the publisher may run from a
+    deploy job with no Redis in reach, and the TTL bounds the staleness."""
+    try:
+        redis = await get_redis_async()
+        await redis.delete(ACTIVE_VERSIONS_CACHE_KEY)
+    except Exception:
+        logger.warning("Could not drop the active skill versions cache", exc_info=True)
+
+
+async def get_version_packages(
+    version_ids: list[str],
+) -> dict[str, skill_model.SkillVersionPackage]:
+    """Whole packages by version id, for the versions that exist. Any version
+    can be fetched, not only the active one: a merge needs the baseline a
+    copy was installed from as well as the update."""
+    if not version_ids:
+        return {}
+    rows = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"id": {"in": version_ids}}, include={"SkillListing": True}
+    )
+    files = await _read_versions_files([row.id for row in rows])
+    packages: dict[str, skill_model.SkillVersionPackage] = {}
+    for row in rows:
+        if row.SkillListing is None:
+            continue
+        slug = row.SkillListing.slug
+        skill_markdown = row.skillMarkdown or skill_model.legacy_skill_markdown(
+            row, slug
+        )
+        package = files.get(row.id, [])
+        packages[row.id] = skill_model.SkillVersionPackage(
+            version_id=row.id,
+            listing_id=row.skillListingId,
+            slug=slug,
+            version=row.version,
+            package_sha256=row.packageSha256
+            or skill_model.package_sha256_of(skill_markdown, _hashed_files(package)),
+            skill_markdown=skill_markdown,
+            files=package,
+            required_providers=list(row.requiredProviders),
+            scanned_checksums=list(row.scannedSha256),
+        )
+    return packages
+
+
+async def find_version_by_hash(listing_id: str, package_sha256: str) -> str | None:
+    """The id of the listing's version whose package hashes to
+    *package_sha256*, any version, not only the active one.
+
+    A copy installed before baselines were recorded is matched through
+    this: its files still hash to the version it came from when nobody
+    edited it, which proves it unedited and names what to fast-forward from.
+    A version with no stored hash is hashed as its installs rendered it,
+    from its files' recorded hashes, never their bytes. The newest match
+    wins when two versions hash alike.
+    """
+    rows = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"skillListingId": listing_id},
+        include={"SkillListing": True},
+        order={"version": "desc"},
+    )
+    file_hashes = await _file_hashes(
+        [row.id for row in rows if row.packageSha256 is None]
+    )
+    for row in rows:
+        if row.SkillListing is None:
+            continue
+        digest = row.packageSha256 or skill_model.package_sha256_of(
+            skill_model.legacy_skill_markdown(row, row.SkillListing.slug),
+            file_hashes.get(row.id, []),
+        )
+        if digest == package_sha256:
+            return row.id
+    return None
+
+
+async def get_marketplace_skills(
+    *,
+    category: str | None = None,
+    search_query: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> skill_model.MarketplaceSkillsResponse:
+    where = _live_version_where(category, search_query)
+    total = await prisma.models.SkillListingVersion.prisma().count(where=where)
+    versions = await prisma.models.SkillListingVersion.prisma().find_many(
+        where=where,
+        include={"ActiveFor": {"include": _LISTING_INCLUDE}},
+        # Seeded versions share a timestamp, and an undefined order between
+        # pages then drops or repeats a row; `id` is the uuid primary key.
+        order=[{"updatedAt": "desc"}, {"id": "desc"}],
+        skip=(page - 1) * page_size,
+        take=page_size,
+    )
+    listings = [v.ActiveFor for v in versions if v.ActiveFor is not None]
+    return skill_model.MarketplaceSkillsResponse(
+        skills=[skill_model.MarketplaceSkill.from_db(listing) for listing in listings],
+        pagination=Pagination(
+            total_items=total,
+            total_pages=(total + page_size - 1) // page_size,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+async def get_marketplace_skill(slug: str) -> skill_model.MarketplaceSkillDetails:
+    listing = await _find_live_listing(slug)
+    version = skill_model.active_version(listing)
+    return skill_model.MarketplaceSkillDetails.from_db(
+        listing, files=await _list_version_file_meta(version.id)
+    )
+
+
+async def find_readable_version(
+    slug: str, *, version_id: str | None, user_id: str | None
+) -> prisma.models.SkillListingVersion:
+    """The version of *slug* whose package *user_id* may read.
+
+    Without a version id the live one, which is public like the listing it
+    serves. With one, the live version stays public and any other — a pending
+    submission — is the submitter's alone, so a stranger cannot read a package
+    the marketplace has not approved. Admins come through the admin router,
+    which carries its own check.
+    """
+    if version_id is None:
+        return skill_model.active_version(await _find_live_listing(slug))
+
+    version = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": version_id}, include={"SkillListing": True}
+    )
+    listing = version.SkillListing if version is not None else None
+    if version is None or listing is None or listing.slug != slug:
+        raise NotFoundError(f"Skill '{slug}' has no version {version_id}")
+    if listing.activeVersionId == version.id:
+        # Through the same query the anonymous path uses, so a listing taken
+        # down keeps its pointer without keeping its visibility.
+        await _find_live_listing(slug)
+        return version
+    if user_id is None or listing.owningUserId != user_id:
+        raise NotFoundError(f"Skill '{slug}' has no version {version_id}")
+    return version
+
+
+async def get_package_file_meta(
+    skill_listing_version_id: str, relative_path: str
+) -> skill_model.SkillPackageFile | None:
+    """One published file's metadata, bytes excluded.
+
+    The size cap is decided on this, so refusing an oversized file never
+    reads it.
+    """
+    rows = await query_raw_with_schema(
+        _FILE_META_SELECT + 'WHERE "skillListingVersionId" = $1 '
+        'AND "relativePath" = $2',
+        skill_listing_version_id,
+        relative_path,
+    )
+    return _to_file_meta(rows[0]) if rows else None
+
+
+async def read_package_file_bytes(
+    skill_listing_version_id: str, relative_path: str
+) -> bytes | None:
+    """The file's stored bytes, once the caps have let it through."""
+    row = await prisma.models.SkillListingFile.prisma().find_unique(
+        where={
+            "skillListingVersionId_relativePath": {
+                "skillListingVersionId": skill_listing_version_id,
+                "relativePath": relative_path,
+            }
+        }
+    )
+    return row.content.decode() if row is not None else None
+
+
+async def file_meta_by_version(
+    version_ids: list[str],
+) -> dict[str, list[skill_model.SkillPackageFile]]:
+    """Every version's file list in one query, keyed by version id."""
+    if not version_ids:
+        return {}
+    placeholders = ", ".join(f"${i + 1}" for i in range(len(version_ids)))
+    rows = await query_raw_with_schema(
+        _FILE_META_SELECT
+        + 'WHERE "skillListingVersionId" IN ('
+        + placeholders
+        + ') ORDER BY "relativePath"',
+        *version_ids,
+    )
+    by_version: dict[str, list[skill_model.SkillPackageFile]] = {}
+    for row in rows:
+        by_version.setdefault(row["skillListingVersionId"], []).append(
+            _to_file_meta(row)
+        )
+    return by_version
+
+
+async def get_live_skills(
+    listing_ids: list[str],
+) -> dict[str, skill_model.MarketplaceSkill]:
+    """The live listings among *listing_ids*, keyed by id, in one query."""
+    if not listing_ids:
+        return {}
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where=_live_listing_where({"id": {"in": listing_ids}}),
+        include=_LISTING_INCLUDE,
+    )
+    return {
+        listing.id: skill_model.MarketplaceSkill.from_db(listing)
+        for listing in listings
+    }
+
+
+async def install_marketplace_skill(
+    user_id: str, slug: str, *, expert_id: str | None = None
+) -> skill_model.InstalledSkill:
+    """Copy a listing's whole package into *expert_id*'s skill folder, or the
+    caller's own library when ``None``.
+
+    The listing's slug becomes the installed skill's name, so an install is
+    idempotent and a re-install picks up a newer approved version. The whole
+    package is passed, so a file the new version dropped is removed too.
+    """
+    [outcome] = await install_marketplace_skills(user_id, [slug], expert_id=expert_id)
+    if isinstance(outcome, Exception):
+        raise outcome
+    return outcome
+
+
+async def install_marketplace_skills(
+    user_id: str, slugs: list[str], *, expert_id: str | None = None
+) -> list[skill_model.InstalledSkill | Exception]:
+    """:func:`install_marketplace_skill` for several listings: one listing
+    query, one file query and one locked write, with each slug's outcome
+    returned in order (``NotFoundError`` for one that is not live)."""
+    listings = {
+        listing.slug: listing
+        for listing in await prisma.models.SkillListing.prisma().find_many(
+            where=_live_listing_where({"slug": {"in": slugs}}),
+            include=_LISTING_INCLUDE,
+        )
+    }
+    live = [listings[slug] for slug in slugs if slug in listings]
+    files = await _read_versions_files(
+        [skill_model.active_version(listing).id for listing in live]
+    )
+    writes: list[SkillWrite] = []
+    for listing in live:
+        active = skill_model.active_version(listing)
+        # The published SKILL.md verbatim, so the copy's checksum is the
+        # catalog's and the copy can later prove it is unedited.
+        skill_markdown = active.skillMarkdown or skill_model.legacy_skill_markdown(
+            active, listing.slug
+        )
+        package = files.get(active.id, [])
+        writes.append(
+            SkillWrite(
+                name=listing.slug,
+                description=active.description,
+                body=active.body,
+                triggers=list(active.triggers),
+                version=str(active.version),
+                skill_markdown=skill_markdown,
+                # `[]`, never `None` — which means "leave the folder alone"
+                # and would keep a sibling only the previous version had.
+                files=package,
+                scanned_checksums=frozenset(active.scannedSha256),
+                baseline=SkillBaseline(
+                    listing_id=listing.id,
+                    version_id=active.id,
+                    package_sha256=active.packageSha256
+                    or skill_model.package_sha256_of(
+                        skill_markdown, _hashed_files(package)
+                    ),
+                ),
+            )
+        )
+    stored = (
+        dict(
+            zip(
+                (listing.slug for listing in live),
+                await store_user_skills(
+                    user_id,
+                    writes,
+                    expert_id=expert_id,
+                    origin=SKILL_ORIGIN_MARKETPLACE,
+                ),
+            )
+        )
+        if writes
+        else {}
+    )
+    # A re-install overwrites the existing copy, so counting it again would
+    # report installs rather than installers.
+    new_ids = [
+        listings[slug].id
+        for slug, outcome in stored.items()
+        if isinstance(outcome, StoredSkill) and outcome.is_new
+    ]
+    if new_ids:
+        await prisma.models.SkillListing.prisma().update_many(
+            where={"id": {"in": new_ids}}, data={"installCount": {"increment": 1}}
+        )
+    await _record_scanned(live, stored)
+    outcomes: list[skill_model.InstalledSkill | Exception] = []
+    for slug in slugs:
+        outcome = stored.get(slug)
+        if outcome is None:
+            outcomes.append(NotFoundError(f"Skill '{slug}' not found"))
+        elif isinstance(outcome, Exception):
+            outcomes.append(outcome)
+        else:
+            outcomes.append(
+                skill_model.InstalledSkill(
+                    name=slug,
+                    required_providers=list(
+                        skill_model.active_version(listings[slug]).requiredProviders
+                    ),
+                )
+            )
+    return outcomes
+
+
+async def _record_scanned(
+    live: list[prisma.models.SkillListing],
+    stored: dict[str, StoredSkill | Exception],
+) -> None:
+    """Remember the bytes each install wrote past the scan, so the next
+    install of the same version writing the same bytes need not scan them."""
+    for listing in live:
+        outcome = stored.get(listing.slug)
+        active = skill_model.active_version(listing)
+        if not isinstance(outcome, StoredSkill) or outcome.checksums <= set(
+            active.scannedSha256
+        ):
+            continue
+        try:
+            await prisma.models.SkillListingVersion.prisma().update(
+                where={"id": active.id},
+                data={
+                    "scannedSha256": sorted(
+                        outcome.checksums | set(active.scannedSha256)
+                    )
+                },
+            )
+        except Exception:
+            # Only a cache of scan results: failing to record costs a rescan
+            # next time, never this install.
+            logger.warning(
+                f"Could not record scanned checksums for skill '{listing.slug}'",
+                exc_info=True,
+            )
+
+
+async def _read_versions_files(
+    version_ids: list[str],
+) -> dict[str, list[SkillFile]]:
+    """Each version's published files, contents included, in one query."""
+    if not version_ids:
+        return {}
+    rows = await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": {"in": version_ids}},
+        order={"relativePath": "asc"},
+    )
+    by_version: dict[str, list[SkillFile]] = {}
+    for row in rows:
+        by_version.setdefault(row.skillListingVersionId, []).append(
+            SkillFile(
+                relative_path=row.relativePath,
+                content=row.content.decode(),
+                is_executable=row.isExecutable,
+            )
+        )
+    return by_version
+
+
+async def _list_version_file_meta(
+    skill_listing_version_id: str,
+) -> list[skill_model.SkillPackageFile]:
+    return (await file_meta_by_version([skill_listing_version_id])).get(
+        skill_listing_version_id, []
+    )
+
+
+# Raw because prisma-client-py always selects every column, and a page that
+# pulled `content` would carry the whole package per request.
+_FILE_META_SELECT = (
+    'SELECT "skillListingVersionId", "relativePath", "sizeBytes", "mimeType", '
+    '"isExecutable" FROM {schema_prefix}"SkillListingFile" '
+)
+
+
+def _to_file_meta(row: dict) -> skill_model.SkillPackageFile:
+    return skill_model.SkillPackageFile(
+        path=row["relativePath"],
+        size_bytes=row["sizeBytes"],
+        mime_type=row["mimeType"],
+        is_executable=row["isExecutable"],
+    )
+
+
+async def _find_live_listing(slug: str) -> prisma.models.SkillListing:
+    listing = await prisma.models.SkillListing.prisma().find_first(
+        where=_live_listing_where({"slug": slug}), include=_LISTING_INCLUDE
+    )
+    if listing is None:
+        raise NotFoundError(f"Skill '{slug}' not found")
+    return listing
+
+
+def _live_listing_where(
+    match: prisma.types.SkillListingWhereInput,
+) -> prisma.types.SkillListingWhereInput:
+    return {
+        **match,
+        "isDeleted": False,
+        "hasApprovedVersion": True,
+        "ActiveVersion": {
+            "is": {
+                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                "isAvailable": True,
+                "isDeleted": False,
+            }
+        },
+    }
+
+
+def _live_version_where(
+    category: str | None, search_query: str | None
+) -> prisma.types.SkillListingVersionWhereInput:
+    where: prisma.types.SkillListingVersionWhereInput = {
+        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        "isAvailable": True,
+        "isDeleted": False,
+        "ActiveFor": {"is": {"isDeleted": False, "hasApprovedVersion": True}},
+    }
+    if category_values := category_filter_values(category):
+        where["categories"] = {"has_some": category_values}
+    if search_query and search_query.strip():
+        needle = search_query.strip()
+        where["OR"] = [
+            {"name": {"contains": needle, "mode": "insensitive"}},
+            {"description": {"contains": needle, "mode": "insensitive"}},
+        ]
+    return where

@@ -49,6 +49,7 @@ type Args = {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 };
 
@@ -130,11 +131,20 @@ export function useSidebarRunsList({
     !schedulesQuery.isSuccess ||
     !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
-  const stale =
-    runsQuery.isStale ||
-    schedulesQuery.isStale ||
-    presetsQuery.isStale ||
-    (triggerAgentsEnabled && triggerAgentsQuery.isStale);
+  const error =
+    schedulesQuery.error ||
+    runsQuery.error ||
+    presetsQuery.error ||
+    (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
+
+  function retryFailedQueries() {
+    if (runsQuery.isError) void runsQuery.refetch();
+    if (schedulesQuery.isError) void schedulesQuery.refetch();
+    if (presetsQuery.isError) void presetsQuery.refetch();
+    if (triggerAgentsEnabled && triggerAgentsQuery.isError) {
+      void triggerAgentsQuery.refetch();
+    }
+  }
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -151,13 +161,14 @@ export function useSidebarRunsList({
 
   // Notify parent about counts and loading state
   useEffect(() => {
-    if (onCountsChange && !stale) {
+    if (onCountsChange) {
       onCountsChange({
         runsCount,
         schedulesCount,
         templatesCount,
         triggersCount,
         loading,
+        hasError: !!error,
       });
     }
   }, [
@@ -167,7 +178,7 @@ export function useSidebarRunsList({
     templatesCount,
     triggersCount,
     loading,
-    stale,
+    error,
   ]);
 
   useEffect(() => {
@@ -210,13 +221,10 @@ export function useSidebarRunsList({
     templates,
     triggers,
     triggerAgents,
-    error:
-      schedulesQuery.error ||
-      runsQuery.error ||
-      presetsQuery.error ||
-      (triggerAgentsEnabled ? triggerAgentsQuery.error : null),
+    error,
     loading,
     runsQuery,
+    retryFailedQueries,
     tabValue,
     runsCount,
     schedulesCount,

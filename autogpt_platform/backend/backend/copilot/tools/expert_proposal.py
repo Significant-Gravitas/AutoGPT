@@ -3,7 +3,7 @@
 Mirrors ``soul_proposal`` for team changes: the preview tools (``hire_expert``,
 ``raise_expert``, ``update_expert``) write nothing and park the exact proposal
 in Redis under a one-time ``confirmation_id``, and ``confirm_expert_change``
-loads it bound to the same Autopilot session, consumes it single-use, and
+loads it bound to the same Otto session, consumes it single-use, and
 applies it.
 """
 
@@ -53,7 +53,7 @@ _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
 # preview gets.
 _CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
 _LOG_ID_PREFIX_LENGTH = 12
-_PREVIEW_TOOLS = "hire_expert, raise_expert or update_expert"
+_PREVIEW_TOOLS = "tool:hire_expert, tool:raise_expert or tool:update_expert"
 
 
 class ExpertSoulSnapshot(BaseModel):
@@ -103,7 +103,7 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
             "This confirmation_id is unknown or has expired — previews last "
             f"{PROPOSAL_TTL_MINUTES} minutes. If you already confirmed it "
             "earlier in this conversation, that change is APPLIED and the "
-            "expert exists — call list_team to check before doing anything "
+            "expert exists — call tool:list_team to check before doing anything "
             f"else. Only call {_PREVIEW_TOOLS} again for a genuinely new "
             "change."
         ),
@@ -116,7 +116,7 @@ def _unapproved_preview_error(session_id: str) -> ErrorResponse:
         message=(
             "The user has not answered this preview yet, so there is nothing "
             "to confirm. Read the change back to them and call "
-            "confirm_expert_change only after they reply approving it."
+            "tool:confirm_expert_change only after they reply approving it."
         ),
         session_id=session_id,
     )
@@ -180,7 +180,7 @@ async def store_proposal(
 def autopilot_session_guard(
     user_id: str | None, session: ChatSession
 ) -> ErrorResponse | None:
-    """Team changes belong to the user, typing in their own Autopilot chat.
+    """Team changes belong to the user, typing in their own Otto chat.
 
     Two things have to hold, and "no ``expert_id``" only proves the first:
     an expert must not staff its own team, AND the conversation has to be one
@@ -205,7 +205,7 @@ def autopilot_session_guard(
         return ErrorResponse(
             message=(
                 "Only the user can change the team, and only from the "
-                "Autopilot chat. Tell them what you'd add and let them do it "
+                "Otto chat. Tell them what you'd add and let them do it "
                 "there."
             ),
             session_id=session.session_id,
@@ -221,7 +221,7 @@ def autopilot_session_guard(
                 "This session was started by an automation, or predates the "
                 "check that tells them apart, so it cannot hire, raise, or "
                 "edit a teammate. Report what the team would need and let the "
-                "user make the change in a new Autopilot chat."
+                "user make the change in a new Otto chat."
             ),
             session_id=session.session_id,
         )
@@ -343,29 +343,17 @@ async def _apply_hire(
     except Exception as e:
         return _hire_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=_hire_message(result.expert.name, result.failed_preloads),
+        message=_hire_message(result.expert.name),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
-        failed_workflows=result.failed_preloads,
     )
 
 
-def _hire_message(name: str, failed_workflows: list[str]) -> str:
-    """A hire whose workflows didn't install must not read as a clean one.
-
-    The expert exists either way, but until the listed workflows are added
-    back it cannot do the part of the job they carried — so the model is
-    told to name them rather than announce an unqualified success.
-    """
-    if not failed_workflows:
-        return f"{name} is hired and on the team. Tell the user who joined and what they own."
-    workflows = ", ".join(failed_workflows)
+def _hire_message(name: str) -> str:
     return (
-        f"{name} joined the team, but {len(failed_workflows)} of their "
-        f"workflows could not be installed: {workflows}. Tell the user who "
-        "joined, name the workflows that failed, and say those need to be "
-        f"added from {name}'s team page before that part of the job can run."
+        f"{name} is hired and on the team; their workflows and skills finish "
+        "installing in the background. Tell the user who joined and what they own."
     )
 
 
@@ -380,6 +368,8 @@ async def _apply_raise(
             preview.name,
             preview.role or None,
             preview.voice_preferences or None,
+            job_title=preview.job_title or None,
+            avatar_url=preview.avatar_url,
             color=preview.color or None,
             tagline=preview.tagline or None,
             about=preview.about or None,
@@ -453,7 +443,7 @@ def _stale_expert_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
             "That expert is gone or was edited somewhere else since this "
-            "preview, so nothing was changed. Call update_expert again to "
+            "preview, so nothing was changed. Call tool:update_expert again to "
             "preview the current version."
         ),
         session_id=session_id,
@@ -539,7 +529,7 @@ def _unexpected_failure(
     return ErrorResponse(
         message=(
             "Couldn't complete that change, and the proposal has been "
-            f"discarded. Call {tool_name} again to re-preview and retry."
+            f"discarded. Call tool:{tool_name} again to re-preview and retry."
         ),
         session_id=session_id,
     )
@@ -566,7 +556,7 @@ def _discarded_proposal_error(
     return ErrorResponse(
         message=(
             f"That proposal is missing the {missing} it referred to and has "
-            f"been discarded. Call {tool_name} again to re-preview."
+            f"been discarded. Call tool:{tool_name} again to re-preview."
         ),
         session_id=session_id,
     )

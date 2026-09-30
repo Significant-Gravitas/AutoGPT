@@ -4,7 +4,11 @@ import logging
 from typing import Any
 
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES, enqueue_episode
+from backend.copilot.graphiti.ingest import (
+    MAX_EPISODE_BODY_BYTES,
+    enqueue_episode,
+    resolve_user_name,
+)
 from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
     MemoryKind,
@@ -228,6 +232,7 @@ class MemoryStoreTool(BaseTool):
             provenance = f"session:{session.session_id}"
 
         envelope = MemoryEnvelope(
+            user=await resolve_user_name(user_id),
             content=content,
             source_kind=resolved_source,
             scope=scope,

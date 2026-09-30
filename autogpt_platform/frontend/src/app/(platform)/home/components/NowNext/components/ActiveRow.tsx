@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { HomeActiveTask } from "@/app/api/__generated__/models/homeActiveTask";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { WorkflowAvatar } from "@/components/molecules/WorkflowAvatar/WorkflowAvatar";
 import { cn } from "@/lib/utils";
 import { formatRunningFor } from "../helpers";
 
@@ -22,7 +23,11 @@ export function ActiveRow({ item }: Props) {
             size={36}
           />
         ) : (
-          <span className="size-2.5 rounded-full bg-primary" />
+          <WorkflowAvatar
+            name={item.title}
+            imageUrl={item.image_url}
+            size={36}
+          />
         )}
       </span>
       <div className="min-w-0 flex-1">
@@ -31,7 +36,8 @@ export function ActiveRow({ item }: Props) {
           tone="primary"
           className="truncate leading-5"
         >
-          {item.title}
+          <span>{item.title}</span>
+          <span className="font-normal text-zinc-500"> workflow</span>
         </Text>
         <Text variant="small" tone="muted" className="truncate">
           {item.status === "queued"

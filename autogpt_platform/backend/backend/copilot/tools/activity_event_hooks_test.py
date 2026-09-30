@@ -6,10 +6,6 @@ from backend.blocks.llm import is_llm_credentials
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
-from backend.copilot.tools.schedule_followup import (
-    ScheduleCreatedResponse,
-    ScheduleFollowupTool,
-)
 from backend.copilot.tools.workspace_files import (
     WorkspaceWriteResponse,
     WriteWorkspaceFileTool,
@@ -157,28 +153,3 @@ def test_block_output_credential_type_is_internal() -> None:
 def test_google_api_key_is_llm_but_google_oauth_is_integration() -> None:
     assert is_llm_credentials("google", "api_key") is True
     assert is_llm_credentials("google", "oauth2") is False
-
-
-def test_schedule_followup_reports_schedule_event() -> None:
-    result = ScheduleCreatedResponse(
-        message="Follow-up scheduled",
-        schedule_id="sched-1",
-        next_run_time="2026-08-29T07:00:00+00:00",
-        is_recurring=True,
-        session_id="test-session",
-    )
-
-    draft = ScheduleFollowupTool().activity_event(
-        session=_make_session(expert_id="maria"),
-        result=result,
-        message="Draft the next blog post",
-        cron="0 7 */3 * *",
-        name="persian.sh blog draft",
-    )
-
-    assert draft is not None
-    assert draft.category == "SCHEDULE"
-    assert draft.event_type == "schedule.created"
-    assert draft.title == "persian.sh blog draft"
-    assert draft.schedule_id == "sched-1"
-    assert draft.data["cron"] == "0 7 */3 * *"

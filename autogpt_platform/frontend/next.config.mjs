@@ -4,11 +4,30 @@ import { withSentryConfig } from "@sentry/nextjs";
 // Defaults to true so Vercel/local builds are unaffected.
 const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 
+// CI's e2e image build skips lint and type checks; CI runs `pnpm lint` and
+// `pnpm types` as their own jobs.
+const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // VERCEL_ENV is server-only. Mirror it into the browser bundle so Sentry can
+  // tag preview deployments as previews rather than as production.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+  },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
+  async rewrites() {
+    return [
+      {
+        source: "/api/store/media/:path*",
+        destination: "/api/proxy/api/store/media/:path*",
+      },
+    ];
+  },
   productionBrowserSourceMaps: enableSourceMaps,
+  eslint: { ignoreDuringBuilds: skipBuildChecks },
+  typescript: { ignoreBuildErrors: skipBuildChecks },
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [
     "@opentelemetry/instrumentation",
@@ -98,6 +117,13 @@ const nextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // Modern equivalent of X-Frame-Options; browsers that support CSP
+          // use this and ignore the legacy header, so send both.
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
           // Enables Sentry browser JS self-profiling.
           { key: "Document-Policy", value: "js-profiling" },
         ],
@@ -155,11 +181,6 @@ export default skipSentryPlugin
 
       org: "significant-gravitas",
       project: "builder",
-
-      // Expose Vercel env to the client
-      env: {
-        NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV,
-      },
 
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,

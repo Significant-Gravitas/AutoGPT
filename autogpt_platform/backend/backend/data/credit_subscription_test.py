@@ -138,7 +138,9 @@ async def test_sync_subscription_from_stripe_active():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -232,7 +234,9 @@ async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -333,7 +337,9 @@ async def test_sync_subscription_from_stripe_cancelled():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -367,7 +373,9 @@ async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -389,6 +397,8 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     async def _set_tier(
         _user_id: str,
         tier: SubscriptionTier,
+        *,
+        track_lifecycle: bool = True,
     ) -> None:
         mock_user.subscriptionTier = tier
 
@@ -524,7 +534,9 @@ async def test_sync_subscription_from_stripe_trialing():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -681,7 +693,10 @@ async def test_cancel_stripe_subscription_no_active():
             "backend.data.credit.stripe.Subscription.list_async",
             return_value=mock_subscriptions,
         ),
-        patch("backend.data.credit.stripe.Subscription.cancel_async") as mock_cancel,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
         mock_cancel.assert_not_called()
@@ -707,7 +722,7 @@ async def test_cancel_stripe_subscription_raises_on_list_failure():
 
 @pytest.mark.asyncio
 async def test_cancel_stripe_subscription_cancels_trialing():
-    """Trialing subs must also be scheduled for cancellation, else users get billed after trial end."""
+    """Trial cancellation ends access without invoicing or prorating."""
     active_subs = MagicMock()
     active_subs.data = []
     active_subs.has_more = False
@@ -733,14 +748,21 @@ async def test_cancel_stripe_subscription_cancels_trialing():
             side_effect=list_side_effect,
         ),
         patch("backend.data.credit.stripe.Subscription.modify_async") as mock_modify,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
-        mock_modify.assert_called_once_with("sub_trial_123", cancel_at_period_end=True)
+        mock_cancel.assert_called_once_with(
+            "sub_trial_123", invoice_now=False, prorate=False
+        )
+        mock_modify.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_cancel_stripe_subscription_cancels_active_and_trialing():
-    """Both active AND trialing subs present → both get scheduled for cancellation, no duplicates."""
+    """Paid access lasts through the paid period; trial access ends now."""
     active_subs = MagicMock()
     active_subs.data = [
         stripe.Subscription.construct_from(
@@ -770,10 +792,17 @@ async def test_cancel_stripe_subscription_cancels_active_and_trialing():
             side_effect=list_side_effect,
         ),
         patch("backend.data.credit.stripe.Subscription.modify_async") as mock_modify,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
         modified_ids = {call.args[0] for call in mock_modify.call_args_list}
-        assert modified_ids == {"sub_active_1", "sub_trial_2"}
+        assert modified_ids == {"sub_active_1"}
+        mock_cancel.assert_called_once_with(
+            "sub_trial_2", invoice_now=False, prorate=False
+        )
 
 
 @pytest.mark.asyncio
@@ -930,7 +959,7 @@ async def test_active_subscription_lookup_is_cached_within_window():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_returns_url():
+async def test_create_subscription_checkout_returns_url(checkout_guard):
     mock_session = MagicMock()
     mock_session.url = "https://checkout.stripe.com/pay/cs_test_abc123"
     with (
@@ -959,7 +988,9 @@ async def test_create_subscription_checkout_returns_url():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_offers_saved_payment_methods():
+async def test_create_subscription_checkout_offers_saved_payment_methods(
+    checkout_guard,
+):
     """Returning subscribers must see their saved cards in Checkout.
 
     Cards attached by a previous subscription-mode Checkout get
@@ -1002,7 +1033,7 @@ async def test_create_subscription_checkout_offers_saved_payment_methods():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_no_price_raises():
+async def test_create_subscription_checkout_no_price_raises(checkout_guard):
     with patch(
         "backend.data.credit.get_subscription_price_id",
         new_callable=AsyncMock,
@@ -1015,6 +1046,23 @@ async def test_create_subscription_checkout_no_price_raises():
                 success_url="https://app.example.com/success",
                 cancel_url="https://app.example.com/cancel",
             )
+
+
+@pytest.fixture
+def checkout_guard():
+    with (
+        patch(
+            "backend.data.credit.subscription_checkout_lock", return_value=AsyncMock()
+        ),
+        patch(
+            "backend.data.credit.ensure_no_unconverted_trial", new_callable=AsyncMock
+        ),
+        patch(
+            "backend.data.credit._expire_open_subscription_sessions",
+            new_callable=AsyncMock,
+        ),
+    ):
+        yield
 
 
 @pytest.mark.asyncio
@@ -1143,7 +1191,9 @@ async def test_sync_subscription_from_stripe_business_tier():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1195,7 +1245,9 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BASIC, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1250,7 +1302,9 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
         # Only the stale sub should be cancelled — never the new one.
         mock_cancel.assert_called_once_with("sub_old")
 
@@ -1304,7 +1358,9 @@ async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed():
     ):
         # Must not raise — tier update proceeds even if cleanup cancel fails.
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1643,7 +1699,9 @@ async def test_sync_subscription_from_stripe_metadata_user_id_matches():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1716,7 +1774,9 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
     ):
         await sync_subscription_from_stripe(stripe_sub)
         # No metadata → cross-check skipped → tier updated normally
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -3743,7 +3803,9 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio

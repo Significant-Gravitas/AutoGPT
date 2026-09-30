@@ -197,6 +197,22 @@ export type CredentialsType =
   | "host_scoped"
   | "device_code";
 
+/**
+ * Every credential type the platform can store, as a runtime list.
+ *
+ * Built from a total `Record<CredentialsType, true>` so that extending
+ * `CredentialsType` without updating this list fails the build. Use it
+ * wherever a list of credential types acts as a filter: an omission there
+ * silently removes a connection method rather than mis-ordering it.
+ */
+export const CREDENTIALS_TYPES: readonly CredentialsType[] = Object.keys({
+  api_key: true,
+  oauth2: true,
+  user_password: true,
+  host_scoped: true,
+  device_code: true,
+} satisfies Record<CredentialsType, true>) as CredentialsType[];
+
 export type Credentials =
   | APIKeyCredentials
   | OAuth2Credentials
@@ -223,6 +239,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   discriminator_mapping?: Record<string, CredentialsProviderName>;
   discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
+  credential_free_discriminator_values?: unknown[];
   secret?: boolean;
 };
 
@@ -909,7 +926,9 @@ export type OnboardingStep =
   // First-visit intro card for a tab, dismissed however the user chose
   | "AGENTS_TAB_INTRO"
   | "MARKETPLACE_TAB_INTRO"
-  | "BUILD_TAB_INTRO";
+  | "BUILD_TAB_INTRO"
+  // Agents-to-workflows migration notice, dismissed or followed to Otto
+  | "WORKFLOWS_MOVED";
 
 export interface UserOnboarding {
   // Plain string[] so legacy step names from existing rows pass through.

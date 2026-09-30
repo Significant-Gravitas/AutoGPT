@@ -3,7 +3,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { useState } from "react";
@@ -17,14 +16,19 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   expertId: string;
   expertName: string;
+  /** The chat's side panel: a smaller title and no search. */
+  compact?: boolean;
 }
 
-export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
+export function ExpertIntegrationsSection({
+  expertId,
+  expertName,
+  compact = false,
+}: Props) {
   const {
     granted,
     grantable,
@@ -58,7 +62,9 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
   return (
     <section data-testid="expert-integrations-section">
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="large-medium">{expertName}&apos;s Integrations</Text>
+        <Text variant={compact ? "body-medium" : "large-medium"} tone="primary">
+          {expertName}&apos;s Integrations
+        </Text>
         <div className="flex items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -66,8 +72,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
                 <Button
                   variant="secondary"
                   size="small"
-                  className={ACTION_BUTTON_CLASS}
-                  leftIcon={<Icon icon={Share01Icon} size={14} />}
+                  leadingIcon={Share01Icon}
                   disabled={
                     grantable.length === 0 || isError || isGrantableError
                   }
@@ -94,19 +99,20 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           <Button
             variant="secondary"
             size="small"
-            className={ACTION_BUTTON_CLASS}
-            leftIcon={<Icon icon={PlusSignIcon} size={14} />}
+            leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >
             Add integration
           </Button>
-          <SearchInput
-            size="xsmall"
-            value={query}
-            onChange={setQuery}
-            placeholder="Search integrations"
-            className="w-48"
-          />
+          {compact ? null : (
+            <SearchInput
+              size="small"
+              value={query}
+              onChange={setQuery}
+              placeholder="Search integrations"
+              className="w-48"
+            />
+          )}
         </div>
       </div>
 
@@ -119,12 +125,14 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           onRetry={refetch}
         />
       ) : granted.length === 0 ? (
-        <p className="text-sm text-zinc-500">
+        <Text variant="body" tone="muted">
           Nothing connected yet. Add a tool and {expertName} can use it on your
           behalf.
-        </p>
+        </Text>
       ) : visible.length === 0 ? (
-        <p className="pt-4 text-sm text-zinc-500">No integrations match.</p>
+        <Text variant="body" tone="muted" className="pt-4">
+          No integrations match.
+        </Text>
       ) : (
         <ExpertIntegrationGroups
           integrations={visible}

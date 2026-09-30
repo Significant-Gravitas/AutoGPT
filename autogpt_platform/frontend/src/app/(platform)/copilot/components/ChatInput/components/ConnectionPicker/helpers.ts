@@ -7,8 +7,11 @@ export function offerToSelection(
   if (offer.auth_method === "deployment") {
     return { authProvider: "platform", credentialId: null };
   }
-  if (!offer.credential_id) return null;
-  return { authProvider: "codex", credentialId: offer.credential_id };
+  if (offer.auth_provider === "platform" || !offer.credential_id) return null;
+  return {
+    authProvider: offer.auth_provider,
+    credentialId: offer.credential_id,
+  };
 }
 
 export function matchesSelection(
@@ -16,10 +19,10 @@ export function matchesSelection(
   selection: CopilotLlmAuthSelection | null,
 ): boolean {
   if (!selection) return false;
-  if (selection.authProvider === "platform") {
-    return offer.auth_method === "deployment";
-  }
-  return offer.credential_id === selection.credentialId;
+  return (
+    offer.auth_provider === selection.authProvider &&
+    offer.credential_id === selection.credentialId
+  );
 }
 
 export function isSelectable(offer: AIConnectionOffer): boolean {

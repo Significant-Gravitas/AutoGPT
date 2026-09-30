@@ -633,7 +633,8 @@ class TestContextWindowPin:
     """The window the CLI compacts against is ours, not the CLI's guess.
 
     At or below the default, ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` holds the model
-    window itself at 200K too, making the default a real cap.
+    window itself at 200K too, making the default a real cap.  On Moonshot
+    routes the pin is capped at the catalog's real window for the SKU.
     """
 
     @pytest.mark.parametrize(
@@ -654,6 +655,43 @@ class TestContextWindowPin:
             from backend.copilot.sdk.env import build_sdk_env
 
             result = build_sdk_env(model="anthropic/claude-sonnet-5")
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == expected
+        assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch
+
+    @pytest.mark.parametrize(
+        "model, window, expected, kill_switch",
+        [
+            # Kimi K2.x really serves 262,144: a 1M pin would put the trigger
+            # at ~967K, past the point the provider rejects the request.
+            ("moonshotai/kimi-k2.5", 1_000_000, "262144", False),
+            ("moonshotai/kimi-k2-thinking", 500_000, "262144", False),
+            # K3 really does serve 1M, so the raise survives there.
+            ("moonshotai/kimi-k3", 1_000_000, "1000000", False),
+            # A SKU the catalog does not carry falls back to the window the
+            # CLI assumes anyway, rather than to an unbounded raise.
+            ("moonshotai/kimi-k3.0", 1_000_000, "200000", True),
+            # At or below the real window the configured pin is untouched.
+            ("moonshotai/kimi-k2.5", 262_144, "262144", False),
+            ("moonshotai/kimi-k2.5", 200_000, "200000", True),
+        ],
+    )
+    def test_pin_capped_at_moonshot_real_window(
+        self, model, window, expected, kill_switch
+    ):
+        """The CLI's model table has no Moonshot entry, so the pin is the only
+        thing holding the trigger inside Kimi's real window."""
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            thinking_standard_model=model,
+            claude_agent_context_window=window,
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
 
         assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == expected
         assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch

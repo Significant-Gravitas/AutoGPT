@@ -79,7 +79,7 @@ export function RunMCPToolComponent({ part }: Props) {
       {isCorrupted && (
         <p className="mt-1 text-sm text-red-500">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+          contained can&apos;t be shown. Ask your expert to retry this step.
         </p>
       )}
 
@@ -99,7 +99,7 @@ export function RunMCPToolComponent({ part }: Props) {
       {setupRequirementsOutput && (
         <MCPSetupCard
           output={setupRequirementsOutput}
-          retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
+          retryInstruction="I've connected the integration. Please retry the same call."
         />
       )}
 

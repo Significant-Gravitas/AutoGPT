@@ -1,48 +1,15 @@
 """PostHog analytics tracking for the chat system."""
 
-import atexit
 import logging
 from typing import Any
 
-from posthog import Posthog
-
+from backend.util import product_analytics
+from backend.util.posthog_client import get_posthog_client as _get_posthog_client
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
-
-# PostHog client instance (lazily initialized)
-_posthog_client: Posthog | None = None
-
-
-def _shutdown_posthog() -> None:
-    """Flush and shutdown PostHog client on process exit."""
-    if _posthog_client is not None:
-        _posthog_client.flush()
-        _posthog_client.shutdown()
-
-
-atexit.register(_shutdown_posthog)
-
-
-def _get_posthog_client() -> Posthog | None:
-    """Get or create the PostHog client instance."""
-    global _posthog_client
-    if _posthog_client is not None:
-        return _posthog_client
-
-    if not settings.secrets.posthog_api_key:
-        logger.debug("PostHog API key not configured, analytics disabled")
-        return None
-
-    _posthog_client = Posthog(
-        settings.secrets.posthog_api_key,
-        host=settings.secrets.posthog_host,
-    )
-    logger.info(
-        f"PostHog client initialized with host: {settings.secrets.posthog_host}"
-    )
-    return _posthog_client
 
 
 def _get_base_properties() -> dict[str, Any]:
@@ -57,6 +24,10 @@ def track_user_message(
     user_id: str | None,
     session_id: str,
     message_length: int,
+    *,
+    expert_id: str | None = None,
+    origin: str | None = None,
+    surface: str | None = None,
 ) -> None:
     """Track when a user sends a message in chat.
 
@@ -64,7 +35,21 @@ def track_user_message(
         user_id: The user's ID (or None for anonymous)
         session_id: The chat session ID
         message_length: Length of the user's message
+        expert_id: Expert the session is scoped to, if any
+        origin: Session origin ("interactive" | "automation"), when known
+        surface: Where the message came from (web chat, slack, telegram, ...)
     """
+    # The activation event (run_autopilot / run_expert) is the one GTM
+    # dashboards and experiments build on; copilot_message_sent stays for
+    # the existing copilot dashboards.
+    product_analytics.track_chat_turn(
+        user_id=user_id,
+        session_id=session_id,
+        expert_id=expert_id,
+        origin=origin,
+        surface=surface,
+    )
+
     client = _get_posthog_client()
     if not client:
         return
@@ -77,7 +62,7 @@ def track_user_message(
         }
         client.capture(
             distinct_id=user_id or f"anonymous_{session_id}",
-            event="copilot_message_sent",
+            event=PostHogEvent.COPILOT_MESSAGE_SENT.value,
             properties=properties,
         )
     except Exception as e:
@@ -117,7 +102,7 @@ def track_tool_called(
         )
         client.capture(
             distinct_id=distinct_id,
-            event="copilot_tool_called",
+            event=PostHogEvent.COPILOT_TOOL_CALLED.value,
             properties=properties,
         )
     except Exception as e:
@@ -157,7 +142,7 @@ def track_agent_run_success(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_agent_run_success",
+            event=PostHogEvent.COPILOT_AGENT_RUN_SUCCESS.value,
             properties=properties,
         )
     except Exception as e:
@@ -203,7 +188,7 @@ def track_agent_scheduled(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_agent_scheduled",
+            event=PostHogEvent.COPILOT_AGENT_SCHEDULED.value,
             properties=properties,
         )
     except Exception as e:
@@ -239,7 +224,7 @@ def track_followup_scheduled(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_followup_scheduled",
+            event=PostHogEvent.COPILOT_FOLLOWUP_SCHEDULED.value,
             properties=properties,
         )
     except Exception as e:
@@ -279,7 +264,7 @@ def track_trigger_setup(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_trigger_setup",
+            event=PostHogEvent.COPILOT_TRIGGER_SETUP.value,
             properties=properties,
         )
     except Exception as e:
@@ -319,7 +304,7 @@ def track_library_check_outcome(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_library_check_outcome",
+            event=PostHogEvent.COPILOT_LIBRARY_CHECK_OUTCOME.value,
             properties=properties,
         )
     except Exception as e:

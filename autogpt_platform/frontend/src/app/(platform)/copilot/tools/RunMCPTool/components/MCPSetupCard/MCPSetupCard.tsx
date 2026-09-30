@@ -3,8 +3,6 @@
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
-  postV2ExchangeOauthCodeForMcpTokens,
-  postV2InitiateOauthLoginForAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
@@ -16,19 +14,22 @@ import {
   mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import { isKey } from "@/lib/keyboard";
 import {
   detectMCPAuthScheme,
   prepareMCPAuthCredential,
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
+import { getErrorMessage } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { connectMCPOAuth } from "@/lib/mcp-oauth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
+import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -60,6 +61,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const serverUrl = output.setup_info.agent_id;
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
+  const rejection = output.rejection ?? null;
 
   // Initial connection state comes from the backend.  When the model
   // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
@@ -79,7 +81,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Connect successfully in this component, ``localConnected`` stays
   // true even if the live-cred query is briefly stale.
   const normalizedServer = normalizeMcpUrl(serverUrl);
-  const { data: liveCredsRes } = useGetV1ListCredentials({
+  const {
+    data: liveCredsRes,
+    isFetchedAfterMount: liveCredsFetched,
+    isError: liveCredsError,
+  } = useGetV1ListCredentials({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
       // No staleTime — when this card mounts (e.g. immediately after the
@@ -92,12 +98,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       refetchOnMount: "always",
     },
   });
-  // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
-  // while loading or after a network/auth failure (``select`` returned
-  // ``null``).  Treating an unknown live state as ``false`` would override
-  // a still-valid persisted snapshot — see review for the
-  // initiallyConnected=false + 5xx race that surfaces a bare Connect
-  // button despite an existing cred.
+  // Tri-state, because "we don't know yet" must fall back to the persisted
+  // snapshot rather than to disconnected. Unknown covers: this mount's fetch
+  // hasn't landed (React Query keeps serving the previous cache until it
+  // does, and that cache still lists rows the backend just invalidated), the
+  // refetch settled but errored (stale data is still served), and a non-200
+  // that ``select`` mapped to null.
+  //
+  // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
+  // app-wide, so ``isFetching`` also goes true on window focus and on every
+  // credential mutation elsewhere, blanking a genuinely connected card.
   const liveCredential = !Array.isArray(liveCredsRes)
     ? null
     : liveCredsRes.find(
@@ -106,9 +116,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
       );
-  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
-    ? "unknown"
-    : Boolean(liveCredential);
+  const liveHasCred: boolean | "unknown" =
+    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+      ? "unknown"
+      : Boolean(liveCredential);
   const storedManualAuthScheme: MCPAuthScheme =
     liveCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
 
@@ -134,8 +145,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // user couldn't see the error banner or the manual-token input.  Reset
   // on the next attempt so the user can retry.
   const [forceDisconnected, setForceDisconnected] = useState(false);
-  const oauthAbortRef = useRef<(() => void) | null>(null);
-
+  const oauthRequest = useRef<AbortController | null>(null);
   // Combined view:
   //   1. ``forceDisconnected`` (set by the catch block) wins.
   //   2. ``localConnected`` (just completed sign-in in this component) wins.
@@ -145,108 +155,59 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   //      back to the persisted ``initiallyConnected`` snapshot rather
   //      than defaulting to disconnected.
   const liveSays = liveHasCred === "unknown" ? initiallyConnected : liveHasCred;
-  const connected = !forceDisconnected && (localConnected || liveSays);
+  // A rejected credential never counts as connected, whatever a stale cred
+  // list says — only a sign-in completed in this card does.
+  const connected =
+    !forceDisconnected && (localConnected || (!rejection && liveSays));
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
 
-  // Abort any in-progress OAuth popup when the component unmounts.
-  useEffect(() => () => oauthAbortRef.current?.(), []);
+  useEffect(() => () => oauthRequest.current?.abort(), []);
 
   async function handleConnect() {
-    // Re-entrancy guard: a rapid double-click would otherwise race the
-    // two in-flight ``handleConnect`` invocations — the second one aborts
-    // the first's popup (``oauthAbortRef.current?.()``) but the first's
-    // ``await promise`` then rejects with ``OAUTH_ERROR_FLOW_CANCELED``,
-    // which flips ``forceDisconnected=true`` even though the second
-    // attempt is still alive.  Bail out cheaply when a flow is already
-    // running.  Button is also ``disabled={loading}`` but disabled
-    // <button> elements still fire ``click`` in some browsers.
-    if (loading) return;
+    if (loading || oauthRequest.current) return;
+    const controller = new AbortController();
+    oauthRequest.current = controller;
+    const { signal } = controller;
     setError(null);
-    // Reset showManualToken so a prior 400 doesn't keep the input visible
-    // when a later attempt fails with a non-400 (e.g. network) error.
     setShowManualToken(false);
     setLoading(true);
-    oauthAbortRef.current?.();
-
     try {
-      const loginRes = await postV2InitiateOauthLoginForAnMcpServer({
-        server_url: serverUrl,
+      const credential = await connectMCPOAuth({
+        serverURL: serverUrl,
+        signal,
+        exchange: allProviders?.mcp?.mcpOAuthCallback,
       });
-      if (!(loginRes.status >= 200 && loginRes.status < 300)) {
-        const d =
-          loginRes.data && typeof loginRes.data === "object"
-            ? loginRes.data
-            : {};
-        throw { status: loginRes.status, ...d };
+      signal.throwIfAborted();
+      if ("reason" in credential) {
+        setConnected(false);
+        setForceDisconnected(true);
+        if (credential.noOAuth) setShowManualToken(true);
+        setError(credential.reason);
+        return;
       }
-      const { login_url, state_token } = loginRes.data as {
-        login_url: string;
-        state_token: string;
-      };
-
-      const { promise, cleanup } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        useCrossOriginListeners: true,
-      });
-      oauthAbortRef.current = cleanup.abort;
-
-      const result = await promise;
-
-      const mcpProvider = allProviders?.["mcp"];
-      if (mcpProvider) {
-        await mcpProvider.mcpOAuthCallback(result.code, state_token);
-      } else {
-        const cbRes = await postV2ExchangeOauthCodeForMcpTokens({
-          code: result.code,
-          state_token,
-        });
-        if (!(cbRes.status >= 200 && cbRes.status < 300)) {
-          const d =
-            cbRes.data && typeof cbRes.data === "object" ? cbRes.data : {};
-          throw { status: cbRes.status, ...d };
-        }
-      }
-
-      // Only clear the force-disconnect override AFTER the OAuth dance
-      // completes successfully.  Clearing it earlier would let
-      // ``liveHasCred=true`` (Reconnect path) render the Connected pill
-      // mid-flight, briefly contradicting the in-progress "Reconnecting…"
-      // affordance.
       setForceDisconnected(false);
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
-    } catch (e: unknown) {
-      const err = e as Record<string, unknown>;
-      // Reconnect failures must drop the Connected view so the user sees
-      // the error / manual-token input rendered by the not-connected
-      // branch.  Setting ``localConnected=false`` alone isn't enough when
-      // a stored cred still exists (``liveHasCred=true``) — flip
-      // ``forceDisconnected`` so the not-connected branch wins until the
-      // user retries.
+    } catch (error: unknown) {
+      if (signal.aborted) return;
       setConnected(false);
       setForceDisconnected(true);
-      if (err?.status === 400) {
-        setShowManualToken(true);
-        setError(
-          "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
-        );
-      } else if (
-        typeof err?.message === "string" &&
-        err.message === "OAuth flow timed out"
-      ) {
-        setError("OAuth sign-in timed out. Please try again.");
-      } else {
-        const msg =
-          (typeof err?.message === "string" ? err.message : null) ||
-          (typeof err?.detail === "string" ? err.detail : null) ||
-          "Failed to complete sign-in. Please try again.";
-        setError(msg);
-      }
+      const message = getErrorMessage(
+        error,
+        "Failed to complete sign-in. Please try again.",
+      );
+      setError(
+        message === "OAuth flow timed out"
+          ? "OAuth sign-in timed out. Please try again."
+          : message,
+      );
     } finally {
-      setLoading(false);
-      oauthAbortRef.current = null;
+      if (oauthRequest.current === controller) {
+        oauthRequest.current = null;
+        if (!signal.aborted) setLoading(false);
+      }
     }
   }
 
@@ -408,6 +369,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     <div className="mt-2 grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
 
+      {rejection && <CredentialRejectionNotice rejection={rejection} />}
+
       <div className="rounded-2xl border bg-background p-4">
         <Button
           variant="primary"
@@ -461,7 +424,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                   detectSchemeFrom(nextToken);
                 }}
                 onKeyDown={(e) =>
-                  e.key === "Enter" && !loading && handleManualToken()
+                  isKey(e, "Enter") && !loading && handleManualToken()
                 }
                 className="flex-1 rounded border px-2 py-1 text-sm"
               />
@@ -471,7 +434,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 onClick={() => handleManualToken()}
                 disabled={loading || !manualToken.trim()}
               >
-                Use Token
+                {loading ? "Verifying…" : "Use Token"}
               </Button>
             </div>
           </div>

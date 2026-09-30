@@ -20,6 +20,7 @@ import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigg
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
+import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
@@ -103,6 +104,7 @@ export function PlatformChrome({ children }: Props) {
                 </div>
               )}
               <InsetHeaderTitle />
+              <InsetHeaderActions />
             </div>
           </header>
           <AdminImpersonationBanner />

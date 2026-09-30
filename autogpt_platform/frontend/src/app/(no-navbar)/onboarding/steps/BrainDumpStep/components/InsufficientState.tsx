@@ -29,7 +29,7 @@ export function InsufficientState({
       role="alert"
       className="flex max-w-md flex-col items-center gap-4 text-center"
     >
-      <Text variant="lead" className="!text-base !text-zinc-500">
+      <Text variant="body" tone="muted">
         {mode === "voice"
           ? "We heard you, but there wasn't enough about your work to " +
             "personalize things yet. A few sentences about what you do — " +

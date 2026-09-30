@@ -1,12 +1,16 @@
 import type { ToolUIPart } from "ai";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import {
   extractToolName,
   getAnimationText,
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
+import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
+import type { HeldRowInfo } from "./heldRow";
+import { heldAskText, heldToolName } from "./heldRow";
 import { asObject, integrationIconSrc } from "./resultHelpers";
 
 export type ChainRowState = "running" | "done" | "error";
@@ -31,6 +35,8 @@ export interface ChainRow {
    *  row line but renders no card, so one delegation never stacks
    *  duplicate cards down the chain. */
   supersededSubSession?: boolean;
+  /** A call the action gate held: whether it waits, ran or was turned down. */
+  held?: HeldRowInfo;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([
@@ -41,7 +47,8 @@ const SUB_SESSION_CARD_TOOLS = new Set([
 ]);
 
 function subSessionIdOf(row: ChainRow): string | null {
-  if (!row.tool || !SUB_SESSION_CARD_TOOLS.has(row.tool)) return null;
+  const tool = capabilityTargetRow(row).tool;
+  if (!tool || !SUB_SESSION_CARD_TOOLS.has(tool)) return null;
   const output = asObject(row.output);
   const sid = output?.sub_session_id;
   return typeof sid === "string" && sid ? sid : null;
@@ -67,7 +74,8 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
     const sid = subSessionIdOf(row);
     if (!sid) continue;
     const open = openRowKey.get(sid);
-    if (open && !SUB_SESSION_START_TOOLS.has(row.tool ?? "")) {
+    const tool = capabilityTargetRow(row).tool ?? "";
+    if (open && !SUB_SESSION_START_TOOLS.has(tool)) {
       supersededKeys.add(open);
     }
     openRowKey.set(sid, row.key);
@@ -81,9 +89,17 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
 const ACTION_RESPONSE_TYPES = new Set([
   "setup_requirements",
   "review_required",
+  "approval_required",
   "need_login",
   "trigger_config_required",
   "suggested_goal",
+]);
+
+const BLOCK_ACTION_TOOLS = new Set([
+  "run_block",
+  "continue_run_block",
+  "run_capability",
+  "resume_capability",
 ]);
 
 function actionLabel(toolName: string, tool: ToolUIPart): string | null {
@@ -93,7 +109,7 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }
-  const isBlock = toolName === "run_block" || toolName === "continue_run_block";
+  const isBlock = BLOCK_ACTION_TOOLS.has(toolName);
   if (data.type === "setup_requirements") {
     const setup =
       data.setup_info && typeof data.setup_info === "object"
@@ -114,6 +130,8 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
       ? `Review ${name.trim()}`
       : "Review this action";
   }
+  if (data.type === "approval_required")
+    return heldAskText(data, heldToolName(data, toolName));
   if (data.type === "suggested_goal") return "Review the suggested goal";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()
@@ -158,14 +176,21 @@ export const EXPERT_CHANGE_TOOLS = new Set([
 ]);
 
 export function isExpertChangePart(part: MessagePart): boolean {
-  return (
-    part.type.startsWith("tool-") &&
-    EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))
+  if (!part.type.startsWith("tool-")) return false;
+  if (EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))) return true;
+  const target = capabilityTargetToolName(
+    part.type,
+    "input" in part ? part.input : undefined,
   );
+  return target !== null && EXPERT_CHANGE_TOOLS.has(target);
 }
 
 export function isChainPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");

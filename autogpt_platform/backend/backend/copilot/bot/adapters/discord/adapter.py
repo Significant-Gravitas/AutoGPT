@@ -28,6 +28,7 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from ..base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     InboundAttachment,
     MessageCallback,
@@ -37,7 +38,7 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from . import commands, config, intro
+from . import choice_ui, commands, config, intro
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -80,6 +81,14 @@ ROLE_ID_PREFIX = "role:"
 # message, each returning up to this many prefix matches.
 MENTION_QUERY_CAP = 8
 MENTION_QUERY_LIMIT = 20
+# Who owns a name when several things share it, best first. See
+# ``DiscordAdapter._mentionables_for``.
+_RANK_CONVERSATION = 0
+_RANK_MEMBER = 1
+_RANK_ROLE = 2
+_RANK_PREFIX = 3
+# A raw Discord mention token: user ``<@id>`` / ``<@!id>`` or role ``<@&id>``.
+_RAW_MENTION = re.compile(r"<@([!&]?)(\d{15,21})>")
 # First word after an @ that is not inside an email, URL or existing token.
 _MENTION_CANDIDATE = re.compile(r"(?<![\w@<])@([A-Za-z0-9_][\w'\-]{0,31})")
 
@@ -88,7 +97,7 @@ class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
-        # AutoPilot output is untrusted w.r.t. mentions — suppress @everyone,
+        # Otto output is untrusted w.r.t. mentions — suppress @everyone,
         # role, and user pings the LLM might produce. Client-level default
         # applies to every send() + reply() below.
         self._client = discord.Client(
@@ -132,6 +141,9 @@ class DiscordAdapter(SocketAdapter):
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
+        # Choice buttons are stateless and outlive this process, so their
+        # click handler is registered once here rather than per sent message.
+        choice_ui.register_choice_handler(self._client, self, callback)
 
     async def start(self) -> None:
         await self._client.start(config.get_bot_token())
@@ -146,12 +158,22 @@ class DiscordAdapter(SocketAdapter):
         ``Client.get_channel`` only reads the in-memory cache, so it misses
         threads the bot hasn't seen since its last restart. Fall back to
         ``fetch_channel`` (REST) so long-lived threads keep working.
+
+        ``channel_id`` reaches here as a caller-supplied string (a model-chosen
+        edit target, a raw proactive-post ID) that was never guaranteed to look
+        like a snowflake, so the ``int()`` conversion is inside the guarded
+        block rather than raising ``ValueError`` straight out to the RPC layer.
         """
-        channel = self._client.get_channel(int(channel_id))
+        try:
+            numeric_id = int(channel_id)
+        except ValueError:
+            logger.warning("Channel id %r is not a valid snowflake", channel_id)
+            return None
+        channel = self._client.get_channel(numeric_id)
         if channel is not None:
             return channel
         try:
-            return await self._client.fetch_channel(int(channel_id))
+            return await self._client.fetch_channel(numeric_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             logger.warning("Channel %s not found or inaccessible", channel_id)
             return None
@@ -167,7 +189,7 @@ class DiscordAdapter(SocketAdapter):
             rendered, allowed = _resolve_mentions(
                 text, await self._mentionables_for(channel, text, mentionable_users)
             )
-            # tts=False is the default but we pin it explicitly — AutoPilot
+            # tts=False is the default but we pin it explicitly — Otto
             # output is untrusted and should never blast through voice.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
@@ -187,11 +209,32 @@ class DiscordAdapter(SocketAdapter):
         )
         await channel.send(text, view=view, tts=False)
 
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return False
+        if self._on_message_callback is None:
+            return False
+        view = choice_ui.build_choice_view(token, options)
+        await channel.send(text, view=view, tts=False)
+        return True
+
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             return
-        # spoiler=False — AutoPilot output is untrusted but spoilering every
+        # spoiler=False — Otto output is untrusted but spoilering every
         # generated file would be noisy; the workspace fetcher already
         # validated user ownership before we got bytes.
         attachment = discord.File(
@@ -321,13 +364,13 @@ class DiscordAdapter(SocketAdapter):
             logger.warning("Cannot post to non-messageable channel %s", channel_id)
             return None
         try:
-            first = await self._send_chunked(channel, text)
+            first, sent = await self._send_chunked(channel, text)
         except discord.HTTPException:
             logger.exception("Failed to post message to channel %s", channel_id)
             return None
         if first is None:
             return None
-        return PostedRef(id=str(first.id), url=first.jump_url)
+        return PostedRef(id=str(first.id), url=first.jump_url, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -347,20 +390,67 @@ class DiscordAdapter(SocketAdapter):
         # The thread now exists on Discord. Surface its ref even if posting the
         # body fails, so the caller reports partial success and doesn't retry
         # into a duplicate thread.
+        first: Optional[discord.Message] = None
+        sent = 0
         try:
-            await self._send_chunked(thread, text)
+            first, sent = await self._send_chunked(thread, text)
         except discord.HTTPException:
             logger.exception(
                 "Thread %s created but posting its content failed", thread.id
             )
-        return PostedRef(id=str(thread.id), url=thread.jump_url)
+        if first is None:
+            # A thread with no body: there is no message to edit, but the
+            # thread id still has to reach the caller.
+            return PostedRef(
+                id=str(thread.id),
+                url=thread.jump_url,
+                channel_id=str(thread.id),
+                editable=False,
+            )
+        # `id` is the body message so it can be edited; `channel_id` is the
+        # thread, both because that is where the message lives and because
+        # follow-up posts belong in the thread rather than its parent.
+        return PostedRef(
+            id=str(first.id),
+            url=first.jump_url,
+            channel_id=str(thread.id),
+            chunk_count=sent,
+        )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return EditOutcome.NOT_FOUND
+        try:
+            message = await channel.fetch_message(int(ref_id))
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        except discord.NotFound:
+            return EditOutcome.NOT_FOUND
+        except discord.HTTPException:
+            logger.exception("Failed to fetch message %s for edit", ref_id)
+            return EditOutcome.FAILED
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, ())
+        )
+        try:
+            await message.edit(content=rendered, allowed_mentions=allowed)
+        except discord.HTTPException:
+            # Covers both a rejected edit (message too old/foreign author) and
+            # a body over Discord's cap — either way the edit did not land.
+            logger.exception("Failed to edit message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def _send_chunked(
         self, channel: discord.abc.Messageable, text: str
-    ) -> Optional[discord.Message]:
+    ) -> tuple[Optional[discord.Message], int]:
         """Send ``text`` to ``channel``, splitting at natural boundaries to stay
         under Discord's per-message cap. Returns the first message sent (the one
-        callers permalink to), or ``None`` if there was nothing to send.
+        callers permalink to) and how many chunks actually landed, or
+        ``(None, 0)`` if there was nothing to send.
 
         Raises only if the *first* chunk fails — once anything is delivered, a
         later-chunk failure stops the send and keeps the partial result rather
@@ -370,6 +460,7 @@ class DiscordAdapter(SocketAdapter):
             text, await self._mentionables_for(channel, text, ())
         )
         first: Optional[discord.Message] = None
+        sent = 0
         for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
                 msg = await channel.send(chunk, tts=False, allowed_mentions=allowed)
@@ -378,9 +469,10 @@ class DiscordAdapter(SocketAdapter):
                     raise
                 logger.exception("Dropping trailing chunk after partial send")
                 break
+            sent += 1
             if first is None:
                 first = msg
-        return first
+        return first, sent
 
     # -- Internal --
 
@@ -705,54 +797,94 @@ class DiscordAdapter(SocketAdapter):
         text: str,
         known: tuple[tuple[str, str], ...],
     ) -> tuple[tuple[str, str], ...]:
-        """Everyone ``text`` may ping in ``channel``: ``known`` (author and
-        inbound mentions) plus, for a server channel, any member whose display
-        name or username matches an ``@Name`` in the text and any role by name.
+        """Everyone ``text`` may ping in ``channel``, as ``(name, id)`` pairs.
 
-        Members are found with a gateway member query per name, which needs no
-        privileged intent and works on any server. ``@everyone`` and ``@here``
-        are never listed, so they stay plain text and the ping object keeps
-        them off regardless. A DM has no server, so only ``known`` applies.
+        ``known`` (the author and anyone the inbound message mentioned) always
+        applies. A server channel adds, from the text itself: members named
+        with ``@Name``, members written as a raw ``<@id>``, and roles.
+
+        One name can point at several of these, and the shared resolver pings
+        nobody for a name that belongs to two different ids. So each name is
+        claimed only by its best source, and only a tie at that level is a
+        real clash. Best first:
+
+        1. someone already in this conversation
+        2. a server member whose display name or username is exactly the name
+        3. a role of that name (no member lookup is run for a role's name)
+        4. a member the typed ``@Name`` only prefixes (``@Bently`` for
+           ``Bently [SOMN]``)
+
+        So a "Bently" role never hides the Bently who just wrote to the bot,
+        and a member called "PlatformBot" never steals ``@Platform`` from the
+        Platform role. Members are found with a gateway query per name, which
+        needs no privileged intent. ``@everyone`` and ``@here`` are never
+        listed. A DM has no server, so only ``known`` applies.
         """
         guild = getattr(channel, "guild", None)
         if not isinstance(guild, discord.Guild):
             return known
         bot_id = self._client.user.id if self._client.user else None
-        pairs: list[tuple[str, str]] = list(known)
-        seen: set[tuple[str, str]] = set(pairs)
-
-        def add(name: Optional[str], token_id: str) -> None:
-            if name and (name, token_id) not in seen:
-                seen.add((name, token_id))
-                pairs.append((name, token_id))
-
+        candidates: list[tuple[int, str, str]] = [
+            (_RANK_CONVERSATION, name, token_id) for name, token_id in known
+        ]
         role_names: set[str] = set()
         for role in guild.roles:
             if role.id == guild.id or role.is_default():
                 continue
-            add(role.name, f"{ROLE_ID_PREFIX}{role.id}")
+            candidates.append((_RANK_ROLE, role.name, f"{ROLE_ID_PREFIX}{role.id}"))
             role_names.add(role.name.casefold())
         for query in _mention_queries(text):
+            # A name that is a role means the role, unless someone in this
+            # conversation holds it, and they are already in ``known``.
             if query.casefold() in role_names:
                 continue
-            try:
-                members = await guild.query_members(
-                    query=query, limit=MENTION_QUERY_LIMIT, cache=False
-                )
-            except (
-                asyncio.TimeoutError,
-                ValueError,
-                discord.ClientException,
-                discord.HTTPException,
-            ):
-                logger.warning("Member lookup for @%s failed", query, exc_info=True)
-                continue
-            for member in members:
+            for member in await self._query_members(guild, query):
                 if member.id == bot_id or member.bot:
                     continue
-                add(member.display_name, str(member.id))
-                add(member.name, str(member.id))
-        return tuple(pairs)
+                member_id = str(member.id)
+                for name in (member.display_name, member.name):
+                    exact = name.casefold() == query.casefold()
+                    candidates.append(
+                        (_RANK_MEMBER if exact else _RANK_PREFIX, name, member_id)
+                    )
+                candidates.append((_RANK_PREFIX, query, member_id))
+        listed_ids = {token_id for _, _, token_id in candidates}
+        for user_id in _raw_user_mention_ids(text):
+            if user_id in listed_ids or user_id == str(bot_id):
+                continue
+            member = await self._guild_member(guild, int(user_id))
+            if member is not None and not member.bot:
+                candidates.append((_RANK_MEMBER, member.display_name, user_id))
+        return _best_claims(candidates)
+
+    async def _query_members(
+        self, guild: discord.Guild, query: str
+    ) -> list[discord.Member]:
+        try:
+            return await guild.query_members(
+                query=query, limit=MENTION_QUERY_LIMIT, cache=False
+            )
+        except (
+            asyncio.TimeoutError,
+            ValueError,
+            discord.ClientException,
+            discord.HTTPException,
+        ):
+            logger.warning("Member lookup for @%s failed", query, exc_info=True)
+            return []
+
+    async def _guild_member(
+        self, guild: discord.Guild, user_id: int
+    ) -> Optional[discord.Member]:
+        """The server member behind a raw ``<@id>``, or None when that id is not
+        a member here. Cache first, then one REST lookup."""
+        member = guild.get_member(user_id)
+        if member is not None:
+            return member
+        try:
+            return await guild.fetch_member(user_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
 
     async def _thread_history(
         self, message: discord.Message
@@ -945,6 +1077,14 @@ def _resolve_mentions(
     token and turn the pinged IDs into Discord's ping-safety object.
     """
     rendered, pinged = resolve_mentions(text, mentionable_users, _mention_token)
+    # The shared resolver reads user ids; a raw role token is Discord's own.
+    allowlisted = {token_id for _, token_id in mentionable_users}
+    for match in _RAW_MENTION.finditer(rendered):
+        if match.group(1) != "&":
+            continue
+        token_id = f"{ROLE_ID_PREFIX}{match.group(2)}"
+        if token_id in allowlisted and token_id not in pinged:
+            pinged.append(token_id)
     user_ids: list[int] = []
     role_ids: list[int] = []
     for token_id in pinged:
@@ -968,6 +1108,35 @@ def _mention_token(_name: str, token_id: str) -> str:
     if token_id.startswith(ROLE_ID_PREFIX):
         return f"<@&{token_id.removeprefix(ROLE_ID_PREFIX)}>"
     return f"<@{token_id}>"
+
+
+def _best_claims(
+    candidates: list[tuple[int, str, str]],
+) -> tuple[tuple[str, str], ...]:
+    """Keep, for each name, only the ``(name, id)`` pairs from its best rank,
+    in first-seen order. A lower-ranked source never makes a name ambiguous."""
+    best: dict[str, int] = {}
+    for rank, name, _ in candidates:
+        key = name.casefold()
+        best[key] = min(rank, best.get(key, rank))
+    pairs: list[tuple[str, str]] = []
+    for rank, name, token_id in candidates:
+        pair = (name, token_id)
+        if name and rank == best[name.casefold()] and pair not in pairs:
+            pairs.append(pair)
+    return tuple(pairs)
+
+
+def _raw_user_mention_ids(text: str) -> list[str]:
+    """Distinct user ids written as raw ``<@id>`` / ``<@!id>`` tokens, capped."""
+    ids: list[str] = []
+    for match in _RAW_MENTION.finditer(text):
+        if match.group(1) == "&" or match.group(2) in ids:
+            continue
+        ids.append(match.group(2))
+        if len(ids) >= MENTION_QUERY_CAP:
+            break
+    return ids
 
 
 def _mention_queries(text: str) -> list[str]:

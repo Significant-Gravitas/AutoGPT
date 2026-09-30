@@ -11,9 +11,9 @@ export function ProgressBar({ currentStep, totalSteps }: Props) {
   const percent = (currentStep / (totalSteps + 1)) * 100;
 
   return (
-    <div className="absolute left-0 top-0 h-[3px] w-full bg-neutral-200">
+    <div className="absolute left-0 top-0 h-0.5 w-full bg-zinc-100">
       <div
-        className="h-full bg-purple-400 transition-all duration-500 ease-out"
+        className="h-full bg-zinc-900 transition-all duration-500 ease-out"
         style={{ width: `${percent}%` }}
       />
     </div>

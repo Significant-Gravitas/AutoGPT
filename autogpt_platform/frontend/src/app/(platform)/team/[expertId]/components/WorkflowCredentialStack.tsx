@@ -2,6 +2,7 @@
 
 import { ExpertWorkflowChainItem } from "@/app/api/__generated__/models/expertWorkflowChainItem";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { toDisplayName } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
@@ -66,13 +67,16 @@ export function WorkflowCredentialStack({ providers }: Props) {
         </span>
       ))}
       {hidden > 0 ? (
-        <span
+        <Text
+          variant="small-medium"
+          as="span"
+          tone="secondary"
           role="listitem"
-          className="-ml-2 flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[11px] font-medium text-zinc-600 ring-2 ring-white"
+          className="-ml-2 flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 ring-2 ring-white"
           aria-label={`${hidden} more`}
         >
           +{hidden}
-        </span>
+        </Text>
       ) : null}
     </div>
   );

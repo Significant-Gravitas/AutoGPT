@@ -1,158 +1,110 @@
-"use client";
+import {
+  getListExpertTemplatesQueryKey,
+  listExpertTemplates,
+} from "@/app/api/__generated__/endpoints/experts/experts";
+import { Expert } from "@/app/api/__generated__/models/expert";
+import { buildPageMetadata } from "@/lib/metadata";
+import { getQueryClient } from "@/lib/react-query/queryClient";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { cache } from "react";
+import { ExpertPage } from "./components/ExpertPage";
 
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
-import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
-import Link from "next/link";
-import { notFound, useParams } from "next/navigation";
-import { ExpertAbout } from "./components/ExpertAbout";
-import { ExpertComingSoon } from "./components/ExpertComingSoon";
-import { ExpertHireActions } from "./components/ExpertHireActions";
-import { ExpertPageHeader } from "./components/ExpertPageHeader";
-import { ExpertSkills } from "./components/ExpertSkills";
-import { ExpertWorkflowList } from "./components/ExpertWorkflowList";
-import { useExpertPage } from "./useExpertPage";
-import { useHireFlow } from "./useHireFlow";
+export const dynamic = "force-dynamic";
 
-const MAIN_CLASS =
-  "mx-auto flex w-full max-w-[760px] flex-col px-6 pb-24 pt-8 md:px-8";
+export type MarketplaceExpertPageParams = { expertId: string };
 
-function BackToMarketplaceLink() {
-  return (
-    <Link
-      href="/marketplace#experts"
-      className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
-    >
-      <Icon icon={ArrowLeft02Icon} size={14} />
-      Back to marketplace
-    </Link>
+// Ads traffic lands here in bursts and the templates change rarely, so the
+// server keeps one copy for a minute instead of asking the backend per view.
+const TEMPLATES_REVALIDATE_SECONDS = 60;
+
+export async function generateMetadata({
+  params: _params,
+}: {
+  params: Promise<MarketplaceExpertPageParams>;
+}): Promise<Metadata> {
+  const params = await _params;
+  const path = `/marketplace/experts/${params.expertId}`;
+  const expert = findExpertTemplate(
+    await fetchExpertTemplates(),
+    params.expertId,
   );
-}
-
-export default function MarketplaceExpertPage() {
-  const { expertId } = useParams<{ expertId: string }>();
-  const {
-    expert,
-    hiredExpert,
-    isLoggedIn,
-    isComingSoon,
-    isReady,
-    isLoading,
-    isError,
-    refetch,
-  } = useExpertPage({ expertId });
-  const {
-    hire,
-    isHiring,
-    hireResult,
-    pickVoice,
-    skipVoice,
-    dismissVoicePick,
-    isSavingVoice,
-  } = useHireFlow(expert);
-
-  if (!isReady || isLoading) {
-    return (
-      <main className={MAIN_CLASS}>
-        <Skeleton className="mb-6 h-4 w-32" />
-        <div className="flex items-center gap-5">
-          <Skeleton className="h-18 w-18 rounded-full" />
-          <div className="flex flex-1 flex-col gap-2.5">
-            <Skeleton className="h-7 w-36" />
-            <Skeleton className="h-5 w-24 rounded-md" />
-          </div>
-          <Skeleton className="h-9 w-28 rounded-full" />
-        </div>
-        <Skeleton className="mt-5 h-5 w-3/4" />
-        <div className="mt-8 flex flex-col gap-3 border-t border-zinc-200 pt-8">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-11/12" />
-          <Skeleton className="h-4 w-3/4" />
-        </div>
-      </main>
-    );
-  }
-
-  if (isComingSoon) {
-    return (
-      <main className={MAIN_CLASS}>
-        <ExpertComingSoon />
-      </main>
-    );
-  }
-
-  if (isError) {
-    return (
-      <main className={MAIN_CLASS}>
-        <BackToMarketplaceLink />
-        <ErrorCard
-          context="this expert"
-          hint="We could not load this expert."
-          onRetry={() => refetch()}
-        />
-      </main>
-    );
-  }
 
   if (!expert) {
+    return buildPageMetadata({ title: "Expert - AutoGPT Marketplace", path });
+  }
+
+  // avatar_url points at an SVG, which no unfurler renders, so this stays a
+  // text card until experts have a raster image.
+  return buildPageMetadata({
+    title: `${expert.name}, ${expert.job_title || getExpertRoleLabel(expert.role)} · AI Expert - AutoGPT Marketplace`,
+    description: expert.tagline || expert.bio,
+    path,
+    type: "profile",
+  });
+}
+
+// Crawlers and the Ads landing-page check read the first response, so the
+// expert's text has to be in the server HTML: the templates are fetched here
+// and handed to the client tree, which hydrates useExpertPage with the expert
+// on its first render instead of showing a skeleton. The route also sits
+// outside the marketplace home's loading boundary (see ../(home)/loading.tsx):
+// under one, the content would stream in a hidden chunk that only an inline
+// script reveals, which is what a crawler without JavaScript never sees.
+export default async function MarketplaceExpertPage({
+  params: _params,
+}: {
+  params: Promise<MarketplaceExpertPageParams>;
+}) {
+  const { expertId } = await _params;
+  const queryClient = getQueryClient();
+  await queryClient.prefetchQuery({
+    queryKey: getListExpertTemplatesQueryKey(),
+    // Arg-less on purpose: React's cache keys on arguments, and react-query
+    // would otherwise pass its context and miss generateMetadata's entry.
+    queryFn: () => fetchExpertTemplatesOrThrow(),
+  });
+  const templates = queryClient.getQueryData<ExpertTemplatesResponse>(
+    getListExpertTemplatesQueryKey(),
+  );
+
+  // Only a loaded list can say the id is unknown. When the backend was
+  // unreachable nothing is dehydrated and the client fetch renders the error.
+  if (templates && !findExpertTemplate(templates, expertId)) {
     notFound();
   }
 
-  const accent = getExpertAccent(expert.role);
-
   return (
-    <main className={MAIN_CLASS}>
-      <BackToMarketplaceLink />
-      <ExpertPageHeader
-        expert={expert}
-        accent={accent}
-        actions={
-          <ExpertHireActions
-            expert={expert}
-            hiredExpert={hiredExpert}
-            isLoggedIn={isLoggedIn}
-            isHiring={isHiring}
-            onHire={hire}
-          />
-        }
-      />
-      <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
-        <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
-        <ExpertSkills skills={expert.skills ?? []} accent={accent} />
-        <ExpertWorkflowList
-          name={expert.name}
-          workflows={expert.workflows}
-          accent={accent}
-        />
-      </div>
-
-      {/* The voice pick follows a successful hire when the persona ships
-          writing samples; dismissing it still celebrates the hire. */}
-      <Dialog
-        styling={{ width: "640px" }}
-        controlled={{
-          isOpen: hireResult !== null,
-          set: (open) => {
-            if (!open) dismissVoicePick();
-          },
-        }}
-      >
-        <Dialog.Content>
-          {hireResult ? (
-            <VoicePicker
-              name={hireResult.expert.name}
-              samples={expert.voice_samples ?? []}
-              onPick={pickVoice}
-              onSkip={skipVoice}
-              isSubmitting={isSavingVoice}
-            />
-          ) : null}
-        </Dialog.Content>
-      </Dialog>
-    </main>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <ExpertPage />
+    </HydrationBoundary>
   );
+}
+
+type ExpertTemplatesResponse = Awaited<ReturnType<typeof listExpertTemplates>>;
+
+// One backend call per request, shared by generateMetadata and the page body.
+const fetchExpertTemplatesOrThrow = cache(() =>
+  listExpertTemplates(undefined, {
+    next: { revalidate: TEMPLATES_REVALIDATE_SECONDS },
+  }),
+);
+
+async function fetchExpertTemplates(): Promise<ExpertTemplatesResponse | null> {
+  try {
+    return await fetchExpertTemplatesOrThrow();
+  } catch {
+    // Metadata must never break the page; the client fetch renders the error.
+    return null;
+  }
+}
+
+function findExpertTemplate(
+  templates: ExpertTemplatesResponse | null,
+  expertId: string,
+): Expert | null {
+  if (!templates) return null;
+  return (templates.data as Expert[]).find((t) => t.id === expertId) ?? null;
 }

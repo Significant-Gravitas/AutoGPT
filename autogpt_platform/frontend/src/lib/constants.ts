@@ -11,6 +11,8 @@ export const IMPERSONATION_COOKIE_NAME = "admin-impersonate-user-id";
 
 // API key authentication
 export const API_KEY_HEADER_NAME = "X-API-Key";
+export const CLIENT_COUNTRY_TOKEN_HEADER_NAME = "X-Client-Country-Token";
+export const VERCEL_COUNTRY_HEADER_NAME = "x-vercel-ip-country";
 
 // Layout
 export const NAVBAR_HEIGHT_PX = 60;

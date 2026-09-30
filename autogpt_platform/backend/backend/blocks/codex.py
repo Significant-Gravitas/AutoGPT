@@ -197,6 +197,7 @@ class CodeGenerationBlock(Block):
     def __init__(self):
         super().__init__(
             id="86a2a099-30df-47b4-b7e4-34ae5f83e0d5",
+            capability_kind="primitive",
             description=(
                 "Generate or refactor code using an OpenAI API key or a connected "
                 "ChatGPT plan through Codex App Server."

@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from slack_sdk.errors import SlackApiError
 
-from backend.copilot.bot.adapters.base import FileAttachment
+from backend.copilot.bot.adapters.base import EditOutcome, FileAttachment
+from backend.copilot.bot.choices import ResolvedChoice
+from backend.copilot.bot.turn_stream import _clarification_message
 from backend.data.bot_installs import BotInstallCredentials
 
 from . import config
@@ -33,6 +35,7 @@ def _mock_client() -> MagicMock:
     client = MagicMock()
     client.token = "xoxb-test"
     client.chat_postMessage = AsyncMock(return_value={"ts": "111.222"})
+    client.chat_update = AsyncMock(return_value={"ok": True})
     client.chat_postEphemeral = AsyncMock()
     client.chat_getPermalink = AsyncMock(return_value={"permalink": "https://x/p"})
     client.files_upload_v2 = AsyncMock()
@@ -102,6 +105,8 @@ class TestInboundRouting:
         assert ctx.text == "hi there"  # bot mention stripped
         # The opaque channel_id carries the workspace so sends pick its token.
         assert ctx.channel_id == "T1|C1|"
+        # The author is who the bot answers, so a reply naming them pings.
+        assert [uid for _, uid in ctx.mentionable_users] == ["U1"]
 
     @pytest.mark.asyncio
     async def test_thread_reply_is_not_bot_mentioned(self, adapter):
@@ -482,7 +487,151 @@ class TestUninstall:
         assert "T5" not in adapter._bot_user_ids
 
 
+class TestChoiceButtons:
+    @pytest.mark.asyncio
+    async def test_send_choice_buttons_posts_blocks(self, adapter):
+        sent = await adapter.send_choice_buttons(
+            "T1|C1|", "Which region?", ["US", "EU"], "abcdef012345"
+        )
+        assert sent is True
+        assert adapter.supports_choice_buttons is True
+        kwargs = adapter._clients["T1"].chat_postMessage.await_args.kwargs
+        assert kwargs["blocks"][1]["elements"][0]["action_id"] == "qans:abcdef012345:0"
+
+    @pytest.mark.asyncio
+    async def test_block_action_click_resolves_updates_message_and_dispatches(
+        self, adapter
+    ):
+        adapter._on_message_callback = AsyncMock()
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "message": {"ts": "111.222"},
+            "actions": [{"action_id": "qans:abcdef012345:1"}],
+        }
+        with patch(
+            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+        ):
+            await adapter._dispatch_block_action(payload)
+
+        update_kwargs = adapter._clients["T1"].chat_update.await_args.kwargs
+        assert update_kwargs["text"] == adapter.localize_markup("✅ You answered: EU")
+        adapter._on_message_callback.assert_awaited_once()
+        ctx, dispatched_adapter = adapter._on_message_callback.await_args.args
+        assert dispatched_adapter is adapter
+        assert ctx.text == "EU"
+        assert ctx.platform == "slack"
+
+    @pytest.mark.asyncio
+    async def test_choice_ack_escapes_model_authored_option_text(self, adapter):
+        # Options are LLM-authored, so an unescaped `<!channel>` in the ack
+        # reaches chat.update as a live mention and pings the workspace,
+        # bypassing the mentionable_users allowlist. Every other Slack send
+        # path in this file escapes; this one used to interpolate raw.
+        adapter._on_message_callback = AsyncMock()
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "message": {"ts": "111.222"},
+            "actions": [{"action_id": "qans:abcdef012345:1"}],
+        }
+        with patch(
+            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="<!channel> ping")),
+        ):
+            await adapter._dispatch_block_action(payload)
+
+        text = adapter._clients["T1"].chat_update.await_args.kwargs["text"]
+        assert "<!channel>" not in text
+
+    @pytest.mark.asyncio
+    async def test_choice_click_dispatches_even_if_the_ack_update_fails(self, adapter):
+        # chat_update runs *after* resolve_choice has GETDEL'd the token, so
+        # a SlackApiError here would lose the answer permanently, silently.
+        adapter._on_message_callback = AsyncMock()
+        adapter._clients["T1"].chat_update = AsyncMock(
+            side_effect=SlackApiError("nope", {"error": "message_not_found"})
+        )
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "message": {"ts": "111.222"},
+            "actions": [{"action_id": "qans:abcdef012345:1"}],
+        }
+        with patch(
+            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+        ):
+            await adapter._dispatch_block_action(payload)
+
+        adapter._on_message_callback.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_expired_token_sends_ephemeral_notice_and_does_not_dispatch(
+        self, adapter
+    ):
+        adapter._on_message_callback = AsyncMock()
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "actions": [{"action_id": "qans:abcdef012345:0"}],
+        }
+        with patch(
+            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text=None)),
+        ):
+            await adapter._dispatch_block_action(payload)
+
+        adapter._clients["T1"].chat_postEphemeral.assert_awaited_once()
+        assert (
+            "expired"
+            in adapter._clients["T1"].chat_postEphemeral.await_args.kwargs["text"]
+        )
+        adapter._clients["T1"].chat_update.assert_not_awaited()
+        adapter._on_message_callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_action_id_is_a_no_op(self, adapter):
+        adapter._on_message_callback = AsyncMock()
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "actions": [{"action_id": "not-a-choice-action"}],
+        }
+        await adapter._dispatch_block_action(payload)
+        adapter._on_message_callback.assert_not_awaited()
+
+
 class TestOutbound:
+    @pytest.mark.asyncio
+    async def test_send_message_delivers_clarification_question(self, adapter):
+        """SECRT-2604: an ask_question payload must reach Slack as a plain
+        text message with the numbered options intact, unmangled by the
+        adapter's real send path (chat_postMessage + mrkdwn conversion)."""
+        text = _clarification_message(
+            {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+        )
+        await adapter.send_message("T1|C1|", text)
+        sent = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
+        assert "Which region?" in sent
+        assert "1. US" in sent
+        assert "2. EU" in sent
+        assert "Reply with a number" in sent
+
     @pytest.mark.asyncio
     async def test_send_message_renders_mrkdwn_and_mentions_and_threads(self, adapter):
         await adapter.send_message("T1|C1|1.2", "**hi** @Bently", (("Bently", "U9"),))
@@ -501,21 +650,22 @@ class TestOutbound:
 
     @pytest.mark.asyncio
     async def test_raw_control_sequences_are_escaped_but_allowlist_pings(self, adapter):
-        # A model-output <!channel> or raw <@Uid> must be neutralized; only
-        # the allowlisted @Bently comes back as a live mention token.
+        # A model-output <!channel>, or a raw <@Uid> for someone not on the
+        # allowlist, must be neutralized. The allowlisted person pings whether
+        # the model named them (@Bently) or wrote their id (<@U9>).
         await adapter.send_message(
-            "T1|C1|", "<!channel> <@U9> @Bently", (("Bently", "U9"),)
+            "T1|C1|", "<!channel> <@U8> <@U9> @Bently", (("Bently", "U9"),)
         )
         text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
-        assert text == "&lt;!channel&gt; &lt;@U9&gt; <@U9>"
+        assert text == "&lt;!channel&gt; &lt;@U8&gt; <@U9> <@U9>"
 
     @pytest.mark.asyncio
     async def test_allowlisted_name_with_escapable_chars_still_pings(self, adapter):
         # Display names like "R&D" are raw; matching must happen before the
         # text is escaped or the ping silently disappears.
-        await adapter.send_message("T1|C1|", "hey @R&D, see <@U7>", (("R&D", "U7"),))
+        await adapter.send_message("T1|C1|", "hey @R&D, see <@U6>", (("R&D", "U7"),))
         text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
-        assert text == "hey <@U7>, see &lt;@U7&gt;"
+        assert text == "hey <@U7>, see &lt;@U6&gt;"
 
     @pytest.mark.asyncio
     async def test_post_channel_message_chunks_before_escaping(self, adapter):
@@ -616,6 +766,56 @@ class TestOutbound:
     @pytest.mark.asyncio
     async def test_rename_thread_is_noop(self, adapter):
         assert await adapter.rename_thread("T1|C1|9.9", "x") is False
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_calls_chat_update(self, adapter):
+        outcome = await adapter.edit_channel_message("T1|C1|", "111.222", "updated")
+
+        assert outcome == EditOutcome.OK
+        call = adapter._clients["T1"].chat_update.await_args.kwargs
+        assert call["channel"] == "C1"
+        assert call["ts"] == "111.222"
+        assert call["text"] == "updated"
+        # chat.update keeps a message's existing blocks when `blocks` is
+        # omitted, so a block message would silently not change.
+        assert call["blocks"] == []
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_escapes_like_the_send_path(self, adapter):
+        # Edit content is model-authored, so it must go through the same
+        # mrkdwn escaping as a send. Dropping `localize_markup` from the edit
+        # path has to fail here.
+        await adapter.edit_channel_message(
+            "T1|C1|", "111.222", "**bold** <!channel> & <https://x>"
+        )
+
+        call = adapter._clients["T1"].chat_update.await_args.kwargs
+        assert call["text"] == adapter.localize_markup(
+            "**bold** <!channel> & <https://x>"
+        )
+        assert "**bold**" not in call["text"]
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found(self, adapter):
+        adapter._clients["T1"].chat_update = AsyncMock(
+            side_effect=SlackApiError("not found", {"error": "message_not_found"})
+        )
+
+        outcome = await adapter.edit_channel_message("T1|C1|", "111.222", "updated")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_failed_on_other_slack_error(self, adapter):
+        adapter._clients["T1"].chat_update = AsyncMock(
+            side_effect=SlackApiError(
+                "edit forbidden", {"error": "cant_update_message"}
+            )
+        )
+
+        outcome = await adapter.edit_channel_message("T1|C1|", "111.222", "updated")
+
+        assert outcome == EditOutcome.FAILED
 
 
 class TestChannelIdGrammar:

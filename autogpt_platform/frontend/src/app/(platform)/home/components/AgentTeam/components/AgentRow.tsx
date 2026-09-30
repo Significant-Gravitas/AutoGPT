@@ -1,7 +1,9 @@
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import { Button } from "@/components/atoms/Button/Button";
+import { BubbleChatIcon, Settings01Icon } from "@hugeicons/core-free-icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { formatWeeklySpend } from "../../../helpers";
 import { formatUntil } from "../../NowNext/helpers";
 import { StatusBadge } from "./StatusBadge";
@@ -37,6 +39,16 @@ export function AgentRow({ agent }: Props) {
           </Text>
           <StatusBadge status={agent.status} />
         </div>
+        <Text variant="small" tone="secondary" className="break-words">
+          {agent.detail || "No status details available."}{" "}
+          {agent.status === "failed"
+            ? "Open Manage to inspect recent work."
+            : agent.status === "needs_setup"
+              ? "Open Manage to finish setup."
+              : agent.status === "paused"
+                ? "Open Manage to review settings."
+                : "Open Chat to give instructions."}
+        </Text>
         {secondLine ? (
           <Text
             variant="small"
@@ -49,24 +61,28 @@ export function AgentRow({ agent }: Props) {
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {/* Icon-only: the atom shows the aria-label as a hover tooltip. */}
         <Button
           as="NextLink"
           href={`/copilot?expertId=${agent.expert.id}`}
-          variant="secondary"
-          size="xs"
+          variant="icon"
+          size="icon-sm"
+          leadingIcon={BubbleChatIcon}
           aria-label={`Chat with ${agent.expert.name}`}
-        >
-          Chat
-        </Button>
+        />
         <Button
           as="NextLink"
           href={`/team/${agent.expert.id}`}
-          variant="secondary"
-          size="xs"
+          variant="icon"
+          size="icon-sm"
+          leadingIcon={Settings01Icon}
           aria-label={`Manage ${agent.expert.name}`}
-        >
-          Manage
-        </Button>
+          onClick={() =>
+            trackFunnel("home_team_member_clicked", {
+              expert_id: agent.expert.id,
+            })
+          }
+        />
       </div>
     </div>
   );

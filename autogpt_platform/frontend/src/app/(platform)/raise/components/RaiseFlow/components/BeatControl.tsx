@@ -7,16 +7,19 @@ import type { useRaisePage } from "../../../useRaisePage";
 import { AboutStep } from "../../AboutStep/AboutStep";
 import { AvatarStep } from "../../AvatarStep/AvatarStep";
 import { BudgetStep } from "../../BudgetStep/BudgetStep";
-import { ColorStep } from "../../ColorStep/ColorStep";
+import { CategoryStep } from "../../CategoryStep/CategoryStep";
+import {
+  jobTitleSuggestionsFor,
+  nameSuggestionsFor,
+} from "../../CategoryStep/helpers";
 import {
   interactiveCardClassFor,
   selectedCardClassFor,
   textClassFor,
 } from "../../ColorStep/helpers";
+import { JobTitleStep } from "../../JobTitleStep/JobTitleStep";
 import { MarketplaceStep } from "../../MarketplaceStep/MarketplaceStep";
 import { NameStep } from "../../NameStep/NameStep";
-import { nameSuggestionsFor } from "../../RoleStep/helpers";
-import { RoleStep } from "../../RoleStep/RoleStep";
 import { SkillsStep } from "../../SkillsStep/SkillsStep";
 
 interface Props {
@@ -26,34 +29,43 @@ interface Props {
 
 export function BeatControl({ beat, flow }: Props) {
   switch (beat) {
-    case "role":
+    case "category":
       return (
-        <RoleStep
-          selectedRole={flow.role}
+        <CategoryStep
+          selectedCategory={flow.category}
           color={flow.color}
-          onPick={flow.pickRole}
+          onPick={flow.pickCategory}
+        />
+      );
+    case "jobTitle":
+      return (
+        <JobTitleStep
+          selectedTitle={flow.jobTitle}
+          suggestions={jobTitleSuggestionsFor(flow.category)}
+          color={flow.color}
+          onSubmit={flow.submitJobTitle}
+          onSkip={flow.skipJobTitle}
         />
       );
     case "name":
       return (
         <NameStep
           selectedName={flow.name || null}
-          suggestions={nameSuggestionsFor(flow.role)}
+          suggestions={nameSuggestionsFor(flow.category)}
           color={flow.color}
           onSubmit={flow.submitName}
         />
       );
-    case "color":
-      return <ColorStep selectedColor={flow.color} onPick={flow.pickColor} />;
     case "avatar":
+      // The avatar beat only opens once the area is answered.
+      if (!flow.category) return null;
       return (
         <AvatarStep
           name={flow.name}
+          category={flow.category}
           color={flow.color}
           avatarUrl={flow.avatarUrl || null}
-          isSkipped={flow.avatarUrl === ""}
           onPick={flow.pickAvatar}
-          onSkip={flow.skipAvatar}
         />
       );
     case "about":
@@ -93,8 +105,11 @@ export function BeatControl({ beat, flow }: Props) {
     case "marketplace":
       return (
         <MarketplaceStep
+          name={flow.name}
           color={flow.color}
           submitted={flow.marketplace}
+          isFinal={flow.isMarketplaceFinal}
+          isSubmitting={flow.isSubmitting}
           onSubmit={flow.submitMarketplace}
           onSkip={flow.skipMarketplace}
         />

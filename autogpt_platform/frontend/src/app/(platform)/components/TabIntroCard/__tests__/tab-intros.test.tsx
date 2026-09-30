@@ -142,15 +142,15 @@ describe("MarketplaceTabIntro", () => {
 });
 
 describe("BuildTabIntro", () => {
-  it("sends the user to AutoPilot from the primary CTA", async () => {
+  it("sends the user to Otto from the primary CTA", async () => {
     render(<BuildTabIntro />);
     expect(await screen.findByText("Create your own workflows.")).toBeDefined();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Ask AutoPilot to build it" }),
+      screen.getByRole("button", { name: "Ask Otto to build it" }),
     );
 
-    expect(push).toHaveBeenCalledWith("/copilot");
+    expect(push).toHaveBeenCalledWith("/copilot?new=1");
     expect(startTutorial).not.toHaveBeenCalled();
     expect(completeStep).toHaveBeenCalledWith("BUILD_TAB_INTRO");
     expect(capture).toHaveBeenCalledWith("tab_intro_cta_clicked", {

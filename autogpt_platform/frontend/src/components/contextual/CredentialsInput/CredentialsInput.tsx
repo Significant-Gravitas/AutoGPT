@@ -153,6 +153,7 @@ export function CredentialsInput({
               schema={schema}
               provider={provider}
               displayName={displayName}
+              siblingInputs={siblingInputs}
               open={isConnectDialogOpen}
               onClose={() => setConnectDialogOpen(false)}
             />

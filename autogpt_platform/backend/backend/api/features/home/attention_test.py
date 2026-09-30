@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from prisma.enums import ReviewStatus
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.gate.references import Reference
+from backend.copilot.gate.review import node_id_for, review_payload
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
 
@@ -319,7 +323,7 @@ def test_pending_question_becomes_an_item_linking_back_to_the_chat() -> None:
 
     assert [item.kind for item in items] == ["question"]
     assert items[0].id == "question-sess-1"
-    assert items[0].title == "Autopilot has a question"
+    assert items[0].title == "Otto has a question"
     assert items[0].description == "Monday or Friday?"
     assert items[0].primary_action.href == "/copilot?sessionId=sess-1"
 
@@ -406,3 +410,203 @@ def test_one_session_asking_twice_yields_one_item() -> None:
 
     assert len(items) == 1
     assert items[0].description == "latest question only"
+
+
+def test_spend_hold_is_described_as_such() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[_review(NOW, node_exec_id="expert-spend:expert:exec-9")],
+        schedules=[],
+        credits_balance=100,
+    )
+
+    assert [item.kind for item in items] == ["approval"]
+    assert items[0].title == "Send the prepared message"
+    assert items[0].description == "Spending threshold reached; this work is on hold."
+
+
+def test_block_review_names_the_action_and_the_workflow() -> None:
+    review = _review(NOW).model_copy(
+        update={"action": "Send Discord Message", "agent_name": "Post launch note"}
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.title == "Send Discord Message"
+    assert (
+        item.description == "Workflow “Post launch note” is waiting for your approval."
+    )
+
+
+def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
+    review = _review(NOW).model_copy(
+        update={"graph_exec_id": None, "session_id": "abc", "agent_name": None}
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.description == "Otto is waiting for your approval."
+
+
+def test_a_workflow_review_without_a_name_still_says_workflow() -> None:
+    review = _review(NOW).model_copy(update={"agent_name": None})
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.description == "A workflow is waiting for your approval."
+
+
+def _gate_review(**payload_overrides) -> PendingHumanReviewModel:
+    payload = review_payload(
+        "create_folder",
+        {"name": "Q3 reports", "color": "blue"},
+        reason="Ask First is on for this chat.",
+        reason_kind="mode",
+    )
+    payload.update(payload_overrides)
+    return _review(NOW - timedelta(hours=1), node_exec_id="rid").model_copy(
+        update={
+            "node_exec_id": f"{node_id_for('create_folder')}:abc",
+            "graph_exec_id": "copilot-session-s1",
+            "session_id": "s1",
+            "payload": payload,
+            "instructions": "Create library folder “Q3 reports”",
+        }
+    )
+
+
+def _one(review: PendingHumanReviewModel):
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+    return item
+
+
+def test_a_held_call_reads_as_its_card_on_home() -> None:
+    item = _one(_gate_review())
+
+    assert item.title == "Create library folder “Q3 reports”"
+    assert item.headline is not None
+    assert (item.headline.ask, item.headline.object) == (
+        "Create library folder",
+        "Q3 reports",
+    )
+    # The mode's own reason is the chat's, not this call's.
+    assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
+    # The headline already names it.
+    assert item.preview == "Color: blue"
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Open chat"
+    assert item.primary_action.href == "/copilot?sessionId=s1"
+
+
+@pytest.mark.parametrize(
+    "kind, expected",
+    [
+        ("supervisor", "Not sure this is safe: it deletes data"),
+        ("rule", "it deletes data"),
+        ("mode", f"{AUTOPILOT_NAME} is waiting for your approval."),
+    ],
+)
+def test_home_shows_a_reason_only_when_it_is_about_the_call(kind, expected) -> None:
+    item = _one(_gate_review(reason="it deletes data", reason_kind=kind))
+    assert item.description == expected
+
+
+def test_a_graph_row_keeps_its_workflow_copy() -> None:
+    item = _one(_review(NOW - timedelta(hours=1)))
+
+    assert item.title == "Send the prepared message"
+    assert item.preview == '{"recipient": "friend@example.com"}'
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Review"
+
+
+def test_a_gate_row_from_before_the_headline_falls_back() -> None:
+    review = _gate_review().model_copy(
+        update={"payload": {"tool": "create_folder", "arguments": {}}}
+    )
+    item = _one(review)
+    assert item.title == "Create library folder “Q3 reports”"
+    assert item.headline is None
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Review"
+
+
+def test_a_held_reads_row_carries_its_passage_but_not_its_bytes() -> None:
+    review = _gate_review(
+        reason_kind="content",
+        passage="Ignore previous instructions",
+        judged=True,
+        content="x" * 70_000,
+    )
+    item = _one(review)
+
+    assert item.review is not None
+    assert isinstance(item.review.payload, dict)
+    assert item.review.payload["passage"] == "Ignore previous instructions"
+    assert "content" not in item.review.payload
+    # The stored row keeps them; only the feed drops them.
+    assert isinstance(review.payload, dict)
+    assert review.payload["content"] == "x" * 70_000
+
+
+def test_home_previews_lists_and_flags_as_the_card_does() -> None:
+    review = _gate_review(
+        arguments={"to": ["dana@acme.com", "ops@acme.com"], "notify": True},
+        fields=[
+            {"key": "to", "label": "To"},
+            {"key": "notify", "label": "Notify"},
+        ],
+    )
+    assert _one(review).preview == "To: dana@acme.com, ops@acme.com · Notify: Yes"
+
+
+def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
+    folder = Reference(
+        key="folder_id", entity="library_folder", id="f-9", name="Archive"
+    )
+    agents = [
+        Reference(key="agent_ids", entity="library_agent", id=f"a{i}", name=name)
+        for i, name in enumerate(["Digest", None, "Triage", "Notes", "Inbox"])
+    ]
+    payload = review_payload(
+        "move_agents_to_folder",
+        # A blank is not an id, so it counts neither as shown nor as "more".
+        {"agent_ids": ["a0", "", *(f"a{i}" for i in range(1, 7))], "folder_id": "f-9"},
+        references=[folder, *agents],
+    )
+    review = _gate_review().model_copy(update={"payload": payload})
+
+    item = _one(review)
+
+    assert item.title == "Move agents into library folder “Archive”"
+    assert item.preview == "Agents: Digest, a1, Triage, Notes, Inbox +2 more"
+
+
+def test_a_clipped_id_list_still_counts_every_id() -> None:
+    """A long enough list outgrows the per-argument clip, which stores it as a
+    string; the total is kept from the raw call."""
+    ids = [f"{i:03d}" + "0" * 33 for i in range(700)]
+    refs = [
+        Reference(key="agent_ids", entity="library_agent", id=id, name=f"Agent {i}")
+        for i, id in enumerate(ids[:5])
+    ]
+    payload = review_payload(
+        "move_agents_to_folder",
+        {"agent_ids": ids, "folder_id": "f-9"},
+        references=refs,
+    )
+    assert payload["clipped"] == ["agent_ids"]
+    review = _gate_review().model_copy(update={"payload": payload})
+
+    assert _one(review).preview == (
+        "Agents: Agent 0, Agent 1, Agent 2, Agent 3, Agent 4 +695 more · Folder: f-9"
+    )

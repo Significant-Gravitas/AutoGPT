@@ -2,13 +2,15 @@ import {
   CredentialsProvidersContext,
   type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderBare,
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChainActionCard } from "../ChainActionCard";
 import type {
@@ -28,6 +30,32 @@ vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
     data: [{ name: "github", description: "Connect your GitHub account" }],
   }),
 }));
+
+vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
+  useListExpertCredentials: () => ({ data: [], refetch: vi.fn() }),
+  useGrantExpertCredentials: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  getListExpertCredentialsQueryKey: (expertId?: string) => [
+    `/api/experts/${expertId}/credentials`,
+  ],
+}));
+
+// ConnectorRow's expert-grant hook writes the granted list into the cache.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function QueryWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+function render(ui: ReactElement) {
+  return renderBare(ui, { wrapper: QueryWrapper });
+}
 
 vi.mock(
   "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog",
@@ -635,7 +663,7 @@ describe("ChainActionCard", () => {
       renderCard({ questions: [questionRequest()] });
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(true);
     });
@@ -645,9 +673,7 @@ describe("ChainActionCard", () => {
         questions: [questionRequest({ answers: { region: "Europe" } })],
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
@@ -705,7 +731,7 @@ describe("ChainActionCard", () => {
       ).toBe("false");
     });
 
-    it("swaps to free text via Type something and clears a picked option", () => {
+    it("opens free text via Type something, clears a picked option and keeps the options on screen", () => {
       const request = questionRequest({
         questions: [
           {
@@ -721,9 +747,8 @@ describe("ChainActionCard", () => {
       fireEvent.click(screen.getByText("Type something…"));
       expect(request.onAnswer).toHaveBeenCalledWith("region", "");
       expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
-
-      fireEvent.click(screen.getByText("Choose from options instead"));
       expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
+      expect(screen.getByRole("radio", { name: "Americas" })).toBeDefined();
     });
 
     it("opens in free text when the answer matches no option", () => {
@@ -745,7 +770,7 @@ describe("ChainActionCard", () => {
       expect(screen.getByDisplayValue("Antarctica")).toBeDefined();
     });
 
-    it("clears a custom answer when going back to the options", () => {
+    it("replaces a custom answer and closes the textarea when an option is picked", () => {
       const request = questionRequest({
         questions: [
           {
@@ -758,8 +783,10 @@ describe("ChainActionCard", () => {
       });
       renderCard({ questions: [request] });
 
-      fireEvent.click(screen.getByText("Choose from options instead"));
-      expect(request.onAnswer).toHaveBeenCalledWith("region", "");
+      fireEvent.click(screen.getByRole("radio", { name: "Americas" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(screen.queryByDisplayValue("Antarctica")).toBeNull();
+      expect(screen.getByText("Type something…")).toBeDefined();
     });
 
     it("names the option group after the question", () => {
@@ -1110,7 +1137,7 @@ describe("ChainActionCard", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: "Add answers to message",
+            name: "Send answers",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -1131,11 +1158,130 @@ describe("ChainActionCard", () => {
       );
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(false);
       fireEvent.click(send);
       expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("stays on the question when an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
+      expect(screen.queryByText("Which format?")).toBeNull();
+    });
+
+    it("copies an option into the textarea to edit it", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit Americas" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(document.activeElement).toBe(
+        screen.getByPlaceholderText("Type your answer"),
+      );
+      expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
+    });
+
+    it("stays on the last question after an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed, rerender } = renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
+      expect(onProceed).not.toHaveBeenCalled();
+
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[{ ...request, answers: { region: "Europe" } }]}
+          manualProceed={false}
+          isReady
+          onProceed={onProceed}
+        />,
+      );
+
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Send answers",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+
+    it("does not advance when the arrow keys select an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: "ArrowDown" });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(screen.getByText("Which region?")).toBeDefined();
+    });
+
+    it("selects without advancing when Space is pressed on an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: " " });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
     });
 
     it("keeps two same-keyword questions on their own cards", () => {
@@ -1166,9 +1312,9 @@ describe("ChainActionCard", () => {
       fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
 
       // Remounted: "Email" matches neither option here, so the field opens in
-      // free text with the stray value visible instead of silently hiding it.
+      // free text with the stray value visible next to the new options.
       expect(screen.getByDisplayValue("Email")).toBeDefined();
-      expect(screen.queryByRole("radio", { name: "Notion" })).toBeNull();
+      expect(screen.getByRole("radio", { name: "Notion" })).toBeDefined();
     });
 
     it("keeps the questions card sendable when an unready sibling exists", () => {
@@ -1179,10 +1325,166 @@ describe("ChainActionCard", () => {
         isReady: false,
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
+    });
+  });
+  describe("multi-select questions", () => {
+    const areas = {
+      question: "What areas should they own?",
+      keyword: "areas",
+      options: ["Research", "Outreach", "Reporting"],
+      allow_multiple: true,
+    };
+
+    it("renders the options as checkboxes instead of radios", () => {
+      renderCard({ questions: [questionRequest({ questions: [areas] })] });
+
+      expect(screen.getByRole("checkbox", { name: "Research" })).toBeDefined();
+      expect(screen.queryByRole("radio", { name: "Research" })).toBeNull();
+    });
+
+    it("sends every pick, in the order the options were offered", () => {
+      const request = questionRequest({ questions: [areas] });
+      const { rerender } = renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Reporting" }));
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Reporting"],
+        custom: "",
+      });
+
+      const withOne = questionRequest({
+        questions: [areas],
+        answers: { areas: { selected: ["Reporting"], custom: "" } },
+        onAnswer: request.onAnswer,
+      });
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[withOne]}
+          manualProceed={false}
+          isReady
+          onProceed={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
+
+      expect(withOne.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Research", "Reporting"],
+        custom: "",
+      });
+    });
+
+    it("unticks a pick that is clicked again", () => {
+      const request = questionRequest({
+        questions: [areas],
+        answers: { areas: { selected: ["Research", "Outreach"], custom: "" } },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Outreach"],
+        custom: "",
+      });
+    });
+
+    it("keeps the options on screen while typing an extra answer", () => {
+      const request = questionRequest({
+        questions: [areas],
+        answers: { areas: { selected: ["Research"], custom: "" } },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "Partnerships" },
+      });
+
+      expect(screen.getByRole("checkbox", { name: "Research" })).toBeDefined();
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Research"],
+        custom: "Partnerships",
+      });
+    });
+
+    it("stays on the question after a pick instead of advancing", () => {
+      const request = questionRequest({
+        questions: [areas, { question: "Which region?", keyword: "region" }],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Outreach" }));
+      expect(screen.getByText("What areas should they own?")).toBeDefined();
+      expect(screen.queryByText("Which region?")).toBeNull();
+    });
+
+    it("gates the send button until at least one option is ticked", () => {
+      const { onProceed } = renderCard({
+        questions: [questionRequest({ questions: [areas] })],
+      });
+
+      const send = screen
+        .getByRole("button", { name: "Send answers" })
+        .closest("button") as HTMLButtonElement;
+      expect(send.disabled).toBe(true);
+      fireEvent.click(send);
+      expect(onProceed).not.toHaveBeenCalled();
+    });
+
+    it("sends once the picks are in", () => {
+      const { onProceed } = renderCard({
+        questions: [
+          questionRequest({
+            questions: [areas],
+            answers: {
+              areas: { selected: ["Research", "Outreach"], custom: "" },
+            },
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+      expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("leaves a single-select question picking exactly one option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Slack" }));
+      expect(request.onAnswer).toHaveBeenLastCalledWith("channel", "Slack");
+      expect(screen.queryByRole("checkbox")).toBeNull();
+    });
+
+    it("ignores the flag on a question with no options", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Anything else?",
+                keyword: "notes",
+                allow_multiple: true,
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      expect(screen.getByRole("textbox")).toBeDefined();
     });
   });
 });

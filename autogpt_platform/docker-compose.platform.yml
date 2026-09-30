@@ -29,8 +29,6 @@ x-backend-env:
   GRAPHITI_FALKORDB_PORT: "6379"
   # JWKS endpoint of the Better Auth service embedded in the frontend.
   # Containers reach it via the compose service name, not localhost.
-  # JWT_VERIFY_KEY (legacy HS256, from backend/.env.default) stays in place
-  # for the migration window while old Supabase-issued tokens circulate.
   JWT_JWKS_URL: http://frontend:3000/api/auth/jwks
   # Database connection string for Docker network
   # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
@@ -187,7 +185,35 @@ services:
     ports:
       - "5672:5672"
 
+  # One-shot: publishes the public skills catalog (marketplace skills and the
+  # expert roster) once the schema is migrated, the same way a deploy does
+  # after `prisma migrate deploy`. Idempotent, so a restart that changes
+  # nothing is a no-op. Needs GitHub; offline, set SKILLS_CATALOG_PATH in
+  # backend/.env to a local checkout. Fails once and visibly rather than
+  # looping, and nothing else waits on it: copies catch up lazily.
+  publish_skills:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["publish-skills-catalog", "--skip-missing-preloads"]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis-0:
+        condition: service_healthy
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    networks:
+      - app-network
+    restart: "no"
+
   rest_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -216,6 +242,7 @@ services:
       - "8006:8006"
     volumes:
       - workspace-data:/app/autogpt_platform/backend/workspaces
+      - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
       - app-network
     logging:
@@ -225,6 +252,7 @@ services:
         max-file: "3"
 
   executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -262,6 +290,7 @@ services:
         max-file: "3"
 
   copilot_executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -302,6 +331,7 @@ services:
         max-file: "3"
 
   websocket_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -335,6 +365,7 @@ services:
         max-file: "3"
 
   database_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -355,6 +386,8 @@ services:
       <<: *backend-env
     ports:
       - "8005:8005"
+    volumes:
+      - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
       - app-network
     logging:
@@ -364,6 +397,7 @@ services:
         max-file: "3"
 
   scheduler_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -399,6 +433,7 @@ services:
         max-file: "3"
 
   notification_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -431,6 +466,7 @@ services:
         max-size: "10m"
         max-file: "3"
   platform_linking_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     profiles: ["bot"]
     build:
       context: ../
@@ -502,6 +538,7 @@ services:
       AUTH_DB_SCHEMA: platform
 volumes:
   workspace-data:
+  store-media-data:
   falkordb_data:
 
 networks:

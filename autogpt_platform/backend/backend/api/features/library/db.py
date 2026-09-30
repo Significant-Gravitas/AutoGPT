@@ -7,6 +7,7 @@ import fastapi
 import prisma.errors
 import prisma.models
 import prisma.types
+from starlette.datastructures import Headers
 
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
@@ -29,6 +30,7 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
@@ -484,6 +486,7 @@ async def get_library_agent_refs_by_graph_ids(
             id=agent.id,
             graph_id=agent.agentGraphId,
             name=agent.name or "",
+            image_url=agent.imageUrl,
             is_deleted=agent.isDeleted,
         )
         for agent in agents
@@ -541,7 +544,11 @@ async def add_generated_agent_image(
             image = await store_image_gen.generate_agent_image(graph)
 
             # Create UploadFile with the correct filename and content_type
-            image_file = fastapi.UploadFile(file=image, filename=filename)
+            image_file = fastapi.UploadFile(
+                file=image,
+                filename=filename,
+                headers=Headers({"content-type": "image/jpeg"}),
+            )
 
             image_url = await store_media.upload_media(
                 user_id=user_id, file=image_file, use_file_name=True
@@ -793,6 +800,8 @@ async def create_graph_in_library(
     # to a user-friendly response.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -830,6 +839,8 @@ async def update_graph_in_library(
     # version half-saved. Raises GraphActivationError for the caller.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -854,7 +865,7 @@ async def update_graph_in_library(
 
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
-        # This path is only reached from the CoPilot/AutoPilot agent-update
+        # This path is only reached from the CoPilot/Otto agent-update
         # flow, which has no user-facing channel for skipped-preset warnings,
         # so the migration result is intentionally discarded here. Skipped
         # presets are surfaced on the interactive graph-activation endpoints
@@ -1952,7 +1963,7 @@ async def list_presets(
         graph_id: Agent Graph ID to filter by.
         expert_id: Expert ID to match when expert filtering is enabled.
         filter_by_expert: Whether to filter by the exact expert scope. This allows
-            ``None`` to select AutoPilot presets instead of disabling the filter.
+            ``None`` to select Otto presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.

@@ -2,25 +2,33 @@
 
 import { WorkHistoryIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
+import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import { Text } from "@/components/atoms/Text/Text";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
+import { BriefingByline } from "./components/BriefingByline";
 import { WorkGroup } from "./components/WorkGroup";
+import { splitGroupsBySection } from "./helpers";
 
 interface Props {
   dashboard: HomeDashboardResponse;
   className?: string;
 }
 
-/** One card for what the agents did this week, grouped by who did it: each
- *  expert, workflow, or Autopilot with the runs it finished and the files,
- *  integration actions and schedules it produced. */
+/** One card for what the agents did this week: the team (each expert and
+ *  Otto) first, then the workflows that ran on their own. */
 export function RecentWork({ dashboard, className }: Props) {
   const { briefing } = dashboard;
   const groups = dashboard.recent_work?.groups ?? [];
+  const { team, workflows } = splitGroupsBySection(groups);
   const completed = dashboard.recent_work?.completed_count ?? 0;
   const failed = dashboard.recent_work?.failed_count ?? 0;
   const isEmpty = groups.length === 0 && !briefing.narrative;
+
+  // An exposure event: the briefing is an inline byline with no expand step,
+  // so it counts as opened once its content actually renders.
+  useTrackFunnelViewOnce("briefing_opened", Boolean(briefing.narrative));
 
   return (
     <HomeTile
@@ -62,20 +70,10 @@ export function RecentWork({ dashboard, className }: Props) {
         />
       ) : (
         <div className="divide-y divide-zinc-200">
-          {briefing.narrative ? (
-            <Text
-              variant="body"
-              tone="secondary"
-              className="text-pretty px-4 py-3 leading-5"
-            >
-              {briefing.narrative}
-            </Text>
-          ) : null}
-          {groups.map((group) => (
+          {briefing.narrative ? <BriefingByline briefing={briefing} /> : null}
+          {[...team, ...workflows].map((group) => (
             <WorkGroup
-              key={
-                group.runs?.[0]?.id ?? group.items?.[0]?.id ?? group.actor.name
-              }
+              key={groupKey(group)}
               group={group}
               timezone={dashboard.timezone}
             />
@@ -84,4 +82,8 @@ export function RecentWork({ dashboard, className }: Props) {
       )}
     </HomeTile>
   );
+}
+
+function groupKey(group: HomeRecentWorkGroup) {
+  return group.runs?.[0]?.id ?? group.items?.[0]?.id ?? group.actor.name;
 }

@@ -16,12 +16,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
     _normalize_private_expert_session_tenancy,
+    _wait_for_expert_setup,
     sync_fail_close_session,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
@@ -32,6 +34,7 @@ from backend.copilot.expert_context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
@@ -41,6 +44,15 @@ from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
 )
+
+
+@pytest.fixture(autouse=True)
+def no_trial_attribution(mocker):
+    store = MagicMock()
+    store.get_subscription_trial = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.copilot.trial_cost_context.db_accessors.credit_db", return_value=store
+    )
 
 
 class TestResolveUseSdk:
@@ -268,6 +280,7 @@ class TestExecuteAsyncAclose:
         expert_store.resolve_private_expert_tenancy = AsyncMock(
             return_value=("current-personal-org", "current-personal-team")
         )
+        expert_store.expert_setup_status = AsyncMock(return_value="ready")
 
         async def persist(value, *, persist_tenancy: bool = False):
             assert persist_tenancy is True
@@ -389,8 +402,10 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
     expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("current-personal-org", "current-personal-team")
     )
+    expert_store.expert_setup_status = AsyncMock(return_value="ready")
     session_db = MagicMock()
     session_db.get_next_sequence = AsyncMock(return_value=1)
+    session_db.get_chat_session_metadata = AsyncMock(return_value=None)
     published = _TrackedStream(events=[])
 
     with (
@@ -480,6 +495,35 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
         "user-1", "expert-1"
     )
     upsert.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "statuses, expected_reads",
+    [
+        (["ready"], 1),
+        (["installing", "installing", "ready"], 3),
+        # A setup that never finishes: poll until the deadline, then run.
+        (["installing"] * 50, None),
+    ],
+)
+@pytest.mark.asyncio
+async def test_expert_turn_waits_for_hire_setup(statuses, expected_reads) -> None:
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    expert_store = MagicMock()
+    expert_store.expert_setup_status = AsyncMock(side_effect=statuses)
+
+    with (
+        patch("backend.data.db_accessors.experts_db", return_value=expert_store),
+        patch("backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS", 0.05),
+        patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0.005),
+    ):
+        await _wait_for_expert_setup(session)
+
+    reads = expert_store.expert_setup_status.await_count
+    if expected_reads is None:
+        assert 1 < reads < len(statuses)
+    else:
+        assert reads == expected_reads
 
 
 @pytest.mark.asyncio
@@ -607,7 +651,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
     sdk_engine.assert_not_called()
     upsert.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
-        "sess-1", error_message="expert is not owned by user"
+        "sess-1", error_message="expert is not owned by user", turn_id="turn-1"
     )
 
 
@@ -680,7 +724,9 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     dummy_engine.assert_not_called()
     baseline_engine.assert_not_called()
     sdk_engine.assert_not_called()
-    mark_completed.assert_awaited_once_with("sess-1", error_message=expected_message)
+    mark_completed.assert_awaited_once_with(
+        "sess-1", error_message=expected_message, turn_id="turn-1"
+    )
 
 
 def _codex_entry(
@@ -709,6 +755,103 @@ def _codex_session(
     session.session_id = "sess-codex"
     session.metadata.builder_graph_id = builder_graph_id
     return session
+
+
+def _microsoft_365_copilot_entry() -> CoPilotExecutionEntry:
+    return CoPilotExecutionEntry(
+        session_id="sess-microsoft",
+        turn_id="turn-microsoft",
+        user_id="user-1",
+        message="hi",
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="cred-microsoft",
+    )
+
+
+def _microsoft_365_copilot_session() -> ChatSession:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="cred-microsoft",
+    )
+    session.session_id = "sess-microsoft"
+    return session
+
+
+@pytest.mark.asyncio
+async def test_microsoft_365_copilot_route_acquires_oauth_lease_and_streams():
+    from backend.integrations.oauth.microsoft_365_copilot import (
+        Microsoft365CopilotDeviceAuthHandler,
+    )
+
+    published = _TrackedStream(events=[])
+    lease = MagicMock()
+    lease.credentials = OAuth2Credentials(
+        provider="microsoft_365_copilot",
+        id="cred-microsoft",
+        access_token=SecretStr("graph-token"),
+        refresh_token=SecretStr("refresh-token"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES,
+    )
+    lease.release = AsyncMock()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=lease)
+    microsoft_stream = MagicMock(return_value=MagicMock())
+    baseline_stream = MagicMock()
+    sdk_stream = MagicMock()
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=_microsoft_365_copilot_session()),
+        ),
+        patch(
+            "backend.copilot.executor.processor.IntegrationCredentialsManager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_microsoft_365",
+            microsoft_stream,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_baseline",
+            baseline_stream,
+        ),
+        patch(
+            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            sdk_stream,
+        ),
+        patch(
+            "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=published,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+    ):
+        await CoPilotProcessor()._execute_async(
+            _microsoft_365_copilot_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    manager.acquire_lease.assert_awaited_once_with("user-1", "cred-microsoft")
+    lease.release.assert_awaited_once()
+    microsoft_stream.assert_called_once()
+    assert microsoft_stream.call_args.kwargs["credential_lease"] is lease
+    baseline_stream.assert_not_called()
+    sdk_stream.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -820,6 +963,7 @@ async def test_codex_release_failure_does_not_fail_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message=None,
+        turn_id="turn-codex",
     )
 
 
@@ -873,6 +1017,7 @@ async def test_codex_checkpoint_failure_fails_closed_after_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_checkpoint_failed",
+        turn_id="turn-codex",
     )
 
 
@@ -907,6 +1052,7 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_session_route_mismatch",
+        turn_id="turn-codex",
     )
 
 
@@ -948,6 +1094,7 @@ async def test_codex_entitlement_is_checked_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="Max plan required",
+        turn_id="turn-codex",
     )
 
 
@@ -995,6 +1142,7 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_busy",
+        turn_id="turn-codex",
     )
 
 
@@ -1030,12 +1178,13 @@ class TestSyncFailCloseSession:
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             new=mock_mark,
         ):
-            sync_fail_close_session("sess-1", _make_log(), exec_loop)
+            sync_fail_close_session("sess-1", "turn-1", _make_log(), exec_loop)
 
         mock_mark.assert_awaited_once()
         assert mock_mark.await_args is not None
         assert mock_mark.await_args.args[0] == "sess-1"
         assert "shut down" in mock_mark.await_args.kwargs["error_message"].lower()
+        assert mock_mark.await_args.kwargs["turn_id"] == "turn-1"
 
     def test_swallows_redis_error(self, exec_loop) -> None:
         # Raising from the mock ensures the helper catches the exception
@@ -1045,7 +1194,9 @@ class TestSyncFailCloseSession:
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             new=mock_mark,
         ):
-            sync_fail_close_session("sess-2", _make_log(), exec_loop)  # must not raise
+            sync_fail_close_session(
+                "sess-2", "turn-2", _make_log(), exec_loop
+            )  # must not raise
 
         mock_mark.assert_awaited_once()
 
@@ -1062,7 +1213,9 @@ class TestSyncFailCloseSession:
             new=mock_mark,
         ):
             # Must not raise even though the loop is closed
-            sync_fail_close_session("sess-closed-loop", _make_log(), dead_loop)
+            sync_fail_close_session(
+                "sess-closed-loop", "turn-3", _make_log(), dead_loop
+            )
 
         # mark_session_completed was never scheduled because the loop was dead
         mock_mark.assert_not_awaited()
@@ -1088,7 +1241,7 @@ class TestSyncFailCloseSession:
         ):
             start = _time.monotonic()
             sync_fail_close_session(
-                "sess-hang", _make_log(), exec_loop
+                "sess-hang", "turn-4", _make_log(), exec_loop
             )  # must not raise
             elapsed = _time.monotonic() - start
 
@@ -1398,3 +1551,28 @@ class TestBuildingModeForcesSdk:
             new=AsyncMock(return_value=session),
         ):
             assert await _building_mode_forces_sdk(session.session_id) is True
+
+
+def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
+    """A chat-platform prompt is authored off-platform by someone who need not
+    be the account owner, so the turn's envelope must carry taint. This is the
+    taint bit's only producer today and nothing asserted it.
+    """
+    from backend.copilot.executor.processor import taint_for_source_platform
+    from backend.copilot.tree import root_envelope
+
+    clean = root_envelope("turn-1")
+    assert clean.tainted is False
+
+    web = MagicMock()
+    web.metadata.source_platform = None
+    assert taint_for_source_platform(clean, web) is clean
+
+    slack = MagicMock()
+    slack.metadata.source_platform = "slack"
+    promoted = taint_for_source_platform(clean, slack)
+    assert promoted.tainted is True
+    assert promoted.tree_id == clean.tree_id
+
+    # No envelope (a legacy queue entry) stays None rather than inventing one.
+    assert taint_for_source_platform(None, slack) is None

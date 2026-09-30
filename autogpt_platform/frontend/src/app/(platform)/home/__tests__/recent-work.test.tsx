@@ -4,7 +4,7 @@ import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeD
 import type { HomeRecentWork } from "@/app/api/__generated__/models/homeRecentWork";
 import { server } from "@/mocks/mock-server";
 import { render, screen, within } from "@/tests/integrations/test-utils";
-import HomePage from "../page";
+import { HomeRecap } from "../components/HomeRecap/HomeRecap";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -71,6 +71,7 @@ const recentWork: HomeRecentWork = {
           duration_seconds: 812,
           cost_cents: 42,
           link: "/library/agents/lib-2?activeTab=runs&activeItem=run-1",
+          trigger: "schedule",
         },
         {
           id: "run-3",
@@ -113,6 +114,7 @@ const recentWork: HomeRecentWork = {
       actor: {
         kind: "workflow",
         name: "Release Note Generator",
+        image_url: "https://example.com/release-notes.png",
         link: "/library/agents/lib-1",
       },
       latest_at: NOW,
@@ -127,6 +129,7 @@ const recentWork: HomeRecentWork = {
           duration_seconds: 44,
           cost_cents: 3,
           link: "/library/agents/lib-1?activeTab=runs&activeItem=run-2",
+          trigger: "webhook",
         },
       ],
       items: [
@@ -143,7 +146,7 @@ const recentWork: HomeRecentWork = {
       integration_count: 1,
     },
     {
-      actor: { kind: "autopilot", name: "Autopilot", link: "/copilot" },
+      actor: { kind: "autopilot", name: "Otto", link: "/copilot" },
       latest_at: NOW,
       runs: [],
       items: [
@@ -172,6 +175,7 @@ const dashboard: HomeDashboardResponse = {
     failed_count: 0,
     routine_count: 0,
     outcomes: [],
+    author: { kind: "autopilot", name: "Otto", role: "Head of AI" },
   },
   active_tasks: [],
   upcoming_tasks: [],
@@ -202,7 +206,7 @@ function mockDashboard(response: HomeDashboardResponse) {
 test("groups the week's runs and deliverables by who did them", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByRole("heading", { name: "Recent work" }),
@@ -224,13 +228,17 @@ test("groups the week's runs and deliverables by who did them", async () => {
   expect(
     within(mariaGroup).getByText("3 runs · 2 files · 1 schedule"),
   ).toBeDefined();
-  // Only the first run tells its story; later completed runs are one line.
+  // Every run is one line: the AI summary stays out of the card, and the
+  // row says whether a schedule or a person started it.
   expect(
     within(mariaGroup).getByText("Newsletter draft is ready"),
   ).toBeDefined();
+  expect(within(mariaGroup).queryByText(/Compared 18 cameras/)).toBeNull();
   expect(
     within(mariaGroup).queryByText(/Drafted the September newsletter/),
   ).toBeNull();
+  expect(within(mariaGroup).getByText("Scheduled run")).toBeDefined();
+  expect(within(mariaGroup).getByText("Manual run")).toBeDefined();
 
   const workflowGroup = screen.getByRole("article", {
     name: "Release Note Generator",
@@ -241,19 +249,57 @@ test("groups the week's runs and deliverables by who did them", async () => {
   expect(
     within(workflowGroup).getByText("Release notes could not be generated"),
   ).toBeDefined();
+  expect(within(workflowGroup).getByText("Triggered run")).toBeDefined();
+  expect(within(workflowGroup).queryByText(/GitHub returned 401/)).toBeNull();
   expect(within(workflowGroup).getByText("Send Email")).toBeDefined();
   expect(within(workflowGroup).getByText(/google/)).toBeDefined();
 
-  const autopilotGroup = screen.getByRole("article", { name: "Autopilot" });
+  const autopilotGroup = screen.getByRole("article", { name: "Otto" });
   expect(
     within(autopilotGroup).getByText("competitor-pricing.csv"),
   ).toBeDefined();
 });
 
+test("puts the team first and the workflows that ran on their own after them", async () => {
+  mockDashboard(dashboard);
+
+  render(<HomeRecap />);
+
+  const heading = await screen.findByRole("heading", { name: "Recent work" });
+  const tile = heading.closest("section");
+  if (!tile) throw new Error("Recent work tile not found");
+  expect(
+    within(tile)
+      .getAllByRole("article")
+      .map((article) => article.getAttribute("aria-label")),
+  ).toEqual(["Maria", "Otto", "Release Note Generator"]);
+  // The kind chip says which half a group belongs to, so the rows run
+  // straight on without a caption between them.
+  expect(within(tile).queryByText("Workflows")).toBeNull();
+});
+
+test("marks a workflow group with its own picture and kind", async () => {
+  mockDashboard(dashboard);
+
+  render(<HomeRecap />);
+
+  await screen.findByRole("heading", { name: "Recent work" });
+  const workflowGroup = screen.getByRole("article", {
+    name: "Release Note Generator",
+  });
+  expect(within(workflowGroup).getByText("Workflow")).toBeDefined();
+  const picture = await within(workflowGroup).findByRole("img", {
+    name: "Release Note Generator",
+  });
+  expect(picture.getAttribute("src")).toBe(
+    "https://example.com/release-notes.png",
+  );
+});
+
 test("links each actor to its home and thread work to its session", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await screen.findByRole("heading", { name: "Recent work" });
   const links = screen
@@ -277,7 +323,7 @@ test("shows a calm empty state when agents produced nothing yet", async () => {
     recent_work: { groups: [], total_count: 0 },
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   expect(screen.getByText("0 completed")).toBeDefined();
@@ -288,7 +334,7 @@ test("renders the rest of the page when recent_work is absent", async () => {
   void recent_work;
   mockDashboard(withoutRecentWork as HomeDashboardResponse);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();

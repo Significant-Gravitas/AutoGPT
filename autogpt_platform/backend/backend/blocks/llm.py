@@ -17,10 +17,13 @@ import openai
 from anthropic.types import ToolParam
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 from pydantic import BaseModel, SecretStr
+from pydantic.json_schema import SkipJsonSchema
+from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -40,7 +43,7 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
-from backend.integrations.providers import ProviderName
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util import json
 
 # ``ToolCall`` and ``ToolContentBlock`` live in the shared
@@ -90,7 +93,9 @@ LLMProviderName = Literal[
     ProviderName.V0,
     ProviderName.GOOGLE,
 ]
-AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
+AICredentials = (
+    CredentialsMetaInput[LLMProviderName, Literal["api_key"]] | SkipJsonSchema[None]
+)
 # Providers accepted by the shared LLM credential field.
 LLM_PROVIDER_NAMES: frozenset[str] = frozenset(
     provider.value for provider in get_args(LLMProviderName)
@@ -124,13 +129,21 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-def AICredentialsField() -> AICredentials:
+def AICredentialsField(*, allow_credential_free: bool = True) -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
         discriminator="model",
         discriminator_mapping={
-            model.value: model.metadata.provider for model in LLMModel
+            model.value: model.metadata.provider
+            for model in LLMModel
+            if model.metadata.provider != ProviderName.OLLAMA
         },
+        credential_free_discriminator_values={
+            model.value
+            for model in LLMModel
+            if allow_credential_free and model.metadata.provider == ProviderName.OLLAMA
+        },
+        default=None if allow_credential_free else PydanticUndefined,
     )
 
 
@@ -254,7 +267,7 @@ def get_parallel_tool_calls_param(
 
 
 async def llm_call(
-    credentials: APIKeyCredentials,
+    credentials: APIKeyCredentials | None,
     llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
@@ -316,7 +329,7 @@ async def llm_call(
 
 
 async def _llm_call(
-    credentials: APIKeyCredentials,
+    credentials: APIKeyCredentials | None,
     llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
@@ -348,6 +361,11 @@ async def _llm_call(
     """
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
+    if credentials is None and provider != ProviderName.OLLAMA:
+        raise ValueError(
+            f"Credentials are required for {provider_key(provider)}/{llm_model.value}."
+        )
+    api_key = credentials.api_key.get_secret_value() if credentials else ""
 
     if compress_prompt_to_fit:
         # Pass the model so compaction measures in the same corrected token
@@ -400,7 +418,7 @@ async def _llm_call(
     provider_response = await call_provider(
         provider=cast(Any, provider),
         model=llm_model.value,
-        api_key=credentials.api_key.get_secret_value(),
+        api_key=api_key,
         messages=prompt,
         max_tokens=max_tokens,
         tools=tools,
@@ -558,11 +576,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ),
                 "get_collision_proof_output_tag_id": lambda *args: "test123456",
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         llm_model: LLMModel,
         prompt: list[dict],
         max_tokens: int | None,
@@ -590,7 +609,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
@@ -1058,12 +1081,13 @@ class AITextGeneratorBlock(AIBlockBase):
                 ("prompt", list),
             ],
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
@@ -1077,7 +1101,11 @@ class AITextGeneratorBlock(AIBlockBase):
         return response["response"]
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
             **{
@@ -1168,10 +1196,15 @@ class AITextSummarizerBlock(AIBlockBase):
                     else {"summary": "Summary of a chunk of text"}
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         async for output_name, output_data in self._run(
             input_data, credentials, kwargs.get("execution_context")
@@ -1181,7 +1214,7 @@ class AITextSummarizerBlock(AIBlockBase):
     async def _run(
         self,
         input_data: Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> BlockOutput:
         chunks = self._split_text(
@@ -1232,7 +1265,7 @@ class AITextSummarizerBlock(AIBlockBase):
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
@@ -1249,7 +1282,7 @@ class AITextSummarizerBlock(AIBlockBase):
         self,
         chunk: str,
         input_data: Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
@@ -1284,7 +1317,7 @@ class AITextSummarizerBlock(AIBlockBase):
         self,
         summaries: list[str],
         input_data: Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> str:
         combined_text = "\n\n".join(summaries)
@@ -1403,12 +1436,13 @@ class AIConversationBlock(AIBlockBase):
                     response="The 2020 World Series was played at Globe Life Field in Arlington, Texas."
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
@@ -1422,7 +1456,11 @@ class AIConversationBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         has_messages = any(
             isinstance(m, dict)
@@ -1556,12 +1594,13 @@ class AIListGeneratorBlock(AIBlockBase):
                     ]
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict[str, Any]:
         llm_block = AIStructuredResponseGeneratorBlock()
@@ -1575,7 +1614,11 @@ class AIListGeneratorBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 

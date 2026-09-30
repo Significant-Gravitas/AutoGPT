@@ -30,6 +30,10 @@ vi.mock(
 // Mock the OAuth popup utility
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
+  // Defaults to null — the browser-blocked case — so every cell that does not
+  // care about the sign-in window behaves as it did before the window was
+  // pre-opened at all.
+  preOpenOAuthPopup: vi.fn(() => null),
 }));
 
 // Mock the generated API functions
@@ -50,19 +54,28 @@ let mockLiveCreds: Array<{
   host?: string | null;
   mcp_auth_scheme?: "basic" | "bearer" | null;
 }> = [];
+// Defaults to "this mount's fetch has landed cleanly" so existing cases read
+// as before; the guard cases below flip them explicitly.
+let mockLiveCredsFetched = true;
+let mockLiveCredsError = false;
 function setMockLiveCreds(
   next: Array<{
     provider: string;
     host?: string | null;
     mcp_auth_scheme?: "basic" | "bearer" | null;
   }>,
+  opts: { fetchedAfterMount?: boolean; isError?: boolean } = {},
 ) {
   mockLiveCreds = next;
+  mockLiveCredsFetched = opts.fetchedAfterMount ?? true;
+  mockLiveCredsError = opts.isError ?? false;
 }
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   useGetV1ListCredentials: () => ({
     data: mockLiveCreds,
     isLoading: false,
+    isFetchedAfterMount: mockLiveCredsFetched,
+    isError: mockLiveCredsError,
   }),
 }));
 
@@ -141,6 +154,35 @@ describe("MCPSetupCard", () => {
     expect(screen.getByRole("button", { name: /reconnect/i })).toBeDefined();
   });
 
+  it("does not show Connected from a cache whose post-mount fetch has not landed", () => {
+    // SECRT-2592: ``refetchOnMount`` does not stop React Query serving the
+    // previous cache until the refetch lands.  Right after the backend
+    // invalidated a dead row that cache still lists it, and OR-ing it in
+    // painted a green pill over the backend's authoritative
+    // ``has_all_credentials=false`` — the exact contradiction users reported
+    // (UI says Connected, agent says not connected).
+    setMockLiveCreds(
+      [{ provider: "mcp", host: "https://mcp.example.com/mcp" }],
+      {
+        fetchedAfterMount: false,
+      },
+    );
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
+  it("does not drop Connected when a background refetch fails but serves stale data", () => {
+    // A settled-but-errored refetch keeps the previous data, so ``data``
+    // alone still looks authoritative.  Treating it as unknown falls back to
+    // the persisted snapshot instead of trusting a row we can't confirm.
+    setMockLiveCreds([], { isError: true });
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
+  });
+
   it("matches live creds across a trailing slash on the server URL", () => {
     // Card was emitted with no trailing slash; stored cred has one.
     // The frontend ``normalizeMcpUrl`` mirrors the backend so they match.
@@ -184,7 +226,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -196,7 +238,55 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
+  });
+
+  it("surfaces a rejected authorization response instead of offering a token", async () => {
+    // The callback answers 400 when the RFC 9207 ``iss`` is missing or does
+    // not match the issuer bound at login.  That is a blocked mix-up, not an
+    // unsupported server, so it must not invite the user to paste a
+    // credential in its place.
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      },
+      headers: new Headers(),
+    } as never);
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({ code: "auth-code", state: "st" }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const mcpOAuthCallback = vi.fn().mockRejectedValue({
+      status: 400,
+      detail:
+        "Authorization response issuer does not match the authorization server this login was started with.",
+    });
+    const providers = {
+      mcp: { mcpOAuthCallback },
+    } as unknown as CredentialsProvidersContextType;
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPSetupCard output={makeSetupOutput()} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/issuer does not match/i)).toBeDefined();
+    });
+    expect(screen.queryByPlaceholderText(manualTokenPlaceholder)).toBeNull();
+    expect(screen.queryByText(/does not support OAuth/)).toBeNull();
   });
 
   it("uses a unique manual credential input id for each mounted card", async () => {
@@ -206,12 +296,12 @@ describe("MCPSetupCard", () => {
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never);
 
@@ -256,7 +346,7 @@ describe("MCPSetupCard", () => {
     // First click: OAuth fails with 400 → shows manual token input
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -305,7 +395,7 @@ describe("MCPSetupCard", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -360,7 +450,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -411,7 +501,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -426,7 +516,7 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
 
@@ -445,7 +535,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -492,12 +582,85 @@ describe("MCPSetupCard", () => {
     // Drain the in-flight promise so React doesn't warn on unmount.
     resolveLogin?.({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     });
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
+  });
+
+  // #14532: the sign-in window has to be opened inside the tap, before the
+  // initiate request is awaited — iOS Safari discards the gesture context at
+  // the first async break and then blocks window.open() outright.
+  it("opens the sign-in window before the initiate await and hands it over", async () => {
+    const callOrder: string[] = [];
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    vi.mocked(preOpenOAuthPopup).mockClear();
+    vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
+      callOrder.push("preOpen");
+      return fakeWindow as unknown as Window;
+    });
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}),
+      cleanup: { abort: vi.fn() },
+    } as never);
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
+      async () => {
+        callOrder.push("initiate");
+        return {
+          status: 200,
+          data: { login_url: "https://login.example.com", state_token: "tok" },
+          headers: new Headers(),
+        } as never;
+      },
+    );
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
+    // The ordering IS the fix — asserting only that it was called would pass
+    // on a version that called it after the await, which is the bug.
+    expect(callOrder).toEqual(["preOpen", "initiate"]);
+    expect(vi.mocked(openOAuthPopup)).toHaveBeenCalledWith(
+      "https://login.example.com",
+      expect.objectContaining({ preOpenedWindow: fakeWindow }),
+    );
+    expect(fakeWindow.close).not.toHaveBeenCalled();
+  });
+
+  it("closes the sign-in window when the server has no OAuth", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(
+      fakeWindow as unknown as Window,
+    );
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    // openOAuthPopup never runs on this path, so nothing else can reach the
+    // about:blank window it left behind.
+    await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
   });
 
   it("shows timeout-specific error message when OAuth popup times out", async () => {
@@ -525,6 +688,56 @@ describe("MCPSetupCard", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/oauth sign-in timed out/i)).toBeDefined();
+    });
+  });
+
+  it("forwards the authorization response issuer to the credentials provider", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      },
+      headers: new Headers(),
+    } as never);
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({
+        code: "auth-code",
+        state: "st",
+        iss: "https://auth.example.com",
+      }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const mcpOAuthCallback = vi.fn().mockResolvedValue({
+      id: "cred-1",
+      provider: "mcp",
+      type: "oauth2",
+    });
+    const providers = {
+      mcp: { mcpOAuthCallback },
+    } as unknown as CredentialsProvidersContextType;
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPSetupCard output={makeSetupOutput()} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => {
+      expect(mcpOAuthCallback).toHaveBeenCalledWith(
+        "auth-code",
+        "st",
+        "https://auth.example.com",
+      );
     });
   });
 
@@ -564,7 +777,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -597,6 +810,56 @@ describe("MCPSetupCard", () => {
     });
   });
 
+  it("shows why a stored token was refused instead of the never-connected card", () => {
+    render(
+      <MCPSetupCard
+        output={{
+          ...makeSetupOutput(),
+          message: "example.com rejected the saved credential (HTTP 401).",
+          rejection: {
+            provider: "mcp",
+            detail: "HTTP 401 Error: Unauthorized",
+            status_code: 401,
+            credential_id: "cred-1",
+            credential_title: "Sentry token",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "HTTP 401 Error: Unauthorized",
+    );
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
+  it("keeps the Connect affordance when a stale cred list still lists the refused token", () => {
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp" },
+    ]);
+    render(
+      <MCPSetupCard
+        output={{
+          ...makeSetupOutput(),
+          rejection: {
+            provider: "mcp",
+            detail: "HTTP 401 Error: Unauthorized",
+            status_code: 401,
+            credential_id: "cred-1",
+            credential_title: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
   it("does not report Connected for a credential the server rejects", async () => {
     // A 2xx from ``/mcp/token`` only says the row was written. Without a probe
     // the card claims Connected, the very next copilot call 401s, and the card,
@@ -608,7 +871,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
@@ -643,7 +906,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -668,6 +931,40 @@ describe("MCPSetupCard", () => {
     expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
   });
 
+  it("labels the Use Token button while verification is in flight", async () => {
+    // Verification is a round-trip to the MCP server, so the button can no
+    // longer stay static and merely disabled the way it did when storing was
+    // a local write.
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+    // Never settles: pins the in-flight state.
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockReturnValueOnce(
+      new Promise(() => {}) as never,
+    );
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect example/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "some-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /verifying/i })).toBeDefined();
+    });
+  });
+
   it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {
     // ``handleManualToken`` catch must flip ``forceDisconnected=true`` —
     // otherwise an existing live cred would re-show the Connected pill
@@ -681,7 +978,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -785,6 +1082,7 @@ describe("MCPSetupCard", () => {
       expect(latestProviderCallback).toHaveBeenCalledWith(
         "latest-code",
         "latest-state",
+        undefined,
       );
       expect(latestOnSend).toHaveBeenCalledWith("Latest retry instruction");
     });
