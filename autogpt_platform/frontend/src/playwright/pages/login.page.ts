@@ -53,7 +53,7 @@ export class LoginPage {
       this.page.waitForFunction(
         () => {
           const pathname = window.location.pathname;
-          return /^\/(marketplace|onboarding(\/.*)?|library|copilot)$/.test(
+          return /^\/(marketplace|onboarding(\/.*)?|library|copilot|home)$/.test(
             pathname,
           );
         },
