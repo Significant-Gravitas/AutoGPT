@@ -380,6 +380,10 @@ class BaseTool:
         """
         return None
 
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str] | None:
+        """The content of files this call runs, by path, for the supervisor."""
+        return None
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(
@@ -546,6 +550,7 @@ class BaseTool:
                 session,
                 tool_call_id,
                 subject_of=subject_of if self.has_gate_subject else None,
+                context_of=lambda: self.gate_context(kwargs),
             )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)

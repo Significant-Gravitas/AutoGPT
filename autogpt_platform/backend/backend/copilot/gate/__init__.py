@@ -57,6 +57,8 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# Where the supervisor reads the content of the files a command runs.
+RUN_FILES_KEY = "files_this_command_runs"
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
@@ -113,9 +115,11 @@ async def check_action(
     session: ChatSession,
     tool_call_id: str = "",
     subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
+    context_of: Callable[[], Awaitable[dict[str, str] | None]] | None = None,
 ) -> Decision:
     """``subject_of`` resolves what the call acts on; it runs only once no
-    approval answers the call, so an approved call is never re-derived."""
+    approval answers the call, so an approved call is never re-derived.
+    ``context_of`` reads the files the call runs, for the supervisor only."""
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -193,7 +197,7 @@ async def check_action(
         reason_kind = "supervisor"
         judgement = await supervise(
             tool_name=tool_name,
-            args=args,
+            args=await _judged_args(args, context_of),
             user_message=_last_user_message(session),
         )
         if judgement.allowed:
@@ -274,6 +278,18 @@ def _dollars(microdollars: int) -> str:
     return f"${max(microdollars, 0) / 1_000_000:,.2f}"
 
 
+async def _judged_args(
+    args: dict[str, Any],
+    context_of: Callable[[], Awaitable[dict[str, str] | None]] | None,
+) -> dict[str, Any]:
+    # Dropped first, so a model cannot hand the supervisor a harmless copy.
+    judged = {key: value for key, value in args.items() if key != RUN_FILES_KEY}
+    files = await context_of() if context_of is not None else None
+    if files:
+        judged[RUN_FILES_KEY] = files
+    return judged
+
+
 def _last_user_message(session: ChatSession) -> str:
     for message in reversed(session.messages):
         if message.role == "user" and message.content:
@@ -282,6 +298,7 @@ def _last_user_message(session: ChatSession) -> str:
 
 
 __all__ = [
+    "RUN_FILES_KEY",
     "Decision",
     "active_mode",
     "check_action",

@@ -14,6 +14,7 @@ OS-level isolation with a whitelist-only filesystem, no network, and resource
 limits.  Requires bubblewrap to be installed (Linux only).
 """
 
+import asyncio
 import logging
 import shlex
 from typing import Any
@@ -28,6 +29,7 @@ from backend.copilot.context import (
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.credential_selection import selected_credentials
+from backend.copilot.gate.executed_files import executed_paths
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
@@ -40,6 +42,9 @@ from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
 logger = logging.getLogger(__name__)
+
+# Past every supervisor ceiling, so a file cut here is held as too long to judge.
+RUN_FILE_READ_CAP = 64_000
 
 
 def _build_completion_response(
@@ -107,6 +112,16 @@ class BashExecTool(BaseTool):
         # when user_id is present.  Defense-in-depth: ensures only authenticated
         # users reach the token injection path.
         return True
+
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str] | None:
+        """What the scripts this command runs contain, read from the sandbox."""
+        command = args.get("command")
+        sandbox = get_current_sandbox()
+        if not isinstance(command, str) or sandbox is None:
+            return None
+        paths = executed_paths(command)
+        texts = await asyncio.gather(*(_read_run_file(sandbox, p) for p in paths))
+        return {path: text for path, text in zip(paths, texts) if text is not None}
 
     async def _execute(
         self,
@@ -256,3 +271,16 @@ class BashExecTool(BaseTool):
                 error="e2b_execution_error",
                 session_id=session_id,
             )
+
+
+async def _read_run_file(sandbox: AsyncSandbox, path: str) -> str | None:
+    """None when the file cannot be read; the supervisor then has the command alone."""
+    try:
+        raw = bytes(
+            await asyncio.wait_for(sandbox.files.read(path, format="bytes"), timeout=5)
+        )
+    except Exception:
+        return None
+    if b"\0" in raw[:RUN_FILE_READ_CAP]:
+        return "[binary file]"
+    return raw[: RUN_FILE_READ_CAP + 1].decode("utf-8", errors="replace")
