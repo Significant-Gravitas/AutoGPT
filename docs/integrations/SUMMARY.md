@@ -47,6 +47,8 @@
 * [Baas Bots](block-integrations/baas/bots.md)
 * [Bannerbear Text Overlay](block-integrations/bannerbear/text_overlay.md)
 * [Basic](block-integrations/basic.md)
+* [Capy Automations](block-integrations/capy/automations.md)
+* [Capy Create Automation](block-integrations/capy/create_automation.md)
 * [Capy Create Thread](block-integrations/capy/create_thread.md)
 * [Capy Messages](block-integrations/capy/messages.md)
 * [Capy Projects](block-integrations/capy/projects.md)
