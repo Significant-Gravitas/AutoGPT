@@ -328,7 +328,8 @@ def _error(response: Response) -> CapyAPIError:
     tag = str(body.get("_tag", ""))
     detail = body.get("message") or body.get("reason") or ""
     hints = {
-        "capy/Unauthorized": "the API key is missing, revoked or expired",
+        "capy/Unauthorized": "the API key is missing, revoked or expired; "
+        "create a new one at https://capy.ai/settings/api",
         "capy/Forbidden": "the key's principal is not allowed to do this "
         "(a read_only service key, or a project outside its access)",
         "capy/RateLimited": "rate limited; retry after "

@@ -6,7 +6,7 @@ Start a Capy coding-agent thread, on your Capy balance or on a model provider li
 ## Capy Create Thread
 
 ### What it is
-Hands a task to Capy, an AI software engineer: a background coding agent that works on its own cloud machine against a GitHub repo in one of your Capy projects. Use it to write code, fix a bug, build a feature or open a pull request. The model can run on your Capy balance or on a provider linked in Capy (Codex, Copilot, SuperGrok, Azure). Returns immediately with the thread ID and a link where the work shows live; use Capy Wait For Thread to wait for the result. Once the agent opens a pull request it follows it by itself, fixing failing CI and answering review comments.
+Starts a new Capy agent on a coding task: Capy, an AI software engineer, runs a background coding agent on its own cloud machine against your GitHub repo. Delegate a bug fix, a feature, or work that should open a pull request. Returns at once with a link where the work shows live; follow it with Capy Wait For Thread. The agent then follows its own pull request, fixing failing CI and answering reviews.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

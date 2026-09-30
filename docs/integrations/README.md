@@ -710,7 +710,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
 | [AutoPilot](block-integrations/misc.md#autopilot) | Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
-| [Capy Create Thread](block-integrations/capy/create_thread.md#capy-create-thread) | Hands a task to Capy, an AI software engineer: a background coding agent that works on its own cloud machine against a GitHub repo in one of your Capy projects |
+| [Capy Create Thread](block-integrations/capy/create_thread.md#capy-create-thread) | Starts a new Capy agent on a coding task: Capy, an AI software engineer, runs a background coding agent on its own cloud machine against your GitHub repo |
 | [Capy Send Message](block-integrations/capy/messages.md#capy-send-message) | Sends a message to the agent in a Capy thread: a follow-up instruction, a correction, or the answer to its question |
 
 ## CRM Services
