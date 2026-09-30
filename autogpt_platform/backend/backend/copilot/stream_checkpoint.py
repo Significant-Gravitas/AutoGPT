@@ -3,6 +3,7 @@
 import hashlib
 import json
 from collections.abc import Sequence
+from typing import Any
 
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import StreamCheckpoint
@@ -27,12 +28,14 @@ def turn_checkpoint(
 
 
 def rows_digest(rows: Sequence[ChatMessage]) -> str:
-    """SHA-256 of the rows' compact JSON, which ``JSON.stringify`` reproduces.
+    """SHA-256 of the rows' compact JSON, which ``JSON.stringify`` reproduces."""
+    return canonical_digest(canonical_rows(rows))
 
-    Per row: role, content (a tool row's tool_call_id) and the ordered
-    (id, name) tool calls; tool inputs and outputs serialise differently in JS.
-    """
-    canonical = [
+
+def canonical_rows(rows: Sequence[ChatMessage]) -> list[list[Any]]:
+    """Per row: role, content (a tool row's tool_call_id) and the ordered
+    (id, name) tool calls; tool inputs and outputs serialise differently in JS."""
+    return [
         [
             row.role,
             (row.tool_call_id if row.role == "tool" else row.content) or "",
@@ -43,5 +46,8 @@ def rows_digest(rows: Sequence[ChatMessage]) -> str:
         ]
         for row in rows
     ]
+
+
+def canonical_digest(canonical: list[list[Any]]) -> str:
     text = json.dumps(canonical, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()

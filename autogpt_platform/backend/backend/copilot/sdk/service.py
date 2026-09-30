@@ -109,11 +109,13 @@ from ..model import (
 from ..pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
+    drained_rows_entry,
     pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
 from ..pending_messages import (
+    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -145,6 +147,7 @@ from ..response_model import (
     StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamPendingDrained,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -827,18 +830,6 @@ async def _consume_sdk_until_done(
                 skip_strip=response is tail_delta,
             )
             if dispatched is not None:
-                # Persistence (via _dispatch_response) always runs so the
-                # session transcript keeps role='reasoning' rows; the
-                # wire is gated so UI can suppress rendering.
-                if not state.adapter.render_reasoning_in_ui and isinstance(
-                    dispatched,
-                    (
-                        StreamReasoningStart,
-                        StreamReasoningDelta,
-                        StreamReasoningEnd,
-                    ),
-                ):
-                    continue
                 # The envelope goes out just ahead of the error it explains,
                 # so a client acting on it has it in hand before the turn is
                 # reported failed. Same contract as the baseline path.
@@ -883,6 +874,7 @@ async def _consume_sdk_until_done(
                     # watermark excludes them and the next turn's
                     # detect_gap picks them up as gap-fill.
                     state.midturn_user_rows += len(followup_drained)
+                    yield drained_rows_entry(followup_drained)
 
         # Append assistant entry AFTER convert_message so that
         # any stashed tool results from the previous turn are
@@ -1194,6 +1186,7 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
     StreamCheckpoint,
+    StreamPendingDrained,
     StreamToolDisplayAvailable,
     # Compaction UI events are cosmetic and must not block retry — they're
     # emitted before the SDK query on compacted attempts.
@@ -1811,7 +1804,6 @@ async def _apply_building_mode_restart(
     state.adapter = SDKResponseAdapter(
         message_id=message_id,
         session_id=session_id,
-        render_reasoning_in_ui=config.render_reasoning_in_ui,
     )
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
@@ -2402,7 +2394,6 @@ async def _do_transient_backoff(
     state.adapter = SDKResponseAdapter(
         message_id=message_id,
         session_id=session_id,
-        render_reasoning_in_ui=config.render_reasoning_in_ui,
     )
     state.usage.reset()
 
@@ -3752,7 +3743,20 @@ def _dispatch_response(
 
     if isinstance(response, StreamReasoningStart):
         acc.reasoning_response = ChatMessage(role="reasoning", content="")
-        ctx.session.messages.append(acc.reasoning_response)
+        messages = ctx.session.messages
+        # The post-tool placeholder pre-created for this message's text goes
+        # after its thinking, in the order the wire carries them.
+        placeholder = acc.assistant_response
+        if (
+            messages
+            and messages[-1] is placeholder
+            and placeholder.sequence is None
+            and not placeholder.content
+            and not placeholder.tool_calls
+        ):
+            messages.insert(len(messages) - 1, acc.reasoning_response)
+        else:
+            messages.append(acc.reasoning_response)
 
     elif isinstance(response, StreamReasoningDelta):
         if acc.reasoning_response is not None:
@@ -4559,6 +4563,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
     message_metadata: dict[str, Any] | None = None,
     turn_start: int | None = None,
+    continued_pending: list[PendingMessage] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4650,10 +4655,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
-    _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message, message_metadata
-    )
-    if _user_message_appended and is_user_message:
+    continued_entry: StreamPendingDrained | None = None
+    if continued_pending:
+        # An auto-continue call streams into the turn it continues: its user
+        # rows are the drained messages, one each, as a turn-start drain's are.
+        if not await persist_pending_as_user_rows(
+            session,
+            None,
+            continued_pending,
+            log_prefix=f"[SDK][{session_id[:12]}]",
+        ):
+            return  # rolled back and re-queued for the next turn
+        continued_entry = drained_rows_entry(continued_pending)
+        _user_message_appended = False
+    else:
+        _user_message_appended = maybe_append_user_message(
+            session, message, is_user_message, message_metadata
+        )
+    if (_user_message_appended or continued_entry) and is_user_message:
         track_user_message(
             user_id=user_id,
             session_id=session_id,
@@ -4694,6 +4713,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 f"{log_prefix} Eager persist of user message failed; "
                 f"in-memory append rolled back"
             )
+
+    # The stream's rows start after the message that triggered it.
+    if turn_start is None:
+        turn_start = len(session.messages)
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -4963,6 +4986,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         restore_context_messages = _restore.context_messages
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
+        if continued_entry is not None:
+            yield continued_entry
 
         set_execution_context(
             user_id,
@@ -5227,7 +5252,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         adapter = SDKResponseAdapter(
             message_id=message_id,
             session_id=session_id,
-            render_reasoning_in_ui=config.render_reasoning_in_ui,
         )
 
         # Propagate user_id/session_id as OTEL context attributes so the
@@ -5424,6 +5448,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 log_prefix=log_prefix,
             )
             if persisted_ok:
+                yield drained_rows_entry(pending_messages)
                 current_message = combine_pending_with_current(
                     pending_messages,
                     current_message,
@@ -5521,10 +5546,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Build the per-request context carrier (shared across attempts).
         # Scalar fields are immutable; session/compaction/lock are shared
         # mutable references (see `_StreamContext` docstring for details).
-        # An auto-continue call streams into the same turn, so it keeps the
-        # first row of the call that started it.
-        if turn_start is None:
-            turn_start = len(session.messages)
         stream_ctx = _StreamContext(
             session=session,
             session_id=session_id,
@@ -5705,7 +5726,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id,
                     session_id=session_id,
-                    render_reasoning_in_ui=config.render_reasoning_in_ui,
                 )
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
@@ -6550,6 +6570,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     team_id=team_id,
                     credential_lease=credential_lease,
                     turn_start=turn_start,
+                    continued_pending=_auto_pending_messages,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False

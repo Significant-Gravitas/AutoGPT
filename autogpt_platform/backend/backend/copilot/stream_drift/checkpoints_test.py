@@ -33,7 +33,12 @@ from backend.copilot.response_model import (
 from backend.copilot.sdk import service as sdk
 from backend.copilot.stream_checkpoint import turn_checkpoint
 
-from .recording import load_fixture, saving_into
+from .recording import (
+    assert_fold_matches_rows,
+    fixture_names,
+    load_fixture,
+    saving_into,
+)
 from .scripted import baseline_turn, provider_round, sdk_turn, session_with_prompt
 
 # The prompt is row 0, so every turn's rows start at 1.
@@ -104,9 +109,12 @@ async def test_the_baseline_engine_publishes_no_checkpoint_for_a_failed_persist(
     assert timeline.checkpoints() == []
 
 
-@pytest.mark.parametrize(
-    "name", ["dummy-text-turn", "baseline-tool-turn", "sdk-late-tool-result"]
-)
+@pytest.mark.parametrize("name", fixture_names())
+def test_every_recorded_turn_folds_to_its_rows(name: str) -> None:
+    assert_fold_matches_rows(load_fixture(name))
+
+
+@pytest.mark.parametrize("name", fixture_names())
 def test_no_recorded_checkpoint_sits_inside_a_block_or_a_tool_call(name: str) -> None:
     open_parts: set[str] = set()
     checkpoints = 0

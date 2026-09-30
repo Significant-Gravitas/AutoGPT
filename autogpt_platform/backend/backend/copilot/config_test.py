@@ -42,7 +42,6 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
     "CHAT_TITLE_MODEL",
     "CHAT_SIMULATION_MODEL",
-    "CHAT_RENDER_REASONING_IN_UI",
     "CHAT_STREAM_REPLAY_COUNT",
 )
 
@@ -733,21 +732,6 @@ class TestLocalTransport:
         cfg = ChatConfig()
         assert cfg.use_local is True
         assert cfg.effective_transport == "local"
-
-
-class TestRenderReasoningInUi:
-    """``render_reasoning_in_ui`` gates reasoning wire events globally."""
-
-    def test_defaults_to_true(self):
-        """Default must stay True — flipping it silences the reasoning
-        collapse for every user, which is an opt-in operator decision."""
-        cfg = ChatConfig()
-        assert cfg.render_reasoning_in_ui is True
-
-    def test_env_override_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CHAT_RENDER_REASONING_IN_UI", "false")
-        cfg = ChatConfig()
-        assert cfg.render_reasoning_in_ui is False
 
 
 class TestStreamReplayCount:

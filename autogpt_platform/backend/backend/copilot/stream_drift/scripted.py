@@ -1,5 +1,7 @@
 """Copilot engines driven by a script instead of a model, for the drift suite."""
 
+import contextlib
+import tempfile
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -11,6 +13,7 @@ from openai.types.chat import ChatCompletionChunk
 
 from backend.copilot.baseline import service as baseline
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamBaseResponse, StreamStart
 from backend.copilot.sdk import service as sdk
 from backend.copilot.sdk.compaction import CompactionTracker
@@ -41,10 +44,15 @@ async def baseline_turn(
 
 
 def provider_round(
-    deltas: list[str], *, tool_call: dict[str, str] | None = None
+    deltas: list[str],
+    *,
+    tool_call: dict[str, str] | None = None,
+    reasoning: list[str] | None = None,
 ) -> MagicMock:
-    """One scripted OpenAI-compatible response: text deltas, then a tool call."""
-    chunks = [_chunk({"content": delta}) for delta in deltas]
+    """One scripted OpenAI-compatible response: reasoning deltas, text
+    deltas, then a tool call."""
+    chunks = [_chunk({"reasoning": delta}) for delta in reasoning or []]
+    chunks += [_chunk({"content": delta}) for delta in deltas]
     if tool_call:
         chunks.append(
             _chunk(
@@ -129,6 +137,88 @@ async def sdk_turn(
     checkpoint = turn_checkpoint(session.messages, turn_start)
     if checkpoint is not None:
         yield checkpoint
+
+
+async def sdk_service_turn(
+    session: ChatSession,
+    turn_id: str,
+    queries: list[list[Message]],
+    *,
+    queued_after_first: list[PendingMessage],
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    """The whole SDK engine over a scripted CLI, one list of messages per
+    query, with ``queued_after_first`` arriving while the first one runs:
+    its turn-end persist and auto-continue included. Only what reaches
+    beyond the process (CLI, sandbox, RPC services, billing) is stubbed."""
+    scripted = iter(queries)
+
+    def cli(*_: Any, **__: Any) -> AsyncMock:
+        messages = next(scripted)
+
+        async def receive() -> AsyncGenerator[Message, None]:
+            for message in messages:
+                yield message
+
+        client = MagicMock(receive_response=receive, query=AsyncMock())
+        connection = AsyncMock()
+        connection.__aenter__.return_value = client
+        return connection
+
+    def lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
+        return MagicMock(
+            try_acquire=AsyncMock(return_value=owner_id),
+            refresh=AsyncMock(),
+            release=AsyncMock(),
+        )
+
+    stubs: dict[str, Any] = {
+        "ClaudeSDKClient": MagicMock(side_effect=cli),
+        "AsyncClusterLock": MagicMock(side_effect=lock),
+        "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
+        "propagate_attributes": MagicMock(),
+        "_build_system_prompt": AsyncMock(return_value=("System prompt", None)),
+        "download_transcript": AsyncMock(return_value=None),
+        "upload_transcript": AsyncMock(),
+        "create_copilot_mcp_server": MagicMock(),
+        "create_security_hooks": MagicMock(),
+        "get_copilot_tool_names": MagicMock(return_value=[]),
+        "get_sdk_disallowed_tools": MagicMock(return_value=[]),
+        "build_sdk_env": MagicMock(return_value={}),
+        "_resolve_sdk_model": MagicMock(return_value=None),
+        "set_execution_context": MagicMock(),
+        "get_user_tier": AsyncMock(return_value=None),
+        "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),
+        "drain_pending_safe": AsyncMock(
+            side_effect=[[], queued_after_first] + [[]] * len(queries)
+        ),
+        "resolve_answered": AsyncMock(return_value=[]),
+        "build_session_context": AsyncMock(return_value=""),
+        "build_skills_context": AsyncMock(return_value=""),
+        "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),
+        "build_turn_budget_block": AsyncMock(return_value=""),
+        "persist_and_record_usage": AsyncMock(),
+        "clear_pending_question": AsyncMock(),
+        "config": sdk.config.model_copy(
+            update={
+                "use_claude_code_subscription": False,
+                "use_e2b_sandbox": False,
+                "claude_agent_fallback_model": None,
+                "claude_agent_max_transient_retries": 1,
+            }
+        ),
+    }
+    with contextlib.ExitStack() as stack:
+        for name, value in stubs.items():
+            stack.enter_context(patch.object(sdk, name, value))
+        async for event in sdk.stream_chat_completion_sdk(
+            session_id=session.session_id,
+            message=session.messages[-1].content,
+            is_user_message=True,
+            user_id=session.user_id,
+            session=session,
+            envelope=root_envelope(turn_id, session_id=session.session_id),
+        ):
+            yield event
 
 
 def _chunk(
