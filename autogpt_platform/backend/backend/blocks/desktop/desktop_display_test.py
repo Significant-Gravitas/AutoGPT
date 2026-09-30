@@ -1,8 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.blocks.desktop._api import DesktopSession
+from backend.util.sandbox_login import LoginChainChanged
 
 
 def _session_with_fresh_box() -> tuple[DesktopSession, AsyncMock]:
@@ -25,6 +26,16 @@ def _session_with_fresh_box() -> tuple[DesktopSession, AsyncMock]:
     sandbox = MagicMock()
     sandbox.commands.run = run
     return DesktopSession(sandbox), run
+
+
+@pytest.mark.asyncio
+async def test_a_refused_check_surfaces_instead_of_timing_out():
+    """A changed login chain is a refusal, not a desktop that is still starting."""
+    refused = AsyncMock(side_effect=LoginChainChanged("/etc/profile changed"))
+    with patch("backend.blocks.desktop._api.run_internal", refused):
+        with pytest.raises(LoginChainChanged):
+            await DesktopSession(MagicMock()).ensure_display(1280, 720)
+    refused.assert_awaited_once()
 
 
 class TestEnsureDisplay:

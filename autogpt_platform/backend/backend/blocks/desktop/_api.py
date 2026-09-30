@@ -23,7 +23,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     kill_sandbox,
 )
-from backend.util.sandbox_login import run_internal, take_baseline
+from backend.util.sandbox_login import LoginChainChanged, run_internal, take_baseline
 
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
@@ -121,9 +121,9 @@ class DesktopSession:
         sandbox, persistence = await _create_sandbox_with_volumes(
             volume_mounts, api_key, timeout_seconds, template, metadata, owner=owner
         )
-        await take_baseline(sandbox)
         session = cls(sandbox)
         try:
+            await take_baseline(sandbox)
             await session.ensure_display(width, height)
             # WORKSPACE_PATH always exists (blocks default their cwd to it),
             # mounted or not; mounted paths get their mkdir as well.
@@ -347,6 +347,9 @@ class DesktopSession:
         try:
             await run_internal(self.sandbox, command)
             return True
+        except LoginChainChanged:
+            # A refusal, not "not ready yet": waiting would only end in a timeout.
+            raise
         except Exception:
             return False
 

@@ -241,41 +241,47 @@ def _run_target(words: list[str]) -> str | None:
     if options is None:
         # A program named by path is itself the file that runs.
         return words[0] if "/" in words[0] else None
-    script = _script_word(words[1:], options)
-    if script is None and "<" in words:
-        # No script named, so the code comes in on stdin (`bash < x.sh`).
-        after = words.index("<") + 1
-        return words[after] if after < len(words) else None
-    return script
+    return _script_word(words[1:], options)
 
 
 def _script_word(args: list[str], options: _Options) -> str | None:
+    """The file an interpreter runs: the one it names, else what feeds its stdin."""
+    stdin: list[str] = []
     index = 0
     while index < len(args):
         word, following = args[index], args[index + 1 : index + 2]
-        if word == "<" or word.startswith("<<"):
-            # stdin feeds the code: the caller reads `<`; a heredoc is in the command.
-            return None
+        if word.startswith("<<"):
+            return None  # A heredoc: the code is in the command.
+        if word == "<":
+            stdin += following
+            index += 2
+            continue
         if _is_redirect(word) or (
             word.isdigit() and following and _is_redirect(following[0])
         ):
             raise _Unclear(word)
         if word == "--":
             return following[0] if following else None
-        if word in options.inline:
+        if word in options.inline and word != "-":
             return None
         if word in options.subcommands:
             index += 1
             continue
-        if not word.startswith(("-", "+")):
-            return word
+        if word == "-" or not word.startswith(("-", "+")):
+            if word != "-":
+                return word
+            index += 1
+            continue
         kind = _option_kind(word, options)
         if kind == "inline":
             return None
         if kind == "script":
             return following[0] if following else None
         index += 2 if kind == "valued" else 1
-    return None
+    # Redirections apply left to right, so two feeding stdin leave it unclear.
+    if len(stdin) > 1:
+        raise _Unclear("<")
+    return stdin[0] if stdin else None
 
 
 def _strip_prefixes(words: list[str]) -> list[str]:

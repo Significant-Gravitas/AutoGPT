@@ -91,6 +91,25 @@ async def test_connect_rearms_the_running_time_limit():
 
 
 @pytest.mark.asyncio
+async def test_a_create_cancelled_during_its_baseline_kills_the_box():
+    """The box is on the meter and no caller has its id yet."""
+    import asyncio
+
+    box = MagicMock()
+    with (
+        patch(
+            f"{_M}._create_sandbox_with_volumes",
+            AsyncMock(return_value=(box, PersistenceInfo())),
+        ),
+        patch(f"{_M}.take_baseline", AsyncMock(side_effect=asyncio.CancelledError)),
+        patch(f"{_M}.kill_sandbox", AsyncMock()) as kill,
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await DesktopSession.create("k", 900, 1280, 720, owner=_OWNER)
+    kill.assert_awaited_once_with(box)
+
+
+@pytest.mark.asyncio
 async def test_a_desktop_takes_its_login_baseline_before_its_first_command():
     """Without one every internal command refuses, the display's included."""
     order: list[str] = []

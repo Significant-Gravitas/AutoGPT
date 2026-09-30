@@ -491,7 +491,10 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
             return _mcp(str(exc), error=True)
 
         parent = os.path.dirname(remote)
-        canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        try:
+            canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        except Exception as exc:
+            return _mcp(f"Failed to edit {os.path.basename(remote)}: {exc}", error=True)
         if canonical_parent is None:
             return _mcp(
                 f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",

@@ -47,6 +47,8 @@ _W = f"{_HOME}/workspace"
         ("bash x.sh '(literal)'", [f"{_HOME}/x.sh"]),
         # Code on stdin is the file that runs; a redirect after the script is not.
         ("python - < x.py", [f"{_HOME}/x.py"]),
+        # A named script wins over stdin, which is then its data.
+        ("bash < data.txt x.sh", [f"{_HOME}/x.sh"]),
         ("python x.py < data.csv > out.log 2>&1", [f"{_HOME}/x.py"]),
         ("echo ${HOME}; bash x.sh", [f"{_HOME}/x.sh"]),
     ],
@@ -101,6 +103,8 @@ def test_other_commands_name_nothing(command):
         "bash > out x.sh",
         "bash 2> err x.sh",
         "bash &> log x.sh",
+        # Redirections apply left to right: which one feeds the code is unclear.
+        "bash < first.sh < second.sh",
     ],
 )
 def test_a_run_it_cannot_resolve_is_unclear_not_guessed(command):
