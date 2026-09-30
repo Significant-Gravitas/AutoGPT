@@ -2158,3 +2158,79 @@ async def test_save_session_to_db_stamp_backfill_failure_keeps_flag(
     )
 
     assert flushed.stamps_pending_save is True
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_recovers_create_race(
+    mocker: MockerFixture,
+) -> None:
+    """Two copies of one create race; the loser adopts the winner's row."""
+    from backend.util.exceptions import DatabaseError
+
+    from .model import get_or_create_client_chat_session
+
+    existing = ChatSession.new("user-a", dry_run=False, session_id="sid-1")
+    get_session = mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=[None, existing],
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("duplicate session id"),
+    )
+
+    result = await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+
+    assert result is existing
+    assert get_session.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_reraises_real_db_failure(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import get_or_create_client_chat_session
+
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("database unavailable"),
+    )
+
+    with pytest.raises(DatabaseError, match="database unavailable"):
+        await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_refuses_a_different_expert(
+    mocker: MockerFixture,
+) -> None:
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    existing = ChatSession.new(
+        "user-a", dry_run=False, session_id="sid-1", expert_id="expert-a"
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a", "sid-1", dry_run=False, expert_id="expert-b"
+        )
+    create_session.assert_not_awaited()
