@@ -242,6 +242,15 @@ policy should let the proxy reach that port and not `DatabaseManager`'s. What
 the service does answer is any user's credential for a bound host, so the
 proxy's own host is still to be treated as holding every user's credentials.
 
+Two things are still to do at switch-on, and neither is in this repository:
+
+- The policy itself, and publishing the service's port from the `db`
+  deployment. Until both are in place `DatabaseManager` still answers every
+  method to a proxy that can reach its port.
+- A health probe on the service's own port. It is a second process in the `db`
+  entrypoint and nothing restarts it: if it dies, `DatabaseManager`'s health
+  check keeps passing while every swap fails.
+
 ### What one message costs the event loop
 
 The swap and the scrub run synchronously on mitmproxy's event loop, which every

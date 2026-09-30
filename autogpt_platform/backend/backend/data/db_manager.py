@@ -148,6 +148,7 @@ from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
+from backend.data.posthog_lifecycle_sync import start_posthog_lifecycle_sweep
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -495,6 +496,7 @@ class DatabaseManager(AppService):
     # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
+    start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -935,6 +937,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
+    start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner

@@ -1,11 +1,12 @@
 """Tests for the activation event vocabulary and its emitters."""
 
+import time
 from unittest.mock import Mock
 
 import pytest
 
 from backend.util import product_analytics
-from backend.util.product_analytics import ActivationEvent
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import AppEnvironment
 
 
@@ -24,17 +25,17 @@ def _only_call(capture: Mock) -> tuple[str, dict]:
 
 def test_track_is_a_noop_without_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(product_analytics, "get_posthog_client", lambda: None)
-    product_analytics.track("user-1", ActivationEvent.RUN_AGENT, {"graph_id": "g"})
+    product_analytics.track("user-1", PostHogEvent.RUN_AGENT, {"graph_id": "g"})
 
 
 def test_track_is_a_noop_without_user(capture: Mock) -> None:
-    product_analytics.track(None, ActivationEvent.RUN_AGENT, {"graph_id": "g"})
+    product_analytics.track(None, PostHogEvent.RUN_AGENT, {"graph_id": "g"})
     capture.assert_not_called()
 
 
 def test_track_adds_base_properties_and_drops_nulls(capture: Mock) -> None:
     product_analytics.track(
-        "user-1", ActivationEvent.RUN_AGENT, {"graph_id": "g", "expert_id": None}
+        "user-1", PostHogEvent.RUN_AGENT, {"graph_id": "g", "expert_id": None}
     )
 
     event, properties = _only_call(capture)
@@ -48,7 +49,7 @@ def test_track_adds_base_properties_and_drops_nulls(capture: Mock) -> None:
 
 def test_track_swallows_client_errors(capture: Mock) -> None:
     capture.side_effect = RuntimeError("posthog down")
-    product_analytics.track("user-1", ActivationEvent.RUN_AGENT)
+    product_analytics.track("user-1", PostHogEvent.RUN_AGENT)
 
 
 @pytest.mark.parametrize("trigger", ["manual", "api", "copilot"])
@@ -275,3 +276,92 @@ def test_trigger_fired_and_expert_hired(capture: Mock) -> None:
     assert trigger.kwargs["properties"]["target"] == "expert"
     assert hired.kwargs["event"] == "expert_hired"
     assert hired.kwargs["properties"]["template_id"] == "tmpl-1"
+
+
+def test_credential_oauth_started(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        product_analytics.settings.config, "app_env", AppEnvironment.LOCAL
+    )
+    product_analytics.track_credential_oauth_started(
+        user_id="user-1", provider="google"
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "credential_oauth_started"
+    assert properties == {
+        "environment": "local",
+        "source": "platform",
+        "provider": "google",
+    }
+
+
+def test_credential_oauth_exchange_failed(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        product_analytics.settings.config, "app_env", AppEnvironment.LOCAL
+    )
+    product_analytics.track_credential_oauth_exchange_failed(
+        user_id="user-1",
+        provider="google",
+        failure_class="token_exchange",
+        status_code=400,
+        detail="InvalidGrantError: (invalid_grant) Missing code verifier.",
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "credential_oauth_exchange_failed"
+    assert properties == {
+        "environment": "local",
+        "source": "platform",
+        "provider": "google",
+        "failure_class": "token_exchange",
+        "status_code": 400,
+        "detail": "InvalidGrantError: (invalid_grant) Missing code verifier.",
+    }
+
+
+@pytest.mark.parametrize(
+    "detail, expected",
+    [
+        (
+            "(invalid_grant) Missing code verifier.",
+            "(invalid_grant) Missing code verifier.",
+        ),
+        ("bad code the-auth-code", "bad code [redacted]"),
+        ("no access for alice.b+x@example.co.uk", "no access for [email]"),
+        (
+            "POST https://example.com/token?code=abc&secret=def failed",
+            "POST https://example.com/token?[redacted] failed",
+        ),
+        ("got ya29.a0AfH6SMBx3example9token back", "got ya29.[redacted] back"),
+        ("HTTP Error: 400 -\n  invalid_request", "HTTP Error: 400 - invalid_request"),
+    ],
+)
+def test_safe_error_detail_removes_secrets(detail: str, expected: str) -> None:
+    assert product_analytics.safe_error_detail(detail, ["the-auth-code"]) == expected
+
+
+def test_safe_error_detail_is_truncated() -> None:
+    assert len(product_analytics.safe_error_detail("word " * 100)) == 200
+
+
+def test_safe_error_detail_is_fast_on_a_huge_body() -> None:
+    body = "a" * 200_000 + " alice@example.com"
+    start = time.monotonic()
+    assert product_analytics.safe_error_detail(body) == "a" * 200
+    assert time.monotonic() - start < 1
+
+
+def test_safe_error_detail_drops_a_word_cut_by_the_scan_limit() -> None:
+    # The query string shrinks to a placeholder, which would pull the start of
+    # the cut token into the first 200 characters.
+    url = "https://example.com/token?" + "q" * 1960
+    token = "ya29" + "x" * 40
+    assert len(url) < 2000 < len(url) + 1 + len(token)
+    assert (
+        product_analytics.safe_error_detail(f"{url} {token}")
+        == "https://example.com/token?[redacted]"
+    )

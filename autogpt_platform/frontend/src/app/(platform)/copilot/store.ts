@@ -99,9 +99,15 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "codex"; credentialId: string }
   | { authProvider: "microsoft_365_copilot"; credentialId: string };
 
-/** Context panel tab: "files" is the inline workspace-files card, "artifacts"
- *  the docked artifacts library. */
-export type ContextPanelTab = "files" | "artifacts";
+/** Context panel tab, each docked on the right: the chat's files, the
+ *  artifacts library, or the chat's expert's integrations. */
+export type ContextPanelTab = "files" | "artifacts" | "integrations";
+
+/** The expert whose files and integrations the context panel lists. */
+export interface ContextPanelExpert {
+  id: string;
+  name: string;
+}
 
 const isClient = typeof window !== "undefined";
 
@@ -226,6 +232,10 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
+  contextPanelExpert: ContextPanelExpert | null;
+  setContextPanelExpert: (expert: ContextPanelExpert | null) => void;
+  /** The integrations tab for `expert`, toggled like any other tab. */
+  toggleIntegrationsPanel: (expert: ContextPanelExpert) => void;
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
@@ -559,8 +569,14 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }),
   clearLastArtifact: () =>
     set((state) => ({
+      // Expert-wide panel sections belong to the previous chat's expert.
+      contextPanelExpert: null,
       artifactPanel: {
         ...state.artifactPanel,
+        activeTab:
+          state.artifactPanel.activeTab === "integrations"
+            ? "files"
+            : state.artifactPanel.activeTab,
         lastArtifact: null,
         // A new chat has its own computer; never show the previous chat's.
         computer: null,
@@ -602,6 +618,12 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  contextPanelExpert: null,
+  setContextPanelExpert: (expert) => set({ contextPanelExpert: expert }),
+  toggleIntegrationsPanel: (expert) => {
+    set({ contextPanelExpert: expert });
+    get().toggleContextPanelTab("integrations");
+  },
   openContextPanelForFiles: () => {
     if (_autoOpenUserClosed) return;
     if (isClient) {
@@ -622,8 +644,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   },
 
   // Explicit user action (the artifact panel's files button): drops the open
-  // preview or the computer face and hands the region to the floating files
-  // card.
+  // preview or the computer face and docks the files tab.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
@@ -720,6 +741,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,
+      contextPanelExpert: null,
       artifactPanel: {
         isOpen: false,
         activeArtifact: null,
