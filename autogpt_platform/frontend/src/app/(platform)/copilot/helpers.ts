@@ -104,6 +104,20 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
   );
 }
 
+export function getActiveBackendTurnId(result: {
+  data?: unknown;
+}): string | null {
+  if (!hasActiveBackendStream(result)) return null;
+  const stream = (result.data as { data: { active_stream: unknown } }).data
+    .active_stream;
+  return typeof stream === "object" &&
+    stream !== null &&
+    "turn_id" in stream &&
+    typeof stream.turn_id === "string"
+    ? stream.turn_id
+    : null;
+}
+
 /**
  * Whether the trailing assistant message has at least one part the UI
  * would visibly render: text with non-empty content, reasoning with
