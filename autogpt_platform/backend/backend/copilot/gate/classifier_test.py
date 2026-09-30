@@ -7,6 +7,7 @@ import pytest
 from backend.blocks.typesafe._budget import prepare_state
 from backend.copilot.gate import jev
 from backend.copilot.gate.classifier import ACTION_RUBRIC, supervise, too_long_reason
+from backend.copilot.gate.review import review_payload
 
 _MOD = "backend.copilot.gate.classifier"
 
@@ -234,6 +235,12 @@ async def test_a_sizing_failure_asks_instead_of_raising():
 @pytest.mark.parametrize("over, shown", [(1, "0.1 KB over"), (7_150, "7.2 KB over")])
 def test_the_overflow_is_rounded_up(over, shown):
     assert f"({shown})" in too_long_reason(over)
+
+
+async def test_the_largest_judged_call_is_on_its_card_whole():
+    n = await _largest_judged("x", "")
+
+    assert review_payload("bash_exec", {"command": "echo " + "x" * n})["clipped"] == []
 
 
 async def _largest_judged(unit: str, request: str) -> int:
