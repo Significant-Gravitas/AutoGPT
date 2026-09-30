@@ -44,9 +44,7 @@ def select_client_auth_method(
     )
 
 
-def preregistered_client(
-    server_url: str, secrets: Secrets
-) -> tuple[str, str] | None:
+def preregistered_client(server_url: str, secrets: Secrets) -> tuple[str, str] | None:
     """The configured ``(client_id, client_secret)`` for a server that needs a
     pre-registered OAuth app, ``("", "")`` when it needs one but none is
     configured, or ``None`` when the server is not one of them.

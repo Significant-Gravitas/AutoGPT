@@ -5,8 +5,8 @@ to avoid creating blocking portals that can corrupt pytest-asyncio's session eve
 """
 
 import asyncio
-from urllib.parse import parse_qs, urlsplit
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 import fastapi
 import httpx
