@@ -2026,6 +2026,18 @@ def _classify_final_failure(
             code=interrupted.handled_error.code,
             retryable=interrupted.handled_error.retryable,
         )
+    # Judged before the exhausted-retry verdicts: those come from text
+    # patterns that a billing refusal's wording can also match.
+    if (
+        stream_err is not None
+        and platform_route
+        and _is_raised_billing_refusal(stream_err)
+    ):
+        return _FinalFailure(
+            display_msg=PROVIDER_UNAVAILABLE_MESSAGE,
+            code=PROVIDER_UNAVAILABLE_CODE,
+            retryable=True,
+        )
     if attempts_exhausted:
         return _FinalFailure(
             display_msg=(
@@ -2039,16 +2051,6 @@ def _classify_final_failure(
         return _FinalFailure(
             display_msg=FRIENDLY_TRANSIENT_MSG,
             code="transient_api_error",
-            retryable=True,
-        )
-    if (
-        stream_err is not None
-        and platform_route
-        and _is_raised_billing_refusal(stream_err)
-    ):
-        return _FinalFailure(
-            display_msg=PROVIDER_UNAVAILABLE_MESSAGE,
-            code=PROVIDER_UNAVAILABLE_CODE,
             retryable=True,
         )
     if stream_err is not None:
