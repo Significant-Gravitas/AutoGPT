@@ -508,10 +508,26 @@ export function ToolResult({ row, readOnly = false }: Props) {
     );
   }
 
-  if (row.held && row.held.state !== "approved") {
-    return <HeldCallDetail held={row.held} />;
+  if (row.held) {
+    const approved = row.held.state === "approved";
+    // The shell's card prints the command itself, run or not.
+    const ownCall = approved && capabilityTargetRow(row).tool === "bash_exec";
+    const ran = row.output !== undefined && row.output !== "";
+    return (
+      <div className="flex flex-col gap-2">
+        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        {approved && (ran || ownCall) && (
+          <ToolOutput row={row} readOnly={readOnly} />
+        )}
+      </div>
+    );
   }
 
+  return <ToolOutput row={row} readOnly={readOnly} />;
+}
+
+function ToolOutput({ row, readOnly }: Required<Props>) {
+  const output = asObject(row.output);
   const target = capabilityTargetRow(row);
   const card =
     toolCard(target, output, readOnly) ??

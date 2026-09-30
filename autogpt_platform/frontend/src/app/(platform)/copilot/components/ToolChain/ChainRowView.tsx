@@ -124,7 +124,9 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
-      ((row.output !== undefined && row.output !== "") || liveSubSession);
+      ((row.output !== undefined && row.output !== "") ||
+        liveSubSession ||
+        !!row.held?.args);
   const showContent = liveReasoning || (open && hasContent);
   const rowText = (
     <SwapText

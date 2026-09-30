@@ -1,6 +1,7 @@
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { cn } from "@/lib/utils";
 import { approvalCardId } from "../ApprovalQueue/helpers";
@@ -54,8 +55,14 @@ const READ_DETAIL: Partial<Record<HeldState, string>> = {
   unknown: `It isn't clear whether this reached ${AUTOPILOT_NAME}. Check before relying on it.`,
 };
 
-export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
-  if (held.state === "approved") return null;
+interface HeldCallDetailProps {
+  held: HeldRowInfo;
+  showArgs?: boolean;
+}
+
+export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
+  const args = showArgs ? held.args : undefined;
+  if (held.state === "approved" && !args) return null;
   const reviewId = held.reviewId;
   function goToApproval() {
     if (!reviewId) return;
@@ -65,7 +72,14 @@ export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
   }
   return (
     <div className="flex flex-col items-start gap-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-600">
-      <p>{(held.read && READ_DETAIL[held.state]) || DETAIL[held.state]}</p>
+      {held.state !== "approved" && (
+        <p>{(held.read && READ_DETAIL[held.state]) || DETAIL[held.state]}</p>
+      )}
+      {args && (
+        <div className="w-full py-1">
+          <ApprovalFields fields={[]} values={args} idsWhenAlone />
+        </div>
+      )}
       {held.state === "waiting" && reviewId && (
         <Button
           variant="link"

@@ -9,6 +9,11 @@ export const CODE_MAX_LINES = 12;
 export const ARRAY_SHOWN = 3;
 export const ARRAY_MAX = 5;
 
+// Mirrors the server's _SECRET_KEY_HINTS (copilot/sharing/models.py), which redact
+// a card's arguments; a caller holding the raw call hides the same keys with it.
+const SECRET_KEY =
+  /(^|[^a-z0-9])(api_keys?|api_token|apikey|auth|authorization|bearer|cookie|credentials?|oauth|passwd|password|secrets?|token)(?![a-z0-9])/i;
+
 // Arguments whose value is the content, shown as code rather than prose.
 const CODE_KEYS = new Set(["command", "code", "script", "source", "sql"]);
 
@@ -111,6 +116,17 @@ export function visibleKeys({
   const referenced = new Set(references.map((ref) => ref.key));
   const named = present.filter((key) => !isIdKey(key) || referenced.has(key));
   return named.length > 0 || !idsWhenAlone ? named : present;
+}
+
+export function redactSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSecrets);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, v]) => [
+      key,
+      SECRET_KEY.test(key) ? REDACTED : redactSecrets(v),
+    ]),
+  );
 }
 
 export function isIdKey(key: string) {

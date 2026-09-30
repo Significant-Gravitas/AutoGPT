@@ -1,7 +1,12 @@
 import type { HeldOutcome } from "../ChatMessagesContainer/heldCallRows";
 import type { HeldAnswer } from "../ApprovalQueue/heldAnswersStore";
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import {
+  redactSecrets,
+  visibleKeys,
+} from "@/components/organisms/ApprovalFields/helpers";
 import { fallbackAsk } from "../ApprovalQueue/helpers";
+import { capabilityTargetRow } from "./capabilityRow";
 import type { ChainRow } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 import { getCatalogLabel } from "./toolCatalog";
@@ -20,6 +25,8 @@ export interface HeldRowInfo {
   reviewId: string | null;
   // A read held for carrying instructions, not an action held for approval.
   read?: boolean;
+  // What a settled action was asked to do; a read's card shows no arguments either.
+  args?: Record<string, unknown>;
 }
 
 // A held call's row names the action while it waits, then what became of it.
@@ -109,8 +116,27 @@ function settle(
     ...row,
     text,
     requiresAction: false,
-    held: { state, reviewId, read },
+    held: { state, reviewId, read, args: read ? undefined : heldArgs(row) },
   };
+}
+
+// A block or integration run through run_capability has its own arguments under
+// `input`, which is what its card lists; a deferred platform tool is unwrapped too.
+function heldArgs(row: ChainRow) {
+  const target = capabilityTargetRow(row);
+  const call = asObject(target.input);
+  const args =
+    target.tool === "run_capability" ? (asObject(call?.input) ?? call) : call;
+  if (!args) return undefined;
+  const shown = visibleKeys({
+    keys: Object.keys(args),
+    values: args,
+    hiddenKeys: [],
+    idsWhenAlone: true,
+  });
+  return shown.length > 0
+    ? (redactSecrets(args) as Record<string, unknown>)
+    : undefined;
 }
 
 function isHeldReadId(reviewId: string | null) {
