@@ -36,14 +36,17 @@ export function createShadowFetch(
     if (!response.ok || !response.body) return response;
     const [main, tap] = response.body.tee();
     const stopTap = new AbortController();
-    init?.signal?.addEventListener("abort", () => stopTap.abort());
+    const stop = () => stopTap.abort();
+    init?.signal?.addEventListener("abort", stop);
     void readSseFrames(
       tap,
       (frame) => {
         if (frame.kind === "entry") applyShadowEntry(sessionId, frame.entry);
       },
       stopTap.signal,
-    ).catch(() => {});
+    )
+      .catch(() => {})
+      .finally(() => init?.signal?.removeEventListener("abort", stop));
     return new Response(
       onCancel(main, () => stopTap.abort()),
       {
