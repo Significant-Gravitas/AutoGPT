@@ -206,6 +206,19 @@ def test_provider_billing_refusals_are_recognised(error):
             id="unrelated-can-only-afford",
         ),
         pytest.param("Error code: 4029 - unknown", id="longer-number-than-402"),
+        pytest.param(
+            # Untyped: its text is whatever the raiser put there, such as a
+            # user's message or a fetched page quoting OpenRouter's wording.
+            ValueError(
+                "Could not parse tool input: 'see openrouter.ai/settings/credits, "
+                "this request requires more credits'"
+            ),
+            id="untyped-exception-quoting-billing-words",
+        ),
+        pytest.param(
+            RuntimeError('API Error: 402 {"error":{"message":"x","code":402}}'),
+            id="untyped-exception-quoting-a-402",
+        ),
         pytest.param(None, id="none"),
     ],
 )

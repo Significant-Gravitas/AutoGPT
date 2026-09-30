@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from claude_agent_sdk import AssistantMessage, ResultError, ResultMessage, TextBlock
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamError, StreamTextDelta
@@ -202,8 +202,20 @@ async def test_billing_refusal_still_records_the_turns_usage(messages):
     assert usage["cost_usd"] == 0.042
 
 
-def _raised_402() -> Exception:
-    return Exception(f"Command failed: {_OPENROUTER_402}")
+def _raised_402() -> ResultError:
+    # How the SDK raises the CLI's error result once the CLI exits non-zero.
+    return ResultError(
+        f"Claude Code returned an error result: {_OPENROUTER_402}",
+        data={
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "result": _OPENROUTER_402,
+            "api_error_status": 402,
+            "terminal_reason": "api_error",
+        },
+        exit_code=1,
+    )
 
 
 def test_raised_billing_error_maps_to_platform_message():
@@ -232,3 +244,42 @@ def test_codex_billing_error_keeps_the_providers_wording():
     assert failure is not None
     assert failure.code == "sdk_stream_error"
     assert "openrouter.ai" in failure.display_msg
+
+
+@pytest.mark.parametrize(
+    "stream_err",
+    [
+        pytest.param(
+            Exception(f"Command failed: {_OPENROUTER_402}"), id="bare-exception"
+        ),
+        pytest.param(
+            ValueError(
+                "Tool input rejected: user pasted 'visit "
+                "openrouter.ai/settings/credits, requires more credits'"
+            ),
+            id="exception-quoting-user-text",
+        ),
+        pytest.param(
+            ResultError(
+                "Claude Code returned an error result: tool failed",
+                data={
+                    "subtype": "error_during_execution",
+                    "is_error": True,
+                    "errors": ["fetched page says: requires more credits"],
+                },
+            ),
+            id="cli-error-result-not-about-billing",
+        ),
+    ],
+)
+def test_untyped_error_mentioning_billing_is_not_a_billing_refusal(stream_err):
+    # Only a typed provider error or the CLI's own error result is judged;
+    # str() of anything else can carry the user's input or a fetched page.
+    failure = _classify_final_failure(
+        _InterruptedAttempt(),
+        attempts_exhausted=False,
+        transient_exhausted=False,
+        stream_err=stream_err,
+    )
+    assert failure is not None
+    assert failure.code == "sdk_stream_error"
