@@ -3,9 +3,11 @@
 import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
 import prisma.errors
 import pytest
+from prisma.enums import BriefingFrequency
 
 from backend.data import user as user_module
 from backend.data.user import update_user_timezone
@@ -700,3 +702,27 @@ class TestSetUserDefaultChatRoute:
         by_id_del.assert_called_once_with("user-1")
         by_email_del.assert_called_once_with("user@example.com")
         goc_clear.assert_called_once_with()
+
+
+class TestUnsubscribeUserByToken:
+    @pytest.mark.asyncio
+    async def test_turns_everything_off_for_a_reserved_domain_address(self):
+        # AUTOGPT-SERVER-5E4: pydantic's EmailStr rejects a stored address on
+        # a reserved domain such as `.test`; the unsubscribe link must work.
+        link = user_module.generate_unsubscribe_link("user-1")
+        token = parse_qs(urlparse(link).query)["token"][0]
+        stored = _application_user("user-1", "test-1@autogpt.test")
+
+        with (
+            patch.object(user_module, "get_user_by_id", AsyncMock(return_value=stored)),
+            patch.object(
+                user_module, "update_user_notification_preference", AsyncMock()
+            ) as update,
+        ):
+            await user_module.unsubscribe_user_by_token(token)
+
+        sent = update.await_args.args[1]
+        assert sent.email == "test-1@autogpt.test"
+        assert sent.briefing_frequency == BriefingFrequency.OFF
+        assert not (sent.alerts_enabled or sent.store_verdicts_enabled)
+        assert sent.daily_limit == 0

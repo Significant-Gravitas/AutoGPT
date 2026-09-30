@@ -26541,11 +26541,11 @@
         "type": "object",
         "required": ["user_id", "email"],
         "title": "NotificationPreference",
-        "description": "The volume knob from the Briefing footer, not a checkbox list. Billing\nand account messages are service mail and are not represented here — they\nare sent regardless of these settings.\n\n`email` is a plain string, not an EmailStr: this is a read model built\nfrom the address already stored on the user record, so validating it on\nread turns any stored address the validator dislikes (e.g. reserved\n`.test` domains) into a 500 for every preference lookup for that user."
+        "description": "The volume knob from the Briefing footer, not a checkbox list. Billing\nand account messages are service mail and are not represented here — they\nare sent regardless of these settings."
       },
       "NotificationPreferenceDTO": {
         "properties": {
-          "email": { "type": "string", "format": "email", "title": "Email" },
+          "email": { "type": "string", "title": "Email", "default": "" },
           "briefing_frequency": {
             "$ref": "#/components/schemas/BriefingFrequency"
           },
@@ -26563,13 +26563,11 @@
         },
         "type": "object",
         "required": [
-          "email",
           "briefing_frequency",
           "alerts_enabled",
           "store_verdicts_enabled"
         ],
-        "title": "NotificationPreferenceDTO",
-        "description": "Write shape for the preferences endpoint. `email` stays an EmailStr:\nthis is the request-input boundary (`POST /auth/user/preferences` writes\nit straight into `User.email`), so it must keep validating. Stored\naddresses never flow through here: the internal paths that re-apply\nstored preferences (`_preference_with_choice`, `unsubscribe_user_by_token`)\nbuild the `NotificationPreference` read model instead."
+        "title": "NotificationPreferenceDTO"
       },
       "OAuth2Credentials": {
         "properties": {

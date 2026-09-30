@@ -141,14 +141,13 @@ async def update_preferences(
     user_id: Annotated[str, Security(get_user_id)],
     preferences: NotificationPreferenceDTO = Body(...),
 ) -> NotificationPreference:
-    # The DTO is the validated request-input boundary; the update itself takes
-    # the read model so a stored address that is already on the account is
-    # never re-validated on the way back in.
+    # No address: the update skips an empty one, so saving preferences never
+    # writes User.email. Changing the address is POST /auth/user/email's job.
     output = await update_user_notification_preference(
         user_id,
         NotificationPreference(
             user_id=user_id,
-            email=preferences.email,
+            email="",
             briefing_frequency=preferences.briefing_frequency,
             alerts_enabled=preferences.alerts_enabled,
             store_verdicts_enabled=preferences.store_verdicts_enabled,

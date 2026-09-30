@@ -10,6 +10,7 @@ from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app as real_app
+from backend.data.notifications import NotificationPreference
 
 from .routes import router
 
@@ -137,6 +138,33 @@ def test_update_user_email_route(
         json.dumps(response_data, indent=2, sort_keys=True),
         "auth_email",
     )
+
+
+def test_update_preferences_never_writes_the_posted_address(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """The settings pages post the account's own address back. Validating it
+    failed every save with a 422 for a stored address EmailStr rejects, such
+    as a reserved `.test` domain (AUTOGPT-SERVER-5E4)."""
+    stored = NotificationPreference(user_id=test_user_id, email="test-1@autogpt.test")
+    update = mocker.patch(
+        "backend.api.features.user.routes.update_user_notification_preference",
+        return_value=stored,
+    )
+
+    response = client.post(
+        "/auth/user/preferences",
+        json={
+            "email": "test-1@autogpt.test",
+            "briefing_frequency": "WEEKLY",
+            "alerts_enabled": True,
+            "store_verdicts_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "test-1@autogpt.test"
+    assert update.call_args.args[1].email == ""
 
 
 # Invalid request tests
