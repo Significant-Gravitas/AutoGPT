@@ -265,3 +265,75 @@ def _reply(text: str) -> list:
             session_id="drift",
         ),
     ]
+
+
+async def test_baseline_consecutive_tools_turn(
+    monkeypatch: pytest.MonkeyPatch, baseline_offline: None, user_id: str
+) -> None:
+    """A tool call right after a tool result, with no text between them."""
+    session = await persisted_session(user_id, "Compare example.com and example.org")
+    rounds = [
+        provider_round(
+            [], tool_call={"id": "call-com", "name": "web_fetch", "url": "example.com"}
+        ),
+        provider_round(
+            [], tool_call={"id": "call-org", "name": "web_fetch", "url": "example.org"}
+        ),
+        provider_round(["Both are placeholder pages."]),
+    ]
+    monkeypatch.setattr(baseline, "call_provider_stream", AsyncMock(side_effect=rounds))
+
+    async def execute(*, tool_call_id: str, **_: object) -> StreamToolOutputAvailable:
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id, toolName="web_fetch", output="Example Domain"
+        )
+
+    monkeypatch.setattr(baseline, "execute_tool", AsyncMock(side_effect=execute))
+    turn_id = str(uuid.uuid4())
+
+    recorded = await record_turn(
+        baseline_turn(session, turn_id), session=session, turn_id=turn_id
+    )
+
+    check_fixture("baseline-consecutive-tools-turn", recorded)
+
+
+async def test_sdk_consecutive_tools_turn(user_id: str) -> None:
+    """A tool call right after a tool result, with no text between them."""
+    session = await persisted_session(user_id, "Count the files, then the lines")
+    messages = [
+        SystemMessage(subtype="init", data={}),
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="bash-1", name="bash_exec", input={"command": "ls"})
+            ],
+            model="drift",
+        ),
+        UserMessage(content=[ToolResultBlock(tool_use_id="bash-1", content="a.md")]),
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="bash-2", name="bash_exec", input={"command": "wc a.md"}
+                )
+            ],
+            model="drift",
+        ),
+        UserMessage(content=[ToolResultBlock(tool_use_id="bash-2", content="3 a.md")]),
+        AssistantMessage(
+            content=[TextBlock(text="One file, three lines.")], model="drift"
+        ),
+        ResultMessage(
+            subtype="success",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=3,
+            session_id="drift",
+        ),
+    ]
+
+    recorded = await record_turn(
+        sdk_turn(session, messages), session=session, turn_id=str(uuid.uuid4())
+    )
+
+    check_fixture("sdk-consecutive-tools-turn", recorded)
