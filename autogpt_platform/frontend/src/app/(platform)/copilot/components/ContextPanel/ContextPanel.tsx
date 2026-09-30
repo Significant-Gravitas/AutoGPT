@@ -12,6 +12,7 @@ import {
   MAX_CONTEXT_PANEL_WIDTH,
   MIN_CONTEXT_PANEL_WIDTH,
   type ContextPanelTab,
+  useCopilotUIStore,
 } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
@@ -36,6 +37,7 @@ const TAB_TITLES: Record<ContextPanelTab, string> = {
 };
 
 export function ContextPanel({ sessionId, mobile }: Props) {
+  const expert = useCopilotUIStore((s) => s.contextPanelExpert);
   const {
     activeTab,
     showExpanded,
@@ -55,7 +57,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           {activeTab === "integrations" ? (
             <IntegrationsTab />
           ) : sessionId ? (
-            <WorkspaceFileCards sessionId={sessionId} />
+            <WorkspaceFileCards sessionId={sessionId} expert={expert} />
           ) : null}
         </div>
       )}

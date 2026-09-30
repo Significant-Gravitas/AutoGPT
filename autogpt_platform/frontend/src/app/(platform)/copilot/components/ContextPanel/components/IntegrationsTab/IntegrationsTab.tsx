@@ -7,7 +7,7 @@ import { useCopilotUIStore } from "../../../../store";
 /** The chat's expert's integrations, with the same add / use existing /
  *  remove actions as the Integrations tab on the expert's page. */
 export function IntegrationsTab() {
-  const expert = useCopilotUIStore((s) => s.integrationsPanelExpert);
+  const expert = useCopilotUIStore((s) => s.contextPanelExpert);
   if (!expert) return null;
 
   return (

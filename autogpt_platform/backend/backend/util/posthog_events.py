@@ -60,6 +60,10 @@ class PostHogEvent(StrEnum):
     TRIAL_CONVERTED = "trial_converted"
     PAYMENT_FAILED = "payment_failed"
 
+    # Person properties: backend/data/posthog_lifecycle_sync.py. PostHog's own
+    # person-update event, not a user action; keep it out of funnels.
+    SET_PERSON_PROPERTIES = "$set"
+
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"

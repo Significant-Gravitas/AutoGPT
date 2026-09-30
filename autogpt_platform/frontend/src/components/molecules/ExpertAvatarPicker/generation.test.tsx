@@ -1,5 +1,6 @@
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
@@ -36,11 +37,11 @@ test(
       <ExpertAvatarPicker
         name="Nova"
         category="development"
-        autoGenerate
         onPick={vi.fn()}
       />,
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }));
     await waitFor(() => expect(polls).toBe(1));
     expect(screen.queryByRole("status")).not.toBeNull();
     await waitFor(
@@ -69,14 +70,10 @@ test("offers regeneration when polling fails", async () => {
     ),
   );
   render(
-    <ExpertAvatarPicker
-      name="Nova"
-      category="development"
-      autoGenerate
-      onPick={vi.fn()}
-    />,
+    <ExpertAvatarPicker name="Nova" category="development" onPick={vi.fn()} />,
   );
 
+  await userEvent.click(screen.getByRole("button", { name: "Regenerate" }));
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Could not check generation. Try again or regenerate.",
   );

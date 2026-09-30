@@ -38,6 +38,7 @@ LIVE_EVENT_NAMES = {
     "trial_ended",
     "trial_converted",
     "payment_failed",
+    "$set",
     "signup_completed",
     "onboarding_completed",
     "checkout_started",

@@ -23,6 +23,7 @@ beforeEach(() => {
     }),
   );
   useCopilotUIStore.setState((s) => ({
+    contextPanelExpert: null,
     artifactPanel: {
       ...s.artifactPanel,
       isOpen: true,
@@ -57,7 +58,7 @@ describe("ContextPanel", () => {
   test("docks for the integrations tab with the expert's integrations", async () => {
     server.use(getListExpertCredentialsMockHandler([]));
     useCopilotUIStore.setState((s) => ({
-      integrationsPanelExpert: { id: "expert-maria", name: "Maria" },
+      contextPanelExpert: { id: "expert-maria", name: "Maria" },
       artifactPanel: { ...s.artifactPanel, activeTab: "integrations" },
     }));
     render(<ContextPanel sessionId="session-1" />);
