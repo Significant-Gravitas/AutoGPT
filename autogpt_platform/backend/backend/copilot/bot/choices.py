@@ -19,6 +19,7 @@ token lives with the linking manager, which checks who may answer.
 """
 
 import json
+import logging
 import uuid
 from typing import TYPE_CHECKING, Literal, Optional
 
@@ -28,6 +29,8 @@ from backend.data.redis_client import get_redis_async
 
 if TYPE_CHECKING:
     from .bot_backend import BotBackend
+
+logger = logging.getLogger(__name__)
 
 ButtonKind = Literal["qans", "appr"]
 QUESTION_KIND: ButtonKind = "qans"
@@ -42,6 +45,7 @@ _EXPIRED_NOTICE = "This question has expired — type your answer instead."
 _NOT_YOUR_QUESTION = (
     "This question was for someone else — they still need to answer it."
 )
+_NOT_SENT = "Couldn't send your answer. Nothing ran. Try again."
 
 CHOICE_TTL = 3600  # 1 hour -- long enough to answer, short enough that a
 # stale button reliably reports "expired" instead of silently misfiring.
@@ -82,10 +86,15 @@ async def answer_button(
     clicker_id: str,
     server_id: Optional[str],
 ) -> ButtonAnswer:
-    if kind == CARD_KIND:
-        card = await api.answer_card(platform, server_id, clicker_id, token, index)
-        return ButtonAnswer(reply=card.follow_up, text=card.text)
-    resolved = await resolve_choice(platform, token, index, clicker_id)
+    """Never raises: a click runs detached from anything that would report it."""
+    try:
+        if kind == CARD_KIND:
+            card = await api.answer_card(platform, server_id, clicker_id, token, index)
+            return ButtonAnswer(reply=card.follow_up, text=card.text)
+        resolved = await resolve_choice(platform, token, index, clicker_id)
+    except Exception:
+        logger.exception(f"A {kind} click on {platform} could not be answered")
+        return ButtonAnswer(reply=None, text=_NOT_SENT)
     if resolved.text is None:
         return ButtonAnswer(
             reply=None,

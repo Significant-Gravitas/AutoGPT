@@ -81,17 +81,19 @@ async def answer(
 ) -> Outcome:
     """Answer the row as the web card's approve endpoint does, minus the wake:
     the channel's own next turn carries the result, so its reply lands there."""
-    rows = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
-    row = rows.get(review_id)
-    if row is None or row.session_id != session_id:
-        return "expired"
-    if row.status != ReviewStatus.WAITING:
-        return "answered_elsewhere"
     approved, rule, scope = _ANSWERS[choice]
-    # Read before the answer lands, as the endpoint does: a turn claims held calls.
-    keys = await held.subject_keys(session_id, [review_id]) if rule else {}
-    status = ReviewStatus.APPROVED if approved else ReviewStatus.REJECTED
+    # Up to the commit a failure leaves the card answerable; after it, the
+    # answer stands and only its rule can be lost.
     try:
+        rows = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
+        row = rows.get(review_id)
+        if row is None or row.session_id != session_id:
+            return "expired"
+        if row.status != ReviewStatus.WAITING:
+            return "answered_elsewhere"
+        # Read before the answer lands, as the endpoint does: a turn claims held calls.
+        keys = await held.subject_keys(session_id, [review_id]) if rule else {}
+        status = ReviewStatus.APPROVED if approved else ReviewStatus.REJECTED
         answered = await review_db().process_all_reviews_for_execution(
             user_id=user_id, review_decisions={review_id: (status, None, None)}
         )
@@ -102,9 +104,17 @@ async def answer(
         logger.warning(f"Channel answer to {review_id} failed", exc_info=True)
         return "failed"
     if keys:
-        await chat_rules.set_answer_rules(
-            session_id, user_id, answered, {review_id: rule}, keys, {review_id: scope}
-        )
+        try:
+            await chat_rules.set_answer_rules(
+                session_id,
+                user_id,
+                answered,
+                {review_id: rule},
+                keys,
+                {review_id: scope},
+            )
+        except Exception:
+            logger.warning(f"Rule from {review_id} not saved", exc_info=True)
     return "answered"
 
 

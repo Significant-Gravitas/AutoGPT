@@ -23,6 +23,7 @@ from backend.copilot.bot.adapters.teams.adapter import TeamsAdapter
 from backend.copilot.bot.adapters.telegram.adapter import TelegramAdapter
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import CARD_KIND
+from backend.copilot.gate import channel as gate_channel
 from backend.copilot.gate import chat_rules, check_action, held, resolve_mode
 from backend.copilot.gate.reads import read_review_id, screen_read
 from backend.copilot.model import (
@@ -444,6 +445,49 @@ async def test_a_double_click_answers_once(one_linked: _Channel, test_user_id, g
 
     assert answer.await_count == 1
     assert sorted(a.follow_up is not None for a in answers) == [False, True]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_before_the_answer_lands_leaves_the_card_answerable(
+    one_linked: _Channel, test_user_id, gate_on
+):
+    _, review_id, card = await _held_card(one_linked, test_user_id)
+    platform = Platform(one_linked.platform.upper())
+    down = MagicMock()
+    down.get_reviews_by_node_exec_ids = AsyncMock(side_effect=RuntimeError("down"))
+
+    with patch.object(gate_channel, "review_db", return_value=down):
+        failed = await cards.answer_card(
+            platform, one_linked.server_id, one_linked.owner, card.token, 0
+        )
+    retried = await cards.answer_card(
+        platform, one_linked.server_id, one_linked.owner, card.token, 0
+    )
+
+    assert failed.follow_up is None and "Try again" in failed.text
+    assert retried.follow_up is not None
+    assert await _status(review_id, test_user_id) == ReviewStatus.APPROVED
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_rule_lost_after_the_answer_lands_still_starts_the_turn(
+    one_linked: _Channel, test_user_id, gate_on
+):
+    _, review_id, card = await _held_card(one_linked, test_user_id)
+    lost = AsyncMock(side_effect=RuntimeError("down"))
+
+    with patch.object(gate_channel.chat_rules, "set_answer_rules", lost):
+        answer = await cards.answer_card(
+            Platform(one_linked.platform.upper()),
+            one_linked.server_id,
+            one_linked.owner,
+            card.token,
+            card.options.index("Approve for this chat"),
+        )
+
+    lost.assert_awaited_once()
+    assert answer.follow_up is not None
+    assert await _status(review_id, test_user_id) == ReviewStatus.APPROVED
 
 
 @pytest.mark.asyncio(loop_scope="session")

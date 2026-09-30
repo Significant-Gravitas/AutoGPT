@@ -587,3 +587,19 @@ class TestApprovalCards:
 
         adapter.send_link.assert_awaited_once()
         assert adapter.send_link.await_args.kwargs["link_label"] == "Answer in AutoGPT"
+
+    @pytest.mark.asyncio
+    async def test_a_card_that_never_went_out_leaves_the_empty_reply_notice(self):
+        """Answered on the web before the card opened, and the turn said nothing
+        else: the channel still hears something."""
+        adapter = _choice_adapter()
+        api = _card_api([])
+        api.open_card = AsyncMock(return_value=None)
+
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "post")], _ctx(), adapter, "42"
+            )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        assert "didn't produce a response" in adapter.send_message.await_args.args[1]

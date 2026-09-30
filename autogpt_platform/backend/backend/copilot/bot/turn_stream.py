@@ -267,8 +267,10 @@ class TurnStreamer:
                 ):
                     sent_any_content = True
                 buffer = ""
-            sent_any_content = True
-            await _send_card(self._api, adapter, target_id, ctx, session_id, review_id)
+            if await _send_card(
+                self._api, adapter, target_id, ctx, session_id, review_id
+            ):
+                sent_any_content = True
 
         started_at = time.monotonic()
         reply_chars = 0
@@ -648,9 +650,10 @@ async def _send_card(
     ctx: MessageContext,
     session_id: str,
     review_id: str,
-) -> None:
+) -> bool:
     """Post a held call's card as buttons, or, where that fails, a link to
-    answer it in AutoGPT. Never raises: the turn goes on."""
+    answer it in AutoGPT; whether anything went out. Never raises: the turn
+    goes on."""
     try:
         card = await api.open_card(
             ctx.platform, ctx.server_id, ctx.user_id, session_id, review_id
@@ -659,7 +662,7 @@ async def _send_card(
         logger.exception(f"Could not open a channel card for {review_id}")
         card = None
     if card is None:
-        return
+        return False
     try:
         if adapter.supports_choice_buttons and await adapter.send_choice_buttons(
             target_id,
@@ -668,7 +671,7 @@ async def _send_card(
             card.token,
             kind=choices.CARD_KIND,
         ):
-            return
+            return True
     except Exception:
         logger.exception(f"Card buttons failed on {adapter.platform_name}")
     session_url = copilot_session_url(session_id)
@@ -684,6 +687,8 @@ async def _send_card(
             )
     except Exception:
         logger.exception(f"Card fallback failed on {adapter.platform_name}")
+        return False
+    return True
 
 
 def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:
