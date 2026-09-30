@@ -31,7 +31,6 @@ Entity = Literal[
     "chat_session",
     "expert",
     "expert_or_name",
-    "expert_template",
     "expert_workflow",
     "credential",
     "routine",
@@ -69,8 +68,6 @@ REFERENCES: dict[tuple[str, str], Entity | None] = {
     ("schedule_routine", "expert_id"): "expert",
     ("setup_agent_webhook_trigger", "library_agent_id"): "library_agent",
     ("setup_agent_webhook_trigger", "graph_id"): "graph",
-    ("hire_expert", "template_id"): "expert_template",
-    ("update_expert", "expert_id"): "expert",
     ("confirm_expert_change", "confirmation_id"): "team_change",
     ("confirm_expert_soul_update", "confirmation_id"): "soul_change",
     ("install_expert_workflow", "library_agent_id"): "library_agent",
@@ -347,22 +344,6 @@ async def _expert_or_name(reference: str, call: _Call) -> _Found | None:
     return _teammate(expert) if expert else None
 
 
-async def _expert_template(template_id: str, call: _Call) -> _Found | None:
-    template = await _template(template_id, call.user_id)
-    if template is None:
-        return None
-    return _Found(
-        kind="Expert template",
-        name=template.name,
-        href=f"/marketplace/experts/{quote(template.id, safe='')}",
-        description=template.tagline or template.bio,
-        meta=[template.job_title or template.role, _area(template)],
-        avatar_url=template.avatar_url,
-        avatar_color=template.color,
-        skills=[skill.title for skill in template.bundled_skills],
-    )
-
-
 async def _expert_workflow(workflow_id: str, call: _Call) -> _Found | None:
     label = await experts_db().get_workflow_label(call.user_id, workflow_id)
     if label is None or label.name is None:
@@ -500,7 +481,6 @@ _RESOLVERS: dict[Entity, Callable[[str, _Call], Awaitable[_Found | None]]] = {
     "chat_session": _chat_session,
     "expert": _expert,
     "expert_or_name": _expert_or_name,
-    "expert_template": _expert_template,
     "expert_workflow": _expert_workflow,
     "credential": _credential,
     "routine": _routine,

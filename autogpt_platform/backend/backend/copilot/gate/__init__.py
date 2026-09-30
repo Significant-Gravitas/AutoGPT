@@ -3,7 +3,8 @@
 Ordering is the design, cheapest and most certain first:
 
 1. gate inactive                          -> ALLOW (today's behaviour)
-2. an approval for exactly these args     -> ALLOW, consumed single-use
+2. an approval for exactly these args     -> ALLOW, consumed single-use;
+   a proposal card's Approve of the id a confirm applies counts as one
 3. what the call acts on: a block, workflow or MCP tool's own effect, or
    the tool's; a call that runs nothing never asks
 4. the user's rule on that subject in this chat -> allow, judge or ask
@@ -25,6 +26,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
+from .card_approval import approved_on_card
 from .classifier import DecidedBy, supervise
 from .headline import Headline
 from .policy import (
@@ -149,6 +151,8 @@ async def check_action(
         # The first call's card and stored call stand; re-storing would
         # re-point the late result at the retry's tool call id.
         return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
+    if approved_on_card(tool_name, args, session):
+        return Decision(allowed=True, approved=True)
 
     subject = await subject_of() if subject_of is not None else None
     effect = subject.effect if subject is not None else effect_for(tool_name)

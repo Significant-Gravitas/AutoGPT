@@ -116,6 +116,7 @@ function proposalOf(part: ToolUIPart): Proposal | null {
   };
 }
 
+// gate/card_approval.py reads the Approved line as the answer to the confirm.
 function decisionLine(proposal: Proposal, decision: Decision): string {
   const verb =
     proposal.kind === "hire"

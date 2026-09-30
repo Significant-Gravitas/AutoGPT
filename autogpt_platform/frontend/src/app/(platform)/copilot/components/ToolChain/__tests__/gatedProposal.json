@@ -1,0 +1,19 @@
+{
+  "type": "expert_change_proposed",
+  "message": "Nothing created yet. The user is looking at this charter on a card with Approve and Decline buttons — do not repeat any of it in text. Reply with one short line at most and wait. Only after they explicitly approve, call tool:confirm_expert_change with this confirmation_id.",
+  "session_id": "session-1",
+  "applied": false,
+  "preview": {
+    "kind": "raise",
+    "name": "Otto",
+    "role": "Inbox triage",
+    "job_title": "Executive Assistant",
+    "tagline": "Sorts your morning inbox and drafts the routine replies.",
+    "about": "You group the morning inbox and draft routine replies.",
+    "boundaries": "You never send a reply yourself.",
+    "voice_preferences": "",
+    "avatar_url": "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp",
+    "color": "violet-300"
+  },
+  "confirmation_id": "5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10"
+}
