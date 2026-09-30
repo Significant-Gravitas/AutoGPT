@@ -39,6 +39,13 @@ _W = f"{_HOME}/workspace"
         ("sudo -u root bash x.sh", [f"{_HOME}/x.sh"]),
         ("timeout -s KILL 30 python x.py", [f"{_HOME}/x.py"]),
         ("FOO=1 env -u BAR nice -n 5 node app.js", [f"{_HOME}/app.js"]),
+        # Parentheses in a heredoc body, quotes or ${VAR} are not groups.
+        (
+            f"cat > {_W}/d.py <<'PY'\nprint(len([r for r in rows]))\nPY\npython {_W}/d.py",
+            [f"{_W}/d.py"],
+        ),
+        ("bash x.sh '(literal)'", [f"{_HOME}/x.sh"]),
+        ("echo ${HOME}; bash x.sh", [f"{_HOME}/x.sh"]),
     ],
 )
 def test_a_direct_run_names_the_file(command, paths):
@@ -80,6 +87,12 @@ def test_other_commands_name_nothing(command):
         # A path the shell reads differently from the literal word.
         "bash $DIR/x.sh",
         "cd - && bash x.sh",
+        # A subshell or group decides where a `cd` in it applies.
+        "(cd /tmp); bash run.sh",
+        "( cd /tmp && bash x.sh )",
+        "{ cd /tmp; }; bash run.sh",
+        'python x.py --out "$(date)"',
+        "bash `echo x.sh`",
     ],
 )
 def test_a_run_it_cannot_resolve_is_unclear_not_guessed(command):

@@ -95,14 +95,13 @@ async def changed_login_files(
     sandbox: AsyncSandbox, *, system_only: bool = False
 ) -> dict[str, str | None]:
     """Each login file whose content differs from the baseline, by path, with None
-    for one that could not be read. A new file counts; a deleted one runs nothing."""
-    raw_baseline = await (await get_redis_async()).get(_key(sandbox))
+    for one that could not be read. A new file counts; a deleted one runs nothing.
+    Without a baseline every file counts: one taken now would bake a change in."""
     snapshot = await _snapshot(sandbox, system_only=system_only)
+    raw_baseline = await (await get_redis_async()).get(_key(sandbox))
     if not raw_baseline:
         logger.warning(f"No login baseline for sandbox {sandbox.sandbox_id[:12]}")
-        await record_baseline(sandbox)
-        return {}
-    baseline: dict[str, str | None] = json.loads(raw_baseline)
+    baseline: dict[str, str | None] = json.loads(raw_baseline) if raw_baseline else {}
     changed: dict[str, str | None] = {}
     for path, raw in snapshot.items():
         if isinstance(raw, BaseException):
@@ -142,18 +141,23 @@ async def _snapshot(
 ) -> dict[str, bytes | BaseException | None]:
     """Every login file's bytes; None where it does not exist, the error where it
     could not be read."""
+    listing: dict[str, bytes | BaseException | None] = {}
     try:
         entries = await asyncio.wait_for(
             sandbox.files.list(PROFILE_D, depth=1), _READ_TIMEOUT_SECONDS
         )
     except NotFoundException:
         entries = []
+    except Exception as error:
+        # Unlisted, a new file there could run unseen: read as unreadable.
+        entries = []
+        listing[PROFILE_D] = error
     profile_d = [entry.path for entry in entries if entry.type is not FileType.DIR]
     paths = [*SYSTEM_FILES, *profile_d, *([] if system_only else USER_FILES)]
     contents = await asyncio.gather(
         *(read_capped(sandbox, path) for path in paths), return_exceptions=True
     )
-    return dict(zip(paths, contents))
+    return {**listing, **dict(zip(paths, contents))}
 
 
 def _key(sandbox: AsyncSandbox) -> str:

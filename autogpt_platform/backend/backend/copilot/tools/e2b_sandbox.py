@@ -910,14 +910,15 @@ async def get_or_create_owner_sandbox(
 async def _record_login_baseline(
     sandbox: AsyncSandbox, *, only_if_missing: bool = False
 ) -> None:
-    # Logged, not raised: the first check takes a missing baseline itself.
+    # Logged, not raised: without a baseline every login file reads as changed,
+    # so judged commands carry them all and internal ones refuse.
     try:
         if only_if_missing:
             await ensure_baseline(sandbox)
         else:
             await record_baseline(sandbox)
     except Exception:
-        logger.warning(
+        logger.error(
             "[E2B] Could not record the login baseline for %.12s",
             sandbox.sandbox_id,
             exc_info=True,

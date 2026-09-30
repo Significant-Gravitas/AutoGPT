@@ -1,8 +1,10 @@
 """The files a shell command runs directly (``bash x.sh``, ``python3 -W ignore x.py``,
 ``source x``, ``./x``), so the supervisor judges a script by what it does rather
 than by the line that starts it. A run whose file cannot be told for certain is
-reported as unclear, never guessed; one through ``make``, a pipe, ``eval``, a
-wrapper not listed here or another script is not found.
+reported as unclear, never guessed, and so is every run in a command with a
+subshell, a ``{ }`` group or a command substitution, whose ``cd`` this does not
+track. One through ``make``, a pipe, ``eval``, a wrapper not listed here or
+another script is not found.
 """
 
 import posixpath
@@ -116,8 +118,10 @@ _PREFIXES = {
     ),
 }
 _PYTHON_NAME = re.compile(r"python(\d+(\.\d+)?)?")
-_OPERATORS = {"&&", "||", ";", "|", "&", ";;", "|&"}
+_PUNCTUATION = set("();<>|&")
+_SEPARATES = set("();|&")
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+_HEREDOC = re.compile(r"<<(?P<strip>-?)\s*['\"]?(?P<tag>\w+)['\"]?")
 
 
 class _Unclear(Exception):
@@ -145,12 +149,57 @@ def run_targets(command: str) -> RunTargets:
             targets.unclear.append(shlex.join(words))
         elif resolved not in targets.paths:
             targets.paths.append(resolved)
+    if targets.paths and any(_groups(line) for line in _command_lines(command)):
+        return RunTargets(unclear=targets.unclear + targets.paths)
     return targets
+
+
+def _command_lines(command: str) -> list[str]:
+    """The lines the shell runs as commands: a heredoc's body is data."""
+    lines: list[str] = []
+    terminator: str | None = None
+    strip_tabs = False
+    for line in command.splitlines():
+        if terminator is not None:
+            if (line.lstrip("\t") if strip_tabs else line) == terminator:
+                terminator = None
+            continue
+        lines.append(line)
+        if heredoc := _HEREDOC.search(line):
+            terminator, strip_tabs = heredoc["tag"], bool(heredoc["strip"])
+    return lines
+
+
+def _groups(line: str) -> bool:
+    """An unquoted subshell, ``{ }`` group or command substitution, where a ``cd``
+    may move the working directory or not."""
+    quote: str | None = None
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif char == "\\":
+            index += 1
+        elif char == "`" or line.startswith("$(", index):
+            return True
+        elif line.startswith("${", index):
+            # A parameter expansion, not a group.
+            end = line.find("}", index)
+            index = len(line) if end < 0 else end
+        elif quote == '"':
+            quote = None if char == '"' else quote
+        elif char in "'\"":
+            quote = char
+        elif char in "(){}":
+            return True
+        index += 1
+    return False
 
 
 def _simple_commands(command: str) -> list[list[str]]:
     commands: list[list[str]] = []
-    for line in command.splitlines():
+    for line in _command_lines(command):
         lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
         try:
@@ -160,13 +209,18 @@ def _simple_commands(command: str) -> list[list[str]]:
             tokens = line.split()
         current: list[str] = []
         for token in tokens:
-            if token in _OPERATORS:
+            if _is_separator(token):
                 commands.append(current)
                 current = []
             else:
                 current.append(token)
         commands.append(current)
     return [words for words in commands if words]
+
+
+def _is_separator(token: str) -> bool:
+    # shlex fuses adjacent punctuation (`);`, `)&&`), so match any such run.
+    return bool(token) and set(token) <= _PUNCTUATION and bool(set(token) & _SEPARATES)
 
 
 def _run_target(words: list[str]) -> str | None:
