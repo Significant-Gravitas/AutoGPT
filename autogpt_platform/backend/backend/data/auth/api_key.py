@@ -111,9 +111,15 @@ async def create_api_key(
     return APIKeyInfo.from_db(saved_key_obj), generated_key.key
 
 
+# Soft cap on Scrypt verifies per request when many ACTIVE keys share a head.
+# Heads are short; collisions should be rare. Bound worst-case CPU anyway.
+MAX_API_KEY_CANDIDATES_PER_HEAD = 5
+
+
 async def get_active_api_keys_by_head(head: str) -> list[APIKeyInfoWithHash]:
     results = await PrismaAPIKey.prisma().find_many(
-        where={"head": head, "status": APIKeyStatus.ACTIVE}
+        where={"head": head, "status": APIKeyStatus.ACTIVE},
+        take=MAX_API_KEY_CANDIDATES_PER_HEAD,
     )
     return [APIKeyInfoWithHash.from_db(key) for key in results]
 
