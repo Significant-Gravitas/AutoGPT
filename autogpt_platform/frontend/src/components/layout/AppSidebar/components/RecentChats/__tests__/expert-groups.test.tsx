@@ -292,14 +292,12 @@ describe("RecentChats — expert groups", () => {
     const mariaLink = await screen.findByRole("link", {
       name: "New chat with Maria",
     });
-    expect(mariaLink.getAttribute("href")).toBe(
-      "/copilot?expertId=expert-maria",
-    );
+    expect(mariaLink.getAttribute("href")).toBe("/home?expertId=expert-maria");
     expect(
       screen
         .getByRole("link", { name: "New chat with Otto" })
         .getAttribute("href"),
-    ).toBe("/copilot");
+    ).toBe("/home");
     expect(groupHeader("Max")).toBeDefined();
     expect(
       screen.queryByRole("link", { name: "New chat with Max" }),

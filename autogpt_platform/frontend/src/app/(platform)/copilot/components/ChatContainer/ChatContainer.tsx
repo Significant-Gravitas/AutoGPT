@@ -14,6 +14,7 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
@@ -333,29 +334,40 @@ export const ChatContainer = ({
                     }
                   />
                 </div>
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={isLoadingSession}
-                  isRestoringActiveSession={isRestoringActiveSession}
-                  restoreStatusMessage={restoreStatusMessage}
-                  activeStreamStartedAt={activeStreamStartedAt}
-                  sessionID={sessionId}
-                  sessionChatStatus={sessionChatStatus}
-                  sessionSentFrom={sessionSentFrom}
-                  hasMoreMessages={hasMoreMessages}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={onLoadMore}
-                  onRetry={handleRetry}
-                  turnStats={turnStats}
-                  queuedMessages={queuedMessages}
-                  pendingSend={pendingSend}
-                  bottomContentPadding={usageCardHeight}
-                  expertIdentity={expertIdentity}
-                  isResolvingExpertIdentity={isResolvingExpertIdentity}
-                  hasFloatingControls={hasFloatingControls}
-                />
+                <NewChatOnboarding
+                  expertId={expertIdentity?.id ?? null}
+                  enabled={
+                    messages.length === 0 &&
+                    !isInputDisabled &&
+                    !isStreaming &&
+                    !isCreatingSession &&
+                    !isExpertArchived
+                  }
+                >
+                  <ChatMessagesContainer
+                    messages={messages}
+                    status={status}
+                    error={error}
+                    isLoading={isLoadingSession}
+                    isRestoringActiveSession={isRestoringActiveSession}
+                    restoreStatusMessage={restoreStatusMessage}
+                    activeStreamStartedAt={activeStreamStartedAt}
+                    sessionID={sessionId}
+                    sessionChatStatus={sessionChatStatus}
+                    sessionSentFrom={sessionSentFrom}
+                    hasMoreMessages={hasMoreMessages}
+                    isLoadingMore={isLoadingMore}
+                    onLoadMore={onLoadMore}
+                    onRetry={handleRetry}
+                    turnStats={turnStats}
+                    queuedMessages={queuedMessages}
+                    pendingSend={pendingSend}
+                    bottomContentPadding={usageCardHeight}
+                    expertIdentity={expertIdentity}
+                    isResolvingExpertIdentity={isResolvingExpertIdentity}
+                    hasFloatingControls={hasFloatingControls}
+                  />
+                </NewChatOnboarding>
                 {archivedExpertIdentity ? (
                   <ArchivedExpertNotice
                     expertName={archivedExpertIdentity.name}

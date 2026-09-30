@@ -5,6 +5,13 @@ import { BuildPage } from "../pages/build.page";
 import { skipOnboardingIfPresent } from "./onboarding";
 import { expect } from "@playwright/test";
 
+export function isAuthenticatedAppURL(currentURL: string) {
+  const { pathname } = new URL(currentURL, "http://localhost");
+  return ["/home", "/copilot", "/library"].some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
 export async function signupTestUser(
   page: any,
   email?: string,
@@ -48,7 +55,7 @@ export async function signupTestUser(
       // Use a single waitForURL with a callback to avoid Promise.race race conditions
       await page.waitForURL(
         (url: URL) =>
-          /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+          /\/(onboarding|marketplace|copilot|home|library)/.test(url.pathname),
         { timeout: 15000 },
       );
     } catch (error) {
@@ -67,7 +74,7 @@ export async function signupTestUser(
     }
 
     // Verify we're on an expected final page and user is authenticated
-    if (currentUrl.includes("/copilot") || currentUrl.includes("/library")) {
+    if (isAuthenticatedAppURL(currentUrl)) {
       await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });
