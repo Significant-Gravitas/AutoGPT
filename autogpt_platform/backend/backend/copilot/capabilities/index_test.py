@@ -238,6 +238,7 @@ DISCORD_ID = "55555555-5555-5555-5555-555555555555"
 DISCORD_READ_ID = "66666666-6666-6666-6666-666666666666"
 LINEAR_MCP_URL = "https://mcp.linear.app/mcp"
 SENTRY_MCP_URL = "https://mcp.sentry.dev/mcp"
+SLACK_MCP_URL = "https://mcp.slack.com/mcp"
 
 
 def _mcp(entry_id, name, purpose, url, tags):
@@ -430,10 +431,81 @@ def test_an_exact_block_name_keeps_its_pin_with_no_connected_alternative(
 
 
 def test_a_distant_connected_service_is_not_lifted(rival_index):
-    """The lift is one concept wide: a connected server that barely matches
-    must not displace the block that actually does the job."""
+    """A connected server the query does not name competes on coverage like
+    anything else: Sentry matches only "issue" here, so it must not displace
+    the block that matches both words.  The query names no service, so
+    nothing is filtered out before ranking and the lift itself is tested."""
     state = ConnectionState(server_urls=frozenset({SENTRY_MCP_URL}))
-    result = rival_index.search("create a linear issue", connections=state)
+    result = rival_index.search("create issue", connections=state)
+    assert result.service is None
+    assert "Sentry" in result.names
+    assert result.names[0] == "LinearCreateIssueBlock"
+
+
+def test_a_connected_server_is_not_lifted_on_a_query_that_does_not_name_it(
+    rival_index,
+):
+    """kcze's case on #15011: Linear matches "update" through "updates" in
+    its description, half of a two-word query, and was lifted over the block
+    that matches both words the moment it was connected."""
+    sheets = _block(
+        "77777777-7777-7777-7777-777777777777",
+        "GoogleSheetsUpdateCellBlock",
+        "Update a single cell in a Google Sheets spreadsheet.",
+        provider="google_sheets",
+        args=("spreadsheet_id", "cell", "value"),
+        tags=("spreadsheet",),
+    )
+    index = rival_index.with_entries([sheets])
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    result = index.search("update spreadsheet", connections=state)
+    assert result.service is None
+    assert "Linear" in result.names
+    assert result.names[0] == "GoogleSheetsUpdateCellBlock"
+    unconnected = index.search("update spreadsheet", connections=None)
+    assert unconnected.names[0] == "GoogleSheetsUpdateCellBlock"
+
+
+def test_an_unrelated_connected_server_does_not_lead_a_service_less_query(
+    rival_index,
+):
+    """A connected Slack server shares only "send" with "send email"; the
+    email block that matches both words still leads.  The block is not
+    called SendEmailBlock, which the query would pin as an exact name."""
+    email = _block(
+        "88888888-8888-8888-8888-888888888888",
+        "GmailSendBlock",
+        "Send an email from a Gmail account.",
+        provider="google",
+        args=("to", "subject", "body"),
+        tags=("email",),
+    )
+    slack = _mcp(
+        "mcp:mcp.slack.com",
+        "Slack",
+        "Send messages, search channels and read threads in Slack.",
+        SLACK_MCP_URL,
+        ["slack", "mcp", "slack", "mcp.slack.com"],
+    )
+    state = ConnectionState(server_urls=frozenset({SLACK_MCP_URL}))
+    result = rival_index.with_entries([email, slack]).search(
+        "send email", connections=state
+    )
+    assert result.service is None
+    assert "Slack" in result.names
+    assert result.names[0] == "GmailSendBlock"
+
+
+def test_the_lift_stays_one_concept_wide_on_a_query_naming_the_server(
+    rival_index,
+):
+    """Naming the service lets its connected server be lifted, but only past a
+    one-concept gap: here the block matches two more words than Linear."""
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    result = rival_index.search("linear create issue title", connections=state)
+    assert result.service == "linear"
+    by_name = {hit.entry.name: hit.coverage for hit in result.hits}
+    assert by_name["LinearCreateIssueBlock"] - by_name["Linear"] > 1
     assert result.names[0] == "LinearCreateIssueBlock"
 
 

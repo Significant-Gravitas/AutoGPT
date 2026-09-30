@@ -35,8 +35,8 @@ _NAME_WEIGHT = 2  # repeat name tokens so the name outweighs the purpose text
 
 DEFAULT_LIMIT = 8
 DEFAULT_FALLBACK_LIMIT = 3
-# How far below the best coverage a connected MCP server still counts as
-# covering the query; one whole concept.
+# How far below the best coverage a connected MCP server the query names
+# still counts as covering the query; one whole concept.
 CONNECTED_COVERAGE_MARGIN = 1.0
 
 
@@ -202,7 +202,10 @@ class CapabilityIndex:
                 main += unpinned
         else:
             main = rest
-        hits += _ranked([to_hit(idx, "search") for idx in main])
+        hits += _ranked(
+            [to_hit(idx, "search") for idx in main],
+            lift=service_indices is not None,
+        )
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service
         )
@@ -413,18 +416,26 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
         yield from (tag.lower() for tag in entry.tags[marker + 1 :])
 
 
-def _ranked(hits: list[SearchHit]) -> list[SearchHit]:
+def _ranked(hits: list[SearchHit], *, lift: bool = False) -> list[SearchHit]:
     """Coverage first, then a platform tool, then a connected capability,
     then the class-weighted BM25 score (``score`` already carries the weight).
 
-    A connected MCP server within :data:`CONNECTED_COVERAGE_MARGIN` of the
-    best coverage is read as covering the query as well as the best match.
-    One catalog entry stands for a whole server, so its text describes the
-    service rather than each action it offers, and it can never match an
-    action verb the way a block named for that one action does —
-    "LinearCreateIssueBlock" tokenises to the whole of "create linear issue".
-    Without the lift the block always won on coverage and the connection
-    signal was never reached.
+    With *lift*, a connected MCP server within
+    :data:`CONNECTED_COVERAGE_MARGIN` of the best coverage is read as covering
+    the query as well as the best match.  One catalog entry stands for a whole
+    server, so its text describes the service rather than each action it
+    offers, and it can never match an action verb the way a block named for
+    that one action does — "LinearCreateIssueBlock" tokenises to the whole of
+    "create linear issue".  Without the lift the block always won on coverage
+    and the connection signal was never reached.
+
+    The caller lifts only on a query that names a service.  The main list is
+    then restricted to that service, so the server has already matched the
+    service's name and the concept it lacks is the action.  On a query that
+    names no service the server matched some other word — "updates" in
+    Linear's description for "update spreadsheet" — and lifting it put Linear
+    over the Sheets block that matched both words, for any server the user
+    happened to have connected.
 
     Only MCP servers are lifted, because only they have that problem: a block
     is named for its action and competes on coverage honestly. Lifting every
@@ -438,7 +449,8 @@ def _ranked(hits: list[SearchHit]) -> list[SearchHit]:
         rank = tier(hit.entry, hit.connected)
         coverage = hit.coverage
         if (
-            hit.entry.kind == "mcp_server"
+            lift
+            and hit.entry.kind == "mcp_server"
             and rank == 0
             and coverage >= best - CONNECTED_COVERAGE_MARGIN
         ):
