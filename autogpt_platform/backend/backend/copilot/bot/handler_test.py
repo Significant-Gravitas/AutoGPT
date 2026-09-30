@@ -1709,6 +1709,13 @@ class _FakeRedis:
         self.store[key] = value
         return True
 
+    async def eval(self, script: str, numkeys: int, key: str, token: str):
+        # Stands in for the compare-and-delete release script.
+        if self.store.get(key) != token:
+            return 0
+        del self.store[key]
+        return 1
+
 
 def _linear_card(message: str | None = None) -> dict:
     return {
@@ -1753,8 +1760,13 @@ class TestSetupCardIsPostedOncePerThread:
         fake_settings.config.platform_base_url = ""
         return fake_settings
 
-    async def _run_turns(self, cards: list[dict], redis: _FakeRedis) -> MagicMock:
-        adapter = _adapter()
+    async def _run_turns(
+        self,
+        cards: list[dict],
+        redis: _FakeRedis,
+        adapter: MagicMock | None = None,
+    ) -> MagicMock:
+        adapter = adapter or _adapter()
         for n, card in enumerate(cards):
             api = _api()
             api.stream_chat = _stream_with_card(card, f"reply {n}")
@@ -1793,6 +1805,34 @@ class TestSetupCardIsPostedOncePerThread:
         adapter = await self._run_turns([_linear_card(), sentry], _FakeRedis())
 
         assert adapter.send_link.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_card_that_failed_to_post_is_posted_by_the_next_turn(self):
+        adapter = _adapter()
+        adapter.send_link = AsyncMock(side_effect=[RuntimeError("discord 503"), None])
+        redis = _FakeRedis()
+        await self._run_turns([_linear_card(), _linear_card()], redis, adapter)
+
+        assert adapter.send_link.await_count == 2
+        # The card that did go out still holds its claim for the turns after.
+        assert len(redis.store) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_post_leaves_another_turns_claim_alone(self):
+        adapter = _adapter()
+        redis = _FakeRedis()
+
+        async def _claim_taken_over_then_fail(*args, **kwargs):
+            # The claim expired and another turn took it while this post was
+            # in flight: releasing ours must not clear theirs.
+            for key in redis.store:
+                redis.store[key] = "another-turn"
+            raise RuntimeError("discord 503")
+
+        adapter.send_link = AsyncMock(side_effect=_claim_taken_over_then_fail)
+        await self._run_turns([_linear_card()], redis, adapter)
+
+        assert list(redis.store.values()) == ["another-turn"]
 
     @pytest.mark.asyncio
     async def test_redis_outage_still_posts_the_card(self):
