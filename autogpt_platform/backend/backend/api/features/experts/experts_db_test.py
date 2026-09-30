@@ -55,6 +55,7 @@ from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
+from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -6652,6 +6653,31 @@ async def test_a_routine_with_unanswered_asks_refuses_to_be_scheduled(
     )
     assert rows[0].enabledAt is None
     assert rows[0].scheduleIds == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_routine_refusals_cross_the_database_manager_rpc_at_once(
+    server: SpinTestServer, test_user
+):
+    """The copilot tool reaches these over RPC, where an unmapped type was a 500
+    retried for ~48 minutes and then raised as one the tool never catches."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    client = get_database_manager_async_client()
+    # Untimed: the server may still be starting, and that is not what is measured.
+    await client.health_check_async()
+
+    # An expert's routine named from the account's own scope: prod's shape.
+    with pytest.raises(routines.RoutineNotFoundError):
+        await asyncio.wait_for(
+            client.enable_routine(test_user.id, None, installed[0].id), timeout=10
+        )
+    with pytest.raises(routines.RoutineUnansweredAsksError):
+        await asyncio.wait_for(
+            client.enable_routine(test_user.id, hired.expert.id, installed[0].id),
+            timeout=10,
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
