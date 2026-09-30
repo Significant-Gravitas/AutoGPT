@@ -125,7 +125,7 @@ function MainArea({
   const hasSession = !!sessionId;
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
-      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa]">
+      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-white">
         {!isBrainDumpEnabled && hasSession && (
           <DotDistortionShader
             dotGap={14}

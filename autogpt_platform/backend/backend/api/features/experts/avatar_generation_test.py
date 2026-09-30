@@ -180,7 +180,7 @@ async def test_provider_edit_round_trip_uses_managed_references_and_returns_vali
         assert b'name="background"\r\n\r\nopaque' in request.content
         assert b'name="output_format"\r\n\r\npng' in request.content
         assert b'name="size"\r\n\r\n1024x1024' in request.content
-        assert b'name="quality"\r\n\r\nhigh' in request.content
+        assert b'name="quality"\r\n\r\nmedium' in request.content
         for peer in peers:
             assert f"{peer}.png".encode() in request.content
             assert (

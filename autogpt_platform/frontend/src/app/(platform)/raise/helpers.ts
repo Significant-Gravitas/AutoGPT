@@ -67,7 +67,7 @@ export const RAISE_PROMPTS = {
   jobTitleQuestion: "And what's their job title?",
   nameQuestion: "Good pick. What do you want to call them?",
   avatarQuestion: (name: string) =>
-    `I'm sculpting a face for ${name || "them"}. Regenerate until one feels right, or upload a picture.`,
+    `Here's an avatar for ${name || "your expert"}. Use it, generate another, or upload a picture.`,
   aboutQuestion: (name: string) =>
     `Anything else I should know about ${name || "your expert"}? How they should work, what matters to you — or skip it.`,
   voiceQuestion: (name: string) =>
