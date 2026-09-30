@@ -1,6 +1,6 @@
 """Build the platform's sandbox image on an E2B team ahead of first use.
 
-The backend builds ``agpt-desktop-1x2`` itself the first time a team needs
+The backend builds ``agpt-desktop-1x2-r2`` itself the first time a team needs
 it (see ``backend.util.e2b_template``).  Run this to do it up front, or to
 build an experimental size under another alias:
 

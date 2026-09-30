@@ -8,10 +8,15 @@ already carries XFCE, Chrome, Firefox and VS Code, so a box can later turn a
 screen on without changing image.  Nothing graphical starts at boot: a shell
 box on this image idles at about 90 MiB.
 
+``desktop`` is a bare Ubuntu 22.04 under the desktop, without the developer
+tools ``base`` gave a shell (``gh``, a C toolchain, Node, a ``python``
+command), so the build adds them back: see ``_with_dev_tools``.
+
 Template aliases live per E2B team, so the first sandbox on a new team (or
 key) has to build it.  ``ensure_template`` checks the alias and builds it
-from ``desktop`` when missing (12-25 s, once per team), serialised through
-Redis so parallel first turns don't each start a build.  Templates we don't
+from ``desktop`` when missing (a few minutes, once per team; run
+``poetry run build-desktop-template`` to do it ahead of a deploy), serialised
+through Redis so parallel first turns don't each start a build.  Templates we don't
 manage are left alone.
 
 "Exists" is not "ready": E2B registers an alias the moment a build is
@@ -39,6 +44,7 @@ from e2b.api.client.models import (
 )
 from e2b.api.client_async import get_api_client
 from e2b.connection_config import ConnectionConfig
+from e2b.template.main import TemplateBuilder
 from e2b.template.types import BuildInfo
 from pydantic import BaseModel, ConfigDict
 
@@ -69,17 +75,22 @@ class TemplateSpec(BaseModel):
         ]
 
 
+# ``ensure_template`` only builds an alias that is missing, so a team that
+# already has the image keeps it as it was built.  Give the alias a new
+# revision (and ``ChatConfig.e2b_sandbox_template`` with it) whenever what the
+# build puts on the image changes.
 DESKTOP_IMAGE = TemplateSpec(
-    alias="agpt-desktop-1x2", source="desktop", cpu_count=1, memory_mb=2048
+    alias="agpt-desktop-1x2-r2", source="desktop", cpu_count=1, memory_mb=2048
 )
 MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE}
 
-# A build takes 12-25 s.  The build is cut off before the lock can expire, so
+# A build installs packages and takes a few minutes.  It is cut off before the
+# lock can expire, so
 # the lock is only ever released by its owner (or by the TTL after a crash).
 # Followers wait as long as the lock can live, so they never give up on a
 # build that is still allowed to finish.
-_BUILD_LOCK_TTL_SECONDS = 300
-_BUILD_TIMEOUT_SECONDS = 240
+_BUILD_LOCK_TTL_SECONDS = 900
+_BUILD_TIMEOUT_SECONDS = 840
 _BUILD_WAIT_SECONDS = _BUILD_LOCK_TTL_SECONDS
 _BUILD_POLL_SECONDS = 2.0
 
@@ -193,7 +204,7 @@ async def build_template(spec: TemplateSpec, api_key: str) -> BuildInfo:
         spec.source,
     )
     info = await AsyncTemplate.build(
-        Template().from_template(spec.source),
+        _with_dev_tools(Template().from_template(spec.source)),
         spec.alias,
         tags=spec.tags,
         cpu_count=spec.cpu_count,
@@ -202,6 +213,41 @@ async def build_template(spec: TemplateSpec, api_key: str) -> BuildInfo:
     )
     logger.info("[E2B] Built template %s (%s)", spec.alias, info.template_id)
     return info
+
+
+_KEYRINGS = "/etc/apt/keyrings"
+_GH_KEYRING = f"{_KEYRINGS}/githubcli-archive-keyring.gpg"
+_NODE_KEYRING = f"{_KEYRINGS}/nodesource.asc"
+_NODE_MAJOR = 22
+# Both from their publishers' apt repositories: Ubuntu 22.04's own ``gh`` is
+# 2.4 (2022) and its ``nodejs`` is 12.
+_DEV_TOOL_REPOSITORIES = [
+    f"mkdir -p -m 755 {_KEYRINGS}",
+    f"wget -nv -O {_GH_KEYRING}"
+    " https://cli.github.com/packages/githubcli-archive-keyring.gpg",
+    f"wget -nv -O {_NODE_KEYRING}"
+    " https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key",
+    f"chmod go+r {_GH_KEYRING} {_NODE_KEYRING}",
+    f'echo "deb [arch=$(dpkg --print-architecture) signed-by={_GH_KEYRING}]'
+    ' https://cli.github.com/packages stable main"'
+    " > /etc/apt/sources.list.d/github-cli.list",
+    f'echo "deb [arch=$(dpkg --print-architecture) signed-by={_NODE_KEYRING}]'
+    f' https://deb.nodesource.com/node_{_NODE_MAJOR}.x nodistro main"'
+    " > /etc/apt/sources.list.d/nodesource.list",
+]
+DEV_TOOL_PACKAGES = ["gh", "build-essential", "nodejs", "python-is-python3"]
+
+
+def _with_dev_tools(template: TemplateBuilder) -> TemplateBuilder:
+    """Add what a shell on E2B's ``base`` image had and ``desktop`` lacks.
+
+    The system prompt tells the model to run ``gh auth status`` before asking
+    the user to connect GitHub, so a box without ``gh`` cannot use a connected
+    account at all.
+    """
+    return template.run_cmd(_DEV_TOOL_REPOSITORIES, user="root").apt_install(
+        DEV_TOOL_PACKAGES
+    )
 
 
 async def get_template_state(spec: TemplateSpec, api_key: str) -> TemplateState:

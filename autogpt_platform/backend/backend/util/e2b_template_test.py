@@ -2,12 +2,14 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from e2b import Template
 from e2b.api.client.models import TemplateAliasResponse, TemplateBuildStatus
 
 from backend.copilot.config import ChatConfig
 from backend.util import e2b_template
 from backend.util.e2b_template import (
     DESKTOP_IMAGE,
+    DEV_TOOL_PACKAGES,
     TemplateSpec,
     TemplateState,
     ensure_template,
@@ -53,6 +55,24 @@ class TestSpec:
         assert all(":" not in t for t in tags)
 
 
+class TestDevTools:
+    def test_the_image_gets_the_tools_desktop_lacks_as_root(self):
+        built = e2b_template._with_dev_tools(Template().from_template("desktop"))
+        runs = [i["args"] for i in built._template._instructions]
+        repositories, install = runs[-2], runs[-1]
+        assert repositories[1] == "root" and install[1] == "root"
+        assert "cli.github.com/packages" in repositories[0]
+        assert "deb.nodesource.com/node_22.x" in repositories[0]
+        assert install[0].endswith("apt-get install -y " + " ".join(DEV_TOOL_PACKAGES))
+        assert {"gh", "build-essential", "nodejs"} <= set(DEV_TOOL_PACKAGES)
+
+    def test_a_changed_image_has_a_new_alias(self):
+        """A team that has the alias is never rebuilt, so the alias that
+        shipped without the tools must not be the managed one."""
+        assert DESKTOP_IMAGE.alias != "agpt-desktop-1x2"
+        assert "agpt-desktop-1x2" not in e2b_template.MANAGED_TEMPLATES
+
+
 class TestEnsureTemplate:
     @pytest.mark.asyncio
     async def test_unmanaged_template_is_left_alone(self):
@@ -84,7 +104,11 @@ class TestEnsureTemplate:
             tpl.build = AsyncMock(return_value=MagicMock(template_id="t1"))
             await ensure_template(DESKTOP_IMAGE.alias, _KEY)
 
-        template_cls.return_value.from_template.assert_called_once_with("desktop")
+        source = template_cls.return_value.from_template
+        source.assert_called_once_with("desktop")
+        assert tpl.build.await_args.args[0] is (
+            source.return_value.run_cmd.return_value.apt_install.return_value
+        )
         kwargs = tpl.build.await_args.kwargs
         assert tpl.build.await_args.args[1] == DESKTOP_IMAGE.alias
         assert kwargs["cpu_count"] == 1 and kwargs["memory_mb"] == 2048
@@ -108,14 +132,29 @@ class TestEnsureTemplate:
             c.args[:2] for c in redis.set.await_args_list
         ]
         assert key_a != key_b and _KEY not in key_a and _OTHER_KEY not in key_b
-        assert redis.set.await_args_list[0].kwargs == {"nx": True, "ex": 300}
+        assert redis.set.await_args_list[0].kwargs == {
+            "nx": True,
+            "ex": e2b_template._BUILD_LOCK_TTL_SECONDS,
+        }
         # The TTL is re-asserted with our token right before building, and the
         # release is a compare-and-delete with the same token, never a bare DEL.
         evals = [c.args for c in redis.eval.await_args_list]
         assert evals == [
-            (e2b_template._EXTEND_SCRIPT, 1, key_a, token_a, 300),
+            (
+                e2b_template._EXTEND_SCRIPT,
+                1,
+                key_a,
+                token_a,
+                e2b_template._BUILD_LOCK_TTL_SECONDS,
+            ),
             (e2b_template._UNLOCK_SCRIPT, 1, key_a, token_a),
-            (e2b_template._EXTEND_SCRIPT, 1, key_b, token_b, 300),
+            (
+                e2b_template._EXTEND_SCRIPT,
+                1,
+                key_b,
+                token_b,
+                e2b_template._BUILD_LOCK_TTL_SECONDS,
+            ),
             (e2b_template._UNLOCK_SCRIPT, 1, key_b, token_b),
         ]
 
