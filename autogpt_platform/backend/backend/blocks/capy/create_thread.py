@@ -78,6 +78,12 @@ class CapyCreateThreadBlock(Block):
     class Output(BlockSchemaOutput):
         thread: Thread = SchemaField(description="The created thread")
         thread_id: str = SchemaField(description="ID of the created thread")
+        thread_url: str = SchemaField(
+            description=(
+                "The thread in the Capy app, where the agent's plan, commands "
+                "and diff show live. Share it when you hand the task off."
+            )
+        )
         status: str = SchemaField(description="The thread's status right after start")
         model_id: str = SchemaField(
             description=(
@@ -100,7 +106,10 @@ class CapyCreateThreadBlock(Block):
                 "fix a bug, build a feature or open a pull request. The model "
                 "can run on your Capy balance or on a provider linked in Capy "
                 "(Codex, Copilot, SuperGrok, Azure). Returns immediately with "
-                "the thread ID; use Capy Wait For Thread to wait for the result."
+                "the thread ID and a link where the work shows live; use Capy "
+                "Wait For Thread to wait for the result. Once the agent opens "
+                "a pull request it follows it by itself, fixing failing CI and "
+                "answering review comments."
             ),
             categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.AGENT},
             input_schema=CapyCreateThreadBlock.Input,
@@ -116,6 +125,7 @@ class CapyCreateThreadBlock(Block):
             test_output=[
                 ("thread", TEST_THREAD),
                 ("thread_id", TEST_THREAD.id),
+                ("thread_url", TEST_THREAD.url),
                 ("status", "working"),
                 ("model_id", "supergrok/grok-4.5"),
                 ("billed_via", "SuperGrok subscription"),
@@ -163,6 +173,7 @@ class CapyCreateThreadBlock(Block):
         thread, model_id = await self.create_thread(credentials, input_data)
         yield "thread", thread
         yield "thread_id", thread.id
+        yield "thread_url", thread.url
         yield "status", thread.status
         yield "model_id", model_id
         yield "billed_via", billed_via(model_id)

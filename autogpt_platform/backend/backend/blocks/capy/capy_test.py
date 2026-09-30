@@ -102,6 +102,18 @@ class TestParsing:
         assert review_round.pr_number == 7
         assert review_round.findings[0].start_line == 3
 
+    def test_thread_and_project_link_into_the_capy_app(self):
+        thread = Thread.model_validate(LIVE_THREAD)
+        project = Project.model_validate(
+            {"id": "be134130", "name": "AutoGPT", "code": "AGPT", "repos": []}
+        )
+
+        assert thread.url == f"https://capy.ai/thread/{LIVE_THREAD['id']}"
+        assert project.environment_variables_url == (
+            "https://capy.ai/settings/projects/be134130/environment-variables"
+        )
+        assert project.dev_environment_url.endswith("/be134130/dev-environment")
+
     def test_output_schema_uses_snake_case(self):
         schema = Thread.model_json_schema()
         assert "project_id" in schema["properties"]
@@ -158,6 +170,29 @@ class TestErrors:
 
 
 class TestClient:
+    def test_retries_are_bounded_and_messages_are_sent_once(self):
+        client = CapyClient(TEST_CREDENTIALS)
+
+        # An outage must fail inside chat's five-minute block limit.
+        assert client.requests.retry_max_attempts == 4
+        assert client.requests.retry_max_wait <= 10
+        assert client.requests_once.retry_max_attempts == 1
+
+    async def test_send_message_is_never_retried(self):
+        # Capy can't dedupe a message, so a retry after a gateway error could
+        # hand the agent the same instruction twice.
+        client = CapyClient(TEST_CREDENTIALS)
+        client.requests = MagicMock()
+        client.requests_once = MagicMock()
+        client.requests_once.request = AsyncMock(
+            return_value=_response(200, {"id": "01MSG", "deduped": False})
+        )
+
+        receipt = await client.send_message("t1", text="hi", delivery="queue")
+
+        assert receipt.id == "01MSG"
+        client.requests.request.assert_not_called()
+
     async def test_create_thread_sends_request_id_and_model(self):
         client = CapyClient(TEST_CREDENTIALS)
         client.requests = MagicMock()
@@ -588,6 +623,82 @@ class TestWaitForThread:
         out = await _run(CapyWaitForThreadBlock(), thread_id="t1")
 
         assert "pull_request_url" not in out
+
+    async def test_waits_for_the_reply_to_the_message_it_was_given(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # A queued follow-up isn't the last entry yet, and the agent's reply
+        # to the previous turn still is, so only the message ID tells the
+        # new reply apart from the old one.
+        idle = Thread.model_validate(
+            {**LIVE_THREAD, "status": "idle", "needsYou": False}
+        )
+        earlier = [
+            Message(id="01A", source="user", text="Fix the bug"),
+            Message(id="01B", source="assistant", text="Fixed", model="meta/m1"),
+        ]
+        answer = Message(id="01D", source="assistant", text="Tests added", model="x/m2")
+        get_thread = AsyncMock(side_effect=[idle, idle])
+        newest = AsyncMock(
+            side_effect=[
+                MessagePage(items=earlier),
+                MessagePage(
+                    items=[
+                        *earlier,
+                        Message(id="01C", source="user", text="Add tests"),
+                        answer,
+                    ]
+                ),
+            ]
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(CapyClient, "newest_messages", newest)
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(
+            CapyWaitForThreadBlock(),
+            thread_id="t1",
+            timeout_seconds=600,
+            after_message_id="01C",
+        )
+
+        assert get_thread.await_count == 2
+        assert out["finished"] is True
+        assert out["last_reply"] == "Tests added"
+        assert out["model_id"] == "x/m2"
+
+    async def test_no_reply_yet_to_the_given_message_reads_as_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        working = Thread.model_validate(
+            {**LIVE_THREAD, "status": "working", "needsYou": False}
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", AsyncMock(return_value=working))
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(id="01B", source="assistant", text="Fixed"),
+                        Message(id="01C", source="user", text="Add tests"),
+                    ]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+
+        out = await _run(
+            CapyWaitForThreadBlock(),
+            thread_id="t1",
+            timeout_seconds=0,
+            after_message_id="01C",
+        )
+
+        assert out["finished"] is False
+        assert out["last_reply"] == ""
+        assert out["thread_url"] == f"https://capy.ai/thread/{LIVE_THREAD['id']}"
 
     async def test_stops_when_the_agent_needs_an_answer(
         self, monkeypatch: pytest.MonkeyPatch

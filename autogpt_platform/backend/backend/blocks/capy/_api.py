@@ -29,6 +29,9 @@ _NEWEST_EVENT_CURSOR = "7" + "Z" * 25
 # fails instead of returning an older page as the newest.
 _MAX_FORWARD_PAGES = 50
 
+_RETRY_ATTEMPTS = 4
+_RETRY_MAX_WAIT = 10.0
+
 
 T = TypeVar("T")
 
@@ -79,13 +82,26 @@ async def with_capy_balance_fallback(
 
 class CapyClient:
     def __init__(self, credentials: APIKeyCredentials):
+        headers = {
+            "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
+            "Content-Type": "application/json",
+        }
+        # A few short retries, so a Capy outage fails well inside chat's
+        # five-minute block limit instead of retrying through it.
         self.requests = Requests(
             trusted_origins=[API_URL],
             raise_for_status=False,
-            extra_headers={
-                "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
-                "Content-Type": "application/json",
-            },
+            extra_headers=headers,
+            retry_max_attempts=_RETRY_ATTEMPTS,
+            retry_max_wait=_RETRY_MAX_WAIT,
+        )
+        # For calls Capy can't dedupe: a retry after a gateway error could
+        # deliver the same message to the agent twice.
+        self.requests_once = Requests(
+            trusted_origins=[API_URL],
+            raise_for_status=False,
+            extra_headers=headers,
+            retry_max_attempts=1,
         )
 
     async def _request(
@@ -95,8 +111,10 @@ class CapyClient:
         *,
         params: Optional[dict[str, Any]] = None,
         body: Optional[dict[str, Any]] = None,
+        once: bool = False,
     ) -> Any:
-        response = await self.requests.request(
+        requests = self.requests_once if once else self.requests
+        response = await requests.request(
             method,
             f"{API_URL}{path}",
             params={k: v for k, v in (params or {}).items() if v not in (None, "")},
@@ -226,7 +244,9 @@ class CapyClient:
         if model := _model_selection(model_id, reasoning):
             body["model"] = model
         return MessageReceipt.model_validate(
-            await self._request("POST", f"/threads/{thread_id}/message", body=body)
+            await self._request(
+                "POST", f"/threads/{thread_id}/message", body=body, once=True
+            )
         )
 
     async def interrupt_thread(self, thread_id: str) -> MessageReceipt:

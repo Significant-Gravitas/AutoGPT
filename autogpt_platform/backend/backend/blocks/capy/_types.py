@@ -14,6 +14,8 @@ from pydantic.alias_generators import to_snake
 
 from backend.sdk import BaseModel, Field
 
+APP_URL = "https://capy.ai"
+
 
 class _CapyModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -92,6 +94,31 @@ class Project(_CapyModel):
     repos: list[ProjectRepo] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    dev_environment_url: str = Field(
+        default="",
+        description=(
+            "Where the project's machine setup (install scripts, test commands, "
+            "snapshots) is edited in the Capy app"
+        ),
+    )
+    environment_variables_url: str = Field(
+        default="",
+        description=(
+            "Where the project's environment variables and secrets are set in "
+            "the Capy app. Send people here rather than asking for a value in chat."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _add_links(self) -> "Project":
+        settings = f"{APP_URL}/settings/projects/{self.id}"
+        self.dev_environment_url = (
+            self.dev_environment_url or f"{settings}/dev-environment"
+        )
+        self.environment_variables_url = (
+            self.environment_variables_url or f"{settings}/environment-variables"
+        )
+        return self
 
 
 class Usage(_CapyModel):
@@ -128,6 +155,18 @@ class Thread(_CapyModel):
     created_at: str = ""
     updated_at: str = ""
     last_activity_at: Optional[str] = None
+    url: str = Field(
+        default="",
+        description=(
+            "The thread in the Capy app, where the agent's plan, commands and "
+            "diff show live"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _add_link(self) -> "Thread":
+        self.url = self.url or f"{APP_URL}/thread/{self.id}"
+        return self
 
 
 class Message(_CapyModel):

@@ -6,11 +6,11 @@ Start a Capy coding-agent thread, on your Capy balance or on a model provider li
 ## Capy Create Thread
 
 ### What it is
-Hands a task to Capy, an AI software engineer: a background coding agent that works on its own cloud machine against a GitHub repo in one of your Capy projects. Use it to write code, fix a bug, build a feature or open a pull request. The model can run on your Capy balance or on a provider linked in Capy (Codex, Copilot, SuperGrok, Azure). Returns immediately with the thread ID; use Capy Wait For Thread to wait for the result.
+Hands a task to Capy, an AI software engineer: a background coding agent that works on its own cloud machine against a GitHub repo in one of your Capy projects. Use it to write code, fix a bug, build a feature or open a pull request. The model can run on your Capy balance or on a provider linked in Capy (Codex, Copilot, SuperGrok, Azure). Returns immediately with the thread ID and a link where the work shows live; use Capy Wait For Thread to wait for the result. Once the agent opens a pull request it follows it by itself, fixing failing CI and answering review comments.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Calls `POST /api/v1/threads` with the project, the brief, and an optional model, reasoning effort and machine size. The model ID decides who pays: `openai/gpt-6-astra` (or bare `gpt-6-astra`) bills the Capy balance, while `codex/`, `copilot/`, `supergrok/` and `azure/` IDs run the same model through that provider linked in Capy's settings. `model_route` rewrites the prefix for you, so `gpt-6-astra` with the `codex` route becomes `codex/gpt-6-astra`. If the linked provider is disconnected or was never linked, Capy rejects the model and the error says which one to reconnect. With `fall_back_to_capy_balance` on, the block instead reruns the same model on the Capy balance under a derived request ID. Every call carries a `requestId` (generated when left empty), which Capy uses to dedupe, so a retried request never starts a second run. The block returns as soon as the thread exists; `model_id` and `billed_via` report what it was started with.
+Calls `POST /api/v1/threads` with the project, the brief, and an optional model, reasoning effort and machine size. The model ID decides who pays: `openai/gpt-6-astra` (or bare `gpt-6-astra`) bills the Capy balance, while `codex/`, `copilot/`, `supergrok/` and `azure/` IDs run the same model through that provider linked in Capy's settings. `model_route` rewrites the prefix for you, so `gpt-6-astra` with the `codex` route becomes `codex/gpt-6-astra`. If the linked provider is disconnected or was never linked, Capy rejects the model and the error says which one to reconnect. With `fall_back_to_capy_balance` on, the block instead reruns the same model on the Capy balance under a derived request ID. Every call carries a `requestId` (generated when left empty), which Capy uses to dedupe, so a retried request never starts a second run. The block returns as soon as the thread exists, with `thread_url` pointing at the thread in the Capy app, where the agent's plan, commands and diff show live. `model_id` and `billed_via` report what it was started with. Once the agent opens a pull request, Capy subscribes the thread to it: a failing check, a review comment or the merge wakes the agent, which fixes and pushes on its own.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,6 +34,7 @@ Calls `POST /api/v1/threads` with the project, the brief, and an optional model,
 | error | Error message if the operation failed | str |
 | thread | The created thread | Thread |
 | thread_id | ID of the created thread | str |
+| thread_url | The thread in the Capy app, where the agent's plan, commands and diff show live. Share it when you hand the task off. | str |
 | status | The thread's status right after start | str |
 | model_id | The model ID the thread was started with; differs from the input when the route rewrote it or the balance fallback ran. Empty means the project's default model. | str |
 | billed_via | Who pays for that model: the Capy balance or a linked provider | str |

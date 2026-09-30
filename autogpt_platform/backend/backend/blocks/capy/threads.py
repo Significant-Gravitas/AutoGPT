@@ -49,6 +49,9 @@ class CapyGetThreadBlock(Block):
 
     class Output(BlockSchemaOutput):
         thread: Thread = SchemaField(description="The thread")
+        thread_url: str = SchemaField(
+            description="The thread in the Capy app, where its work shows live"
+        )
         status: str = SchemaField(
             description="working, waiting, idle, failed or archived"
         )
@@ -73,7 +76,8 @@ class CapyGetThreadBlock(Block):
             id="2e4088c6-8684-409f-8f67-8e2dd87ba6c4",
             description=(
                 "Gets a Capy thread's current status, title and credit usage, "
-                "and whether it is still working or needs an answer."
+                "whether it is still working or needs an answer, and a link to "
+                "watch it."
             ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=CapyGetThreadBlock.Input,
@@ -85,6 +89,7 @@ class CapyGetThreadBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("thread", TEST_THREAD),
+                ("thread_url", TEST_THREAD.url),
                 ("status", "working"),
                 ("is_active", True),
                 ("needs_you", False),
@@ -104,6 +109,7 @@ class CapyGetThreadBlock(Block):
     ) -> BlockOutput:
         thread = await self.get_thread(credentials, input_data.thread_id)
         yield "thread", thread
+        yield "thread_url", thread.url
         yield "status", thread.status
         yield "is_active", thread.status in ACTIVE_THREAD_STATUSES
         yield "needs_you", thread.needs_you

@@ -41,7 +41,7 @@ Calls `POST /api/v1/threads/{id}/archive`. Archiving is reversible from the Capy
 ## Capy Get Thread
 
 ### What it is
-Gets a Capy thread's current status, title and credit usage, and whether it is still working or needs an answer.
+Gets a Capy thread's current status, title and credit usage, whether it is still working or needs an answer, and a link to watch it.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -60,6 +60,7 @@ Calls `GET /api/v1/threads/{id}`. `is_active` is true while the status is `worki
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | thread | The thread | Thread |
+| thread_url | The thread in the Capy app, where its work shows live | str |
 | status | working, waiting, idle, failed or archived | str |
 | is_active | True while the agent is still working on the thread | bool |
 | needs_you | True when the agent is waiting on an answer from a person | bool |
