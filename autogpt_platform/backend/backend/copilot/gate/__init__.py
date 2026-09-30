@@ -280,6 +280,8 @@ def _last_user_message(session: ChatSession) -> str:
 
     for message in reversed(session.messages):
         if message.role == "user" and message.content:
+            if held.is_answer_row(message):
+                continue
             # A first turn's row starts with the server's context blocks.
             return strip_injected_context_for_display(message.content)
     return ""
