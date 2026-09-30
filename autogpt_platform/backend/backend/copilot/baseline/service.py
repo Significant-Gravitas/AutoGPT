@@ -75,10 +75,12 @@ from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
+    drained_rows_entry,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
 from backend.copilot.pending_messages import (
+    PendingMessage,
     drain_pending_messages,
     format_pending_as_user_message,
 )
@@ -557,13 +559,7 @@ class _BaselineStreamState:
         # frontend's ``convertChatSessionToUiMessages`` relies on these
         # rows to render the Reasoning collapse after the AI SDK's
         # stream-end hydrate swaps in the DB-backed message list.
-        # ``render_in_ui`` is sourced from ``config.render_reasoning_in_ui``
-        # so the operator can silence the reasoning collapse globally
-        # without dropping the persisted audit trail.
-        self.reasoning_emitter = BaselineReasoningEmitter(
-            self.session_messages,
-            render_in_ui=config.render_reasoning_in_ui,
-        )
+        self.reasoning_emitter = BaselineReasoningEmitter(self.session_messages)
 
 
 def _emit(state: "_BaselineStreamState", event: StreamBaseResponse) -> None:
@@ -1778,6 +1774,10 @@ async def stream_chat_completion_baseline(
     # Capture count *before* the pending drain so is_first_turn and the
     # transcript staleness check are not skewed by queued messages.
     _pre_drain_msg_count = len(session.messages)
+    # The stream's rows start after the message that triggered it; the rows
+    # appended before the turn's first yield are announced once it opens.
+    turn_start = _pre_drain_msg_count
+    opening_entries: list[StreamBaseResponse] = []
 
     # Drain any messages the user queued via POST /messages/pending
     # while this session was idle (or during a previous turn whose
@@ -2116,6 +2116,7 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
         )
         if persisted_ok:
+            opening_entries.append(drained_rows_entry(drained_at_start_pending))
             message = combine_pending_with_current(
                 drained_at_start_pending,
                 message,
@@ -2342,6 +2343,7 @@ async def stream_chat_completion_baseline(
     if held_results and await persist_pending_as_user_rows(
         session, transcript_builder, held_results, log_prefix="[Baseline]"
     ):
+        opening_entries.append(drained_rows_entry(held_results))
         openai_messages.extend(
             format_pending_as_user_message(pm) for pm in held_results
         )
@@ -2372,6 +2374,11 @@ async def stream_chat_completion_baseline(
         ),
     )
 
+    # Queued, not yielded: the loop below yields them inside the try whose
+    # finally pauses the sandbox.
+    for opening in opening_entries:
+        _emit(state, opening)
+
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
     _bound_llm_caller = partial(_baseline_llm_caller, state=state)
@@ -2384,8 +2391,6 @@ async def stream_chat_completion_baseline(
     # and be lost on the final persist.  Wrap in a 1-element holder and read
     # the current binding lazily so the executor always sees the latest session.
     _session_holder: list[ChatSession] = [session]
-    # The stream's first row, for checkpoints; everything above is persisted.
-    turn_start = len(session.messages)
     final_checkpoint: StreamCheckpoint | None = None
 
     async def _bound_tool_executor(
@@ -2572,6 +2577,10 @@ async def stream_chat_completion_baseline(
                     formatted_by_pm = {
                         id(pm): format_pending_as_user_message(pm) for pm in pending
                     }
+
+                    def _formatted(pm: PendingMessage) -> str:
+                        return formatted_by_pm[id(pm)]["content"]
+
                     _openai_anchor = len(openai_messages)
                     for pm in pending:
                         openai_messages.append(formatted_by_pm[id(pm)])
@@ -2579,14 +2588,15 @@ async def stream_chat_completion_baseline(
                     def _trim_openai_on_rollback(_session_anchor: int) -> None:
                         del openai_messages[_openai_anchor:]
 
-                    await persist_pending_as_user_rows(
+                    if await persist_pending_as_user_rows(
                         current_session,
                         transcript_builder,
                         pending,
                         log_prefix="[Baseline]",
-                        content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
+                        content_of=_formatted,
                         on_rollback=_trim_openai_on_rollback,
-                    )
+                    ):
+                        _emit(state, drained_rows_entry(pending, _formatted))
                     checkpoint = turn_checkpoint(current_session.messages, turn_start)
                     if checkpoint is not None:
                         _emit(state, checkpoint)

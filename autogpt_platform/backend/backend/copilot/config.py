@@ -586,14 +586,6 @@ class ChatConfig(BaseSettings):
         "``claude_agent_thinking_effort`` for adaptive control — the SDK "
         "ignores ``max_thinking_tokens`` for those models.",
     )
-    render_reasoning_in_ui: bool = Field(
-        default=True,
-        description="Render reasoning as live UI parts "
-        "(``StreamReasoning*`` wire events). False suppresses the live "
-        "wire events only; ``role='reasoning'`` rows are always persisted "
-        "so the reasoning bubble hydrates on reload. Tokens are billed "
-        "upstream regardless.",
-    )
     stream_replay_count: int = Field(
         default=200,
         ge=1,

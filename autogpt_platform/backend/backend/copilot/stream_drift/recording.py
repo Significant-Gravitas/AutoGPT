@@ -32,8 +32,11 @@ from backend.copilot import stream_registry
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.model import ChatMessage, ChatSession, upsert_chat_session
 from backend.copilot.response_model import StreamBaseResponse, StreamError, StreamStatus
+from backend.copilot.stream_checkpoint import canonical_digest, canonical_rows
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.data.redis_client import get_redis_async
+
+from .fold import fold_rows
 
 FIXTURE_ROOT = (
     Path(__file__).resolve().parents[3] / "test" / "fixtures" / "copilot_stream"
@@ -99,10 +102,12 @@ async def record_turn(
     return RecordedTurn(entries=entries, frames=frames_for(entries), rows=rows)
 
 
-async def persisted_session(user_id: str, prompt: str) -> ChatSession:
+async def persisted_session(
+    user_id: str, prompt: str, *, history: Sequence[ChatMessage] = ()
+) -> ChatSession:
     """A session whose prompt is already persisted, as the POST route leaves it."""
     session = ChatSession.new(user_id, dry_run=False)
-    session.messages.append(ChatMessage(role="user", content=prompt))
+    session.messages.extend([*history, ChatMessage(role="user", content=prompt)])
     await upsert_chat_session(session)
     return session
 
@@ -199,6 +204,31 @@ def saving_into(
     return save
 
 
+def assert_fold_matches_rows(turn: RecordedTurn) -> None:
+    """At every checkpoint the fold of the entries before it is the persisted
+    turn rows it names, and at the end the fold is every persisted turn row."""
+    chunks = [entry["data"] for entry in turn.entries]
+    checkpoints = [
+        i for i, chunk in enumerate(chunks) if chunk["type"] == "data-checkpoint"
+    ]
+    assert checkpoints, "the turn published no checkpoint"
+    starts = {chunks[i]["sequence"] for i in checkpoints}
+    assert len(starts) == 1, f"checkpoints name different first rows: {starts}"
+    [start] = starts
+    for i in checkpoints:
+        folded = fold_rows(chunks[:i])
+        assert (len(folded), canonical_digest(folded)) == (
+            chunks[i]["rows"],
+            chunks[i]["digest"],
+        ), f"checkpoint {turn.entries[i]['id']} does not match the fold {folded}"
+    persisted = canonical_rows([ChatMessage.model_validate(r) for r in turn.rows])
+    assert fold_rows(chunks) == persisted[start:]
+
+
+def fixture_names() -> list[str]:
+    return sorted(path.name for path in FIXTURE_ROOT.iterdir() if path.is_dir())
+
+
 def load_fixture(name: str) -> RecordedTurn:
     directory = FIXTURE_ROOT / name
     return RecordedTurn(
@@ -209,7 +239,9 @@ def load_fixture(name: str) -> RecordedTurn:
 
 
 def check_fixture(name: str, recorded: RecordedTurn) -> None:
-    """Fail when the pipeline no longer records the committed fixture."""
+    """Fail when the recorded stream does not fold to its rows, or the
+    pipeline no longer records the committed fixture."""
+    assert_fold_matches_rows(recorded)
     if os.environ.get(RECORD_ENV):
         _write_fixture(name, recorded)
         return

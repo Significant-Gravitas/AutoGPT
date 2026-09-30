@@ -12,22 +12,26 @@ import { loadRecordedTurn } from "./backend-sim";
 // so the AI SDK parser the chat runs today must build the same message
 // without them.
 describe("the recorded turns through the AI SDK's own parser", () => {
-  it.each(["dummy-text-turn", "baseline-tool-turn", "sdk-late-tool-result"])(
-    "%s: entry ids and the checkpoint change nothing",
-    async (name) => {
-      const { frames } = loadRecordedTurn(name);
-      const bare = frames
-        .filter(({ sse }) => !sse.includes('"type": "data-checkpoint"'))
-        .map(({ sse }) => sse.replace(/^id: .*\n/, ""));
+  it.each([
+    "dummy-text-turn",
+    "baseline-tool-turn",
+    "sdk-late-tool-result",
+    "baseline-drain-turn",
+    "sdk-reasoning-turn",
+    "sdk-auto-continue-turn",
+  ])("%s: entry ids and the checkpoint change nothing", async (name) => {
+    const { frames } = loadRecordedTurn(name);
+    const bare = frames
+      .filter(({ sse }) => !sse.includes('"type": "data-checkpoint"'))
+      .map(({ sse }) => sse.replace(/^id: .*\n/, ""));
 
-      expect(bare.length).toBeLessThan(frames.length);
-      const dataFrames = frames.filter(({ sse }) => !sse.startsWith(":"));
-      expect(dataFrames.every(({ sse }) => sse.startsWith("id: "))).toBe(true);
-      expect(await finalMessage(frames.map(({ sse }) => sse))).toEqual(
-        await finalMessage(bare),
-      );
-    },
-  );
+    expect(bare.length).toBeLessThan(frames.length);
+    const dataFrames = frames.filter(({ sse }) => !sse.startsWith(":"));
+    expect(dataFrames.every(({ sse }) => sse.startsWith("id: "))).toBe(true);
+    expect(await finalMessage(frames.map(({ sse }) => sse))).toEqual(
+      await finalMessage(bare),
+    );
+  });
 });
 
 async function finalMessage(sse: string[]) {
