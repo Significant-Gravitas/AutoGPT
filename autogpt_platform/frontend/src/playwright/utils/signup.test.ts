@@ -13,4 +13,12 @@ describe("isAuthenticatedAppURL", () => {
   it("leaves marketplace verification on its own path", () => {
     expect(isAuthenticatedAppURL("http://localhost/marketplace")).toBe(false);
   });
+
+  it("accepts nested authenticated app routes", () => {
+    expect(isAuthenticatedAppURL("/home/session/123")).toBe(true);
+  });
+
+  it("does not match authenticated routes in query parameters", () => {
+    expect(isAuthenticatedAppURL("/marketplace?returnTo=/home")).toBe(false);
+  });
 });
