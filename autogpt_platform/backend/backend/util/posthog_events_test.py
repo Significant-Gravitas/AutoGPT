@@ -18,6 +18,8 @@ LIVE_EVENT_NAMES = {
     "trigger_fired",
     "expert_hired",
     "integration_connected",
+    "credential_oauth_started",
+    "credential_oauth_exchange_failed",
     "hire_failed",
     "hire_completed",
     "writing_style_added",
@@ -45,6 +47,7 @@ LIVE_EVENT_NAMES = {
     "subscription_trial_ended",
     "subscription_trial_converted",
     "subscription_trial_payment_failed",
+    "$set",
 }
 
 PLANNED_EVENT_NAMES = {

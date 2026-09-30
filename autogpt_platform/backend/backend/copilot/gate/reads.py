@@ -213,6 +213,8 @@ async def screen_read(
     """
     if tool_name not in JUDGED_READS or trusted_read(tool_name, args, output):
         return None
+    if platform_setup_card(output):
+        return None
     source = source_of(tool_name, args)
     try:
         mode = await active_mode(user_id, session)
@@ -259,6 +261,20 @@ def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
     if tool_name == "read_workspace_file":
         return is_skill_path(_opened_path(output))
     return False
+
+
+def platform_setup_card(output: str) -> bool:
+    """A sign-in or setup card the platform wrote: holding it would replace the
+    card with a stub. A provider's rejection text in it is outside, so judged."""
+    try:
+        data = json.loads(output)
+    except ValueError:
+        return False
+    return (
+        isinstance(data, dict)
+        and data.get("type") == ResponseType.SETUP_REQUIREMENTS
+        and not data.get("rejection")
+    )
 
 
 def is_skill_path(path: str | None) -> bool:

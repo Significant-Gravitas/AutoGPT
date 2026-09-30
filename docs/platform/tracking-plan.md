@@ -185,6 +185,8 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
 | `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
 | `integration_connected` | backend | live | `provider`, `credential_type`, `method` | A credential is stored (OAuth, key, device code). |
+| `credential_oauth_started` | backend | live | `provider` | The backend issues an OAuth login URL (`GET /api/integrations/{provider}/login`). Not Codex. |
+| `credential_oauth_exchange_failed` | backend | live | `provider`, `status_code` (unset for an unexpected error), `failure_class` (`invalid_state`, `provider_unavailable`, `token_exchange`, `credential_merge`), `detail` (redacted, at most 200 characters) | `POST /api/integrations/{provider}/callback` returns an error, on any path. Not Codex. |
 | `credential_card_never_rendered` | browser | live | `provider`, `failure_class` | A provider is missing from the provider map. |
 | `credential_oauth_popup_blocked` | browser | live | `provider`, `failure_class` | Both the popup and the new tab were blocked. |
 | `credential_oauth_flow_timed_out` | browser | live | `provider`, `failure_class` | The OAuth flow timed out. |
@@ -292,6 +294,29 @@ Return visits are `$pageview`; account-level retention is computed in
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.
+
+## Person properties
+
+The backend keeps these on the person (distinct id = platform user id) with
+a `$set` event (`PostHogEvent.SET_PERSON_PROPERTIES`), sent from
+`backend/data/posthog_lifecycle_sync.py` after signup, tier changes and every
+Stripe subscription sync, and by a daily sweep at 04:15 UTC. The lifecycle
+events above mark the moment something happens; these properties hold the
+person's current state, so a cohort or breakdown can filter on them without
+replaying events.
+
+| Property | Value |
+| --- | --- |
+| `subscription_status` | `signed`, `in_trial`, `trial_canceled`, `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
+| `signup_at` | When the user row was created. |
+| `trial_started_at` | When the trial started. |
+| `subscription_started_at` | Start of the current or last paid subscription; for a converted trial, the conversion. |
+| `subscription_canceled_at` | When the subscription was canceled, while `subscription_canceled` or `subscription_ended`. |
+| `subscription_ended_at` | When the subscription ended, while `subscription_ended`. |
+
+Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
+date that doesn't apply to the current status is `$unset`, never sent as
+null.
 
 ## Differences from the analytics plan
 
