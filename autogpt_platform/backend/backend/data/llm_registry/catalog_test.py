@@ -417,16 +417,16 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter live rate $0.30/$1.20 per 1M,
-    $0.0042/1M cached input as of 2026-09-26 — this route reprices
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.0198/$0.396 per 1M,
+    $0.00291/1M cached input as of 2026-09-30 — this route reprices
     continuously by design) — flat tier and per-1M projections must
     match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 45.0,
-        "output": 180.0,
-        "cache_read": 0.63,
+        "input": 2.97,
+        "output": 59.4,
+        "cache_read": 0.4365,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[flash].max_output_tokens == 384000
