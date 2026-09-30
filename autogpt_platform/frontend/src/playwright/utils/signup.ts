@@ -5,6 +5,12 @@ import { BuildPage } from "../pages/build.page";
 import { skipOnboardingIfPresent } from "./onboarding";
 import { expect } from "@playwright/test";
 
+export function isAuthenticatedAppURL(currentURL: string) {
+  return ["/home", "/copilot", "/library"].some((path) =>
+    currentURL.includes(path),
+  );
+}
+
 export async function signupTestUser(
   page: any,
   email?: string,
@@ -67,7 +73,7 @@ export async function signupTestUser(
     }
 
     // Verify we're on an expected final page and user is authenticated
-    if (currentUrl.includes("/copilot") || currentUrl.includes("/library")) {
+    if (isAuthenticatedAppURL(currentUrl)) {
       await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });
