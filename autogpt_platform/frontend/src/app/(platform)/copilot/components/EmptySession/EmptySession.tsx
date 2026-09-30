@@ -1,8 +1,6 @@
 "use client";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
-import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -11,9 +9,7 @@ import {
   getExpertInputPlaceholder,
   getGreetingName,
   getIntroLine,
-  getSuggestionThemes,
 } from "./helpers";
-import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
@@ -86,28 +82,13 @@ export function EmptySession({
     />
   ) : undefined;
 
-  const { inputPlaceholder, showStarterPrompts } = useHomeComposer({
+  const { inputPlaceholder } = useHomeComposer({
     enabled:
       isExpertsEnabled &&
       !intro.isVisible &&
       !intro.isAwaitingGreeting &&
       !isKickoffStarting,
   });
-
-  const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
-    useGetV2GetSuggestedPrompts({
-      query: {
-        enabled: showStarterPrompts,
-        staleTime: Infinity,
-        gcTime: Infinity,
-        refetchOnMount: false,
-      },
-    });
-  const themes = getSuggestionThemes(
-    suggestedPromptsResponse?.status === 200
-      ? suggestedPromptsResponse.data.themes
-      : undefined,
-  );
 
   if (isKickoffStarting) {
     return <ExpertKickoffLoader expertName={expertName} />;
@@ -217,25 +198,6 @@ export function EmptySession({
           )}
         </div>
 
-        {/* The greeting page is deliberately quiet: its own prompts are
-            the suggestions, so the theme chips stay out of the way. Also
-            held while the greeting decision is pending. */}
-        {showStarterPrompts &&
-          !intro.isVisible &&
-          !intro.isAwaitingGreeting &&
-          (isLoadingPrompts ? (
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              {Array.from({ length: 4 }, (_, i) => (
-                <Skeleton key={i} className="h-10 w-28 shrink-0 rounded-full" />
-              ))}
-            </div>
-          ) : (
-            <SuggestionThemes
-              themes={themes}
-              onSend={onSend}
-              disabled={isComposerDisabled}
-            />
-          ))}
         {!intro.isVisible && !intro.isAwaitingGreeting && isExpertsEnabled && (
           <HomeRecap />
         )}

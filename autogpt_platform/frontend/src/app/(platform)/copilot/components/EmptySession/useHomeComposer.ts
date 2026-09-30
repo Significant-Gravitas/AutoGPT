@@ -10,7 +10,7 @@ const TEAM_PLACEHOLDER =
   "What should the team work on? e.g. 'Follow up with yesterday's leads'";
 
 export function useHomeComposer({ enabled }: Args) {
-  const { dashboard, isError } = useHomePage({ enabled });
+  const { dashboard } = useHomePage({ enabled });
   const hasExistingWork = Boolean(
     enabled &&
       dashboard &&
@@ -45,7 +45,5 @@ export function useHomeComposer({ enabled }: Args) {
 
   return {
     inputPlaceholder: hasExistingWork ? TEAM_PLACEHOLDER : discoveryPlaceholder,
-    showStarterPrompts:
-      !hasExistingWork && (!enabled || Boolean(dashboard) || isError),
   };
 }

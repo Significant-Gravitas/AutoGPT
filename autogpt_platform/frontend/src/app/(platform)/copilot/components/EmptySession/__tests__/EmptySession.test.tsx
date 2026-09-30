@@ -1,5 +1,5 @@
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse, delay } from "msw";
+import { http, HttpResponse } from "msw";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
@@ -239,11 +239,16 @@ function mockDashboard(dashboard: HomeDashboardResponse) {
   );
 }
 
-it("keeps starter pills and the discovery prompt for an empty account", async () => {
+it("keeps the discovery prompt without starter pills or suggestion requests for an empty account", async () => {
+  const fetchSuggestions = vi.fn(() => HttpResponse.json({ themes: [] }));
+  server.use(http.get("*/api/chat/suggested-prompts", fetchSuggestions));
   renderEmptySession("");
-  expect(await screen.findByRole("button", { name: "Learn" })).toBeDefined();
+  await screen.findByRole("heading", { name: "Your recap" });
   expect(screen.getByPlaceholderText(/What's your role/)).toBeDefined();
-  expect(screen.getByRole("button", { name: "Automate" })).toBeDefined();
+  for (const name of ["Learn", "Create", "Automate", "Organize"]) {
+    expect(screen.queryByRole("button", { name })).toBeNull();
+  }
+  expect(fetchSuggestions).not.toHaveBeenCalled();
 });
 
 it.each([
@@ -309,22 +314,6 @@ it.each([
     ).toBeDefined();
   },
 );
-
-it("withholds starter pills while the account state loads", async () => {
-  server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, async () => {
-      await delay(100);
-      return HttpResponse.json({
-        ...makeDashboard([]),
-        team: { total: 1, ready: 1, working: 0, needs_attention: 0 },
-      });
-    }),
-  );
-  renderEmptySession("");
-  expect(screen.queryByRole("button", { name: "Learn" })).toBeNull();
-  await screen.findByPlaceholderText(teamPlaceholder);
-  expect(screen.queryByRole("button", { name: "Learn" })).toBeNull();
-});
 
 it("keeps the chosen expert's prompt for an existing account", async () => {
   mockDashboard({
