@@ -15,6 +15,7 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import PendingMessage
 from backend.data.db_accessors import review_db
 
 
@@ -133,7 +134,10 @@ async def test_a_held_read_comes_back_from_its_row_byte_identical(
         where={"nodeExecId": call.review_id}, data={"status": ReviewStatus.APPROVED}
     )
 
-    assert await held._outcome(test_user_id, session, call, None) == (
-        "approved",
-        output,
-    )
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(test_user_id, session, delivered.append):
+        pass
+
+    [late] = delivered
+    assert late.metadata["held_call"]["outcome"] == "approved"
+    assert late.content.split(">\n", 1)[1] == f"{output}\n</held_call_result>"

@@ -25,6 +25,7 @@ from backend.copilot.model import (
     ChatSession,
     ChatSessionMetadata,
 )
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk.tool_adapter import (
     _consecutive_tool_failures,
@@ -60,12 +61,21 @@ class _Rows:
         self.held.append(call)
         return True
 
+    async def held_calls(self, session_id):
+        return {call.review_id: call for call in self.held}
+
+    async def claim(self, session_id, review_id):
+        kept = [call for call in self.held if call.review_id != review_id]
+        claimed, self.held = len(kept) < len(self.held), kept
+        return claimed
+
     async def get_reviews_by_node_exec_ids(self, ids, user_id):
         return {i: self.rows[i] for i in ids if i in self.rows}
 
     async def open_review_row(self, review_id, user_id, session, payload, instructions):
         self.rows[review_id] = SimpleNamespace(
             node_exec_id=review_id,
+            session_id=session.session_id,
             status=ReviewStatus.WAITING,
             created_at=datetime.now(UTC),
             updated_at=None,
@@ -134,6 +144,8 @@ def rows():
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
         patch.object(held, "remember", fake.remember),
+        patch.object(held, "_held", fake.held_calls),
+        patch.object(held, "_claim", fake.claim),
         patch.object(held, "review_db", lambda: fake),
         patch.object(review_store, "open_review_row", fake.open_review_row),
     ):
@@ -378,9 +390,10 @@ async def test_an_approved_held_read_arrives_as_its_late_result_byte_identical(r
     assert call.tool_call_id == "call-7"
     rows.answer(ReviewStatus.APPROVED)
 
-    outcome, late = await held._outcome("user-1", session, call, tool)
+    [late] = await _resolved(session)
 
-    assert (outcome, late) == ("approved", _plain_output(_MARKER))
+    assert late.metadata["held_call"]["outcome"] == "approved"
+    assert _late_body(late) == _plain_output(_MARKER)
     assert tool.runs == 1, "the late result must be the stored bytes, not a refetch"
     assert rows.rows == {}
 
@@ -395,10 +408,10 @@ async def test_a_rejected_held_read_never_arrives_and_sets_no_chat_rule(rows):
 
     set_ask = AsyncMock()
     with patch.object(held.chat_rules, "set_ask", set_ask):
-        outcome, late = await held._outcome("user-1", session, call, tool)
+        [late] = await _resolved(session)
 
-    assert outcome == "rejected"
-    assert _MARKER not in late and "declined" in late
+    assert late.metadata["held_call"]["outcome"] == "rejected"
+    assert _MARKER not in late.content and "declined" in late.content
     set_ask.assert_not_awaited()
     assert tool.runs == 1
 
@@ -441,11 +454,10 @@ async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
             await _call(_Fetch(content), session)
         cap = str  # the baseline passes no cap: execute already capped
 
-    (call,) = rows.held
     rows.answer(ReviewStatus.APPROVED)
-    late = await held._deliver("user-1", session, call, cap)
+    [late] = await _resolved(session, cap=cap)
 
-    body = late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
+    body = _late_body(late)
     assert body == direct
     assert len(body) > 30_000
 
@@ -842,3 +854,16 @@ async def test_a_blocks_own_output_is_still_judged(rows):
 
 def _no_action_gate():
     return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False)))
+
+
+async def _resolved(session: ChatSession, **kwargs: Any) -> list[PendingMessage]:
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(
+        "user-1", session, delivered.append, **kwargs
+    ):
+        pass
+    return delivered
+
+
+def _late_body(late: PendingMessage) -> str:
+    return late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]

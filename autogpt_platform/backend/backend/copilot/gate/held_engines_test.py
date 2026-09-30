@@ -4,7 +4,8 @@ One test per engine, driven through the engine's real entry point and stopped
 at the fold: removing the fold from one engine turns only that engine's test
 red. The held call itself runs inside ``resolve_answered``, so each test also
 proves the turn's execution context — the chat whose ceiling an approval
-raises included — is set before it runs.
+raises included — is set before it runs, and that the status it yields while
+the call runs reaches the engine's stream before the result is folded.
 """
 
 import contextlib
@@ -21,6 +22,7 @@ from backend.copilot.context import (
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.response_model import StreamStatus
 from backend.copilot.sdk.expert_tool_gate_test import _make_patches, _make_session
 from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 from backend.copilot.tree import root_envelope
@@ -28,6 +30,7 @@ from backend.copilot.tree import root_envelope
 _RESULT = PendingMessage(
     content='<held_call_result tool="post_to_chat_platform">posted</held_call_result>'
 )
+_RUNNING = StreamStatus(message="Running the action you approved: Post a message")
 
 
 class _StopAtFold(Exception):
@@ -44,17 +47,19 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
     caps: list[object] = []
     chats: list[str | None] = []
 
-    async def resolve(*_args, **kwargs):
+    async def resolve(_user_id, _session, deliver, **kwargs):
         order.append("resolve")
         caps.append(kwargs.get("cap"))
         chats.append(getattr(get_current_envelope(), "spend_session_id", None))
-        return [_RESULT]
+        yield _RUNNING
+        deliver(_RESULT)
 
     def set_context(*args, **kwargs):
         order.append("context")
         set_execution_context(*args, **kwargs)
 
     async def persist(_session, _builder, pending, **_kwargs):
+        order.append("fold")
         folded.append(list(pending))
         raise _StopAtFold
 
@@ -80,7 +85,7 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
             )
         )
         with contextlib.suppress(_StopAtFold):
-            async for _ in stream_chat_completion_sdk(
+            async for chunk in stream_chat_completion_sdk(
                 session_id=session.session_id,
                 message="hello",
                 is_user_message=True,
@@ -88,11 +93,13 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
                 session=session,
                 envelope=envelope,
             ):
-                pass
+                if chunk is _RUNNING:
+                    order.append("streamed")
         set_execution_context(None, None)
 
     context.assert_called()
     assert order.index("context") < order.index("resolve")
+    assert order.index("resolve") < order.index("streamed") < order.index("fold")
     assert folded == [[_RESULT]]
     # A late result is cut by the same rule as a direct MCP tool result.
     assert caps == [cap_late_tool_result]
@@ -107,14 +114,18 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
     chats: list[str | None] = []
     sent: list[list[dict]] = []
 
-    async def resolve(*_args, **_kwargs):
+    order: list[str] = []
+
+    async def resolve(_user_id, _session, deliver, **_kwargs):
         seen_context.append(get_execution_context())
         chats.append(getattr(get_current_envelope(), "spend_session_id", None))
-        return [_RESULT]
+        yield _RUNNING
+        deliver(_RESULT)
 
     persist = AsyncMock(return_value=True)
 
     async def model_loop(*, messages, **_kwargs):
+        order.append("model")
         sent.append(list(messages))
         raise _StopAtFold
         yield
@@ -156,7 +167,7 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
         patch(f"{svc}.tool_call_loop", new=model_loop),
     ):
         try:
-            async for _ in stream_chat_completion_baseline(
+            async for chunk in stream_chat_completion_baseline(
                 session_id=session.session_id,
                 message=None,
                 is_user_message=False,
@@ -164,13 +175,15 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
                 session=session,
                 envelope=root_envelope("turn-2", session_id=session.session_id),
             ):
-                pass
+                if chunk is _RUNNING:
+                    order.append("streamed")
         except Exception:
             pass  # what the turn does after the model's first call is not under test
         finally:
             set_execution_context(None, None)
 
     assert seen_context == [("user-1", session)]
+    assert order == ["streamed", "model"]
     assert chats == [session.session_id]
     assert len(sent) == 1
     assert sent[0][-1] == {"role": "user", "content": _RESULT.content}
