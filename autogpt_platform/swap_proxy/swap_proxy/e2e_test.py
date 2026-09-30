@@ -61,14 +61,16 @@ class FakeSource:
         self.down = False
         self.anywhere = False  # the credential's ``swap_anywhere``
         self.asked: list[tuple[str, str, str]] = []
+        self.boxes: set[str] = set()
 
     async def bound_names(self, host):
         if self.down:
             raise SourceUnavailable("down")
         return {"github"} if host_in_list(host, self.hosts) else set()
 
-    async def resolve(self, user_id, name, host):
+    async def resolve(self, user_id, name, host, box):
         self.asked.append((user_id, name, host))
+        self.boxes.add(box)
         if self.down:
             raise SourceUnavailable("down")
         token = self.tokens.get(user_id)
@@ -303,13 +305,15 @@ async def test_a_placeholder_becomes_the_owners_token_and_the_echo_is_scrubbed(s
 
 
 async def test_each_box_gets_its_own_users_token(stack):
-    proxy, upstream, _ = stack
+    proxy, upstream, source = stack
     for box in (BOX_A, BOX_B):
         await socks5_request(
             proxy.port, *box, UPSTREAM_HOST, upstream.port, http_get(headers=BEARER)
         )
     sent = [seen["headers"]["authorization"] for seen in upstream.seen]
     assert sent == [f"Bearer {TOKEN_A}", f"Bearer {TOKEN_B}"]
+    # The backend is told which box asks: its record of that box decides.
+    assert source.boxes == {BOX_A[0], BOX_B[0]}
 
 
 @pytest.mark.parametrize(

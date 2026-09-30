@@ -2,6 +2,8 @@
 
 import asyncio
 import contextlib
+import shutil
+import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,14 +15,23 @@ from backend.copilot.integration_creds import (
     PROVIDER_ENV_VARS,
     ProviderTokenUnavailable,
     _consume_creds_changed_events,
+    _credential_id_cache,
     _gh_identity_cache,
     _gh_identity_null_cache,
     _null_cache,
     _token_cache,
     get_github_user_git_identity,
     get_integration_env_vars,
+    get_provider_credential_id,
     get_provider_token,
+    git_credential_helper_env,
+    grant_to_box,
+    granted_to_box,
     invalidate_user_provider_cache,
+    placeholder_env,
+    placeholder_grants,
+    renew_box_grants,
+    swap_placeholder,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_events import CredentialsChangedEvent
@@ -69,11 +80,13 @@ def clear_caches():
     """Ensure clean caches before and after every test."""
     _token_cache.clear()
     _null_cache.clear()
+    _credential_id_cache.clear()
     _gh_identity_cache.clear()
     _gh_identity_null_cache.clear()
     yield
     _token_cache.clear()
     _null_cache.clear()
+    _credential_id_cache.clear()
     _gh_identity_cache.clear()
     _gh_identity_null_cache.clear()
 
@@ -634,3 +647,180 @@ async def _write_credential_as_another_process() -> list[CredentialsChangedEvent
         register_creds_changed_hook(invalidate_user_provider_cache)
 
     return published
+
+
+class TestPlaceholders:
+    """What a box behind the swap proxy gets instead of a token: a name the
+    proxy resolves, for the same credential the token would have been."""
+
+    older = _github_oauth("older", "tok-older", ["repo", "workflow"])
+    newer = _github_oauth("newer", "tok-newer", ["repo", "read:org"])
+
+    def _manager(self, creds: list) -> MagicMock:
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(return_value=creds)
+        manager.refresh_if_needed = AsyncMock(side_effect=lambda _u, c, **_k: c)
+        return manager
+
+    def test_the_placeholder_is_the_proxys_format(self):
+        assert swap_placeholder("github", "cred-1") == "hsurr:github:cred-1"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_it_grants_the_credential_the_token_would_have_been(self):
+        manager = self._manager([self.older, self.newer])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            scoped = await placeholder_grants(
+                _USER, {"github": frozenset({"repo", "read:org"})}
+            )
+            picked = await placeholder_grants(_USER, selected={"github": "older"})
+            default = await placeholder_grants(_USER)
+        assert scoped == {"github": "newer"}
+        assert picked == {"github": "older"}
+        assert default == {"github": "older"}
+        env = placeholder_env(scoped)
+        assert env["GH_TOKEN"] == env["GITHUB_TOKEN"] == "hsurr:github:newer"
+        assert env["GIT_CONFIG_KEY_0"] == "credential.https://github.com.helper"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_no_stored_value_is_in_it(self):
+        manager = self._manager([self.older, self.newer])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            env = placeholder_env(await placeholder_grants(_USER))
+        for value in env.values():
+            assert "tok-older" not in value and "tok-newer" not in value
+            assert "test-refresh" not in value
+        assert not any("E2B" in name for name in env)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("pick", ["deleted-id", None])
+    async def test_without_a_usable_credential_the_variables_are_set_empty(self, pick):
+        """Set, not left out: a command's variables are laid over the box's
+        own, which may hold another account's placeholder.  git's helper goes
+        with them."""
+        stored = [self.older] if pick else []
+        manager = self._manager(stored)
+        with patch("backend.copilot.integration_creds._manager", manager):
+            grants = await placeholder_grants(
+                "user-without-a-usable-github",
+                selected={"github": pick} if pick else None,
+            )
+        assert grants == {}
+        env = placeholder_env(grants)
+        assert env["GH_TOKEN"] == env["GITHUB_TOKEN"] == ""
+        assert env["GIT_CONFIG_COUNT"] == "0"
+        assert "GIT_CONFIG_KEY_0" not in env
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_grants_are_per_box_and_per_provider(self):
+        store: dict[str, set[str]] = {}
+        ttls: dict[str, int] = {}
+        redis = MagicMock()
+
+        async def sadd(key, member):
+            store.setdefault(key, set()).add(member)
+
+        async def expire(key, seconds):
+            ttls[key] = seconds
+
+        async def smembers(key):
+            return {m.encode() for m in store.get(key, set())}
+
+        redis.sadd, redis.expire, redis.smembers = sadd, expire, smembers
+        with patch(
+            "backend.copilot.integration_creds.get_redis_async",
+            AsyncMock(return_value=redis),
+        ):
+            await grant_to_box("sb-1", {"github": "older"})
+            await grant_to_box("sb-1", {"github": "newer"})
+            assert await granted_to_box("sb-1", "github") == {"older", "newer"}
+            assert await granted_to_box("sb-2", "github") == set()
+            ttls.clear()
+            await renew_box_grants("sb-1")
+        assert set(ttls.values()) == {48 * 3600}
+        assert "e2b:egress:grant:sb-1:github" in ttls
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_token_cached_without_its_id_is_looked_up_again(self):
+        _token_cache[(_USER, _PROVIDER)] = "tok-older"
+        manager = self._manager([self.older])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            assert await get_provider_credential_id(_USER, _PROVIDER) == "older"
+        manager.store.get_creds_by_provider.assert_awaited_once()
+
+    def test_invalidation_drops_the_id_with_the_token(self):
+        _credential_id_cache[(_USER, _PROVIDER)] = "older"
+        invalidate_user_provider_cache(_USER, _PROVIDER)
+        assert (_USER, _PROVIDER) not in _credential_id_cache
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+    def test_git_answers_its_credential_request_with_the_placeholder(self, tmp_path):
+        env = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "GIT_TERMINAL_PROMPT": "0",
+            "GH_TOKEN": "hsurr:github:cred-1",
+            **git_credential_helper_env(),
+        }
+        result = subprocess.run(
+            ["git", "credential", "fill"],
+            input="protocol=https\nhost=github.com\npath=o/r.git\n\n",
+            capture_output=True,
+            text=True,
+            env=env,
+            check=True,
+        )
+        assert "username=x-access-token\n" in result.stdout
+        assert "password=hsurr:github:cred-1\n" in result.stdout
+
+
+class TestGitIdentityGoesThroughRequests:
+    """A host-side call with the real token: through Requests' address checks
+    and redirect rules, not a bare HTTP client."""
+
+    def _response(self, status: int, body: dict) -> MagicMock:
+        response = MagicMock()
+        response.status = status
+        response.json = MagicMock(return_value=body)
+        return response
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_profile_becomes_the_commit_identity(self):
+        get = AsyncMock(
+            return_value=self._response(
+                200, {"name": "Ada", "email": None, "id": 7, "login": "ada"}
+            )
+        )
+        with (
+            patch(
+                "backend.copilot.integration_creds.get_provider_token",
+                AsyncMock(return_value="tok"),
+            ),
+            patch("backend.copilot.integration_creds._GITHUB_API.get", get),
+        ):
+            identity = await get_github_user_git_identity(_USER)
+        assert identity == {
+            "GIT_AUTHOR_NAME": "Ada",
+            "GIT_AUTHOR_EMAIL": "7+ada@users.noreply.github.com",
+            "GIT_COMMITTER_NAME": "Ada",
+            "GIT_COMMITTER_EMAIL": "7+ada@users.noreply.github.com",
+        }
+        url = get.await_args.args[0]
+        assert url == "https://api.github.com/user"
+        assert get.await_args.kwargs["headers"]["Authorization"] == "token tok"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("failure", ["status", "raise"])
+    async def test_a_failed_lookup_yields_no_identity(self, failure):
+        get = (
+            AsyncMock(return_value=self._response(401, {}))
+            if failure == "status"
+            else AsyncMock(side_effect=ValueError("blocked address"))
+        )
+        with (
+            patch(
+                "backend.copilot.integration_creds.get_provider_token",
+                AsyncMock(return_value="tok"),
+            ),
+            patch("backend.copilot.integration_creds._GITHUB_API.get", get),
+        ):
+            assert await get_github_user_git_identity(_USER) is None
