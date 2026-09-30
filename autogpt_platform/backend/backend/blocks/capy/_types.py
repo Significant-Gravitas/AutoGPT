@@ -303,3 +303,12 @@ class Automation(_CapyModel):
             "returns it only when the automation is created."
         ),
     )
+    url: str = Field(
+        default="",
+        description="The automation in the Capy app, with its runs and settings",
+    )
+
+    @model_validator(mode="after")
+    def _add_link(self) -> "Automation":
+        self.url = self.url or f"{APP_URL}/automation/{self.id}"
+        return self

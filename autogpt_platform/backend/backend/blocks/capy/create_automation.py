@@ -150,6 +150,9 @@ class CapyCreateAutomationBlock(Block):
         automation_id: str = SchemaField(
             description="Pass to Capy Set Automation Enabled or Capy Delete Automation"
         )
+        automation_url: str = SchemaField(
+            description="The automation in the Capy app, with its runs and settings"
+        )
         enabled: bool = SchemaField(
             description="Whether it is listening for its trigger"
         )
@@ -185,6 +188,7 @@ class CapyCreateAutomationBlock(Block):
             test_output=[
                 ("automation", TEST_AUTOMATION),
                 ("automation_id", TEST_AUTOMATION.id),
+                ("automation_url", TEST_AUTOMATION.url),
                 ("enabled", True),
             ],
             test_mock={"create_automation": lambda *args, **kwargs: TEST_AUTOMATION},
@@ -228,6 +232,7 @@ class CapyCreateAutomationBlock(Block):
         automation = await self.create_automation(credentials, input_data, trigger)
         yield "automation", automation
         yield "automation_id", automation.id
+        yield "automation_url", automation.url
         yield "enabled", automation.enabled
         if automation.webhook_url:
             yield "webhook_url", automation.webhook_url

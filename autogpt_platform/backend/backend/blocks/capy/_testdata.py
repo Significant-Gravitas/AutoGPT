@@ -116,7 +116,7 @@ TEST_USAGE_REPORT = {
 }
 
 TEST_AUTOMATION = Automation(
-    id="aut_01M3PQ8Z4Y7K2N5R9T1V3X6B8D",
+    id="automation_01M3PQ8Z4Y7K2N5R9T1V3X6B8D",
     project_id=TEST_PROJECT.id,
     name="Fix new Sentry errors",
     prompt=(

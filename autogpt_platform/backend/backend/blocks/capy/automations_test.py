@@ -116,6 +116,7 @@ class TestClient:
         assert automation.max_runs_per_day == 10
         assert automation.run_count == 3
         assert automation.webhook_url is None
+        assert automation.url == "https://capy.ai/automation/aut_01"
 
     async def test_create_sends_one_trigger_with_the_cap_and_model(self):
         client = _client_returning(
