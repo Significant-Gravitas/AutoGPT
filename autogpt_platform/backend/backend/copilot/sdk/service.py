@@ -346,6 +346,9 @@ class _SDKLoopState:
     # error context would be silently dropped.
     stream_error_msg: str | None = None
     stream_error_code: str | None = None
+    # A billing refusal was seen; the loop reads on only to the
+    # ``ResultMessage``, which carries the usage of the rounds already served.
+    provider_refused: bool = False
 
 
 async def _open_sdk_compaction_row(
@@ -432,6 +435,8 @@ async def _consume_sdk_until_done(
 
             # Threshold flips to the long cap while a tool is pending; clock never resets.
             idle_seconds = time.monotonic() - loop_state.last_real_msg_time
+            if loop_state.provider_refused and idle_seconds >= _HEARTBEAT_INTERVAL:
+                break
             threshold = _idle_timeout_threshold(state.adapter)
             if idle_seconds >= threshold:
                 unresolved_tool_names = sorted(
@@ -516,6 +521,12 @@ async def _consume_sdk_until_done(
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
 
+        if loop_state.provider_refused:
+            if isinstance(sdk_msg, ResultMessage):
+                _record_result_usage(sdk_msg, state, ctx.log_prefix)
+                break
+            continue
+
         # Checked before the message reaches the adapter, which would
         # otherwise stream the provider's "buy more credits" text as the reply.
         refusal = _platform_out_of_credits_refusal(sdk_msg, ctx)
@@ -533,7 +544,11 @@ async def _consume_sdk_until_done(
             loop_state.stream_error_msg = PROVIDER_UNAVAILABLE_MESSAGE
             loop_state.stream_error_code = PROVIDER_UNAVAILABLE_CODE
             loop_state.ended_with_stream_error = True
-            break
+            if isinstance(sdk_msg, ResultMessage):
+                _record_result_usage(sdk_msg, state, ctx.log_prefix)
+                break
+            loop_state.provider_refused = True
+            continue
 
         # Log AssistantMessage API errors (e.g. invalid_request)
         # so we can debug Anthropic API 400s surfaced by the CLI.
@@ -672,66 +687,7 @@ async def _consume_sdk_until_done(
             if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
                 raise RuntimeError("Prompt is too long")
 
-            # Capture token usage from ResultMessage.
-            # Anthropic reports cached tokens separately:
-            #   input_tokens = uncached only
-            #   cache_read_input_tokens = served from cache
-            #   cache_creation_input_tokens = written to cache
-            if sdk_msg.usage:
-                # Use `or 0` instead of a default in .get() because
-                # OpenRouter may include the key with a null value (e.g.
-                # {"cache_read_input_tokens": null}) for models that don't
-                # yet report cache tokens, making .get("key", 0) return
-                # None rather than the fallback 0.
-                state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
-                state.usage.cache_read_tokens += (
-                    sdk_msg.usage.get("cache_read_input_tokens") or 0
-                )
-                state.usage.cache_creation_tokens += (
-                    sdk_msg.usage.get("cache_creation_input_tokens") or 0
-                )
-                state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
-                logger.info(
-                    "%s Token usage: uncached=%d, cache_read=%d, "
-                    "cache_create=%d, output=%d",
-                    ctx.log_prefix,
-                    state.usage.prompt_tokens,
-                    state.usage.cache_read_tokens,
-                    state.usage.cache_creation_tokens,
-                    state.usage.completion_tokens,
-                )
-            if sdk_msg.total_cost_usd is not None:
-                # Default: trust the CLI-reported value.  Accurate for
-                # Anthropic models (the CLI's bundled pricing table is
-                # Anthropic-authored), and becomes the sync-path cost
-                # when the reconcile is disabled or fails.
-                # Prefer the ACTUALLY executed model
-                # (``state.observed_model`` from ``AssistantMessage.model``)
-                # over the requested primary (``state.options.model``)
-                # so a fallback activation doesn't mis-route pricing.
-                active_model = state.observed_model or getattr(
-                    state.options, "model", None
-                )
-                if _is_moonshot_model(active_model):
-                    # Moonshot slug — the CLI doesn't know Moonshot's
-                    # rate card and silently bills at Sonnet rates
-                    # (~5x over-charge).  Replace with the rate-card
-                    # estimate so the in-stream ``cost_usd`` and the
-                    # reconcile's lookup-fail fallback reflect
-                    # reality.  Reconcile
-                    # (``record_turn_cost_from_openrouter``) still
-                    # overrides this value when every gen-ID lookup
-                    # succeeds.
-                    state.usage.cost_usd = _override_cost_for_moonshot(
-                        model=active_model,
-                        sdk_reported_usd=sdk_msg.total_cost_usd,
-                        prompt_tokens=state.usage.prompt_tokens,
-                        completion_tokens=state.usage.completion_tokens,
-                        cache_read_tokens=state.usage.cache_read_tokens,
-                        cache_creation_tokens=state.usage.cache_creation_tokens,
-                    )
-                else:
-                    state.usage.cost_usd = sdk_msg.total_cost_usd
+            _record_result_usage(sdk_msg, state, ctx.log_prefix)
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
@@ -1276,6 +1232,69 @@ def _friendly_error_text(raw: str) -> str:
     return f"SDK stream error: {raw}"
 
 
+def _record_result_usage(
+    sdk_msg: ResultMessage, state: "_RetryState", log_prefix: str
+) -> None:
+    """Add the turn's token usage and cost from the CLI's ``ResultMessage``."""
+    # Capture token usage from ResultMessage.
+    # Anthropic reports cached tokens separately:
+    #   input_tokens = uncached only
+    #   cache_read_input_tokens = served from cache
+    #   cache_creation_input_tokens = written to cache
+    if sdk_msg.usage:
+        # Use `or 0` instead of a default in .get() because
+        # OpenRouter may include the key with a null value (e.g.
+        # {"cache_read_input_tokens": null}) for models that don't
+        # yet report cache tokens, making .get("key", 0) return
+        # None rather than the fallback 0.
+        state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
+        state.usage.cache_read_tokens += (
+            sdk_msg.usage.get("cache_read_input_tokens") or 0
+        )
+        state.usage.cache_creation_tokens += (
+            sdk_msg.usage.get("cache_creation_input_tokens") or 0
+        )
+        state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
+        logger.info(
+            "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
+            log_prefix,
+            state.usage.prompt_tokens,
+            state.usage.cache_read_tokens,
+            state.usage.cache_creation_tokens,
+            state.usage.completion_tokens,
+        )
+    if sdk_msg.total_cost_usd is not None:
+        # Default: trust the CLI-reported value.  Accurate for
+        # Anthropic models (the CLI's bundled pricing table is
+        # Anthropic-authored), and becomes the sync-path cost
+        # when the reconcile is disabled or fails.
+        # Prefer the ACTUALLY executed model
+        # (``state.observed_model`` from ``AssistantMessage.model``)
+        # over the requested primary (``state.options.model``)
+        # so a fallback activation doesn't mis-route pricing.
+        active_model = state.observed_model or getattr(state.options, "model", None)
+        if _is_moonshot_model(active_model):
+            # Moonshot slug — the CLI doesn't know Moonshot's
+            # rate card and silently bills at Sonnet rates
+            # (~5x over-charge).  Replace with the rate-card
+            # estimate so the in-stream ``cost_usd`` and the
+            # reconcile's lookup-fail fallback reflect
+            # reality.  Reconcile
+            # (``record_turn_cost_from_openrouter``) still
+            # overrides this value when every gen-ID lookup
+            # succeeds.
+            state.usage.cost_usd = _override_cost_for_moonshot(
+                model=active_model,
+                sdk_reported_usd=sdk_msg.total_cost_usd,
+                prompt_tokens=state.usage.prompt_tokens,
+                completion_tokens=state.usage.completion_tokens,
+                cache_read_tokens=state.usage.cache_read_tokens,
+                cache_creation_tokens=state.usage.cache_creation_tokens,
+            )
+        else:
+            state.usage.cost_usd = sdk_msg.total_cost_usd
+
+
 def _platform_out_of_credits_refusal(
     sdk_msg: object, ctx: "_StreamContext"
 ) -> str | None:
@@ -1290,6 +1309,8 @@ def _platform_out_of_credits_refusal(
         return None
     if isinstance(sdk_msg, AssistantMessage) and sdk_msg.error:
         text = f"{sdk_msg.error} {sdk_msg.content}"
+        if sdk_msg.error == "billing_error":
+            return text
     elif isinstance(sdk_msg, ResultMessage) and (
         sdk_msg.is_error or sdk_msg.subtype in ("error", "error_during_execution")
     ):

@@ -38,53 +38,84 @@ _BILLING_ERROR_CODES = frozenset(
     {"insufficient_quota", "billing_error", "credit_balance_exhausted"}
 )
 
-# Matched case-insensitively against error text, for failures that only reach
-# us as text (the Claude CLI) or whose status was lost in a wrapper. Each one
-# is provider wording; none can appear in the platform's own balance errors.
-_BILLING_ERROR_PATTERNS = (
-    "insufficient_quota",
-    "credit_balance_exhausted",
-    "billing_error",
-    # OpenAI
-    "exceeded your current quota",
-    # Anthropic
-    "credit balance is too low",
+# Anthropic's one refusal with no billing code: a 400 invalid_request_error.
+# Only read from the message field of an Anthropic error body.
+_ANTHROPIC_LOW_BALANCE = "credit balance is too low"
+
+# For failures that only reach us as text: the Claude CLI, which talks to
+# Anthropic or OpenRouter, so only their wording is here. OpenAI's "exceeded
+# your current quota" is not: Gemini uses it for an ordinary 429 rate limit,
+# and OpenAI's real case arrives typed with code insufficient_quota.
+_TEXT_ONLY_PATTERNS = (
+    _ANTHROPIC_LOW_BALANCE,
     # OpenRouter
     "requires more credits",
     "openrouter.ai/settings/credits",
 )
 
-# A bare 402 as the OpenAI SDK, the Claude CLI and httpx render it.
+# A bare 402 as the Claude CLI and httpx render it.
 _BARE_402_RE = re.compile(
     r"(?:error code:|api error:|status code)\s*402\b|\b402 payment required\b"
 )
 
 
 def is_provider_out_of_credits(error: BaseException | str | None) -> bool:
-    """True when a provider refused because the account it bills is empty."""
+    """True when a provider refused because the account it bills is empty.
+
+    A typed SDK error anywhere in the chain is judged on its structured
+    fields alone: its text can quote an upstream (OpenRouter relays Gemini's
+    rate limit verbatim in ``metadata.raw``) or the caller's own input.
+    """
     if error is None:
         return False
-    if isinstance(error, (openai.APIStatusError, anthropic.APIStatusError)):
-        if error.status_code == 402 or _body_names_billing(error.body):
-            return True
-    if isinstance(error, openai.APIError) and error.code in _BILLING_ERROR_CODES:
-        return True
+    if isinstance(error, str):
+        return _text_matches(error)
+    typed = _typed_provider_error(error)
+    if typed is not None:
+        return _typed_error_is_billing(typed)
     return _text_matches(str(error))
 
 
-def _body_names_billing(body: object) -> bool:
+def _typed_provider_error(
+    error: BaseException,
+) -> openai.APIError | anthropic.APIError | None:
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if isinstance(current, (openai.APIError, anthropic.APIError)):
+            return current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def _typed_error_is_billing(error: openai.APIError | anthropic.APIError) -> bool:
+    if isinstance(error, (openai.APIStatusError, anthropic.APIStatusError)):
+        if error.status_code == 402:
+            return True
+    # A mid-stream OpenAI SDK error has no status, only the error object.
+    if isinstance(error, openai.APIError) and error.code in (402, "402"):
+        return True
+    nested = _error_object(error.body)
+    if {nested.get("code"), nested.get("type")} & _BILLING_ERROR_CODES:
+        return True
+    if isinstance(error, anthropic.APIError):
+        message = nested.get("message")
+        return isinstance(message, str) and _ANTHROPIC_LOW_BALANCE in message.lower()
+    return False
+
+
+def _error_object(body: object) -> dict:
     if not isinstance(body, dict):
-        return False
+        return {}
     nested = body.get("error", body)
-    return isinstance(nested, dict) and bool(
-        {nested.get("code"), nested.get("type")} & _BILLING_ERROR_CODES
-    )
+    return nested if isinstance(nested, dict) else {}
 
 
 def _text_matches(text: str) -> bool:
     lower = text.lower()
     return bool(_BARE_402_RE.search(lower)) or any(
-        pattern in lower for pattern in _BILLING_ERROR_PATTERNS
+        pattern in lower for pattern in _TEXT_ONLY_PATTERNS
     )
 
 
