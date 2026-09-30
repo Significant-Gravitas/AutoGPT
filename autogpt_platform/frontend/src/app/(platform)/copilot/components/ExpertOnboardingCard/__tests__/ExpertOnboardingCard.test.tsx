@@ -111,24 +111,45 @@ describe("ExpertOnboardingCard", () => {
     expect(screen.getByText("1 of 2")).toBeDefined();
   });
 
-  it("moves on by itself when an option is tapped", () => {
+  it("waits for Next after an option is tapped", () => {
     renderCard(onboardingPart());
 
     expect(actionButton("Next question").disabled).toBe(true);
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
 
-    // A tap is the whole answer, so the tap is also the page turn.
-    expect(screen.getByText("2 of 2")).toBeDefined();
+    // The tap only selects, leaving room to change or edit the answer.
+    expect(screen.getByText("1 of 2")).toBeDefined();
+    expect(actionButton("Next question").disabled).toBe(false);
+
+    fireEvent.click(actionButton("Next question"));
     expect(
       screen.getByText("Which service should I be connected to?"),
     ).toBeDefined();
+  });
+
+  it("merges edited options into one typed answer", () => {
+    renderCard(onboardingPart());
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit Social listening" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit Campaign briefs" }),
+    );
+
+    expect(
+      (screen.getByRole("textbox") as HTMLTextAreaElement).value,
+    ).toBe("Social listening\nCampaign briefs");
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.getByText("1 of 2")).toBeDefined();
   });
 
   it("will not send until the last step is answered", () => {
     renderCard(onboardingPart());
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
 
     expect(actionButton("Send answers").disabled).toBe(true);
 
@@ -157,6 +178,7 @@ describe("ExpertOnboardingCard", () => {
     const { onSend } = renderCard(onboardingPart());
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
 
     expect(screen.getByText("2 of 2")).toBeDefined();
     fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
@@ -174,6 +196,7 @@ describe("ExpertOnboardingCard", () => {
     renderCard(onboardingPart());
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
     fireEvent.click(actionButton("Previous question"));
 
     expect(screen.getByText("1 of 2")).toBeDefined();
@@ -230,6 +253,7 @@ describe("ExpertOnboardingCard", () => {
     renderCard(onboardingPart(), CALL_ID, onSend);
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
     fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
     fireEvent.click(actionButton("Send answers"));
 

@@ -1165,7 +1165,7 @@ describe("ChainActionCard", () => {
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
-    it("advances to the next question when an option is clicked", () => {
+    it("stays on the question when an option is clicked", () => {
       const request = questionRequest({
         questions: [
           {
@@ -1180,7 +1180,28 @@ describe("ChainActionCard", () => {
 
       fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
       expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
-      expect(screen.getByText("Which format?")).toBeDefined();
+      expect(screen.getByText("Which region?")).toBeDefined();
+      expect(screen.queryByText("Which format?")).toBeNull();
+    });
+
+    it("copies an option into the textarea to edit it", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit Americas" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(document.activeElement).toBe(
+        screen.getByPlaceholderText("Type your answer"),
+      );
+      expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
     });
 
     it("stays on the last question after an option is clicked", () => {

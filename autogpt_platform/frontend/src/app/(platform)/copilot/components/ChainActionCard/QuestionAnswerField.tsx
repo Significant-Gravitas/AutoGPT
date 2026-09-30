@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 import { QuestionOptionList } from "./QuestionOptionList";
 import { isKey } from "@/lib/keyboard";
@@ -13,16 +13,14 @@ interface Props {
   labelId: string;
   autoFocus: boolean;
   onChange: (value: string) => void;
-  /** Only the option list can fire this — free text has no single moment
-   *  where the answer is done. */
-  onPick: (value: string) => void;
   onSubmit: () => void;
 }
 
 /** The answer input for one question: options render as tappable rows with a
  *  trailing "Type something…" escape hatch into free text; questions without
  *  options go straight to the textarea. The options stay on screen while the
- *  user types, so they can write an answer that borrows from several of them.
+ *  user types, and each one can be copied into the textarea to reword it or
+ *  merge it with others.
  *  Mounted per-question — the parent keys this component on the question's
  *  pager id, so the typing toggle resets between questions instead of leaking
  *  across them. */
@@ -32,7 +30,6 @@ export function QuestionAnswerField({
   labelId,
   autoFocus,
   onChange,
-  onPick,
   onSubmit,
 }: Props) {
   const options = question.options ?? [];
@@ -42,9 +39,11 @@ export function QuestionAnswerField({
   // textarea too, but must not steal focus when the card first renders —
   // that is what the pager's autoFocus is for.
   const [toggled, setToggled] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const textarea = (
     <textarea
+      ref={textareaRef}
       required
       rows={options.length > 0 ? 2 : 3}
       aria-labelledby={labelId}
@@ -77,9 +76,14 @@ export function QuestionAnswerField({
     onChange(option);
   }
 
-  function handleOptionPick(option: string) {
-    setTyping(false);
-    onPick(option);
+  // A second edit adds to the draft rather than replacing it, so the user
+  // can build one answer out of several options.
+  function handleOptionEdit(option: string) {
+    const draft = typing && value.trim() ? `${value.trimEnd()}\n${option}` : option;
+    onChange(draft);
+    setToggled(true);
+    setTyping(true);
+    textareaRef.current?.focus();
   }
 
   return (
@@ -90,7 +94,7 @@ export function QuestionAnswerField({
         labelId={labelId}
         focusActiveOption={!typing && (autoFocus || toggled)}
         onChange={handleOptionChange}
-        onPick={handleOptionPick}
+        onEdit={handleOptionEdit}
         onSubmit={onSubmit}
       />
       {typing ? (
