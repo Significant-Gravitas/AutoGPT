@@ -518,8 +518,7 @@ async def test_the_card_offers_the_web_cards_choices_and_each_sets_its_rule(
     assert card.options == [
         "Approve",
         "Approve for this chat",
-        "Let Otto judge from now on",
-        "Always allow",
+        "Let Otto judge in this chat",
         "Reject",
     ]
     assert card.text.startswith("⏸️ **Post a message**")
@@ -540,6 +539,47 @@ async def test_the_card_offers_the_web_cards_choices_and_each_sets_its_rule(
 
     hit = await chat_rules.rule_for(session.session_id, _POST, test_user_id, None)
     assert hit is not None and hit.rule == "allow" and hit.scope == "chat"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
+    one_linked: _Channel, test_user_id, gate_on
+):
+    """Anyone in the channel may click, so no click may change how the owner's
+    own web chats ask."""
+    _, _, first = await _held_card(one_linked, test_user_id)
+    rules = [o for o in first.options if o not in ("Approve", "Reject")]
+    platform = Platform(one_linked.platform.upper())
+    judged_safe = AsyncMock(return_value=MagicMock(allowed=True))
+    redis = await get_redis_async()
+    wider = [
+        chat_rules._scoped_key(scope, test_user_id, None, _POST)
+        for scope in ("expert", "team")
+    ]
+    try:
+        for label in rules:
+            bot, _, card = await _held_card(one_linked, test_user_id, label)
+            await cards.answer_card(
+                platform,
+                one_linked.server_id,
+                one_linked.member,
+                card.token,
+                card.options.index(label),
+            )
+            web = await upsert_chat_session(
+                ChatSession.new(user_id=test_user_id, dry_run=False)
+            )
+            again = {"text": f"again: {label}"}
+            with patch("backend.copilot.gate.supervise", judged_safe):
+                in_bot = await check_action(_POST, again, test_user_id, bot)
+                in_web = await check_action(_POST, again, test_user_id, web)
+
+            assert in_bot.allowed, label
+            assert not in_web.allowed, label
+    finally:
+        # A wider rule outlives the test and would ungate every later one.
+        await redis.delete(*wider)
+    assert rules
 
 
 @pytest.mark.asyncio(loop_scope="session")

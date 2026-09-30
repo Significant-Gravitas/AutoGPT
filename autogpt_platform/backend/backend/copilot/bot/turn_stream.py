@@ -38,6 +38,9 @@ from .text import format_batch, iter_chunks, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
+# What a channel shows for a held call whose card could not be opened.
+_NO_CARD = "⏸️ An action is waiting for approval."
+
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
 
@@ -651,9 +654,9 @@ async def _send_card(
     session_id: str,
     review_id: str,
 ) -> bool:
-    """Post a held call's card as buttons, or, where that fails, a link to
-    answer it in AutoGPT; whether anything went out. Never raises: the turn
-    goes on."""
+    """Post a held call's card as buttons; with no card, or buttons that fail,
+    a link to answer it in AutoGPT. Whether anything went out. Never raises:
+    the turn goes on."""
     try:
         card = await api.open_card(
             ctx.platform, ctx.server_id, ctx.user_id, session_id, review_id
@@ -661,29 +664,26 @@ async def _send_card(
     except Exception:
         logger.exception(f"Could not open a channel card for {review_id}")
         card = None
-    if card is None:
-        return False
-    try:
-        if adapter.supports_choice_buttons and await adapter.send_choice_buttons(
-            target_id,
-            card.text,
-            card.options,
-            card.token,
-            kind=choices.CARD_KIND,
-        ):
-            return True
-    except Exception:
-        logger.exception(f"Card buttons failed on {adapter.platform_name}")
+    if card is not None:
+        try:
+            if adapter.supports_choice_buttons and await adapter.send_choice_buttons(
+                target_id,
+                card.text,
+                card.options,
+                card.token,
+                kind=choices.CARD_KIND,
+            ):
+                return True
+        except Exception:
+            logger.exception(f"Card buttons failed on {adapter.platform_name}")
+    text = card.text if card is not None else _NO_CARD
     session_url = copilot_session_url(session_id)
     try:
         if session_url is None:
-            await adapter.send_message(target_id, card.text)
+            await adapter.send_message(target_id, text)
         else:
             await adapter.send_link(
-                target_id,
-                card.text,
-                link_label="Answer in AutoGPT",
-                link_url=session_url,
+                target_id, text, link_label="Answer in AutoGPT", link_url=session_url
             )
     except Exception:
         logger.exception(f"Card fallback failed on {adapter.platform_name}")

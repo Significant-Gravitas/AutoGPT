@@ -589,17 +589,28 @@ class TestApprovalCards:
         assert adapter.send_link.await_args.kwargs["link_label"] == "Answer in AutoGPT"
 
     @pytest.mark.asyncio
-    async def test_a_card_that_never_went_out_leaves_the_empty_reply_notice(self):
-        """Answered on the web before the card opened, and the turn said nothing
-        else: the channel still hears something."""
+    @pytest.mark.parametrize(
+        "opened",
+        [AsyncMock(return_value=None), AsyncMock(side_effect=RuntimeError("down"))],
+        ids=["no card", "raised"],
+    )
+    async def test_a_card_that_cannot_open_still_posts_the_link_to_answer_it(
+        self, opened
+    ):
         adapter = _choice_adapter()
-        api = _card_api([])
-        api.open_card = AsyncMock(return_value=None)
+        api = _card_api(["I'll post it."])
+        api.open_card = opened
 
-        with _patch_redis():
+        with (
+            _patch_redis(),
+            patch(f"{_MODULE}.copilot_session_url", return_value="https://x/c"),
+        ):
             await TurnStreamer(api).stream_batch(
                 [("Bently", "user-1", "post")], _ctx(), adapter, "42"
             )
 
         adapter.send_choice_buttons.assert_not_awaited()
-        assert "didn't produce a response" in adapter.send_message.await_args.args[1]
+        adapter.send_link.assert_awaited_once()
+        link = adapter.send_link.await_args
+        assert link.args[1] == "⏸️ An action is waiting for approval."
+        assert link.kwargs["link_url"] == "https://x/c"

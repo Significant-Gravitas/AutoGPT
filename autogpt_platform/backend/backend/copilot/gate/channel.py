@@ -1,7 +1,9 @@
 """A held call's card as a linked chat channel shows it, and what a click answers.
 
 The channel says what the web card says — headline, reason, a held read's
-passage — and offers only the choices the web card offers on the same row.
+passage — and offers the web card's choices on the same row, with every rule
+held to this chat: a click in a shared channel must not change how the
+owner's other chats ask.
 """
 
 import logging
@@ -19,23 +21,20 @@ from .review import payload_headline
 
 logger = logging.getLogger(__name__)
 
-Choice = Literal["approve", "approve_chat", "judge", "always_allow", "reject"]
+Choice = Literal["approve", "approve_chat", "judge", "reject"]
 Outcome = Literal["answered", "answered_elsewhere", "expired", "failed"]
 
-# What each choice answers: approved, the rule it sets, and where the rule holds.
-# The rules take the web menu's default scope.
-_ANSWERS: dict[Choice, tuple[bool, chat_rules.ChatRule | None, chat_rules.Scope]] = {
-    "approve": (True, None, "chat"),
-    "approve_chat": (True, "allow", "chat"),
-    "judge": (True, "judge", "expert"),
-    "always_allow": (True, "allow", "expert"),
-    "reject": (False, None, "chat"),
+# What each choice answers: approved, and the rule it sets in this chat.
+_ANSWERS: dict[Choice, tuple[bool, chat_rules.ChatRule | None]] = {
+    "approve": (True, None),
+    "approve_chat": (True, "allow"),
+    "judge": (True, "judge"),
+    "reject": (False, None),
 }
 _RECEIPTS: dict[Choice, str] = {
     "approve": "Approved",
     "approve_chat": "Approved for this chat",
-    "judge": f"Approved, and {AUTOPILOT_NAME} judges it from now on",
-    "always_allow": "Always allowed",
+    "judge": f"Approved, and {AUTOPILOT_NAME} judges it in this chat",
     "reject": "Rejected",
 }
 _PASSAGE_CHARS = 500
@@ -81,7 +80,7 @@ async def answer(
 ) -> Outcome:
     """Answer the row as the web card's approve endpoint does, minus the wake:
     the channel's own next turn carries the result, so its reply lands there."""
-    approved, rule, scope = _ANSWERS[choice]
+    approved, rule = _ANSWERS[choice]
     # Up to the commit a failure leaves the card answerable; after it, the
     # answer stands and only its rule can be lost.
     try:
@@ -111,7 +110,7 @@ async def answer(
                 answered,
                 {review_id: rule},
                 keys,
-                {review_id: scope},
+                {review_id: "chat"},
             )
         except Exception:
             logger.warning(f"Rule from {review_id} not saved", exc_info=True)
@@ -131,9 +130,7 @@ def _offered(payload: dict[str, Any]) -> list[tuple[Choice, str, str]]:
     if "allow" in rules:
         offered.append(("approve_chat", "Approve for this chat"))
     if "judge" in rules:
-        offered.append(("judge", f"Let {AUTOPILOT_NAME} judge from now on"))
-    if "allow" in rules:
-        offered.append(("always_allow", "Always allow"))
+        offered.append(("judge", f"Let {AUTOPILOT_NAME} judge in this chat"))
     offered.append(("reject", "Reject"))
     return [(choice, label, _RECEIPTS[choice]) for choice, label in offered]
 
