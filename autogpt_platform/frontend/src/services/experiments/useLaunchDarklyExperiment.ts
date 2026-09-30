@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { ExperimentEvent } from "@/services/analytics/posthog-events";
 import { environment } from "@/services/environment";
 import { useFlags, useLDClient } from "launchdarkly-react-client-sdk";
 import posthog from "posthog-js";
@@ -63,7 +64,7 @@ export function useLaunchDarklyExperiment(flagKey: string) {
     if (!isResolved || !variant || !userID || !postHogEnabled) return;
     if (!claimExposure(userID, flagKey, variant)) return;
     try {
-      posthog.capture("experiment_exposed", {
+      posthog.capture(ExperimentEvent.EXPERIMENT_EXPOSED, {
         experiment_key: flagKey,
         variant,
         provider: "launchdarkly",

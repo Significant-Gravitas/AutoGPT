@@ -104,8 +104,7 @@ function NewTaskIcon() {
   );
 }
 
-// The stronger active state + grey shell ship with the brain-dump
-// experience; off keeps the original white sidebar.
+// The stronger active state ships with the brain-dump experience.
 function useNavItemClassName() {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   return cn(
@@ -246,7 +245,6 @@ export function AppSidebar(props: Props) {
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
@@ -277,11 +275,7 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className={
-        isBrainDumpEnabled
-          ? "[&_[data-sidebar=sidebar]]:bg-[#F4F4F4]"
-          : "[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
-      }
+      className="[&_[data-sidebar=sidebar]]:bg-[#fafafa]"
     >
       <AppSidebarHeader />
 

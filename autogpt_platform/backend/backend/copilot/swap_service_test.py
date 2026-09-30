@@ -101,6 +101,20 @@ def test_get_swap_bindings_answers(client):
     assert "github" in response.json()
 
 
+@pytest.mark.asyncio
+async def test_health_check_runs_a_query_not_just_the_connected_flag():
+    """``is_connected`` only says an engine object exists, so a wedged one
+    would read healthy."""
+    query = AsyncMock(side_effect=RuntimeError("engine is wedged"))
+    with (
+        patch("backend.copilot.swap_service.db.is_connected", return_value=True),
+        patch("backend.copilot.swap_service.db.query_raw_with_schema", query),
+        pytest.raises(RuntimeError, match="wedged"),
+    ):
+        await SwapCredentialService().health_check()
+    query.assert_awaited_once()
+
+
 def test_a_box_that_is_not_live_is_an_error_not_an_answer(client):
     """The proxy reads an error as "cannot say" and refuses that connection's
     responses; ``None`` would read as "not connected" and pass them on."""
