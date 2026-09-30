@@ -130,18 +130,19 @@ async def test_an_approval_is_consulted_before_the_effect(gate_on, clean_session
 
 @pytest.mark.parametrize(
     "mode, reaches_supervisor",
-    [("auto", True), ("ask_first", False), ("unsupervised", False)],
+    [("auto", True), ("ask_first", True), ("unsupervised", False)],
 )
-async def test_every_shell_command_in_auto_reaches_the_supervisor(
+async def test_every_shell_command_in_a_mode_that_asks_reaches_the_supervisor(
     gate_on, clean_session_state, mode, reaches_supervisor
 ):
+    """Sandbox work in Ask First is judged, not asked."""
     supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
     with patch(f"{_GATE}.supervise", supervisor):
         decision = await check_action(
             "bash_exec", {"command": "ls"}, "u", _session(mode)
         )
     assert supervisor.await_count == int(reaches_supervisor)
-    assert decision.allowed is (mode != "ask_first")
+    assert decision.allowed
 
 
 async def test_a_supervisor_ask_parks_the_call(gate_on, clean_session_state):

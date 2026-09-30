@@ -592,14 +592,13 @@ _CODE = {
 }
 
 
-async def test_a_code_block_in_auto_goes_to_the_supervisor_and_runs_on_a_vouch(
-    gate, ran
-):
+@pytest.mark.parametrize("mode", ["ask_first", "auto"])
+async def test_a_code_block_goes_to_the_supervisor_and_runs_on_a_vouch(gate, ran, mode):
     """Its effect is the code the call carries, so the check reads that code."""
     classify = AsyncMock(return_value=Judgement(allowed=True, reason=""))
     with patch(f"{_GATE}.supervise", classify):
         result = await _run_capability(
-            _session("auto"), ExecuteCodeStepBlock().id, dict(_CODE)
+            _session(mode), ExecuteCodeStepBlock().id, dict(_CODE)
         )
     assert not _is_held(result)
     ran.assert_awaited_once()
@@ -625,16 +624,6 @@ async def test_a_code_block_the_supervisor_cannot_vouch_for_asks_with_its_reason
     args, kwargs = gate.open_review.await_args
     assert args[5] == "it reads a local file of invoices"
     assert kwargs["reason_kind"] == "supervisor"
-
-
-async def test_a_code_block_in_ask_first_asks_without_the_supervisor(gate, ran):
-    classify = AsyncMock(return_value=Judgement(allowed=True, reason=""))
-    with patch(f"{_GATE}.supervise", classify):
-        result = await _run_capability(
-            _session("ask_first"), ExecuteCodeStepBlock().id, dict(_CODE)
-        )
-    assert _is_held(result)
-    classify.assert_not_awaited()
 
 
 async def test_the_reason_names_otto_as_he_even_in_an_experts_chat(gate, ran):
