@@ -95,7 +95,11 @@ from backend.util.e2b_network import (
     create_sandbox,
     forget_sandbox,
 )
-from backend.util.e2b_template import ensure_template, forget_template
+from backend.util.e2b_template import (
+    SUPERSEDED_TEMPLATES,
+    ensure_template,
+    forget_template,
+)
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
 
 logger = logging.getLogger(__name__)
@@ -110,6 +114,7 @@ METADATA_KIND = "autogpt_kind"
 # "attached" when the workspace volumes were mounted, "none" when creation had
 # to fall back to a volume-less box — visible in the E2B dashboard and API.
 METADATA_MOUNTS = "autogpt_mounts"
+METADATA_TEMPLATE = "autogpt_template"
 
 # Per-attempt timeout for AsyncSandbox.create().  E2B normally provisions a
 # sandbox in 5-15 s; 30 s gives generous headroom while ensuring a slow/hung
@@ -477,12 +482,14 @@ async def _try_reconnect(
     *,
     timeout: int | None = None,
     user_id: str | None = None,
+    template: str | None = None,
 ) -> "AsyncSandbox | None":
     """Reconnect to the owner's box, or ``None`` if it is gone.
 
-    Gone means E2B no longer has it, it is stamped for someone else, or it
-    came back not running: the cached id is dropped so a replacement can be
-    created.  Anything else (a 5xx, a network blip) is raised, not swallowed.
+    Gone means E2B no longer has it, it is stamped for someone else, it came
+    back not running, or it runs a superseded image and was retired in favour
+    of *template*: the cached id is dropped so a replacement can be created.
+    Anything else (a 5xx, a network blip) is raised, not swallowed.
     The box may be perfectly fine, and replacing it on a guess would fork
     everything on it that is not in a volume: the screen, running processes,
     installed tools.  *timeout* re-arms the box's running-time limit.
@@ -493,6 +500,11 @@ async def _try_reconnect(
         # wakes anything.  The state read with it says whether this connect is
         # what resumes the box.
         info = await _owned_info(sandbox_id, owner, api_key)
+        if template and await _retire_superseded_box(
+            sandbox_id, info, owner, template, api_key
+        ):
+            await _clear_stored_sandbox_id(owner)
+            return None
         sandbox = await _connect_pinned(
             sandbox_id,
             info,
@@ -522,6 +534,64 @@ async def _try_reconnect(
     # Stale — clear the sandbox_id from Redis so a new one can be created.
     await _clear_stored_sandbox_id(owner)
     return None
+
+
+async def _retire_superseded_box(
+    sandbox_id: str,
+    info: SandboxInfo,
+    owner: SandboxOwner,
+    template: str,
+    api_key: str,
+) -> bool:
+    """Kill the owner's box, unconnected, if it runs a superseded image.
+
+    A new image reaches an owner only through a new box.  Its ``~/workspace``
+    and ``~/shared`` volumes carry over and the rest of its filesystem does
+    not, so a box without them, or with another turn on it, is kept.
+    """
+    stamped = info.metadata or {}
+    built_from = stamped.get(METADATA_TEMPLATE)
+    if (
+        built_from not in SUPERSEDED_TEMPLATES
+        or built_from == template
+        or stamped.get(METADATA_MOUNTS) != "attached"
+        or await _has_active_turns(owner)
+    ):
+        return False
+    try:
+        await asyncio.wait_for(
+            AsyncSandbox.kill(sandbox_id, api_key=api_key),
+            timeout=_E2B_API_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Could not retire %s's box %.12s (%s); keeping it",
+            owner,
+            sandbox_id,
+            exc,
+        )
+        return False
+    await forget_sandbox(sandbox_id)
+    await _forget_owner_state(owner)
+    logger.info(
+        "[E2B] Retired %s's box %.12s: built from %s, replacing it with %s",
+        owner,
+        sandbox_id,
+        built_from,
+        template,
+    )
+    return True
+
+
+async def _has_active_turns(owner: SandboxOwner) -> bool:
+    """Whether another turn is on the owner's box; unknown counts as yes."""
+    if not owner.is_expert:
+        return False
+    try:
+        redis = await get_redis_async()
+        return int(await redis.get(_active_turns_key(owner)) or 0) > 0
+    except Exception:
+        return True
 
 
 async def _resolve_volume_mounts(
@@ -665,7 +735,12 @@ async def get_or_create_owner_sandbox(
             # Existing sandbox ID — try to reconnect (auto-resumes if paused).
             try:
                 sandbox = await _try_reconnect(
-                    value, owner, api_key, timeout=timeout, user_id=user_id
+                    value,
+                    owner,
+                    api_key,
+                    timeout=timeout,
+                    user_id=user_id,
+                    template=template,
                 )
             except Exception as exc:
                 if value in retried_ids:

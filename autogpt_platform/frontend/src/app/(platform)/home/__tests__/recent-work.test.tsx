@@ -4,7 +4,7 @@ import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeD
 import type { HomeRecentWork } from "@/app/api/__generated__/models/homeRecentWork";
 import { server } from "@/mocks/mock-server";
 import { render, screen, within } from "@/tests/integrations/test-utils";
-import HomePage from "../page";
+import { HomeRecap } from "../components/HomeRecap/HomeRecap";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -206,7 +206,7 @@ function mockDashboard(response: HomeDashboardResponse) {
 test("groups the week's runs and deliverables by who did them", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByRole("heading", { name: "Recent work" }),
@@ -263,7 +263,7 @@ test("groups the week's runs and deliverables by who did them", async () => {
 test("puts the team first and the workflows that ran on their own after them", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const heading = await screen.findByRole("heading", { name: "Recent work" });
   const tile = heading.closest("section");
@@ -281,7 +281,7 @@ test("puts the team first and the workflows that ran on their own after them", a
 test("marks a workflow group with its own picture and kind", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await screen.findByRole("heading", { name: "Recent work" });
   const workflowGroup = screen.getByRole("article", {
@@ -299,7 +299,7 @@ test("marks a workflow group with its own picture and kind", async () => {
 test("links each actor to its home and thread work to its session", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await screen.findByRole("heading", { name: "Recent work" });
   const links = screen
@@ -323,7 +323,7 @@ test("shows a calm empty state when agents produced nothing yet", async () => {
     recent_work: { groups: [], total_count: 0 },
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   expect(screen.getByText("0 completed")).toBeDefined();
@@ -334,7 +334,7 @@ test("renders the rest of the page when recent_work is absent", async () => {
   void recent_work;
   mockDashboard(withoutRecentWork as HomeDashboardResponse);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
