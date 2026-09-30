@@ -43,6 +43,20 @@ class Settings:
     egress_allow: list[str] = field(
         default_factory=lambda: _list("SWAP_PROXY_EGRESS_ALLOW")
     )
+    # Credentialed requests (ones that get a value swapped in) per box and per
+    # user in each window; 0 turns a limit off.  Past either, the request is
+    # not sent and the box is told why (``quota.py``).
+    quota_per_box: int = field(
+        default_factory=lambda: int(os.getenv("SWAP_PROXY_QUOTA_PER_BOX", "1000"))
+    )
+    quota_per_user: int = field(
+        default_factory=lambda: int(os.getenv("SWAP_PROXY_QUOTA_PER_USER", "3000"))
+    )
+    quota_window_seconds: int = field(
+        default_factory=lambda: int(
+            os.getenv("SWAP_PROXY_QUOTA_WINDOW_SECONDS", "3600")
+        )
+    )
     redis_host: str = field(
         default_factory=lambda: os.getenv("REDIS_CLUSTER_HOST")
         or os.getenv("REDIS_HOST", "localhost")

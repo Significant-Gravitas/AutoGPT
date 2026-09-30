@@ -12,12 +12,14 @@ import json
 import logging
 from typing import Optional
 
+import fakeredis
 import pytest
 
 from swap_proxy.__main__ import build_master
 from swap_proxy.addon import MAX_BODY_BYTES, SwapProxyAddon
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import CREDENTIAL_KEY_PREFIX, OwnerDirectory
+from swap_proxy.quota import RequestQuota
 from swap_proxy.source import SourceUnavailable
 from swap_proxy.swap import Credential, host_in_list
 
@@ -29,9 +31,14 @@ UPSTREAM_HOST = "localhost"
 class FakeRedis:
     def __init__(self):
         self.store: dict[str, str] = {}
+        self.lua = fakeredis.FakeAsyncRedis()
 
     async def get(self, name):
         return self.store.get(name)
+
+    async def eval(self, script, numkeys, *keys_and_args):
+        # The quota's script, run as Lua.
+        return await self.lua.eval(script, numkeys, *keys_and_args)
 
     def add_box(
         self,
@@ -161,12 +168,13 @@ class Upstream:
 
 
 class Proxy:
-    def __init__(self, redis, source, allow, allow_insecure_swap=True):
+    def __init__(self, redis, source, allow, allow_insecure_swap=True, quota=None):
         self.redis, self.source = redis, source
         self._addon = SwapProxyAddon(
             OwnerDirectory(redis),
             source,
             EgressGuard(allow),
+            quota=quota,
             allow_insecure_swap=allow_insecure_swap,
         )
 
@@ -596,3 +604,31 @@ async def test_gh_style_token_authorization_is_swapped(stack):
     )
     assert upstream.seen[0]["headers"]["authorization"] == f"token {TOKEN_A}"
     assert body_of(raw)["headers"]["authorization"] == "token hsurr:github"
+
+
+async def test_past_its_quota_a_box_reads_why_and_the_provider_sees_nothing(tmp_path):
+    redis, source, upstream = FakeRedis(), FakeSource(), Upstream()
+    await upstream.start()
+    quota = RequestQuota(redis, per_box=1, per_user=0, window=3600)
+    proxy = Proxy(redis, source, allow=["127.0.0.0/8", "::1"], quota=quota)
+    await proxy.start(tmp_path)
+    redis.add_box(*BOX_A, "user-a", "session:s-a")
+    try:
+        replies = [
+            await socks5_request(
+                proxy.port,
+                *BOX_A,
+                UPSTREAM_HOST,
+                upstream.port,
+                http_get(headers=BEARER),
+            )
+            for _ in range(2)
+        ]
+    finally:
+        await proxy.stop()
+        await upstream.stop()
+    assert len(upstream.seen) == 1  # the second never left
+    assert replies[1] is not None
+    assert replies[1].startswith(b"HTTP/1.1 429")
+    assert b"request not sent" in replies[1]
+    assert TOKEN_A.encode() not in replies[1]
