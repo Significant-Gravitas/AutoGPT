@@ -126,6 +126,8 @@ _HEAD_SWAPPED = "swap_proxy_head_swapped"
 # ``request`` answers with.  And whether this flow's request was counted.
 _OVER_QUOTA = "swap_proxy_over_quota"
 _COUNTED = "swap_proxy_counted"
+# The response is the proxy's own answer, not a provider's: nothing to scrub.
+_OWN_ANSWER = "swap_proxy_own_answer"
 # The credentials whose values went into this flow, by name, and the swapped
 # Basic pairs (``RequestSwap.encoded``).
 _SWAPPED = "swap_proxy_swapped"
@@ -622,7 +624,7 @@ class SwapProxyAddon:
     async def response(self, flow: http.HTTPFlow) -> None:
         owner = self._owners.get(flow.client_conn)
         response = flow.response
-        if owner is None or response is None:
+        if owner is None or response is None or flow.metadata.get(_OWN_ANSWER):
             return
         if (
             response.status_code == 101
@@ -738,6 +740,7 @@ class SwapProxyAddon:
             headers["retry-after"] = str(verdict.retry_after)
         status = 429 if verdict.reason == "quota-exceeded" else 503
         flow.response = http.Response.make(status, verdict.message(), headers)
+        flow.metadata[_OWN_ANSWER] = True
 
     def _refuse_response(self, flow: http.HTTPFlow, owner: Owner, reason: str) -> None:
         self._audit(owner, flow.request.pretty_host, "refused-response", reason=reason)

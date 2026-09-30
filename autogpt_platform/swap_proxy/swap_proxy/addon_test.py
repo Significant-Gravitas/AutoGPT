@@ -998,6 +998,24 @@ async def test_past_the_quota_the_box_is_answered_and_nothing_is_sent(
     assert TOKEN not in caplog.text
 
 
+@pytest.mark.parametrize("which", ["down", "bindings_down"])
+async def test_the_quota_answer_reaches_the_box_when_the_backend_is_down(caplog, which):
+    """The answer is the proxy's own text and carries no value, so a backend
+    that cannot vouch for a scrub must not turn it into a dropped connection."""
+    source = Source()
+    flow = tflow.tflow()
+    addon = addon_for(flow, source=source, quota=Quota(OVER))
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+        setattr(source, which, True)
+        await addon.response(flow)
+    assert flow.error is None
+    assert flow.response is not None and flow.response.status_code == 429
+    assert audit(caplog) == [("refused-request", "quota-exceeded")]
+
+
 def h2_get(flow: http.HTTPFlow) -> None:
     """An HTTP/2 GET as ``gh`` or curl sends it: no length, no body."""
     flow.request.http_version = "HTTP/2.0"
