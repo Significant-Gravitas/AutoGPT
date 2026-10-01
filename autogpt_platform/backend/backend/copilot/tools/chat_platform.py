@@ -45,6 +45,11 @@ logger = logging.getLogger(__name__)
 # the tool surface stays the same.
 SUPPORTED_PLATFORMS: tuple[str, ...] = ("discord", "slack", "telegram", "teams")
 
+# A search naming a platform ("discord") keeps a platform tool only when its
+# indexed text names that platform, so each one is indexed by name whatever
+# the description says; "microsoft" for "microsoft teams".
+_PLATFORM_KEYWORDS: tuple[str, ...] = (*SUPPORTED_PLATFORMS, "microsoft")
+
 # Telegram's Bot API can't enumerate a bot's chats, so name→ID resolution is
 # impossible there — posts must target a linked group's numeric chat ID.
 _TELEGRAM_TARGETING_HINT = (
@@ -222,20 +227,24 @@ class PostToChatPlatformTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Post to a linked chat platform (Discord, Slack, Telegram or "
-            "Microsoft Teams). target='dm' sends to the user's own DMs with "
-            "the bot. mode='thread' opens a thread (needs thread_name; "
-            "channels only). 'channel' is a name (#standup) or numeric ID — "
-            "on Telegram, a linked group's numeric chat ID. Teams supports "
-            "target='dm' only; its channels cannot be posted to yet. Pair "
-            "with tool:schedule_followup for recurring posts; call "
+            "Send a message, report or update as the AutoGPT bot to Discord, "
+            "Slack, Telegram or Microsoft Teams where the user linked it; no "
+            "credential needed. target='dm' DMs the user from the bot. "
+            "mode='thread' opens a thread (needs thread_name; channels only). "
+            "'channel' is a name (#standup) or numeric ID — on Telegram, a "
+            "linked group's numeric chat ID. Teams supports target='dm' only. "
+            "Pair with tool:schedule_followup for recurring posts; call "
             "tool:list_chat_platform_channels if a Discord/Slack channel won't "
-            "resolve. Whatever this posts can later be changed with "
-            "tool:edit_chat_platform_message using the channel_id and ref_id it "
-            "returns — for mode='thread' those address the body message "
-            "inside the new thread, so posting again with that channel_id "
+            "resolve. Edit a post later with tool:edit_chat_platform_message "
+            "using the channel_id and ref_id it returns — for mode='thread' "
+            "those address the body message inside the new thread, so posting "
+            "again with that channel_id "
             "continues the thread."
         )
+
+    @property
+    def search_keywords(self) -> tuple[str, ...]:
+        return _PLATFORM_KEYWORDS
 
     @property
     def requires_auth(self) -> bool:
@@ -435,7 +444,7 @@ class EditChatPlatformMessageTool(BaseTool):
             "the bot's replies to anyone, not another user's posts, and not a "
             "long post that was split across several messages. A failure "
             "(message too old, deleted, not yours, or the platform rejecting "
-            "the edit) is always reported, never silent."
+            "the edit) returns an error, never silent."
         )
 
     @property
