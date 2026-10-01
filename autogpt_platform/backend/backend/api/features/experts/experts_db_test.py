@@ -7265,3 +7265,6 @@ async def test_hiring_copies_no_autopilot_mode_and_junk_reads_as_default(
         where={"id": hired.expert.id}, data={"autopilotMode": "not-a-mode"}
     )
     assert await experts_db.get_autopilot_mode(test_user.id, hired.expert.id) is None
+    identities = await experts_db.list_expert_identities(test_user.id)
+    identity = next(item for item in identities if item.id == hired.expert.id)
+    assert identity.autopilot_mode is None

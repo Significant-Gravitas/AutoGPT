@@ -1377,6 +1377,7 @@ async def create_chat_session(
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
     autopilot_mode: AutopilotMode | None = None,
+    inherited_autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1407,6 +1408,11 @@ async def create_chat_session(
             on the session, so a later change to the expert's default never
             rewrites an open thread. Ignored while the approval-mode flag
             is off, like the per-thread override.
+        inherited_autopilot_mode: The mode a delegated thread must start on,
+            already decided by the caller from the parent chat and the
+            target expert (``gate.policy.child_autopilot_mode``). Stored
+            as-is: it is a constraint rather than a pick, so the flag does
+            not drop it and the expert is not read a second time.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1418,7 +1424,7 @@ async def create_chat_session(
             user_id, expert_id
         )
     autopilot_mode = await _resolve_new_session_autopilot_mode(
-        user_id, expert_id, autopilot_mode, origin
+        user_id, expert_id, autopilot_mode, origin, inherited_autopilot_mode
     )
 
     session = ChatSession.new(
@@ -1475,13 +1481,16 @@ async def _resolve_new_session_autopilot_mode(
     expert_id: str | None,
     requested: AutopilotMode | None,
     origin: ChatSessionOrigin,
+    inherited: AutopilotMode | None = None,
 ) -> AutopilotMode | None:
-    """Explicit request > the expert's default > None (platform default).
+    """Inherited > explicit request > the expert's default > None (platform default).
 
     The expert default is for threads a person drives: a routine, a
     scheduled follow-up or a block-opened session is not gated, so it is
     not looked up for one.
     """
+    if inherited is not None:
+        return inherited
     if requested is None and (expert_id is None or origin != "interactive"):
         return None
     if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
@@ -1562,6 +1571,7 @@ async def get_or_create_builder_session(
     graph_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1604,6 +1614,7 @@ async def get_or_create_builder_session(
             builder_graph_id=graph_id,
             organization_id=organization_id,
             team_id=team_id,
+            autopilot_mode=autopilot_mode,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,

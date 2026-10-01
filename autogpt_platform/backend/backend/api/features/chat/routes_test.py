@@ -3954,11 +3954,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         *,
         organization_id: str | None = None,
         team_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            autopilot_mode=autopilot_mode,
         )
 
     mocker.patch(
@@ -4610,3 +4612,24 @@ def test_expert_kickoff_receives_the_picked_mode(
 
     assert response.status_code == 200
     assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "unsupervised"
+
+
+def test_a_builder_session_keeps_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_get_or_create = mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new=AsyncMock(
+            return_value=ChatSession.new(
+                test_user_id, dry_run=False, builder_graph_id="graph-1"
+            )
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"builder_graph_id": "graph-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"

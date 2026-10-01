@@ -114,7 +114,7 @@ def mock_sessions(monkeypatch):
         # Without this the MagicMock answers any origin assertion truthily, so
         # a test for origin propagation would pass with the kwarg dropped.
         sess.metadata.origin = kwargs.get("origin")
-        sess.metadata.autopilot_mode = kwargs.get("autopilot_mode")
+        sess.metadata.autopilot_mode = kwargs.get("inherited_autopilot_mode")
         sess.metadata.handed_off_from_expert_id = kwargs.get(
             "handed_off_from_expert_id"
         )
@@ -225,6 +225,17 @@ class TestDelegatedSessionMode:
             user_id="alice", session=_session(), expert_id="expert-b", prompt="hi"
         )
         assert mock_sessions[0].metadata.autopilot_mode == "ask_first"
+
+    @pytest.mark.asyncio
+    async def test_a_thread_with_nothing_to_inherit_is_pinned_to_the_platform_default(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """Pinned rather than left for the session layer to look up again:
+        a default written to the expert in between must not reach it."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=_session(), expert_id="expert-b", prompt="hi"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "auto"
 
 
 class TestValidation:

@@ -844,6 +844,7 @@ async def create_session(
             builder_graph_id,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            autopilot_mode=autopilot_mode,
         )
     elif expert_kickoff and expert_id is not None:
         session = await get_or_create_expert_kickoff_session(

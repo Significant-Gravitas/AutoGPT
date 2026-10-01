@@ -2277,3 +2277,29 @@ async def test_an_automation_session_never_reads_the_experts_default(
 
     assert session.metadata.autopilot_mode is None
     mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_inherited_mode_is_stored_as_is_without_the_flag_or_a_lookup(
+    mocker: MockerFixture,
+) -> None:
+    """Delegation hands over a constraint, not a pick: it survives the flag
+    being off and never re-reads the expert, so a default written to the
+    expert in between cannot loosen the thread."""
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=False, expert_default="unsupervised"
+    )
+    flag = mocker.patch(
+        "backend.copilot.model.is_feature_enabled", new_callable=mocker.AsyncMock
+    )
+
+    session = await create_chat_session(
+        "owner-1",
+        dry_run=False,
+        expert_id="e-1",
+        inherited_autopilot_mode="ask_first",
+    )
+
+    assert session.metadata.autopilot_mode == "ask_first"
+    flag.assert_not_awaited()
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
