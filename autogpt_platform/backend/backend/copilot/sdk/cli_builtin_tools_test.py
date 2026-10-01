@@ -1,6 +1,7 @@
 """A claude-agent-sdk bump that ships a new CLI built-in fails here until it is classified."""
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,12 @@ from .tool_adapter import get_copilot_tool_names, get_sdk_disallowed_tools
 
 @pytest.mark.parametrize("use_e2b", [False, True])
 @pytest.mark.asyncio
-async def test_cli_offers_only_allowed_tools(use_e2b: bool, tmp_path: Path):
+async def test_cli_offers_only_allowed_tools(
+    use_e2b: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # A run inside Claude Code inherits its CLAUDE_* flags, which change the tool set.
+    for key in [k for k in os.environ if k.startswith("CLAUDE")]:
+        monkeypatch.delenv(key)
     allowed = get_copilot_tool_names(use_e2b=use_e2b)
     offered = await asyncio.wait_for(
         _cli_offered_tools(
@@ -20,7 +26,7 @@ async def test_cli_offers_only_allowed_tools(use_e2b: bool, tmp_path: Path):
         ),
         timeout=60,
     )
-    assert "Task" in offered, offered
+    assert {"Task", "TodoWrite"} <= set(offered), offered
     unclassified = sorted(set(offered) - set(allowed))
     assert not unclassified, (
         f"The bundled Claude CLI offers {unclassified}, which security_hooks "
