@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // after the backend's turn has ended: `/messages/pending` answers 409, and
 // before this guard the fallback started a second `useChat` request on top
 // of the live stream, which froze the answer mid-sentence (SECRT-2772).
+// The session-id mock is static on purpose: the chat host is keyed by
+// session id, so a chat switch unmounts this hook rather than re-rendering
+// it with a new id.
 
 const streamState = vi.hoisted(() => ({
   status: "ready" as "ready" | "submitted" | "streaming" | "error",
@@ -174,6 +177,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
 });
 
 describe("useCopilotPage — follow-up refused by the backend mid-stream", () => {
@@ -281,22 +285,36 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     expect(sendNewMessage).not.toHaveBeenCalled();
   });
 
-  it("hands the text to the next chat's composer if the chat changes while held", async () => {
+  it("shows the held follow-up as a queued chip until it goes out", async () => {
     const { result, rerender } = renderHook(() => useCopilotPage());
     const send = result.current.onSend("and then?");
     await flush();
+    expect(result.current.queuedMessages).toEqual(["and then?"]);
+    expect(
+      window.sessionStorage.getItem("copilot-held-follow-ups:session-1"),
+    ).toBe(JSON.stringify(["and then?"]));
 
-    sessionState.sessionId = "session-2";
     streamState.status = "ready";
     rerender();
     await send;
+    await waitFor(() => expect(result.current.queuedMessages).toEqual([]));
+    expect(window.sessionStorage.length).toBe(0);
+  });
 
-    expect(sendNewMessage).not.toHaveBeenCalled();
+  it("puts a follow-up left behind by a reload back in the composer", async () => {
+    window.sessionStorage.setItem(
+      "copilot-held-follow-ups:session-1",
+      JSON.stringify(["and then?"]),
+    );
+    renderHook(() => useCopilotPage());
+
     await waitFor(() =>
       expect(useCopilotUIStore.getState().initialPrompt).toBe("and then?"),
     );
+    expect(window.sessionStorage.length).toBe(0);
     expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Couldn't send message" }),
+      expect.objectContaining({ title: "Follow-up not sent" }),
     );
+    expect(sendNewMessage).not.toHaveBeenCalled();
   });
 });

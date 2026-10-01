@@ -4,10 +4,15 @@ import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./messageParts";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
+import {
+  forgetHeldFollowUp,
+  rememberHeldFollowUp,
+  takeHeldFollowUps,
+} from "./helpers/heldFollowUps";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -52,12 +57,6 @@ function hasAssistantTail(messages: UIMessage[]) {
     (message) => message.role === "user",
   );
   return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
-}
-
-interface LocalSettleWaiter {
-  sessionId: string;
-  resolve: () => void;
-  reject: (error: Error) => void;
 }
 
 function getLatestKickoffAttemptToken(messages: UIMessage[]) {
@@ -123,7 +122,7 @@ export function useCopilotPage() {
     setKickoffParam,
   ]);
 
-  const { copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { copilotLlmModel, isDryRun, setInitialPrompt } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
@@ -248,33 +247,46 @@ export function useCopilotPage() {
     !isInflightRef.current && !isFinishProbing && !isReconnecting;
   const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
   isLocalStreamSettledRef.current = isLocalStreamSettled;
-  const settleWaitersRef = useRef<LocalSettleWaiter[]>([]);
+  const settleWaitersRef = useRef<Array<() => void>>([]);
   useEffect(() => {
-    const waiters = settleWaitersRef.current;
-    settleWaitersRef.current = [];
-    for (const waiter of waiters) {
-      if (waiter.sessionId !== sessionId) {
-        waiter.reject(
-          new Error("The chat changed before this follow-up could be sent"),
-        );
-      } else if (isLocalStreamSettled) {
-        waiter.resolve();
-      } else {
-        settleWaitersRef.current.push(waiter);
-      }
-    }
-  }, [isLocalStreamSettled, sessionId]);
+    if (!isLocalStreamSettled) return;
+    settleWaitersRef.current.splice(0).forEach((resolve) => resolve());
+  }, [isLocalStreamSettled]);
 
-  function waitForLocalSettle(forSessionId: string) {
+  function waitForLocalSettle() {
     if (isLocalStreamSettledRef.current) return Promise.resolve();
-    return new Promise<void>((resolve, reject) => {
-      settleWaitersRef.current.push({
-        sessionId: forSessionId,
-        resolve,
-        reject,
-      });
+    return new Promise<void>((resolve) => {
+      settleWaitersRef.current.push(resolve);
     });
   }
+
+  // Follow-ups waiting on the settle above. Shown as "Queued" chips beside
+  // the backend-buffered ones, since from the user's side they are the same
+  // thing. Mirrored into sessionStorage: this host is unmounted on a chat
+  // switch and gone on a reload, and the only copy was in memory.
+  const [heldFollowUps, setHeldFollowUps] = useState<string[]>([]);
+  function holdFollowUp(forSessionId: string, text: string) {
+    setHeldFollowUps((prev) => [...prev, text]);
+    rememberHeldFollowUp(forSessionId, text);
+  }
+  function releaseFollowUp(forSessionId: string, text: string) {
+    setHeldFollowUps((prev) => {
+      const index = prev.indexOf(text);
+      return index === -1 ? prev : prev.filter((_, i) => i !== index);
+    });
+    forgetHeldFollowUp(forSessionId, text);
+  }
+  useEffect(() => {
+    if (!sessionId) return;
+    const leftBehind = takeHeldFollowUps(sessionId);
+    if (leftBehind.length === 0) return;
+    setInitialPrompt(leftBehind.join("\n\n"));
+    toast({
+      title: "Follow-up not sent",
+      description:
+        "You left the chat before it could go out. It's back in the composer.",
+    });
+  }, [sessionId, setInitialPrompt]);
 
   // Combine paginated messages with current page messages, merging consecutive
   // assistant UIMessages at the page boundary so reasoning + response parts
@@ -410,15 +422,8 @@ export function useCopilotPage() {
       // midTurnSplit.ts). Hold the follow-up until the local stream has
       // settled, then send it as a normal turn below the finished answer.
       heldForLocalSettle = true;
-      try {
-        await waitForLocalSettle(sessionId);
-      } catch (err) {
-        // The composer that sent this is gone with the old session, so put
-        // the text into the new one's rather than into a rejected promise
-        // nobody is listening to.
-        recoverFailedDeferredSend(trimmed, [], err);
-        return;
-      }
+      holdFollowUp(sessionId, trimmed);
+      await waitForLocalSettle();
     }
 
     // Mark in-flight synchronously before dispatching so a rapid second
@@ -428,7 +433,8 @@ export function useCopilotPage() {
       isInflightRef.current = true;
       isLocalStreamSettledRef.current = false;
     }
-    if (heldForLocalSettle) {
+    if (heldForLocalSettle && sessionId) {
+      releaseFollowUp(sessionId, trimmed);
       // Resolve once dispatched, not when the whole answer has streamed:
       // the composer's enqueue path is waiting on this, and holding it for
       // the entire turn would lock Enter and the queue button again.
@@ -500,7 +506,10 @@ export function useCopilotPage() {
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,
-    queuedMessages,
+    queuedMessages:
+      heldFollowUps.length > 0
+        ? [...queuedMessages, ...heldFollowUps]
+        : queuedMessages,
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,

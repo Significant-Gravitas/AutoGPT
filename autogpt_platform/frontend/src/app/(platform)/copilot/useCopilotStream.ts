@@ -662,6 +662,12 @@ export function useCopilotStream({
   //    not tear down its live SSE stream.
   // ---------------------------------------------------------------------------
   useMountEffect(() => {
+    // Strict Mode runs mount → cleanup → mount in development. Without this
+    // reset the simulated unmount left the flag false for the whole life of
+    // the real mount, so `handleFinish` never cleared `isFinishProbing` and
+    // every consumer gated on it (post-finish hydration, a held follow-up)
+    // stayed stuck after the first turn.
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
