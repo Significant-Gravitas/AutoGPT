@@ -155,15 +155,35 @@ async def test_create_workspace_builds_a_clean_payload():
     assert "reply" not in outputs
 
 
-def test_create_workspace_keeps_the_branch_saved_before_the_rename():
-    defaults = ConductorCreateWorkspaceBlock.Input.get_input_defaults
-    assert defaults({"project_id": "p1", "branch": "dev"}) == {
-        "project_id": "p1",
-        "branch": "dev",
-        "base_branch": "dev",
-    }
-    assert defaults({"branch": "main", "base_branch": "dev"})["base_branch"] == "dev"
-    assert defaults({"project_id": "p1"}) == {"project_id": "p1"}
+def test_create_workspace_input_accepts_the_branch_key_from_before_the_rename():
+    validate = ConductorCreateWorkspaceBlock.Input.model_validate
+    base = {"credentials": TEST_CREDENTIALS_INPUT, "project_id": "p1"}
+    assert validate({**base, "branch": "dev"}).base_branch == "dev"
+    assert (
+        validate({**base, "branch": "main", "base_branch": "dev"}).base_branch == "dev"
+    )
+    assert validate(base).base_branch == ""
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_sends_a_branch_linked_under_the_old_name():
+    """A link wired to the old `branch` pin delivers its value under that key
+    at run time, not through the stored defaults, and must still reach the
+    API and the base_branch output."""
+    block = ConductorCreateWorkspaceBlock()
+    seen: dict[str, Any] = {}
+
+    def create(_creds, payload):
+        seen.update(payload)
+        return {"workspaceId": "ws_1", "sessionId": "s1", "deepLink": "d"}
+
+    mock_block(block, {"_create": create})
+    outputs = await collect(
+        block,
+        {"credentials": TEST_CREDENTIALS_INPUT, "project_id": "p1", "branch": "dev"},
+    )
+    assert seen["branch"] == "dev"
+    assert outputs["base_branch"] == "dev"
 
 
 @pytest.mark.asyncio

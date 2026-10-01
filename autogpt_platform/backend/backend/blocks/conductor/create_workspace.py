@@ -1,6 +1,7 @@
 from typing import Any
 
-from backend.blocks._base import BlockInput
+from pydantic import model_validator
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -105,10 +106,17 @@ class ConductorCreateWorkspaceBlock(Block):
             le=300,
         )
 
+        @model_validator(mode="before")
         @classmethod
-        def get_input_defaults(cls, data: BlockInput) -> BlockInput:
-            # Nodes saved before the input was renamed still carry `branch`.
-            if "base_branch" not in data and data.get("branch"):
+        def _accept_legacy_branch(cls, data: Any) -> Any:
+            # Nodes saved before the input was renamed still carry `branch`,
+            # as a stored default or as the sink of a link. Both reach this
+            # model, so map it here rather than only in the defaults hook.
+            if (
+                isinstance(data, dict)
+                and "base_branch" not in data
+                and data.get("branch")
+            ):
                 return {**data, "base_branch": data["branch"]}
             return data
 
