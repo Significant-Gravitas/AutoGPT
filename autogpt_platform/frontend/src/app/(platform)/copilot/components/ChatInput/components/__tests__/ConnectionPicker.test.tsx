@@ -15,6 +15,9 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { getGetExpertMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import type { Expert } from "@/app/api/__generated__/models/expert";
+
 import { useCopilotUIStore } from "../../../../store";
 import { ConnectionPicker } from "../ConnectionPicker/ConnectionPicker";
 
@@ -144,6 +147,46 @@ describe("ConnectionPicker", () => {
 
     expect(
       await screen.findByRole("button", { name: /Runs on ChatGPT/ }),
+    ).toBeDefined();
+  });
+
+  it("falls in behind the addressed expert's pinned connection", async () => {
+    mockOffers([offer(), chatgpt()]);
+    server.use(
+      getGetExpertMockHandler({
+        id: "expert-1",
+        name: "Maria",
+        llm_auth_provider: "codex",
+        llm_credential_id: "cred-1",
+        llm_route_available: true,
+      } as unknown as Expert),
+    );
+
+    render(<ConnectionPicker expertId="expert-1" />);
+
+    expect(
+      await screen.findByRole("button", { name: /Runs on ChatGPT/ }),
+    ).toBeDefined();
+    // Displayed, not chosen: the server applies the pin when no route is named.
+    expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
+  });
+
+  it("shows the account default for an expert whose pin has gone missing", async () => {
+    mockOffers([offer(), chatgpt()]);
+    server.use(
+      getGetExpertMockHandler({
+        id: "expert-1",
+        name: "Maria",
+        llm_auth_provider: "codex",
+        llm_credential_id: "cred-gone",
+        llm_route_available: false,
+      } as unknown as Expert),
+    );
+
+    render(<ConnectionPicker expertId="expert-1" />);
+
+    expect(
+      await screen.findByRole("button", { name: /AutoGPT Platform/ }),
     ).toBeDefined();
   });
 
