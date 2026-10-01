@@ -793,6 +793,32 @@ async def test_completed_tool_result_cannot_start_a_new_conversation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_closing_while_a_tool_call_is_unanswered_cancels_the_codex_turn() -> None:
+    """Codex has no round cap of its own, so this is what ends a long turn.
+
+    When the CLI reaches ``CHAT_AGENT_MAX_TURNS`` it stops answering tool
+    calls and the service closes the gateway; the Codex loop must stop too.
+    """
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            response = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            _streamed_tool_use_id(_events(await response.text()))
+
+    assert agent_session.cancelled.is_set()
+    assert agent_session.tool_result is None
+
+
+@pytest.mark.asyncio
 async def test_rejects_missing_gateway_capability() -> None:
     transport = _FakeTransport(_FakeAgentSession())
     async with CodexAnthropicGateway(

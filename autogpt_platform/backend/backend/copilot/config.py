@@ -475,9 +475,11 @@ class ChatConfig(BaseSettings):
             "CHAT_CLAUDE_AGENT_MAX_TURNS",
         ),
         description="Maximum number of tool-call rounds per turn — applies to "
-        "both the baseline and Claude Agent SDK paths. Prevents runaway tool "
-        "loops from burning budget. Override via CHAT_AGENT_MAX_TURNS env var "
-        "(legacy CHAT_CLAUDE_AGENT_MAX_TURNS still accepted).",
+        "both the baseline and Claude Agent SDK paths, including Codex models "
+        "on the SDK path, where each Codex function call counts as one round. "
+        "Prevents runaway tool loops from burning budget. Override via "
+        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS "
+        "still accepted).",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,
