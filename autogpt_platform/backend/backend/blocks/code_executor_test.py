@@ -23,8 +23,11 @@ from backend.blocks.code_executor import (
     ProgrammingLanguage,
 )
 from backend.blocks.code_executor_helpers import (
+    MAX_ENV_PAYLOAD_BYTES,
     MAX_VARIABLES_PAYLOAD_BYTES,
     VARIABLES_ENV_KEY,
+    VARIABLES_FILE_ENV_KEY,
+    VARIABLES_FILE_PATH,
     UnsupportedLanguageError,
     build_variable_injection,
 )
@@ -76,13 +79,15 @@ async def _run(block: ExecuteCodeBlock, input_data: ExecuteCodeBlock.Input):
 class TestBuildVariableInjection:
     def test_empty_variables_returns_noop(self):
         """No variables -> no env var, no prepended code (don't touch anything)."""
-        envs, prefix = build_variable_injection({}, ProgrammingLanguage.PYTHON)
-        assert envs == {}
-        assert prefix == ""
+        injection = build_variable_injection({}, ProgrammingLanguage.PYTHON)
+        assert injection.envs == {}
+        assert injection.files == {}
+        assert injection.prefix == ""
 
     def test_python_serializes_to_env_and_unpacks_to_globals(self):
         variables = {"x": 42, "name": "Blake", "items": [1, 2, 3]}
-        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        injection = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs, prefix = injection.envs, injection.prefix
 
         # Data travels in the env var, JSON-encoded then base64-encoded.
         assert envs == {VARIABLES_ENV_KEY: _b64_json(variables)}
@@ -98,9 +103,8 @@ class TestBuildVariableInjection:
 
     def test_javascript_serializes_to_env_and_unpacks_to_globalthis(self):
         variables = {"x": 42, "name": "Blake"}
-        envs, prefix = build_variable_injection(
-            variables, ProgrammingLanguage.JAVASCRIPT
-        )
+        injection = build_variable_injection(variables, ProgrammingLanguage.JAVASCRIPT)
+        envs, prefix = injection.envs, injection.prefix
 
         assert envs == {VARIABLES_ENV_KEY: _b64_json(variables)}
         assert "base64" in prefix
@@ -112,7 +116,8 @@ class TestBuildVariableInjection:
     def test_malicious_value_cannot_break_out_of_code_channel(self):
         """A value that looks like code stays inert: it's only ever JSON data."""
         variables = {"evil": "'); import os; os.system('rm -rf /'); ('"}
-        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        injection = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs, prefix = injection.envs, injection.prefix
         # The dangerous string lives only in the env payload, never in the code.
         assert "os.system" not in prefix
         assert envs[VARIABLES_ENV_KEY] == _b64_json(variables)
@@ -148,12 +153,21 @@ class TestBuildVariableInjection:
         with pytest.raises(ValueError, match="too large"):
             build_variable_injection(big, ProgrammingLanguage.PYTHON)
 
+    def test_payload_over_the_env_limit_goes_to_a_file(self):
+        variables = {"data": "x" * MAX_ENV_PAYLOAD_BYTES}
+        injection = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        assert injection.envs == {VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH}
+        assert json.loads(injection.files[VARIABLES_FILE_PATH]) == variables
+        assert VARIABLES_FILE_ENV_KEY in injection.prefix
+        assert "x" * 100 not in injection.prefix
+
     def test_real_emoji_survives_sanitization_untouched(self):
         """Properly-paired surrogates (real emoji) are valid Unicode and must
         round-trip through the injection helper untouched.
         """
         variables = {"note": "Holidays \U0001f385\U0001f3fb"}
-        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs = build_variable_injection(variables, ProgrammingLanguage.PYTHON).envs
 
         assert _decode_env_payload(envs) == variables
 
@@ -171,7 +185,7 @@ class TestBuildVariableInjection:
         there's nothing left for any downstream layer to misparse.
         """
         variables = {"note": "Holidays \U0001f385\U0001f3fb"}
-        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs = build_variable_injection(variables, ProgrammingLanguage.PYTHON).envs
 
         payload = envs[VARIABLES_ENV_KEY]
         assert "\\u" not in payload
@@ -265,6 +279,42 @@ class TestExecuteCodeBlockRun:
 
         assert any(name == "error" for name, _ in outputs)
         mock.assert_not_called()
+
+
+class TestExecuteCodeWritesFiles:
+    async def test_files_are_written_before_the_code_runs(self):
+        block = ExecuteCodeBlock()
+        calls: list[str] = []
+        execution = MagicMock(error=None, results=[], text="")
+        execution.logs.stdout, execution.logs.stderr = [], []
+
+        async def write(*_):
+            calls.append("write")
+
+        async def run_code(*_, **__):
+            calls.append("run_code")
+            return execution
+
+        sandbox = MagicMock(sandbox_id="sb")
+        sandbox.files.write = AsyncMock(side_effect=write)
+        sandbox.run_code = AsyncMock(side_effect=run_code)
+        with patch(
+            "backend.blocks.code_executor.create_sandbox",
+            AsyncMock(return_value=sandbox),
+        ):
+            await block.execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                envs={VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH},
+                files={VARIABLES_FILE_PATH: b"{}"},
+            )
+
+        assert calls == ["write", "run_code"]
+        sandbox.files.write.assert_awaited_once_with(VARIABLES_FILE_PATH, b"{}")
+        assert sandbox.run_code.await_args.kwargs["envs"] == {
+            VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH
+        }
 
 
 class TestConnectToExistingSandbox:
