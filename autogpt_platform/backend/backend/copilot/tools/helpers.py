@@ -770,8 +770,8 @@ def unattended_missing_credentials_error(
     )
     return ErrorResponse(
         message=(
-            f"{subject} needs a {names} credential and none is connected, so "
-            "this step did not run. Nobody is watching this turn (it was "
+            f"{subject} has no {names} credential connected, so this step "
+            "did not run. Nobody is watching this turn (it was "
             "scheduled), so there is no one to connect one now. Say plainly "
             "in your reply that this step was skipped and that the user needs "
             f"to connect {names} in their integrations before the next run."
