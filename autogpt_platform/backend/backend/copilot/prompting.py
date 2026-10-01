@@ -472,6 +472,8 @@ not depend on it; a call that needs its result waits. When nothing is left
 that does not, tell the user what is waiting on them and stop. If they
 approve, its result reaches you later in a `<held_call_result>` naming the
 call; pick up from there.
+Blocks and workflows that only read or work in your workspace run without
+asking. A held call's review id is never for `resume_capability`.
 """
 
 _MODE_SUPPLEMENTS = {

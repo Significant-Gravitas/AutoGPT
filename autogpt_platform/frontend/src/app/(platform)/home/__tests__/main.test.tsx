@@ -13,7 +13,7 @@ import {
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
-import HomePage from "../page";
+import { HomeRecap } from "../components/HomeRecap/HomeRecap";
 
 const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("posthog-js", () => ({ default: { capture } }));
@@ -234,9 +234,9 @@ function mockDashboard(response: HomeDashboardResponse) {
 test("renders every Home tile from the aggregate API", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
-  expect(await screen.findByText(/Abhi/)).toBeDefined();
+  expect(await screen.findByText("Your recap")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Needs you" })).toBeDefined();
   expect(screen.getByLabelText("1 item needs your attention")).toBeDefined();
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
@@ -270,7 +270,7 @@ test("says which workflow is running now and shows its picture", async () => {
     upcoming_tasks: [],
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const tile = await screen.findByRole("region", { name: "Now & next" });
   expect(within(tile).getByText("Tell me a fact!")).toBeDefined();
@@ -298,7 +298,7 @@ test("shows weekly spend per agent and on the team line", async () => {
     ],
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText(/\$9\.00 this week/)).toBeDefined();
   expect(
@@ -327,7 +327,7 @@ test("falls back to an Unknown badge for an unrecognised agent status", async ()
     ],
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Unknown")).toBeDefined();
 });
@@ -343,7 +343,7 @@ test("approving an item one-tap sends the review decision", async () => {
     }),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("button", {
@@ -380,7 +380,7 @@ test("declining an item records the confirmed decline", async () => {
     }),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("button", {
@@ -426,7 +426,7 @@ test("does not count a failed attention decision as actioned", async () => {
     }),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
   const approveButton = await screen.findByRole("button", {
     name: "Approve: Approve the camera shortlist",
   });
@@ -442,7 +442,7 @@ test("does not count a failed attention decision as actioned", async () => {
 test("keeps a Review deep link alongside the approval shortcuts", async () => {
   mockDashboard({ ...dashboard, attention: [approvalItem] });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const reviewLink = await screen.findByRole("link", { name: "Review" });
   expect(reviewLink.getAttribute("href")).toBe("/library/runs/run-1");
@@ -467,7 +467,7 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
   });
   server.use();
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   // The header already says nothing needs you, so an empty "Needs you"
@@ -485,7 +485,7 @@ test("tracks briefing outcomes and team members with useful dimensions", async (
   mockDashboard(dashboard);
   server.use();
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("link", { name: /Your camera research is ready/ }),
@@ -516,7 +516,7 @@ test("shows a retryable page error when the aggregate cannot load", async () => 
   );
 
   const user = userEvent.setup();
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByText("Your Home briefing could not be loaded"),
@@ -535,22 +535,17 @@ test("does not track home_viewed while feature state is loading", async () => {
   setFlagStatusMock.mockReturnValueOnce({ enabled: true, ready: false });
   server.use();
 
-  render(<HomePage />);
+  render(<HomeRecap />);
   expect(screen.getByLabelText("Loading Home…")).toBeDefined();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(funnelEventNames()).not.toContain("home_viewed");
 });
 
-test("calls notFound when the experts feature is disabled", () => {
-  mockDashboard(dashboard);
+test("hides the recap when the experts feature is disabled", () => {
   setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
-  notFoundMock.mockClear();
-
-  try {
-    render(<HomePage />);
-  } catch {}
-  expect(notFoundMock).toHaveBeenCalled();
+  const { container } = render(<HomeRecap />);
+  expect(container.textContent).toBe("");
 });
 
 test("opens the briefing with the AI-written narrative when there is one", async () => {
@@ -563,7 +558,7 @@ test("opens the briefing with the AI-written narrative when there is one", async
     },
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByText(
@@ -582,7 +577,7 @@ test("bylines the briefing to Otto, not to the expert it reports on", async () =
     },
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const byline = within(await screen.findByTestId("briefing-byline"));
   expect(byline.getByText("Otto")).toBeDefined();
@@ -595,7 +590,7 @@ test("bylines the briefing to Otto, not to the expert it reports on", async () =
 test("renders the briefing unchanged when no narrative was generated", async () => {
   mockDashboard({ ...dashboard, briefing: { ...dashboard.briefing } });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByRole("heading", { name: "Recent work" }),
@@ -607,7 +602,7 @@ test("emits the home_viewed funnel event once the dashboard mounts", async () =>
   server.use();
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await screen.findByRole("heading", { name: "Needs you" });
   await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
@@ -626,7 +621,7 @@ test("view events fire exactly once under StrictMode effect replay", async () =>
 
   render(
     <StrictMode>
-      <HomePage />
+      <HomeRecap />
     </StrictMode>,
   );
 

@@ -2,15 +2,32 @@ import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pen
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
+  type Fact,
   isIdKey,
+  type Reference,
   visibleKeys,
 } from "@/components/organisms/ApprovalFields/helpers";
 import { beautifyString } from "@/lib/utils";
 import { asObject, str } from "../ToolChain/resultHelpers";
 
-export type ReasonKind = "mode" | "subject" | "supervisor" | "rule";
+export type ReasonKind =
+  | "mode"
+  | "subject"
+  | "supervisor"
+  | "rule"
+  | "content"
+  | "spend";
+
+// Microdollars, as the server sends them.
+export interface ApprovalSpend {
+  estimate: number;
+  spent: number;
+  ceiling: number;
+  unit: number;
+}
 
 export type ChatRule = "allow" | "judge";
+export type RuleScope = "chat" | "expert" | "team";
 
 export interface ApprovalItem {
   reviewId: string;
@@ -20,12 +37,23 @@ export interface ApprovalItem {
   toolCallId: string;
   args: Record<string, unknown>;
   fields: { key: string; label: string }[];
+  references: Reference[];
+  // Ids per argument before the server clipped it.
+  referenceTotals: Record<string, number>;
   clipped: string[];
   subject: { kind: string; key: string; name: string; irreversible: boolean };
   blockId: string | null;
   reason: string;
   reasonKind: ReasonKind;
   mode: string | null;
+  // A held read's flagged passage, which the card quotes.
+  passage: string | null;
+  // Over the task's spend ceiling: what this step costs and what approving adds.
+  spend: ApprovalSpend | null;
+  // A held read the check could not assess, so it names no passage.
+  unjudged: boolean;
+  // Who a held read's bytes reach: the chat's Expert, or Otto.
+  reader: string;
   chatRulesAllowed: ChatRule[];
   headline: { ask: string; object: string | null };
   // The argument the headline already names.
@@ -60,6 +88,8 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
         key: String(f.key),
         label: str(f, "label") ?? String(f.key),
       })),
+    references: asArray(payload.references).flatMap(toReference),
+    referenceTotals: toTotals(payload.reference_totals),
     clipped: asArray(payload.clipped).filter(
       (k): k is string => typeof k === "string",
     ),
@@ -73,6 +103,10 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     reason: str(payload, "reason") ?? "",
     reasonKind: (str(payload, "reason_kind") as ReasonKind | null) ?? "mode",
     mode: str(payload, "mode"),
+    passage: str(payload, "passage"),
+    spend: toSpend(payload.spend),
+    unjudged: payload.judged === false,
+    reader: str(payload, "reader") ?? AUTOPILOT_NAME,
     chatRulesAllowed: asArray(payload.chat_rules_allowed).filter(
       (r): r is ChatRule => r === "allow" || r === "judge",
     ),
@@ -87,6 +121,11 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
   };
 }
 
+// A rule on a bare tool covers every call of it, so it is named as an action.
+export function ruleSubjectName(subject: ApprovalItem["subject"]) {
+  return subject.kind === "tool" ? `“${subject.name}”` : subject.name;
+}
+
 // A row the server wrote no headline for still names its tool.
 export function fallbackAsk(toolName: string) {
   return `Run ${beautifyString(toolName.replace(/^run_/, "")).toLowerCase()}`;
@@ -96,14 +135,35 @@ export function approvalCardId(reviewId: string) {
   return `approval-${reviewId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
+// A read held for carrying instructions: releasing it hands the bytes to the model.
+export function isHeldRead(item: ApprovalItem) {
+  return item.reasonKind === "content";
+}
+
 // Said once in the queue header; per card only a reason about this call.
 export function reasonLine(item: ApprovalItem): string | null {
+  if (isHeldRead(item) && item.unjudged)
+    return `${AUTOPILOT_NAME} could not check this, so he asks. ${item.reader} hasn't seen it.`;
+  if (isHeldRead(item))
+    return `It contains instructions aimed at ${item.reader}, so it was held back. ${item.reader} hasn't seen it.`;
   if (!item.reason) return null;
   if (item.reasonKind === "supervisor")
     return `Not sure this is safe: ${item.reason}`;
   if (item.reasonKind === "subject" || item.reasonKind === "rule")
     return item.reason;
   return null;
+}
+
+// Home and an expert's page say a held call's reason in its card's words.
+export function attentionReason(
+  review: PendingHumanReviewModel | null | undefined,
+) {
+  if (!review || !isGateReview(review)) return null;
+  const item = toApprovalItem(review);
+  return {
+    line: reasonLine(item),
+    passage: isHeldRead(item) ? item.passage : null,
+  };
 }
 
 export function modeLabel(mode: string | null) {
@@ -120,11 +180,14 @@ export function modeLine(mode: string | null) {
 }
 
 export function shownFieldKeys(item: ApprovalItem) {
+  // The headline names what was read; its arguments say nothing more.
+  if (isHeldRead(item)) return [];
   return visibleKeys({
     keys: [...item.fields.map((f) => f.key), ...Object.keys(item.args)],
     values: item.args,
     hiddenKeys: item.headlineKeys,
     idsWhenAlone: !item.headline.object,
+    references: item.references,
   });
 }
 
@@ -133,7 +196,8 @@ export function isBare(item: ApprovalItem) {
   return (
     shownFieldKeys(item).length === 0 &&
     !reasonLine(item) &&
-    !item.subject.irreversible
+    !item.subject.irreversible &&
+    !item.spend
   );
 }
 
@@ -146,6 +210,8 @@ export function canApproveAll(items: ApprovalItem[], compact: boolean) {
     (item) =>
       item.subject.key === key &&
       !item.subject.irreversible &&
+      !isHeldRead(item) &&
+      !item.spend &&
       !isIdOnly(item) &&
       (!compact || isBare(item)),
   );
@@ -161,6 +227,70 @@ function isIdOnly(item: ApprovalItem) {
   return !item.headline.object && keys.length > 0 && keys.every(isIdKey);
 }
 
+function toReference(value: unknown): Reference[] {
+  const ref = asObject(value) ?? {};
+  const key = str(ref, "key");
+  const id = str(ref, "id");
+  if (!key || !id) return [];
+  const name = str(ref, "name");
+  return [
+    {
+      key,
+      id,
+      entity: str(ref, "entity") ?? "",
+      name,
+      // A link is only ever built for an id that resolved.
+      href: name ? safeHref(str(ref, "href")) : null,
+      kind: name ? str(ref, "kind") : null,
+      description: name ? str(ref, "description") : null,
+      meta: name ? asArray(ref.meta).flatMap(toFact) : [],
+      avatarURL: name ? str(ref, "avatar_url") : null,
+      avatarColor: name ? str(ref, "avatar_color") : null,
+      skills: name
+        ? asArray(ref.skills).filter((s): s is string => typeof s === "string")
+        : [],
+      summary: name ? str(ref, "summary") : null,
+    },
+  ];
+}
+
+function toFact(value: unknown): Fact[] {
+  const fact = asObject(value) ?? {};
+  const text = str(fact, "text");
+  if (!text) return [];
+  return [
+    {
+      text,
+      cron: str(fact, "cron"),
+      label: str(fact, "label"),
+      at: str(fact, "at"),
+    },
+  ];
+}
+
+// Only an in-app path: the payload is stored data, never a place to send the user.
+// Browsers read a leading /\ as //, a protocol-relative jump off the site.
+export function safeHref(href: string | null) {
+  return href && /^\/[^/\\]/.test(href) ? href : null;
+}
+
+function toTotals(value: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(asObject(value) ?? {}).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
+  );
+}
+
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function toSpend(raw: unknown): ApprovalSpend | null {
+  const spend = asObject(raw);
+  if (!spend) return null;
+  const { estimate, spent, ceiling, unit } = spend;
+  if (![estimate, spent, ceiling, unit].every((n) => typeof n === "number"))
+    return null;
+  return { estimate, spent, ceiling, unit } as ApprovalSpend;
 }
