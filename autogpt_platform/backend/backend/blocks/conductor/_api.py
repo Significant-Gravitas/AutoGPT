@@ -23,7 +23,8 @@ WAIT_GUIDANCE = (
     f"large timeout_seconds (max {MAX_WAIT_SECONDS}) over repeated short "
     "polls or scheduled follow-ups. When timed_out is true the agent is "
     "still working; keep waiting with Conductor Get Session "
-    "(wait_until_idle=true, after=next_after) rather than scheduling a check."
+    "(wait_until_idle=true, after=next_after, prompt_message_id=the prompt's "
+    "message id) rather than scheduling a check."
 )
 TIMEOUT_DESCRIPTION = (
     f"How long to wait, in seconds (max {MAX_WAIT_SECONDS}). " + WAIT_GUIDANCE
@@ -35,7 +36,8 @@ POLL_INTERVAL_DESCRIPTION = (
 NEXT_AFTER_DESCRIPTION = (
     "ID of the last transcript row read while waiting; when timed_out is "
     "true pass it as after to Conductor Get Session with wait_until_idle "
-    "to continue waiting from where this block stopped"
+    "(and the prompt's message id as prompt_message_id) to continue waiting "
+    "from where this block stopped"
 )
 
 # The API serves at most this many rows per list request (larger `limit`
@@ -106,15 +108,16 @@ class SectionAction(str, Enum):
 
 def poll_interval_for(timeout_seconds: int, poll_interval_seconds: int = 0) -> int:
     """The explicit interval, or one scaled with the wait: about one status
-    check per ninetieth of `timeout_seconds`, within the poll bounds and
-    never longer than the wait itself."""
+    check per ninetieth of `timeout_seconds`, within the poll bounds. The
+    wait loop sleeps before each check, so the scaled interval is capped at
+    half the wait to leave room for at least one check in a short wait."""
     if poll_interval_seconds > 0:
         return poll_interval_seconds
     interval = max(
         MIN_POLL_INTERVAL_SECONDS,
         min(MAX_POLL_INTERVAL_SECONDS, timeout_seconds // 90),
     )
-    return max(1, min(interval, timeout_seconds))
+    return max(1, min(interval, timeout_seconds // 2))
 
 
 def clean(payload: dict[str, Any]) -> dict[str, Any]:

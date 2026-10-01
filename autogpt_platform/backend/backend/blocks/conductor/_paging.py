@@ -64,9 +64,12 @@ async def fetch_latest_after(
     """The newest `count` rows after the `after` cursor, oldest first, and
     whether rows between the cursor and the returned slice were skipped.
 
-    Reads forward from the cursor to the end of the transcript (or `cap`
-    rows, or the deadline) keeping only the newest `count`, so a caller that
-    waited out a long turn gets its end without paging through the middle.
+    Reads forward from the cursor to the end of the transcript (or the
+    deadline) keeping only the newest `count`, so a caller that waited out a
+    long turn gets its end without paging through the middle. Once `cap`
+    rows have been read and more follow, the end is located directly instead
+    (every row of that tail is past the cursor, since more than `cap` rows
+    already were and `count` is at most `cap`).
     """
     kept: deque[dict[str, Any]] = deque(maxlen=count)
     skipped = False
@@ -82,8 +85,13 @@ async def fetch_latest_after(
             kept.append(row)
         read += len(rows)
         cursor = str(rows[-1].get("id") or "") if rows else ""
-        if not has_more or not cursor or read >= cap or expired(remaining):
+        if not has_more or not cursor or expired(remaining):
             return list(kept), skipped or has_more
+        if read >= cap:
+            tail, _ = await fetch_tail_at(
+                client, session_id, min(count, cap), remaining
+            )
+            return tail, True
 
 
 async def fetch_tail(

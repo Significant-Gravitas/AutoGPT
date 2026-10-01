@@ -58,9 +58,19 @@ class ConductorGetSessionBlock(Block):
             description="Block until the session is idle or errored before "
             "reading it, instead of polling from outside. Use this to keep "
             "waiting after a Send Message or Create Session wait timed out: "
-            "pass its next_after as after and the newest messages following "
-            "it are returned. Returns at once when the session is already idle.",
+            "pass its next_after as after (the newest messages following it "
+            "are returned) and the prompt's message id as prompt_message_id. "
+            "Returns at once when the session is already idle.",
             default=False,
+            advanced=False,
+        )
+        prompt_message_id: str = SchemaField(
+            description="With wait_until_idle: the message_id (or "
+            "initial_message_id) of the prompt being waited for. Idle is then "
+            "accepted only once that prompt's turn has produced agent output, "
+            "so a session that is idle because the prompt is still queued keeps "
+            "being waited on.",
+            default="",
             advanced=False,
         )
         timeout_seconds: int = SchemaField(
@@ -98,7 +108,7 @@ class ConductorGetSessionBlock(Block):
         has_more: bool = SchemaField(
             description="True when the transcript has messages beyond the returned "
             "slice: older ones by default, newer ones when after is set, and "
-            "with wait_until_idle older ones that followed after"
+            "with wait_until_idle older ones following after"
         )
         next_after: str = SchemaField(
             description="ID of the last returned message; pass it as after to read "
@@ -121,7 +131,8 @@ class ConductorGetSessionBlock(Block):
             "agent is idle, working or errored, and recent transcript messages. "
             "With wait_until_idle it blocks in-tool until the agent finishes, "
             "which is how to keep waiting after a Send Message or Create "
-            "Session wait timed out (after=next_after).",
+            "Session wait timed out (after=next_after, prompt_message_id=the "
+            "prompt's message id).",
             categories={BlockCategory.DEVELOPER_TOOLS},
             effect=BlockEffect.READ,
             input_schema=self.Input,
@@ -172,6 +183,7 @@ class ConductorGetSessionBlock(Block):
                 poll_interval_for(
                     input_data.timeout_seconds, input_data.poll_interval_seconds
                 ),
+                input_data.prompt_message_id,
             )
         else:
             result["status"] = await client.session_status(input_data.session_id)

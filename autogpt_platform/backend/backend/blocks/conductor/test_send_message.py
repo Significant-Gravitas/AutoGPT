@@ -106,6 +106,7 @@ async def test_timed_out_wait_continues_with_get_session_after_next_after():
                 "session_id": "s1",
                 "wait_until_idle": True,
                 "after": sent["next_after"],
+                "prompt_message_id": sent["message_id"],
                 "message_limit": 3,
             },
         )

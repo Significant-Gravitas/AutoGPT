@@ -114,15 +114,19 @@ async def wait_until_idle(
     session_id: str,
     timeout_seconds: float,
     poll_interval_seconds: float,
+    prompt_message_id: str = "",
 ) -> tuple[dict[str, Any], bool]:
     """Poll the session status until it is `idle` or `error`.
 
     Returns the last status read and whether `timeout_seconds` elapsed first.
     The status is checked at once, so a session that is already idle costs a
     single request; as in `wait_for_reply`, no sleep or request outlives the
-    deadline. Unlike `wait_for_reply` this does not know which prompt it is
-    waiting for, so an idle session is taken at its word even if a prompt is
-    still queued.
+    deadline. With `prompt_message_id` (the receipt of the prompt being
+    waited for) `idle` is accepted only once that prompt's turn has produced
+    an agent event beyond its startup ones, exactly as `wait_for_reply`
+    judges it, so a continued wait does not end on a session that is idle
+    because the prompt is still queued. Without it an idle session is taken
+    at its word.
     """
     deadline = time.monotonic() + timeout_seconds
 
@@ -133,15 +137,33 @@ async def wait_until_idle(
     while True:
         try:
             status = await bounded(client.session_status(session_id), remaining)
+            state = str(status.get("status") or "")
+            if state == "error" or (
+                state == "idle"
+                and await _turn_progressed(
+                    client, session_id, prompt_message_id, remaining
+                )
+            ):
+                return status, False
         except TimeoutError:
             return status, True
-        if str(status.get("status") or "") in SETTLED_STATES:
-            return status, False
         if expired(remaining):
             return status, True
         await asyncio.sleep(min(poll_interval_seconds, max(0.0, remaining())))
         if expired(remaining):
             return status, True
+
+
+async def _turn_progressed(
+    client: ConductorClient, session_id: str, receipt_id: str, remaining: Remaining
+) -> bool:
+    """Whether the prompt's turn has an agent event past its startup ones;
+    trivially true when no prompt is being tracked."""
+    if not receipt_id:
+        return True
+    turn = _TurnCollector(receipt_id)
+    await turn.refresh(client, session_id, remaining)
+    return turn.progressed
 
 
 def reply_text(messages: list[dict[str, Any]]) -> str:

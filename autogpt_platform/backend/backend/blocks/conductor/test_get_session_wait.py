@@ -9,7 +9,7 @@ import pytest
 
 from backend.blocks.conductor._api import poll_interval_for
 from backend.blocks.conductor._paging import fetch_latest_after
-from backend.blocks.conductor._transcript import wait_until_idle
+from backend.blocks.conductor._transcript import wait_for_reply, wait_until_idle
 from backend.blocks.conductor.get_session import ConductorGetSessionBlock
 from backend.blocks.conductor.test_fixtures import (
     RECEIPT,
@@ -201,7 +201,9 @@ async def test_fetch_latest_after_reads_to_the_end_when_everything_fits():
         (1800, 0, 20),
         (7200, 0, 60),
         (900, 0, 10),
-        (5, 0, 5),
+        (15, 0, 7),
+        (5, 0, 2),
+        (2, 0, 1),
         (1800, 3, 3),
     ],
 )
@@ -209,3 +211,64 @@ def test_poll_interval_scales_with_the_timeout(
     timeout: int, explicit: int, expected: int
 ):
     assert poll_interval_for(timeout, explicit) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_short_automatic_wait_still_checks_the_session():
+    rows = [user_row("row-prompt", RECEIPT, 1), *claude_turn(RECEIPT, 1, "Quick")]
+    client = wait_client(FakeTranscript(rows), [{"status": "idle"}])
+    with wait_clock(step=0.0):
+        result = await wait_for_reply(client, "s1", RECEIPT, 5, poll_interval_for(5))
+    assert result["timed_out"] is False
+    assert result["reply"] == "Reading.\n\nQuick"
+
+
+@pytest.mark.asyncio
+async def test_wait_until_idle_with_a_prompt_ignores_idle_before_its_turn_starts():
+    """A continued wait must not end on a session that is idle because the
+    prompt is still queued or has only launched the agent."""
+    prompt = user_row("row-prompt", RECEIPT, 1)
+    turn = claude_turn(RECEIPT, 1, "Done")
+    transcript = FakeTranscript([])
+    growth = iter([[], [prompt], turn[:2], turn[2:]])
+    client = wait_client(transcript, [{"status": "idle"}])
+    inner = client.session_status
+    polls = {"n": 0}
+
+    async def status(session_id: str) -> dict[str, Any]:
+        transcript.rows.extend(next(growth, []))
+        polls["n"] += 1
+        return await inner(session_id)
+
+    client.session_status = status
+    with wait_clock():
+        status_read, timed_out = await wait_until_idle(
+            client, "s1", 600, 10, prompt_message_id=RECEIPT
+        )
+    assert timed_out is False
+    assert status_read["status"] == "idle"
+    assert polls["n"] == 4
+
+
+@pytest.mark.asyncio
+async def test_wait_until_idle_with_a_prompt_times_out_while_it_stays_queued():
+    transcript = FakeTranscript([user_row("row-prompt", RECEIPT, 1)])
+    client = wait_client(transcript, [{"status": "idle"}])
+    with wait_clock():
+        _, timed_out = await wait_until_idle(
+            client, "s1", 30, 10, prompt_message_id=RECEIPT
+        )
+    assert timed_out is True
+
+
+@pytest.mark.asyncio
+async def test_fetch_latest_after_falls_back_to_the_tail_past_the_scan_cap():
+    rows = [user_row("row-prompt", RECEIPT, 0)]
+    rows += [
+        agent_row(f"r-{i}", RECEIPT, i, claude_text(f"step {i}")) for i in range(1, 31)
+    ]
+    transcript = FakeTranscript(rows)
+    client = wait_client(transcript, [{"status": "idle"}])
+    kept, skipped = await fetch_latest_after(client, "s1", "row-prompt", 2, cap=10)
+    assert [row["id"] for row in kept] == ["r-29", "r-30"]
+    assert skipped is True

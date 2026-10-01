@@ -6,11 +6,11 @@ Starts a new agent session (chat) in an existing Conductor workspace, optionally
 ## Conductor Create Session
 
 ### What it is
-Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after) rather than scheduling a check.
+Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt; with `wait_for_reply` the block waits the same way as Send Message: it reads the transcript and then the session status on every poll (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the rows with the prompt's turn, treats the session as done only once it is idle after the turn progressed past its startup events, and returns the rows in `messages` with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read). `timeout_seconds` defaults to 30 minutes (max 7200) and `poll_interval_seconds` left at 0 scales with it; a coding agent turn commonly runs 5-30 minutes, so prefer one long wait over short polls or scheduled follow-ups. On `timed_out` the block also returns `next_after`, the last transcript row read: pass it as `after` to Get Session with `wait_until_idle` to keep waiting in one call.
+The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt; with `wait_for_reply` the block waits the same way as Send Message: it reads the transcript and then the session status on every poll (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the rows with the prompt's turn, treats the session as done only once it is idle after the turn progressed past its startup events, and returns the rows in `messages` with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read). `timeout_seconds` defaults to 30 minutes (max 7200) and `poll_interval_seconds` left at 0 scales with it; a coding agent turn commonly runs 5-30 minutes, so prefer one long wait over short polls or scheduled follow-ups. On `timed_out` the block also returns `next_after`, the last transcript row read: pass it as `after`, with `initial_message_id` as `prompt_message_id`, to Get Session with `wait_until_idle` to keep waiting in one call.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,8 +24,8 @@ The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-b
 | effort | Reasoning effort; leave empty for the default | "" \| "none" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" \| "ultra" | No |
 | fast_mode | Enable fast mode | bool | No |
 | name | Session name | str | No |
-| wait_for_reply | After sending the initial prompt, wait until the agent is idle and return its reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after) rather than scheduling a check. | bool | No |
-| timeout_seconds | How long to wait, in seconds (max 7200). Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after) rather than scheduling a check. | int | No |
+| wait_for_reply | After sending the initial prompt, wait until the agent is idle and return its reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check. | bool | No |
+| timeout_seconds | How long to wait, in seconds (max 7200). Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check. | int | No |
 | poll_interval_seconds | Seconds between status checks while waiting; 0 scales it with timeout_seconds (10-60s) | int | No |
 
 ### Outputs
@@ -41,7 +41,7 @@ The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-b
 | messages | Raw transcript messages after the prompt | List[Dict[str, Any]] |
 | timed_out | True when the wait ended before the agent went idle | bool |
 | truncated | True when the turn produced more messages than are kept; messages holds the newest ones and reply may be incomplete | bool |
-| next_after | ID of the last transcript row read while waiting; when timed_out is true pass it as after to Conductor Get Session with wait_until_idle to continue waiting from where this block stopped | str |
+| next_after | ID of the last transcript row read while waiting; when timed_out is true pass it as after to Conductor Get Session with wait_until_idle (and the prompt's message id as prompt_message_id) to continue waiting from where this block stopped | str |
 | error_message | Session error, if any | str |
 
 ### Possible use case
@@ -50,7 +50,7 @@ The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-b
 
 **Split work**: Start one session per sub-task in the same workspace so they share the checkout.
 
-**Kick off and wait**: Start the session with `wait_for_reply` on and a `timeout_seconds` sized to the task; if it times out, continue with Get Session (`wait_until_idle`, `after` = `next_after`) rather than scheduling a check.
+**Kick off and wait**: Start the session with `wait_for_reply` on and a `timeout_seconds` sized to the task; if it times out, continue with Get Session (`wait_until_idle`, `after` = `next_after`, `prompt_message_id` = `initial_message_id`) rather than scheduling a check.
 <!-- END MANUAL -->
 
 ---
