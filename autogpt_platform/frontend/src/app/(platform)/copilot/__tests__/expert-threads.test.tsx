@@ -18,7 +18,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { parseAsString, useQueryState } from "nuqs";
+import { parseAsString, useQueryState, useQueryStates } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
@@ -26,6 +26,7 @@ import { useRecipientPicker } from "../components/EmptySession/useRecipientPicke
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
+import { getNewChatHref } from "@/components/layout/AppSidebar/components/RecentChats/helpers";
 import { useCopilotUIStore } from "../store";
 import { groupSessionsByExpert } from "../useSessionList";
 
@@ -243,6 +244,27 @@ function KeyedSessionHost() {
   return <ExpertSessionHarness key={`chat-host-${sessionId ?? "new"}`} />;
 }
 
+/** Stands in for the sidebar's "New chat with Maria" link: following it
+ *  lands on the href `getNewChatHref` builds, which replaces the whole query
+ *  string, so whatever session was open is dropped along the way. */
+function SidebarNewChatLink() {
+  const [, setParams] = useQueryStates({
+    expertId: parseAsString,
+    sessionId: parseAsString,
+    new: parseAsString,
+  });
+  function follow() {
+    const href = getNewChatHref("expert-maria", new Set(["expert-maria"]));
+    const target = new URL(href ?? "/home", "http://localhost");
+    void setParams({
+      expertId: target.searchParams.get("expertId"),
+      sessionId: target.searchParams.get("sessionId"),
+      new: target.searchParams.get("new"),
+    });
+  }
+  return <button onClick={follow}>New chat with Maria</button>;
+}
+
 const NuqsWrapper = withNuqsTestingAdapter({
   searchParams: "?expertId=expert-maria",
   hasMemory: true,
@@ -443,6 +465,118 @@ describe("useChatSession — expert sessions", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByTestId("session-id").textContent).toBe("none");
     expect(listedSessions).toBe(0);
+  });
+
+  it("opens a fresh expert page from the sidebar + while that expert's chat is running, and again after", async () => {
+    const runningSession = makeSession({
+      id: "s-maria-running",
+      title: "Maria thread",
+      expert_id: "expert-maria",
+      is_processing: true,
+    });
+    let adoptionLookups = 0;
+    const writesToRunningSession: string[] = [];
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        if (new URL(request.url).searchParams.get("expert_id")) {
+          adoptionLookups += 1;
+        }
+        return HttpResponse.json({ sessions: [runningSession], total: 1 });
+      }),
+      http.get("*/api/chat/sessions/s-maria-running", () =>
+        HttpResponse.json({
+          ...runningSession,
+          user_id: "user-1",
+          messages: [],
+          active_stream: { started_at: "2026-01-01T00:00:00Z" },
+        }),
+      ),
+      http.all("*/api/chat/sessions/s-maria-running/*", ({ request }) => {
+        writesToRunningSession.push(`${request.method} ${request.url}`);
+        return HttpResponse.json({});
+      }),
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+        }),
+      ),
+      http.get("*/api/chat/sessions/s-maria-fresh", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          updated_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () =>
+        HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        }),
+      ),
+    );
+    const RunningWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria&sessionId=s-maria-running",
+      hasMemory: true,
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <RunningWrapper>
+          <SidebarNewChatLink />
+          <KeyedSessionHost />
+        </RunningWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.getByTestId("session-id").textContent).toBe(
+      "s-maria-running",
+    );
+
+    // First click: the running thread is dropped for the fresh page, and the
+    // remount must not go looking for Maria's latest thread to re-adopt.
+    fireEvent.click(
+      screen.getByRole("button", { name: "New chat with Maria" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe("none");
+    });
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(adoptionLookups).toBe(0);
+
+    // Start a task on the fresh page, then hit + again: the second fresh page
+    // must not bounce into either Maria thread.
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "s-maria-fresh",
+      );
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "New chat with Maria" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe("none");
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(adoptionLookups).toBe(0);
+    // Leaving the running chat is navigation only: nothing was sent to it.
+    expect(writesToRunningSession).toEqual([]);
   });
 
   it("stays on a fresh session after New Chat instead of re-adopting the expert's thread", async () => {
