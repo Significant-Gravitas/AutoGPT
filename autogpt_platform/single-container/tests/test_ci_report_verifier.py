@@ -198,6 +198,55 @@ class ReportVerifierTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Vulnerabilities=1", result.stdout)
 
+    def add_result(self, name, result):
+        path = self.report_dir / name
+        report = json.loads(path.read_text(encoding="utf-8"))
+        report["Results"].append(result)
+        path.write_text(json.dumps(report), encoding="utf-8")
+
+    def test_clean_secret_results_need_no_type(self):
+        # Trivy keeps a secret result for a file whose findings were all
+        # filtered out by severity or an ignore entry, and never gives it a Type.
+        for name in ("trivy-critical.json", "trivy-secrets.json"):
+            self.add_result(
+                name,
+                {
+                    "Target": "/app/vendor/extractor.py",
+                    "Class": "secret",
+                    "Secrets": [],
+                },
+            )
+
+        result = self.run_verifier()
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_secret_findings_are_rejected(self):
+        self.add_result(
+            "trivy-secrets.json",
+            {
+                "Target": "/app/leak.py",
+                "Class": "secret",
+                "Secrets": [{"RuleID": "aws-access-key-id"}],
+            },
+        )
+
+        result = self.run_verifier()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Secrets=1", result.stdout)
+
+    def test_package_result_without_type_is_rejected(self):
+        self.add_result(
+            "trivy-critical.json",
+            {"Target": "Python", "Class": "lang-pkgs", "Vulnerabilities": []},
+        )
+
+        result = self.run_verifier()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("result is missing Type", result.stdout)
+
     def test_non_trivy_json_is_rejected(self):
         (self.report_dir / "trivy-secrets.json").write_text("{}", encoding="utf-8")
 

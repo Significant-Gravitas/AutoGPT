@@ -33,7 +33,6 @@ def test_the_table_names_no_tool_that_does_not_exist():
         ("bash_exec", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
         ("delete_folder", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
         ("post_to_chat_platform", Verdict.ASK, Verdict.ASK, Verdict.RUN),
-        ("run_agent", Verdict.RUN, Verdict.RUN, Verdict.RUN),
     ],
 )
 def test_each_modes_column(tool, ask_first, auto, unsupervised):
@@ -57,10 +56,9 @@ def test_questions_to_the_user_and_completions_are_never_gated(tool):
 
 
 @pytest.mark.parametrize("tool", ["run_capability", "run_agent"])
-def test_capability_and_workflow_runs_stay_on_the_irreversible_pause(tool):
-    """They get a subject the mode can decide on in L5a; until then the
-    irreversible-action pause is their gate."""
-    assert effect_for(tool) is Effect.UNGATED
+def test_a_run_without_a_subject_is_unreadable(tool):
+    """Their subject decides; if resolving it is ever skipped, they ask."""
+    assert effect_for(tool) is Effect.EXTERNAL
 
 
 def test_retired_tool_names_are_gone():

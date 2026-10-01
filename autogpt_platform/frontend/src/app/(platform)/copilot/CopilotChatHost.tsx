@@ -42,6 +42,7 @@ export function CopilotChatHost({
     queuedMessages,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     isCreatingSession,
     isUploadingFiles,
     pendingSend,
@@ -87,6 +88,7 @@ export function CopilotChatHost({
           sessionAutopilotMode={sessionAutopilotMode}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
+          isSessionNotFound={isSessionNotFound}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
           isFinishProbing={isFinishProbing}
