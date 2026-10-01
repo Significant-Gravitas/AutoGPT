@@ -258,6 +258,19 @@ describe("trackAdsConversionBeforeNavigation", () => {
     expect(navigate).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("navigates straight away when the tag throws", async () => {
+    window.gtag = () => {
+      throw new Error("tag broke");
+    };
+
+    const navigate = navigateAfterConversion();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(trackAdsConversion("begin_checkout")).toBe(false);
+  });
 });
 
 describe("trackAdsPageView", () => {
