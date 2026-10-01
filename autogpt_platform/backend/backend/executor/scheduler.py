@@ -1639,6 +1639,13 @@ class GraphExecutionJobArgs(BaseModel):
     # every execution this schedule fires. Optional for backward compat
     # with rows persisted before expert attribution.
     expert_id: str | None = None
+    # Written on every pause: True when the archive flow parked the job,
+    # False when anyone else did. ``reattach_expert_triggers`` resumes only
+    # the marked set, so a schedule the user had paused herself stays
+    # paused across re-hire — the schedule-side equivalent of the preset
+    # guard ``AgentPreset.deactivatedByExpertArchive``. Optional for
+    # backward compat with rows persisted before the marker existed.
+    paused_by_expert_archive: bool = False
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -2418,7 +2425,9 @@ class Scheduler(AppService):
         return job, info
 
     @expose
-    def pause_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+    def pause_execution_schedule(
+        self, schedule_id: str, user_id: str, by_expert_archive: bool = False
+    ) -> bool:
         """Suspend a schedule without discarding it.
 
         APScheduler persists a pause as ``next_run_time = NULL``, which
@@ -2426,12 +2435,25 @@ class Scheduler(AppService):
         disappears from every read path while keeping its trigger, inputs
         and credentials intact for ``resume_execution_schedule``. Returns
         False when it was already paused, so callers don't double-log.
+
+        Every successful pause also records *who* parked the job in its
+        kwargs (``paused_by_expert_archive``): the expert archive flow
+        passes ``by_expert_archive=True`` so re-hire can resume exactly
+        the schedules it paused and no others. The early return above is
+        load-bearing — an already-paused job keeps the marker of whoever
+        paused it first, which is what stops the archive sweep from
+        claiming a schedule the user had deliberately switched off.
         """
         job, info = self._authorized_job(schedule_id, user_id, action="pause")
         if job.next_run_time is None:
             return False
         logger.info(f"Pausing job {schedule_id} (kind={info.kind})")
         self.scheduler.pause_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        self.scheduler.modify_job(
+            schedule_id,
+            jobstore=Jobstores.EXECUTION.value,
+            kwargs={**job.kwargs, "paused_by_expert_archive": by_expert_archive},
+        )
         self._invalidate_jobs_cache()
         return True
 

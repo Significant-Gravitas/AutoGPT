@@ -306,7 +306,11 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
     scheduler = get_scheduler_client()
     for schedule in await _get_expert_schedules(user_id, expert_id):
         try:
-            await scheduler.pause_schedule(schedule.id, user_id=user_id)
+            # Marked so re-hire can tell this pause apart from one the
+            # user made herself: only the archive's own pauses resume.
+            await scheduler.pause_schedule(
+                schedule.id, user_id=user_id, by_expert_archive=True
+            )
         except Exception as e:
             # A schedule that refuses to pause keeps firing, so the run-time
             # gate is what actually stops it. Log by id so the survivor is
@@ -389,8 +393,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     reactivate the presets archiving deactivated (never ones the user had
     turned off themselves) and resume the schedules archiving paused.
 
-    Resume is by expert attribution, the same key the pause used, so every
-    schedule comes back regardless of who created it. APScheduler recomputes
+    Resume is scoped to the schedules archiving itself paused (they carry
+    ``paused_by_expert_archive`` on the job). A schedule the user had
+    deliberately paused stays paused across re-hire, the same distinction
+    ``deactivatedByExpertArchive`` draws for presets. APScheduler recomputes
     the next fire from the trigger, so a long-archived expert resumes at her
     next cadence rather than replaying every run she missed.
     """
@@ -422,6 +428,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     for schedule in await _get_expert_schedules(
         user_id, expert_id, include_paused=True
     ):
+        # Only the archive's own pauses come back. Schedules paused by the
+        # user (or by a workflow removal) carry no marker and stay parked.
+        if not schedule.paused_by_expert_archive:
+            continue
         try:
             await scheduler.resume_schedule(schedule.id, user_id=user_id)
         except Exception as e:
