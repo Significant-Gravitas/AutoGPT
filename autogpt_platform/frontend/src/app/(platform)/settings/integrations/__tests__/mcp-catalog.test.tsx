@@ -81,6 +81,39 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     ).toBeDefined();
   });
 
+  test("opens OpenSEO on its cloud server and lets self-hosters change the URL", async () => {
+    const catalog: ProviderMetadata[] = JSON.parse(
+      readFileSync(
+        resolve("../backend/backend/integrations/mcp_catalog.json"),
+        "utf8",
+      ),
+    );
+    const openseo = catalog.find((entry) => entry.name === "mcp_openseo");
+    expect(openseo).toBeDefined();
+    server.use(getGetV1ListProvidersMockHandler([openseo!]));
+
+    render(<SettingsIntegrationsPage />);
+    const row = await screen.findByRole("button", { name: /openseo.*mcp/i });
+    expect(within(row).queryByText("Setup required")).toBeNull();
+    fireEvent.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://app.openseo.so/mcp");
+    expect(input.readOnly).toBe(false);
+    fireEvent.change(input, {
+      target: { value: "https://openseo.example.workers.dev/mcp" },
+    });
+    expect(input.value).toBe("https://openseo.example.workers.dev/mcp");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
+    await waitFor(() => {
+      expect(oauthRequest).toHaveBeenCalledWith({
+        server_url: "https://openseo.example.workers.dev/mcp",
+      });
+    });
+  });
+
   test("lists native providers and branded MCP entries together", async () => {
     render(<SettingsIntegrationsPage />);
     expect(

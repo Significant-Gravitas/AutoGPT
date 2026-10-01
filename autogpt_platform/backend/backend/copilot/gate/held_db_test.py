@@ -160,7 +160,7 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
 ):
     """Long enough that the card shows a clipped copy: the run gets the whole."""
     session = await _new_session(test_user_id)
-    text = "hello team " + "x" * 5_000
+    text = "hello team " + "x" * 30_000
     review_id = await _hold(session, test_user_id, text)
     await _answer(review_id, ReviewStatus.APPROVED)
 
@@ -191,7 +191,7 @@ async def test_a_call_whose_card_could_not_open_leaves_nothing_held(
 ):
     session = await _new_session(test_user_id)
 
-    with patch.object(review_store, "open_review", AsyncMock(return_value=False)):
+    with patch.object(review_store, "open_review", AsyncMock(return_value=None)):
         decision = await check_action(
             _TOOL, {"text": "no card"}, test_user_id, session, tool_call_id="c1"
         )
@@ -242,7 +242,7 @@ async def test_a_lost_held_call_the_card_cannot_rebuild_asks_for_a_resend(
 ):
     """The card holds a clipped copy, which must never run in the call's place."""
     session = await _new_session(test_user_id)
-    review_id = await _hold(session, test_user_id, "clipped " + "x" * 5_000)
+    review_id = await _hold(session, test_user_id, "clipped " + "x" * 30_000)
     await _approve_after_losing_the_held_call(session, test_user_id, review_id)
 
     [delivered] = await held.resolve_answered(test_user_id, session)
@@ -414,7 +414,9 @@ async def test_a_rejection_never_runs_and_the_tool_asks_from_then_on(
     assert post_tool.runs == []
     assert "declined" in delivered[0].content
     assert delivered[0].metadata["held_call"]["outcome"] == "rejected"
-    assert await chat_rules.ask_reason(session.session_id, _TOOL) == chat_rules.DECLINED
+    assert await chat_rules.rule_for(
+        session.session_id, _TOOL, test_user_id, None
+    ) == chat_rules.RuleHit(rule="ask")
 
 
 @pytest.mark.asyncio(loop_scope="session")

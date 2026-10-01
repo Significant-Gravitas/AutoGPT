@@ -8,6 +8,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -171,6 +172,7 @@ class GithubGetCIResultsBlock(Block):
                     "total_count": 1,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

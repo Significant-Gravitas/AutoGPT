@@ -10,6 +10,7 @@ import {
   humanize,
   lineCount,
   listText,
+  REDACTED,
   scalarText,
 } from "../helpers";
 
@@ -27,11 +28,7 @@ export function FieldValue({ name, value, clipped }: Props) {
 
   switch (kind) {
     case "secret":
-      return (
-        <span className="text-zinc-500">
-          <span aria-hidden="true">•••••••• </span>hidden
-        </span>
-      );
+      return <Hidden />;
     case "code":
       return (
         <pre
@@ -59,7 +56,13 @@ export function FieldValue({ name, value, clipped }: Props) {
             <div key={k} className="contents">
               <dt className="text-zinc-500">{humanize(k)}</dt>
               <dd className="min-w-0">
-                {Array.isArray(v) ? listText(v) : scalarText(v)}
+                {v === REDACTED ? (
+                  <Hidden />
+                ) : Array.isArray(v) ? (
+                  listText(v)
+                ) : (
+                  scalarText(v)
+                )}
               </dd>
             </div>
           ))}
@@ -95,7 +98,14 @@ function LongText({ text, shortened }: LongTextProps) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col items-start gap-1">
-      <div className="w-full rounded-lg bg-zinc-50 px-3 py-2">
+      <div
+        tabIndex={open ? 0 : undefined}
+        className={cn(
+          "w-full rounded-lg bg-zinc-50 px-3 py-2",
+          open &&
+            "max-h-96 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300",
+        )}
+      >
         <p
           className={cn("whitespace-pre-wrap", !open && "line-clamp-3")}
           style={{ WebkitLineClamp: open ? undefined : CLAMP_LINES }}
@@ -117,5 +127,13 @@ function LongText({ text, shortened }: LongTextProps) {
         </Button>
       )}
     </div>
+  );
+}
+
+function Hidden() {
+  return (
+    <span className="text-zinc-500">
+      <span aria-hidden="true">•••••••• </span>hidden
+    </span>
   );
 }

@@ -1,7 +1,5 @@
 "use client";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   Flag,
@@ -11,7 +9,6 @@ import {
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { CategoryFilter } from "../CategoryFilter/CategoryFilter";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
-import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { SkillsList } from "../SkillsList/SkillsList";
@@ -27,7 +24,6 @@ export const MainMarkeplacePage = () => {
   const {
     featuredAgents,
     topAgents,
-    featuredCreators,
     category,
     setCategory,
     isLoading,
@@ -102,9 +98,6 @@ export const MainMarkeplacePage = () => {
               <div className="mb-20" id={AGENTS_SECTION_ID}>
                 <AgentsSection
                   sectionTitle="All AI Workflows"
-                  titleIcon={
-                    <Icon icon={UserAiIcon} size="2.2rem" aria-hidden />
-                  }
                   subtitle="Ready-made automations from the community."
                   agents={topAgents.agents}
                 >
@@ -119,11 +112,6 @@ export const MainMarkeplacePage = () => {
               </div>
             )}
           </>
-        )}
-        {featuredCreators && (
-          <div className="mb-4">
-            <FeaturedCreators featuredCreators={featuredCreators.creators} />
-          </div>
         )}
         {/* The expert layout invites publishing from under the workflows
             shelf instead, where it cannot outshout the shelf itself. */}

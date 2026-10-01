@@ -3,7 +3,8 @@
 One test per engine, driven through the engine's real entry point and stopped
 at the fold: removing the fold from one engine turns only that engine's test
 red. The held call itself runs inside ``resolve_answered``, so each test also
-proves the turn's execution context is set before it runs.
+proves the turn's execution context — the chat whose ceiling an approval
+raises included — is set before it runs.
 """
 
 import contextlib
@@ -12,12 +13,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.baseline.service import stream_chat_completion_baseline
-from backend.copilot.context import get_execution_context, set_execution_context
+from backend.copilot.context import (
+    get_current_envelope,
+    get_execution_context,
+    set_execution_context,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.sdk.expert_tool_gate_test import _make_patches, _make_session
 from backend.copilot.sdk.tool_adapter import cap_late_tool_result
+from backend.copilot.tree import root_envelope
 
 _RESULT = PendingMessage(
     content='<held_call_result tool="post_to_chat_platform">posted</held_call_result>'
@@ -36,11 +42,17 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
     folded: list[list[PendingMessage]] = []
 
     caps: list[object] = []
+    chats: list[str | None] = []
 
     async def resolve(*_args, **kwargs):
         order.append("resolve")
         caps.append(kwargs.get("cap"))
+        chats.append(getattr(get_current_envelope(), "spend_session_id", None))
         return [_RESULT]
+
+    def set_context(*args, **kwargs):
+        order.append("context")
+        set_execution_context(*args, **kwargs)
 
     async def persist(_session, _builder, pending, **_kwargs):
         folded.append(list(pending))
@@ -48,13 +60,14 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
 
     patches, _, _ = _make_patches(hire_experts_enabled=False)
     session = _make_session()
+    envelope = root_envelope("turn-2", session_id=session.session_id)
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:
             stack.enter_context(patch(target, **kwargs))
         context = stack.enter_context(
             patch(
                 "backend.copilot.sdk.service.set_execution_context",
-                side_effect=lambda *a, **k: order.append("context"),
+                side_effect=set_context,
             )
         )
         stack.enter_context(
@@ -73,14 +86,17 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
                 is_user_message=True,
                 user_id="test-user",
                 session=session,
+                envelope=envelope,
             ):
                 pass
+        set_execution_context(None, None)
 
     context.assert_called()
     assert order.index("context") < order.index("resolve")
     assert folded == [[_RESULT]]
     # A late result is cut by the same rule as a direct MCP tool result.
     assert caps == [cap_late_tool_result]
+    assert chats == [session.session_id]
 
 
 @pytest.mark.asyncio
@@ -88,10 +104,12 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
     session = ChatSession.new("user-1", dry_run=False)
     session.title = "already titled"
     seen_context: list[tuple[str | None, ChatSession | None]] = []
+    chats: list[str | None] = []
     sent: list[list[dict]] = []
 
     async def resolve(*_args, **_kwargs):
         seen_context.append(get_execution_context())
+        chats.append(getattr(get_current_envelope(), "spend_session_id", None))
         return [_RESULT]
 
     persist = AsyncMock(return_value=True)
@@ -144,6 +162,7 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
                 is_user_message=False,
                 user_id="user-1",
                 session=session,
+                envelope=root_envelope("turn-2", session_id=session.session_id),
             ):
                 pass
         except Exception:
@@ -152,6 +171,7 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
             set_execution_context(None, None)
 
     assert seen_context == [("user-1", session)]
+    assert chats == [session.session_id]
     assert len(sent) == 1
     assert sent[0][-1] == {"role": "user", "content": _RESULT.content}
     # The uploaded transcript must carry it too, or the next turn loses it.

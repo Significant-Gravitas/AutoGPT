@@ -38,7 +38,7 @@ pass ``True``, so no leaf is created in production).
 """
 
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -46,12 +46,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.copilot.active_turns import MAX_TURN_LIFETIME_SECONDS
 from backend.copilot.config import ChatConfig
+from backend.copilot.context import get_current_envelope
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.rate_limit import get_global_rate_limits, get_remaining_usd_budget
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# One credit is $0.01.
+MICRODOLLARS_PER_CREDIT = 10_000
 
 # One bound for every spawn kind; ``expert_delegation`` re-exports it as the
 # chain bound. The provenance walk there only counts cross-expert hops — this
@@ -106,6 +111,11 @@ ISOLATE_DENIED_TOOLS: frozenset[str] = frozenset(
 )
 
 _LEDGER_KEY_PREFIX = "copilot:tree:"
+# A chat's spend ledger: what a paid read is gated on, across every turn of it.
+_CHAT_LEDGER_KEY_PREFIX = "copilot:chat-spend:"
+# Idle lifetime, re-armed on every charge; the held calls a raise answers live as long.
+CHAT_LEDGER_TTL_SECONDS = 30 * 24 * 3600
+_DAILY_CHAT_LEDGER_TTL_SECONDS = 2 * 24 * 3600
 
 # All-or-nothing tree creation. ``HSETNX`` per field is not equivalent: it
 # leaves a window where another caller sees some fields and not others, and
@@ -149,6 +159,8 @@ class TurnEnvelope(BaseModel):
     # None = unrestricted root. A child always carries a concrete set.
     tools: frozenset[str] | None = None
     deadline_at: datetime | None = None
+    # The chat whose spend ceiling this tree's paid calls count against.
+    spend_session_id: str | None = None
 
     def permits(self, tool_name: str) -> bool:
         return self.tools is None or tool_name in self.tools
@@ -191,8 +203,12 @@ class SpawnRequest(BaseModel):
     born_tainted: bool = False
 
 
-def root_envelope(turn_id: str, *, tainted: bool = False) -> TurnEnvelope:
-    return TurnEnvelope(tree_id=turn_id, depth=0, tainted=tainted)
+def root_envelope(
+    turn_id: str, *, tainted: bool = False, session_id: str | None = None
+) -> TurnEnvelope:
+    return TurnEnvelope(
+        tree_id=turn_id, depth=0, tainted=tainted, spend_session_id=session_id
+    )
 
 
 def derive_child_envelope(
@@ -257,6 +273,7 @@ def derive_child_envelope(
         tainted=spawner.tainted or request.born_tainted,
         tools=tools,
         deadline_at=deadline_at,
+        spend_session_id=spawner.spend_session_id,
     )
 
 
@@ -278,12 +295,19 @@ class TreeLedger:
     Codex transport does not currently expose.
     """
 
-    def __init__(self, redis: AsyncRedisClient) -> None:
+    def __init__(
+        self,
+        redis: AsyncRedisClient,
+        *,
+        prefix: str = _LEDGER_KEY_PREFIX,
+        ttl_seconds: int = MAX_TURN_LIFETIME_SECONDS,
+    ) -> None:
         self._redis = redis
+        self._prefix = prefix
+        self._ttl = ttl_seconds
 
-    @staticmethod
-    def key(tree_id: str) -> str:
-        return f"{_LEDGER_KEY_PREFIX}{tree_id}"
+    def key(self, tree_id: str) -> str:
+        return f"{self._prefix}{tree_id}"
 
     async def exists(self, tree_id: str) -> bool:
         return await cast(
@@ -316,7 +340,7 @@ class TreeLedger:
                 str(max(0, ceiling_microdollars)),
                 str(max(1, max_nodes)),
                 str(max(0, initial_nodes)),
-                str(MAX_TURN_LIFETIME_SECONDS),
+                str(self._ttl),
             ),
         )
 
@@ -356,6 +380,11 @@ class TreeLedger:
             return
         await self._hincrby(key, "spent", microdollars)
 
+    async def raise_ceiling(self, tree_id: str, microdollars: int) -> None:
+        key = self.key(tree_id)
+        if await cast(Awaitable[bool], self._redis.hexists(key, "ceiling")):
+            await self._hincrby(key, "ceiling", microdollars)
+
     async def claim_wrapup(self, tree_id: str) -> bool:
         """True for the one turn that first crosses the wrap-up threshold.
 
@@ -390,7 +419,7 @@ class TreeLedger:
         """
         pipe = self._redis.pipeline(transaction=True)
         pipe.hincrby(key, field, amount)
-        pipe.expire(key, MAX_TURN_LIFETIME_SECONDS)
+        pipe.expire(key, self._ttl)
         value, _ = await cast(Awaitable[list], pipe.execute())
         return int(value)
 
@@ -419,6 +448,25 @@ async def get_tree_ledger() -> TreeLedger:
     return TreeLedger(await get_redis_async())
 
 
+async def get_chat_ledger() -> TreeLedger:
+    """The chat ledger reuses the tree's hash; ``nodes`` is carried and unused."""
+    daily = config.spend_ceiling_reset == "daily"
+    return TreeLedger(
+        await get_redis_async(),
+        prefix=_CHAT_LEDGER_KEY_PREFIX,
+        ttl_seconds=(
+            _DAILY_CHAT_LEDGER_TTL_SECONDS if daily else CHAT_LEDGER_TTL_SECONDS
+        ),
+    )
+
+
+def chat_ledger_id(session_id: str) -> str:
+    """Under a daily reset each UTC date is its own ledger."""
+    if config.spend_ceiling_reset == "daily":
+        return f"{session_id}:{datetime.now(UTC).date().isoformat()}"
+    return session_id
+
+
 async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
     """What one tree may spend:
 
@@ -437,7 +485,6 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
     ChatConfig). There is no tier daily to scale from, so the absolute cap
     alone bounds one tree — it must not collapse to 0 and refuse spawns.
     """
-    cap = config.tree_ceiling_microdollars
     if not user_id:
         # Fail closed: without a user there is no tier to scale from, and
         # handing out the full cap is the one fail-open branch this module
@@ -448,8 +495,7 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
     )
-    # ``daily`` is already tier-scaled by get_global_rate_limits.
-    ceiling = min(_tree_allowance_microdollars(daily, cap), cap)
+    ceiling = _plan_ceiling_microdollars(daily)
 
     remaining_usd = await get_remaining_usd_budget(
         user_id=user_id, daily_cost_limit=daily, weekly_cost_limit=weekly, floor_usd=0.0
@@ -458,6 +504,27 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
         return max(0, ceiling)
     remaining = int(round(remaining_usd * 1_000_000))
     return max(0, min(remaining, ceiling))
+
+
+async def resolve_chat_ceiling_microdollars(user_id: str | None) -> int:
+    """A chat's ceiling: the tree's allowance without the remaining-budget
+    clamp, which under a "never" reset would carry a late-night remainder
+    into the following days.
+    The daily and weekly limits still refuse every turn once spent."""
+    if not user_id:
+        return 0
+    daily, _, _ = await get_global_rate_limits(
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
+    )
+    return _plan_ceiling_microdollars(daily)
+
+
+def _plan_ceiling_microdollars(daily: int) -> int:
+    # ``daily`` is already tier-scaled by get_global_rate_limits.
+    cap = config.tree_ceiling_microdollars
+    return max(0, min(_tree_allowance_microdollars(daily, cap), cap))
 
 
 def _tree_allowance_microdollars(daily: int, cap: int) -> int:
@@ -484,12 +551,13 @@ async def admit_turn(
 ) -> None:
     """Admit a spawned turn against its tree, opening the tree on first use.
 
-    Roots never touch the ledger: the per-user rate limit already gates
-    them, and the tree only needs to exist once something is spawned. So
-    the HTTP route, the scheduler and ``AutoPilotBlock`` pay nothing here,
-    and a spawned turn fails closed when the ledger is unreachable.
+    Roots never touch the ledger unless auto mode meters them: the per-user
+    rate limit already gates them, and the tree only needs to exist once
+    something is spawned. A spawned turn fails closed when the ledger is
+    unreachable; a root never does.
     """
     if envelope.depth == 0:
+        await _open_metered_root(envelope, user_id, ledger)
         return
     try:
         ledger = ledger or await get_tree_ledger()
@@ -511,6 +579,100 @@ async def admit_turn(
         ) from e
 
 
+async def _open_metered_root(
+    envelope: TurnEnvelope, user_id: str | None, ledger: TreeLedger | None
+) -> None:
+    """Under auto mode a root turn's own spend is metered from its first call,
+    on its tree and on its chat's ledger, which a paid read asks against."""
+    try:
+        if not await meters_spend(user_id):
+            return
+        ledger = ledger or await get_tree_ledger()
+        await ledger.open(
+            envelope.tree_id,
+            ceiling_microdollars=await resolve_root_ceiling_microdollars(user_id),
+            max_nodes=config.tree_max_nodes,
+            initial_nodes=1,
+        )
+        if envelope.spend_session_id:
+            await _open_chat_ledger(envelope.spend_session_id, user_id)
+    except Exception as e:
+        logger.warning(f"Could not open the tree for root {envelope.tree_id}: {e}")
+
+
+async def _open_chat_ledger(session_id: str, user_id: str | None) -> None:
+    ledger = await get_chat_ledger()
+    # Open once per ledger; resolving the ceiling reads the user's rate limits.
+    if await ledger.exists(chat_ledger_id(session_id)):
+        return
+    await ledger.open(
+        chat_ledger_id(session_id),
+        ceiling_microdollars=await resolve_chat_ceiling_microdollars(user_id),
+        max_nodes=1,
+    )
+
+
+async def meters_spend(user_id: str | None) -> bool:
+    if not user_id:
+        return False
+    return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+
+
+async def charge_credits(user_id: str | None, credits: Callable[[], int]) -> None:
+    """Charge block or workflow spend to the running turn's tree, beside the
+    model tokens ``token_tracking`` charges there. ``credits`` is priced only
+    when the turn is metered."""
+    envelope = get_current_envelope()
+    if envelope is None:
+        return
+    try:
+        if not await meters_spend(user_id):
+            return
+        microdollars = credits() * MICRODOLLARS_PER_CREDIT
+    except Exception as e:
+        # Callers charge after billing succeeded; this must not read as a leak.
+        logger.warning(f"Could not price a charge to {envelope.tree_id}: {e}")
+        return
+    await charge_turn(envelope, microdollars)
+
+
+async def spent_past_ceiling(user_id: str) -> tuple[int, int] | None:
+    """``(spent, ceiling)`` once the running turn's chat has spent its ceiling;
+    None under it, or where no chat meters this turn. A ledger that failed to
+    open at admission opens here; a Redis error, or a ledger that still reads
+    empty, raises so the call is refused. Runs are charged when they finish, so paid calls issued together
+    can overshoot by one batch."""
+    envelope = get_current_envelope()
+    if envelope is None or envelope.spend_session_id is None:
+        return None
+    ledger = await get_chat_ledger()
+    ledger_id = chat_ledger_id(envelope.spend_session_id)
+    snapshot = await ledger.snapshot(ledger_id)
+    if "ceiling" not in snapshot:
+        await _open_chat_ledger(envelope.spend_session_id, user_id)
+        snapshot = await ledger.snapshot(ledger_id)
+    if "ceiling" not in snapshot:
+        raise RuntimeError(f"Chat spend ledger {ledger_id} could not be opened")
+    spent, ceiling = snapshot.get("spent", 0), snapshot["ceiling"]
+    return (spent, ceiling) if spent >= ceiling else None
+
+
+async def raise_ceiling(microdollars: int) -> None:
+    """Raise the running turn's chat ledger, which every later turn of the
+    chat reads — not the tree of the turn that happens to run the approval."""
+    envelope = get_current_envelope()
+    if envelope is None or envelope.spend_session_id is None:
+        return
+    try:
+        await (await get_chat_ledger()).raise_ceiling(
+            chat_ledger_id(envelope.spend_session_id), microdollars
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not raise the ceiling of chat {envelope.spend_session_id}: {e}"
+        )
+
+
 async def release_turn(envelope: TurnEnvelope) -> None:
     if envelope.depth == 0:
         return
@@ -521,9 +683,19 @@ async def release_turn(envelope: TurnEnvelope) -> None:
 
 
 async def charge_turn(envelope: TurnEnvelope, microdollars: int) -> None:
-    """Charge a turn's cost to its tree. A root whose tree never opened (no
-    spawns) has nothing to charge, and ``charge`` ignores unknown trees."""
+    """Charge a turn's cost to its tree and its chat. ``charge`` ignores a
+    ledger that never opened, so an unmetered turn charges nothing."""
     try:
         await (await get_tree_ledger()).charge(envelope.tree_id, microdollars)
     except Exception as e:
         logger.warning(f"Tree ledger charge failed for {envelope.tree_id}: {e}")
+    if envelope.spend_session_id is None:
+        return
+    try:
+        await (await get_chat_ledger()).charge(
+            chat_ledger_id(envelope.spend_session_id), microdollars
+        )
+    except Exception as e:
+        logger.warning(
+            f"Chat ledger charge failed for {envelope.spend_session_id}: {e}"
+        )
