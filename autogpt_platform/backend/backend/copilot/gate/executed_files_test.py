@@ -27,6 +27,7 @@ _W = f"{_HOME}/workspace"
         ("bash --rcfile rc x.sh", [f"{_HOME}/x.sh"]),
         ("python -W ignore x.py", [f"{_HOME}/x.py"]),
         ("python3.12 -X dev -u x.py", [f"{_HOME}/x.py"]),
+        ("python3.9.1 x.py", [f"{_HOME}/x.py"]),
         ("python -Wignore x.py", [f"{_HOME}/x.py"]),
         ("node --require y x.js", [f"{_HOME}/x.js"]),
         ("node -r ./hook.js --max-old-space-size=4096 app.js", [f"{_HOME}/app.js"]),

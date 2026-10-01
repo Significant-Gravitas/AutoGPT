@@ -126,7 +126,7 @@ _PREFIXES = {
         flags="--preserve-status --foreground -v", valued="-s --signal -k --kill-after"
     ),
 }
-_PYTHON_NAME = re.compile(r"python(\d+(\.\d+)?)?")
+_PYTHON_NAME = re.compile(r"python(\d+(\.\d+)*)?")
 _PUNCTUATION = set("();<>|&")
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 # Where a word ends, so a `#` after one starts a comment.
