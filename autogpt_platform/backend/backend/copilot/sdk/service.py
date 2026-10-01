@@ -74,6 +74,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
     estimate_token_count,
+    estimate_token_count_str,
     get_compression_target,
 )
 from backend.util.settings import Settings
@@ -169,7 +170,10 @@ from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
+    build_injected_context_prefix,
+    fetch_business_understanding,
     inject_user_context,
+    strip_injected_context_for_display,
     strip_user_context_tags,
 )
 from ..thinking_stripper import ThinkingStripper
@@ -3222,6 +3226,11 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     tool result summaries so the agent retains full context about what
     tools were invoked and their outcomes.
 
+    The server blocks a first-turn row carries (``<available_skills>``,
+    ``<memory_context>``, ``<user_context>`` …) are peeled off: inside the
+    history the system prompt tells the model to ignore them, and the
+    no-``--resume`` fallback re-sends fresh copies ahead of the history.
+
     Returns None if there are no messages to format.
     """
     if not messages:
@@ -3233,8 +3242,8 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     lines: list[str] = []
     for msg in messages:
         if msg.role == "user":
-            if msg.content:
-                lines.append(f"User: {msg.content}")
+            if content := strip_injected_context_for_display(msg.content or ""):
+                lines.append(f"User: {content}")
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
@@ -3261,6 +3270,7 @@ async def _build_query_message(
     target_tokens: int | None = None,
     prior_messages: "list[ChatMessage] | None" = None,
     expect_compaction: bool = False,
+    context_prefix: str = "",
 ) -> tuple[str, "CompactionStats | None"]:
     """Build the query message with appropriate context.
 
@@ -3285,6 +3295,12 @@ async def _build_query_message(
         expect_compaction: What the caller's pre-check predicted.  Logged only,
             beside the branch actually taken, so a row that opens without
             compression (or compression with no row) is one grep away.
+        context_prefix: The first-turn server blocks to lead the query with
+            when ``use_resume=False`` on a session with history — the fresh
+            CLI session has nothing else to carry them.  Ignored on the
+            ``--resume`` paths and below the bare-message token floor.  Its
+            size is taken out of ``target_tokens`` before the history is
+            compressed.
 
     Returns:
         Tuple of (query_message, compaction_stats or None).
@@ -3480,16 +3496,23 @@ async def _build_query_message(
             return current_message, compaction_stats
 
         source = prior_messages if prior_messages is not None else prior
+        history_target = target_tokens
+        if target_tokens is not None and context_prefix:
+            history_target = max(
+                _BARE_MESSAGE_TOKEN_FLOOR,
+                target_tokens - estimate_token_count_str(context_prefix),
+            )
         logger.warning(
             "[SDK] [%s] No --resume for %d-message session — compressing context "
-            "(source=%s, target_tokens=%s)",
+            "(source=%s, target_tokens=%s, context_prefix_chars=%d)",
             session_id[:8],
             msg_count,
             "transcript+gap" if prior_messages is not None else "full-db",
-            target_tokens,
+            history_target,
+            len(context_prefix),
         )
         compressed, _was_compressed, stats = await _compress_messages(
-            source, target_tokens
+            source, history_target
         )
         compaction_stats = stats
         history_context = _format_conversation_context(compressed)
@@ -3501,7 +3524,8 @@ async def _build_query_message(
                 len(history_context),
             )
             return (
-                f"{history_context}\n\nNow, the user says:\n{current_message}",
+                f"{context_prefix}{history_context}"
+                f"\n\nNow, the user says:\n{current_message}",
                 compaction_stats,
             )
         logger.warning(
@@ -3510,6 +3534,7 @@ async def _build_query_message(
             session_id[:8],
             len(source),
         )
+        return context_prefix + current_message, compaction_stats
 
     return current_message, compaction_stats
 
@@ -5325,38 +5350,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # prefixes from the original turn (persisted to the DB via
         # inject_user_context), so the SDK replay carries context continuity
         # without us prepending them again.
+        #
+        # A later turn that could NOT resume (no SDK transcript in storage,
+        # a baseline-written one, or one that failed validation) starts a
+        # fresh CLI session that has never seen those prefixes, so the same
+        # blocks are rebuilt and lead the query instead — see
+        # ``_build_resume_fallback_prefix``.  They ride the query only; the
+        # stored row keeps the user's own words.
+        resume_fallback_prefix: str | None = None
         if not has_history:
-            # Build env_ctx for the working directory and pass it into
-            # inject_user_context so it is prepended AFTER
-            # sanitize_user_supplied_context runs — preventing the trusted
-            # <env_context> block from being stripped by the sanitizer.
-            env_ctx_content = ""
-            if not use_e2b and sdk_cwd:
-                env_ctx_content = f"working_dir: {sdk_cwd}"
-            # Build the per-session follow-up awareness block so the model
-            # can answer "cancel that" / "what did I schedule" on the very
-            # first turn without round-tripping to ``list_schedules``.
-            # Lands in the per-turn user message (after the last cache
-            # breakpoint) so it does NOT bust the cross-session prefix
-            # cache.  Failure-tolerant — the helper degrades to the bare
-            # session_id line on any scheduler RPC hiccup.
-            session_ctx_content = ""
-            if user_id:
-                session_ctx_content = await build_session_context(
-                    session_id=session_id, user_id=user_id
+            env_ctx_content, session_ctx_content, skills_ctx_content = (
+                await _first_turn_context_blocks(
+                    session, user_id, sdk_cwd=sdk_cwd, use_e2b=use_e2b
                 )
-            # Build the per-user skill index so the model sees what's
-            # available without an extra round-trip.  Failures here MUST
-            # NOT block the turn — log and continue with an empty index.
-            skills_ctx_content = ""
-            try:
-                skills_ctx_content = await build_skills_context(
-                    user_id, expert_id=session.expert_id
-                )
-            except Exception:
-                logger.exception(
-                    "[skills] failed to build skills_ctx — proceeding without it"
-                )
+            )
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -5375,6 +5382,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
+        elif not use_resume:
+            resume_fallback_prefix = await _build_resume_fallback_prefix(
+                session,
+                user_id,
+                message,
+                sdk_cwd=sdk_cwd,
+                use_e2b=use_e2b,
+                graphiti_enabled=graphiti_enabled,
+                log_prefix=log_prefix,
+            )
 
         # Now that ``inject_user_context`` has wrapped + persisted the
         # ORIGINAL turn-starting send into its row, fold any pending
@@ -5444,6 +5461,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
             expect_compaction=forecast.expected,
+            context_prefix=resume_fallback_prefix or "",
         )
 
         # Snapshot before the close persists its synthetic assistant+tool pair:
@@ -5646,6 +5664,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # on retry the extra overhead of full-DB context is acceptable.
                 # Keep the ``budget_status +`` prefix through any reflow of this
                 # call: dropping it silently un-ships the retry path's budget line.
+                # A resumed turn whose retry drops --resume needs the first-turn
+                # context just as a turn that never resumed does.
+                if (
+                    has_history
+                    and not state.use_resume
+                    and resume_fallback_prefix is None
+                ):
+                    resume_fallback_prefix = await _build_resume_fallback_prefix(
+                        session,
+                        user_id,
+                        message,
+                        sdk_cwd=sdk_cwd,
+                        use_e2b=use_e2b,
+                        graphiti_enabled=graphiti_enabled,
+                        log_prefix=log_prefix,
+                    )
                 (
                     state.query_message,
                     state.compaction_stats,
@@ -5658,6 +5692,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session_msg_ceiling=_pre_drain_msg_count,
                     target_tokens=state.target_tokens,
                     expect_compaction=True,
+                    context_prefix=resume_fallback_prefix or "",
                 )
                 if _retry_reduced_context(
                     reduced=ctx,
@@ -6570,6 +6605,114 @@ async def _fetch_graphiti_context(
         or ""
     )
     return True, ctx
+
+
+async def _first_turn_context_blocks(
+    session: ChatSession,
+    user_id: str | None,
+    *,
+    sdk_cwd: str,
+    use_e2b: bool,
+) -> tuple[str, str, str]:
+    """The ``(env_ctx, session_ctx, skills_ctx)`` bodies for the first-turn prefix.
+
+    ``env_ctx`` names the working directory; ``session_ctx`` lets the model
+    answer "cancel that" / "what did I schedule" without a ``list_schedules``
+    round-trip (it degrades to the bare session_id line on a scheduler RPC
+    hiccup); ``skills_ctx`` is the per-user skill index.  All three land in
+    the per-turn user message, after the cache breakpoint, so they do not bust
+    the cross-session prefix cache.  A skill-index failure must not block the
+    turn: it is logged and the index left empty.
+    """
+    env_ctx = f"working_dir: {sdk_cwd}" if sdk_cwd and not use_e2b else ""
+    session_ctx = ""
+    if user_id:
+        session_ctx = await build_session_context(
+            session_id=session.session_id, user_id=user_id
+        )
+    skills_ctx = ""
+    try:
+        skills_ctx = await build_skills_context(user_id, expert_id=session.expert_id)
+    except Exception:
+        logger.exception("[skills] failed to build skills_ctx — proceeding without it")
+    return env_ctx, session_ctx, skills_ctx
+
+
+async def _build_resume_fallback_prefix(
+    session: ChatSession,
+    user_id: str | None,
+    message: str | None,
+    *,
+    sdk_cwd: str,
+    use_e2b: bool,
+    graphiti_enabled: bool,
+    log_prefix: str,
+) -> str:
+    """Rebuild the first-turn prefix for a later turn that runs without ``--resume``.
+
+    The first turn's blocks reach later turns only through the resumed CLI
+    session.  Without one, this renders them again with the first turn's own
+    builders — skills index, memory (keyed on this turn's message), expert or
+    team workflows, follow-ups, working directory and user context — for
+    ``_build_query_message`` to put ahead of ``<conversation_history>``.
+    Best effort: any failure is logged and the turn goes on without it.
+    """
+    try:
+        (env_ctx, session_ctx, skills_ctx), understanding, warm_ctx = (
+            await asyncio.gather(
+                _first_turn_context_blocks(
+                    session, user_id, sdk_cwd=sdk_cwd, use_e2b=use_e2b
+                ),
+                fetch_business_understanding(user_id),
+                _fallback_warm_context(
+                    user_id, session, message, graphiti_enabled=graphiti_enabled
+                ),
+            )
+        )
+        prefix = await build_injected_context_prefix(
+            understanding,
+            warm_ctx=warm_ctx,
+            env_ctx=env_ctx,
+            session_ctx=session_ctx,
+            skills_ctx=skills_ctx,
+            user_id=user_id,
+            expert_id=session.expert_id,
+            kickoff_turn=is_expert_kickoff_turn(session),
+        )
+    except Exception:
+        logger.exception(
+            "%s Could not rebuild the first-turn context for the no-resume"
+            " fallback — sending the history without it",
+            log_prefix,
+        )
+        return ""
+    logger.info(
+        "%s No-resume fallback: re-injecting first-turn context"
+        " (%d chars; skills=%s, memory=%s, user_context=%s)",
+        log_prefix,
+        len(prefix),
+        bool(skills_ctx),
+        bool(warm_ctx),
+        understanding is not None,
+    )
+    return prefix
+
+
+async def _fallback_warm_context(
+    user_id: str | None,
+    session: ChatSession,
+    message: str | None,
+    *,
+    graphiti_enabled: bool,
+) -> str:
+    """Graphiti warm context for a no-resume later turn (the first turn's
+    fetch in ``_fetch_graphiti_context`` is skipped once history exists)."""
+    if not (graphiti_enabled and user_id):
+        return ""
+    return (
+        await fetch_warm_context(user_id, message or "", expert_id=session.expert_id)
+        or ""
+    )
 
 
 def _graphiti_ingest_allowed(
