@@ -46,12 +46,10 @@ export function useTrialCheckoutReturn() {
           throw new Error(
             "Your trial is not active. Review your card setup and try again.",
           );
-        if (
-          response.data.active &&
-          reportedTrialStart.current !== userID &&
-          reportTrialStart(userID)
-        )
+        if (response.data.active && reportedTrialStart.current !== userID) {
           reportedTrialStart.current = userID;
+          reportTrialStart(userID);
+        }
         setResult({ userID, trial: response.data });
       })
       .catch((error: unknown) => {
@@ -83,14 +81,15 @@ export function useTrialCheckoutReturn() {
 // The return URL carries no Checkout session id, and a user only ever gets one
 // trial, so the user id is the dedup key. Google only receives it with
 // advertising consent; for everyone else the latch and the dropped query param
-// are what stop a re-render or a reload from counting twice.
-function reportTrialStart(userID: string): boolean {
-  const reported = trackAdsConversion("trial_started", {
+// are what stop a re-render or a reload from counting twice. The param goes
+// even when the tag couldn't take the hit: a reload won't unblock it, and
+// would only confirm the trial again.
+function reportTrialStart(userID: string) {
+  trackAdsConversion("trial_started", {
     transactionID: userID,
     email: useAuthStore.getState().user?.email,
   });
-  if (reported) dropTrialReturnParam();
-  return reported;
+  dropTrialReturnParam();
 }
 
 function dropTrialReturnParam() {

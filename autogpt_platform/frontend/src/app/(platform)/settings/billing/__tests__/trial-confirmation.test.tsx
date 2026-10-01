@@ -258,11 +258,19 @@ describe("trial start Google Ads conversion", () => {
     expect(conversions()).toEqual([]);
   });
 
-  it("keeps the return in the URL when the tag could not take the conversion", async () => {
+  it("does not confirm again on reload when the tag could not take the conversion", async () => {
     removeGtagShim();
-    server.use(getPostTrialsConfirmTrialMockHandler200(trialResponse()));
+    const confirm = vi.fn(() => trialResponse());
+    server.use(getPostTrialsConfirmTrialMockHandler200(confirm));
+    const { unmount } = renderTrialReturn();
+    await screen.findByRole("button", { name: "Cancel trial" });
+    expect(window.location.search).toBe("");
+
+    unmount();
+    server.use(getGetTrialsGetTrialStatusMockHandler200(trialResponse()));
+    searchParams = new URLSearchParams(window.location.search);
     renderTrialReturn();
     await screen.findByRole("button", { name: "Cancel trial" });
-    expect(window.location.search).toBe("?trial=success");
+    expect(confirm).toHaveBeenCalledOnce();
   });
 });
