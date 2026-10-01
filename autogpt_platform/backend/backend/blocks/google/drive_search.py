@@ -7,6 +7,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -146,6 +147,7 @@ class GoogleDriveSearchFilesBlock(Block):
                     "nextPageToken": "next-page",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -256,6 +258,7 @@ class GoogleDriveListRecentFilesBlock(Block):
             test_mock={
                 "_list_files": lambda *args, **kwargs: {"files": [_TEST_FILE_RESOURCE]}
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

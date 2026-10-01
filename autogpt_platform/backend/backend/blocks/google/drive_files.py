@@ -5,6 +5,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -79,6 +80,7 @@ class GoogleDriveGetFileInfoBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("file", _TEST_FILE)],
             test_mock={"_get_metadata": lambda *args, **kwargs: _TEST_METADATA},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -134,6 +136,7 @@ class GoogleDriveReadFileBlock(Block):
                 "_get_metadata": lambda *args, **kwargs: _TEST_METADATA,
                 "_read_text": lambda *args, **kwargs: "# Q3 Report\n\nRevenue grew 12%.",
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -205,6 +208,7 @@ class GoogleDriveDownloadFileBlock(Block):
                 ),
                 "_store": lambda *args, **kwargs: "data:application/pdf;base64,JVBERi0xLjQ=",
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
@@ -293,6 +297,7 @@ class GoogleDriveGetFilePermissionsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
