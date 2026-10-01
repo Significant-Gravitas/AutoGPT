@@ -2289,10 +2289,12 @@ class TestPostHogLifecycleSweepRegistration:
 # ---------------------------------------------------------------------------
 
 
-def _noop(**kwargs) -> None: ...
+def _noop(**kwargs) -> None:
+    """Accept persisted schedule arguments without dispatching an execution."""
 
 
 def _graph_job_kwargs(schedule_id: str, user_id: str = "user-1") -> dict:
+    """Build valid expert-attributed graph metadata for pause/resume tests."""
     return GraphExecutionJobArgs(
         schedule_id=schedule_id,
         user_id=user_id,
@@ -2321,6 +2323,7 @@ def memory_scheduler():
 def _add_job(
     scheduler: Scheduler, schedule_id: str, kwargs: dict | None = None
 ) -> None:
+    """Add an active recurring job with optional legacy or customized metadata."""
     scheduler.scheduler.add_job(
         _noop,
         kwargs=kwargs or _graph_job_kwargs(schedule_id),
@@ -2332,12 +2335,14 @@ def _add_job(
 
 
 def _get_job(scheduler: Scheduler, schedule_id: str):
+    """Retrieve a test schedule and fail explicitly if it was removed."""
     job = scheduler.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
     assert job is not None
     return job
 
 
 def test_pause_records_who_parked_the_job(memory_scheduler):
+    """Ordinary pauses must not be attributed to expert archiving."""
     _add_job(memory_scheduler, "sched-1")
 
     assert memory_scheduler.pause_execution_schedule("sched-1", user_id="user-1")
@@ -2348,13 +2353,28 @@ def test_pause_records_who_parked_the_job(memory_scheduler):
 
 
 def test_archive_pause_marks_the_job(memory_scheduler):
+    """The pause and its provenance reach the job store in one update."""
     _add_job(memory_scheduler, "sched-1")
+    original_kwargs = dict(_get_job(memory_scheduler, "sched-1").kwargs)
 
-    assert memory_scheduler.pause_execution_schedule(
-        "sched-1", user_id="user-1", by_expert_archive=True
+    with patch.object(
+        memory_scheduler.scheduler,
+        "modify_job",
+        wraps=memory_scheduler.scheduler.modify_job,
+    ) as modify_job:
+        assert memory_scheduler.pause_execution_schedule(
+            "sched-1", user_id="user-1", by_expert_archive=True
+        )
+
+    modify_job.assert_called_once_with(
+        "sched-1",
+        jobstore=Jobstores.EXECUTION.value,
+        next_run_time=None,
+        kwargs={**original_kwargs, "paused_by_expert_archive": True},
     )
 
     job = _get_job(memory_scheduler, "sched-1")
+    assert job.next_run_time is None
     assert job.kwargs["paused_by_expert_archive"] is True
     info = _job_to_info(job)
     assert info is not None and info.paused_by_expert_archive is True
@@ -2378,6 +2398,7 @@ def test_archive_sweep_cannot_claim_a_user_paused_job(memory_scheduler):
 
 
 def test_user_pause_overwrites_a_stale_archive_marker(memory_scheduler):
+    """A new user pause replaces the provenance retained from an earlier archive."""
     _add_job(memory_scheduler, "sched-1")
     memory_scheduler.pause_execution_schedule(
         "sched-1", user_id="user-1", by_expert_archive=True
@@ -2393,6 +2414,7 @@ def test_user_pause_overwrites_a_stale_archive_marker(memory_scheduler):
 
 
 def test_resume_still_recomputes_the_next_fire(memory_scheduler):
+    """Resuming an archive-paused recurring job restores a future firing."""
     _add_job(memory_scheduler, "sched-1")
     memory_scheduler.pause_execution_schedule(
         "sched-1", user_id="user-1", by_expert_archive=True
@@ -2404,6 +2426,7 @@ def test_resume_still_recomputes_the_next_fire(memory_scheduler):
 
 
 def test_jobs_predating_the_marker_read_as_not_archive_paused(memory_scheduler):
+    """Legacy jobs default to unmarked so revival cannot claim their pauses."""
     kwargs = _graph_job_kwargs("sched-1")
     kwargs.pop("paused_by_expert_archive")
     _add_job(memory_scheduler, "sched-1", kwargs=kwargs)

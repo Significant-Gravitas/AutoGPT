@@ -3469,7 +3469,11 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         sched.get_execution_schedules = AsyncMock(
             return_value=[
                 SimpleNamespace(
-                    kind="graph", id="sched-1", name="n", expert_id=expert_id
+                    kind="graph",
+                    id="sched-1",
+                    name="n",
+                    expert_id=expert_id,
+                    paused_by_expert_archive=True,
                 )
             ]
         )
@@ -3498,7 +3502,9 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         where={"expertId": expert_id}
     )
     assert any(e.clearedAt is None for e in events)
-    sched.pause_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with(
+        "sched-1", user_id=test_user.id, by_expert_archive=True
+    )
     # Paused, not deleted: the pointer survives so the same job is resumed
     # rather than a second one being created alongside it.
     wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(

@@ -2439,21 +2439,24 @@ class Scheduler(AppService):
         Every successful pause also records *who* parked the job in its
         kwargs (``paused_by_expert_archive``): the expert archive flow
         passes ``by_expert_archive=True`` so re-hire can resume exactly
-        the schedules it paused and no others. The early return above is
+        the schedules it paused and no others. The early return below is
         load-bearing — an already-paused job keeps the marker of whoever
         paused it first, which is what stops the archive sweep from
         claiming a schedule the user had deliberately switched off.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="pause")
-        if job.next_run_time is None:
-            return False
-        logger.info(f"Pausing job {schedule_id} (kind={info.kind})")
-        self.scheduler.pause_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
-        self.scheduler.modify_job(
-            schedule_id,
-            jobstore=Jobstores.EXECUTION.value,
-            kwargs={**job.kwargs, "paused_by_expert_archive": by_expert_archive},
-        )
+        # Keep the first pause's ownership even when user and archive RPCs race.
+        # APScheduler uses this reentrant lock for reads and writes as well.
+        with self.scheduler._jobstores_lock:
+            job, info = self._authorized_job(schedule_id, user_id, action="pause")
+            if job.next_run_time is None:
+                return False
+            logger.info(f"Pausing job {schedule_id} (kind={info.kind})")
+            self.scheduler.modify_job(
+                schedule_id,
+                jobstore=Jobstores.EXECUTION.value,
+                next_run_time=None,
+                kwargs={**job.kwargs, "paused_by_expert_archive": by_expert_archive},
+            )
         self._invalidate_jobs_cache()
         return True
 
