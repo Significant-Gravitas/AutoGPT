@@ -25,14 +25,16 @@ export function useExpertModeSection({ expert }: Args) {
 
   const { mutate, isPending } = useUpdateExpertMode({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetExpertQueryKey(expert.id),
-        });
-        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() });
-        queryClient.invalidateQueries({
-          queryKey: getListExpertIdentitiesQueryKey(),
-        });
+      onSuccess: async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: getGetExpertQueryKey(expert.id),
+          }),
+          queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
+          queryClient.invalidateQueries({
+            queryKey: getListExpertIdentitiesQueryKey(),
+          }),
+        ]);
         toast({ title: "Approval mode updated" });
       },
       onError: (error) => {

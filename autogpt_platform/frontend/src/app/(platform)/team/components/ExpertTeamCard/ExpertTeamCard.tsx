@@ -16,6 +16,7 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
@@ -64,6 +65,7 @@ export function ExpertTeamCard({
     closeFire,
   } = useExpertTeamCard(expert);
   const isPaused = Boolean(expert.schedules_paused_at);
+  const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
 
   function handleInstallClick() {
     onInstallWorkflow(expert.id);
@@ -148,7 +150,7 @@ export function ExpertTeamCard({
           />
           <div className="flex items-center gap-2 empty:hidden">
             {topic ? <CategoryTag category={topic} /> : null}
-            {expert.autopilot_mode === "unsupervised" ? (
+            {isAutoModeEnabled && expert.autopilot_mode === "unsupervised" ? (
               <Badge variant="warning" size="small">
                 Unsupervised
               </Badge>
