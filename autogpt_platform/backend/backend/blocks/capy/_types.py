@@ -46,6 +46,18 @@ ACTIVE_THREAD_STATUSES = {ThreadStatus.WORKING.value, ThreadStatus.WAITING.value
 STOPPED_THREAD_STATUSES = {ThreadStatus.FAILED.value, ThreadStatus.ARCHIVED.value}
 
 
+class ThreadFilter(str, Enum):
+    ALL = "all"
+    ACTIVE = "active"
+    NEEDS_YOU = "needs_you"
+
+
+class PullRequestAuthor(str, Enum):
+    DEFAULT = ""
+    CAPY = "capy"
+    USER = "user"
+
+
 class MachineSize(str, Enum):
     DEFAULT = ""
     SMALL = "small"
@@ -151,6 +163,13 @@ class Thread(_CapyModel):
         description="True when the agent is waiting on an answer from a person",
     )
     last_model_id: Optional[str] = None
+    pull_request_author: Optional[str] = Field(
+        default=None,
+        description=(
+            "Who opens this thread's pull requests: capy (the Capy GitHub app) "
+            "or user; empty when the Capy settings decide"
+        ),
+    )
     usage: Usage = Field(default_factory=Usage)
     created_at: str = ""
     updated_at: str = ""

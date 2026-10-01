@@ -23,6 +23,7 @@ from backend.blocks.capy._types import (
     Thread,
 )
 from backend.blocks.capy.messages import CapyListThreadMessagesBlock
+from backend.blocks.capy.threads import CapyListThreadsBlock
 from backend.blocks.capy.usage import CapyGetUsageBlock
 from backend.blocks.capy.wait import CapyWaitForThreadBlock
 
@@ -210,6 +211,22 @@ class TestClient:
         assert body["requestId"]
         assert body["model"] == {"modelId": "openai/gpt-6", "reasoningMode": "high"}
         assert "machineSize" not in body
+        assert "pullRequestAuthor" not in body
+
+    async def test_create_thread_can_have_capy_open_the_pull_requests(self):
+        client = CapyClient(TEST_CREDENTIALS)
+        client.requests = MagicMock()
+        client.requests.request = AsyncMock(
+            return_value=_response(200, {**LIVE_THREAD, "pullRequestAuthor": "capy"})
+        )
+
+        thread = await client.create_thread(
+            project_id="p1", message="do it", pull_request_author="capy"
+        )
+
+        body = client.requests.request.call_args.kwargs["json"]
+        assert body["pullRequestAuthor"] == "capy"
+        assert thread.pull_request_author == "capy"
 
     async def test_newest_messages_falls_back_to_forward_walk(
         self, monkeypatch: pytest.MonkeyPatch
@@ -764,6 +781,63 @@ class TestWaitForThread:
 
         assert out["finished"] is False
         assert out["status"] == "working"
+
+
+class TestListThreads:
+    @staticmethod
+    def _board() -> list[Thread]:
+        return [
+            Thread.model_validate({**LIVE_THREAD, "id": t, "status": s, "needsYou": n})
+            for t, s, n in [
+                ("busy", "working", False),
+                ("asking", "waiting", True),
+                ("done", "idle", False),
+                ("broke", "failed", False),
+            ]
+        ]
+
+    @pytest.mark.parametrize(
+        "show, expected",
+        [("active", ["busy", "asking"]), ("needs_you", ["asking"])],
+    )
+    async def test_a_filter_keeps_only_matching_threads_from_a_full_page(
+        self, monkeypatch: pytest.MonkeyPatch, show: str, expected: list[str]
+    ):
+        block = CapyListThreadsBlock()
+        list_threads = AsyncMock(return_value=(self._board(), "5:next"))
+        monkeypatch.setattr(block, "list_threads", list_threads)
+
+        out = await _run(block, project_id="p1", show=show)
+
+        assert [t.id for t in out["threads"]] == expected
+        assert out["next_cursor"] == "5:next"
+        list_threads.assert_awaited_once_with(TEST_CREDENTIALS, "p1", 100, "")
+
+    async def test_all_lists_the_requested_number(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        block = CapyListThreadsBlock()
+        list_threads = AsyncMock(return_value=(self._board(), None))
+        monkeypatch.setattr(block, "list_threads", list_threads)
+
+        out = await _run(block, project_id="p1", limit=4)
+
+        assert len(out["threads"]) == 4
+        assert out["next_cursor"] == ""
+        list_threads.assert_awaited_once_with(TEST_CREDENTIALS, "p1", 4, "")
+
+    async def test_no_match_still_reports_an_empty_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        block = CapyListThreadsBlock()
+        monkeypatch.setattr(
+            block, "list_threads", AsyncMock(return_value=(self._board()[2:], None))
+        )
+
+        out = await _run(block, project_id="p1", show="active")
+
+        assert out["threads"] == []
+        assert "thread" not in out
 
 
 class TestListThreadMessages:

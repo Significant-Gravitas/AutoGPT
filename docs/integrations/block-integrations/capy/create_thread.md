@@ -25,6 +25,7 @@ Calls `POST /api/v1/threads` with the project, the brief, and an optional model,
 | fall_back_to_capy_balance | If the linked provider is disconnected or not linked, run the same model on the Capy balance instead of failing. Off by default, because it moves the cost from the subscription to the balance. | bool | No |
 | reasoning | Reasoning effort for the chosen model. Needs model_id. | "" \| "none" \| "instant" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" | No |
 | machine_size | Machine size for the agent's VM. Empty uses Capy's default. | "" \| "small" \| "medium" \| "large" \| "ultra" \| "hyper" \| "bigguy" | No |
+| pull_request_author | Who opens the thread's pull requests on GitHub: capy (the Capy GitHub app, so you can approve them yourself where a pull request needs an approving review) or user (the key's owner). Empty follows the Capy settings. Commits keep your Git identity either way. | "" \| "capy" \| "user" | No |
 | request_id | Idempotency key. Re-sending the same request_id returns the thread it already created instead of starting a second run. Leave empty to generate one. | str | No |
 
 ### Outputs

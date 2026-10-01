@@ -16,10 +16,14 @@ from ._api import CapyClient
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, capy_credentials_field
 from ._models import billed_via
 from ._testdata import TEST_PROJECT, TEST_THREAD
-from ._types import ACTIVE_THREAD_STATUSES, Message, Thread
+from ._types import ACTIVE_THREAD_STATUSES, Message, Thread, ThreadFilter
 
 # The block executor caps a run at 30 minutes; stay well inside it.
 MAX_WAIT_SECONDS = 25 * 60
+
+# A filtered listing reads Capy's largest page, so the threads it checks
+# don't depend on how many it is asked to return.
+_FILTER_PAGE_SIZE = 100
 
 
 def _thread_id_field() -> str:
@@ -123,8 +127,17 @@ class CapyListThreadsBlock(Block):
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = capy_credentials_field()
         project_id: str = SchemaField(description="The Capy project to list")
+        show: ThreadFilter = SchemaField(
+            description=(
+                "all lists every thread; active keeps the ones still working "
+                "or waiting; needs_you keeps the ones waiting on an answer from "
+                "a person. A filter checks the 100 most recently active "
+                "threads (or the page after cursor) and returns only matches."
+            ),
+            default=ThreadFilter.ALL,
+        )
         limit: int = SchemaField(
-            description="Maximum number of threads to return",
+            description="Maximum number of threads to return when show is all",
             default=20,
             ge=1,
             le=100,
@@ -146,8 +159,9 @@ class CapyListThreadsBlock(Block):
         super().__init__(
             id="98f03508-e4e0-474e-aace-306d3c887edc",
             description=(
-                "Lists the agent threads in a Capy project with their status, "
-                "most recently active first."
+                "Lists the agent threads in a Capy project with their status "
+                "and link, most recently active first. Show only the threads "
+                "still working, or the ones waiting on an answer from you."
             ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=CapyListThreadsBlock.Input,
@@ -175,13 +189,26 @@ class CapyListThreadsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        filtered = input_data.show != ThreadFilter.ALL
         threads, cursor = await self.list_threads(
-            credentials, input_data.project_id, input_data.limit, input_data.cursor
+            credentials,
+            input_data.project_id,
+            _FILTER_PAGE_SIZE if filtered else input_data.limit,
+            input_data.cursor,
         )
+        threads = [t for t in threads if _shown(t, input_data.show)]
         yield "threads", threads
         for thread in threads:
             yield "thread", thread
         yield "next_cursor", cursor or ""
+
+
+def _shown(thread: Thread, show: ThreadFilter) -> bool:
+    if show == ThreadFilter.ACTIVE:
+        return thread.status in ACTIVE_THREAD_STATUSES
+    if show == ThreadFilter.NEEDS_YOU:
+        return thread.needs_you
+    return True
 
 
 class CapyArchiveThreadBlock(Block):

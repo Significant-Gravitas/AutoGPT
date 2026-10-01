@@ -81,11 +81,13 @@ Calls `GET /api/v1/threads/{id}`. `is_active` is true while the status is `worki
 ## Capy List Threads
 
 ### What it is
-Lists the agent threads in a Capy project with their status, most recently active first.
+Lists the agent threads in a Capy project with their status and link, most recently active first. Show only the threads still working, or the ones waiting on an answer from you.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
 Calls `GET /api/v1/threads` for one project and returns a page of threads, most recently active first. Pass `next_cursor` back as `cursor` for the next page.
+
+With `show` set to `active` or `needs_you`, the block reads Capy's largest page (100 threads) and keeps only the threads still working or waiting, or the ones waiting on an answer. Capy's API has no status filter, so filtering happens here; the output stays small on a busy board, which keeps a chat status check readable in one call.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -93,7 +95,8 @@ Calls `GET /api/v1/threads` for one project and returns a page of threads, most 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | project_id | The Capy project to list | str | Yes |
-| limit | Maximum number of threads to return | int | No |
+| show | all lists every thread; active keeps the ones still working or waiting; needs_you keeps the ones waiting on an answer from a person. A filter checks the 100 most recently active threads (or the page after cursor) and returns only matches. | "all" \| "active" \| "needs_you" | No |
+| limit | Maximum number of threads to return when show is all | int | No |
 | cursor | Paging cursor from a previous call's next_cursor | str | No |
 
 ### Outputs
@@ -107,6 +110,8 @@ Calls `GET /api/v1/threads` for one project and returns a page of threads, most 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
+**Status Check**: Answer "what is Capy working on?" with `show: active`, or "what needs me?" with `show: needs_you`.
+
 **Daily Digest**: Summarise what Capy agents worked on in a project today.
 
 **Find Earlier Work**: Locate the thread for "the Node upgrade Capy did last week" to send it a follow-up.

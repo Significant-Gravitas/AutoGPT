@@ -22,7 +22,7 @@ from ._models import (
     resolve_model_id,
 )
 from ._testdata import TEST_PROJECT, TEST_THREAD
-from ._types import MachineSize, ReasoningEffort, Thread
+from ._types import MachineSize, PullRequestAuthor, ReasoningEffort, Thread
 
 
 class CapyCreateThreadBlock(Block):
@@ -63,6 +63,17 @@ class CapyCreateThreadBlock(Block):
         machine_size: MachineSize = SchemaField(
             description="Machine size for the agent's VM. Empty uses Capy's default.",
             default=MachineSize.DEFAULT,
+            advanced=True,
+        )
+        pull_request_author: PullRequestAuthor = SchemaField(
+            description=(
+                "Who opens the thread's pull requests on GitHub: capy (the "
+                "Capy GitHub app, so you can approve them yourself where a "
+                "pull request needs an approving review) or user (the key's "
+                "owner). Empty follows the Capy settings. Commits keep your "
+                "Git identity either way."
+            ),
+            default=PullRequestAuthor.DEFAULT,
             advanced=True,
         )
         request_id: str = SchemaField(
@@ -158,6 +169,7 @@ class CapyCreateThreadBlock(Block):
                 reasoning=input_data.reasoning.value,
                 machine_size=input_data.machine_size.value,
                 request_id=key,
+                pull_request_author=input_data.pull_request_author.value,
             )
 
         return await with_capy_balance_fallback(

@@ -546,7 +546,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Capy List Projects](block-integrations/capy/projects.md#capy-list-projects) | Lists the Capy projects your API key can see, with the repositories each one covers |
 | [Capy List Thread Messages](block-integrations/capy/messages.md#capy-list-thread-messages) | Reads a Capy thread's transcript: your brief, the agent's replies (including pull request links and questions), and optionally its tool steps |
 | [Capy List Thread Tasks](block-integrations/capy/tasks.md#capy-list-thread-tasks) | Lists the subagent tasks a Capy thread fanned its work out to, with each task's status and credit spend |
-| [Capy List Threads](block-integrations/capy/threads.md#capy-list-threads) | Lists the agent threads in a Capy project with their status, most recently active first |
+| [Capy List Threads](block-integrations/capy/threads.md#capy-list-threads) | Lists the agent threads in a Capy project with their status and link, most recently active first |
 | [Capy Start Review](block-integrations/capy/reviews.md#capy-start-review) | Starts a Capy code review on a GitHub pull request |
 | [Capy Wait For Thread](block-integrations/capy/wait.md#capy-wait-for-thread) | Waits for a Capy thread to finish (the agent delivered, asked a question or failed) and returns its status, latest reply and a link to the thread |
 | [Conductor Create Session](block-integrations/conductor/create_session.md#conductor-create-session) | Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply |

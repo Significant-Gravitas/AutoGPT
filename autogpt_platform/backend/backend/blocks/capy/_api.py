@@ -149,6 +149,7 @@ class CapyClient:
         reasoning: str = "",
         machine_size: str = "",
         request_id: str = "",
+        pull_request_author: str = "",
     ) -> Thread:
         body: dict[str, Any] = {
             # Capy dedupes creates on requestId, so the retry layer in
@@ -163,6 +164,8 @@ class CapyClient:
             body["model"] = model
         if machine_size:
             body["machineSize"] = machine_size
+        if pull_request_author:
+            body["pullRequestAuthor"] = pull_request_author
         return Thread.model_validate(await self._request("POST", "/threads", body=body))
 
     async def get_thread(self, thread_id: str) -> Thread:
