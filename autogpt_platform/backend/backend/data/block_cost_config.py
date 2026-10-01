@@ -33,6 +33,7 @@ from backend.blocks.enrichlayer.linkedin import (
 )
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
+from backend.blocks.google_maps import GoogleMapsSearchBlock
 from backend.blocks.google_maps_directions import GoogleMapsGetDirectionsBlock
 from backend.blocks.google_maps_places import (
     GoogleMapsResolveLinksBlock,
@@ -1220,6 +1221,26 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=3,
             cost_type=BlockCostType.ITEMS,
+            cost_filter={
+                "credentials": {
+                    "id": google_maps_credentials.id,
+                    "provider": google_maps_credentials.provider,
+                    "type": google_maps_credentials.type,
+                }
+            },
+        )
+    ],
+    # Google Maps Search, when the platform's Maps key is used. Each page of up
+    # to 20 places is one Places API (New) Text Search request, billed at the
+    # Enterprise rate ($0.035) because the phone, website and rating fields
+    # are requested. x1.5 at 1 credit = $0.01 rounds up to 6 credits a page,
+    # billed after the run from the place count. People who bring their own
+    # key pay Google directly.
+    GoogleMapsSearchBlock: [
+        BlockCost(
+            cost_amount=6,
+            cost_type=BlockCostType.ITEMS,
+            cost_divisor=20,
             cost_filter={
                 "credentials": {
                     "id": google_maps_credentials.id,
