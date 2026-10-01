@@ -187,7 +187,7 @@ export function useCopilotRuntimeStream({
           setRateLimitMessage(limitFailure?.message || message);
         }
       },
-      onReconnect: () => runtime?.ensureConnected("error"),
+      onReconnect: () => runtime?.ensureConnected(),
       isUserStoppingRef,
     });
     if (!kickoffExpertId) return;

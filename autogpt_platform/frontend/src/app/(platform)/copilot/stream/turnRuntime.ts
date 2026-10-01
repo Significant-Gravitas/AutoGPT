@@ -5,29 +5,40 @@ import * as Sentry from "@sentry/nextjs";
 import type { FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
-import {
-  BACKLOG_DRAIN_TICKS,
-  findWordCutPoints,
-  TICK_DELAY_MS,
-} from "../copilotStreamSmoothing";
 import { streamRequestBody } from "../copilotStreamTransport";
 import { getCopilotAuthHeaders, isEngineSwitchPart } from "../helpers";
 import type { CopilotLlmModel } from "../store";
 import { isTokenDevtoolEnabled } from "../tokenDevtool/gate";
 import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
-import { CANCELLED_MARKER } from "../useCopilotStop";
-import { fetchSse, type SseFrame, type SseResult } from "./sseClient";
+import { fetchSse, type SseFrame } from "./sseClient";
+import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
-import {
-  COPILOT_RETRYABLE_ERROR_PREFIX,
-  isMarker,
-  logRowFromPersisted,
-  seedTurnLog,
-  type LogRow,
-  type PersistedRow,
-  type TurnLog,
-} from "./turnLog";
+import { seedTurnLog } from "./turnLog";
 import { diffRows, sha256Hex } from "./turnShadow";
+import {
+  checkpointOf,
+  closeBlocks,
+  FROZEN_NOTE,
+  gapSegment,
+  hasOpenParts,
+  INTERRUPTED_MARKER,
+  keepIdentity,
+  lastCheckpoint,
+  locatePrompt,
+  mergeRows,
+  newTurnSegment,
+  persistedRows,
+  reconcileTurn,
+  tailEndSequence,
+  turnRows,
+  userSegment,
+  withMarker,
+  withPromptRow,
+  withStopMarker,
+  type Segment,
+  type TurnCheckpoint,
+  type TurnSegment,
+} from "./turnTail";
 
 /** No byte for this long means the connection is dead: the route and the
  *  listener heartbeat every 10 s and the SDK engine every 10 s of silence. */
@@ -40,7 +51,6 @@ const INDICATOR_AFTER_FAILURES = 2;
 const CATCHING_UP_AFTER_MS = 2_000;
 const TICK_MS = 5_000;
 const EMIT_THROTTLE_MS = 30;
-const REVEAL_TICK_MS = 30;
 const FROZEN_POLL_MS = 10_000;
 const FINISH_PROBE_MS = 500;
 // A server-started continuation (engine switch, approval wake) is dispatched
@@ -55,9 +65,6 @@ const RESYNC_REASONS = new Set([
   "closed block",
   "input changed",
 ]);
-const INTERRUPTED_MARKER = `${COPILOT_RETRYABLE_ERROR_PREFIX} Response was interrupted. Resend to try again.`;
-const FROZEN_NOTE =
-  "[__COPILOT_SYSTEM_e3b0__] This reply is shown as saved; it will update when the turn ends.";
 
 export const ANOMALY_TOAST = {
   title: "Connection lost",
@@ -74,42 +81,6 @@ export type RuntimePhase =
 
 /** A passive, inline state; never a toast. */
 export type RuntimeNotice = "catching-up" | "reconnecting" | "offline" | null;
-
-export interface UserSegment {
-  kind: "user";
-  key: string;
-  message: UIMessage;
-  sequence: number | null;
-  /** `sent` is the turn's own prompt; `chip` a promoted follow-up. */
-  origin: "sent" | "chip";
-  rawId: string | null;
-  createdAt: string | null;
-}
-
-export interface TurnSegment {
-  kind: "turn";
-  key: string;
-  log: TurnLog;
-  ended: boolean;
-  stopped: boolean;
-  /** Two drift events on one turn: the persisted view is shown instead. */
-  frozen: boolean;
-  reconciled: boolean;
-  /** Fields that never stream, adopted at the reconcile. */
-  durationMs: number | null;
-  createdAt: string | null;
-  /** When each persisted row was written, by row key. */
-  rowCreatedAt: Readonly<Record<string, string>>;
-}
-
-/** Persisted rows the tail holds but no turn of this mount produced. */
-export interface RowsSegment {
-  kind: "rows";
-  key: string;
-  rows: readonly PersistedRow[];
-}
-
-export type Segment = UserSegment | TurnSegment | RowsSegment;
 
 export interface RuntimeSnapshot {
   /** The tail this runtime owns, in order; history before it is the DB view's. */
@@ -129,12 +100,6 @@ export interface SessionView {
     turn_id: string;
     checkpoint?: TurnCheckpoint | null;
   } | null;
-}
-
-interface TurnCheckpoint {
-  entry_id: string;
-  rows: number;
-  sequence: number;
 }
 
 export interface RuntimeDeps {
@@ -162,11 +127,13 @@ interface Connection {
   openedAt: number;
   lastFrameAt: number;
   frames: number;
-  entries: number;
   turnId: string | null;
   closedByClient: boolean;
   syntheticError: string | null;
 }
+
+/** What the classification needs to know about a connection that is gone. */
+type Lost = Pick<Connection, "turnId" | "openedAt" | "syntheticError">;
 
 type ConnectionEnd =
   | { kind: "closed" }
@@ -199,6 +166,10 @@ export class TurnRuntime {
   // A stopped turn keeps running on the server for a moment; never re-attach to it.
   private suppressAttach = false;
   private followPending = false;
+  // A resync or an expiry is rebuilding the turn; it reconnects when done.
+  private recovering = false;
+  // A send whose stream ended before naming its turn, while hidden or offline.
+  private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
   private providerFailure: unknown = null;
   private lastViewMaxSequence: number | null = null;
   private turns = new Map<string, TurnBookkeeping>();
@@ -206,11 +177,10 @@ export class TurnRuntime {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private frozenTimer: ReturnType<typeof setInterval> | null = null;
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
-  // Characters shown of a row the live POST stream is writing: smoothing
-  // paces what is shown, never what is applied, so the cursor stays exact.
-  private revealed = new Map<string, number>();
-  private revealTimer: ReturnType<typeof setInterval> | null = null;
-  private displayRows = new WeakMap<LogRow, { shown: number; row: LogRow }>();
+  private reveal = new TextReveal(
+    () => this.segments,
+    () => this.emitNow(),
+  );
   private listeners = new Set<() => void>();
   private snapshot: RuntimeSnapshot;
   private handlers: RuntimeHandlers = {};
@@ -252,10 +222,6 @@ export class TurnRuntime {
     };
   }
 
-  hasTurn(turnId: string) {
-    return this.turnFor(turnId) !== null;
-  }
-
   /** Whether `observe(view)` would attach to the view's running turn. */
   wouldAttach(view: SessionView) {
     const active = view.active_stream;
@@ -279,15 +245,7 @@ export class TurnRuntime {
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
     this.claimTail(this.nextSequence());
-    this.segments.push({
-      kind: "user",
-      key: message.id,
-      message,
-      sequence: null,
-      origin: "sent",
-      rawId: null,
-      createdAt: null,
-    });
+    this.segments.push(userSegment(message, "sent"));
     this.emitNow();
     const body = streamRequestBody(this.sessionId, message, model);
     await this.open("post", null, this.streamUrl(), {
@@ -305,7 +263,7 @@ export class TurnRuntime {
     this.stopped = true;
     this.suppressAttach = true;
     this.notice = null;
-    this.revealed.clear();
+    this.reveal.clear();
     if (running) {
       this.updateTurn(running.key, (seg) => ({
         ...seg,
@@ -323,15 +281,9 @@ export class TurnRuntime {
     for (const entry of entries) {
       const key = `pending-chip-${entry.id}`;
       if (this.segments.some((s) => s.key === key)) continue;
-      this.segments.push({
-        kind: "user",
-        key,
-        message: userMessage(key, { text: entry.text }),
-        sequence: null,
-        origin: "chip",
-        rawId: null,
-        createdAt: null,
-      });
+      this.segments.push(
+        userSegment(userMessage(key, { text: entry.text }), "chip"),
+      );
     }
     this.emit();
   }
@@ -351,7 +303,7 @@ export class TurnRuntime {
    * of a running turn the server no longer runs.
    */
   observe(view: SessionView) {
-    const rows = persistedRows(view);
+    const rows = persistedRows(view.messages);
     const last = rows[rows.length - 1]?.sequence;
     if (typeof last === "number") this.lastViewMaxSequence = last;
     const active = view.active_stream ?? null;
@@ -367,8 +319,9 @@ export class TurnRuntime {
     if (active && this.wouldAttach(view)) this.attach(active, view);
     const running = this.runningTurn();
     if (running && active?.turn_id !== running.log.turnId && !running.frozen) {
-      this.ensureConnected("view");
+      this.ensureConnected();
     }
+    if (!running && !this.isPostPending() && !active) this.settleTail(view);
     this.emitNow();
   }
 
@@ -379,9 +332,9 @@ export class TurnRuntime {
    * within the liveness window. One slot, so a second call inside the window
    * does nothing: two resumes never read one turn at once.
    */
-  ensureConnected(_reason: string) {
+  ensureConnected() {
     const running = this.runningTurn();
-    if (!running?.log.turnId || running.frozen) return;
+    if (!running?.log.turnId || running.frozen || this.recovering) return;
     if (this.slot && Date.now() - this.slot.lastFrameAt < LIVENESS_MS) return;
     this.clearRetry();
     this.resume(running);
@@ -400,7 +353,8 @@ export class TurnRuntime {
     this.disposed = true;
     this.abortConnections();
     this.clearRetry();
-    for (const timer of [this.tickTimer, this.frozenTimer, this.revealTimer]) {
+    this.reveal.dispose();
+    for (const timer of [this.tickTimer, this.frozenTimer]) {
       if (timer) clearInterval(timer);
     }
     if (this.emitTimer) clearTimeout(this.emitTimer);
@@ -453,7 +407,6 @@ export class TurnRuntime {
       openedAt: now,
       lastFrameAt: now,
       frames: 0,
-      entries: 0,
       turnId,
       closedByClient: false,
       syntheticError: null,
@@ -468,7 +421,7 @@ export class TurnRuntime {
     let end: ConnectionEnd;
     try {
       const headers = await this.deps.headers();
-      const result: SseResult = await fetchSse(
+      const result = await fetchSse(
         url,
         {
           method: init.method ?? "GET",
@@ -511,22 +464,19 @@ export class TurnRuntime {
     let seg = this.turnFor(entry.turn);
     if (!seg) {
       if (conn.kind !== "post" || conn.turnId !== null) return;
-      seg = this.openTurn(
+      seg = newTurnSegment(
         entry.turn,
-        seedTurnLog({
-          turnId: entry.turn,
-          rows: [],
-          checkpoint: null,
-        }),
+        seedTurnLog({ turnId: entry.turn, rows: [], checkpoint: null }),
       );
+      this.segments.push(seg);
     }
     conn.turnId = entry.turn;
     if (seg.ended || seg.stopped || seg.frozen) return;
     const next = applyEntry(seg.log, entry);
     if (next === seg.log) return;
-    conn.entries += 1;
+    if (conn.kind === "post") this.reveal.track(seg.log, next);
+    else this.reveal.clear();
     const key = seg.key;
-    this.trackReveal(conn, seg.log, next);
     this.updateTurn(key, (s) => ({ ...s, log: next }));
     this.onChunk(key, entry.chunk);
     this.checkProtocol(key);
@@ -564,28 +514,20 @@ export class TurnRuntime {
       return;
     }
     if (!seg) {
-      void this.recoverUnknownTurn(conn, end);
+      this.findLostTurn(conn, end);
       return;
     }
     if (end.kind === "refused") {
-      if (end.status === 409) {
-        void this.resync(seg.key, checkpointOf(end.body));
-        return;
-      }
-      if (end.status === 410 || end.status === 204) {
+      if (end.status === 409) void this.resync(seg.key, checkpointOf(end.body));
+      else if (end.status === 410 || end.status === 204)
         void this.expire(seg.key);
-        return;
-      }
-      this.retry(conn);
+      else this.retry(conn);
       return;
     }
     // A clean close without the turn's finish is an expected cut (a proxy
     // restart, the route's own error frame): resume at once.
-    if (end.kind === "closed" && conn.frames > 0) {
-      this.resume(seg);
-      return;
-    }
-    this.retry(conn);
+    if (end.kind === "closed" && conn.frames > 0) this.resume(seg);
+    else this.retry(conn);
   }
 
   /**
@@ -593,16 +535,24 @@ export class TurnRuntime {
    * rotation-age cuts resume silently; only a run of failures while the tab
    * is visible and online reaches the one alarming toast.
    */
-  private retry(conn: Connection) {
+  private retry(lost: Lost) {
     const running = this.runningTurn();
-    if (!running && conn.turnId !== null) return;
+    if (!running && lost.turnId !== null) return;
+    const offline =
+      typeof navigator !== "undefined" && navigator.onLine === false;
+    if (
+      lost.turnId === null &&
+      (offline || document.visibilityState === "hidden")
+    ) {
+      this.unresolvedPost = { lost, end: { kind: "closed" } };
+    }
     if (document.visibilityState === "hidden") return;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    if (offline) {
       this.notice = "offline";
       this.emitNow();
       return;
     }
-    if (Date.now() - conn.openedAt >= ROTATE_AFTER_MS && running) {
+    if (Date.now() - lost.openedAt >= ROTATE_AFTER_MS && running) {
       this.resume(running);
       return;
     }
@@ -616,8 +566,8 @@ export class TurnRuntime {
     this.clearRetry();
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      if (this.runningTurn()) this.ensureConnected("retry");
-      else void this.recoverUnknownTurn(conn, { kind: "closed" });
+      if (this.runningTurn()) this.ensureConnected();
+      else void this.recoverUnknownTurn(lost, { kind: "closed" });
     }, delay);
     this.emitNow();
   }
@@ -631,24 +581,38 @@ export class TurnRuntime {
   }
 
   // A send whose stream ended before naming its turn: the session view says
-  // whether the turn runs.
-  private async recoverUnknownTurn(conn: Connection, end: ConnectionEnd) {
-    const view = await this.fetchView();
-    if (!view) {
-      this.retry(conn);
-      return;
-    }
-    if (view.active_stream && this.wouldAttach(view)) {
-      this.resetFailures();
+  // whether the turn runs, once the tab can ask.
+  private findLostTurn(lost: Lost, end: ConnectionEnd) {
+    const offline =
+      typeof navigator !== "undefined" && navigator.onLine === false;
+    if (document.visibilityState === "hidden" || offline)
+      this.unresolvedPost = { lost, end };
+    else void this.recoverUnknownTurn(lost, end);
+  }
+
+  // The turn registers a beat after the POST answers, so the view is asked a
+  // few times before the send is reported as failed.
+  private async recoverUnknownTurn(lost: Lost, end: ConnectionEnd) {
+    for (let i = 0; i < CONTINUATION_PROBES; i++) {
+      const view = await this.fetchView();
+      if (!view) {
+        this.retry(lost);
+        return;
+      }
+      const attaching = this.wouldAttach(view);
       this.observe(view);
-      return;
+      if (attaching) {
+        this.resetFailures();
+        return;
+      }
+      if (this.disposed || this.stopped) return;
+      await sleep(FINISH_PROBE_MS);
     }
-    this.observe(view);
-    if (end.kind === "failed" || conn.syntheticError) {
+    if (end.kind === "failed" || lost.syntheticError) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
           ? end.error
-          : new Error(conn.syntheticError ?? "The connection closed early.");
+          : new Error(lost.syntheticError ?? "The connection closed early.");
       this.emitNow();
     }
   }
@@ -659,17 +623,22 @@ export class TurnRuntime {
     active: NonNullable<SessionView["active_stream"]>,
     view: SessionView,
   ) {
-    const rows = persistedRows(view);
+    const rows = persistedRows(view.messages);
     const checkpoint = active.checkpoint ?? null;
     const start = checkpoint
       ? checkpoint.sequence
       : (this.lastViewMaxSequence ?? -1) + 1;
-    this.fillGap(start, rows);
+    // Rows another tab (or the server) persisted between the tail and this turn.
+    const gap =
+      this.ownedFrom === null ? null : gapSegment(this.segments, start, rows);
+    if (gap) this.segments.push(gap);
     this.claimTail(start);
-    const seg = this.openTurn(
+    const seg = newTurnSegment(
       active.turn_id,
       seedTurnLog({ turnId: active.turn_id, rows, checkpoint }),
+      start,
     );
+    this.segments.push(seg);
     this.resume(seg);
   }
 
@@ -679,7 +648,7 @@ export class TurnRuntime {
     this.emitNow();
     this.handlers.onTurnEnd?.();
     const seg = this.segmentByKey(key);
-    if (!seg || seg.kind !== "turn") return;
+    if (seg?.kind !== "turn") return;
     const continuation =
       this.bookkeeping(key).sawModeChange || this.followPending;
     this.followPending = false;
@@ -725,12 +694,16 @@ export class TurnRuntime {
     }
     book.resyncs += 1;
     this.abortSlot();
-    const view = await this.catchUp(() => this.fetchView());
+    const view = await this.recover(() => this.fetchView());
     const seg = this.segmentByKey(key);
-    if (!seg || seg.kind !== "turn" || !seg.log.turnId) return;
+    if (seg?.kind !== "turn" || !seg.log.turnId) return;
     if (!view) {
       book.resyncs -= 1;
-      this.retry(this.deadConnection(seg.log.turnId));
+      this.retry({
+        turnId: seg.log.turnId,
+        openedAt: Date.now(),
+        syntheticError: null,
+      });
       return;
     }
     const active = view.active_stream;
@@ -740,7 +713,7 @@ export class TurnRuntime {
       lastCheckpoint(seg.log);
     const seeded = seedTurnLog({
       turnId: seg.log.turnId,
-      rows: persistedRows(view),
+      rows: persistedRows(view.messages),
       checkpoint: at,
     });
     book.verified = 0;
@@ -756,21 +729,28 @@ export class TurnRuntime {
   // The stream is gone: the DB view is the whole truth, and a turn that
   // stopped mid-part renders as interrupted.
   private async expire(key: string) {
-    const view = await this.catchUp(() => this.fetchView());
+    const view = await this.recover(() => this.fetchView());
     const seg = this.segmentByKey(key);
-    if (!seg || seg.kind !== "turn") return;
+    if (seg?.kind !== "turn") return;
     if (!view) {
-      this.retry(this.deadConnection(seg.log.turnId));
+      this.retry({
+        turnId: seg.log.turnId,
+        openedAt: Date.now(),
+        syntheticError: null,
+      });
       return;
     }
-    const persisted = this.turnRows(seg, persistedRows(view));
-    const open =
-      Object.values(seg.log.blocks).some((b) => b.open) ||
-      Object.values(seg.log.tools).some((t) => t.phase !== "output-available");
+    const persisted = turnRows(
+      this.segments,
+      this.ownedFrom,
+      seg,
+      persistedRows(view.messages),
+    );
+    const interrupted = hasOpenParts(seg.log);
     this.updateTurn(key, (s) => {
-      const rows = persisted ? mergeRows(s.log.rows, persisted) : s.log.rows;
-      const last = rows[rows.length - 1];
-      const interrupted = open && !(last && isMarker(last));
+      const rows = persisted
+        ? mergeRows(s.log.rows, persisted.rows)
+        : s.log.rows;
       return {
         ...s,
         ended: true,
@@ -779,10 +759,11 @@ export class TurnRuntime {
           ...closeBlocks(s.log),
           status: "finished",
           rows: interrupted
-            ? [
-                ...rows,
-                markerRow(`interrupted:${s.log.turnId}`, INTERRUPTED_MARKER),
-              ]
+            ? withMarker(
+                rows,
+                `interrupted:${s.log.turnId}`,
+                INTERRUPTED_MARKER,
+              )
             : rows,
         },
       };
@@ -793,25 +774,34 @@ export class TurnRuntime {
     this.observe(view);
   }
 
+  // Show the persisted rows with a note, and poll until the turn is over.
   private async freeze(key: string) {
     this.abortSlot();
     this.clearRetry();
-    this.deps.report("frozen", { turnId: this.turnIdOf(key) });
     const view = await this.fetchView();
     this.updateTurn(key, (seg) => {
-      const persisted = view ? this.turnRows(seg, persistedRows(view)) : null;
+      const persisted = view
+        ? turnRows(
+            this.segments,
+            this.ownedFrom,
+            seg,
+            persistedRows(view.messages),
+          )
+        : null;
       return {
         ...seg,
         frozen: true,
         log: {
           ...closeBlocks(seg.log),
-          rows: [
-            ...(persisted ?? seg.log.rows),
-            markerRow(`frozen:${seg.log.turnId}`, FROZEN_NOTE),
-          ],
+          rows: withMarker(
+            persisted?.rows ?? seg.log.rows,
+            `frozen:${seg.log.turnId}`,
+            FROZEN_NOTE,
+          ),
         },
       };
     });
+    this.deps.report("frozen", { turnId: key });
     this.notice = null;
     this.emitNow();
     if (this.frozenTimer) clearInterval(this.frozenTimer);
@@ -826,21 +816,15 @@ export class TurnRuntime {
     }, FROZEN_POLL_MS);
   }
 
-  /**
-   * The end-of-turn reconcile: the turn's persisted rows against its log, row
-   * by row. Equal rows adopt their sequence and keep their object; a differing
-   * row is replaced under its own key and reported; a streamed row the DB
-   * lacks stays on screen.
-   */
   private reconcile(seg: TurnSegment, view: SessionView) {
-    const rows = persistedRows(view);
-    const start = this.turnStart(seg, rows);
-    if (start === null) return;
-    const windowStart = rows[0]?.sequence ?? Infinity;
-    if (view.has_more_messages !== false && windowStart > start) return;
-    const persisted = this.turnRows(seg, rows);
+    const rows = persistedRows(view.messages);
+    const persisted = turnRows(this.segments, this.ownedFrom, seg, rows);
     if (!persisted) return;
-    const drift = diffRows(seg.log.rows, persisted);
+    // The session GET returns a window; a turn starting before it waits.
+    const windowStart = rows[0]?.sequence ?? Infinity;
+    if (view.has_more_messages !== false && windowStart > persisted.start)
+      return;
+    const drift = diffRows(seg.log.rows, persisted.rows);
     if (drift.length > 0 && !seg.stopped && !seg.frozen) {
       this.deps.report("finish", {
         turnId: seg.log.turnId,
@@ -848,116 +832,39 @@ export class TurnRuntime {
         diffs: drift,
       });
     }
-    const raw = rows.filter(
-      (r) =>
-        (r.sequence ?? -1) >= start &&
-        (r.sequence ?? -1) < start + persisted.length,
-    );
-    const durations = raw
-      .map((r) => (r as { duration_ms?: unknown }).duration_ms)
-      .filter((d): d is number => typeof d === "number");
-    this.updateTurn(seg.key, (s) => {
-      const rows = s.frozen ? persisted : mergeRows(s.log.rows, persisted);
-      const rowCreatedAt: Record<string, string> = {};
-      rows.forEach((row, i) => {
-        const at = createdAtOf(raw[i]);
-        if (at) rowCreatedAt[row.key] = at;
-      });
-      return {
-        ...s,
-        reconciled: true,
-        ended: true,
-        log: { ...closeBlocks(s.log), rows },
-        durationMs: durations.length ? Math.max(...durations) : s.durationMs,
-        createdAt: createdAtOf(raw[raw.length - 1]) ?? s.createdAt,
-        rowCreatedAt,
-      };
-    });
-    this.adoptPromptSequence(seg.key, start, rows);
-  }
-
-  // ── Tail bookkeeping ───────────────────────────────────────────────────
-
-  private turnStart(seg: TurnSegment, rows: readonly PersistedRow[]) {
-    const fromCheckpoint = seg.log.checkpoints[0]?.sequence;
-    if (typeof fromCheckpoint === "number") return fromCheckpoint;
-    const seeded = seg.log.rows[0]?.sequence;
-    if (typeof seeded === "number") return seeded;
-    const index = this.segments.indexOf(seg);
-    const before = this.segments[index - 1];
-    if (before?.kind === "user") {
-      const prompt =
-        before.sequence ?? locatePrompt(before, rows, this.ownedFrom);
-      return prompt === null ? null : prompt + 1;
+    this.updateTurn(seg.key, (s) => reconcileTurn(s, persisted));
+    const index = this.segments.findIndex((s) => s.key === seg.key);
+    const prompt = this.segments[index - 1];
+    const row = rows.find((r) => r.sequence === persisted.start - 1);
+    if (
+      prompt?.kind === "user" &&
+      prompt.sequence === null &&
+      row?.role === "user"
+    ) {
+      this.segments[index - 1] = withPromptRow(prompt, row);
     }
-    return index === 0 ? this.ownedFrom : null;
   }
 
-  // A turn's rows run from its start to the next segment that has a place.
-  private turnRows(seg: TurnSegment, rows: readonly PersistedRow[]) {
-    const start = this.turnStart(seg, rows);
-    if (start === null) return null;
-    const index = this.segments.indexOf(seg);
-    const next = this.segments
-      .slice(index + 1)
-      .map((s) => segmentStart(s))
-      .find((n): n is number => n !== null);
-    return rows
-      .filter(
-        (r) =>
-          typeof r.sequence === "number" &&
-          r.sequence >= start &&
-          r.sequence < (next ?? Infinity),
-      )
-      .map(logRowFromPersisted);
-  }
-
-  private adoptPromptSequence(
-    key: string,
-    start: number,
-    rows: readonly PersistedRow[],
-  ) {
-    const index = this.segments.findIndex((s) => s.key === key);
-    const before = this.segments[index - 1];
-    if (before?.kind !== "user" || before.sequence !== null) return;
-    const row = rows.find((r) => r.sequence === start - 1);
-    if (row?.role !== "user") return;
-    const rawId = (row as { id?: unknown }).id;
-    this.segments[index - 1] = {
-      ...before,
-      sequence: start - 1,
-      rawId: typeof rawId === "string" ? rawId : null,
-      createdAt: createdAtOf(row),
-    };
-  }
-
-  // Rows another tab (or the server) persisted between this tail's end and a
-  // turn it now attaches to.
-  private fillGap(start: number, rows: readonly PersistedRow[]) {
-    if (this.ownedFrom === null) return;
-    const tailEnd = this.tailEndSequence();
-    if (tailEnd === null) return;
-    const gap = rows.filter(
-      (r) => (r.sequence ?? -1) > tailEnd && (r.sequence ?? -1) < start,
-    );
-    if (gap.length === 0) return;
-    this.segments.push({
-      kind: "rows",
-      key: `rows:${gap[0].sequence}`,
-      rows: gap,
-    });
-  }
-
-  private tailEndSequence() {
-    for (let i = this.segments.length - 1; i >= 0; i--) {
-      const seg = this.segments[i];
-      if (seg.kind === "rows")
-        return seg.rows[seg.rows.length - 1]?.sequence ?? null;
-      if (seg.kind === "user") return seg.sequence;
-      const last = seg.log.rows[seg.log.rows.length - 1];
-      return last?.sequence ?? null;
+  // With nothing running, a prompt whose turn never reached this client (a
+  // stop before its first entry, a lost send) takes its row, and rows after
+  // the tail's end are shown as persisted.
+  private settleTail(view: SessionView) {
+    const rows = persistedRows(view.messages);
+    const last = this.segments[this.segments.length - 1];
+    if (
+      last?.kind === "user" &&
+      last.origin === "sent" &&
+      last.sequence === null
+    ) {
+      const row = locatePrompt(last, rows, this.ownedFrom);
+      if (!row) return;
+      this.segments[this.segments.length - 1] = withPromptRow(last, row);
     }
-    return null;
+    const gap =
+      this.ownedFrom === null
+        ? null
+        : gapSegment(this.segments, Infinity, rows);
+    if (gap) this.segments.push(gap);
   }
 
   private claimTail(from: number) {
@@ -966,25 +873,8 @@ export class TurnRuntime {
 
   private nextSequence() {
     return this.ownedFrom !== null && this.segments.length > 0
-      ? (this.tailEndSequence() ?? this.ownedFrom) + 1
+      ? (tailEndSequence(this.segments) ?? this.ownedFrom) + 1
       : (this.lastViewMaxSequence ?? -1) + 1;
-  }
-
-  private openTurn(turnId: string, log: TurnLog): TurnSegment {
-    const seg: TurnSegment = {
-      kind: "turn",
-      key: `turn:${turnId}`,
-      log,
-      ended: false,
-      stopped: false,
-      frozen: false,
-      reconciled: false,
-      durationMs: null,
-      createdAt: null,
-      rowCreatedAt: {},
-    };
-    this.segments.push(seg);
-    return seg;
   }
 
   private checkProtocol(key: string) {
@@ -1030,91 +920,16 @@ export class TurnRuntime {
     }
   }
 
-  // ── Paced text ─────────────────────────────────────────────────────────
-
-  private trackReveal(conn: Connection, prev: TurnLog, next: TurnLog) {
-    if (conn.kind !== "post") {
-      this.revealed.clear();
-      return;
-    }
-    for (const block of Object.values(next.blocks)) {
-      if (!block.open || block.row === null) continue;
-      const row = next.rows[block.row];
-      if (!this.revealed.has(row.key)) {
-        this.revealed.set(row.key, prev.rows[block.row]?.content.length ?? 0);
-      }
-    }
-    if (this.revealed.size > 0 && !this.revealTimer) {
-      this.revealTimer = setInterval(() => this.revealTick(), REVEAL_TICK_MS);
-    }
-  }
-
-  // Each tick shows what the smoothing transform would have emitted over it:
-  // a share of the backlog per 10 ms, a whole word at least.
-  private revealTick() {
-    const open = this.openRows();
-    for (const [key, shown] of this.revealed) {
-      const row = open.get(key);
-      if (!row) {
-        this.revealed.delete(key);
-        continue;
-      }
-      let next = shown;
-      for (let t = 0; t < REVEAL_TICK_MS / TICK_DELAY_MS; t++) {
-        const cuts = findWordCutPoints(row.content.slice(next));
-        if (cuts.length === 0) break;
-        const words = Math.max(1, Math.ceil(cuts.length / BACKLOG_DRAIN_TICKS));
-        next += cuts[Math.min(words, cuts.length) - 1];
-      }
-      if (next !== shown) this.revealed.set(key, next);
-    }
-    if (this.revealed.size === 0 && this.revealTimer) {
-      clearInterval(this.revealTimer);
-      this.revealTimer = null;
-    }
-    this.emitNow();
-  }
-
-  private openRows() {
-    const rows = new Map<string, LogRow>();
-    for (const seg of this.segments) {
-      if (seg.kind !== "turn") continue;
-      for (const block of Object.values(seg.log.blocks)) {
-        if (!block.open || block.row === null) continue;
-        const row = seg.log.rows[block.row];
-        if (row) rows.set(row.key, row);
-      }
-    }
-    return rows;
-  }
-
-  private display(seg: Segment): Segment {
-    if (seg.kind !== "turn" || this.revealed.size === 0) return seg;
-    let changed = false;
-    const rows = seg.log.rows.map((row) => {
-      const shown = this.revealed.get(row.key);
-      if (shown === undefined || shown >= row.content.length) return row;
-      changed = true;
-      const cached = this.displayRows.get(row);
-      if (cached?.shown === shown) return cached.row;
-      const display = { ...row, content: row.content.slice(0, shown) };
-      this.displayRows.set(row, { shown, row: display });
-      return display;
-    });
-    return changed ? { ...seg, log: { ...seg.log, rows } } : seg;
-  }
-
   // ── Plumbing ───────────────────────────────────────────────────────────
 
   private onVisible = () => {
-    if (document.visibilityState !== "visible") return;
-    this.ensureConnected("wake");
+    if (document.visibilityState === "visible") this.wake();
   };
 
   private onOnline = () => {
     if (this.notice === "offline") this.notice = null;
     this.resetFailures();
-    this.ensureConnected("online");
+    this.wake();
     this.emitNow();
   };
 
@@ -1125,11 +940,20 @@ export class TurnRuntime {
     }
   };
 
+  private wake() {
+    const unresolved = this.unresolvedPost;
+    this.unresolvedPost = null;
+    if (unresolved && !this.runningTurn())
+      void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
+    else this.ensureConnected();
+  }
+
   private ensureTicking() {
     if (this.tickTimer) return;
     this.tickTimer = setInterval(() => this.tick(), TICK_MS);
   }
 
+  // Liveness and rotation; a hidden tab's timers are not to be trusted.
   private tick() {
     const slot = this.slot;
     if (!slot && !this.runningTurn()) {
@@ -1143,15 +967,17 @@ export class TurnRuntime {
       slot.closedByClient = true;
       slot.controller.abort();
       this.slot = null;
-      if (slot.turnId === null)
-        void this.recoverUnknownTurn(slot, { kind: "closed" });
+      if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
       else this.retry(slot);
       return;
     }
     if (!this.rotating && now - slot.openedAt >= ROTATE_AFTER_MS) this.rotate();
   }
 
-  private async catchUp<T>(work: () => Promise<T>) {
+  // Rebuilding from the DB view: no other trigger reconnects meanwhile, and
+  // a rebuild past 2 s shows an inline "catching up".
+  private async recover<T>(work: () => Promise<T>) {
+    this.recovering = true;
     const timer = setTimeout(() => {
       this.notice = "catching-up";
       this.emitNow();
@@ -1159,6 +985,7 @@ export class TurnRuntime {
     try {
       return await work();
     } finally {
+      this.recovering = false;
       clearTimeout(timer);
       if (this.notice === "catching-up") this.notice = null;
       this.emit();
@@ -1205,16 +1032,10 @@ export class TurnRuntime {
     return this.segments.find((s) => s.key === key) ?? null;
   }
 
-  private turnIdOf(key: string) {
-    const seg = this.segmentByKey(key);
-    return seg?.kind === "turn" ? seg.log.turnId : null;
-  }
-
   private updateTurn(key: string, patch: (seg: TurnSegment) => TurnSegment) {
     const index = this.segments.findIndex((s) => s.key === key);
     const seg = this.segments[index];
-    if (seg?.kind !== "turn") return;
-    this.segments[index] = patch(seg);
+    if (seg?.kind === "turn") this.segments[index] = patch(seg);
   }
 
   private bookkeeping(key: string) {
@@ -1229,21 +1050,6 @@ export class TurnRuntime {
       this.turns.set(key, book);
     }
     return book;
-  }
-
-  private deadConnection(turnId: string | null): Connection {
-    const now = Date.now();
-    return {
-      kind: "resume",
-      controller: new AbortController(),
-      openedAt: now,
-      lastFrameAt: now,
-      frames: 0,
-      entries: 0,
-      turnId,
-      closedByClient: false,
-      syntheticError: null,
-    };
   }
 
   private resetFailures() {
@@ -1306,7 +1112,7 @@ export class TurnRuntime {
 
   private buildSnapshot(): RuntimeSnapshot {
     return {
-      segments: this.segments.map((seg) => this.display(seg)),
+      segments: this.segments.map((seg) => this.reveal.display(seg)),
       ownedFrom: this.ownedFrom,
       phase: this.phase(),
       notice: this.notice,
@@ -1319,10 +1125,10 @@ export class TurnRuntime {
     if (this.isPostPending()) return "connecting";
     const running = this.runningTurn();
     if (running) return this.isLive() ? "live" : "resuming";
-    const last = [...this.segments]
-      .reverse()
-      .find((s): s is TurnSegment => s.kind === "turn");
     if (this.error) return "failed";
+    const last = this.segments.findLast(
+      (s): s is TurnSegment => s.kind === "turn",
+    );
     if (!last || last.stopped) return "idle";
     return last.log.status === "failed" ? "failed" : "finished";
   }
@@ -1384,79 +1190,6 @@ function defaultDeps(sessionId: string): RuntimeDeps {
   };
 }
 
-/** Rows equal to the ones on screen keep their object and key; others take the persisted content under the on-screen key. */
-export function mergeRows(
-  live: readonly LogRow[],
-  persisted: readonly LogRow[],
-): LogRow[] {
-  const differing = new Set(diffRows(live, persisted).map((d) => d.index));
-  const merged: LogRow[] = [];
-  for (let i = 0; i < Math.max(live.length, persisted.length); i++) {
-    const a = live[i];
-    const b = persisted[i];
-    if (!b) merged.push(a);
-    else if (!a) merged.push(b);
-    else if (differing.has(i)) merged.push({ ...b, key: a.key });
-    else merged.push(adoptPersisted(a, b));
-  }
-  return merged;
-}
-
-// A resync's seed keeps the rows already on screen where they are equal.
-function keepIdentity(live: readonly LogRow[], seeded: readonly LogRow[]) {
-  const differing = new Set(
-    diffRows(live.slice(0, seeded.length), seeded).map((d) => d.index),
-  );
-  return seeded.map((row, i) => {
-    const current = live[i];
-    if (!current) return row;
-    return differing.has(i)
-      ? { ...row, key: current.key }
-      : adoptPersisted(current, row);
-  });
-}
-
-function adoptPersisted(live: LogRow, persisted: LogRow): LogRow {
-  const sameMetadata =
-    JSON.stringify(live.metadata ?? null) ===
-    JSON.stringify(persisted.metadata ?? live.metadata ?? null);
-  if (live.sequence === persisted.sequence && sameMetadata) return live;
-  return {
-    ...live,
-    sequence: persisted.sequence,
-    metadata: persisted.metadata ?? live.metadata,
-  };
-}
-
-function withStopMarker(log: TurnLog): TurnLog {
-  const last = log.rows[log.rows.length - 1];
-  const rows =
-    last && isMarker(last)
-      ? log.rows
-      : [...log.rows, markerRow(`stop:${log.turnId}`, CANCELLED_MARKER)];
-  return { ...closeBlocks(log), status: "finished", rows };
-}
-
-function closeBlocks(log: TurnLog): TurnLog {
-  const open = Object.entries(log.blocks).filter(([, b]) => b.open);
-  if (open.length === 0) return log;
-  const blocks = { ...log.blocks };
-  for (const [id, block] of open) blocks[id] = { ...block, open: false };
-  return { ...log, blocks };
-}
-
-function markerRow(key: string, content: string): LogRow {
-  return {
-    key,
-    role: "assistant",
-    content,
-    toolCalls: [],
-    toolCallId: null,
-    sequence: null,
-    metadata: null,
-  };
-}
-
 function userMessage(id: string, input: SendInput): UIMessage {
   const parts =
     "parts" in input
@@ -1479,63 +1212,6 @@ function userMessage(id: string, input: SendInput): UIMessage {
     parts,
     ...(input.metadata ? { metadata: input.metadata } : {}),
   };
-}
-
-function persistedRows(view: SessionView): PersistedRow[] {
-  return (view.messages ?? [])
-    .map((row) => row as PersistedRow)
-    .filter((row) => typeof row.sequence === "number")
-    .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
-}
-
-function segmentStart(seg: Segment): number | null {
-  if (seg.kind === "user") return seg.sequence;
-  if (seg.kind === "rows") return seg.rows[0]?.sequence ?? null;
-  return seg.log.checkpoints[0]?.sequence ?? seg.log.rows[0]?.sequence ?? null;
-}
-
-// The prompt's row: the first user row in the tail whose text it carries
-// (the backend appends an attached-files block after it).
-function locatePrompt(
-  seg: UserSegment,
-  rows: readonly PersistedRow[],
-  from: number | null,
-) {
-  const text = seg.message.parts
-    .map((p) => (p.type === "text" ? p.text : ""))
-    .join("");
-  const row = rows.find(
-    (r) =>
-      r.role === "user" &&
-      (r.sequence ?? -1) >= (from ?? 0) &&
-      typeof r.content === "string" &&
-      r.content.startsWith(text),
-  );
-  return row?.sequence ?? null;
-}
-
-function lastCheckpoint(log: TurnLog): TurnCheckpoint | null {
-  const last = log.checkpoints[log.checkpoints.length - 1];
-  return last
-    ? { entry_id: last.entryId, rows: last.rows, sequence: last.sequence }
-    : null;
-}
-
-function checkpointOf(body: unknown): TurnCheckpoint | null {
-  const checkpoint = (body as { checkpoint?: unknown } | null)?.checkpoint;
-  if (!checkpoint || typeof checkpoint !== "object") return null;
-  const { entry_id, rows, sequence } = checkpoint as Record<string, unknown>;
-  return typeof entry_id === "string" &&
-    typeof rows === "number" &&
-    typeof sequence === "number"
-    ? { entry_id, rows, sequence }
-    : null;
-}
-
-function createdAtOf(row: PersistedRow | undefined): string | null {
-  const value = (row as { created_at?: unknown } | undefined)?.created_at;
-  if (typeof value === "string") return value;
-  return value instanceof Date ? value.toISOString() : null;
 }
 
 function str(value: unknown): string {

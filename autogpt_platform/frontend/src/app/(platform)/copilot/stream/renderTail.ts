@@ -5,7 +5,8 @@ import {
   createTurnLogRenderer,
   type TurnStatsMap,
 } from "../helpers/convertChatSessionToUiMessages";
-import type { RowsSegment, RuntimeSnapshot } from "./turnRuntime";
+import type { RuntimeSnapshot } from "./turnRuntime";
+import type { RowsSegment } from "./turnTail";
 
 type UiMessage = UIMessage<unknown, UIDataTypes, UITools>;
 

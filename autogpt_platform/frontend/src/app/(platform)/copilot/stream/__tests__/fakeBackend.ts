@@ -39,6 +39,8 @@ export function fakeBackend(turn: RecordedTurn) {
   let running = false;
   let started = false;
   const connections: FakeConnection[] = [];
+  // Every request, refused ones included.
+  const requests: { method: string; url: URL }[] = [];
   const pumps = new Set<() => void>();
   let responder: Responder = () => "stream";
 
@@ -56,6 +58,7 @@ export function fakeBackend(turn: RecordedTurn) {
   async function fetchImpl(input: RequestInfo | URL, init?: RequestInit) {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
+    requests.push({ method, url });
     const answer = responder({ method, url });
     if (answer === "network-error") throw new TypeError("Failed to fetch");
     if (answer !== "stream") {
@@ -141,6 +144,7 @@ export function fakeBackend(turn: RecordedTurn) {
   return {
     turnId,
     connections,
+    requests,
     fetch: fetchImpl as typeof fetch,
     /** Publish the next `count` entries (default: all of them). */
     publish(count = Infinity) {

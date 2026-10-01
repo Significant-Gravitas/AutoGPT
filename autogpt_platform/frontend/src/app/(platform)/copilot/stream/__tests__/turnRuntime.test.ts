@@ -205,6 +205,61 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
   });
 });
 
+describe("recovery", () => {
+  it("a resync in flight keeps every other trigger from reconnecting", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.connections[0].fail();
+    backend.publish();
+    const checkpoint = backend.lastCheckpoint();
+    backend.respond(({ url }) =>
+      url.searchParams.get("after") === "9-0"
+        ? { status: 409, body: { reason: "trimmed", checkpoint } }
+        : "stream",
+    );
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    runtime.bind({}, async () => {
+      await held;
+      return backend.view();
+    });
+    await advance(1_000);
+    const before = backend.requests.length;
+
+    // The tab returns and the network event lands while the view is fetched.
+    window.dispatchEvent(new Event("online"));
+    setVisibility("hidden");
+    setVisibility("visible");
+    await advance(1_000);
+    expect(backend.requests).toHaveLength(before);
+
+    release();
+    await advance(1_000);
+    expect(backend.requests.at(-1)?.url.searchParams.get("after")).toBe("20-0");
+    expect(turnSegment().frozen).toBe(false);
+    expect(snapshot().phase).toBe("finished");
+  });
+
+  it("a send lost while hidden is found on return", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    setVisibility("hidden");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+    expect(snapshot().phase).toBe("idle");
+
+    // The backend started the turn anyway.
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    setVisibility("visible");
+    await advance(1_000);
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+    expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
+  });
+});
+
 describe("one connection slot", () => {
   it("W1: two resumes inside the window open one connection and draw one bubble", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
