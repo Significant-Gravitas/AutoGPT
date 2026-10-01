@@ -6,6 +6,7 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -185,6 +186,7 @@ class GoogleMapsGetDirectionsBlock(Block):
             test_mock={
                 "_compute_route": lambda *args, **kwargs: {"routes": [_TEST_ROUTE]}
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -5,6 +5,7 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -206,6 +207,7 @@ class GoogleMapsWeatherBlock(Block):
                 "_locate": lambda *args, **kwargs: (_TEST_LOCATION, 1),
                 "_fetch_weather": lambda *args, **kwargs: (_TEST_WEATHER, 1),
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
