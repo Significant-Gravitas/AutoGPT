@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -69,6 +70,7 @@ class TwitterRetweetBlock(Block):
             ],
             test_mock={"retweet": lambda *args, **kwargs: True},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

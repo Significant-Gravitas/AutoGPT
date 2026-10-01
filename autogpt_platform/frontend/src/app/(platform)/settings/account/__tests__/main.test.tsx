@@ -469,6 +469,28 @@ describe("SettingsPreferencesPage", () => {
 
     vi.unstubAllGlobals();
   });
+  test("renders the Browser notifications card regardless of the flag", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    Object.defineProperty(globalThis, "Notification", {
+      value: { permission: "default", requestPermission: vi.fn() },
+      configurable: true,
+      writable: true,
+    });
+    setupBaseHandlers();
+
+    try {
+      render(<SettingsPreferencesPage />);
+
+      expect(await screen.findByText("Browser")).toBeDefined();
+      expect(
+        screen.getByRole("switch", { name: "Notifications" }),
+      ).toBeDefined();
+      expect(screen.getByRole("switch", { name: "Sound" })).toBeDefined();
+    } finally {
+      delete (globalThis as { Notification?: unknown }).Notification;
+    }
+  });
+
   test("hides the notifications card when settings-notifications is off", async () => {
     mockUseGetFlag.mockReturnValue(false);
     setupBaseHandlers();

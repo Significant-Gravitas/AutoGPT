@@ -23,6 +23,7 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import record_graph_operation
@@ -179,6 +180,8 @@ async def update_graph(
     # those edits must be persisted, hence the pre-save call.
     if graph.is_active:
         graph = await before_graph_activate(graph, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph, user_id)
 
     new_graph_version = await graph_db.create_graph(
         graph,
