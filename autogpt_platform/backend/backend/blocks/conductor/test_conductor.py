@@ -134,7 +134,7 @@ async def test_create_workspace_builds_a_clean_payload():
         {
             "credentials": TEST_CREDENTIALS_INPUT,
             "repository_url": "https://github.com/x/y",
-            "branch": "main",
+            "base_branch": "dev",
             "agent": "codex",
             "fast_mode": True,
             "env": {"FOO": "bar"},
@@ -144,14 +144,32 @@ async def test_create_workspace_builds_a_clean_payload():
     )
     assert seen == {
         "repositoryUrl": "https://github.com/x/y",
-        "branch": "main",
+        "branch": "dev",
         "agent": "codex",
         "fastMode": True,
         "env": {"FOO": "bar"},
         "access": {"restricted": True},
     }
+    assert outputs["base_branch"] == "dev"
     assert outputs["initial_message_id"] == ""
     assert "reply" not in outputs
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_without_base_branch_reports_it_as_unknown():
+    block = ConductorCreateWorkspaceBlock()
+    seen: dict[str, Any] = {}
+
+    def create(_creds, payload):
+        seen.update(payload)
+        return {"workspaceId": "ws_1", "sessionId": "s1", "deepLink": "d"}
+
+    mock_block(block, {"_create": create})
+    outputs = await collect(
+        block, {"credentials": TEST_CREDENTIALS_INPUT, "project_id": "p1"}
+    )
+    assert "branch" not in seen
+    assert outputs["base_branch"] == ""
 
 
 @pytest.mark.asyncio

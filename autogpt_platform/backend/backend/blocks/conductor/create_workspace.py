@@ -49,7 +49,15 @@ class ConductorCreateWorkspaceBlock(Block):
             default="",
             advanced=False,
         )
-        branch: str = SchemaField(description="Branch to start from", default="")
+        base_branch: str = SchemaField(
+            description="Branch the workspace branches from. Empty = Conductor "
+            "project default, which may differ from the repository's PR target "
+            "branch (for example a project that defaults to master while PRs "
+            "go to dev). Set it explicitly for repos whose default is not the "
+            "PR target, otherwise the PR inherits commits from the wrong base.",
+            default="",
+            advanced=False,
+        )
         name: str = SchemaField(description="Workspace name", default="")
         session_name: str = SchemaField(
             description="Name of the initial agent session", default=""
@@ -100,6 +108,13 @@ class ConductorCreateWorkspaceBlock(Block):
         workspace_id: str = SchemaField(description="ID of the new workspace")
         session_id: str = SchemaField(description="ID of the initial session")
         deep_link: str = SchemaField(description="Link that opens the workspace")
+        base_branch: str = SchemaField(
+            description="Branch the workspace was asked to branch from, as sent "
+            "to Conductor. Empty when Conductor's project default was used: the "
+            "API does not report the resolved branch, so an empty value means "
+            "the base is unknown. Verify this matches the PR target before "
+            "opening a PR."
+        )
         initial_message_id: str = SchemaField(
             description="ID of the initial prompt message, empty when none was sent"
         )
@@ -124,7 +139,10 @@ class ConductorCreateWorkspaceBlock(Block):
             id="d419c562-873c-4a67-b83f-9bcf11254f3f",
             description="Create a Conductor cloud workspace for a project or "
             "repository, optionally start its agent with a prompt and wait for "
-            "the reply.",
+            "the reply. Set base_branch explicitly when the repository's PR "
+            "target differs from the Conductor project default; an empty "
+            "base_branch uses that default, which Conductor does not report "
+            "back.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             effect=BlockEffect.EXTERNAL,
             input_schema=self.Input,
@@ -138,6 +156,7 @@ class ConductorCreateWorkspaceBlock(Block):
                 {
                     "credentials": conductor.get_test_credentials().model_dump(),
                     "project_id": "proj_1",
+                    "base_branch": "dev",
                     "message": "Fix the login bug",
                     "wait_for_reply": True,
                 },
@@ -147,10 +166,12 @@ class ConductorCreateWorkspaceBlock(Block):
                 ("workspace_id", "ws_1"),
                 ("session_id", "sess_1"),
                 ("deep_link", "conductor://workspace/ws_1"),
+                ("base_branch", ""),
                 ("initial_message_id", "msg_1"),
                 ("workspace_id", "ws_1"),
                 ("session_id", "sess_1"),
                 ("deep_link", "conductor://workspace/ws_1"),
+                ("base_branch", "dev"),
                 ("initial_message_id", "msg_1"),
                 ("session_status", "idle"),
                 ("reply", "Done, the fix is on branch fix-login."),
@@ -238,7 +259,7 @@ class ConductorCreateWorkspaceBlock(Block):
             {
                 "projectId": input_data.project_id,
                 "repositoryUrl": input_data.repository_url,
-                "branch": input_data.branch,
+                "branch": input_data.base_branch,
                 "name": input_data.name,
                 "sessionName": input_data.session_name,
                 "agent": input_data.agent,
@@ -269,6 +290,9 @@ class ConductorCreateWorkspaceBlock(Block):
         yield "workspace_id", str(created.get("workspaceId") or "")
         yield "session_id", session_id
         yield "deep_link", str(created.get("deepLink") or "")
+        # The create and get responses carry no branch, so the requested base
+        # is the only record of it; empty means Conductor's project default.
+        yield "base_branch", input_data.base_branch
         yield "initial_message_id", message_id
 
         if not (input_data.wait_for_reply and session_id and message_id):
