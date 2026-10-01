@@ -316,10 +316,9 @@ class CoPilotExecutionEntry(BaseModel):
     before the field existed."""
 
     unattended: bool = False
-    """Nobody is watching this turn even if its chat is the user's own: the
-    scheduler fired it. Tools then never hand a question back to the user
-    (SECRT-2804). An unattended chat (``origin="automation"``) is read from
-    the session itself."""
+    """The scheduler fired this turn, so nobody is watching it even if its chat
+    is the user's own. Tools then never hand a question back to the user
+    (SECRT-2804); see ``set_turn_unattended``."""
 
     request_arrival_at: float = 0.0
     """Unix-epoch seconds (server clock) when the originating HTTP

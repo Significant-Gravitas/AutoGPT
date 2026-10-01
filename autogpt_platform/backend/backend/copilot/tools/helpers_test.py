@@ -1,13 +1,18 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks._base import BlockType
+from backend.blocks.exa.search import ExaSearchBlock
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
+from backend.copilot.context import set_turn_unattended
+from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
@@ -28,10 +33,12 @@ from backend.copilot.tools.models import (
     SetupRequirementsResponse,
 )
 from backend.data.model import (
+    APIKeyCredentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
     CredentialsType,
 )
+from backend.integrations.credentials_store import exa_credentials
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
@@ -2010,24 +2017,21 @@ async def _store_workspace_file(path: str):
 # ---------------------------------------------------------------------------
 
 
-def _exa_key(cred_id: str):
-    from pydantic import SecretStr
-
-    from backend.data.model import APIKeyCredentials
-
+def _exa_key(cred_id: str) -> APIKeyCredentials:
     return APIKeyCredentials(
         id=cred_id, provider="exa", title=cred_id, api_key=SecretStr("k")
     )
 
 
-async def _prepare_exa_search(session, saved_creds: list) -> Any:
-    """Prepare an Exa search the way run_block does, inside *session*'s turn."""
-    from backend.blocks.exa.search import ExaSearchBlock
-    from backend.copilot.context import set_execution_context
-    from backend.integrations.credentials_store import exa_credentials
+async def _prepare_exa_search(
+    session: ChatSession, saved_creds: list, *, scheduled: bool = False
+) -> Any:
+    """Prepare an Exa search the way run_block does, in a turn the executor
+    marked the way it marks every turn. Run as its own task so the marking
+    stays inside it."""
 
-    set_execution_context(_USER, session)
-    try:
+    async def turn():
+        set_turn_unattended(session, scheduled=scheduled)
         with (
             patch(
                 "backend.copilot.tools.utils.IntegrationCredentialsManager"
@@ -2056,11 +2060,11 @@ async def _prepare_exa_search(session, saved_creds: list) -> Any:
                 session_id=session.session_id,
                 dry_run=False,
             )
-    finally:
-        set_execution_context(None, None)
+
+    return await asyncio.create_task(turn())
 
 
-def _scheduled_session():
+def _scheduled_session() -> ChatSession:
     session = make_session(_USER)
     session.metadata.origin = "automation"
     return session
@@ -2082,15 +2086,11 @@ async def test_scheduled_turn_with_two_exa_keys_runs_on_the_first_saved() -> Non
 async def test_scheduled_turn_into_a_users_chat_does_not_ask_either() -> None:
     # A pinned follow-up fires into the user's own (interactive) chat; the
     # turn is still unattended.
-    from backend.copilot.context import set_turn_unattended
-
-    set_turn_unattended(True)
-    try:
-        result = await _prepare_exa_search(
-            make_session(_USER), [_exa_key("exa-old"), _exa_key("exa-new")]
-        )
-    finally:
-        set_turn_unattended(False)
+    result = await _prepare_exa_search(
+        make_session(_USER),
+        [_exa_key("exa-old"), _exa_key("exa-new")],
+        scheduled=True,
+    )
 
     assert isinstance(result, BlockPreparation), getattr(result, "message", result)
     assert result.matched_credentials["credentials"].id == "exa-old"
@@ -2107,26 +2107,15 @@ async def test_interactive_turn_with_two_exa_keys_still_asks() -> None:
 
 @pytest.mark.asyncio
 async def test_scheduled_turn_without_any_exa_key_fails_naming_the_provider() -> None:
-    from backend.blocks.exa.search import ExaSearchBlock
-
     # No platform key configured and none saved: nothing fits.
-    session = _scheduled_session()
+    missing = CredentialsMetaInput(
+        id="credentials", provider=ProviderName("exa"), type="api_key"
+    )
     with patch(
         "backend.copilot.tools.helpers.match_credentials_to_requirements",
-        AsyncMock(
-            return_value=(
-                {},
-                [
-                    CredentialsMetaInput(
-                        id="credentials",
-                        provider=ProviderName("exa"),
-                        type="api_key",
-                    )
-                ],
-            )
-        ),
+        AsyncMock(return_value=({}, [missing])),
     ):
-        result = await _prepare_exa_search(session, [])
+        result = await _prepare_exa_search(_scheduled_session(), [])
 
     assert isinstance(result, ErrorResponse)
     assert "exa" in result.message.lower()

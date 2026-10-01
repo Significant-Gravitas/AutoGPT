@@ -721,7 +721,7 @@ class CoPilotProcessor:
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
             envelope = taint_for_source_platform(entry.envelope, session)
-            set_turn_unattended(entry.unattended)
+            set_turn_unattended(session, scheduled=entry.unattended)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message or None,
