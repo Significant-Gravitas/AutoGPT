@@ -1,6 +1,6 @@
 """Tests for credential hooks and provider-runtime credential leases."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
@@ -18,16 +18,22 @@ from backend.integrations.creds_manager import (
 def _reset_hook():
     """Ensure global hook state is clean before and after every test."""
     unregister_creds_changed_hook()
-    yield
+    # The broadcast half is covered in creds_events_test; keep these tests off Redis.
+    with patch(
+        "backend.integrations.creds_manager.publish_creds_changed",
+        new_callable=AsyncMock,
+    ):
+        yield
     unregister_creds_changed_hook()
 
 
 class TestRegisterCredsChangedHook:
-    def test_register_and_invoke(self):
+    @pytest.mark.asyncio
+    async def test_register_and_invoke(self):
         calls: list[tuple[str, str]] = []
         register_creds_changed_hook(lambda u, p: calls.append((u, p)))
 
-        _invoke_creds_changed_hook("user-1", "github")
+        await _invoke_creds_changed_hook("user-1", "github")
         assert calls == [("user-1", "github")]
 
     def test_double_register_raises(self):
@@ -43,24 +49,39 @@ class TestRegisterCredsChangedHook:
 
 
 class TestInvokeCredsChangedHook:
-    def test_noop_when_no_hook_registered(self):
+    @pytest.mark.asyncio
+    async def test_noop_when_no_hook_registered(self):
         # Must not raise even when no hook is registered.
-        _invoke_creds_changed_hook("user-1", "github")
+        await _invoke_creds_changed_hook("user-1", "github")
 
-    def test_hook_exception_is_swallowed(self):
+    @pytest.mark.asyncio
+    async def test_hook_exception_is_swallowed(self):
         def bad_hook(user_id: str, provider: str) -> None:
             raise ValueError("boom")
 
         register_creds_changed_hook(bad_hook)
         # Must not propagate the exception.
-        _invoke_creds_changed_hook("user-1", "github")
+        await _invoke_creds_changed_hook("user-1", "github")
 
-    def test_hook_receives_correct_args(self):
+    @pytest.mark.asyncio
+    async def test_broadcast_happens_even_when_the_hook_raises(self):
+        register_creds_changed_hook(MagicMock(side_effect=ValueError("boom")))
+
+        with patch(
+            "backend.integrations.creds_manager.publish_creds_changed",
+            new_callable=AsyncMock,
+        ) as publish:
+            await _invoke_creds_changed_hook("user-1", "github")
+
+        publish.assert_awaited_once_with("user-1", "github")
+
+    @pytest.mark.asyncio
+    async def test_hook_receives_correct_args(self):
         calls: list[tuple[str, str]] = []
         register_creds_changed_hook(lambda u, p: calls.append((u, p)))
 
-        _invoke_creds_changed_hook("user-a", "github")
-        _invoke_creds_changed_hook("user-b", "slack")
+        await _invoke_creds_changed_hook("user-a", "github")
+        await _invoke_creds_changed_hook("user-b", "slack")
 
         assert calls == [("user-a", "github"), ("user-b", "slack")]
 

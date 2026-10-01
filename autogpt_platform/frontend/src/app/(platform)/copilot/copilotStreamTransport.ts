@@ -1,11 +1,14 @@
+import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
+import { getAutopilotModeChoice } from "./autopilotModeStore";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
+import { isVoiceTurn } from "./voice/pendingVoiceStart";
 import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
 import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
 import type { CopilotLlmModel } from "./store";
@@ -77,6 +80,11 @@ export function createCopilotTransport({
           return match?.[1];
         })
         .filter(Boolean) as string[] | undefined;
+      // A folder is named for the model to open, never expanded into files,
+      // so it travels as its own id list.
+      const folderIds = last.parts?.flatMap((p) =>
+        isWorkspaceFolderPart(p) ? [p.data.id] : [],
+      );
       // ``message_id`` is the client idempotency key. The backend scopes it
       // to the authenticated user + session before using the result as the
       // persisted PK, so retransmits collide atomically without letting one
@@ -98,13 +106,18 @@ export function createCopilotTransport({
           is_user_message: last.role === "user",
           context: null,
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+          folder_ids: folderIds && folderIds.length > 0 ? folderIds : null,
           model: copilotModelRef.current ?? null,
           // Supplying options forces uuid's
           // getRandomValues path. Unlike crypto.randomUUID,
           // getRandomValues is available on plain-HTTP LAN origins used
           // by the local single-container appliance.
           message_id: uuidv4({}),
+          // Asks the reply to speak before it starts working. Text turns
+          // send false and pay nothing for it.
+          voice: isVoiceTurn(),
           expert_kickoff: kickoffExpertId !== null,
+          ...optionalAutopilotMode(sessionId),
         },
         headers: await getCopilotAuthHeaders(),
       };
@@ -125,4 +138,20 @@ export function createCopilotTransport({
       };
     },
   });
+}
+
+// Absent unless the user picked a mode, so a chat nobody touched keeps its own.
+function optionalAutopilotMode(sessionId: string) {
+  const mode = getAutopilotModeChoice(sessionId);
+  return mode ? { autopilot_mode: mode } : {};
+}
+
+function isWorkspaceFolderPart(
+  part: unknown,
+): part is { type: string; data: { id: string } } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    (part as { type?: unknown }).type === WORKSPACE_FOLDER_PART_TYPE
+  );
 }

@@ -6,6 +6,12 @@ on:
     branches:
       - dev
       - master
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to check"
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -36,4 +42,4 @@ jobs:
         # Always succeed - this check informs contributors, it shouldn't block merging
         continue-on-error: true
         run: |
-          python .github/scripts/detect_overlaps.py ${{ github.event.pull_request.number }}
+          python .github/scripts/detect_overlaps.py ${{ github.event.pull_request.number || inputs.pr_number }}

@@ -10,8 +10,10 @@ import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AttentionRowActions } from "./AttentionRowActions";
+import { HeldPassageQuote } from "./HeldPassageQuote";
 
 interface Props {
   item: HomeAttentionItem;
@@ -29,6 +31,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
 
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
+  const reason = attentionReason(item.review);
 
   function handleDecline() {
     if (!confirmDecline) {
@@ -55,21 +58,29 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="body-medium" className="text-pretty text-zinc-950">
-              {item.title}
+            <Text variant="body-medium" tone="primary" className="text-pretty">
+              <AttentionTitle item={item} />
             </Text>
             {item.priority === "high" ? (
-              <span className="rounded bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/10">
+              <Text
+                variant="small-medium"
+                as="span"
+                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
+              >
                 Waiting
-              </span>
+              </Text>
             ) : null}
           </div>
           <Text
             variant="body"
-            className="line-clamp-2 text-pretty text-zinc-600"
+            tone="secondary"
+            className="text-pretty break-words"
           >
-            {item.description}
+            {reason?.line ?? item.description}
           </Text>
+          {reason?.passage ? (
+            <HeldPassageQuote passage={reason.passage} />
+          ) : null}
         </div>
       </div>
 
@@ -87,5 +98,19 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         {confirmDecline ? `Press again to decline ${item.title}` : ""}
       </span>
     </article>
+  );
+}
+
+// A held call's object is set in semibold, as on its card in the chat.
+function AttentionTitle({ item }: { item: HomeAttentionItem }) {
+  const headline = item.headline;
+  if (!headline?.object) return <>{item.title}</>;
+  return (
+    <>
+      {headline.ask}{" "}
+      <b className="font-semibold" translate="no">
+        {headline.object}
+      </b>
+    </>
   );
 }

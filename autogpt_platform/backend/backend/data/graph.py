@@ -2,8 +2,19 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
+from collections.abc import Container
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Self, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Final,
+    Literal,
+    Optional,
+    Self,
+    cast,
+    get_args,
+)
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -18,7 +29,7 @@ from prisma.types import (
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
-    StoreListingVersionWhereInput,
+    LibraryAgentWhereInput,
 )
 from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
@@ -168,6 +179,10 @@ class NodeModel(Node):
           wire up their own)
         - fields the block schema marks with `secret: true` via
           `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
+          which name the owner's file and embed their `_credentials_id`. These
+          are nulled rather than removed: an explicit None tells the executor the
+          file was cleared, so importers and forks pick their own.
         - `webhook_id` (points at the original owner's webhook subscription)
         """
         stripped_node = self.model_copy(deep=True)
@@ -184,9 +199,54 @@ class NodeModel(Node):
                 ):
                     stripped_node.input_default.pop(field_name, None)
 
+            for field_name in _auto_credentials_field_names(self):
+                if field_name in stripped_node.input_default:
+                    stripped_node.input_default[field_name] = None
+
         stripped_node.webhook_id = None
 
         return stripped_node
+
+
+def _auto_credentials_field_names(node: Node) -> list[str]:
+    """Inputs of the node's block that hold a picked file: the auto-credentials
+    picker fields its schema declares, plus any input typed as a file carrying
+    `_credentials_id`. The second covers the default of an agent's Google Drive
+    file input, whose picker is only declared per node."""
+    if get_block(node.block_id) is None:
+        # The block was removed, so no schema says which inputs are pickers.
+        # Treat any value that embeds a `_credentials_id` as one, so a picked
+        # file doesn't slip through exports and non-owner reads.
+        return [
+            field_name
+            for field_name, value in node.input_default.items()
+            if isinstance(value, dict) and "_credentials_id" in value
+        ]
+    input_schema = node.block.input_schema
+    declared = [
+        info["field_name"]
+        for info in input_schema.get_auto_credentials_fields().values()
+    ]
+    typed = [
+        field_name
+        for field_name, field in input_schema.model_fields.items()
+        if field_name not in declared and _holds_picked_file(field.annotation)
+    ]
+    return declared + typed
+
+
+def _holds_picked_file(annotation: Any) -> bool:
+    """Whether a field of this type holds a picked file: a model with a
+    `_credentials_id` field, like GoogleDriveFile, or an Optional of one."""
+    return any(
+        isinstance(candidate, type)
+        and issubclass(candidate, BaseModel)
+        and any(
+            field.alias == "_credentials_id"
+            for field in candidate.model_fields.values()
+        )
+        for candidate in (annotation, *get_args(annotation))
+    )
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -258,7 +318,7 @@ class BaseGraph(GraphBaseMeta):
     @property
     def has_sensitive_action(self) -> bool:
         return any(
-            node.block_id for node in self.nodes if node.block.is_sensitive_action
+            node.block_id for node in self.nodes if node.block.is_irreversible_action
         )
 
     @property
@@ -585,17 +645,10 @@ class GraphModel(Graph, GraphMeta):
             }
 
             for node in graph.nodes:
-                # A node's credentials are optional if either:
-                # 1. The node metadata says so (credentials_optional=True), or
-                # 2. All credential fields on the block have defaults (not required by schema)
+                # Conditional credential fields can have a schema default while
+                # still requiring credentials for the currently selected route.
                 block_required = node.block.input_schema.get_required_fields()
-                creds_required_by_schema = any(
-                    fname in block_required
-                    for fname in node.block.input_schema.get_credentials_fields()
-                )
-                node_required_map[node.id] = (
-                    not node.credentials_optional and creds_required_by_schema
-                )
+                node_required_map[node.id] = False
 
                 for (
                     field_name,
@@ -603,6 +656,11 @@ class GraphModel(Graph, GraphMeta):
                 ) in node.block.input_schema.get_credentials_fields_info().items():
                     discriminator = field_info.discriminator
                     if not discriminator:
+                        if (
+                            not node.credentials_optional
+                            and field_name in block_required
+                        ):
+                            node_required_map[node.id] = True
                         node_credential_data.append((field_info, (node.id, field_name)))
                         continue
 
@@ -637,6 +695,35 @@ class GraphModel(Graph, GraphMeta):
                         discriminator_value = _mappable_discriminator_default(
                             node.block.input_schema, field_info
                         )
+
+                    required_discriminator_value = discriminator_value
+                    if (
+                        required_discriminator_value is None
+                        and not discriminator_is_linked
+                    ):
+                        required_discriminator_value = (
+                            node.block.input_schema.get_field_schema(discriminator).get(
+                                "default"
+                            )
+                        )
+                    if not node.credentials_optional and (
+                        field_name in block_required
+                        or (
+                            discriminator_is_linked
+                            and bool(field_info.credential_free_discriminator_values)
+                            and any(
+                                field_info.requires_credentials(value)
+                                for value in field_info.discriminator_mapping or {}
+                            )
+                        )
+                        or (
+                            required_discriminator_value is not None
+                            and field_info.requires_credentials(
+                                required_discriminator_value
+                            )
+                        )
+                    ):
+                        node_required_map[node.id] = True
 
                     if discriminator_value is None:
                         node_credential_data.append((field_info, (node.id, field_name)))
@@ -755,20 +842,43 @@ class GraphModel(Graph, GraphMeta):
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
-        # Clear auto-credentials references (e.g., _credentials_id in
-        # GoogleDriveFile fields) so the new user must re-authenticate
-        # with their own account. We null the entire field rather than
-        # just the _credentials_id key — a partial object (e.g. a bare
-        # {"id": "...", "name": "..."} left over after stripping) would
-        # be rejected by the auto-credentials validator added below,
-        # breaking fork_graph() for agents that previously had a
-        # picker-selected Drive file.
-        for node in graph.nodes:
-            if not node.input_default:
-                continue
-            for key, value in list(node.input_default.items()):
-                if isinstance(value, dict) and "_credentials_id" in value:
-                    node.input_default[key] = None
+    def clear_auto_credentials(
+        self, keep_ids: Container[str] = frozenset()
+    ) -> list[tuple[Node, str, Any]]:
+        """
+        Null every picked file (see `auto_credentials_refs`) whose embedded
+        `_credentials_id` is not in `keep_ids`, in this graph and its sub-graphs,
+        and return the cleared ones in the shape `auto_credentials_refs` uses.
+
+        A save keeps the saving user's own (see `before_graph_activate`), and a
+        read by someone who doesn't own the graph keeps none (see `get_graph`).
+        Exports, forks and copies strip picked files in
+        `NodeModel.stripped_for_export`. The whole field is nulled, not just the
+        key, because a file object without a `_credentials_id` is rejected by
+        the auto-credentials check in `_validate_graph`.
+        """
+        cleared = [
+            (node, field_name, credentials_id)
+            for node, field_name, credentials_id in self.auto_credentials_refs()
+            if not (isinstance(credentials_id, str) and credentials_id in keep_ids)
+        ]
+        for node, field_name, _ in cleared:
+            node.input_default[field_name] = None
+        return cleared
+
+    def auto_credentials_refs(self) -> list[tuple[Node, str, Any]]:
+        """Files picked into auto-credentials inputs (e.g. a GoogleDriveFile), in
+        this graph and its sub-graphs, as (node, input name, embedded
+        `_credentials_id`). Other inputs are left alone even when they happen to
+        hold a `_credentials_id` key."""
+        return [
+            (node, field_name, value["_credentials_id"])
+            for graph in (self, *self.sub_graphs)
+            for node in graph.nodes
+            for field_name in _auto_credentials_field_names(node)
+            if isinstance(value := node.input_default.get(field_name), dict)
+            and "_credentials_id" in value
+        ]
 
     def validate_graph(
         self,
@@ -1341,14 +1451,22 @@ async def get_graph(
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
 
+    Access: the caller owns it, or has that exact version in their library
+    AND that version was submitted to the marketplace. Neither half of the
+    latter suffices alone.
+
     With ``organization_id`` (from a membership-verified RequestContext),
     org/team visibility rules apply — a member can open any graph the
     list endpoints show them (own + org-home + member-team graphs).
 
-    See also: `get_graph_as_admin()` which bypasses ownership and marketplace
-    checks for admin-only routes.
+    ``skip_access_check=True`` is for callers that authorized the read
+    themselves: the executor, and the marketplace install/download paths,
+    which validate the StoreListingVersion instead.
 
-    Returns `None` if the record is not found.
+    See also: `get_graph_as_admin()`, which bypasses this check entirely for
+    admin-only routes.
+
+    Returns `None` if the record is not found or not accessible.
     """
     graph = None
 
@@ -1381,38 +1499,13 @@ async def get_graph(
             order={"version": "desc"},
         )
 
-    # Use store listed graph to find not owned graph
-    if graph is None:
-        store_where_clause: StoreListingVersionWhereInput = {
-            "agentGraphId": graph_id,
-            "submissionStatus": SubmissionStatus.APPROVED,
-            "isDeleted": False,
-        }
-        if version is not None:
-            store_where_clause["agentGraphVersion"] = version
-
-        if store_listing := await StoreListingVersion.prisma().find_first(
-            where=store_where_clause,
-            order={"agentGraphVersion": "desc"},
-            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
-        ):
-            graph = store_listing.AgentGraph
-
-    # Fall back to library membership: if the user has the agent in their
-    # library (non-deleted, non-archived), grant access even if the agent is
-    # no longer published. "You added it, you keep it."
-    if graph is None and user_id is not None:
-        library_where: dict[str, object] = {
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "isArchived": False,
-        }
-        if version is not None:
-            library_where["agentGraphVersion"] = version
-
+    # The only non-owner path. A store listing on its own must not grant
+    # access, so there is deliberately no marketplace lookup beside this one.
+    # validate_graph_execution_permissions() reuses this same filter, so
+    # execute can never be looser than read. See the invariant note there.
+    if graph is None and user_id is not None and not skip_access_check:
         library_agent = await LibraryAgent.prisma().find_first(
-            where=library_where,
+            where=graph_in_library_filter(user_id, graph_id, version),
             include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
             order={"agentGraphVersion": "desc"},
         )
@@ -1424,20 +1517,70 @@ async def get_graph(
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
-        return GraphModel.from_db(
+        graph_model = GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
             for_export=for_export,
         )
+    else:
+        graph_model = GraphModel.from_db(graph, for_export)
 
-    return GraphModel.from_db(graph, for_export)
+    if user_id is not None and not skip_access_check and graph.userId != user_id:
+        # Only the owner sees the files they picked and the credentials
+        # embedded in them. Marketplace readers and teammates pick their own.
+        graph_model.clear_auto_credentials()
+    return graph_model
+
+
+# PENDING is included so admin review can open a not-yet-approved submission
+# from the reviewer's library. A deleted listing still counts as once-submitted.
+SUBMITTED_TO_MARKETPLACE: Final = (
+    SubmissionStatus.PENDING,
+    SubmissionStatus.APPROVED,
+    SubmissionStatus.REJECTED,
+)
+_SUBMITTED_STATUSES: Final = list(SUBMITTED_TO_MARKETPLACE)
+
+
+def graph_in_library_filter(
+    user_id: str, graph_id: str, version: int | None
+) -> LibraryAgentWhereInput:
+    """Non-owner read access: version in the user's library AND submitted.
+
+    One joined query, not two: `AgentGraph` here is the exact `(id, version)`
+    pair, so separate queries could match the library row and the submission
+    on different versions when `version is None`.
+    """
+    where: LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": graph_id,
+        # Archiving hides an agent, it does not revoke it; isDeleted is the
+        # membership signal.
+        "isDeleted": False,
+        "AgentGraph": {
+            "is": {
+                "StoreListingVersions": {
+                    # agentGraphId is redundant -- the relation already pins
+                    # (id, version) -- but it gives the subquery an indexed
+                    # predicate instead of a scan over every listing version.
+                    "some": {
+                        "agentGraphId": graph_id,
+                        "submissionStatus": {"in": _SUBMITTED_STATUSES},
+                    }
+                }
+            }
+        },
+    }
+    if version is not None:
+        where["agentGraphVersion"] = version
+    return where
 
 
 async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]:
     """Batch-fetch multiple store-listed graphs by their IDs.
 
-    Only returns graphs that have approved store listings (publicly available).
-    Does not require permission checks since store-listed graphs are public.
+    The APPROVED-listing filter below *is* the authorization: an approved
+    listing is public, so no per-caller permission check is applied.
 
     Args:
         graph_ids: List of graph IDs to fetch
@@ -1459,11 +1602,15 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
         order={"agentGraphVersion": "desc"},
     )
 
-    return {
+    graphs = {
         listing.agentGraphId: GraphModel.from_db(listing.AgentGraph)
         for listing in store_listings
         if listing.AgentGraph
     }
+    for graph in graphs.values():
+        # Public reads never carry the publisher's picked files.
+        graph.clear_auto_credentials()
+    return graphs
 
 
 async def get_graph_as_admin(
@@ -1629,7 +1776,13 @@ async def get_graph_all_versions(
     if not graph_versions:
         return []
 
-    return [GraphModel.from_db(graph) for graph in graph_versions]
+    versions = [GraphModel.from_db(graph) for graph in graph_versions]
+    for version in versions:
+        if version.user_id != user_id:
+            # A teammate reading the history: only the owner sees the files
+            # they picked and the credentials embedded in them.
+            version.clear_auto_credentials()
+    return versions
 
 
 async def delete_graph(
@@ -1651,16 +1804,37 @@ async def delete_graph(
     return entries_count
 
 
-async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
-    lib = await LibraryAgent.prisma().find_first(
-        where={
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "isArchived": False,
-        },
-        order={"agentGraphVersion": "desc"},
-    )
+async def get_graph_settings(
+    user_id: str, graph_id: str, graph_version: int | None = None
+) -> GraphSettings:
+    """Settings of the library entry for the version being run.
+
+    Falls back to the user's other live entries when that version has none,
+    which is how an owner running a version they never added to their library
+    still gets their own safe-mode settings instead of the defaults.
+    """
+    # Archived entries stay eligible -- an archived agent still runs -- but the
+    # running version's own entry wins, so a hidden version can never turn the
+    # user's sensitive_action_safe_mode back off.
+    lib = None
+    if graph_version is not None:
+        lib = await LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
+                "isDeleted": False,
+            },
+        )
+    if lib is None:
+        lib = await LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+            },
+            order=[{"isArchived": "asc"}, {"agentGraphVersion": "desc"}],
+        )
     if not lib or not lib.settings:
         return GraphSettings()
 
@@ -1684,10 +1858,12 @@ async def validate_graph_execution_permissions(
 
     ## Logic
     A user can execute a graph if any of these is true:
-    1. They own the graph and some version of it is still listed in their library
-    2. The graph is in the user's library (non-deleted, non-archived)
-    3. The graph is published in the marketplace and listed in their library
-    4. The graph is published in the marketplace and is being executed as a sub-agent
+    1. They own the graph and some version of it is still in their library
+    2. They can *read* the exact version -- it is in their library and that
+       version was submitted to the marketplace (`graph_in_library_filter()`)
+    3. It is published in the marketplace and is executed as a sub-agent.
+       This is the only case where execute is allowed without read; see
+       SECRT-1125 and the INVARIANT comment in the body below.
 
     Args:
         graph_id: The ID of the graph to check
@@ -1698,20 +1874,26 @@ async def validate_graph_execution_permissions(
 
     Raises:
         GraphNotAccessibleError: If the graph is not accessible to the user.
-        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived).
+        GraphNotInLibraryError: If the graph is not in the user's library (deleted).
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
-    graph, library_agent = await asyncio.gather(
+    graph, library_agent, any_live_library_entry = await asyncio.gather(
         AgentGraph.prisma().find_unique(
             where={"graphVersionId": {"id": graph_id, "version": graph_version}}
         ),
+        # The read gate's own predicate, reused rather than restated, so the
+        # two can't drift apart.
+        LibraryAgent.prisma().find_first(
+            where=graph_in_library_filter(user_id, graph_id, graph_version)
+        ),
+        # Only the owner branch reads this, but an owner running their own
+        # unpublished agent never matches the filter above, so fetching it
+        # here keeps the common case at one round trip instead of two.
         LibraryAgent.prisma().find_first(
             where={
                 "userId": user_id,
                 "agentGraphId": graph_id,
-                "agentGraphVersion": graph_version,
                 "isDeleted": False,
-                "isArchived": False,
             }
         ),
     )
@@ -1719,42 +1901,36 @@ async def validate_graph_execution_permissions(
     # Step 1: Check if user owns this graph
     user_owns_graph = graph and graph.userId == user_id
 
-    # Step 2: Check if the exact graph version is in the library.
-    user_has_in_library = library_agent is not None
-    owner_has_live_library_entry = user_has_in_library
-    if user_owns_graph and not user_has_in_library:
-        # Owners are allowed to execute a new version as long as some live
-        # library entry still exists for the graph. Non-owners stay
-        # version-specific.
-        owner_has_live_library_entry = (
-            await LibraryAgent.prisma().find_first(
-                where={
-                    "userId": user_id,
-                    "agentGraphId": graph_id,
-                    "isDeleted": False,
-                    "isArchived": False,
-                }
-            )
-            is not None
-        )
+    # Step 2: Check if the exact graph version is readable from the library.
+    version_readable_from_library = library_agent is not None
+    # Owners may execute a new version while some live entry for the graph
+    # remains; non-owners stay version-specific.
+    owner_has_live_library_entry = version_readable_from_library or (
+        bool(user_owns_graph) and any_live_library_entry is not None
+    )
 
     # Step 3: Apply permission logic
-    # Access is granted if the user owns it, it's in the marketplace, OR
-    # it's in the user's library ("you added it, you keep it").
+    # INVARIANT: execution must never be more permissive than read access
+    # (`get_graph()` / `graph_in_library_filter()`). The one sanctioned
+    # exception is SECRT-1125: a non-owner may EXECUTE a marketplace-listed
+    # graph they are denied read of, because the graph -- and its run's
+    # intermediate outputs -- would let them reconstruct a non-public graph.
     if not (
         user_owns_graph
-        or user_has_in_library
+        or version_readable_from_library
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
             f"You do not have access to graph #{graph_id} v{graph_version}: "
-            "it is not owned by you, not in your library, "
-            "and not available in the Marketplace"
+            "it is not owned by you, not in your library as a submitted "
+            "version, and not available in the Marketplace"
         )
-    elif not (user_has_in_library or owner_has_live_library_entry or is_sub_graph):
+    elif not (
+        version_readable_from_library or owner_has_live_library_entry or is_sub_graph
+    ):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
-    # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
+    # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:
     # 1. Check if user has execution credits (future)
     # 2. Check if graph is suspended/disabled (future)

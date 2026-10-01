@@ -13,6 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.api.features.experts.avatar_catalog import DEFAULT_AVATAR_URL
+from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
@@ -70,6 +72,7 @@ class _RaiseParams(BaseModel):
 
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    job_title: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
     tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
     color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
@@ -89,17 +92,8 @@ class RaiseExpertTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Propose a brand-new expert when no roster template fits. Give "
-            "them a personal first name (the role field carries the job "
-            "title), a one-line tagline and an accent color, then write "
-            "their charter: what they own, what good looks like, and where "
-            "they stop (always fill boundaries — an expert without them "
-            "oversteps). This tool never writes; it returns the proposed "
-            "expert plus a one-time confirmation_id. "
-            "The user sees the whole charter on a card with Approve and "
-            "Decline buttons, so never repeat it in text — one short line "
-            "at most, then wait. Only after the user approves, call "
-            "confirm_expert_change with that id."
+            EXPERT_CREATION_COPY_POLICY
+            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change."
         )
 
     @property
@@ -109,38 +103,31 @@ class RaiseExpertTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": (
-                        "A personal first name the user will call them — "
-                        "like a teammate's name, never a job title. The "
-                        "role field carries the title."
-                    ),
+                    "description": ("First name; put job titles in job_title."),
                 },
                 "role": {
                     "type": "string",
-                    "description": "Short title for what they own.",
+                    "description": "Area owned, e.g. 'SEO & Content'.",
+                },
+                "job_title": {
+                    "type": "string",
+                    "description": "Team job title, e.g. 'SEO Content Manager'.",
                 },
                 "tagline": {
                     "type": "string",
                     "description": (
-                        "One line, third person, what they do for the user "
-                        "— e.g. 'Finds your leads and their decision-makers.' "
-                        "Under 120 characters. This is what the user reads "
-                        "on their card; the charter is for the expert."
+                        "Card summary: third person, under 120 chars, e.g. 'Finds leads and decision-makers.'"
                     ),
                 },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
-                    "description": (
-                        "Accent color for their avatar and chat theme. "
-                        "Pick one that fits their personality."
-                    ),
+                    "description": "Avatar/chat accent token.",
                 },
                 "about": {
                     "type": "string",
                     "description": (
-                        "Their charter in second person: what they own, how "
-                        "they work, what good looks like. Becomes identity."
+                        "Second-person identity: ownership, approach and success criteria."
                     ),
                 },
                 "boundaries": {
@@ -169,6 +156,7 @@ class RaiseExpertTool(BaseTool):
         *,
         name: str = "",
         role: str = "",
+        job_title: str = "",
         tagline: str = "",
         color: str = "",
         about: str = "",
@@ -199,6 +187,7 @@ class RaiseExpertTool(BaseTool):
                 # entries that ``escape_prompt_xml_tags`` cannot neutralise.
                 name=" ".join(name.split()),
                 role=" ".join(role.split()),
+                job_title=" ".join(job_title.split()),
                 tagline=" ".join(tagline.split()),
                 color=color,
                 weekly_budget=weekly_budget,
@@ -238,7 +227,7 @@ class RaiseExpertTool(BaseTool):
                     f"(expert_id: {duplicate.id}, role: {duplicate.role}) — "
                     "do not raise them again. Delegate work to them with "
                     "delegate_to_expert, or change their charter with "
-                    "update_expert. Only propose a differently-named expert "
+                    "tool:update_expert. Only propose a differently-named expert "
                     "if the user truly wants a second, separate one."
                 ),
                 session_id=session_id,
@@ -250,8 +239,12 @@ class RaiseExpertTool(BaseTool):
             kind="raise",
             name=params.name,
             role=params.role,
+            job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
+            # A raised Expert starts on the General fallback; its owner picks or
+            # generates a reviewed appearance from the Team page afterwards.
+            avatar_url=DEFAULT_AVATAR_URL,
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",
@@ -274,7 +267,7 @@ class RaiseExpertTool(BaseTool):
                 "a card with Approve and Decline buttons — do not repeat any "
                 "of it in text. Reply with one short line at most and wait. "
                 "Only after they explicitly approve, call "
-                "confirm_expert_change with this confirmation_id."
+                "tool:confirm_expert_change with this confirmation_id."
             ),
             session_id=session_id,
             preview=preview,

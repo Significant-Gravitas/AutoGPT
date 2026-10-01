@@ -59,7 +59,10 @@ function resolveBrowserURL(url: string) {
 }
 
 function getEnvironmentStr() {
-  return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
+  // Vercel injects one NEXT_PUBLIC_APP_ENV into preview and production builds
+  // alike, so without this previews report as the production environment.
+  const appEnv = isVercelPreview() ? "preview" : getAppEnv().toLowerCase();
+  return `app:${appEnv}-behave:${getBehaveAs().toLowerCase()}`;
 }
 
 function getPreviewStealingDev() {
@@ -97,6 +100,14 @@ function getGoogleAdsConversionLabels() {
   return process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS || "";
 }
 
+function getCookiebotCBID() {
+  return process.env.NEXT_PUBLIC_COOKIEBOT_CBID?.trim() || "";
+}
+
+function getCookiebotGeoRegions() {
+  return process.env.NEXT_PUBLIC_COOKIEBOT_GEOREGIONS?.trim() || "";
+}
+
 function isProductionBuild() {
   return process.env.NODE_ENV === "production";
 }
@@ -130,7 +141,15 @@ function isClientSide() {
 }
 
 function isVercelPreview() {
-  return process.env.VERCEL_ENV === "preview";
+  // VERCEL_ENV is server-only; next.config.mjs mirrors it into the
+  // NEXT_PUBLIC_ copy so the browser bundle can read it too.
+  return (
+    (process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV) === "preview"
+  );
+}
+
+function isSentryEnabled() {
+  return process.env.DISABLE_SENTRY !== "true" && (isProd() || isDev());
 }
 
 function areFeatureFlagsEnabled() {
@@ -161,6 +180,8 @@ export const environment = {
   getLaunchDarklyClientId,
   getGoogleAdsID,
   getGoogleAdsConversionLabels,
+  getCookiebotCBID,
+  getCookiebotGeoRegions,
   // Assertions
   isServerSide,
   isClientSide,
@@ -171,6 +192,7 @@ export const environment = {
   isCloud,
   isLocal,
   isVercelPreview,
+  isSentryEnabled,
   isPostHogEnabled,
   areFeatureFlagsEnabled,
 };

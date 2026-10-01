@@ -2,11 +2,13 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
@@ -31,6 +33,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
   highlightedText,
   ...rest
 }) => {
+  const { showImage, handleImageError } = useImageFallback(image_url);
+
   return (
     <Button
       className={cn(
@@ -40,14 +44,16 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       )}
       {...rest}
     >
-      {image_url && (
+      {showImage && image_url && (
         <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
           <Image
             src={image_url}
+            unoptimized={isLocalStoreMediaUrl(image_url)}
             alt="integration-icon"
             fill
             sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
+            onError={handleImageError}
           />
         </div>
       )}

@@ -1,7 +1,8 @@
+import { CredentialMentionEditor } from "../CredentialMention/CredentialMentionEditor";
+import type { MentionInput } from "./useChatMentions";
 import {
   PromptInputButton,
   PromptInputSubmit,
-  PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -14,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  ChangeEvent,
   ClipboardEvent,
   KeyboardEvent,
   ReactNode,
@@ -25,9 +25,15 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import {
   type Attachment,
   type WorkspaceAttachment,
+  MAX_FOLDER_ATTACHMENTS,
+  appendWithinCap,
+  MAX_ATTACHMENTS,
   partitionAttachments,
+  workspaceFolderToAttachment,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
+import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
+import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
@@ -35,6 +41,7 @@ import { MentionDropdown } from "./components/MentionDropdown";
 import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
@@ -42,10 +49,13 @@ import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import {
   CARD_ICON_BUTTON_CLASS,
   CARD_SEND_BUTTON_CLASS,
+  COMPACT_ICON_BUTTON_CLASS,
+  COMPACT_SEND_BUTTON_CLASS,
   getFilesFromClipboard,
 } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
+import { useConnectedIntegrations } from "./useConnectedIntegrations";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
@@ -81,6 +91,24 @@ interface Props {
   /** Card composer: the text always keeps its own row above the controls,
    *  instead of sharing a single pill row until it wraps. Empty state only. */
   stacked?: boolean;
+  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
+  voiceToggle?: ReactNode;
+  /** The chat's approval-mode selector. Absent when the flag is off. */
+  modeSelector?: ReactNode;
+  /**
+   * Replaces the composer's controls while voice mode is on: typing,
+   * attachments and send do nothing hands-free, and a bar of its own above
+   * the composer covered the last message's buttons.
+   */
+  voiceBar?: ReactNode;
+  /** Compact composer for side panels: tighter radius, flat shadow, smaller
+   *  controls, and no per-message connection chip. */
+  variant?: "default" | "compact";
+  /** Expert the chat is scoped to. Workspace-file suggestions and the picker
+   *  then only offer files from that expert's conversations. */
+  expertId?: string | null;
+  /** Names that expert in the picker's filter row. */
+  expertName?: string | null;
 }
 
 export function ChatInput({
@@ -100,6 +128,12 @@ export function ChatInput({
   hideSubmitWhenEmpty = false,
   recipientPicker,
   stacked = false,
+  voiceToggle,
+  modeSelector,
+  voiceBar,
+  variant = "default",
+  expertId = null,
+  expertName = null,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -110,6 +144,8 @@ export function ChatInput({
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // How many files the cap turned away on the last attach; 0 hides the notice.
+  const [refusedCount, setRefusedCount] = useState(0);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
 
@@ -127,15 +163,13 @@ export function ChatInput({
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
     if (droppedFiles && droppedFiles.length > 0) {
-      setAttachments((prev) => [
-        ...prev,
-        ...droppedFiles.map((file) => ({ kind: "local" as const, file })),
-      ]);
+      addAttachments(droppedFiles.map(toLocalAttachment));
       onDroppedFilesConsumed?.();
     }
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasAttachments = attachments.length > 0;
+  const isAtCap = attachments.length >= MAX_ATTACHMENTS;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
@@ -143,24 +177,21 @@ export function ChatInput({
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
 
-  const {
-    value,
-    setValue,
-    handleSubmit,
-    handleChange: baseHandleChange,
-  } = useChatInput({
+  const { value, setValue, handleSubmit } = useChatInput({
     onSend: async (message: string) => {
-      const { localFiles, workspaceFiles } = partitionAttachments(attachments);
+      const { localFiles, workspaceAttachments } =
+        partitionAttachments(attachments);
       // Chips clear eagerly for the same reason the text does (see
       // useChatInput.handleSend); a failed send restores them unless the
       // user already attached new ones in the meantime.
       const sent = attachments;
       setAttachments([]);
+      setRefusedCount(0);
       try {
         await onSend(
           message,
           localFiles.length > 0 ? localFiles : undefined,
-          workspaceFiles.length > 0 ? workspaceFiles : undefined,
+          workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
         );
       } catch (error) {
         setAttachments((prev) => (prev.length > 0 ? prev : sent));
@@ -172,11 +203,20 @@ export function ChatInput({
     inputId,
   });
 
+  const integrations = useConnectedIntegrations(expertId);
+
   const mentions = useChatMentions({
-    enabled: showWorkspaceFiles && !isBusy,
+    enabled: !isBusy,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
+    addWorkspaceFolder: (folder, subfolderCount) =>
+      addAttachments([workspaceFolderToAttachment(folder, subfolderCount)]),
+    expertId,
+    // Files and folders become attachments, so the cap closes them off;
+    // integrations only edit the text and stay available.
+    includeWorkspaceFiles: showWorkspaceFiles && !isAtCap,
+    integrations,
   });
 
   const [isEnqueueing, setIsEnqueueing] = useState(false);
@@ -184,6 +224,11 @@ export function ChatInput({
   const {
     isRecording,
     isTranscribing,
+    transcriptionError,
+    hasFailedRecording,
+    retryTranscription,
+    downloadFailedRecording,
+    dismissTranscriptionError,
     elapsedTime,
     toggleRecording,
     handleKeyDown: voiceHandleKeyDown,
@@ -202,18 +247,18 @@ export function ChatInput({
     isTranscribing,
   });
 
-  function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
+  function handleChange(nextValue: string, input: MentionInput) {
     if (isRecording) return;
-    baseHandleChange(e);
-    mentions.detect(e.currentTarget);
+    setValue(nextValue);
+    mentions.detect(input);
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (mentions.onKeyDown(e)) return;
     voiceHandleKeyDown(e);
   }
 
-  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+  function handlePaste(e: ClipboardEvent<HTMLElement>) {
     if (isBusy) return;
     const files = getFilesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
@@ -242,34 +287,65 @@ export function ChatInput({
   }
 
   function handleFilesSelected(newFiles: File[]) {
-    setAttachments((prev) => [
-      ...prev,
-      ...newFiles.map((file) => ({ kind: "local" as const, file })),
-    ]);
+    addAttachments(newFiles.map(toLocalAttachment));
+  }
+
+  function addAttachments(incoming: Attachment[]) {
+    // Outside the updater: React re-invokes an updater (twice under
+    // StrictMode), which would toast the refusal more than once.
+    const { next, refused, refusedFolders } = appendWithinCap(
+      attachments,
+      incoming,
+    );
+    setAttachments(next);
+    setRefusedCount(refused);
+    if (refusedFolders > 0) {
+      toast({
+        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
+        description: `${refusedFolders} not added.`,
+      });
+    }
   }
 
   function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
-    setAttachments((prev) => {
-      if (prev.some((a) => a.kind === "workspace" && a.fileId === item.id)) {
-        return prev;
-      }
-      return [...prev, workspaceItemToAttachment(item)];
-    });
+    addAttachments([workspaceItemToAttachment(item)]);
   }
 
-  function handleWorkspaceFilesConfirmed(items: WorkspaceFileItem[]) {
-    items.forEach(handleWorkspaceFileSelected);
+  function handlePickerConfirmed(items: PickedItem[]) {
+    addAttachments(
+      items.map((item) =>
+        item.kind === "folder"
+          ? workspaceFolderToAttachment(item.folder, item.subfolderCount)
+          : workspaceItemToAttachment(item.file),
+      ),
+    );
   }
 
   function handleRemoveAttachment(index: number) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+    // Removing one frees a slot, so the count the notice quotes is now stale.
+    setRefusedCount(0);
   }
+
+  const isCompact = variant === "compact";
+  const iconButtonClass = stacked
+    ? CARD_ICON_BUTTON_CLASS
+    : isCompact
+      ? COMPACT_ICON_BUTTON_CLASS
+      : undefined;
+  const sendButtonClass = stacked
+    ? CARD_SEND_BUTTON_CLASS
+    : isCompact
+      ? COMPACT_SEND_BUTTON_CLASS
+      : undefined;
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
         <MentionDropdown
-          files={mentions.files}
+          options={mentions.options}
+          showFiles={mentions.showFiles}
+          hasIntegrations={mentions.hasIntegrations}
           isLoading={mentions.isLoading}
           isError={mentions.isError}
           highlightedIndex={mentions.highlightedIndex}
@@ -284,14 +360,34 @@ export function ChatInput({
       <InputGroup
         className={cn(
           "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
-          // Card composer: a hairline ring and a shallow drop instead of the
-          // pill's deep shadow, so it reads as a surface the text sits on.
+          // Card composer: a hairline border and a shallow drop instead of
+          // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
-            "gap-3 !rounded-3xl border-transparent px-3.5 pb-3.5 pt-3 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-transparent",
+            "gap-3 !rounded-3xl border-zinc-200 px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300",
+          isCompact &&
+            "!rounded-xl border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
+        {voiceBar}
+        {!voiceBar && transcriptionError && hasFailedRecording && (
+          <TranscriptionErrorBar
+            message={transcriptionError}
+            isRetrying={isTranscribing}
+            onRetry={retryTranscription}
+            onDownload={downloadFailedRecording}
+            onDismiss={dismissTranscriptionError}
+            className={stacked ? undefined : "mt-1.5"}
+          />
+        )}
+        {refusedCount > 0 && (
+          <AttachmentCapNotice
+            refusedCount={refusedCount}
+            onDismiss={() => setRefusedCount(0)}
+            className={stacked ? undefined : "mt-1.5"}
+          />
+        )}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -301,7 +397,10 @@ export function ChatInput({
         <div
           className={cn(
             "flex w-full flex-wrap",
-            stacked ? "items-center" : "items-end",
+            stacked || isCompact ? "items-center" : "items-end",
+            // tailwind-merge drops `flex` for `hidden`: the draft and the
+            // attachments survive the round trip through voice mode.
+            voiceBar && "hidden",
           )}
         >
           <InputGroupAddon
@@ -309,6 +408,7 @@ export function ChatInput({
             className={cn(
               "order-none gap-1 py-1 pl-1.5",
               stacked && "gap-1.5 p-0",
+              isCompact && "gap-0.5 py-1 pl-1",
             )}
           >
             <ComposerPlusMenu
@@ -316,13 +416,14 @@ export function ChatInput({
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
+              isAtCap={isAtCap}
               className={
                 stacked
                   ? cn(
                       CARD_ICON_BUTTON_CLASS,
                       "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
                     )
-                  : undefined
+                  : iconButtonClass
               }
             />
             {recipientPicker}
@@ -335,10 +436,10 @@ export function ChatInput({
               stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
           >
-            <PromptInputTextarea
+            <CredentialMentionEditor
               id={inputId}
-              aria-label="Chat message input"
               value={value}
+              onInputReady={mentions.bindInput}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
@@ -346,7 +447,10 @@ export function ChatInput({
               disabled={isInputDisabled}
               placeholder={resolvedPlaceholder}
               onMultilineChange={setIsMultiline}
-              className={stacked ? "px-0.5 py-1" : undefined}
+              className={cn(
+                stacked && "px-0.5 py-1",
+                isCompact && "text-sm leading-5 md:text-sm",
+              )}
             />
             {isRecording && !value && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -362,14 +466,16 @@ export function ChatInput({
             className={cn(
               "order-none ml-auto gap-1 py-1 pr-1.5",
               stacked && "gap-1.5 p-0",
+              isCompact && "gap-0.5 py-1 pr-1",
             )}
           >
             {/* Connection and tier are per-message settings, so they remain
                 changeable between turns in an existing session. The card
                 composer leaves this to the page's top-right control. */}
-            {!stacked && (!hasSession || !isStreaming) && (
+            {!stacked && !isCompact && (!hasSession || !isStreaming) && (
               <ConnectionPicker connectionLocked={hasSession} />
             )}
+            {modeSelector}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
@@ -379,6 +485,7 @@ export function ChatInput({
             {devtoolSessionId && (
               <TokenDevtoolBadge sessionId={devtoolSessionId} />
             )}
+            {voiceToggle}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
@@ -386,7 +493,7 @@ export function ChatInput({
                 isStreaming={isStreaming}
                 disabled={disabled || isTranscribing || isStreaming}
                 highlight={isMicGlowing}
-                className={stacked ? CARD_ICON_BUTTON_CLASS : undefined}
+                className={iconButtonClass}
                 onClick={() => {
                   dismissGlow();
                   toggleRecording();
@@ -412,7 +519,10 @@ export function ChatInput({
                     }
                   }
                 }}
-                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
+                className={cn(
+                  "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+                  sendButtonClass,
+                )}
               >
                 <Icon icon={ArrowUp02Icon} className="size-4" />
               </PromptInputButton>
@@ -420,14 +530,18 @@ export function ChatInput({
             {isStreaming ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <PromptInputSubmit status="streaming" onStop={onStop} />
+                  <PromptInputSubmit
+                    status="streaming"
+                    onStop={onStop}
+                    className={sendButtonClass}
+                  />
                 </TooltipTrigger>
                 <TooltipContent side="top">Stop</TooltipContent>
               </Tooltip>
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit
                 disabled={!canSend}
-                className={stacked ? CARD_SEND_BUTTON_CLASS : undefined}
+                className={sendButtonClass}
               />
             )}
           </InputGroupAddon>
@@ -439,11 +553,18 @@ export function ChatInput({
       </InputGroup>
       {showWorkspaceFiles && (
         <WorkspaceFilePicker
+          key={expertId ?? "everyone"}
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}
-          onConfirm={handleWorkspaceFilesConfirmed}
+          onConfirm={handlePickerConfirmed}
+          expertId={expertId}
+          expertName={expertName}
         />
       )}
     </form>
   );
+}
+
+function toLocalAttachment(file: File): Attachment {
+  return { kind: "local", file };
 }

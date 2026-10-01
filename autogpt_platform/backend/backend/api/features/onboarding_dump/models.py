@@ -1,6 +1,6 @@
 """Request / response models for the onboarding brain dump."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from pydantic import BaseModel, Field, StringConstraints
@@ -99,6 +99,62 @@ class SuggestedPrompt(BaseModel):
     icon: str = "sparkle"
 
 
+class RecommendedExpert(BaseModel):
+    """One roster template Otto suggests hiring first.
+
+    ``template_id`` is always a live template — the model only ever picks
+    ids off the roster it was shown, and anything else is dropped before
+    storage. ``name``/``role``/``avatar_url`` are copied from that
+    template server-side rather than trusted from the model, so a card
+    can never introduce an expert who does not exist.
+    """
+
+    template_id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    reason: str = ""
+    workflow_names: list[str] = []
+
+
+class RaiseSuggestion(BaseModel):
+    """The "raise your own" door, prefilled for a gap the roster can't fill.
+
+    ``role`` is one of the ``/raise`` wizard's role ids so the link can
+    seed the draft; a suggestion naming anything else is dropped.
+    """
+
+    role: str
+    reason: str = ""
+
+
+class ExpertRecommendations(BaseModel):
+    """The team Otto proposes after the dump.
+
+    ``source`` says where it came from: "llm" for a real read of the
+    transcript, "fallback" for the deterministic role/pain-point mapping,
+    and "disabled" for a run where the feature flag was off (recorded so
+    the reader can tell it apart from a job that never finished).
+    """
+
+    diagnosis: str = ""
+    experts: list[RecommendedExpert] = []
+    raise_suggestion: RaiseSuggestion | None = None
+    source: Literal["llm", "fallback", "disabled"] = "fallback"
+
+
+class RecommendedExpertsResponse(BaseModel):
+    """The team section's content, polled by the onboarding loading screen.
+
+    ``ready`` is false only while the background job is still running.
+    ``team`` is null when the feature is off — a team with no experts is
+    a real answer, so the client cannot use emptiness to tell them apart.
+    """
+
+    ready: bool
+    team: ExpertRecommendations | None = None
+
+
 class IntroCardResponse(BaseModel):
     """Content for the copilot home's onboarding greeting.
 
@@ -120,6 +176,13 @@ class IntroCardResponse(BaseModel):
     """The full transcript of the recorded dump, so the greeting page can
     offer a copy button. Only present on Path A while the greeting is
     still showing."""
+    team: ExpertRecommendations | None = None
+    """The experts to hire first, with the "raise your own" door beside
+    them. Null when the feature is off, and while ``team_pending``."""
+    team_pending: bool = False
+    """True while the team is still being assembled — the client keeps
+    polling ``/recommended-experts`` rather than rendering an empty
+    section over a team that is seconds away."""
 
 
 class RecommendedProvider(BaseModel):

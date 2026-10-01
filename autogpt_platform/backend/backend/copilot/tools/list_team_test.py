@@ -27,6 +27,8 @@ def _expert(
         avatar_url=None,
         is_archived=is_archived,
         schedules_paused_at=schedules_paused_at,
+        workflows=[],
+        credential_count=0,
     )
 
 
@@ -94,3 +96,33 @@ async def test_lookup_failure_returns_error(monkeypatch):
 async def test_requires_auth():
     result = await ListTeamTool()._execute(user_id=None, session=make_session(_USER))
     assert isinstance(result, ErrorResponse)
+
+
+@pytest.mark.asyncio
+async def test_autopilot_sees_each_teammates_grant_count(monkeypatch):
+    _patch_db(monkeypatch, [_expert_with_credentials(3)])
+    result = await ListTeamTool()._execute(user_id=_USER, session=make_session(_USER))
+    assert isinstance(result, TeamRosterResponse)
+    assert "3 credential(s)" in result.message
+    assert result.experts[0].credential_count == 3
+
+
+@pytest.mark.asyncio
+async def test_an_expert_is_not_told_how_much_access_its_teammates_hold(monkeypatch):
+    """An expert picks who to delegate to from the workflow count; a teammate's
+    grant count is the owner's view of the team, not an expert's."""
+    _patch_db(monkeypatch, [_expert_with_credentials(3)])
+    result = await ListTeamTool()._execute(
+        user_id=_USER, session=make_session(_USER, expert_id="exp-9")
+    )
+    assert isinstance(result, TeamRosterResponse)
+    assert "credential(s)" not in result.message
+    assert result.experts[0].credential_count is None
+    # The rest of the row still reaches the expert.
+    assert "0 workflow(s)" in result.message
+
+
+def _expert_with_credentials(count: int):
+    expert = _expert()
+    expert.credential_count = count
+    return expert

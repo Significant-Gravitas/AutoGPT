@@ -2,9 +2,13 @@
 
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
+import { Text } from "@/components/atoms/Text/Text";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AttentionRow } from "./components/AttentionRow";
+import { HeldCall } from "./components/HeldCall";
+import { HeldReviewDialog } from "./components/HeldReviewDialog";
+import { isHeldCall } from "./helpers";
 import { useNeedsYou } from "./useNeedsYou";
 
 interface Props {
@@ -14,15 +18,17 @@ interface Props {
 
 export function NeedsYou({ dashboard, className }: Props) {
   const {
-    visibleItems,
+    visibleRows,
+    pendingCount,
     filterOptions,
     hasFilters,
     selectedKind,
     selectKind,
     pendingIDs,
     decide,
+    held,
+    carousel,
   } = useNeedsYou({ items: dashboard.attention });
-  const itemCount = dashboard.attention.length;
 
   return (
     <HomeTile
@@ -30,13 +36,16 @@ export function NeedsYou({ dashboard, className }: Props) {
       icon={AlertCircleIcon}
       title="Needs you"
       badge={
-        <span
+        <Text
+          variant="small-medium"
+          as="span"
+          tone="secondary"
           role="status"
-          aria-label={`${itemCount} ${itemCount === 1 ? "item needs" : "items need"} your attention`}
-          className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-zinc-700"
+          aria-label={`${pendingCount} ${pendingCount === 1 ? "item needs" : "items need"} your attention`}
+          className="rounded-md bg-zinc-100 px-1.5 py-0.5 tabular-nums"
         >
-          {itemCount}
-        </span>
+          {pendingCount}
+        </Text>
       }
       meta={
         hasFilters ? (
@@ -50,15 +59,31 @@ export function NeedsYou({ dashboard, className }: Props) {
       }
     >
       <div className="divide-y divide-zinc-100">
-        {visibleItems.map((item) => (
-          <AttentionRow
-            key={item.id}
-            item={item}
-            isProcessing={pendingIDs.has(item.id)}
-            onDecision={decide}
-          />
-        ))}
+        {visibleRows.map(({ item, receipt }) =>
+          isHeldCall(item) ? (
+            <HeldCall
+              key={item.id}
+              item={item}
+              receipt={receipt}
+              status={held.statusOf(item.id)}
+              failed={held.hasFailed(item.id)}
+              onOpen={() => carousel.openAt(item.id)}
+              onDecide={(approved) => held.decide([item], approved)}
+            />
+          ) : (
+            <AttentionRow
+              key={item.id}
+              item={item}
+              isProcessing={pendingIDs.has(item.id)}
+              onDecision={decide}
+            />
+          ),
+        )}
       </div>
+      <span className="sr-only" aria-live="polite">
+        {held.announcement}
+      </span>
+      <HeldReviewDialog carousel={carousel} held={held} />
     </HomeTile>
   );
 }

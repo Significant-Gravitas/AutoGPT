@@ -28,7 +28,7 @@ export function MemoryScopeSelector({
     {},
   );
   const options = [
-    { value: AUTOPILOT_MEMORY_SCOPE, label: "AutoPilot (account memory)" },
+    { value: AUTOPILOT_MEMORY_SCOPE, label: "Otto (account memory)" },
     ...experts.map((expert) => {
       const label = `${expert.name} — ${expert.role.trim() || "Expert"}`;
       return {

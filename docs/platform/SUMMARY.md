@@ -12,6 +12,8 @@
 * [Scheduling & Triggers](scheduling-and-triggers.md)
 * [Templates](templates.md)
 * [Credits & Billing](credits-and-billing.md)
+* [Activation Metrics & Experiments](activation-metrics.md)
+* [PostHog Tracking Plan](tracking-plan.md)
 * [Integrations & Credentials](integrations-and-credentials.md)
 * [Data Flow & Execution](data-flow-and-execution.md)
 * [Sharing & Exporting Agents](sharing-and-exporting.md)
@@ -53,6 +55,7 @@
 ## Contributing
 
 * [Managing LLM Models](contributing/managing-llm-models.md)
+* [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
 
 ## Changelog
 

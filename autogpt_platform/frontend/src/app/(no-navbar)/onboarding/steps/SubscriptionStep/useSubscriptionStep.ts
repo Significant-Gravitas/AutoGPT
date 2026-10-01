@@ -7,7 +7,8 @@ import {
 } from "@/services/analytics/google-ads";
 import { environment } from "@/services/environment";
 import { useState } from "react";
-import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "../../store";
+import { useSearchParams } from "next/navigation";
+import { useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
 import {
   PLAN_KEYS,
@@ -16,7 +17,7 @@ import {
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { trackPaywallView } from "./tracking";
+import { trackPaywallCheckoutCancelled, trackPaywallView } from "./tracking";
 
 const PLAN_TO_TIER: Record<
   Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
@@ -40,16 +41,24 @@ export function useSubscriptionStep() {
   const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const selectedPlan = useOnboardingWizardStore((s) => s.selectedPlan);
+  const steps = useOnboardingWizardStore((s) => s.steps);
+  const currentStep = useOnboardingWizardStore((s) => s.currentStep);
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
   const { billing, plans } = useSubscriptionPricingExperiment();
+  const searchParams = useSearchParams();
 
   // This step only mounts once the paywall is genuinely on screen, so mount is
   // the honest moment to report the impression — and the one moment it can't
   // be missed, whatever the flags resolve to afterwards.
   useMountEffect(() => {
     trackPaywallView();
+    // Stripe sends the user back here with `subscription=cancelled` after they
+    // abandon checkout, so the return lands on this same mount.
+    if (searchParams.get("subscription") === "cancelled") {
+      trackPaywallCheckoutCancelled();
+    }
   });
   // Local guard that flips synchronously on first click so the profile-save
   // phase (which runs before `isUpdatingTier` becomes true) can't be
@@ -88,16 +97,17 @@ export function useSubscriptionStep() {
 
     try {
       // The paywall is the first step, so there's no profile to submit yet —
-      // name / role / pain points are collected after payment. On a successful
-      // checkout Stripe returns the user to Welcome to begin onboarding; on
-      // cancel, back to this paywall. Stripe fills {CHECKOUT_SESSION_ID}; plan
-      // and cycle let the return page report the subscription to Google Ads.
+      // role and pain points are collected after payment. On a successful
+      // checkout Stripe returns the user to the step after the paywall to
+      // begin onboarding; on cancel, back to this paywall. Stripe fills
+      // {CHECKOUT_SESSION_ID}; plan and cycle let the return page report the
+      // subscription to Google Ads.
       const baseUrl = `${window.location.origin}/onboarding`;
       const result = await updateTier({
         data: {
           tier,
-          success_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.welcome}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
-          cancel_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.subscription}&subscription=cancelled`,
+          success_url: `${baseUrl}?step=${(steps.subscription ?? currentStep) + 1}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
+          cancel_url: `${baseUrl}?step=${steps.subscription ?? currentStep}&subscription=cancelled`,
           billing_cycle: cycle,
         },
       });

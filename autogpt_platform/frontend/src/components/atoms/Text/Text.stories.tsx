@@ -1,6 +1,6 @@
 import { StoryCode } from "@/components/tokens/helpers/StoryCode";
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { Text, textVariants } from "./Text";
+import { Text, textTones, textVariants } from "./Text";
 
 const meta: Meta<typeof Text> = {
   title: "Atoms/Text",
@@ -24,6 +24,11 @@ const meta: Meta<typeof Text> = {
       control: { type: "select" },
       options: textVariants,
       description: "Typography variant to apply",
+    },
+    tone: {
+      control: { type: "select" },
+      options: [undefined, ...textTones],
+      description: "Semantic colour",
     },
     as: {
       control: { type: "select" },
@@ -183,6 +188,71 @@ export function CustomElement() {
       </Text>
       <Text variant="body" as="h2">
         Body size rendered as h2
+      </Text>
+    </div>
+  );
+}
+
+//=============================================================================
+// Tones
+//=============================================================================
+export function Tones() {
+  return (
+    <div className="space-y-6 p-8">
+      <Text variant="body">Default (black)</Text>
+      <Text variant="body" tone="primary">
+        Primary · zinc-900 · titles and values
+      </Text>
+      <Text variant="body" tone="secondary">
+        Secondary · zinc-600 · descriptions
+      </Text>
+      <Text variant="body" tone="muted">
+        Muted · zinc-500 · meta, captions, empty states
+      </Text>
+      <Text variant="body" tone="danger">
+        Danger · red-600 · destructive copy
+      </Text>
+      <StoryCode
+        code={`<Text variant="body" tone="primary">Primary</Text>
+<Text variant="body" tone="secondary">Secondary</Text>
+<Text variant="body" tone="muted">Muted</Text>
+<Text variant="body" tone="danger">Danger</Text>`}
+      />
+    </div>
+  );
+}
+
+//=============================================================================
+// Text roles (Home / Team)
+//=============================================================================
+export function TextRoles() {
+  return (
+    <div className="max-w-md space-y-3 p-8">
+      <Text variant="eyebrow">Needs you</Text>
+      <Text variant="large-medium" tone="primary">
+        Section title · large-medium
+      </Text>
+      <Text variant="body-medium" tone="primary">
+        Row title · body-medium
+      </Text>
+      <Text variant="body" tone="secondary">
+        Description · body · secondary
+      </Text>
+      <Text variant="small" tone="muted" className="tabular-nums">
+        Meta · small · muted · 2 files · 1 action
+      </Text>
+      <Text variant="small-medium" tone="muted">
+        Chip label · small-medium
+      </Text>
+      <StoryCode
+        code={`<Text variant="eyebrow">Needs you</Text>
+<Text variant="large-medium" tone="primary">Section title</Text>
+<Text variant="body-medium" tone="primary">Row title</Text>
+<Text variant="body" tone="secondary">Description</Text>
+<Text variant="small" tone="muted" className="tabular-nums">Meta</Text>`}
+      />
+      <Text variant="small" tone="muted">
+        Floor is 12px (small). No arbitrary px sizes.
       </Text>
     </div>
   );

@@ -22,6 +22,7 @@ import {
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   session: SessionSummaryResponse;
@@ -34,7 +35,6 @@ interface Props {
   isExporting: boolean;
   isDeleting: boolean;
   isPinningEnabled: boolean;
-  isSharingEnabled: boolean;
   showProcessing: boolean;
   showCompleted: boolean;
   onSelect: () => void;
@@ -58,7 +58,6 @@ export function ChatSessionRow({
   isExporting,
   isDeleting,
   isPinningEnabled,
-  isSharingEnabled,
   showProcessing,
   showCompleted,
   onSelect,
@@ -92,9 +91,9 @@ export function ChatSessionRow({
             value={editingTitle}
             onChange={(e) => onEditingTitleChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isKey(e, "Enter")) {
                 e.currentTarget.blur();
-              } else if (e.key === "Escape") {
+              } else if (isKey(e, "Escape")) {
                 onRenameCancel();
               }
             }}
@@ -199,12 +198,10 @@ export function ChatSessionRow({
               )}
               {isExporting ? "Exporting…" : "Export chat"}
             </DropdownMenuItem>
-            {isSharingEnabled && (
-              <DropdownMenuItem onClick={onShare}>
-                <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
-                Share chat
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem onClick={onShare}>
+              <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
+              Share chat
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={onDelete}
               disabled={isDeleting}

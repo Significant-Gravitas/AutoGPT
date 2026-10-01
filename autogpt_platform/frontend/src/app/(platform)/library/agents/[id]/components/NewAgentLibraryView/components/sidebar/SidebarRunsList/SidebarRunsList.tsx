@@ -40,6 +40,7 @@ interface Props {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 }
 
@@ -64,6 +65,7 @@ export function SidebarRunsList({
     triggersCount,
     error,
     loading,
+    retryFailedQueries,
     fetchMoreRuns,
     hasMoreRuns,
     isFetchingMoreRuns,
@@ -75,7 +77,7 @@ export function SidebarRunsList({
   });
 
   if (error) {
-    return <ErrorCard responseError={error} />;
+    return <ErrorCard responseError={error} onRetry={retryFailedQueries} />;
   }
 
   if (loading) {
@@ -273,7 +275,7 @@ export function SidebarRunsList({
                     No triggers set up
                   </Text>
                   <Text variant="body" className="!text-zinc-500">
-                    Ask AutoPilot to set up a trigger for this agent (e.g.
+                    Ask an expert to set up a trigger for this agent (e.g.
                     &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
                 </div>

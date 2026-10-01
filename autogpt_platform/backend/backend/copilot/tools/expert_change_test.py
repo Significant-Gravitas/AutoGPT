@@ -1,7 +1,7 @@
 """Tests for the confirm-gated hire/raise/update flow.
 
 The contract under test is the gate itself: a preview must never write, the
-confirmation_id must be single-use and bound to the Autopilot session that
+confirmation_id must be single-use and bound to the Otto session that
 produced it, confirm must apply exactly what was previewed, and only a
 session a human is actually driving may reach any of it.
 """
@@ -46,6 +46,7 @@ _CONFIRM_MODULE = "backend.copilot.tools.confirm_expert_change"
 _CHARTER = {
     "name": "Otto",
     "role": "Inbox triage",
+    "job_title": "Executive Assistant",
     "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
     "about": "You group the morning inbox and draft routine replies.",
@@ -133,8 +134,7 @@ def _env(
     db.count_raised_experts = AsyncMock(return_value=raised_count)
     db.hire_expert = AsyncMock(
         side_effect=hire_error,
-        return_value=hire_result
-        or SimpleNamespace(expert=_created(), failed_preloads=[]),
+        return_value=hire_result or SimpleNamespace(expert=_created()),
     )
     db.create_raised_expert = AsyncMock(
         side_effect=raise_error,
@@ -229,6 +229,19 @@ class TestPreviewNeverWrites:
         assert resp.preview.boundaries == _CHARTER["boundaries"]
         assert resp.preview.color == _CHARTER["color"]
         db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_starts_on_the_general_fallback_appearance(self):
+        """A raised Expert never borrows a roster face or a category sheet; its
+        owner picks or generates an appearance from the Team page later."""
+        with _env():
+            resp = await _raise(make_session(_USER), **_CHARTER)
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        assert (
+            resp.preview.avatar_url
+            == "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp"
+        )
+        assert "avatar_category" not in RaiseExpertTool().parameters["properties"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_preview_carries_the_template_tagline(self):
@@ -541,6 +554,8 @@ class TestConfirm:
             _CHARTER["name"],
             _CHARTER["role"],
             None,
+            job_title=_CHARTER["job_title"],
+            avatar_url=preview.preview.avatar_url,
             color=_CHARTER["color"],
             tagline=_CHARTER["tagline"],
             about=_CHARTER["about"],
@@ -808,32 +823,9 @@ class TestApplyProposalDispatch:
         db.hire_expert.assert_not_called()
 
 
-class TestPartialHire:
-    """A hire whose workflows failed to install leaves an expert that cannot
-    do part of its job — the message must say so, or the user only finds out
-    when the work silently doesn't happen."""
-
+class TestHireMessage:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_failed_workflows_are_named_in_the_message(self):
-        partial = SimpleNamespace(
-            expert=_created(),
-            failed_preloads=["Inbox triage", "Daily digest"],
-        )
-        with _env(hire_result=partial):
-            session = make_session(_USER)
-            preview = await _hire(session, template_id="tpl-scout")
-            assert isinstance(preview, ExpertChangeProposedResponse)
-            resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
-            )
-        assert isinstance(resp, ExpertChangeAppliedResponse)
-        assert resp.failed_workflows == ["Inbox triage", "Daily digest"]
-        assert "Inbox triage" in resp.message
-        assert "Daily digest" in resp.message
-        assert "is hired and on the team." not in resp.message
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_clean_hire_still_reads_as_a_clean_hire(self):
+    async def test_hire_says_setup_continues_in_the_background(self):
         with _env():
             session = make_session(_USER)
             preview = await _hire(session, template_id="tpl-scout")
@@ -842,8 +834,8 @@ class TestPartialHire:
                 _approve(session), confirmation_id=preview.confirmation_id
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
-        assert resp.failed_workflows == []
-        assert "could not be installed" not in resp.message
+        assert "is hired and on the team" in resp.message
+        assert "background" in resp.message
 
 
 class TestLegacySessionsCannotStaff:

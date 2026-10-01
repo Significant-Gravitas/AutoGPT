@@ -6,7 +6,7 @@ from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 
-from .base import BaseOAuthHandler
+from .base import BaseOAuthHandler, parse_granted_scopes
 
 
 # --8<-- [start:GithubOAuthHandlerExample]
@@ -79,7 +79,8 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             {
                 "refresh_token": credentials.refresh_token.get_secret_value(),
                 "grant_type": "refresh_token",
-            }
+            },
+            current_credentials=credentials,
         )
 
     async def _request_tokens(
@@ -106,11 +107,11 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             title=current_credentials.title if current_credentials else None,
             username=username,
             access_token=token_data["access_token"],
-            # Token refresh responses have an empty `scope` property (see docs),
-            # so we have to get the scope from the existing credentials object.
-            scopes=(
-                token_data.get("scope", "").split(",")
-                or (current_credentials.scopes if current_credentials else [])
+            # GitHub App refresh responses carry an empty `scope`, so on refresh
+            # the existing record is the only description of the grant.
+            scopes=parse_granted_scopes(
+                token_data.get("scope"),
+                fallback=current_credentials.scopes if current_credentials else [],
             ),
             # Refresh token and expiration intervals are only given if token expiration
             # is enabled in the GitHub App's settings.

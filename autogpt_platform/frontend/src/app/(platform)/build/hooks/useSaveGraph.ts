@@ -22,6 +22,7 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
+import { retryUnlessClientError } from "../helpers/graphLoadError";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -52,6 +53,7 @@ export const useSaveGraph = ({
       query: {
         select: (res) => res.data as GraphModel,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );

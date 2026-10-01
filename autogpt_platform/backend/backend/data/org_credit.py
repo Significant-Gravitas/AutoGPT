@@ -19,9 +19,11 @@ from backend.data.credit import (
     UserCreditBase,
     get_user_credit_model,
 )
+from backend.data.credit_history import get_credit_history
 from backend.data.db import prisma
 from backend.data.model import RefundRequest, TransactionHistory
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.stripe_client import stripe_call
 from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
@@ -354,29 +356,17 @@ class OrgCreditModel(UserCreditBase):
         transaction_count_limit: int,
         transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
+        cursor: str | None = None,
+        viewer_organization_id: str | None = None,
     ) -> TransactionHistory:
-        raw = await get_org_transaction_history(
-            self._org_id,
-            limit=transaction_count_limit,
-            offset=0,
-        )
-        from backend.data.model import CreditTransactionItem
-
-        # TransactionHistory expects CreditTransactionItem; running_balance
-        # lives on UserTransaction but isn't part of this DTO and is dropped.
-        transactions = [
-            CreditTransactionItem(
-                user_id=user_id,
-                amount=t["amount"],
-                transaction_type=t.get("type", CreditTransactionType.USAGE),
-                transaction_key=t.get("transactionKey", ""),
-                description=f"{t.get('type', 'UNKNOWN')} Transaction",
-            )
-            for t in raw
-        ]
-        return TransactionHistory(
-            transactions=transactions,
-            next_transaction_time=None,
+        return await get_credit_history(
+            user_id=user_id,
+            organization_id=self._org_id,
+            transaction_count_limit=transaction_count_limit,
+            transaction_time_ceiling=transaction_time_ceiling,
+            transaction_type=transaction_type,
+            cursor=cursor,
+            viewer_organization_id=viewer_organization_id,
         )
 
     async def get_refund_requests(self, user_id: str) -> list[RefundRequest]:
@@ -457,12 +447,10 @@ class OrgCreditModel(UserCreditBase):
         if not org or not org.stripeCustomerId:
             return []
 
-        from fastapi.concurrency import run_in_threadpool
-
         limit = max(1, min(limit, 100))
         try:
-            invoices = await run_in_threadpool(
-                stripe.Invoice.list,
+            invoices = await stripe_call(
+                stripe.Invoice.list_async,
                 customer=org.stripeCustomerId,
                 limit=limit,
             )

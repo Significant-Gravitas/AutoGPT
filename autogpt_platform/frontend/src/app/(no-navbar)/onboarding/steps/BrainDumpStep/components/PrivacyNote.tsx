@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { LockIcon } from "@hugeicons/core-free-icons";
 
 const PRIVACY_COPY =
-  "Private to you · Saved as AutoPilot memory · Downloadable anytime";
+  "Private to you · Saved as Otto memory · Downloadable anytime";
 
 export function PrivacyNote() {
   return (
@@ -13,7 +13,7 @@ export function PrivacyNote() {
       <Icon icon={LockIcon} size={14} className="shrink-0 text-zinc-400" />
       <Text
         variant="small"
-        className="text-center !text-sm !text-zinc-400 sm:whitespace-nowrap"
+        className="text-center text-zinc-400 sm:whitespace-nowrap"
       >
         {PRIVACY_COPY}
       </Text>

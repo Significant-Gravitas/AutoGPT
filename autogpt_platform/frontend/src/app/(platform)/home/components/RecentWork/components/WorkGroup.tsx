@@ -1,10 +1,13 @@
-import { ArrowUpRight01Icon, Robot01Icon } from "@hugeicons/core-free-icons";
+import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { formatWorkTime, getWorkItemIcon } from "../helpers";
+import { cn } from "@/lib/utils";
+import { formatGroupCounts, getActorChip } from "../helpers";
+import { ActorMark } from "./ActorMark";
+import { OutcomeRow } from "./OutcomeRow";
+import { WorkItemRow } from "./WorkItemRow";
 
 interface Props {
   group: HomeRecentWorkGroup;
@@ -12,43 +15,39 @@ interface Props {
 }
 
 export function WorkGroup({ group, timezone }: Props) {
+  const { actor } = group;
+  const chip = getActorChip(actor.kind);
+  const runs = group.runs ?? [];
+  const items = group.items ?? [];
   const header = (
     <div className="flex min-w-0 items-center gap-2">
-      {group.actor.expert ? (
-        <ExpertAvatar
-          name={group.actor.expert.name}
-          avatarUrl={group.actor.expert.avatar_url}
-          size={18}
-        />
-      ) : (
-        <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
-          <Icon icon={Robot01Icon} size={11} aria-hidden="true" />
-        </span>
-      )}
-      <Text
-        variant="body-medium"
-        className="truncate text-[13px] leading-5 text-zinc-900"
-      >
-        {group.actor.name}
+      <ActorMark actor={actor} />
+      <Text variant="body-medium" tone="primary" className="truncate leading-5">
+        {actor.name}
       </Text>
-      {group.session_title ? (
-        <>
-          <span className="text-zinc-300" aria-hidden="true">
-            ·
-          </span>
-          <Text
-            variant="body"
-            className="truncate text-[13px] leading-5 text-zinc-500"
-          >
-            {group.session_title}
-          </Text>
-        </>
-      ) : null}
-      {group.link ? (
+      <Text
+        variant="small-medium"
+        as="span"
+        className={cn(
+          "shrink-0 rounded-full border px-1.5 capitalize leading-4",
+          chip.className,
+        )}
+      >
+        {chip.label}
+      </Text>
+      <Text
+        variant="small"
+        tone="muted"
+        className="ml-auto shrink-0 tabular-nums"
+        as="span"
+      >
+        {formatGroupCounts(group)}
+      </Text>
+      {actor.link ? (
         <Icon
           icon={ArrowUpRight01Icon}
           size={14}
-          className="ml-auto shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
+          className="shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
           aria-hidden="true"
         />
       ) : null}
@@ -56,45 +55,38 @@ export function WorkGroup({ group, timezone }: Props) {
   );
 
   return (
-    <article className="px-4 py-3">
-      {group.link ? (
-        <Link
-          href={group.link}
-          className="group -mx-1 block rounded px-1 outline-none focus-visible:bg-zinc-50"
-        >
-          {header}
-        </Link>
-      ) : (
-        header
-      )}
-      <div className="mt-1.5 flex flex-col gap-1">
-        {group.items.map((item) => (
-          <div key={item.id} className="flex items-center gap-2">
-            <span className="flex size-[18px] shrink-0 items-center justify-center text-zinc-400">
-              <Icon
-                icon={getWorkItemIcon(item.category)}
-                size={13}
-                aria-hidden="true"
-              />
-            </span>
-            <Text
-              variant="small"
-              className="min-w-0 flex-1 truncate text-[13px] leading-5 text-zinc-700"
-            >
-              {item.title}
-            </Text>
-            <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
-              {item.provider ? `${item.provider} · ` : ""}
-              {formatWorkTime(item.occurred_at, timezone)}
-            </span>
-          </div>
-        ))}
-        {group.more_count ? (
-          <Text variant="small" className="pl-[26px] text-[11px] text-zinc-400">
-            Plus {group.more_count} more
-          </Text>
-        ) : null}
+    <article aria-label={actor.name}>
+      <div className="bg-zinc-100/80 px-4 py-2">
+        {actor.link ? (
+          <Link
+            href={actor.link}
+            className="group block rounded outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          >
+            {header}
+          </Link>
+        ) : (
+          header
+        )}
       </div>
+      {runs.length > 0 ? (
+        <div className="divide-y divide-zinc-100 px-4">
+          {runs.map((run) => (
+            <OutcomeRow
+              key={run.id}
+              outcome={run}
+              timezone={timezone}
+              showAgentName={actor.kind === "expert"}
+            />
+          ))}
+        </div>
+      ) : null}
+      {items.length > 0 ? (
+        <div className="flex flex-col gap-1 px-4 py-2">
+          {items.map((item) => (
+            <WorkItemRow key={item.id} item={item} timezone={timezone} />
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }

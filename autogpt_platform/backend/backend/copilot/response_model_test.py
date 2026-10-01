@@ -9,7 +9,23 @@ from backend.copilot.response_model import (
     ResponseType,
     StreamCompactionProgress,
     StreamModeChanged,
+    StreamPendingDrained,
+    StreamPendingDrainedMessage,
+    StreamToolDisplayAvailable,
+    ToolDisplayData,
 )
+
+
+def test_tool_display_serializes_as_persistent_ai_sdk_data_part():
+    event = StreamToolDisplayAvailable(
+        id="call-1",
+        data=ToolDisplayData(toolCallId="call-1", displayName='Résumé "Daily"'),
+    )
+    assert json.loads(event.to_sse().removeprefix("data: ")) == {
+        "type": "data-tool-display",
+        "id": "call-1",
+        "data": {"toolCallId": "call-1", "displayName": 'Résumé "Daily"'},
+    }
 
 
 def test_mode_changed_serializes_as_ai_sdk_data_part():
@@ -68,3 +84,25 @@ class TestStreamCompactionProgress:
 
         with pytest.raises(ValidationError):
             StreamCompactionProgress(phase="done")
+
+
+class TestStreamPendingDrained:
+    def test_to_sse_carries_the_drained_messages(self):
+        """The client renders the mid-turn follow-up bubble straight from the
+        hint, so the text has to ride along inside the ``data`` envelope."""
+        evt = StreamPendingDrained(
+            drainedCount=1,
+            messages=[StreamPendingDrainedMessage(id="pm-1", content="also add tests")],
+        )
+        payload = json.loads(evt.to_sse().removeprefix("data: "))
+        assert payload == {
+            "type": "data-pending-drained",
+            "data": {
+                "drainedCount": 1,
+                "messages": [{"id": "pm-1", "content": "also add tests"}],
+            },
+        }
+
+    def test_messages_default_to_empty(self):
+        payload = json.loads(StreamPendingDrained(drainedCount=2).to_sse()[6:])
+        assert payload["data"] == {"drainedCount": 2, "messages": []}

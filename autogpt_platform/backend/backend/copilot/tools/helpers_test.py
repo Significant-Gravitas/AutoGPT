@@ -1,7 +1,7 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,6 +14,9 @@ from backend.copilot.tools.helpers import (
     check_hitl_review,
     execute_block,
     get_block_provider,
+    get_inputs_from_schema,
+    get_picker_inputs_from_schema,
+    is_picker_field,
     prepare_block_for_execution,
     require_library_check,
 )
@@ -812,16 +815,19 @@ def _make_simple_block(
 
 
 def _patch_excluded(block_ids: set | None = None, block_types: set | None = None):
+    # ``prepare_block_execution`` imports these from ``block_meta`` inside the
+    # function, so the source module is the patch target.  They were read from
+    # ``tools.find_block`` until that module went; ``create=True`` meant the
+    # patch kept "working" against a name that was no longer there, and the
+    # exclusions under test silently stopped being exercised.
     return (
         patch(
-            "backend.copilot.tools.find_block.COPILOT_EXCLUDED_BLOCK_IDS",
+            "backend.copilot.capabilities.block_meta.COPILOT_EXCLUDED_BLOCK_IDS",
             new=block_ids or set(),
-            create=True,
         ),
         patch(
-            "backend.copilot.tools.find_block.COPILOT_EXCLUDED_BLOCK_TYPES",
+            "backend.copilot.capabilities.block_meta.COPILOT_EXCLUDED_BLOCK_TYPES",
             new=block_types or set(),
-            create=True,
         ),
     )
 
@@ -991,7 +997,7 @@ def _make_hitl_prep(
 async def test_check_hitl_no_review_needed() -> None:
     prep = _make_hitl_prep(input_data={"action": "read"}, needs_review=False)
     mock_rdb = MagicMock()
-    mock_rdb.get_pending_reviews_for_execution = AsyncMock(return_value=[])
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
 
     with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
         result = await check_hitl_review(prep, "user1", "hitl-sess")
@@ -1006,13 +1012,22 @@ async def test_check_hitl_no_review_needed() -> None:
 async def test_check_hitl_review_required() -> None:
     prep = _make_hitl_prep(input_data={"action": "delete"}, needs_review=True)
     mock_rdb = MagicMock()
-    mock_rdb.get_pending_reviews_for_execution = AsyncMock(return_value=[])
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
 
     with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
         result = await check_hitl_review(prep, "user1", "hitl-sess")
 
     assert isinstance(result, ReviewRequiredResponse)
     assert result.block_id == "blk-hitl"
+    assert "graph_exec_id" not in result.model_dump()
+    kwargs = prep.block.is_block_exec_need_review.await_args.kwargs
+    assert (kwargs["graph_exec_id"], kwargs["graph_id"]) == (None, None)
+    assert kwargs["is_graph_execution"] is False
+    assert kwargs["execution_context"].session_id == "hitl-sess"
+    assert kwargs["execution_context"].graph_exec_id is None
+    mock_rdb.get_pending_reviews_for_chat_session.assert_awaited_once_with(
+        "hitl-sess", "user1"
+    )
 
 
 @pytest.mark.asyncio
@@ -1026,7 +1041,7 @@ async def test_check_hitl_reuses_existing_waiting_review() -> None:
     existing.node_exec_id = "existing-review-42"
 
     mock_rdb = MagicMock()
-    mock_rdb.get_pending_reviews_for_execution = AsyncMock(return_value=[existing])
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[existing])
 
     with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
         result = await check_hitl_review(prep, "user1", "hitl-sess")
@@ -1219,7 +1234,7 @@ async def test_prepare_block_null_non_credential_field_not_stripped() -> None:
     excl_ids, excl_types = _patch_excluded()
     captured: list[dict] = []
 
-    async def _capture_resolve(user_id, block, input_data):
+    async def _capture_resolve(user_id, block, input_data, expert_id=None, **_):
         captured.append(dict(input_data))
         return {}, []
 
@@ -1795,6 +1810,47 @@ class TestRequireLibraryCheck:
         result = require_library_check(session, "create_agent")
         assert isinstance(result, ErrorResponse)
 
+    async def test_sdk_dispatch_satisfies_the_gate(self):
+        """The SDK engine is the one that runs this gate in production, and it
+        reaches ``find_library_agent`` through the MCP adapter rather than the
+        baseline executor — so a real call there has to register or the gate
+        refuses create_agent forever. Every other test here fabricates the
+        announcement, which is why the hole stayed green.
+
+        The tool is a real ``BaseTool``: the announce lives in
+        ``BaseTool.execute``, after its gates, so a mock standing in for the
+        tool would skip the very line under test."""
+        from backend.copilot.sdk.tool_adapter import _execute_tool_sync
+        from backend.copilot.tools.base import BaseTool
+        from backend.copilot.tools.models import ErrorResponse
+
+        class _FindLibraryAgent(BaseTool):
+            @property
+            def name(self) -> str:
+                return "find_library_agent"
+
+            @property
+            def description(self) -> str:
+                return "stub"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return ErrorResponse(message="ran", session_id=session.session_id)
+
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+
+        await _execute_tool_sync(
+            _FindLibraryAgent(),
+            "user-lib-check",
+            session,
+            {"for_creation": True, "goal_summary": "summarise emails"},
+        )
+
+        assert require_library_check(session, "create_agent") is None
+
     def test_inflight_name_only_does_not_satisfy(self):
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.announce_inflight_tool_call("find_library_agent")
@@ -1840,3 +1896,110 @@ class TestRequireLibraryCheck:
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.metadata.builder_graph_id = "some-graph-id"
         assert require_library_check(session, "create_agent") is None
+
+
+class TestPickerInputs:
+    """Setup cards carry only picker-backed inputs; the rest is asked in chat."""
+
+    _schema: ClassVar[dict[str, Any]] = {
+        "properties": {
+            "term": {"type": "string"},
+            "limit": {"type": "integer", "default": 10, "advanced": True},
+            "spreadsheet": {
+                "type": "object",
+                "format": "google-drive-picker",
+            },
+            "doc": {
+                "type": "object",
+                "auto_credentials": {"provider": "google", "kwarg_name": "creds"},
+            },
+            "credentials": {"type": "object"},
+        },
+        "required": ["term", "spreadsheet", "credentials"],
+    }
+
+    def test_is_picker_field(self):
+        assert is_picker_field({"format": "google-drive-picker"})
+        assert is_picker_field({"auto_credentials": {"provider": "google"}})
+        assert not is_picker_field({"type": "string"})
+        assert not is_picker_field(None)
+
+    def test_only_picker_fields_survive(self):
+        inputs = get_picker_inputs_from_schema(
+            self._schema, exclude_fields={"credentials"}
+        )
+        assert [i["name"] for i in inputs] == ["spreadsheet", "doc"]
+
+    def test_plain_inputs_yield_empty_list(self):
+        schema = {
+            "properties": {"term": {"type": "string"}},
+            "required": ["term"],
+        }
+        assert get_picker_inputs_from_schema(schema) == []
+        assert len(get_inputs_from_schema(schema)) == 1
+
+    def test_provided_values_are_kept_on_picker_fields(self):
+        picked = {"id": "file-1", "name": "Sheet"}
+        inputs = get_picker_inputs_from_schema(
+            self._schema,
+            exclude_fields={"credentials"},
+            input_data={"term": "bug", "spreadsheet": picked},
+        )
+        by_name = {i["name"]: i for i in inputs}
+        assert by_name["spreadsheet"]["value"] == picked
+        assert "term" not in by_name
+
+
+class TestExecuteBlockExpertFileScope:
+    """A ``workspace://`` block input is a second door into the workspace, so
+    the run it belongs to must carry the session's expert."""
+
+    async def test_expert_block_run_cannot_read_another_sessions_file(self):
+        result = await _store_workspace_file("/sessions/personal/private.txt")
+        assert isinstance(result, ErrorResponse)
+        assert "outside this expert's scope" in result.message
+
+    async def test_expert_block_run_reads_its_own_session_file(self):
+        result = await _store_workspace_file(f"/sessions/{_SESSION}/notes.txt")
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+
+
+async def _store_workspace_file(path: str):
+    """Run FileStoreBlock on ``workspace://<path>`` in an expert session."""
+    from backend.blocks.basic import FileStoreBlock
+    from backend.data.workspace_scope import WorkspaceScope
+    from backend.util.workspace_test import _make_workspace_file
+
+    scope_db = MagicMock()
+    scope_db.resolve_expert_workspace_scope = AsyncMock(
+        return_value=WorkspaceScope(expert_id="expert-a")
+    )
+    files = MagicMock()
+    files.get_workspace_file_by_path = AsyncMock(
+        return_value=_make_workspace_file(path=path)
+    )
+    storage = AsyncMock()
+    storage.retrieve.return_value = b"secret"
+    credit_patch, _ = _patch_credit_db()
+
+    with (
+        _patch_workspace(),
+        credit_patch,
+        patch("backend.data.db_accessors.workspace_db", return_value=scope_db),
+        patch("backend.util.workspace.workspace_db", return_value=files),
+        patch("backend.util.workspace.get_workspace_storage", return_value=storage),
+        patch("backend.util.file.scan_content_safe", AsyncMock()),
+        patch("backend.util.file.get_cloud_storage_handler", AsyncMock()),
+    ):
+        return await execute_block(
+            block=FileStoreBlock(),
+            block_id="cbb50872-625b-42f0-8203-a2ae78242d8a",
+            input_data={"file_in": f"workspace://{path}", "base_64": True},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-scope",
+            matched_credentials={},
+            dry_run=False,
+            expert_id="expert-a",
+        )

@@ -2,7 +2,12 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 export function MainSearchResultPageLoading() {
   return (
-    <div className="w-full">
+    <div
+      className="w-full"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading search results"
+    >
       <div className="mx-auto min-h-screen w-full max-w-[1440px] px-6 md:px-10">
         {/* Go back button */}
         <div className="mb-4 mt-5">
