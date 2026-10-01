@@ -26,7 +26,7 @@ import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
-import { useSendMessage } from "./useSendMessage";
+import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
@@ -52,6 +52,12 @@ function hasAssistantTail(messages: UIMessage[]) {
     (message) => message.role === "user",
   );
   return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
+}
+
+interface LocalSettleWaiter {
+  sessionId: string;
+  resolve: () => void;
+  reject: (error: Error) => void;
 }
 
 function getLatestKickoffAttemptToken(messages: UIMessage[]) {
@@ -232,6 +238,44 @@ export function useCopilotPage() {
   isInflightRef.current =
     !isUserStopping && (status === "streaming" || status === "submitted");
 
+  // Whether this tab has finished drawing the previous turn. The server's
+  // turn can end well before the screen does: the smoothing transform paces
+  // text out word by word (copilotStreamSmoothing.ts), and the post-finish
+  // probe may still turn into a reconnect. A follow-up the backend refused
+  // to queue (409, no active turn) waits here before going out as a new
+  // turn — see onSend.
+  const isLocalStreamSettled =
+    !isInflightRef.current && !isFinishProbing && !isReconnecting;
+  const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
+  isLocalStreamSettledRef.current = isLocalStreamSettled;
+  const settleWaitersRef = useRef<LocalSettleWaiter[]>([]);
+  useEffect(() => {
+    const waiters = settleWaitersRef.current;
+    settleWaitersRef.current = [];
+    for (const waiter of waiters) {
+      if (waiter.sessionId !== sessionId) {
+        waiter.reject(
+          new Error("The chat changed before this follow-up could be sent"),
+        );
+      } else if (isLocalStreamSettled) {
+        waiter.resolve();
+      } else {
+        settleWaitersRef.current.push(waiter);
+      }
+    }
+  }, [isLocalStreamSettled, sessionId]);
+
+  function waitForLocalSettle(forSessionId: string) {
+    if (isLocalStreamSettledRef.current) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      settleWaitersRef.current.push({
+        sessionId: forSessionId,
+        resolve,
+        reject,
+      });
+    });
+  }
+
   // Combine paginated messages with current page messages, merging consecutive
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
@@ -326,7 +370,12 @@ export function useCopilotPage() {
       trackBrainDump("intro_followup_sent", { chars: trimmed.length });
     }
 
-    if (sessionId && isInflightRef.current) {
+    let heldForLocalSettle = false;
+    // A loop, not an `if`: a held follow-up re-checks the in-flight ref once
+    // the screen settles, because another held follow-up may have dispatched
+    // a new turn in the same settle (in which case this one queues behind
+    // it) — and never sends while a turn is still being drawn.
+    while (sessionId && isInflightRef.current) {
       if (hasAttachments) {
         toast({
           title: "Please wait to attach files",
@@ -340,22 +389,36 @@ export function useCopilotPage() {
       try {
         await queueFollowUpMessage(sessionId, trimmed);
         queueMessage(trimmed);
+        return;
       } catch (err) {
         if (
-          err instanceof Error &&
-          err.name === "QueueFollowUpNotActiveError"
+          !(err instanceof Error && err.name === "QueueFollowUpNotActiveError")
         ) {
-          await sendNewMessage(message, files, workspaceFiles, metadata);
-          return;
+          toast({
+            title: "Could not queue message",
+            description: "Please wait for the current response to finish.",
+            variant: "destructive",
+          });
+          throw err;
         }
-        toast({
-          title: "Could not queue message",
-          description: "Please wait for the current response to finish.",
-          variant: "destructive",
-        });
-        throw err;
       }
-      return;
+
+      // The backend's turn is already over, but this tab may still be
+      // drawing it. Starting a second `useChat` request now cuts the live
+      // answer off mid-sentence: AI SDK only streams into the last message
+      // while its id matches, and the new user bubble takes that slot (see
+      // midTurnSplit.ts). Hold the follow-up until the local stream has
+      // settled, then send it as a normal turn below the finished answer.
+      heldForLocalSettle = true;
+      try {
+        await waitForLocalSettle(sessionId);
+      } catch (err) {
+        // The composer that sent this is gone with the old session, so put
+        // the text into the new one's rather than into a rejected promise
+        // nobody is listening to.
+        recoverFailedDeferredSend(trimmed, [], err);
+        return;
+      }
     }
 
     // Mark in-flight synchronously before dispatching so a rapid second
@@ -363,6 +426,16 @@ export function useCopilotPage() {
     // instead of triggering a duplicate /stream POST.
     if (sessionId) {
       isInflightRef.current = true;
+      isLocalStreamSettledRef.current = false;
+    }
+    if (heldForLocalSettle) {
+      // Resolve once dispatched, not when the whole answer has streamed:
+      // the composer's enqueue path is waiting on this, and holding it for
+      // the entire turn would lock Enter and the queue button again.
+      void sendNewMessage(message, files, workspaceFiles, metadata).catch(
+        (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
+      );
+      return;
     }
     await sendNewMessage(message, files, workspaceFiles, metadata);
   }

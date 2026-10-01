@@ -177,31 +177,34 @@ export function ChatInput({
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
 
-  const { value, setValue, handleSubmit } = useChatInput({
-    onSend: async (message: string) => {
-      const { localFiles, workspaceAttachments } =
-        partitionAttachments(attachments);
-      // Chips clear eagerly for the same reason the text does (see
-      // useChatInput.handleSend); a failed send restores them unless the
-      // user already attached new ones in the meantime.
-      const sent = attachments;
-      setAttachments([]);
-      setRefusedCount(0);
-      try {
-        await onSend(
-          message,
-          localFiles.length > 0 ? localFiles : undefined,
-          workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
-        );
-      } catch (error) {
-        setAttachments((prev) => (prev.length > 0 ? prev : sent));
-        throw error;
-      }
-    },
-    disabled: isTextareaDisabled,
-    canSendEmpty: hasAttachments,
-    inputId,
-  });
+  const { value, setValue, handleSubmit, handleEnqueue, isEnqueueing } =
+    useChatInput({
+      onSend: async (message: string) => {
+        const { localFiles, workspaceAttachments } =
+          partitionAttachments(attachments);
+        // Chips clear eagerly for the same reason the text does (see
+        // useChatInput.handleSend); a failed send restores them unless the
+        // user already attached new ones in the meantime.
+        const sent = attachments;
+        setAttachments([]);
+        setRefusedCount(0);
+        try {
+          await onSend(
+            message,
+            localFiles.length > 0 ? localFiles : undefined,
+            workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
+          );
+        } catch (error) {
+          setAttachments((prev) => (prev.length > 0 ? prev : sent));
+          throw error;
+        }
+      },
+      onEnqueue,
+      isStreaming,
+      disabled: isTextareaDisabled,
+      canSendEmpty: hasAttachments,
+      inputId,
+    });
 
   const integrations = useConnectedIntegrations(expertId);
 
@@ -218,8 +221,6 @@ export function ChatInput({
     includeWorkspaceFiles: showWorkspaceFiles && !isAtCap,
     integrations,
   });
-
-  const [isEnqueueing, setIsEnqueueing] = useState(false);
 
   const {
     isRecording,
@@ -506,19 +507,7 @@ export function ChatInput({
                 tooltip="Queue message"
                 variant="default"
                 disabled={isEnqueueing}
-                onClick={async () => {
-                  if (isEnqueueing) return;
-                  const trimmed = value.trim();
-                  if (trimmed) {
-                    setIsEnqueueing(true);
-                    try {
-                      await onEnqueue(trimmed);
-                      setValue("");
-                    } finally {
-                      setIsEnqueueing(false);
-                    }
-                  }
-                }}
+                onClick={() => void handleEnqueue()}
                 className={cn(
                   "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
                   sendButtonClass,
