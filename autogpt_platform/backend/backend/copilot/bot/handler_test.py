@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.platform_linking.models import (
+    ChannelCard,
     EnsureSessionResult,
     TurnDenial,
     WorkspaceArtifact,
@@ -1833,6 +1834,57 @@ class TestSetupCardIsPostedOncePerThread:
         await self._run_turns([_linear_card()], redis, adapter)
 
         assert list(redis.store.values()) == ["another-turn"]
+
+    @pytest.mark.asyncio
+    async def test_a_repeated_setup_card_does_not_hold_back_an_approval_card(self):
+        """Both cards in one turn: the setup card is deduped across turns, the
+        held call's approval card is not, even though both follow a turn
+        that already showed the setup card."""
+        adapter = _adapter()
+        adapter.supports_choice_buttons = True
+        adapter.send_choice_buttons = AsyncMock(return_value=True)
+        redis = _FakeRedis()
+        for n in range(2):
+            api = _api()
+            api.open_card = AsyncMock(
+                return_value=ChannelCard(
+                    token=f"tok-{n}", text="⏸️ **Run block**", options=["Approve"]
+                )
+            )
+
+            async def stream(*args, _n=n, **kwargs):
+                await kwargs["on_setup_required"](
+                    "session-1", _linear_card(), "run_block"
+                )
+                await kwargs["on_approval_needed"]("session-1", f"review-{_n}")
+                yield f"reply {_n}"
+
+            api.stream_chat = stream
+            with (
+                patch(
+                    "backend.copilot.bot.turn_stream.get_redis_async",
+                    new=AsyncMock(return_value=redis),
+                ),
+                patch(
+                    "backend.copilot.bot.turn_stream.Settings",
+                    return_value=self._settings(),
+                ),
+            ):
+                await MessageHandler(api)._stream_batch(
+                    [("Nick", "u1", f"message {n}")],
+                    _ctx(channel_type="thread", channel_id="thread-1"),
+                    adapter,
+                    "thread-1",
+                )
+
+        adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.kwargs["link_label"] == "Open AutoGPT"
+        tokens = [c.args[3] for c in adapter.send_choice_buttons.await_args_list]
+        assert tokens == ["tok-0", "tok-1"]
+        assert all(
+            c.kwargs["kind"] == "appr"
+            for c in adapter.send_choice_buttons.await_args_list
+        )
 
     @pytest.mark.asyncio
     async def test_redis_outage_still_posts_the_card(self):
