@@ -123,11 +123,44 @@ describe("Marketplace category filter over experts", () => {
     );
   });
 
+  test("category dots take the palette and a multi-category card keeps its own identity under every filter", async () => {
+    const expert = template("Quinn", ["research", "finance"]);
+    expert.avatar_url = "/experts/clay/v3/quinn.png";
+    server.use(
+      getGetV2ListStoreCategoriesMockHandler([
+        { value: "research", label: "Research", description: "Research" },
+        { value: "finance", label: "Finance", description: "Finance" },
+      ]),
+      http.get("/api/proxy/api/experts/templates", () =>
+        HttpResponse.json([expert]),
+      ),
+    );
+    render(<MainMarkeplacePage />);
+    const finance = await findCategoryChip("Finance");
+    expect(
+      finance.querySelector('[aria-hidden="true"]')?.getAttribute("style"),
+    ).toContain("#A5B09A");
+    const card = await screen.findByRole("link", { name: /Quinn/ });
+    const quinn = "/autogpt-characters/v2.1/expert-quinn/neutral/96.webp";
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(quinn);
+    await userEvent.click(finance);
+    expect(finance.getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() =>
+      expect(within(card).getByText("Finance")).toBeDefined(),
+    );
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(quinn);
+    await userEvent.click(await findCategoryChip("All"));
+    await waitFor(() =>
+      expect(within(card).getByText("Research")).toBeDefined(),
+    );
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(quinn);
+  });
+
   test("the chip row sits above the experts shelf it narrows", async () => {
     render(<MainMarkeplacePage />);
 
     const chips = await screen.findByRole("group", {
-      name: "Browse by category",
+      name: "Browse experts by category",
     });
     const shelf = await screen.findByRole("link", { name: /Maria/ });
 
@@ -214,7 +247,7 @@ describe("Marketplace category filter over experts", () => {
 
 async function findCategoryChip(name: string) {
   const group = await screen.findByRole("group", {
-    name: "Browse by category",
+    name: "Browse experts by category",
   });
   return within(group).findByRole("button", { name });
 }

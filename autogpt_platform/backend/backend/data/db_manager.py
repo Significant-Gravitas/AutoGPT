@@ -15,6 +15,7 @@ from backend.api.features.library.db import (
     create_library_agent,
     create_preset,
     delete_folder,
+    get_folder,
     get_folder_agents_map,
     get_folder_tree,
     get_library_agent,
@@ -43,15 +44,18 @@ from backend.api.features.search.embeddings import (
     get_embedding_stats,
 )
 from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.store import skill_db as marketplace_skill_db
 from backend.api.features.store.db import (
     get_agent,
     get_available_graph,
+    get_store_agent_by_version_id,
     get_store_agent_details,
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_credential
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
@@ -133,10 +137,12 @@ from backend.data.human_review import (
     check_approval,
     delete_review_by_node_exec_id,
     get_or_create_human_review,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
+    process_all_reviews_for_execution,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -144,6 +150,7 @@ from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
+from backend.data.posthog_lifecycle_sync import start_posthog_lifecycle_sweep
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -358,6 +365,12 @@ class DatabaseManager(AppService):
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
+    # ============ Credential Swap Proxy ============ #
+    # Called by the swap proxy (autogpt_platform/swap_proxy), which has no
+    # database access of its own; see backend/copilot/swap_credentials.py.
+    get_swap_bindings = _(get_swap_bindings)
+    resolve_swap_credential = _(resolve_swap_credential)
+
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
     get_user_email_by_id = _(get_user_email_by_id)
@@ -370,9 +383,11 @@ class DatabaseManager(AppService):
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
+    get_pending_reviews_for_chat_session = _(get_pending_reviews_for_chat_session)
     get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
+    process_all_reviews_for_execution = _(process_all_reviews_for_execution)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -397,6 +412,7 @@ class DatabaseManager(AppService):
 
     create_folder = _(create_folder)
     list_folders = _(list_folders)
+    get_folder = _(get_folder)
     get_folder_tree = _(get_folder_tree)
     update_folder = _(update_folder)
     move_folder = _(move_folder)
@@ -414,6 +430,7 @@ class DatabaseManager(AppService):
     # ============ Store ============ #
     get_store_agents = _(get_store_agents)
     get_store_agent_details = _(get_store_agent_details)
+    get_store_agent_by_version_id = _(get_store_agent_by_version_id)
     get_agent = _(get_agent)
     get_available_graph = _(get_available_graph)
 
@@ -488,6 +505,7 @@ class DatabaseManager(AppService):
     # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
+    start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -564,17 +582,27 @@ class DatabaseManager(AppService):
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
     install_workflow = _(experts_db.install_workflow)
     remove_workflow = _(experts_db.remove_workflow)
+    get_workflow_label = _(experts_db.get_workflow_label)
     grant_expert_credentials = _(expert_credentials.grant_expert_credentials)
     revoke_expert_credential = _(expert_credentials.revoke_expert_credential)
     list_expert_credentials = _(expert_credentials.list_expert_credentials)
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
+    with_bundled_skills = _(experts_db.with_bundled_skills)
     hire_expert = _(experts_db.hire_expert)
     expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
+
+    # ============ Marketplace skills ============ #
+    # The copy reconcile in copilot.tools.skills runs in Prisma-less
+    # processes; it compares copies against these and fetches packages to
+    # fast-forward or merge them.
+    get_active_versions = _(marketplace_skill_db.get_active_versions)
+    get_version_packages = _(marketplace_skill_db.get_version_packages)
+    find_version_by_hash = _(marketplace_skill_db.find_version_by_hash)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -601,6 +629,7 @@ class DatabaseManager(AppService):
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
     update_chat_session_llm_route = _(chat_db.update_chat_session_llm_route)
+    update_chat_session_autopilot_mode = _(chat_db.update_chat_session_autopilot_mode)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
     # ChatSession lifecycle primitives.  Three functions cover the
@@ -774,8 +803,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
+    get_pending_reviews_for_chat_session = d.get_pending_reviews_for_chat_session
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
+    process_all_reviews_for_execution = d.process_all_reviews_for_execution
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -841,6 +872,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Library Folders ============ #
     create_folder = d.create_folder
     list_folders = d.list_folders
+    get_folder = d.get_folder
     get_folder_tree = d.get_folder_tree
     update_folder = d.update_folder
     move_folder = d.move_folder
@@ -858,11 +890,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Store ============ #
     get_store_agents = d.get_store_agents
     get_store_agent_details = d.get_store_agent_details
+    get_store_agent_by_version_id = d.get_store_agent_by_version_id
     get_agent = d.get_agent
     get_available_graph = d.get_available_graph
 
     # ============ Search ============ #
     unified_hybrid_search = d.unified_hybrid_search
+
+    # ============ Marketplace skills ============ #
+    get_active_versions = d.get_active_versions
+    get_version_packages = d.get_version_packages
+    find_version_by_hash = d.find_version_by_hash
 
     # ============ Chat Sharing ============ #
     link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
@@ -909,6 +947,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
+    start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
@@ -973,10 +1012,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     remove_expert_skill_name = d.remove_expert_skill_name
     install_workflow = d.install_workflow
     remove_workflow = d.remove_workflow
+    get_workflow_label = d.get_workflow_label
     grant_expert_credentials = d.grant_expert_credentials
     revoke_expert_credential = d.revoke_expert_credential
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
+    with_bundled_skills = d.with_bundled_skills
     hire_expert = d.hire_expert
     expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert
@@ -1005,6 +1046,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
     update_chat_session_llm_route = d.update_chat_session_llm_route
+    update_chat_session_autopilot_mode = d.update_chat_session_autopilot_mode
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
     count_chat_sessions_by_status = d.count_chat_sessions_by_status

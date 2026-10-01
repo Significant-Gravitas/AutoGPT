@@ -4,6 +4,7 @@ import importlib
 
 import pytest
 
+from backend.blocks.desktop._api import DISPLAY
 from backend.copilot import prompting
 
 
@@ -32,6 +33,49 @@ class TestGetSdkSupplementStaticPlaceholder:
     def test_e2b_mode_has_no_session_placeholder(self):
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
+
+
+class TestComputerNote:
+    """A plain chat on E2B is told it has a screen; an expert session is told
+    by its own ``<expert_computer>`` block instead, and a local session has no
+    computer at all."""
+
+    def test_plain_e2b_session_learns_about_the_screen(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert result.count("### Your computer") == 1
+        assert "`start_desktop`" in result
+        assert "lost when the session expires" in result
+        assert "sign into personal accounts" in result
+
+    def test_screen_shows_only_what_runs_in_the_sandbox(self):
+        """``browser_*`` drives a browser outside the sandbox, so the model
+        must not offer the user a takeover of something the screen never
+        shows."""
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert f"DISPLAY={DISPLAY}" in result
+        assert "`browser_*` tools run elsewhere" in result
+
+    def test_no_computer_note_without_e2b(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Your computer" not in result
+        assert "start_desktop" not in result
+        assert (
+            prompting.get_sdk_supplement(use_e2b=False, expert_session=True) == result
+        )
+
+    def test_expert_session_differs_only_by_the_computer_note(self):
+        plain = prompting.get_sdk_supplement(use_e2b=True)
+        expert = prompting.get_sdk_supplement(use_e2b=True, expert_session=True)
+        assert "### Your computer" not in expert
+        assert plain.replace(prompting._COMPUTER_NOTE, "") == expert
+
+    def test_note_sits_inside_the_tool_notes_before_the_follow_up_rules(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert (
+            result.index("## Tool notes")
+            < result.index("### Your computer")
+            < result.index("# `<user_follow_up>` blocks")
+        )
 
 
 class TestCredentialsSurfacingGuardrails:

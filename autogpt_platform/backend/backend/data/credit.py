@@ -36,6 +36,7 @@ from backend.data.model import (
 from backend.data.model import User as AppUser
 from backend.data.model import UserTransaction
 from backend.data.notifications import NotificationEventModel, OpsData
+from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
@@ -51,6 +52,7 @@ from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
 from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
+from backend.util.posthog_events import PostHogEvent
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
@@ -76,6 +78,8 @@ BillingCycle = Literal["monthly", "yearly"]
 class UsageTransactionMetadata(BaseModel):
     graph_exec_id: str | None = None
     graph_id: str | None = None
+    # Set instead of the graph fields when the usage came from an AutoPilot chat.
+    chat_session_id: str | None = None
     node_id: str | None = None
     node_exec_id: str | None = None
     block_id: str | None = None
@@ -801,13 +805,16 @@ class UserCredit(UserCreditBase):
 
         # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
-        if auto_top_up.threshold and balance < auto_top_up.threshold:
+        if (
+            auto_top_up.threshold
+            and balance < auto_top_up.threshold
+            and not await _legacy_chat_top_up_exists(user_id, metadata)
+        ):
             try:
                 await self._top_up_credits(
                     user_id=user_id,
                     amount=auto_top_up.amount,
-                    # Avoid multiple auto top-ups within the same graph execution.
-                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
+                    key=_auto_top_up_key(user_id, metadata),
                     ceiling_balance=auto_top_up.threshold,
                     top_up_type=TopUpType.AUTO,
                 )
@@ -1160,7 +1167,7 @@ class UserCredit(UserCreditBase):
         # webhook/retry replays don't double-emit.
         if activation is not None and amount > 0:
             _track_billing_event(
-                "credit_topup_success",
+                PostHogEvent.CREDIT_TOPUP_SUCCESS,
                 user_id,
                 {
                     "amount_credits": amount,
@@ -1303,7 +1310,7 @@ class UserCredit(UserCreditBase):
             )
             if activation is not None:
                 _track_billing_event(
-                    "credit_topup_success",
+                    PostHogEvent.CREDIT_TOPUP_SUCCESS,
                     credit_transaction.userId,
                     {
                         "amount_credits": credit_transaction.amount,
@@ -1398,6 +1405,28 @@ class UserCredit(UserCreditBase):
             )
             for invoice in invoices.data
         ]
+
+
+def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:
+    """One auto top-up per graph execution or chat. A top-up stays inactive
+    until its charge succeeds, so the key is what stops a repeat charge."""
+    return f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id or metadata.chat_session_id}"
+
+
+async def _legacy_chat_top_up_exists(
+    user_id: str, metadata: UsageTransactionMetadata
+) -> bool:
+    """A chat's auto top-up keyed before chats had their own id (only a failed
+    or still-pending one keeps its key; a charged one takes the payment's)."""
+    if not metadata.chat_session_id:
+        return False
+    legacy_key = f"AUTO-TOP-UP-{user_id}-copilot-session-{metadata.chat_session_id}"
+    return (
+        await CreditTransaction.prisma().find_first(
+            where={"transactionKey": legacy_key, "userId": user_id}
+        )
+        is not None
+    )
 
 
 class DisabledUserCredit(UserCreditBase):
@@ -1522,6 +1551,8 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 async def set_subscription_tier(
     user_id: str,
     tier: SubscriptionTier,
+    *,
+    track_lifecycle: bool = True,
 ) -> None:
     """Set the user's subscription tier."""
     data: UserUpdateInput = {
@@ -1529,6 +1560,8 @@ async def set_subscription_tier(
     }
     await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(user_id)
 
 
 def invalidate_subscription_caches(user_id: str) -> None:
@@ -1648,7 +1681,7 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
             get_pending_subscription_change.cache_delete(user_id)
             current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
             _track_billing_event(
-                "subscription_cancellation_scheduled",
+                PostHogEvent.SUBSCRIPTION_CANCELLATION_SCHEDULED,
                 user_id,
                 {"subscription_tier": current_tier.value},
             )
@@ -2153,7 +2186,7 @@ async def modify_stripe_subscription_for_tier(
         # the DB flip fails, so gating here avoids double-firing on success.
         if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
             _track_billing_event(
-                "subscription_upgraded",
+                PostHogEvent.SUBSCRIPTION_UPGRADED,
                 user_id,
                 {
                     "previous_subscription_tier": current_tier.value,
@@ -2667,7 +2700,9 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
-async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
+async def sync_subscription_from_stripe(
+    stripe_subscription: dict, *, track_lifecycle: bool = True
+) -> None:
     """Update User.subscriptionTier from a Stripe subscription object.
 
     Expected shape of stripe_subscription (subset of Stripe's Subscription object):
@@ -2675,7 +2710,22 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         status:   str                  — "active" | "trialing" | "canceled" | ...
         id:       str                  — Stripe subscription ID
         items.data[].price.id: str     — Stripe price ID identifying the tier
+
+    Every ``customer.subscription.*`` webhook and every trial transition ends
+    up here, so this is also where the PostHog lifecycle properties are
+    refreshed (in the background, from the customer's current state).
+    ``track_lifecycle=False`` is for the periodic tier sweep, which would
+    otherwise fan out one Stripe call per trial; the daily lifecycle sweep
+    covers those users.
     """
+    await _sync_subscription_tier_from_stripe(stripe_subscription)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(
+            stripe_customer_id=stripe_subscription.get("customer")
+        )
+
+
+async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
     customer_id = stripe_subscription.get("customer")
     if not customer_id:
         logger.warning(
@@ -2840,13 +2890,15 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    # The wrapper schedules the lifecycle sync (or, for the tier sweep, doesn't),
+    # so the tier write mustn't schedule a second one.
+    await set_subscription_tier(user.id, tier, track_lifecycle=False)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
         )
         _track_billing_event(
-            "subscription_upgraded",
+            PostHogEvent.SUBSCRIPTION_UPGRADED,
             user.id,
             {
                 "previous_subscription_tier": current_tier.value,
@@ -2920,7 +2972,9 @@ def _invoice_subscription_id(invoice: dict) -> str:
     return legacy if isinstance(legacy, str) and legacy else ""
 
 
-TIER_RECONCILIATION_DISCREPANCY_EVENT = "subscription_tier_reconciliation_discrepancy"
+TIER_RECONCILIATION_DISCREPANCY_EVENT = (
+    PostHogEvent.SUBSCRIPTION_TIER_RECONCILIATION_DISCREPANCY
+)
 
 
 def log_tier_reconciliation_discrepancy(
@@ -2981,14 +3035,14 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
 
 
 def _track_billing_event(
-    event: str, distinct_id: str, properties: dict[str, Any]
+    event: PostHogEvent, distinct_id: str, properties: dict[str, Any]
 ) -> None:
     if not settings.secrets.posthog_api_key:
         return
 
     try:
         posthog.capture(
-            event=event,
+            event=event.value,
             distinct_id=distinct_id,
             properties=properties,
         )
@@ -3016,7 +3070,7 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
         )
 
         posthog.capture(
-            event="subscription_payment_success",
+            event=PostHogEvent.SUBSCRIPTION_PAYMENT_SUCCESS.value,
             distinct_id=user.id,
             properties={
                 "subscription_tier": tier,

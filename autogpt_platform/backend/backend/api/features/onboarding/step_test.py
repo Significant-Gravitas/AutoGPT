@@ -49,6 +49,20 @@ def test_complete_step_accepts_renamed_complete_value(mocker):
     assert mock_complete.await_args.args[1] == OnboardingStep.ONBOARDING_COMPLETE
 
 
+def test_complete_step_accepts_workflows_moved(mocker):
+    mock_complete = mocker.patch(
+        "backend.api.features.onboarding.routes.complete_onboarding_step",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.post("/onboarding/step", params={"step": "WORKFLOWS_MOVED"})
+
+    assert response.status_code == 200
+    mock_complete.assert_awaited_once()
+    assert mock_complete.await_args.args[1] == "WORKFLOWS_MOVED"
+
+
 @pytest.mark.parametrize(
     "step",
     [
@@ -104,11 +118,10 @@ def test_complete_step_rejects_rewarded_backend_only_steps(step, mocker):
         OnboardingStep.AGENTS_TAB_INTRO,
         OnboardingStep.MARKETPLACE_TAB_INTRO,
         OnboardingStep.BUILD_TAB_INTRO,
+        OnboardingStep.WORKFLOWS_MOVED,
     ],
 )
-async def test_tab_intro_steps_grant_no_reward(step, mocker):
-    # The tab intros are client-writable, so "unrewarded" has to be enforced
-    # rather than documented: posting one must never reach the credit model.
+async def test_intro_steps_grant_no_reward(step, mocker):
     mock_credit_model = mocker.patch.object(
         onboarding_module,
         "get_user_credit_model",

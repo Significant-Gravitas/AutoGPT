@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
     _DIGEST_THRESHOLD,
@@ -197,6 +198,16 @@ class TestBaseToolExecuteLargeOutput:
 
 
 class TestSummarizeBinaryFields:
+    @pytest.mark.parametrize("mime_type", [None, 123, {}])
+    def test_non_string_mime_types_are_summarized(self, mime_type):
+        payload = {"mime_type": mime_type, "content_base64": "A" * 10_000}
+        result = json.loads(_summarize_binary_fields(json.dumps(payload)))
+        assert "<binary" in result["content_base64"]
+
+    def test_image_mime_type_is_case_insensitive(self):
+        payload = {"mime_type": "IMAGE/PNG", "content_base64": "A" * 10_000}
+        assert json.loads(_summarize_binary_fields(json.dumps(payload))) == payload
+
     def test_replaces_large_content_base64(self):
         import json
 
@@ -226,8 +237,6 @@ class TestSummarizeBinaryFields:
         assert _summarize_binary_fields(raw) == raw
 
     def test_preserves_image_content_base64(self):
-        import json
-
         data = {
             "content_base64": "A" * 10_000,
             "name": "screenshot.png",
@@ -238,8 +247,6 @@ class TestSummarizeBinaryFields:
         assert result["mime_type"] == "image/png"
 
     def test_preserves_jpeg_image_content_base64(self):
-        import json
-
         data = {
             "content_base64": "B" * 20_000,
             "name": "photo.jpg",
@@ -249,8 +256,6 @@ class TestSummarizeBinaryFields:
         assert result["content_base64"] == "B" * 20_000
 
     def test_summarizes_non_image_with_mime_type(self):
-        import json
-
         data = {
             "content_base64": "C" * 10_000,
             "name": "audio.mp3",
@@ -301,16 +306,21 @@ class _BinaryOutputTool(_HugeOutputTool):
     """Returns base64 payload: 1K of it tells the model nothing its size doesn't."""
 
     digest_large_output = True
+    mime_type = "application/octet-stream"
 
     async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
         return WorkspaceFileContentResponse(
             file_id="f-1",
             name="shot.png",
             path="tool-outputs/shot.png",
-            mime_type="image/png",
+            mime_type=self.mime_type,
             content_base64="A" * self._output_size,
             message="Screenshot captured.",
         )
+
+
+class _ImageOutputTool(_BinaryOutputTool):
+    mime_type = "image/png"
 
 
 class _RetrievalTool(ReadWorkspaceFileTool):
@@ -353,6 +363,26 @@ async def _execute_with_flag(tool, flag_on: bool, manager=None):
 
 
 class TestDigestThreshold:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "size", [_DIGEST_THRESHOLD * 2, _LARGE_OUTPUT_THRESHOLD + 1]
+    )
+    async def test_inline_image_is_not_replaced_by_a_digest(self, size):
+        result = await _execute_with_flag(
+            _ImageOutputTool(output_size=size), flag_on=True
+        )
+        payload = json.loads(str(result.output))
+        assert payload["content_base64"] == "A" * size
+        assert payload["mime_type"] == "image/png"
+
+    @pytest.mark.asyncio
+    async def test_oversized_image_reports_an_error_instead_of_truncating_base64(self):
+        result = await _execute_with_flag(
+            _ImageOutputTool(output_size=120_000), flag_on=True
+        )
+        assert not result.success
+        assert "request a file URL" in json.loads(str(result.output))["error"]
+
     def test_the_budget_cannot_exceed_its_own_trigger(self):
         """Between 80K and 95K the legacy preview makes the context bigger;
         deriving the budget from the trigger makes that unrepresentable."""
@@ -609,3 +639,136 @@ class TestEnvelopeEnforcement:
         finally:
             set_execution_context(None, None, envelope=None)
         assert tool.ran is True
+
+
+class TestGateEnforcement:
+    """`BaseTool.execute` must consult the auto-mode gate, and must consult it
+    AFTER the envelope check.
+
+    Both are early-return refusals added at the same line by different PRs, so
+    a merge can drop either without a single test going red.
+    """
+
+    @staticmethod
+    def _spy_tool():
+        class _Spy(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "bash_exec"
+
+            @property
+            def description(self) -> str:
+                return "spy"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                raise AssertionError("_execute must not run for a gated tool")
+
+        return _Spy()
+
+    @pytest.mark.asyncio
+    async def test_a_gated_call_is_refused_and_never_executed(self):
+        from backend.copilot.gate import Decision
+
+        tool = self._spy_tool()
+        with (
+            patch(
+                "backend.copilot.gate.check_action",
+                new=AsyncMock(
+                    return_value=Decision(
+                        allowed=False, reason="needs your approval", review_id="r1"
+                    )
+                ),
+            ),
+        ):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        assert tool.ran is False, "the gated tool's body executed anyway"
+
+    @pytest.mark.asyncio
+    async def test_the_envelope_refusal_precedes_the_gate(self):
+        """A call the envelope refuses can never run, so spending a user's
+        approval on it is wrong."""
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        tool = self._spy_tool()
+        check = AsyncMock()
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            with patch("backend.copilot.gate.check_action", new=check):
+                result = await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        assert result.success is False
+        assert tool.ran is False
+        check.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_crashing_gate_refuses_rather_than_runs(self):
+        """A gate that crashes must not become a gate that passes."""
+        tool = self._spy_tool()
+        crash = AsyncMock(side_effect=RuntimeError("gate down"))
+        with patch("backend.copilot.gate.check_action", new=crash):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-3")
+
+        assert result.success is False
+        assert tool.ran is False
+
+    @pytest.mark.asyncio
+    async def test_flag_off_writes_nothing(self):
+        """Flag-off must be today's behaviour: no rule read, no review row,
+        for a call every mode would otherwise stop."""
+        calls: list[str] = []
+        tool = self._recording_tool("post_to_chat_platform", calls)
+        redis = AsyncMock()
+        reviews = MagicMock()
+        with (
+            patch(
+                "backend.copilot.gate.is_feature_enabled",
+                new=AsyncMock(return_value=False),
+            ),
+            patch("backend.copilot.gate.chat_rules.get_redis_async", new=redis),
+            patch("backend.copilot.gate.review.review_db", new=reviews),
+        ):
+            await tool.execute("u1", ChatSession.new(user_id="u1", dry_run=False), "c")
+
+        assert calls == ["run"]
+        redis.assert_not_awaited()
+        reviews.assert_not_called()
+
+    @staticmethod
+    def _recording_tool(tool_name: str, calls: list[str]):
+        class _Recorder(BaseTool):
+            @property
+            def name(self) -> str:
+                return tool_name
+
+            @property
+            def description(self) -> str:
+                return "recorder"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                calls.append("run")
+                return ErrorResponse(message="ran", session_id=session.session_id)
+
+        return _Recorder()

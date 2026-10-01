@@ -1,9 +1,14 @@
 import json
+import re
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from functools import cache
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from backend.blocks import get_blocks
+from backend.copilot.constants import legacy_chat_session_id
 
 if TYPE_CHECKING:
     from prisma.models import PendingHumanReview
@@ -43,9 +48,14 @@ class PendingHumanReviewModel(BaseModel):
         default="",  # Temporary default for test compatibility
     )
     user_id: str = Field(description="User ID associated with the review")
-    graph_exec_id: str = Field(description="Graph execution ID")
-    graph_id: str = Field(description="Graph ID")
-    graph_version: int = Field(description="Graph version")
+    graph_exec_id: str | None = Field(
+        default=None, description="Graph execution ID; None for a chat review"
+    )
+    graph_id: str | None = Field(default=None, description="Graph ID")
+    graph_version: int | None = Field(default=None, description="Graph version")
+    session_id: str | None = Field(
+        default=None, description="Chat session ID; None for a graph review"
+    )
     payload: SafeJsonData = Field(description="The actual data payload awaiting review")
     instructions: str | None = Field(
         description="Instructions or message for the reviewer", default=None
@@ -63,10 +73,13 @@ class PendingHumanReviewModel(BaseModel):
     agent_name: str | None = Field(
         default=None, description="Display name of the agent that requested the review"
     )
-    library_agent_id: str | None = Field(default=None, description="For run deep links")
-    session_id: str | None = Field(
-        default=None, description="Chat session id for copilot run_capability reviews"
+    block_id: str | None = Field(
+        default=None, description="The block awaiting approval, when a block asked"
     )
+    action: str | None = Field(
+        default=None, description="What that block does, e.g. 'Send Discord Message'"
+    )
+    library_agent_id: str | None = Field(default=None, description="For run deep links")
     was_edited: bool | None = Field(
         description="Whether the data was modified during review", default=None
     )
@@ -98,13 +111,20 @@ class PendingHumanReviewModel(BaseModel):
             review: Database review object
             node_id: Node definition ID (fetched from NodeExecution)
         """
+        block = _block_named(review.instructions)
+        # A row written in the old synthetic-graph shape reads as a chat review.
+        legacy_session_id = legacy_chat_session_id(review.graphExecId)
+        is_graph = legacy_session_id is None and review.chatSessionId is None
         return cls(
+            block_id=block.id if block else None,
+            action=_action_label(block.name) if block else None,
             node_exec_id=review.nodeExecId,
             node_id=node_id,
             user_id=review.userId,
-            graph_exec_id=review.graphExecId,
-            graph_id=review.graphId,
-            graph_version=review.graphVersion,
+            graph_exec_id=review.graphExecId if is_graph else None,
+            graph_id=review.graphId if is_graph else None,
+            graph_version=review.graphVersion if is_graph else None,
+            session_id=review.chatSessionId or legacy_session_id,
             payload=review.payload,
             instructions=review.instructions,
             editable=review.editable,
@@ -136,6 +156,21 @@ class ReviewItem(BaseModel):
         description=(
             "If true and this review is approved, future executions of this same "
             "block (node) will be automatically approved. This only affects approved reviews."
+        ),
+    )
+    chat_rule: Literal["allow", "judge"] | None = Field(
+        default=None,
+        description=(
+            "AutoPilot cards naming a subject only: once approved, the subject "
+            "runs ('allow') or goes to the supervisor ('judge') for the rest of "
+            "the chat instead of asking."
+        ),
+    )
+    chat_rule_scope: Literal["chat", "expert", "team"] = Field(
+        default="chat",
+        description=(
+            "Where chat_rule holds: this chat, every chat with this chat's "
+            "Expert (or Otto), or every Expert on the user's team."
         ),
     )
 
@@ -236,3 +271,20 @@ class ReviewResponse(BaseModel):
     rejected_count: int = Field(description="Number of reviews successfully rejected")
     failed_count: int = Field(description="Number of reviews that failed processing")
     error: str | None = Field(None, description="Error message if operation failed")
+
+
+def _block_named(name: str | None):
+    # A block's review stores its class name as the instructions; a
+    # human-in-the-loop block stores the user's own text there instead.
+    return _blocks_by_name().get(name) if name else None
+
+
+@cache
+def _blocks_by_name():
+    return {block.__name__: block() for block in get_blocks().values()}
+
+
+def _action_label(block_name: str) -> str:
+    words = re.sub(r"Block$", "", block_name)
+    words = re.sub(r"([a-z])([A-Z])", r"\1 \2", words)
+    return re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", words)

@@ -77,6 +77,21 @@ describe("minimap helpers", () => {
     expect(entries[0].title).toBe("Your message");
   });
 
+  it("never ticks a held call's rows as the user's words", () => {
+    const entries = toMinimapEntries([
+      textMessage("t1", "user", "make two folders"),
+      {
+        ...textMessage("t2", "user", "I answered an action"),
+        metadata: { held_calls_answered: true },
+      } as UIMessage,
+      {
+        ...textMessage("t3", "user", "<held_call_result>"),
+        metadata: { held_call: { review_id: "r1" } },
+      } as UIMessage,
+    ]);
+    expect(entries.map((e) => e.id)).toEqual(["t1"]);
+  });
+
   it("truncates long titles with an ellipsis", () => {
     const entries = toMinimapEntries([
       textMessage("t1", "user", "x".repeat(100)),

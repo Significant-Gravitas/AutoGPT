@@ -150,6 +150,7 @@ vi.mock(
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
+  extractReviewTarget: () => null,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -781,37 +782,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("opens the session activity card when the chip is clicked", async () => {
-    flagState.values["artifacts"] = true;
-    server.use(
-      getGetExpertMockHandler(mariaExpert),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
-    );
-    useCopilotUIStore.setState((s) => ({
-      artifactPanel: { ...s.artifactPanel, isOpen: false, activeTab: "files" },
-    }));
-    render(
-      <ChatMessagesContainer
-        messages={[assistantMessage]}
-        status="ready"
-        error={undefined}
-        isLoading={false}
-        expertIdentity={mariaIdentity}
-        sessionID="session-1"
-        canOpenActivity
-      />,
-    );
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /Open session activity/ }),
-    );
-
-    const panel = useCopilotUIStore.getState().artifactPanel;
-    expect(panel.isOpen).toBe(true);
-    expect(panel.activeTab).toBe("files");
-  });
-
-  it("stays a passive label in hosts that never mount the activity card", async () => {
+  it("keeps the chip a passive label with no file counter", async () => {
     flagState.values["artifacts"] = true;
     let workspaceFileRequests = 0;
     server.use(
@@ -821,8 +792,6 @@ describe("ChatMessagesContainer — expert identity", () => {
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
     );
-    // Same live sessionId the builder and memory panels pass — only the host's
-    // canOpenActivity separates them from the copilot chat.
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
@@ -835,9 +804,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = await screen.findByTestId("expert-thread-header");
-    expect(
-      within(header).queryByRole("button", { name: /Open session activity/ }),
-    ).toBeNull();
+    expect(within(header).queryByRole("button")).toBeNull();
     expect(workspaceFileRequests).toBe(0);
   });
 

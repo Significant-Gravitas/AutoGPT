@@ -1,5 +1,6 @@
 "use client";
 
+import { credentialMentionDisplayText } from "../../CredentialMention/helpers";
 import { MessageAction } from "@/components/ai-elements/message";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
@@ -17,7 +18,7 @@ export function CopyButton({ text }: Props) {
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(credentialMentionDisplayText(text));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
