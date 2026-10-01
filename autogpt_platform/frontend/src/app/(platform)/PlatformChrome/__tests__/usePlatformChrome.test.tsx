@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { createElement, ReactNode } from "react";
+import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LayoutHintProvider } from "../components/LayoutHintProvider/LayoutHintProvider";
@@ -52,7 +52,7 @@ function setFlag(status: Partial<FlagStatus>) {
 
 function withHint(hint: LayoutHint | undefined) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return createElement(LayoutHintProvider, { hint, children });
+    return <LayoutHintProvider hint={hint}>{children}</LayoutHintProvider>;
   };
 }
 
