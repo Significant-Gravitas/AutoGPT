@@ -25,6 +25,9 @@ export function useLocalStreamSettle({ sessionId, isSettled }: Args) {
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const waitersRef = useRef<Waiter[]>([]);
+  // A 409 can arrive after the chat was torn down; with the chat gone the
+  // waiter must resolve false instead of sending or hanging.
+  const isMountedRef = useRef(false);
 
   useEffect(() => {
     if (!isSettled) return;
@@ -46,15 +49,18 @@ export function useLocalStreamSettle({ sessionId, isSettled }: Args) {
     stale.forEach((waiter) => waiter.resolve(false));
   }, [sessionId]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
       waitersRef.current.splice(0).forEach((waiter) => waiter.resolve(false));
-    },
-    [],
-  );
+    };
+  }, []);
 
   function waitForLocalSettle(forSessionId: string): Promise<boolean> {
-    if (forSessionId !== sessionIdRef.current) return Promise.resolve(false);
+    if (!isMountedRef.current || forSessionId !== sessionIdRef.current) {
+      return Promise.resolve(false);
+    }
     if (isSettledRef.current) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       waitersRef.current.push({ sessionId: forSessionId, resolve });

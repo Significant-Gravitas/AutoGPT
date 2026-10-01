@@ -760,6 +760,52 @@ describe("useCopilotPendingChips", () => {
     }
   });
 
+  it("backstop poll holds a drain that resolves after text started drawing", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = deferPendingGets();
+      const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+      act(() => {
+        view.result.current.queueMessage("follow up");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(pending.count()).toBe(1);
+
+      // The answer starts typing out while the GET is in flight; its reply
+      // must not promote the chip above the unfinished text.
+      const typing: Messages[number] = {
+        ...assistantMessage(0),
+        parts: [{ type: "text", text: "The next", state: "streaming" }],
+      };
+      await act(async () => {
+        rerender([typing]);
+      });
+      await pending.resolveDrained(0);
+      expect(view.result.current.queuedMessages).toEqual(["follow up"]);
+      expect(storedFallbacks(getMessages())).toEqual([]);
+
+      await act(async () => {
+        rerender([
+          {
+            ...typing,
+            parts: [{ type: "text", text: "The next step.", state: "done" }],
+          },
+        ]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(pending.count()).toBe(2);
+      await pending.resolveDrained(1);
+      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(storedFallbacks(getMessages())).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("backstop poll runs when the transcript does not end on an assistant", async () => {
     vi.useFakeTimers();
     try {

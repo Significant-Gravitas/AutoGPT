@@ -481,16 +481,19 @@ function useMidTurnDrainPromotion({
     if (!isActive || queue.length === 0) return;
 
     const requestSessionId = sessionId;
-    const isCurrentSession = () =>
-      latestSessionIdRef.current === requestSessionId;
+    // Checked again once the GET resolves: text can start drawing while the
+    // request is in flight, and the next tick retries once it has finished.
+    const canPromote = () =>
+      latestSessionIdRef.current === requestSessionId &&
+      !isDrawingTrailingText(latestMessagesRef.current);
     const interval = setInterval(() => {
-      if (isDrawingTrailingText(latestMessagesRef.current)) return;
+      if (!canPromote()) return;
       void pollBackendAndPromote(
         sessionId,
         queue,
         setMessages,
         setQueue,
-        isCurrentSession,
+        canPromote,
       );
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
@@ -528,7 +531,7 @@ async function pollBackendAndPromote(
   snapshotQueue: QueuedMessage[],
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
-  isCurrentSession: () => boolean,
+  canPromote: () => boolean,
   flavour: PromotionFlavour = "midturn",
 ): Promise<void> {
   let backendCount: number;
@@ -539,10 +542,10 @@ async function pollBackendAndPromote(
   } catch {
     return; // harmless; next tick or hydration will reconcile
   }
-  // Bail if the user switched sessions while the GET was in flight —
-  // promoting these entries to messages for a different session would
-  // leak old-session bubbles into the new session.
-  if (!isCurrentSession()) return;
+  // Re-checked after the GET: the user may have switched sessions while it
+  // was in flight (promoting then would leak old-session bubbles into the
+  // new session), or the backstop's local hold may now apply.
+  if (!canPromote()) return;
   if (snapshotQueue.length === 0) return;
   if (backendCount >= snapshotQueue.length) return;
 

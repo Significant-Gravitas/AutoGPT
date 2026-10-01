@@ -265,6 +265,34 @@ describe("useCopilotPage — follow-up after the backend's turn ended", () => {
     expect(sendNewMessage).not.toHaveBeenCalled();
   });
 
+  it("drops a 409 that arrives after the chat unmounted, settled or not", async () => {
+    for (const settledBeforeUnmount of [true, false]) {
+      const view = renderHook(() => useCopilotPage());
+      let reject409: () => void = () => undefined;
+      queueFollowUpMessage.mockImplementation(
+        () =>
+          new Promise((_, reject) => {
+            reject409 = () => reject(new QueueFollowUpNotActiveError());
+          }),
+      );
+
+      const send = view.result.current.onSend("follow-up");
+      await flushMicrotasks();
+      if (settledBeforeUnmount) {
+        setStream({ status: "ready" });
+        view.rerender();
+      }
+      view.unmount();
+
+      await act(async () => {
+        reject409();
+        await send;
+      });
+      expect(sendNewMessage).not.toHaveBeenCalled();
+      setStream({ status: "streaming" });
+    }
+  });
+
   it("reports a follow-up whose dispatched send fails", async () => {
     const view = renderHook(() => useCopilotPage());
     sendNewMessage.mockRejectedValue(new Error("network down"));
