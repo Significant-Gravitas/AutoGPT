@@ -281,6 +281,10 @@ async def test_list_schedules_scopes_outcomes_like_schedules(list_tool, outcome_
 
     assert isinstance(as_expert, ScheduleListResponse)
     assert [o.schedule_id for o in as_expert.recent_outcomes] == ["cop-a"]
+    # Scoped in the query itself, before the row limit applies.
+    calls = outcome_events.list_activity_events_by_type.call_args_list
+    assert calls[0].kwargs["expert_id"] == "expert-a"
+    assert calls[1].kwargs["expert_id"] is None
     assert isinstance(as_autopilot, ScheduleListResponse)
     assert {o.schedule_id for o in as_autopilot.recent_outcomes} == {
         "cop-a",

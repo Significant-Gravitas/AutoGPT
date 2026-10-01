@@ -1194,20 +1194,36 @@ async def test_post_followup_notice_writes_a_deterministic_message_id():
     args = _args()
     store = MagicMock()
     store.append_session_notice = AsyncMock(return_value=True)
-    metadata = {"fired_at": "2026-09-30T06:12:25+00:00", "status": "dropped"}
+    due = "2026-09-30T06:12:25+00:00"
+    first_attempt = {
+        "fired_at": "2026-09-30T06:12:26+00:00",
+        "status": "dropped",
+        "scheduled_for": due,
+    }
+    replay = {
+        "fired_at": "2026-09-30T06:14:00+00:00",
+        "status": "dropped",
+        "scheduled_for": due,
+    }
+    cron_tick = {
+        "fired_at": "2026-09-30T06:14:00+00:00",
+        "status": "dropped",
+        "scheduled_for": None,
+    }
     with patch(f"{_SCHEDULER_PATH}.chat_db", return_value=store):
-        await _post_followup_notice(
-            args, session_id="session-1", content="notice", metadata=metadata
-        )
-        await _post_followup_notice(
-            args, session_id="session-1", content="notice", metadata=metadata
-        )
+        for metadata in (first_attempt, replay, cron_tick):
+            await _post_followup_notice(
+                args, session_id="session-1", content="notice", metadata=metadata
+            )
 
-    first, second = store.append_session_notice.call_args_list
+    first, second, third = store.append_session_notice.call_args_list
+    # Same occurrence, later attempt: same id, so the chat gets one notice.
     assert first.kwargs["message_id"] == second.kwargs["message_id"]
+    # No due time (cron): the fire time keeps each tick's notice distinct.
+    assert third.kwargs["message_id"] != first.kwargs["message_id"]
     assert first.kwargs["user_id"] == "user-1"
     assert first.kwargs["session_id"] == "session-1"
-    assert first.kwargs["metadata"] is metadata
+    assert first.kwargs["metadata"] is first_attempt
 
 
 def test_notice_text_names_the_due_time_in_the_users_zone():

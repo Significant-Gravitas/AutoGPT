@@ -769,11 +769,17 @@ async def _post_followup_notice(
     args: "CopilotTurnJobArgs", *, session_id: str, content: str, metadata: dict
 ) -> None:
     """Best-effort: land the notice in the pinned chat so the user, and the
-    next turn's transcript, can see the follow-up did not run."""
+    next turn's transcript, can see the follow-up did not run.
+
+    The id is keyed on the occurrence, not the attempt: a one-shot processed
+    twice has one ``scheduled_for`` and two ``fired_at`` values, and only the
+    former dedupes the second notice. Cron fires have no fixed due time, so
+    they fall back to ``fired_at`` and each tick stays distinct."""
+    occurrence = metadata.get("scheduled_for") or metadata["fired_at"]
     message_id = str(
         uuid.uuid5(
             _NOTICE_NAMESPACE,
-            f"{args.schedule_id or 'copilot'}:{metadata['fired_at']}:{metadata['status']}",
+            f"{args.schedule_id or 'copilot'}:{occurrence}:{metadata['status']}",
         )
     )
     try:

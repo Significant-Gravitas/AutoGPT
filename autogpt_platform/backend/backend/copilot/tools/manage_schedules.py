@@ -143,6 +143,9 @@ async def _recent_outcomes(
             user_id=user_id,
             since=datetime.now(tz=timezone.utc) - _OUTCOME_WINDOW,
             event_types=list(SCHEDULE_FIRE_EVENT_TYPES),
+            # Scoped in the query, not after it: an expert must see its own
+            # dropped check even when twenty newer fires belong to others.
+            expert_id=session.expert_id,
             limit=_MAX_OUTCOMES,
         )
     except Exception:

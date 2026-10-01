@@ -129,13 +129,16 @@ async def list_activity_events_by_type(
     since: datetime,
     event_types: list[str],
     session_id: str | None = None,
+    expert_id: str | None = None,
     limit: int = 20,
 ) -> list[ActivityEvent]:
-    """Newest-first events of the given types, optionally for one session.
+    """Newest-first events of the given types, optionally for one session
+    or one expert.
 
     The per-session form backs the ``<session_context>`` block on every turn,
     so it is bounded by ``limit`` and the ``sessionId`` index rather than by
-    the user's whole history.
+    the user's whole history. Scoping happens here, before ``limit`` applies,
+    so a busy account cannot push one expert's rows out of its own window.
     """
     where: dict[str, Any] = {
         "userId": user_id,
@@ -144,6 +147,8 @@ async def list_activity_events_by_type(
     }
     if session_id is not None:
         where["sessionId"] = session_id
+    if expert_id is not None:
+        where["expertId"] = expert_id
     rows = await prisma.models.ActivityEvent.prisma().find_many(
         where=where, order={"createdAt": "desc"}, take=limit
     )
