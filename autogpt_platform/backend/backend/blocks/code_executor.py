@@ -136,7 +136,7 @@ class BaseE2BExecutorMixin:
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
         envs: Optional[dict[str, str]] = None,
-        files: Optional[dict[str, bytes]] = None,
+        input_files: Optional[dict[str, bytes]] = None,
         metadata: Optional[dict[str, str]] = None,
     ):
         """
@@ -148,8 +148,8 @@ class BaseE2BExecutorMixin:
         Args:
             extract_files: If True and execution_context provided, extract files
                            created/modified during execution and store to workspace.
-            files: Files to write into the sandbox before the code runs,
-                   keyed by absolute path.
+            input_files: Files to write into the sandbox before the code
+                         runs, keyed by absolute path.
         """  # noqa
         sandbox = None
         files: list[SandboxFileOutput] = []
@@ -188,7 +188,7 @@ class BaseE2BExecutorMixin:
                     for cmd in setup_commands:
                         await sandbox.commands.run(cmd)
 
-            for path, data in (files or {}).items():
+            for path, data in (input_files or {}).items():
                 await sandbox.files.write(path, data)
 
             # Capture timestamp before execution to scope file extraction
@@ -422,7 +422,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 execution_context=execution_context,
                 extract_files=True,
                 envs=injection.envs,
-                files=injection.files,
+                input_files=injection.files,
                 metadata=SandboxMetadata.for_block(
                     execution_context, "code", self.id, input_data.template_id
                 ).as_e2b(),

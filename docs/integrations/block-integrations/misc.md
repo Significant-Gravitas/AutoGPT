@@ -315,7 +315,7 @@ This block uses the Reddit API via PRAW to edit the body text of a self-post you
 ## Execute Code
 
 ### What it is
-Executes code in a sandbox environment with internet access.
+Executes code in a sandbox environment with internet access. Python and JavaScript code can take up to 10 MB of input data through `variables`.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -337,7 +337,7 @@ JSON has no `NaN` or `Infinity`. In JavaScript they arrive as `null`, the same a
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
-| variables | Variables defined here can be used directly in your code. Each key (`variables_#_{name}`) is injected directly as a local variable with the same name (`{name}`) in your code. Values wired in from other blocks keep their type; default values set on this node come in as strings, so parse them in your code if you need a number or other type. | Dict[str, Any] | No |
+| variables | Variables defined here can be used directly in your code. Each key (`variables_#_{name}`) is injected directly as a local variable with the same name (`{name}`) in your code. Values wired in from other blocks keep their type; default values set on this node come in as strings, so parse them in your code if you need a number or other type. Values arrive exactly as given (any quotes, backslashes or unicode); in JavaScript, NaN and Infinity arrive as null. Up to 10 MB of JSON in total. Up to 64 KB it is also in the `AGPT_VARIABLES` env var (base64 JSON); above that it is in the JSON file named by `AGPT_VARIABLES_FILE`. For more than 10 MB, put the data at a URL and download it in your code. | Dict[str, Any] | No |
 | code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | timeout | Execution timeout in seconds | int | No |

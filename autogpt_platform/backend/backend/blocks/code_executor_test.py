@@ -307,7 +307,7 @@ class TestExecuteCodeWritesFiles:
                 code="print(1)",
                 language=ProgrammingLanguage.PYTHON,
                 envs={VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH},
-                files={VARIABLES_FILE_PATH: b"{}"},
+                input_files={VARIABLES_FILE_PATH: b"{}"},
             )
 
         assert calls == ["write", "run_code"]

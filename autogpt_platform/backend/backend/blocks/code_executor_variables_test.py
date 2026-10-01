@@ -65,14 +65,16 @@ class LocalSandbox:
         self.workdir = workdir
         self.calls: list[dict] = []
 
-    async def execute_code(self, *, code, language, envs=None, files=None, **_):
+    async def execute_code(
+        self, *, code, language, envs=None, input_files=None, **_
+    ):
         env = {**os.environ, **(envs or {})}
-        for sandbox_path, data in (files or {}).items():
+        for sandbox_path, data in (input_files or {}).items():
             local = self.workdir / Path(sandbox_path).name
             local.write_bytes(data)
             # The prefix finds the file through the env var, so point it here.
             env = {k: str(local) if v == sandbox_path else v for k, v in env.items()}
-        self.calls.append({"envs": envs or {}, "files": files or {}})
+        self.calls.append({"envs": envs or {}, "files": input_files or {}})
         cmd = (
             [sys.executable, "-c", code]
             if language is PYTHON
