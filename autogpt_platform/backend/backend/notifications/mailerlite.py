@@ -12,6 +12,16 @@ transition:
 2. ENTER · resubscribers and pre-tour users → changelog: owned here.
 3. LEAVE · churn: owned here. Churned users get win-back only, never the
    monthly update.
+4. ENTER and LEAVE · the trial group: both owned here. It holds exactly the
+   customers currently on a trial, so any MailerLite automation on it may send
+   mail but must never move people in or out.
+
+Subscriber fields (`SubscriberField`) are the backend's alone: every write
+comes from here, and MailerLite automations only read them.
+
+Only the notification service holds the MailerLite settings. Whatever queues an
+audience change does not ask whether MailerLite is configured; the consumer
+does (`configured()`).
 
 If both sides managed the same edge we would double-add or fight over
 removals, so nothing in this module touches the tour → changelog handoff.
@@ -19,7 +29,9 @@ removals, so nothing in this module touches the tour → changelog handoff.
 
 import hashlib
 import logging
+from collections.abc import Mapping
 
+from backend.data.notifications import SubscriberField
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -39,13 +51,36 @@ def _pseudonym(email: str) -> str:
 
 settings = Settings()
 
-API_BASE = "https://connect.mailerlite.com/api"
+API_BASE = settings.config.mailerlite_api_url.rstrip("/")
 _OK_STATUSES = (200, 201, 202, 204)
+
+# The type MailerLite stores each field as. A date is written YYYY-MM-DD.
+FIELD_TYPES: dict[SubscriberField, str] = {
+    SubscriberField.STATUS: "text",
+    SubscriberField.SIGNUP: "date",
+    SubscriberField.TRIAL_STARTED: "date",
+    SubscriberField.SUBSCRIPTION_STARTED: "date",
+    SubscriberField.SUBSCRIPTION_CANCELED: "date",
+    SubscriberField.SUBSCRIPTION_ENDED: "date",
+}
+
+Fields = Mapping[SubscriberField, str | None]
+
+# Set once this process has seen every field exist, so it is checked once,
+# not on every write.
+_fields_ready = False
 
 
 class MailerLiteNotConfigured(RuntimeError):
-    """Raised so a queued job retries once credentials are in place, rather
-    than silently reporting success."""
+    """A setting the change needs is missing. The consumer dead-letters it at
+    once rather than silently reporting success, so it can be replayed once the
+    setting is in place."""
+
+
+def configured() -> bool:
+    """A stack without a token, such as a self-hosted one, has no MailerLite:
+    its audience changes are acknowledged and dropped, never retried."""
+    return bool(settings.secrets.mailerlite_api_token)
 
 
 class MailerLiteError(RuntimeError):
@@ -54,25 +89,142 @@ class MailerLiteError(RuntimeError):
     silently drop an enrolment either."""
 
 
-async def enroll_in_onboarding(email: str) -> None:
+async def enroll_in_onboarding(email: str, fields: Fields | None = None) -> None:
     """Add a first-time subscriber to the tour group. Joining the group is the
     automation's trigger; MailerLite sends the six emails from there."""
     await _add_to_group(
-        email, settings.config.mailerlite_onboarding_group_id, "onboarding tour"
+        email, settings.config.mailerlite_onboarding_group_id, "onboarding tour", fields
     )
 
 
-async def add_to_changelog(email: str) -> None:
+async def add_to_changelog(email: str, fields: Fields | None = None) -> None:
     """Returning customers and anyone who predates the tour."""
     await _add_to_group(
-        email, settings.config.mailerlite_changelog_group_id, "changelog"
+        email, settings.config.mailerlite_changelog_group_id, "changelog", fields
     )
 
 
-async def remove_from_changelog(email: str) -> None:
+async def remove_from_changelog(email: str, fields: Fields | None = None) -> None:
     """The day a plan ends."""
-    group_id = settings.config.mailerlite_changelog_group_id
-    _require_config(group_id, "changelog")
+    await _remove_from_group(
+        email, settings.config.mailerlite_changelog_group_id, "changelog", fields
+    )
+
+
+async def add_to_trial(email: str, fields: Fields | None = None) -> None:
+    """A trial started, or a cancelled one was resumed. Without a trial group
+    only the fields are written: the group is optional, so waiting for it
+    would only retry into the dead-letter queue."""
+    group_id = settings.config.mailerlite_trial_group_id
+    if not group_id:
+        await update_fields(email, fields)
+        return
+    await _add_to_group(email, group_id, "trial", fields)
+
+
+async def remove_from_trial(email: str, fields: Fields | None = None) -> None:
+    """The trial was cancelled, converted, or ended unpaid. Without a trial
+    group only the fields are written, as for `add_to_trial`."""
+    group_id = settings.config.mailerlite_trial_group_id
+    if not group_id:
+        await update_fields(email, fields)
+        return
+    await _remove_from_group(email, group_id, "trial", fields)
+
+
+async def update_fields(email: str, fields: Fields | None = None) -> None:
+    """Write a subscriber's fields, creating the subscriber if MailerLite has
+    none. It never changes their subscription status, so an unsubscribed
+    person stays unsubscribed."""
+    if not fields:
+        return
+    _require_token()
+    await ensure_fields()
+    await _upsert(email, {"fields": _payload(fields)}, "field update")
+
+
+async def record_signup(email: str, fields: Fields | None = None) -> None:
+    """A new account's fields. `signed` is where every subscriber starts, so
+    it never replaces a status MailerLite already holds: the signup is queued
+    in the background, and a checkout queued before it must not be undone.
+    The audience queue is worked one message at a time, so nothing of ours
+    writes between the read and the write."""
+    if not fields:
+        return
+    _require_token()
+    held = (await _find_subscriber(email) or {}).get("fields") or {}
+    if held.get(SubscriberField.STATUS.value):
+        fields = {k: v for k, v in fields.items() if k != SubscriberField.STATUS}
+    await update_fields(email, fields)
+
+
+async def ensure_fields() -> list[SubscriberField]:
+    """Create any of our fields MailerLite does not have yet, and return the
+    ones created. Idempotent, and checked once per process."""
+    global _fields_ready
+    if _fields_ready:
+        return []
+    _require_token()
+    existing = await read_fields()
+    created = []
+    for field, kind in FIELD_TYPES.items():
+        if field.value in existing:
+            continue
+        response = await _client().post(
+            f"{API_BASE}/fields",
+            headers=_headers(),
+            json={"name": field.value, "type": kind},
+        )
+        if response.status not in _OK_STATUSES:
+            raise MailerLiteError(
+                f"Creating the MailerLite field {field.value} failed with "
+                f"{response.status}"
+            )
+        key = ((response.json() or {}).get("data") or {}).get("key")
+        if key != field.value:
+            # Writes go by key, so a field under another key would silently
+            # never be filled.
+            raise MailerLiteError(
+                f"MailerLite created the field {field.value} as {key!r}"
+            )
+        created.append(field)
+        logger.info(f"Created the MailerLite field {field.value}")
+    _fields_ready = True
+    return created
+
+
+# An account holds far fewer fields than this many pages of 100; more means
+# MailerLite's last_page keeps moving.
+_MAX_FIELD_PAGES = 50
+
+
+async def read_fields() -> dict[str, str]:
+    """Every custom field MailerLite has, as key → type. An empty page ends the
+    read whatever last_page says."""
+    fields: dict[str, str] = {}
+    for page in range(1, _MAX_FIELD_PAGES + 1):
+        response = await _client().get(
+            f"{API_BASE}/fields?limit=100&page={page}", headers=_headers()
+        )
+        if response.status != 200:
+            raise MailerLiteError(
+                f"Reading MailerLite fields failed with {response.status}"
+            )
+        body = response.json() or {}
+        rows = body.get("data") or []
+        for row in rows:
+            fields[str(row["key"])] = str(row.get("type") or "")
+        if not rows or page >= int((body.get("meta") or {}).get("last_page") or 1):
+            return fields
+    raise MailerLiteError(f"MailerLite still had fields after {_MAX_FIELD_PAGES} pages")
+
+
+async def _remove_from_group(
+    email: str, group_id: str, description: str, fields: Fields | None
+) -> None:
+    # Fields first: they are written even when the group change cannot be.
+    await update_fields(email, fields)
+    _require_config(group_id, description)
 
     subscriber_id = await _find_subscriber_id(email)
     if subscriber_id is None:
@@ -88,28 +240,47 @@ async def remove_from_changelog(email: str) -> None:
     # 404 means they are already out of the group, which is the desired state.
     if response.status not in _OK_STATUSES and response.status != 404:
         raise MailerLiteError(
-            f"Removing subscriber {_pseudonym(email)} from the changelog group "
+            f"Removing subscriber {_pseudonym(email)} from the {description} group "
             f"failed with {response.status}"
         )
-    logger.info("Removed %s from the MailerLite changelog group", _pseudonym(email))
+    logger.info(f"Removed {_pseudonym(email)} from the MailerLite {description} group")
 
 
-async def _add_to_group(email: str, group_id: str, description: str) -> None:
+async def _add_to_group(
+    email: str, group_id: str, description: str, fields: Fields | None
+) -> None:
+    if not group_id:
+        # The fields still land; the group change is then dead-lettered.
+        await update_fields(email, fields)
     _require_config(group_id, description)
-    response = await _client().post(
-        f"{API_BASE}/subscribers",
-        headers=_headers(),
-        json={"email": email, "groups": [group_id]},
-    )
-    if response.status not in _OK_STATUSES:
-        raise MailerLiteError(
-            f"Adding subscriber {_pseudonym(email)} to the {description} group "
-            f"failed with {response.status}"
-        )
+    body: dict = {"groups": [group_id]}
+    if fields:
+        await ensure_fields()
+        body["fields"] = _payload(fields)
+    await _upsert(email, body, f"{description} group")
     logger.info("Added %s to the MailerLite %s group", _pseudonym(email), description)
 
 
+async def _upsert(email: str, body: dict, description: str) -> None:
+    response = await _client().post(
+        f"{API_BASE}/subscribers", headers=_headers(), json={"email": email, **body}
+    )
+    if response.status not in _OK_STATUSES:
+        raise MailerLiteError(
+            f"MailerLite {description} for subscriber {_pseudonym(email)} "
+            f"failed with {response.status}"
+        )
+
+
+def _payload(fields: Fields) -> dict[str, str | None]:
+    return {SubscriberField(key).value: value for key, value in fields.items()}
+
+
 async def _find_subscriber_id(email: str) -> str | None:
+    return (await _find_subscriber(email) or {}).get("id")
+
+
+async def _find_subscriber(email: str) -> dict | None:
     response = await _client().get(
         f"{API_BASE}/subscribers/{email}", headers=_headers()
     )
@@ -120,7 +291,7 @@ async def _find_subscriber_id(email: str) -> str | None:
             f"Looking up MailerLite subscriber {_pseudonym(email)} failed with "
             f"{response.status}"
         )
-    return ((response.json() or {}).get("data") or {}).get("id")
+    return (response.json() or {}).get("data") or {}
 
 
 def _client() -> Requests:
@@ -136,9 +307,13 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _require_config(group_id: str, description: str) -> None:
+def _require_token() -> None:
     if not settings.secrets.mailerlite_api_token:
         raise MailerLiteNotConfigured("MAILERLITE_API_TOKEN is not set")
+
+
+def _require_config(group_id: str, description: str) -> None:
+    _require_token()
     if not group_id:
         raise MailerLiteNotConfigured(
             f"The MailerLite {description} group ID is not configured"

@@ -1,6 +1,7 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -197,6 +198,7 @@ class AddLeadToCampaignBlock(Block):
                 )
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { getExpertRoleLabel, getIntroLine } from "./helpers";
 
 describe("getExpertRoleLabel", () => {
-  // The nine roles the hire flow offers as presets (RoleStep/helpers.ts), which
+  // The roles the hire flow has offered as presets (CategoryStep/helpers.ts), which
   // is the shape most hired experts will carry.
   test.each([
     ["Marketer", "Marketer"],

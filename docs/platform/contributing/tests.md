@@ -88,8 +88,9 @@ Dependency and browser caches are keyed to their lockfiles. Browser caches can
 fall back to a previous cache for the same runner OS, then install missing versions.
 Docker builds reuse unchanged layers. Full-stack cache export is limited to trusted `dev` pushes or an
 explicit cache-publishing dispatch. Single-container builds use GHCR caches per
-architecture instead of the repository Actions cache, except on pull requests,
-which do not read or write registry caches. Manual dispatches read and update a
+architecture instead of the repository Actions cache. Pull requests read the shared
+`dev` validation cache but never write one; on a pull request a failed GHCR login
+or an unreadable cache gives a cold build, not a failed job. Manual dispatches read and update a
 branch-specific cache, with the shared `dev` validation cache as a read-only fallback.
 The helper writes that shared tag only on a push to `dev`, but repository workflows
 with package-write permission can overwrite it. Release publication therefore
