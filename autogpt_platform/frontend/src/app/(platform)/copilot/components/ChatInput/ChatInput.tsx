@@ -505,6 +505,7 @@ export function ChatInput({
             {showModelControl && (
               <ConnectionPicker
                 connectionLocked={hasSession}
+                expertId={hasSession ? null : expertId}
                 anchorOnly
                 open={plusPanel === "model"}
                 onOpenChange={(open) => setPlusPanel(open ? "model" : null)}

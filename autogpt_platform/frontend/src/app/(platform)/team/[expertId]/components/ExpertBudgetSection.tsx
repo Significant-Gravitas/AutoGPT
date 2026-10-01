@@ -10,6 +10,7 @@ import { useState } from "react";
 import { SpendMeter } from "../../components/ExpertTeamCard/components/SpendMeter";
 import { getWeeklySpend } from "../../helpers";
 import { EditBudgetDialog } from "./EditBudgetDialog/EditBudgetDialog";
+import { isOnSubscription } from "./ExpertLlmRouteSection/helpers";
 
 interface Props {
   expert: Expert;
@@ -68,6 +69,12 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
         muted={!weeklySpend}
         color={color}
       />
+      {isOnSubscription(expert) ? (
+        <Text variant="small" tone="muted">
+          Chat is not metered on {expert.llm_route_label}. Only workflow runs on
+          platform credits count here.
+        </Text>
+      ) : null}
       <EditBudgetDialog
         expert={expert}
         open={isEditOpen}

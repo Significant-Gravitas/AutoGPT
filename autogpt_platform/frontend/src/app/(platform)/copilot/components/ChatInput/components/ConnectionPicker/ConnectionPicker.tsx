@@ -57,6 +57,9 @@ interface Props {
    * exists would take that away.
    */
   connectionLocked?: boolean;
+  /** The expert a new chat will address. Its pinned connection is what the
+   *  chip shows until the user picks one themselves. */
+  expertId?: string | null;
   className?: string;
   /** Opened from somewhere else (the composer's + menu): no chip of its
    *  own, the sheet anchors to its parent box instead. */
@@ -72,6 +75,7 @@ interface Props {
  */
 export function ConnectionPicker({
   connectionLocked = false,
+  expertId = null,
   className,
   anchorOnly = false,
   open,
@@ -90,7 +94,7 @@ export function ConnectionPicker({
     canConnectChatGPT,
     isLoading,
     isError,
-  } = useConnectionPicker();
+  } = useConnectionPicker(expertId);
   const advancedLock = tierLock(active, "advanced");
   const showMaxUpgrade =
     active?.auth_method === "deployment" && Boolean(advancedLock);
