@@ -60,9 +60,13 @@ _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval.
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 # Where the supervisor reads the content of the files a command runs.
 RUN_FILES_KEY = "files_this_command_runs"
-# A chat driven from a linked bot cannot show a card, so it runs ungated until
-# the channel gets its own approval buttons (plan layer L7c).
-CARDLESS_PLATFORMS = frozenset(p.value.lower() for p in Platform)
+# A chat driven from these runs in Auto, and its cards are answered in the channel.
+LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
+# Any other linked platform has no buttons to answer a card with, so it runs
+# ungated: a held call would strand the chat.
+CARDLESS_PLATFORMS = (
+    frozenset(p.value.lower() for p in Platform) - LINKED_CHAT_PLATFORMS
+)
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
@@ -104,6 +108,8 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
 
 
 def resolve_mode(session: ChatSession) -> AutopilotMode:
+    if session.metadata.source_platform in LINKED_CHAT_PLATFORMS:
+        return "auto"
     return session.metadata.autopilot_mode or DEFAULT_MODE
 
 
@@ -310,6 +316,7 @@ def _last_user_message(session: ChatSession) -> str:
 __all__ = [
     "RUN_FILES_KEY",
     "Decision",
+    "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
     "gate_active",
