@@ -13,6 +13,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import AuthFeedback from "@/components/auth/AuthFeedback";
+import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
@@ -39,6 +40,8 @@ export default function SignupPage() {
   const {
     form,
     feedback,
+    nextUrl: safeNextUrl,
+    verificationEmail,
     isLoggedIn,
     hasInitializedAuth,
     isLoading,
@@ -48,10 +51,24 @@ export default function SignupPage() {
     handleSubmit,
     handleProviderSignup,
     handleCloseNotAllowedModal,
+    handleStartAgain,
   } = useSignupPage();
 
   if (!hasInitializedAuth || isLoggedIn) {
     return <LoadingSignup />;
+  }
+
+  if (verificationEmail) {
+    return (
+      <AuthSplitLayout marketing={<SignupMarketingPanel />}>
+        <CheckYourInbox
+          email={verificationEmail}
+          reason="signup"
+          next={safeNextUrl}
+          onBack={handleStartAgain}
+        />
+      </AuthSplitLayout>
+    );
   }
 
   const confirmPasswordError = form.formState.errors.confirmPassword?.message;

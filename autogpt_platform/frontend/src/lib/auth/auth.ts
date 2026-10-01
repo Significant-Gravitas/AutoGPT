@@ -150,6 +150,16 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
+    // These only come into play with requireEmailVerification on (sign-up
+    // then sends the link and creates no session). An unverified password
+    // user who signs in is sent a fresh link rather than a dead-end 403, so
+    // accounts created before the flag was flipped can still get in.
+    sendOnSignIn: true,
+    // The link signs the user in and redirects to the callbackURL the
+    // sign-up/sign-in action passed, which is /auth/callback?method=email.
+    autoSignInAfterVerification: true,
+    // 24h, as GoTrue's confirmation links were; Better Auth's default is 1h.
+    expiresIn: 60 * 60 * 24,
     sendVerificationEmail: async ({ user, url }) => {
       await sendAuthEmail({
         to: user.email,

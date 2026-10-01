@@ -242,6 +242,37 @@ describe("auth config", () => {
   });
 });
 
+describe("email verification", () => {
+  it("is off unless AUTH_REQUIRE_EMAIL_VERIFICATION is exactly true", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "");
+    const off = (await loadAuthOptions()) as unknown as {
+      emailAndPassword: { requireEmailVerification: boolean };
+    };
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
+    const on = (await loadAuthOptions()) as unknown as {
+      emailAndPassword: { requireEmailVerification: boolean };
+    };
+
+    expect(off.emailAndPassword.requireEmailVerification).toBe(false);
+    expect(on.emailAndPassword.requireEmailVerification).toBe(true);
+  });
+
+  it("re-sends the link to an unverified sign-in and signs the user in from it", async () => {
+    const options = (await loadAuthOptions()) as unknown as {
+      emailVerification: Record<string, unknown>;
+    };
+
+    // Without sendOnSignIn, accounts created before the flag was flipped
+    // would hit a 403 with no way to get a link.
+    expect(options.emailVerification.sendOnSignIn).toBe(true);
+    expect(options.emailVerification.autoSignInAfterVerification).toBe(true);
+    expect(options.emailVerification.expiresIn).toBe(60 * 60 * 24);
+    // Sign-up sends the link only when verification is required (Better
+    // Auth's default), so leaving the flag off changes nothing.
+    expect(options.emailVerification.sendOnSignUp).toBeUndefined();
+  });
+});
+
 describe("change email", () => {
   it("enables email change and routes the approval mail to the current address", async () => {
     const options = await loadAuthOptions();
