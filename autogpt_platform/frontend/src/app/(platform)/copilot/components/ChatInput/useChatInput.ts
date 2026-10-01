@@ -9,6 +9,9 @@ interface Args {
    *  here instead of `onSend`. */
   onEnqueue?: (message: string) => void | Promise<void>;
   isStreaming?: boolean;
+  /** Attachments can't be queued (the pending endpoint takes text only), so
+   *  a submit with any attached stays on the `onSend` path. */
+  hasAttachments?: boolean;
   disabled?: boolean;
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
@@ -19,6 +22,7 @@ export function useChatInput({
   onSend,
   onEnqueue,
   isStreaming = false,
+  hasAttachments = false,
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
@@ -133,7 +137,7 @@ export function useChatInput({
     const formData = new FormData(e.currentTarget);
     const field = formData.get("message");
     const message = typeof field === "string" ? field : value;
-    if (isStreaming && onEnqueue) {
+    if (isStreaming && onEnqueue && !hasAttachments) {
       void handleEnqueue(message);
       return;
     }

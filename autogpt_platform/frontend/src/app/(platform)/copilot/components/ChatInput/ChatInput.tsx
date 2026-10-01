@@ -201,6 +201,7 @@ export function ChatInput({
       },
       onEnqueue,
       isStreaming,
+      hasAttachments,
       disabled: isTextareaDisabled,
       canSendEmpty: hasAttachments,
       inputId,

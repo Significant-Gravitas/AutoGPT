@@ -479,13 +479,9 @@ export function useBuilderChatPanel({
         await queueFollowUpMessage(sessionId, trimmed);
       } catch (err) {
         Sentry.captureException(err);
-        toast({
-          variant: "destructive",
-          title: "Could not queue message",
-          description: "Please wait for the current response to finish.",
-        });
+        // The composer restores the draft and shows the one toast for it.
+        throw err;
       }
-      return;
     }
     sendMessage({ text: trimmed });
   }

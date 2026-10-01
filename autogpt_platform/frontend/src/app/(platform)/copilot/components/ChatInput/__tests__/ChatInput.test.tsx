@@ -484,6 +484,33 @@ describe("ChatInput Enter while streaming", () => {
     });
   });
 
+  it("keeps attachments on the send path, which the queue cannot carry", async () => {
+    // Attachments are added between turns (paste is ignored mid-stream);
+    // the turn then starts from elsewhere, e.g. a question card answer.
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ChatInput onSend={onSend} onEnqueue={onEnqueue} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    rerender(<ChatInput onSend={onSend} onEnqueue={onEnqueue} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onEnqueue).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledWith(
+      "see attached",
+      [expect.any(File)],
+      undefined,
+    );
+  });
+
   it("falls back to a normal send when nothing can queue", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} isStreaming />);
