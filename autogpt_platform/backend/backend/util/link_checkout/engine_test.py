@@ -5,7 +5,11 @@ import pytest
 from pydantic import SecretStr
 
 from backend.util.link_checkout import broker_checkout, engine
-from backend.util.link_checkout.broker_protocol import AuthorizedCheckout, BrowserOutput
+from backend.util.link_checkout.broker_protocol import (
+    AuthorizedCheckout,
+    BrowserOutput,
+    RaiseCheckout,
+)
 
 VIEW = {
     "checkout_id": "a" * 32,
@@ -128,3 +132,21 @@ async def test_a_screenshot_comes_back_as_the_local_file(remote, tmp_path):
     operation, command = remote.await_args.args
     assert operation == "browser"
     assert command.args == ["screenshot", "--annotate"]
+
+
+@pytest.mark.asyncio
+async def test_a_raise_reaches_the_remote_broker_with_its_token(remote):
+    await engine.raise_total(
+        RaiseCheckout(
+            user_id="owner",
+            session_id="chat",
+            checkout_id="a" * 32,
+            access_token=SecretStr("liwltoken_test"),
+            amount=250,
+        )
+    )
+
+    operation, payload = remote.await_args.args
+    assert operation == "checkout/raise"
+    assert payload.amount == 250
+    assert payload.access_token.get_secret_value() == "liwltoken_test"

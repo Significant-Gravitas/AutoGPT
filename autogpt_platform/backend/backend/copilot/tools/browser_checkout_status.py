@@ -2,8 +2,8 @@
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.browser_checkout_schemas import CHECKOUT_ID_PARAMETERS
 from backend.copilot.tools.browser_checkout_support import (
-    CHECKOUT_ID_PARAMETERS,
     approval_for,
     available,
     checkout_response,

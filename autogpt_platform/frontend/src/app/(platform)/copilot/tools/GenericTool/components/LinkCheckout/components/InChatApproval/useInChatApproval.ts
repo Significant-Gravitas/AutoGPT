@@ -48,9 +48,12 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
     if (readOnly || pending) return;
     setError("");
     try {
+      // The revision this card showed: if the agent has since raised the
+      // total, the server refuses, and the card reloads the new one.
       await (approved ? approve : decline).mutateAsync({
         sessionId,
         checkoutId,
+        data: { revision: record?.revision ?? 0 },
       });
     } catch {
       setError(

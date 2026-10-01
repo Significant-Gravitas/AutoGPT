@@ -31,6 +31,8 @@ class StrictModel(BaseModel):
 
 PaymentRole = Literal["number", "cvc", "expiry", "exp_month", "exp_year", "submit"]
 Selector = Annotated[str, Field(min_length=1, max_length=250)]
+# A purchase total in the currency's smallest unit, within the engine's cap.
+Amount = Annotated[int, Field(ge=1, le=50000, strict=True)]
 
 
 class FieldTarget(StrictModel):
@@ -38,6 +40,12 @@ class FieldTarget(StrictModel):
 
     selector: Selector
     frame_url: str = Field(default="", max_length=2048)
+
+
+# "card": the agent names the card fields and the worker fills a single-use
+# card. "link_pay_token": a Stripe checkout with an "I am an AI agent" option
+# (``pay_token``); only the pay button is named, and Link pays the checkout.
+Execution = Literal["card", "link_pay_token"]
 
 
 class CheckoutPlan(StrictModel):
@@ -48,16 +56,18 @@ class CheckoutPlan(StrictModel):
     payment_method_id: str = Field(pattern=r"^csmrpd_[A-Za-z0-9_-]+$")
     merchant_name: str = Field(min_length=1, max_length=100)
     checkout_url: str = Field(max_length=2048)
-    amount: int = Field(ge=1, le=50000, strict=True)
+    amount: Amount
     currency: str = Field(default="usd", pattern=r"^[a-z]{3}$")
     context: str = Field(min_length=100, max_length=2000)
-    number: Selector
-    cvc: Selector
+    execution: Execution = "card"
+    number: Selector | None = None
+    cvc: Selector | None = None
     expiry: Selector | None = None
     exp_month: Selector | None = None
     exp_year: Selector | None = None
     submit: Selector
-    # Fields inside an iframe: role -> the frame's exact URL.
+    # Fields inside an iframe: role -> the frame's URL. Its query may be left
+    # out when only one loaded frame has that address.
     frame_urls: dict[PaymentRole, Annotated[str, Field(max_length=2048)]] = Field(
         default_factory=dict
     )
@@ -101,7 +111,19 @@ class CheckoutPlan(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def expiry_fields(self):
+    def payment_controls(self):
+        card_fields = (self.number, self.cvc, self.expiry, self.exp_month)
+        if self.execution == "link_pay_token":
+            if any(card_fields) or self.exp_year:
+                raise ValueError("A Link Pay Token checkout names only the pay button")
+            if self.test_mode:
+                raise ValueError(
+                    "Link Pay Tokens have no test mode; set test_mode false, or "
+                    "pay through the card fields for a test purchase"
+                )
+            return self
+        if self.number is None or self.cvc is None:
+            raise ValueError("Provide the card number and CVC selectors")
         combined = self.expiry is not None
         separate = self.exp_month is not None and self.exp_year is not None
         if combined == separate or (combined and (self.exp_month or self.exp_year)):
@@ -120,11 +142,21 @@ class BoundField(StrictModel):
     backend_node_id: int
 
 
+class PayToken(StrictModel):
+    """Where a Stripe checkout takes the Link Pay Token, and the Stripe account
+    it pays: read from the page when the checkout is prepared, never from the
+    agent."""
+
+    frame_url: str = Field(max_length=4096)
+    merchant_account_id: str = Field(pattern=r"^acct_[A-Za-z0-9]+$", max_length=64)
+
+
 class BrowserBinding(StrictModel):
     endpoint: str
     target_id: str
     url: str
     fields: list[BoundField] = Field(default_factory=list)
+    pay_token: PayToken | None = None
 
 
 ApprovalMode = Literal["link", "in_app"]
@@ -143,6 +175,9 @@ class CheckoutIntent(StrictModel):
     plan: CheckoutPlan
     browser: BrowserBinding
     attempted: bool = False
+    # Bumped each time the total is raised; the customer approves every
+    # revision afresh, and each one has its own Link idempotency keys.
+    revision: int = Field(default=0, ge=0)
 
 
 class Card(BaseModel):
@@ -162,6 +197,9 @@ class NextAction(BaseModel):
     resolution: str = ""
     display_message: str = ""
     action_url: str | None = None
+    # When ``action_url`` stops working: Link's docs say an ISO 8601 string,
+    # its SDKs a Unix timestamp.
+    expires_at: int | str | None = None
 
 
 class ActionRequired(BaseModel):
@@ -170,6 +208,15 @@ class ActionRequired(BaseModel):
 
 class StatusDetails(BaseModel):
     requires_action: ActionRequired | None = None
+
+
+class PaymentStatusDetails(BaseModel):
+    """Why a payment failed, when it did (``payment_status_details``)."""
+
+    model_config = ConfigDict(hide_input_in_errors=True)
+    outcome: str = ""
+    code: str | None = None
+    decline_code: str | None = None
 
 
 class SpendRequest(BaseModel):
@@ -181,7 +228,9 @@ class SpendRequest(BaseModel):
     currency: str | None = None
     approval_url: str | None = None
     card: Card | None = Field(default=None, exclude=True, repr=False)
+    link_pay_token: SecretStr | None = Field(default=None, exclude=True, repr=False)
     status_details: StatusDetails | None = None
+    payment_status_details: PaymentStatusDetails | None = None
 
 
 class ApprovalDetails(StrictModel):
@@ -200,7 +249,9 @@ class ApprovalDetails(StrictModel):
 
 
 class WorkerJob(StrictModel):
-    action: Literal["create", "create_delegated", "status", "cancel", "pay"] = "pay"
+    action: Literal[
+        "create", "create_delegated", "raise", "status", "cancel", "pay"
+    ] = "pay"
     intent: CheckoutIntent
     access_token: SecretStr
     approval: ApprovalDetails | None = None

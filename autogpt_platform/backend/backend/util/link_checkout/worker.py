@@ -4,7 +4,9 @@ Spawned per job with a scrubbed environment by ``runner``. It reads one job
 from stdin and writes one bounded result to stdout; the card never leaves it.
 For ``pay`` it retrieves the single-use card, fills the fields pinned when the
 checkout was prepared, submits once, waits for the page's requests to settle
-and retires the whole browser, so nothing it held can be read back.
+and retires the whole browser, so nothing it held can be read back. On a
+Stripe checkout paid with a Link Pay Token it puts the token in the pinned
+token field instead of filling a card.
 """
 
 import asyncio
@@ -13,7 +15,10 @@ import logging
 import sys
 import time
 
+from pydantic import SecretStr
+
 from backend.util.link_checkout.cdp import CDP, Control, connection
+from backend.util.link_checkout.cdp_scripts import INJECT_PAY_TOKEN
 from backend.util.link_checkout.link import (
     LinkDuplicate,
     LinkRejected,
@@ -26,7 +31,10 @@ from backend.util.link_checkout.models import (
     WorkerReceipt,
     WorkerResult,
 )
+from backend.util.link_checkout.refusals import CheckoutRefused
 from backend.util.link_checkout.runtime import require_runtime, retire_payment_browser
+
+PAY_BUTTON_WAIT_SECONDS = 5
 
 
 async def execute(job: WorkerJob) -> WorkerResult:
@@ -50,12 +58,23 @@ async def pay(job: WorkerJob) -> WorkerReceipt:
                 await cdp.monitor_network(controls)
                 if job.intent.expires_at <= time.time():
                     return receipt
-                spend = await request_spend(job, include_card=True)
+                spend = await request_spend(job, include_credential=True)
                 validate_spend(job.intent, spend, require_card=True)
-                if spend.card is None:
-                    return receipt
-                await cdp.attach(job.intent.browser)
-                await fill(cdp, controls, spend.card, receipt)
+                if job.intent.plan.execution == "link_pay_token":
+                    if spend.link_pay_token is None:
+                        return receipt
+                    await cdp.attach(job.intent.browser)
+                    await inject_pay_token(
+                        cdp, controls["link_pay_token"], spend.link_pay_token, receipt
+                    )
+                    # The page swaps its card form for the customer's saved
+                    # card; let that settle before paying.
+                    await cdp.drain_network()
+                else:
+                    if spend.card is None:
+                        return receipt
+                    await cdp.attach(job.intent.browser)
+                    await fill(cdp, controls, spend.card, receipt)
                 await submit(cdp, controls["submit"], job)
                 if await cdp.drain_network():
                     receipt.status = "submitted"
@@ -116,9 +135,30 @@ async def fill(
             raise RuntimeError("Private fill failed")
 
 
+async def inject_pay_token(
+    cdp: CDP, control: Control, token: SecretStr, receipt: WorkerReceipt
+) -> None:
+    """Put the Link Pay Token in the pinned token field as Stripe's guide
+    does: the native value setter and an input event, not keystrokes."""
+    await cdp.check_control(control, "link_pay_token")
+    receipt.status = "outcome_unknown"
+    result = await cdp.call(
+        "Runtime.callFunctionOn",
+        {
+            "functionDeclaration": INJECT_PAY_TOKEN,
+            "arguments": [{"value": token.get_secret_value()}],
+            "objectId": control.object_id,
+            "returnByValue": True,
+        },
+        control.session,
+    )
+    if result.result is None or result.result.value is not True:
+        raise RuntimeError("Private fill failed")
+
+
 async def submit(cdp: CDP, control: Control, job: WorkerJob) -> None:
     await cdp.attach(job.intent.browser)
-    await cdp.check_control(control, "submit")
+    await _enabled(cdp, control)
     result = await cdp.call(
         "Runtime.callFunctionOn",
         {
@@ -134,6 +174,20 @@ async def submit(cdp: CDP, control: Control, job: WorkerJob) -> None:
     )
     if result.result is None or result.result.value is not True:
         raise RuntimeError("Private submit failed")
+
+
+async def _enabled(cdp: CDP, control: Control) -> None:
+    """Some checkouts enable the pay button only once the card fields are
+    valid; give the page a moment to react to the fill before clicking."""
+    deadline = time.monotonic() + PAY_BUTTON_WAIT_SECONDS
+    while True:
+        try:
+            await cdp.check_control(control, "submit")
+            return
+        except CheckoutRefused:
+            if time.monotonic() >= deadline:
+                raise
+            await asyncio.sleep(0.25)
 
 
 def main() -> None:

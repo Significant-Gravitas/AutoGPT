@@ -47,6 +47,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Requested Link approval",
     subject: (input) => quoted(input, "merchant_name"),
   },
+  browser_raise_link_payment: {
+    category: "browser",
+    running: "Asking to raise the total",
+    done: "Asked to raise the total",
+  },
   browser_complete_link_payment: {
     category: "browser",
     running: "Completing private checkout",

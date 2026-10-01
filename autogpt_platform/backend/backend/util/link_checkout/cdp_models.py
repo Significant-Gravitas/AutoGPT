@@ -29,7 +29,9 @@ ControlVerdict = Literal["ok", "not_ready", "not_card_field"]
 
 
 class RemoteValue(BaseModel):
-    value: bool | ControlVerdict | Literal["invalid_selector"] | None = None
+    # A verdict (``ControlVerdict``, "invalid_selector"), a flag, or a value
+    # our own isolated-world script returned, such as a Stripe account ID.
+    value: bool | str | None = None
     objectId: str = ""
 
 

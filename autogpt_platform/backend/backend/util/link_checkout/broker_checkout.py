@@ -43,6 +43,7 @@ from backend.util.link_checkout.checkout_record import (
     save_intent,
     unseal,
 )
+from backend.util.link_checkout.checkout_view import view
 from backend.util.link_checkout.config import live_payments_allowed
 from backend.util.link_checkout.link import link_action_url, validate_spend
 from backend.util.link_checkout.models import (
@@ -67,7 +68,7 @@ CHECKOUT_TTL_SECONDS = 600
 
 
 async def create_checkout(request: CreateCheckout) -> CheckoutView:
-    _require_payable(request.plan.test_mode)
+    require_payable(request.plan.test_mode)
     key = session_key(request)
     async with browser_operation(key) as directory:
         await _clear_finished(directory, request.access_token)
@@ -87,7 +88,7 @@ async def create_checkout(request: CreateCheckout) -> CheckoutView:
         save_intent(directory, intent)
         if intent.approval_mode == "in_app":
             return view(intent)
-        spend = await _first_spend(directory, intent, request.access_token, None)
+        spend = await first_spend(directory, intent, request.access_token, None)
         return view(intent, spend)
 
 
@@ -99,13 +100,13 @@ async def complete_checkout(request: AuthorizedCheckout) -> CheckoutView:
             return await _reconcile(directory, intent, request.access_token)
         if intent.expires_at <= time.time():
             return await _expired(directory, intent, request.access_token)
-        _require_payable(intent.plan.test_mode)
+        require_payable(intent.plan.test_mode)
         if intent.spend_request_id is not None:
             spend = await broker_link.status(intent, request.access_token)
         elif intent.approval_mode == "in_app" and request.approval is None:
             return view(intent)
         else:
-            spend = await _first_spend(
+            spend = await first_spend(
                 directory, intent, request.access_token, request.approval
             )
         validate_spend(intent, spend)
@@ -157,50 +158,7 @@ def load_checkout(directory: Path, request: CheckoutReference) -> CheckoutIntent
     )
 
 
-def view(intent: CheckoutIntent, spend: SpendRequest | None = None) -> CheckoutView:
-    status, message = _pre_link_status(intent)
-    result = CheckoutView(
-        checkout_id=intent.id,
-        spend_request_id=intent.spend_request_id,
-        credentials_id=intent.plan.credentials_id,
-        merchant_name=intent.plan.merchant_name,
-        merchant_url=intent.plan.merchant_url(),
-        amount=intent.plan.amount,
-        currency=intent.plan.currency,
-        test_mode=intent.plan.test_mode,
-        approval_mode=intent.approval_mode,
-        approval_url=intent.approval_url,
-        expires_at=intent.expires_at,
-        attempted=intent.attempted,
-        status=status,
-        message=message,
-    )
-    if spend:
-        link = payment_status(spend)
-        result.status, result.paid, result.message = (
-            link.status,
-            link.paid,
-            link.message,
-        )
-        result.action_url = link.action_url
-        result.action_message = link.action_message
-        result.resolution = link.resolution
-    return result
-
-
-def _pre_link_status(intent: CheckoutIntent) -> tuple[str, str]:
-    """Status and message before (or without) a fresh answer from Link."""
-    if intent.attempted:
-        return "outcome_unknown", "Check Link for the current payment status."
-    if intent.spend_request_id is None and intent.approval_mode == "in_app":
-        return (
-            "awaiting_approval",
-            "Waiting for the customer to approve this purchase in the chat.",
-        )
-    return "created", "Check Link for the approval status."
-
-
-def _require_payable(test_mode: bool) -> None:
+def require_payable(test_mode: bool) -> None:
     if not test_mode and not live_payments_allowed():
         raise CheckoutRefused(LIVE_PAYMENTS_DISABLED)
 
@@ -222,9 +180,8 @@ async def _clear_finished(directory: Path, token: SecretStr) -> None:
 def _reconciled_final(directory: Path, intent: CheckoutIntent) -> bool:
     path = directory / "status.json"
     status = json.loads(path.read_bytes()) if path.exists() else {}
-    return (
-        status.get("checkout_id") == intent.id
-        and status.get("status") in TERMINAL_STATUSES
+    return status.get("checkout_id") == intent.id and (
+        status.get("final") is True or status.get("status") in TERMINAL_STATUSES
     )
 
 
@@ -242,7 +199,7 @@ async def _expired(
     )
 
 
-async def _first_spend(
+async def first_spend(
     directory: Path,
     intent: CheckoutIntent,
     token: SecretStr,
@@ -308,8 +265,13 @@ async def _reconcile(
 ) -> CheckoutView:
     spend = await broker_link.status(intent, token)
     validate_spend(intent, spend, check_deadline=False)
+    link = payment_status(
+        spend, attempted=intent.attempted, test_mode=intent.plan.test_mode
+    )
     (directory / "status.json").write_text(
-        json.dumps({"checkout_id": intent.id, "status": spend.status})
+        json.dumps(
+            {"checkout_id": intent.id, "status": spend.status, "final": link.final}
+        )
     )
     response = view(intent, spend)
     receipt_path = directory / "receipt.json"

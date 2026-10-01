@@ -4580,6 +4580,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/LinkPurchaseDecision" },
+                  { "type": "null" }
+                ],
+                "title": "Decision"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4595,7 +4608,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "No such purchase in the caller's chat" },
-          "409": { "description": "Already declined, or expired" },
+          "409": {
+            "description": "Already declined, expired, or since raised"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4631,6 +4646,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/LinkPurchaseDecision" },
+                  { "type": "null" }
+                ],
+                "title": "Decision"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4646,7 +4674,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "No such purchase in the caller's chat" },
-          "409": { "description": "Already approved, or expired" },
+          "409": {
+            "description": "Already approved, expired, or since raised"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -25311,7 +25341,13 @@
           "amount": { "type": "integer", "title": "Amount" },
           "currency": { "type": "string", "title": "Currency" },
           "test_mode": { "type": "boolean", "title": "Test Mode" },
-          "expires_at": { "type": "number", "title": "Expires At" }
+          "expires_at": { "type": "number", "title": "Expires At" },
+          "revision": { "type": "integer", "title": "Revision", "default": 0 },
+          "previous_amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Previous Amount"
+          },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
         },
         "type": "object",
         "required": [
@@ -25327,6 +25363,19 @@
         ],
         "title": "LinkPurchaseApproval",
         "description": "A purchase waiting for, or given, the customer's decision in the chat.\n\n``merchant_url`` is the page the card will be used on and ``context`` the\nagent's description of the purchase. With an in-chat approval Link shows\nthe customer nothing, so this is everything they approve."
+      },
+      "LinkPurchaseDecision": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "LinkPurchaseDecision",
+        "description": "The revision of the purchase the customer decided on, as their card\nshowed it. Omitted by older clients, which only ever saw the first."
       },
       "LinkTokenInfoResponse": {
         "properties": {

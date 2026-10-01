@@ -268,7 +268,15 @@ from ._test_data import make_session
 #     dev 55c41887fd                              76,725 (89 tools)
 #     + four checkout tools         +3,495        80,220 (93 tools)
 #     + headroom                       +300       80,520
-_CHAR_BUDGET = 80_520
+# Bumped 80_520 -> 81_544 for the checkout's fifth tool,
+# browser_raise_link_payment (a total that rose after approval, approved again
+# by the user), and the request tool's ``execution`` argument for Stripe
+# checkouts paid with a Link Pay Token. Their descriptions were trimmed first.
+# Measured on #14927's head:
+#     #14927 head                                 80,351 (93 tools)
+#     + raise tool, execution          +893       81,244 (94 tools)
+#     + headroom                       +300       81,544
+_CHAR_BUDGET = 81_544
 
 
 @pytest.fixture(scope="module")
@@ -465,7 +473,12 @@ def test_total_schema_char_budget() -> None:
 #     dev 55c41887fd                              69,193
 #     + four checkout tools         +3,073        72,266
 #     + headroom                       +300       72,566
-_SESSION_WIRE_BUDGET = 72_566
+# Raised 72_566 -> 73_526 for the same checkout changes as ``_CHAR_BUDGET``
+# (browser_raise_link_payment and ``execution``), measured on #14927's head:
+#     #14927 head                                 72,415
+#     + raise tool, execution          +811       73,226
+#     + headroom                       +300       73,526
+_SESSION_WIRE_BUDGET = 73_526
 
 
 def test_largest_declared_session_wire_budget() -> None:

@@ -110,6 +110,9 @@ describe("continueAfterDecision", () => {
 describe("isLinkCheckoutOutput", () => {
   it("accepts a checkout only from the checkout tools", () => {
     const output = { type: "browser_checkout" };
+    expect(isLinkCheckoutOutput("browser_raise_link_payment", output)).toBe(
+      true,
+    );
     expect(isLinkCheckoutOutput("browser_request_link_payment", output)).toBe(
       true,
     );
