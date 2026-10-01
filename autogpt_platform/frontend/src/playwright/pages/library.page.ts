@@ -1224,7 +1224,20 @@ export async function openSavedAgentInLibrary(
 
   await page.goto("/library");
   await libraryPage.waitForAgentsToLoad();
+  // The unfiltered list can already contain this agent. Wait for the debounced
+  // search to finish so its loading state cannot unmount the card during a click.
+  const searchResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "GET" &&
+      url.pathname.endsWith("/api/library/agents") &&
+      url.searchParams.get("search_term") === agentName
+    );
+  });
   await libraryPage.searchAgents(agentName);
+  const searchResponse = await searchResponsePromise;
+  expect(searchResponse.ok(), "saved-agent search should succeed").toBe(true);
+  await searchResponse.finished();
   await libraryPage.waitForAgentsToLoad();
   await navigateToAgentByName(page, agentName);
   await waitForAgentPageLoad(page, agentName);
