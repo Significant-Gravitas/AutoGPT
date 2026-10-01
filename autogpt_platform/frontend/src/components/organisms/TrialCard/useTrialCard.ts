@@ -3,6 +3,10 @@ import {
   usePostTrialsStartTrialCheckout,
 } from "@/app/api/__generated__/endpoints/trials/trials";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import {
+  getSubscriptionValue,
+  trackAdsConversionBeforeNavigation,
+} from "@/services/analytics/google-ads";
 import { TrialEvent } from "@/services/analytics/posthog-events";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { updateTrialStatusCache } from "@/services/trials/updateTrialStatusCache";
@@ -52,6 +56,9 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
       posthog?.capture(TrialEvent.SUBSCRIPTION_TRIAL_CHECKOUT_STARTED, {
         trial_offer_version: offer.version,
         surface: returnTo,
+      });
+      await trackAdsConversionBeforeNavigation("begin_checkout", {
+        value: getSubscriptionValue(offer.tier, "monthly"),
       });
       window.location.assign(response.data.url);
     } catch (error) {

@@ -11,7 +11,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getTierLabel } from "./helpers";
 import {
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
@@ -86,7 +86,7 @@ export function useSubscriptionTierSection() {
         },
       });
       if (result.status === 200 && result.data.url) {
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: getSubscriptionValue(tier, "monthly"),
         });
         window.location.href = result.data.url;

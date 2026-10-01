@@ -16,7 +16,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   centsToUSD,
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 
 import { formatCents, formatShortDate } from "../../../helpers";
@@ -215,7 +215,7 @@ export function useYourPlanCard() {
         // plan-card figure is only the fallback when the tier isn't priced there.
         const cents =
           cycle === "yearly" ? tierCostsYearly[tier] : tierCosts[tier];
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: centsToUSD(cents) ?? getSubscriptionValue(tier, cycle),
         });
         // Navigating away — don't refetch (would set state on an

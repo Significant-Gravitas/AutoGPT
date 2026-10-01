@@ -8,7 +8,8 @@ import { gtag } from "./gtag";
 
 // One entry per conversion action in the Google Ads account. The action's
 // label comes from NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS so the account can
-// be rewired without a deploy.
+// be rewired without a code change. Next inlines the value at build time, so a
+// new label still needs a rebuild.
 export const ADS_CONVERSIONS = [
   "sign_up",
   "begin_checkout",
@@ -32,10 +33,44 @@ export function trackAdsConversion(
   name: AdsConversion,
   options: ConversionOptions = {},
 ): boolean {
+  const params = conversionParams(name, options);
+  if (!params) return false;
+  return gtag("event", "conversion", params);
+}
+
+// gtag calls event_callback once the hit is out, but never when the tag is
+// blocked or hasn't loaded, so the wait is capped.
+export const CONVERSION_SEND_TIMEOUT_MS = 300;
+
+// A conversion fired in the same tick as a full-page navigation is dropped
+// with the page. Await this before leaving: it resolves once the tag reports
+// the hit sent, when the timeout runs out, or straight away when nothing was
+// sent. It never rejects.
+export function trackAdsConversionBeforeNavigation(
+  name: AdsConversion,
+  options: ConversionOptions = {},
+): Promise<void> {
+  return new Promise((resolve) => {
+    const params = conversionParams(name, options);
+    if (!params) return resolve();
+    const timeout = setTimeout(resolve, CONVERSION_SEND_TIMEOUT_MS);
+    function sent() {
+      clearTimeout(timeout);
+      resolve();
+    }
+    if (!gtag("event", "conversion", { ...params, event_callback: sent }))
+      sent();
+  });
+}
+
+function conversionParams(
+  name: AdsConversion,
+  options: ConversionOptions,
+): Record<string, unknown> | null {
   const adsID = environment.getGoogleAdsID();
-  if (!adsID) return false;
+  if (!adsID) return null;
   const label = conversionLabels()[name];
-  if (!label) return false;
+  if (!label) return null;
 
   const params: Record<string, unknown> = { send_to: `${adsID}/${label}` };
   if (options.value !== undefined) {
@@ -48,8 +83,7 @@ export function trackAdsConversion(
     if (options.transactionID) params.transaction_id = options.transactionID;
     if (options.email) params.user_data = { email: options.email };
   }
-
-  return gtag("event", "conversion", params);
+  return params;
 }
 
 // An unanswered banner is not a yes. Outside the EEA/UK/CH the Consent Mode

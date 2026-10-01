@@ -22,7 +22,7 @@ import { getEligibleTrialOffer } from "@/components/organisms/SubscriptionPlans/
 import { useTrialCard } from "@/components/organisms/TrialCard/useTrialCard";
 import {
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 
 interface CheckoutResponse {
@@ -134,7 +134,7 @@ export function usePaywallModal() {
         // plan definition is only the fallback for a tier priced nowhere else.
         const plan = plans.find((candidate) => candidate.key === tier);
         const apiValue = isYearly ? plan?.usdYearly : plan?.usdMonthly;
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: apiValue ?? getSubscriptionValue(tier, cycle),
         });
         window.location.href = url;
