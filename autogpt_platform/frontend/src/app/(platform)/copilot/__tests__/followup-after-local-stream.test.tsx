@@ -301,6 +301,31 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     expect(window.sessionStorage.length).toBe(0);
   });
 
+  it("gives up the send, but not the copy, when the chat host unmounts mid-hold", async () => {
+    const { result, unmount } = renderHook(() => useCopilotPage());
+    const send = result.current.onSend("and then?");
+    await flush();
+
+    unmount();
+    await expect(send).resolves.toBeUndefined();
+    expect(sendNewMessage).not.toHaveBeenCalled();
+    expect(
+      window.sessionStorage.getItem("copilot-held-follow-ups:session-1"),
+    ).toBe(JSON.stringify(["and then?"]));
+  });
+
+  it("lets a queue failure reach the composer once, without a toast of its own", async () => {
+    queueFollowUpMessage.mockRejectedValue(new Error("Expected 200; got 500"));
+    const { result } = renderHook(() => useCopilotPage());
+
+    await expect(result.current.onSend("and then?")).rejects.toThrow(
+      "Expected 200; got 500",
+    );
+    expect(toast).not.toHaveBeenCalled();
+    expect(sendNewMessage).not.toHaveBeenCalled();
+    expect(result.current.queuedMessages).toEqual([]);
+  });
+
   it("puts a follow-up left behind by a reload back in the composer", async () => {
     window.sessionStorage.setItem(
       "copilot-held-follow-ups:session-1",

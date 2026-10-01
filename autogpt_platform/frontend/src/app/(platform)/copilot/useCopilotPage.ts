@@ -247,15 +247,24 @@ export function useCopilotPage() {
     !isInflightRef.current && !isFinishProbing && !isReconnecting;
   const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
   isLocalStreamSettledRef.current = isLocalStreamSettled;
-  const settleWaitersRef = useRef<Array<() => void>>([]);
+  // Each waiter learns whether the stream settled (send now) or the hook
+  // went away first (the chat host unmounts on a chat switch and on reload;
+  // the follow-up then stays in sessionStorage, see below).
+  const settleWaitersRef = useRef<Array<(settled: boolean) => void>>([]);
   useEffect(() => {
     if (!isLocalStreamSettled) return;
-    settleWaitersRef.current.splice(0).forEach((resolve) => resolve());
+    settleWaitersRef.current.splice(0).forEach((resolve) => resolve(true));
   }, [isLocalStreamSettled]);
+  useEffect(
+    () => () => {
+      settleWaitersRef.current.splice(0).forEach((resolve) => resolve(false));
+    },
+    [],
+  );
 
   function waitForLocalSettle() {
-    if (isLocalStreamSettledRef.current) return Promise.resolve();
-    return new Promise<void>((resolve) => {
+    if (isLocalStreamSettledRef.current) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
       settleWaitersRef.current.push(resolve);
     });
   }
@@ -403,14 +412,11 @@ export function useCopilotPage() {
         queueMessage(trimmed);
         return;
       } catch (err) {
+        // Any other failure propagates to the composer, which restores the
+        // draft and shows the one toast for it.
         if (
           !(err instanceof Error && err.name === "QueueFollowUpNotActiveError")
         ) {
-          toast({
-            title: "Could not queue message",
-            description: "Please wait for the current response to finish.",
-            variant: "destructive",
-          });
           throw err;
         }
       }
@@ -423,7 +429,7 @@ export function useCopilotPage() {
       // settled, then send it as a normal turn below the finished answer.
       heldForLocalSettle = true;
       holdFollowUp(sessionId, trimmed);
-      await waitForLocalSettle();
+      if (!(await waitForLocalSettle())) return;
     }
 
     // Mark in-flight synchronously before dispatching so a rapid second
