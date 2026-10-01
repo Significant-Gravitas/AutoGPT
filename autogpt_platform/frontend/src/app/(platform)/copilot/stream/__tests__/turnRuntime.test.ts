@@ -228,22 +228,56 @@ describe("one connection slot", () => {
 
 describe("rotation", () => {
   it("opens the second connection before closing the first, and applies no entry twice", async () => {
-    await sendAndPublish(FIRST_BLOCK_DONE);
-    await advance(ROTATE_AFTER_MS + 5_000 - 1);
-    const [first] = backend.connections;
-    expect(backend.connections).toHaveLength(2);
-    expect(first.closed).toBe(false);
+    // Auth headers take a moment, so the entry published as the rotation
+    // starts reaches the first connection before the second request leaves.
+    runtime.dispose();
+    runtime = new TurnRuntime("session-1", {
+      baseUrl: () => "http://backend.test",
+      headers: () =>
+        new Promise((resolve) => setTimeout(() => resolve({}), 50)),
+      fetch: backend.fetch,
+      fetchSession: async () => backend.view(),
+      toast,
+      report,
+    });
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(100);
+    backend.publish(6);
+    await advance(100);
 
-    const second = backend.connections[1];
-    expect(second.url.searchParams.get("after")).toBe("9-0");
+    // The rotation tick fires at 25 minutes; its request waits on headers.
+    await advance(ROTATE_AFTER_MS - 200 + 10);
+    expect(runtime.getSnapshot().phase).toBe("live");
+    backend.publish(1);
+    await advance(100);
+    const [first, second] = backend.connections;
+    expect(backend.connections).toHaveLength(2);
+    expect(second.url.searchParams.get("after")).toBe("6-0");
+    // Both carried the entry; the first applied it and then was retired.
+    expect(first.sent.at(-1)).toBe("7-0");
+    expect(second.sent).toEqual(["7-0"]);
+    expect(first.aborted).toBe(true);
+    // Checked here: the end-of-turn reconcile would heal a doubled row.
+    expect(turnSegment().log.rows.map((r) => r.content)).toEqual([
+      "Let me fetch that ",
+    ]);
+
     backend.publish();
     await advance(1_000);
-
-    expect(first.aborted).toBe(true);
-    expect(second.sent.length).toBeGreaterThan(0);
     expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}${SECOND_TEXT}`]);
     expect(turnSegment().log.protocolErrors).toEqual([]);
+    expect(report).not.toHaveBeenCalled();
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("keeps the first connection open until the second delivers a frame", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    await advance(ROTATE_AFTER_MS + 5_000 - 1);
+    const [first, second] = backend.connections;
+    expect(second.url.searchParams.get("after")).toBe("9-0");
+    expect(first.closed).toBe(false);
+    await advance(10_000);
+    expect(first.aborted).toBe(true);
   });
 });
 

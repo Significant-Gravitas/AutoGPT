@@ -93,15 +93,17 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           timeout: 5000,
         });
 
-        // The stream drops while the tab is hidden; it comes back after 30 s
-        // and the network event lands in the same tick: two triggers.
+        // The stream drops while the tab is hidden. Coming back after 30 s
+        // resumes it; the network event that follows is a second trigger
+        // inside the liveness window of a resume already on the wire.
         vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
         setTabVisibility("hidden");
         sim.cutOpenConnections();
         vi.setSystemTime(Date.now() + 31_000);
         setTabVisibility("visible");
-        window.dispatchEvent(new Event("online"));
         vi.useRealTimers();
+        await waitForConnections(sim, 2);
+        window.dispatchEvent(new Event("online"));
         await turnKeepsRunning();
         sim.publish();
 
