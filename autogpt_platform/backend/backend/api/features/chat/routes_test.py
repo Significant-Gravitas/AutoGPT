@@ -3236,7 +3236,54 @@ def test_cancel_session_timeout_completes_as_cancelled_not_as_an_error(
         mock_registry.mark_session_completed.await_args.kwargs.get("skip_error_publish")
         is True
     ), "a user cancel must not be published to the stream as an error"
+    assert mock_registry.mark_session_completed.await_args.kwargs["turn_id"] == "turn-1"
     assert response.json()["reason"] == "cancel_published_not_confirmed"
+
+
+def test_cancel_confirms_once_the_next_turn_holds_the_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The cancelled turn's end can wake the next turn; the poll must not
+    force-complete that one as the user's cancel."""
+    from backend.copilot.stream_registry import ActiveSession
+
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+
+    def turn(turn_id: str) -> ActiveSession:
+        return ActiveSession(
+            session_id="sess-1",
+            user_id=TEST_USER_ID,
+            tool_call_id="chat_stream",
+            tool_name="chat",
+            turn_id=turn_id,
+            status="running",
+        )
+
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(turn("turn-1"), "1-0"))
+    mock_registry.get_session = AsyncMock(return_value=turn("turn-2"))
+    mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    mocker.patch(
+        "backend.api.features.chat.routes.enqueue_cancel_task",
+        new_callable=AsyncMock,
+    )
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.02)
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS", 0.01)
+    clear_pending = mocker.patch.object(
+        chat_routes, "_clear_pending_best_effort", new_callable=AsyncMock
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.json()["cancelled"] is True
+    mock_registry.mark_session_completed.assert_not_awaited()
+    # Only the up-front clear; the next turn's follow-ups stay queued.
+    clear_pending.assert_awaited_once()
 
 
 def test_cancel_session_clears_pending_buffer(

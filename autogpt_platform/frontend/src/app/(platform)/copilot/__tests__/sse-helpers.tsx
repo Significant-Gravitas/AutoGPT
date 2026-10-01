@@ -115,13 +115,15 @@ export function renderHost(
     searchParams?: string;
     /** Follow-ups the backend still holds in the session's pending buffer. */
     pendingMessages?: string[];
+    /** Replaces the default session GET, e.g. to answer it with an error. */
+    sessionResponse?: HttpHandler;
     /** Mount under React Strict Mode, as the dev server does: every effect
      *  runs twice on mount, so load-time requests fire twice. */
     strictMode?: boolean;
   } = {},
 ) {
   server.use(
-    sessionHandler(opts.sessionOverride),
+    opts.sessionResponse ?? sessionHandler(opts.sessionOverride),
     getGetV2GetCopilotUsageMockHandler200({
       daily: {
         percent_used: 0,

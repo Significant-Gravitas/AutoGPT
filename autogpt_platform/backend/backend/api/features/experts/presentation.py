@@ -2,6 +2,7 @@ from typing import Protocol, TypedDict
 
 from pydantic import BaseModel
 
+from .avatar_catalog import resolve_builtin_avatar_url
 from .presentation_defaults import MANAGED_PRESENTATION
 
 
@@ -40,6 +41,7 @@ def template_presentation(row: TemplateLike) -> TemplatePresentation:
         avatarUrl=row.avatarUrl, bio=row.bio, identity=row.identity, tagline=row.tagline
     )
     if row.isTemplate:
+        values["avatarUrl"] = resolve_builtin_avatar_url(row.name, row.avatarUrl)
         for field, (previous, replacement) in MANAGED_PRESENTATION.get(
             row.name, {}
         ).items():

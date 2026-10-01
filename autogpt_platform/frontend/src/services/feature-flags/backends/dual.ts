@@ -1,5 +1,6 @@
 "use client";
 
+import { FeatureFlagEvent } from "@/services/analytics/posthog-events";
 import { environment } from "@/services/environment";
 import { usePostHog } from "@posthog/react";
 import isEqual from "lodash/isEqual";
@@ -54,6 +55,6 @@ function useReportMismatch(
     if (!comparable || agree) return;
     const mismatch = JSON.parse(record);
     console.warn("feature-flag mismatch", mismatch);
-    posthog?.capture("feature_flag_mismatch", mismatch);
+    posthog?.capture(FeatureFlagEvent.FEATURE_FLAG_MISMATCH, mismatch);
   }, [comparable, agree, record, posthog]);
 }
