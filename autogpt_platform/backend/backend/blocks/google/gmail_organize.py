@@ -5,6 +5,7 @@ from googleapiclient.errors import HttpError
 
 from backend.blocks._base import (
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -134,6 +135,7 @@ class GmailTrashBlock(GmailBase):
                 )
             ],
             test_mock={"_trash": lambda *args, **kwargs: trashed_thread},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -209,6 +211,7 @@ class GmailSpamBlock(GmailBase):
                     "labelIds": ["SPAM", "UNREAD"],
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -278,6 +281,7 @@ class GmailMarkAsReadBlock(GmailBase):
                     "labelIds": ["INBOX", "IMPORTANT"],
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

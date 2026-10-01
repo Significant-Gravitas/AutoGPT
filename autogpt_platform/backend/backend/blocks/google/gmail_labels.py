@@ -5,6 +5,7 @@ from googleapiclient.errors import HttpError
 
 from backend.blocks._base import (
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -188,6 +189,7 @@ class GmailUpdateLabelsBlock(GmailBase):
                     ["Clients/Acme"],
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -317,6 +319,7 @@ class GmailCreateLabelBlock(GmailBase):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("label", to_gmail_label(test_label)), ("created", True)],
             test_mock={"_create_label": lambda *args, **kwargs: (test_label, True)},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
