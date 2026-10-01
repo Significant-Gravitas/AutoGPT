@@ -234,17 +234,14 @@ def format_calendar_event(event: dict) -> CalendarEvent:
         has_video_call=has_video_call,
         video_link=video_link,
         calendar_link=event.get("htmlLink", ""),
-        is_recurring=bool(event.get("recurrence")),
+        # Expanded occurrences carry recurringEventId, not recurrence.
+        is_recurring=bool(event.get("recurrence") or event.get("recurringEventId")),
     )
 
 
 def to_event_details(event: dict[str, Any], calendar_id: str) -> CalendarEventDetails:
     """Map a Calendar API event resource to CalendarEventDetails."""
     fields = format_calendar_event(event).model_dump()
-    # Occurrences of a repeating event carry recurringEventId, not recurrence.
-    fields["is_recurring"] = bool(
-        event.get("recurrence") or event.get("recurringEventId")
-    )
     attendees = [a for a in event.get("attendees", []) if a.get("email")]
     me = next((a for a in attendees if a.get("self")), {})
     start, end = event.get("start", {}), event.get("end", {})
