@@ -992,7 +992,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=22.5, output_credits_per_1m=90.0
+                    run_credits=1, input_credits_per_1m=5.55, output_credits_per_1m=25.5
                 ),
             ),
             CatalogModel(
