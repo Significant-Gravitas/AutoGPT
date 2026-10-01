@@ -153,7 +153,9 @@ jobs:
         env:
           NEXT_PUBLIC_SOURCEMAPS: "false"
           NODE_OPTIONS: "--max-old-space-size=8192"
-        run: pnpm exec next build
+        run: |
+          pnpm run copy:vad-assets
+          pnpm exec next build
 
   knip:
     runs-on: ubuntu-latest
