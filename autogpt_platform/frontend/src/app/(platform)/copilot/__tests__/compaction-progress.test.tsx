@@ -4,10 +4,11 @@ import { copilotStreamHandler } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
 import type { UIMessageChunk } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetCopilotChatRegistry } from "../copilotChatRegistry";
 import {
   renderHost,
+  resetChatRuntimes,
   sessionHandler,
+  STREAM_PATHS,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
@@ -44,12 +45,16 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 // Keep mode/model toggles and artifacts off so the chat input renders a
 // single, predictable Submit button.
+const streamPath = vi.hoisted(() => ({ runtime: false }));
+
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
+    COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
-  useGetFlag: () => false,
+  useGetFlag: (flag: string) =>
+    flag === "copilot-stream-runtime" ? streamPath.runtime : false,
 }));
 
 // Shared chunk builders — every scenario below is "open row → phase(s) →
@@ -327,370 +332,381 @@ const SUMMARIZING_HOLD_INDEX = COMPACTION_TURN.findIndex(
   (c) => c.type === "tool-output-available",
 );
 
-describe("context compaction progress", () => {
+describe.each(STREAM_PATHS)("on the %s path", (path) => {
   beforeEach(() => {
-    resetCopilotChatRegistry();
-    server.use(
-      sessionHandler(),
-      // A uniform 15ms gap keeps the stream from resolving inside a single
-      // microtask tick, but the "summarizing" phase itself only spans the
-      // single gap between the `data-compaction` chunk and
-      // `tool-output-available` — at 15ms that's narrower than
-      // `waitFor`'s ~50ms poll interval, so the assertion below could miss
-      // it entirely depending on scheduling. Hold specifically at that
-      // gap for long enough to make the phase reliably observable.
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: COMPACTION_TURN,
-        perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
-          i === SUMMARIZING_HOLD_INDEX ? HOLD_MS : 15,
-        ),
-      }),
-    );
+    streamPath.runtime = path === "stream runtime";
   });
 
-  afterEach(() => {
-    resetCopilotChatRegistry();
-  });
-
-  it("shows a live bar while compacting, not a completed message", async () => {
-    renderHost();
-    await typeAndSend("summarise this");
-
-    await waitFor(() => {
-      expect(screen.getByRole("progressbar")).toBeDefined();
-      expect(screen.getByText("Condensing our conversation…")).toBeDefined();
-      // CompactionCard owns its own spinner/label — the generic
-      // ThinkingIndicator must not double up alongside it. The tool row
-      // (or, before it opens, the step-start marker) keeps `hasInflight`
-      // true throughout the compaction turn, so this holds from the very
-      // first chunk onward — not just once the bar is visible.
-      expect(screen.queryByText("Thinking…")).toBeNull();
-    });
-  });
-
-  it("lands on the payoff copy with real numbers", async () => {
-    renderHost();
-    await typeAndSend("summarise this");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
-      ).toBeDefined();
-    }, POST_HOLD_TIMEOUT);
-  });
-
-  it("never shows the old apologetic copy", async () => {
-    renderHost();
-    await typeAndSend("summarise this");
-
-    await waitFor(() => {
-      expect(screen.getByText("All caught up.")).toBeDefined();
-    }, POST_HOLD_TIMEOUT);
-    expect(screen.queryByText(/Earlier messages were summarized/)).toBeNull();
-  });
-
-  it("keeps a settled compaction row out of a collapsed tool group when another tool call follows it", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: COMPACTION_THEN_TOOL_TURN,
-        delayMsBetweenChunks: 15,
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("search and summarise");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
-      ).toBeDefined();
-    });
-    // If the compaction row had folded into a CollapsedToolGroup with the
-    // adjacent web_search call, the payoff copy above would be hidden
-    // behind a "N tool calls completed" toggle instead of standing alone.
-    expect(screen.queryByText(/tool calls/)).toBeNull();
-  });
-
-  it("renders nothing for a compaction that failed", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: FAILED_COMPACTION_TURN,
-        delayMsBetweenChunks: 15,
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("summarise this");
-
-    await waitFor(() => {
-      expect(screen.getByText("Carrying on regardless.")).toBeDefined();
-    });
-    // A failed compaction condensed nothing — neither the live copy nor
-    // the settled "Condensed…" claim may render for it.
-    expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
-    expect(screen.queryByText(/Condensed/)).toBeNull();
-    expect(screen.queryByRole("progressbar")).toBeNull();
-  });
-
-  it("tells the user the context was reset when history was dropped", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: DROPPED_COMPACTION_TURN,
-        delayMsBetweenChunks: 15,
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("summarise this");
-
-    await waitFor(() => {
-      expect(screen.getByText("Starting over from here.")).toBeDefined();
-      expect(
-        screen.getByText(
-          "Started a fresh context — earlier messages were dropped",
-        ),
-      ).toBeDefined();
-    });
-    // A drop condensed nothing: no payoff claim, no lingering bar.
-    expect(screen.queryByText(/Condensed/)).toBeNull();
-    expect(screen.queryByRole("progressbar")).toBeNull();
-  });
-
-  it("renders nothing for a row retired by an aborted prediction", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: ABORTED_COMPACTION_TURN,
-        delayMsBetweenChunks: 15,
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("quick question");
-
-    await waitFor(() => {
-      expect(screen.getByText("No condensing needed.")).toBeDefined();
-    });
-    // The abort sentinel (output "") must not read as a real compaction —
-    // neither the live copy nor the settled payoff copy may survive.
-    expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
-    expect(screen.queryByText(/Condensed the conversation/)).toBeNull();
-    expect(screen.queryByRole("progressbar")).toBeNull();
-  });
-
-  it("keeps the first cycle settled while a second cycle streams", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: TWO_CYCLE_TURN,
-        perChunkDelaysMs: TWO_CYCLE_TURN.map((_, i) =>
-          i === SECOND_CYCLE_HOLD_INDEX ? HOLD_MS : 15,
-        ),
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("summarise twice");
-
-    await waitFor(() => {
-      // Second cycle live in `summarizing`…
-      expect(screen.getByText("Condensing our conversation…")).toBeDefined();
-      // …while the first row keeps its settled payoff copy…
-      expect(
-        screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
-      ).toBeDefined();
-      // …and only the live row carries a progress bar. Without the
-      // per-row phase gate, the second cycle's phase re-animates the
-      // first (closed) row and two bars render.
-      expect(screen.getAllByRole("progressbar")).toHaveLength(1);
-    });
-  });
-
-  it("retires the live bar when the stream dies after a compaction phase", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: DEAD_STREAM_TURN,
-        perChunkDelaysMs: DEAD_STREAM_TURN.map((_, i) =>
-          i === DEAD_STREAM_HOLD_INDEX ? HOLD_MS : 15,
-        ),
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("summarise this");
-
-    // Live during the stream: the trailing `rebuilding` phase keeps the
-    // bar up while the connection is open.
-    await waitFor(() => {
-      expect(screen.getByRole("progressbar")).toBeDefined();
-    });
-    // Once the stream closes with no trailing text, the streaming gate
-    // must null the phase — the row settles instead of spinning forever.
-    await waitFor(() => {
-      expect(screen.queryByRole("progressbar")).toBeNull();
-      expect(
-        screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
-      ).toBeDefined();
-    }, POST_HOLD_TIMEOUT);
-  });
-
-  it("keeps the bar live through the rebuild that follows the closed row", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: COMPACTION_TURN,
-        perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
-          i === REBUILDING_HOLD_INDEX ? HOLD_MS : 15,
-        ),
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("summarise this");
-
-    // The tool row has already closed with its JSON output by this point;
-    // the row must still be live and narrating the rebuild.
-    await waitFor(() => {
-      expect(screen.getByText("Reloading context…")).toBeDefined();
-      // With the row closed, `hasInflight` is false — without the live-
-      // compaction gate the ThinkingIndicator would stack its own spinner
-      // and timer directly under the CompactionCard's.
-      expect(screen.queryByText("Thinking…")).toBeNull();
-    });
-    expect(screen.getByRole("progressbar")).toBeDefined();
-  });
-
-  it("renders nothing for a row left open when the stream is interrupted", async () => {
-    server.use(
-      sessionHandler(),
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: INTERRUPTED_OPEN_ROW_TURN,
-        perChunkDelaysMs: INTERRUPTED_OPEN_ROW_TURN.map((_, i) =>
-          i === INTERRUPTED_HOLD_INDEX ? HOLD_MS : 15,
-        ),
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("summarise this");
-
-    // Live while the connection is open.
-    await waitFor(() => {
-      expect(screen.getByRole("progressbar")).toBeDefined();
-    });
-    // The row never closed, so once the stream is gone it is neither a live
-    // bar nor a "Condensed…" claim — it disappears.
-    await waitFor(() => {
-      expect(screen.queryByRole("progressbar")).toBeNull();
-    }, POST_HOLD_TIMEOUT);
-    expect(screen.queryByText(/Condensed/)).toBeNull();
-    expect(screen.queryByText(/Condensing/)).toBeNull();
-  });
-});
-
-// A row restored from the DB never carries a `data-compaction` part — that
-// part only ever exists on a live stream. `getLatestCompactionPhase` reads
-// null in that case, and the tool part's persisted output makes it
-// `output-available`, so the card renders settled — this proves the
-// back-compat path for both the new JSON payload and the old plain-sentence
-// rows some sessions still have on disk.
-describe("compaction rows restored from the database", () => {
-  beforeEach(() => {
-    resetCopilotChatRegistry();
-  });
-
-  afterEach(() => {
-    resetCopilotChatRegistry();
-  });
-
-  it("renders new JSON rows with their numbers and no bar", async () => {
-    const messages: SessionDetailResponseMessagesItem[] = [
-      { role: "user", content: "hi", sequence: 0 },
-      {
-        role: "assistant",
-        content: "",
-        sequence: 1,
-        tool_calls: [
-          {
-            id: "compaction-1",
-            type: "function",
-            function: { name: "context_compaction", arguments: "{}" },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        tool_call_id: "compaction-1",
-        sequence: 2,
-        content: JSON.stringify({
-          summary:
-            "Earlier messages were summarized to fit within context limits.",
-          tokensBefore: 128000,
-          tokensAfter: 31000,
+  describe("context compaction progress", () => {
+    beforeEach(() => {
+      resetChatRuntimes();
+      server.use(
+        sessionHandler(),
+        // A uniform 15ms gap keeps the stream from resolving inside a single
+        // microtask tick, but the "summarizing" phase itself only spans the
+        // single gap between the `data-compaction` chunk and
+        // `tool-output-available` — at 15ms that's narrower than
+        // `waitFor`'s ~50ms poll interval, so the assertion below could miss
+        // it entirely depending on scheduling. Hold specifically at that
+        // gap for long enough to make the phase reliably observable.
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: COMPACTION_TURN,
+          perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
+            i === SUMMARIZING_HOLD_INDEX ? HOLD_MS : 15,
+          ),
         }),
-      },
-    ];
-    renderHost({ sessionOverride: { messages } });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Condensed the conversation · 128K → 31K tokens"),
-      ).toBeDefined();
+      );
     });
-    expect(screen.queryByRole("progressbar")).toBeNull();
+
+    afterEach(() => {
+      resetChatRuntimes();
+    });
+
+    it("shows a live bar while compacting, not a completed message", async () => {
+      renderHost();
+      await typeAndSend("summarise this");
+
+      await waitFor(() => {
+        expect(screen.getByRole("progressbar")).toBeDefined();
+        expect(screen.getByText("Condensing our conversation…")).toBeDefined();
+        // CompactionCard owns its own spinner/label — the generic
+        // ThinkingIndicator must not double up alongside it. The tool row
+        // (or, before it opens, the step-start marker) keeps `hasInflight`
+        // true throughout the compaction turn, so this holds from the very
+        // first chunk onward — not just once the bar is visible.
+        expect(screen.queryByText("Thinking…")).toBeNull();
+      });
+    });
+
+    it("lands on the payoff copy with real numbers", async () => {
+      renderHost();
+      await typeAndSend("summarise this");
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
+        ).toBeDefined();
+      }, POST_HOLD_TIMEOUT);
+    });
+
+    it("never shows the old apologetic copy", async () => {
+      renderHost();
+      await typeAndSend("summarise this");
+
+      await waitFor(() => {
+        expect(screen.getByText("All caught up.")).toBeDefined();
+      }, POST_HOLD_TIMEOUT);
+      expect(screen.queryByText(/Earlier messages were summarized/)).toBeNull();
+    });
+
+    it("keeps a settled compaction row out of a collapsed tool group when another tool call follows it", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: COMPACTION_THEN_TOOL_TURN,
+          delayMsBetweenChunks: 15,
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("search and summarise");
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
+        ).toBeDefined();
+      });
+      // If the compaction row had folded into a CollapsedToolGroup with the
+      // adjacent web_search call, the payoff copy above would be hidden
+      // behind a "N tool calls completed" toggle instead of standing alone.
+      expect(screen.queryByText(/tool calls/)).toBeNull();
+    });
+
+    // `tool-output-error` is not on the backend's wire (design §1.3), which
+    // closes every compaction row with an output; the runtime does not read it.
+    it.skipIf(path === "stream runtime")(
+      "renders nothing for a compaction that failed",
+      async () => {
+        server.use(
+          sessionHandler(),
+          copilotStreamHandler({
+            baseUrl: TEST_BACKEND_BASE_URL,
+            sessionId: TEST_SESSION_ID,
+            chunks: FAILED_COMPACTION_TURN,
+            delayMsBetweenChunks: 15,
+          }),
+        );
+
+        renderHost();
+        await typeAndSend("summarise this");
+
+        await waitFor(() => {
+          expect(screen.getByText("Carrying on regardless.")).toBeDefined();
+        });
+        // A failed compaction condensed nothing — neither the live copy nor
+        // the settled "Condensed…" claim may render for it.
+        expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
+        expect(screen.queryByText(/Condensed/)).toBeNull();
+        expect(screen.queryByRole("progressbar")).toBeNull();
+      },
+    );
+
+    it("tells the user the context was reset when history was dropped", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: DROPPED_COMPACTION_TURN,
+          delayMsBetweenChunks: 15,
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("summarise this");
+
+      await waitFor(() => {
+        expect(screen.getByText("Starting over from here.")).toBeDefined();
+        expect(
+          screen.getByText(
+            "Started a fresh context — earlier messages were dropped",
+          ),
+        ).toBeDefined();
+      });
+      // A drop condensed nothing: no payoff claim, no lingering bar.
+      expect(screen.queryByText(/Condensed/)).toBeNull();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+    });
+
+    it("renders nothing for a row retired by an aborted prediction", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: ABORTED_COMPACTION_TURN,
+          delayMsBetweenChunks: 15,
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("quick question");
+
+      await waitFor(() => {
+        expect(screen.getByText("No condensing needed.")).toBeDefined();
+      });
+      // The abort sentinel (output "") must not read as a real compaction —
+      // neither the live copy nor the settled payoff copy may survive.
+      expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
+      expect(screen.queryByText(/Condensed the conversation/)).toBeNull();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+    });
+
+    it("keeps the first cycle settled while a second cycle streams", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: TWO_CYCLE_TURN,
+          perChunkDelaysMs: TWO_CYCLE_TURN.map((_, i) =>
+            i === SECOND_CYCLE_HOLD_INDEX ? HOLD_MS : 15,
+          ),
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("summarise twice");
+
+      await waitFor(() => {
+        // Second cycle live in `summarizing`…
+        expect(screen.getByText("Condensing our conversation…")).toBeDefined();
+        // …while the first row keeps its settled payoff copy…
+        expect(
+          screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+        ).toBeDefined();
+        // …and only the live row carries a progress bar. Without the
+        // per-row phase gate, the second cycle's phase re-animates the
+        // first (closed) row and two bars render.
+        expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+      });
+    });
+
+    it("retires the live bar when the stream dies after a compaction phase", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: DEAD_STREAM_TURN,
+          perChunkDelaysMs: DEAD_STREAM_TURN.map((_, i) =>
+            i === DEAD_STREAM_HOLD_INDEX ? HOLD_MS : 15,
+          ),
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("summarise this");
+
+      // Live during the stream: the trailing `rebuilding` phase keeps the
+      // bar up while the connection is open.
+      await waitFor(() => {
+        expect(screen.getByRole("progressbar")).toBeDefined();
+      });
+      // Once the stream closes with no trailing text, the streaming gate
+      // must null the phase — the row settles instead of spinning forever.
+      await waitFor(() => {
+        expect(screen.queryByRole("progressbar")).toBeNull();
+        expect(
+          screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+        ).toBeDefined();
+      }, POST_HOLD_TIMEOUT);
+    });
+
+    it("keeps the bar live through the rebuild that follows the closed row", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: COMPACTION_TURN,
+          perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
+            i === REBUILDING_HOLD_INDEX ? HOLD_MS : 15,
+          ),
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("summarise this");
+
+      // The tool row has already closed with its JSON output by this point;
+      // the row must still be live and narrating the rebuild.
+      await waitFor(() => {
+        expect(screen.getByText("Reloading context…")).toBeDefined();
+        // With the row closed, `hasInflight` is false — without the live-
+        // compaction gate the ThinkingIndicator would stack its own spinner
+        // and timer directly under the CompactionCard's.
+        expect(screen.queryByText("Thinking…")).toBeNull();
+      });
+      expect(screen.getByRole("progressbar")).toBeDefined();
+    });
+
+    it("renders nothing for a row left open when the stream is interrupted", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: INTERRUPTED_OPEN_ROW_TURN,
+          perChunkDelaysMs: INTERRUPTED_OPEN_ROW_TURN.map((_, i) =>
+            i === INTERRUPTED_HOLD_INDEX ? HOLD_MS : 15,
+          ),
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("summarise this");
+
+      // Live while the connection is open.
+      await waitFor(() => {
+        expect(screen.getByRole("progressbar")).toBeDefined();
+      });
+      // The row never closed, so once the stream is gone it is neither a live
+      // bar nor a "Condensed…" claim — it disappears.
+      await waitFor(() => {
+        expect(screen.queryByRole("progressbar")).toBeNull();
+      }, POST_HOLD_TIMEOUT);
+      expect(screen.queryByText(/Condensed/)).toBeNull();
+      expect(screen.queryByText(/Condensing/)).toBeNull();
+    });
   });
 
-  it("renders legacy plain-sentence rows without crashing", async () => {
-    const messages: SessionDetailResponseMessagesItem[] = [
-      { role: "user", content: "hi", sequence: 0 },
-      {
-        role: "assistant",
-        content: "",
-        sequence: 1,
-        tool_calls: [
-          {
-            id: "compaction-1",
-            type: "function",
-            function: { name: "context_compaction", arguments: "{}" },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        tool_call_id: "compaction-1",
-        sequence: 2,
-        content:
-          "Earlier messages were summarized to fit within context limits.",
-      },
-    ];
-    renderHost({ sessionOverride: { messages } });
+  // A row restored from the DB never carries a `data-compaction` part — that
+  // part only ever exists on a live stream. `getLatestCompactionPhase` reads
+  // null in that case, and the tool part's persisted output makes it
+  // `output-available`, so the card renders settled — this proves the
+  // back-compat path for both the new JSON payload and the old plain-sentence
+  // rows some sessions still have on disk.
+  describe("compaction rows restored from the database", () => {
+    beforeEach(() => {
+      resetChatRuntimes();
+    });
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Condensed the conversation to keep going"),
-      ).toBeDefined();
+    afterEach(() => {
+      resetChatRuntimes();
+    });
+
+    it("renders new JSON rows with their numbers and no bar", async () => {
+      const messages: SessionDetailResponseMessagesItem[] = [
+        { role: "user", content: "hi", sequence: 0 },
+        {
+          role: "assistant",
+          content: "",
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "compaction-1",
+              type: "function",
+              function: { name: "context_compaction", arguments: "{}" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "compaction-1",
+          sequence: 2,
+          content: JSON.stringify({
+            summary:
+              "Earlier messages were summarized to fit within context limits.",
+            tokensBefore: 128000,
+            tokensAfter: 31000,
+          }),
+        },
+      ];
+      renderHost({ sessionOverride: { messages } });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Condensed the conversation · 128K → 31K tokens"),
+        ).toBeDefined();
+      });
+      expect(screen.queryByRole("progressbar")).toBeNull();
+    });
+
+    it("renders legacy plain-sentence rows without crashing", async () => {
+      const messages: SessionDetailResponseMessagesItem[] = [
+        { role: "user", content: "hi", sequence: 0 },
+        {
+          role: "assistant",
+          content: "",
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "compaction-1",
+              type: "function",
+              function: { name: "context_compaction", arguments: "{}" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "compaction-1",
+          sequence: 2,
+          content:
+            "Earlier messages were summarized to fit within context limits.",
+        },
+      ];
+      renderHost({ sessionOverride: { messages } });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Condensed the conversation to keep going"),
+        ).toBeDefined();
+      });
     });
   });
 });
