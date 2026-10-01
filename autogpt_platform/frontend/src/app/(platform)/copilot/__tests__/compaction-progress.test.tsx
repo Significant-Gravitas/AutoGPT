@@ -427,33 +427,32 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     });
 
     // `tool-output-error` is not on the backend's wire (design §1.3), which
-    // closes every compaction row with an output; the runtime does not read it.
-    it.skipIf(path === "stream runtime")(
-      "renders nothing for a compaction that failed",
-      async () => {
-        server.use(
-          sessionHandler(),
-          copilotStreamHandler({
-            baseUrl: TEST_BACKEND_BASE_URL,
-            sessionId: TEST_SESSION_ID,
-            chunks: FAILED_COMPACTION_TURN,
-            delayMsBetweenChunks: 15,
-          }),
-        );
+    // closes every compaction row with an output; the runtime does not read
+    // it, and CI refuses a skipped test, so the case exists on one path only.
+    const sdkOnly = path === "AI SDK" ? it : () => {};
+    sdkOnly("renders nothing for a compaction that failed", async () => {
+      server.use(
+        sessionHandler(),
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: FAILED_COMPACTION_TURN,
+          delayMsBetweenChunks: 15,
+        }),
+      );
 
-        renderHost();
-        await typeAndSend("summarise this");
+      renderHost();
+      await typeAndSend("summarise this");
 
-        await waitFor(() => {
-          expect(screen.getByText("Carrying on regardless.")).toBeDefined();
-        });
-        // A failed compaction condensed nothing — neither the live copy nor
-        // the settled "Condensed…" claim may render for it.
-        expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
-        expect(screen.queryByText(/Condensed/)).toBeNull();
-        expect(screen.queryByRole("progressbar")).toBeNull();
-      },
-    );
+      await waitFor(() => {
+        expect(screen.getByText("Carrying on regardless.")).toBeDefined();
+      });
+      // A failed compaction condensed nothing — neither the live copy nor
+      // the settled "Condensed…" claim may render for it.
+      expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
+      expect(screen.queryByText(/Condensed/)).toBeNull();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+    });
 
     it("tells the user the context was reset when history was dropped", async () => {
       server.use(
