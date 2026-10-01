@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -149,6 +150,7 @@ class GoogleChatListMessagesBlock(Block):
                     "nextPageToken": "next-page",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -278,6 +280,7 @@ class GoogleChatSendMessageBlock(Block):
                 },
                 "_send": lambda *args, **kwargs: _TEST_SENT_RESOURCE,
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
