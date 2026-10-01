@@ -18,7 +18,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { parseAsString, useQueryState, useQueryStates } from "nuqs";
+import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
@@ -246,21 +246,18 @@ function KeyedSessionHost() {
 
 /** Stands in for the sidebar's "New chat with Maria" link: following it
  *  lands on the href `getNewChatHref` builds, which replaces the whole query
- *  string, so whatever session was open is dropped along the way. */
+ *  string, so whatever session was open is dropped along the way. Each key
+ *  goes through its own setter, like the real New Chat handler. */
 function SidebarNewChatLink() {
-  const [, setParams] = useQueryStates({
-    expertId: parseAsString,
-    sessionId: parseAsString,
-    new: parseAsString,
-  });
+  const [, setExpertId] = useQueryState("expertId", parseAsString);
+  const [, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [, setNewThread] = useQueryState("new", parseAsString);
   function follow() {
     const href = getNewChatHref("expert-maria", new Set(["expert-maria"]));
     const target = new URL(href ?? "/home", "http://localhost");
-    void setParams({
-      expertId: target.searchParams.get("expertId"),
-      sessionId: target.searchParams.get("sessionId"),
-      new: target.searchParams.get("new"),
-    });
+    void setSessionId(target.searchParams.get("sessionId"));
+    void setExpertId(target.searchParams.get("expertId"));
+    void setNewThread(target.searchParams.get("new"));
   }
   return <button onClick={follow}>New chat with Maria</button>;
 }
@@ -527,9 +524,17 @@ describe("useChatSession — expert sessions", () => {
         }),
       ),
     );
+    // The adapter only commits the URL after nuqs's throttle, so the test
+    // reads it back here rather than trusting the optimistic hook state.
+    let committedUrl = new URLSearchParams(
+      "?expertId=expert-maria&sessionId=s-maria-running",
+    );
     const RunningWrapper = withNuqsTestingAdapter({
-      searchParams: "?expertId=expert-maria&sessionId=s-maria-running",
+      searchParams: committedUrl.toString(),
       hasMemory: true,
+      onUrlUpdate: (event) => {
+        committedUrl = event.searchParams;
+      },
     });
 
     render(
@@ -544,15 +549,26 @@ describe("useChatSession — expert sessions", () => {
       "s-maria-running",
     );
 
+    // Clicks happen inside waitFor, as in the New Chat test below: the
+    // testing adapter resets nuqs's update queue whenever it re-renders, so
+    // a click that lands while a previous URL commit is still rendering can
+    // be dropped. Re-clicking is idempotent (sets the same values).
+    async function followSidebarLink() {
+      await waitFor(() => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "New chat with Maria" }),
+        );
+        expect(screen.getByTestId("session-id").textContent).toBe("none");
+      });
+      await waitFor(() => expect(committedUrl.get("sessionId")).toBeNull());
+    }
+
     // First click: the running thread is dropped for the fresh page, and the
     // remount must not go looking for Maria's latest thread to re-adopt.
-    fireEvent.click(
-      screen.getByRole("button", { name: "New chat with Maria" }),
-    );
-    await waitFor(() => {
-      expect(screen.getByTestId("session-id").textContent).toBe("none");
-    });
+    await followSidebarLink();
     expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("expertId")).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByTestId("session-id").textContent).toBe("none");
     expect(adoptionLookups).toBe(0);
@@ -565,15 +581,14 @@ describe("useChatSession — expert sessions", () => {
         "s-maria-fresh",
       );
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "New chat with Maria" }),
+    await waitFor(() =>
+      expect(committedUrl.get("sessionId")).toBe("s-maria-fresh"),
     );
-    await waitFor(() => {
-      expect(screen.getByTestId("session-id").textContent).toBe("none");
-    });
+    await followSidebarLink();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByTestId("session-id").textContent).toBe("none");
     expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
     expect(adoptionLookups).toBe(0);
     // Leaving the running chat is navigation only: nothing was sent to it.
     expect(writesToRunningSession).toEqual([]);
