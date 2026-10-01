@@ -19,6 +19,7 @@ marked in their metadata, so refresh and revocation keep reaching the client
 that issued them even while older device-code credentials remain in use.
 """
 
+import json
 import logging
 import time
 from typing import ClassVar, Optional
@@ -32,6 +33,7 @@ from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scop
 from backend.integrations.oauth.stripe_link import (
     LINK_AUTH_BASE_URL,
     LINK_HTTP_TIMEOUT,
+    LINK_SOURCE_ACTIONS,
     fetch_link_username,
 )
 from backend.integrations.providers import ProviderName
@@ -47,6 +49,15 @@ STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
 )
 
 HOSTED_FLOW = "authorization_code"
+
+# The financial-insights grant, as the JSON array the authorization endpoint
+# takes in one `authorization_details` parameter (the device endpoint takes the
+# same detail as bracketed form fields instead). Compact, so the URL carries no
+# encoded spaces.
+# https://docs.stripe.com/financial-connections/agents/financial-insights
+AUTHORIZATION_DETAILS = json.dumps(
+    [{"type": "source", "actions": LINK_SOURCE_ACTIONS}], separators=(",", ":")
+)
 
 
 def is_hosted_link_credential(credentials: OAuth2Credentials) -> bool:
@@ -82,6 +93,10 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
             "state": state,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
+            # Asks the customer to share bank and card accounts with the
+            # financial-insights blocks. The scopes above cover payments and
+            # profile only; without this, those blocks get 403s.
+            "authorization_details": AUTHORIZATION_DETAILS,
         }
         return f"{LINK_AUTH_BASE_URL}/auth?{urlencode(params)}"
 

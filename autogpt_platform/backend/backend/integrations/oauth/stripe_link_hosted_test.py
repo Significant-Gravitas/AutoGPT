@@ -3,6 +3,7 @@
 Stripe's contract: https://docs.stripe.com/agentic-commerce/link-agent-wallet/oauth
 """
 
+import json
 import time
 from urllib.parse import parse_qs, urlsplit
 
@@ -12,6 +13,7 @@ from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth import HANDLERS_BY_NAME, stripe_link_hosted
+from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
 from backend.integrations.oauth.stripe_link_hosted import (
     STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
     StripeLinkHostedOAuthHandler,
@@ -19,6 +21,19 @@ from backend.integrations.oauth.stripe_link_hosted import (
 )
 
 CALLBACK = "https://platform.example/auth/integrations/oauth_callback"
+
+# https://docs.stripe.com/financial-connections/agents/financial-insights
+FINANCIAL_INSIGHTS_DETAILS = [
+    {
+        "type": "source",
+        "actions": [
+            "read_balances",
+            "read_external_transactions",
+            "read_link_transactions",
+            "read_source_details",
+        ],
+    }
+]
 
 
 @pytest.fixture
@@ -102,8 +117,51 @@ def test_login_url_matches_the_documented_authorization_request(handler):
         "state": ["state-token"],
         "code_challenge": ["c" * 43],
         "code_challenge_method": ["S256"],
+        "authorization_details": [
+            json.dumps(FINANCIAL_INSIGHTS_DETAILS, separators=(",", ":"))
+        ],
     }
     assert "client-secret" not in url
+
+
+def test_login_url_carries_authorization_details_as_one_encoded_json_value(handler):
+    """Stripe's financial-insights contract: a JSON array, URL-encoded, in a
+    single `authorization_details` parameter. Without it the customer is never
+    asked to share accounts and every financial-insights block gets a 403."""
+    url = handler.get_login_url([], "state-token", "c" * 43)
+
+    raw = dict(pair.split("=", 1) for pair in urlsplit(url).query.split("&"))
+    encoded = raw["authorization_details"]
+    # Every JSON delimiter percent-encoded: a bare one would split or corrupt
+    # the query string before Link could parse the array.
+    assert not set('[]{}":,& ') & set(encoded)
+    assert encoded.startswith("%5B%7B%22type%22%3A%22source%22")
+    details = json.loads(parse_qs(urlsplit(url).query)["authorization_details"][0])
+    assert details == FINANCIAL_INSIGHTS_DETAILS
+
+
+@pytest.mark.asyncio
+async def test_hosted_and_device_flows_ask_for_the_same_source_actions(handler, link):
+    """One grant for both flows. An action added to only one would leave the
+    financial-insights blocks working for some connections and 403ing for
+    the rest, depending on how each user happened to connect."""
+    requests, responses = link
+    responses["/device/code"] = httpx.Response(
+        200,
+        json={
+            "device_code": "lwldevice_abc",
+            "user_code": "glow-relish",
+            "verification_uri": "https://app.link.com/device/setup",
+            "expires_in": 600,
+        },
+    )
+
+    await StripeLinkDeviceAuthHandler().initiate_device_auth([])
+    device_actions = form(requests[0])["authorization_details[][actions][]"]
+    url = handler.get_login_url([], "state-token", "c" * 43)
+    hosted = json.loads(parse_qs(urlsplit(url).query)["authorization_details"][0])
+
+    assert hosted[0]["actions"] == device_actions
 
 
 @pytest.mark.parametrize("state, challenge", [("", "c" * 43), ("state", None)])

@@ -36,6 +36,19 @@ LINK_HTTP_TIMEOUT = 15.0
 LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
 LINK_CLIENT_NAME = "AutoGPT"
 
+# Financial-insights access, requested as RFC 9396 authorization details rather
+# than scopes: Link gates its read endpoints (/sources, /transactions,
+# /balances) on these source actions being part of the grant, and without them
+# those return 403 feature_unavailable even though the scopes look sufficient.
+# Both the device-code and the hosted handler request every action, so a user
+# never has to re-authorize to answer a different kind of question.
+LINK_SOURCE_ACTIONS: list[str] = [
+    "read_balances",
+    "read_external_transactions",
+    "read_link_transactions",
+    "read_source_details",
+]
+
 
 # Link truncates `connection_label` at 32 characters, and the label is the
 # headline of the approval sheet ("<label> is requesting to spend $X"), so an
@@ -95,14 +108,6 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         "userinfo:read",
         "payment_methods.agentic",
     ]
-    # Requested as RFC 9396 authorization details, not scopes — Link gates its
-    # read endpoints on these rather than on the scope string.
-    SOURCE_ACTIONS: ClassVar[list[str]] = [
-        "read_balances",
-        "read_external_transactions",
-        "read_link_transactions",
-        "read_source_details",
-    ]
 
     async def initiate_device_auth(self, scopes: list[str]) -> DeviceAuthInitiation:
         effective_scopes = self.handle_default_scopes(scopes)
@@ -114,18 +119,16 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         platform_host = urlparse(app_config.platform_base_url or "").netloc
         connection_label = _connection_label(platform_host)
 
-        # RFC 9396 rich authorization details. Link gates its read endpoints
-        # (/balances, /transactions, /sources) on these source actions being
-        # part of the grant — without them those return 403 feature_unavailable
-        # even though the scopes look sufficient. One `source` detail carries
-        # every action, matching the CLI's buildAuthorizationDetails.
+        # RFC 9396 rich authorization details (see LINK_SOURCE_ACTIONS), in
+        # the bracketed form the device endpoint reads. One `source` detail
+        # carries every action, matching the CLI's buildAuthorizationDetails.
         form = {
             "client_id": LINK_CLIENT_ID,
             "scope": " ".join(effective_scopes),
             "connection_label": connection_label,
             "client_hint": LINK_CLIENT_NAME,
             "authorization_details[][type]": "source",
-            "authorization_details[][actions][]": self.SOURCE_ACTIONS,
+            "authorization_details[][actions][]": LINK_SOURCE_ACTIONS,
         }
 
         async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
