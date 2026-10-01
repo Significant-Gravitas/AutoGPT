@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -97,6 +98,7 @@ class GoogleSheetsBatchUpdateBlock(Block):
                 ),
             ],
             test_mock={"_batch_update": lambda *args, **kwargs: {"replies": [{}]}},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
