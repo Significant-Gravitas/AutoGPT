@@ -921,21 +921,28 @@ class GmailRemoveLabelBlock(GmailBase):
 
     async def _remove_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_label_id(service, label_name)
-        if label_id:
-            result = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
-                .execute()
-            )
-            if not result.get("labelIds"):
-                return {
-                    "status": "Label already removed or not applied",
-                    "label_id": label_id,
-                }
-            return {"status": "Label removed successfully", "label_id": label_id}
-        else:
-            return {"status": "Label not found", "label_name": label_name}
+        if not label_id:
+            return {"status": "Label not found", "label_id": ""}
+        # The modify response can't say whether the label was there before
+        # (Gmail omits labelIds once none are left), so check first.
+        message = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .get(userId="me", id=message_id, format="minimal")
+            .execute()
+        )
+        if label_id not in message.get("labelIds", []):
+            return {
+                "status": "Label already removed or not applied",
+                "label_id": label_id,
+            }
+        await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
+            .execute()
+        )
+        return {"status": "Label removed successfully", "label_id": label_id}
 
 
 class GmailGetThreadBlock(GmailBase):

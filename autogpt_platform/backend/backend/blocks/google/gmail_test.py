@@ -6,7 +6,6 @@ cover what those mocks skip, using a fake Gmail service.
 
 import base64
 import itertools
-from email.utils import getaddresses
 
 import httplib2
 import pytest
@@ -49,9 +48,8 @@ from backend.util.exceptions import BlockExecutionError, BlockInputError
 READONLY = "https://www.googleapis.com/auth/gmail.readonly"
 METADATA = "https://www.googleapis.com/auth/gmail.metadata"
 
-# A missing To/Cc/Bcc header parses to [""] on Pythons with the strict address
-# parser (3.13, 3.12.6+, 3.11.10+) and to [] on older ones. Pinned as-is.
-MISSING_HEADER = [addr.strip() for _, addr in getaddresses([""])]
+# A missing To/Cc/Bcc header parses to no recipients on every Python.
+MISSING_HEADER: list[str] = []
 
 
 class _Request:
@@ -212,10 +210,6 @@ def _use_fake(monkeypatch, block, fake: _FakeGmail):
 
 
 # --- Parsing: one mapping for Gmail Read, Get Thread and Get Message ---
-
-
-def test_missing_header_quirk_is_one_of_the_known_shapes():
-    assert MISSING_HEADER in ([], [""])
 
 
 def test_models_still_import_from_gmail_module():

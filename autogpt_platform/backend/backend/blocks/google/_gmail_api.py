@@ -140,7 +140,13 @@ def email_from_message(
 
 
 def _recipients(header: str) -> list[str]:
-    return [addr.strip() for _, addr in getaddresses([header])]
+    """Parse a To/Cc/Bcc header into addresses, skipping blank entries.
+
+    ``getaddresses`` yields a blank address for a missing header on Pythons
+    with the strict parser (3.13, 3.12.6+, 3.11.10+), and on every version
+    for group syntax such as ``undisclosed-recipients:;``.
+    """
+    return [addr.strip() for _, addr in getaddresses([header]) if addr.strip()]
 
 
 def message_format(scopes: list[str] | None) -> str:
