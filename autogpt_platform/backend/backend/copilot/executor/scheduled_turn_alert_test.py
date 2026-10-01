@@ -96,7 +96,9 @@ def test_scheduled_turn_whose_tool_errors_raises_one_alert():
         "Scheduled copilot turn failed: run_agent returned an error", level="error"
     )
     scope = sentry.new_scope.return_value.__enter__.return_value
-    scope.set_tag.assert_called_once_with("copilot_scheduled_turn_failure", "tool_error")
+    scope.set_tag.assert_called_once_with(
+        "copilot_scheduled_turn_failure", "tool_error"
+    )
     _, context = scope.set_context.call_args.args
     assert context["schedule_id"] == "sched-weekly"
     assert context["cron"] == "0 10 * * 1"

@@ -72,9 +72,7 @@ async def test_scheduled_turn_runs_agent_without_prisma(
     )
     add = mocker.patch(
         "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
-        AsyncMock(
-            return_value=MagicMock(id="exec-1", status=ExecutionStatus.QUEUED)
-        ),
+        AsyncMock(return_value=MagicMock(id="exec-1", status=ExecutionStatus.QUEUED)),
     )
 
     response = await RunAgentTool()._run_agent(
