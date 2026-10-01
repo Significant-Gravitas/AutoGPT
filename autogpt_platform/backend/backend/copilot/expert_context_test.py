@@ -66,9 +66,10 @@ def hire_experts_flag_on():
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for naming deferred tools by their `tool:<name>` capability id.
+# Last re-pinned for the `<seen_capabilities>` block (SECRT-2791), which tells
+# the model which ids it already described this session.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "1b84b359d4bf0526c3cc70665a41b241d2c652d2ca9f10a097902a5f9b1d82a3"
+    "f435411658190eddd14e56cce8ea7daadb1d70bbabdb5519efb41ea968b7239f"
 )
 
 
