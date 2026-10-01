@@ -193,6 +193,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Update Cell](block-integrations/google/sheets.md#google-sheets-update-cell) | Update a single cell in a Google Sheets spreadsheet |
 | [Google Sheets Update Row](block-integrations/google/sheets.md#google-sheets-update-row) | Update a specific row by its index |
 | [Google Sheets Write](block-integrations/google/sheets.md#google-sheets-write) | A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range |
+| [Google Slides Get Slide](block-integrations/google/slides_read.md#google-slides-get-slide) | Get one slide of a Google Slides presentation by slide ID: every element on it (text boxes, shapes, tables, images) with its element ID, type and text, plus the slide's speaker notes |
+| [Google Slides Read Presentation](block-integrations/google/slides_read.md#google-slides-read-presentation) | Read a Google Slides presentation: its title and, for each slide, the slide ID, position, title, text from shapes and tables, and speaker notes |
 | [JSON Decoder](block-integrations/data.md#json-decoder) | Decodes a JSON string into the value or data structure, it represents, e |
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
@@ -356,7 +358,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Maps Get Directions](block-integrations/search.md#google-maps-get-directions) | Get directions between two places with Google Maps: distance, travel time and a route summary, plus turn-by-turn steps if you ask for them |
 | [Google Maps Resolve Links](block-integrations/search.md#google-maps-resolve-links) | Find the place a Google Maps link points to, including short share links: place ID, name, address, coordinates and types |
 | [Google Maps Resolve Places](block-integrations/search.md#google-maps-resolve-places) | Look up place names or addresses on Google Maps and get each one's place ID, name, full address, coordinates, types and Google Maps link |
-| [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
+| [Google Maps Search](block-integrations/search.md#google-maps-search) | Search Google Maps for businesses and other places that match a text query |
 | [Google Maps Weather](block-integrations/search.md#google-maps-weather) | Get the weather for a place from Google Maps: current conditions, a daily forecast for up to 10 days, or an hourly forecast for up to 240 hours |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
@@ -554,6 +556,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Gmail Spam](block-integrations/google/gmail_organize.md#gmail-spam) | Report a Gmail message, or a whole thread, as spam, which moves it to Spam |
 | [Gmail Trash](block-integrations/google/gmail_organize.md#gmail-trash) | Move a Gmail message, or a whole thread, to the Trash, or restore it from the Trash |
 | [Gmail Update Labels](block-integrations/google/gmail_labels.md#gmail-update-labels) | Add and remove labels on a Gmail message, or a whole thread, in one step |
+| [Google Chat Find Direct Message](block-integrations/google/chat_direct_messages.md#google-chat-find-direct-message) | Find the user's existing Google Chat direct message with a person, by email address or user ID, and get its ID for reading or sending messages |
+| [Google Chat Find Group Chats](block-integrations/google/chat_spaces.md#google-chat-find-group-chats) | Find Google Chat group chats whose members are exactly the user plus the people you list, by email address or user ID, and get their IDs for reading or sending messages |
+| [Google Chat List Messages](block-integrations/google/chat_messages.md#google-chat-list-messages) | Read the messages in a Google Chat space, group chat or direct message, optionally only one thread or a time range |
+| [Google Chat List Spaces](block-integrations/google/chat_spaces.md#google-chat-list-spaces) | List the Google Chat conversations the user is in (named spaces, group chats and direct messages) with their IDs, names, types and member counts |
+| [Google Chat Search Messages](block-integrations/google/chat_message_search.md#google-chat-search-messages) | Search Google Chat messages across every conversation the user is in, by keywords, sender, conversation, time, unread status, mentions, links or attachments |
+| [Google Chat Search Spaces](block-integrations/google/chat_spaces.md#google-chat-search-spaces) | Find named Google Chat spaces the user is in by words in the space name, and get their IDs |
+| [Google Chat Send Message](block-integrations/google/chat_messages.md#google-chat-send-message) | Send a Google Chat message as the user to a space, group chat or direct message, or reply in a thread of a named space |
+| [Google Chat Start Direct Message](block-integrations/google/chat_direct_messages.md#google-chat-start-direct-message) | Open a Google Chat direct message with a person, by email address or user ID: returns the existing conversation, or creates an empty one |
+| [Google Contacts Get My Profile](block-integrations/google/contacts.md#google-contacts-get-my-profile) | Get the connected Google account's own profile: name, email address, photo, company and job title, plus language when Google shares it |
+| [Google Contacts Search](block-integrations/google/contacts.md#google-contacts-search) | Search the user's Google Contacts by name, email address, phone number or company, optionally including 'Other contacts' (people they have emailed but never saved) |
+| [Google Contacts Search Directory](block-integrations/google/contacts_directory.md#google-contacts-search-directory) | Search the user's Google Workspace directory for colleagues and contacts shared with the organization, by name or email address |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
 
 ## Developer Tools
@@ -652,6 +665,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Add Audio To Video](block-integrations/video/add_audio.md#add-audio-to-video) | Block to attach an audio file to a video file using moviepy |
+| [Google Slides Get Slide Thumbnail](block-integrations/google/slides_read.md#google-slides-get-slide-thumbnail) | Render one slide of a Google Slides presentation as a PNG image, for example to check how a slide looks after editing it |
 | [Loop Video](block-integrations/video/loop.md#loop-video) | Block to loop a video to a given duration or number of repeats |
 | [Media Duration](block-integrations/video/duration.md#media-duration) | Block to get the duration of a media file |
 | [Video Clip](block-integrations/video/clip.md#video-clip) | Extract a time segment from a video |
@@ -668,6 +682,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Calendar Respond To Event](block-integrations/google/calendar_invitations.md#google-calendar-respond-to-event) | Accept, decline or tentatively accept a Google Calendar invitation, with an optional note to the organizer |
 | [Google Calendar Suggest Meeting Times](block-integrations/google/calendar_availability.md#google-calendar-suggest-meeting-times) | Suggest meeting times when you and the given people are all free, using Google Calendar free/busy |
 | [Google Calendar Update Event](block-integrations/google/calendar_events.md#google-calendar-update-event) | Change a Google Calendar event's title, time, location, description, guests or Google Meet link |
+| [Google Slides Add Slide](block-integrations/google/slides_create.md#google-slides-add-slide) | Add a slide to a Google Slides presentation using one of Google's built-in layouts, such as title and body, and fill in its title and body text |
+| [Google Slides Batch Update](block-integrations/google/slides_edit.md#google-slides-batch-update) | Change a Google Slides presentation with Slides API batchUpdate requests: add shapes, tables, images and slides, insert or delete text, restyle, reorder or delete objects |
+| [Google Slides Create Presentation](block-integrations/google/slides_create.md#google-slides-create-presentation) | Create a new Google Slides presentation with the given title, in the root of My Drive |
+| [Google Slides Replace All Text](block-integrations/google/slides_edit.md#google-slides-replace-all-text) | Replace text everywhere in a Google Slides presentation, with several find-and-replace pairs at once |
+| [Google Slides Set Speaker Notes](block-integrations/google/slides_edit.md#google-slides-set-speaker-notes) | Set the speaker notes of one slide in a Google Slides presentation, replacing any notes it already has |
 | [Notion Create Page](block-integrations/notion/create_page.md#notion-create-page) | Create a new page in Notion |
 | [Notion Read Database](block-integrations/notion/read_database.md#notion-read-database) | Query a Notion database with optional filtering and sorting, returning structured entries |
 | [Notion Read Page](block-integrations/notion/read_page.md#notion-read-page) | Read a Notion page by its ID and return its raw JSON |
