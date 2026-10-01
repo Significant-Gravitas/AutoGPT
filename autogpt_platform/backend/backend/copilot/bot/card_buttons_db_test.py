@@ -301,10 +301,12 @@ _CHANNELS = [_Discord, _Slack, _Telegram, _Teams]
 
 
 @pytest.fixture(autouse=True)
-def no_executor():
-    """An answer wakes its turn; here the turn goes no further than dispatch."""
-    with patch("backend.copilot.executor.utils.dispatch_turn", AsyncMock()):
-        yield
+def dispatched():
+    """An answer wakes its turn, which goes no further than dispatch unless a
+    test sets ``side_effect``. The one patch of it: a second, torn down after
+    this one, would leave every later test dispatching into a mock."""
+    with patch("backend.copilot.executor.utils.dispatch_turn", AsyncMock()) as dispatch:
+        yield dispatch
 
 
 @pytest.fixture
@@ -741,7 +743,7 @@ async def test_a_linked_chat_runs_in_auto_whatever_mode_it_stored(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_here(
-    one_linked: _Channel, test_user_id, gate_on
+    one_linked: _Channel, test_user_id, gate_on, dispatched
 ):
     """Through the real bot: the turn the click starts reads the user's request
     as their last words, and its reply lands where the card was."""
@@ -756,11 +758,11 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
     thread = str(_Discord.thread_id)
     await bot_sessions.set_session(one_linked.platform, thread, session.session_id)
     executor = _Executor("Posted it; pausing the report next.")
+    dispatched.side_effect = executor.dispatch
     supervise = AsyncMock(return_value=Judgement(allowed=True, reason=""))
 
     with (
         patch.object(bot_chat, "enqueue_copilot_turn", executor.enqueue),
-        patch("backend.copilot.executor.utils.dispatch_turn", executor.dispatch),
         patch("backend.copilot.gate.supervise", supervise),
     ):
         bot = _InProcessBot()
@@ -781,14 +783,14 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_click_carries_the_turn_its_answer_woke_not_the_one_after_it(
-    one_linked: _Channel, test_user_id, gate_on, monkeypatch
+    one_linked: _Channel, test_user_id, gate_on, dispatched
 ):
     """The user starts a web turn the moment the woken one ends: the channel
     gets the woken turn's reply, never the web one's."""
     session, _, card = await _held_card(one_linked, test_user_id)
     executor = _Executor("Posted it.", then="Here is your web answer.")
 
-    bot = await _bot_following(one_linked, session, executor, monkeypatch)
+    bot = await _bot_following(one_linked, session, executor, dispatched)
     await one_linked.click(card, one_linked.owner)
 
     said = [c.args[1] for c in bot.adapter.send_message.await_args_list]
@@ -797,7 +799,7 @@ async def test_a_click_carries_the_turn_its_answer_woke_not_the_one_after_it(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_cards_answered_mid_reply_are_carried_once_when_that_turn_ends(
-    one_linked: _Channel, test_user_id, gate_on, monkeypatch
+    one_linked: _Channel, test_user_id, gate_on, dispatched
 ):
     """Two clicks while a turn runs: neither answer can start a turn, so both
     wait for the one that turn's end wakes, which carries both, once."""
@@ -812,7 +814,7 @@ async def test_cards_answered_mid_reply_are_carried_once_when_that_turn_ends(
         slot.keep()
     executor = _Executor("Posted both.")
 
-    bot = await _bot_following(one_linked, session, executor, monkeypatch)
+    bot = await _bot_following(one_linked, session, executor, dispatched)
     clicks = [
         asyncio.create_task(one_linked.click(card, one_linked.owner))
         for card in (first, second)
@@ -832,7 +834,7 @@ async def test_cards_answered_mid_reply_are_carried_once_when_that_turn_ends(
 
 
 async def _bot_following(
-    channel: _Channel, session: ChatSession, executor: _Executor, monkeypatch
+    channel: _Channel, session: ChatSession, executor: _Executor, dispatched
 ) -> _InProcessBot:
     """The real bot, wired to the channel's clicks and the session's thread,
     with ``executor`` running whatever turn a wake dispatches."""
@@ -842,9 +844,7 @@ async def _bot_following(
     discord_ui.register_choice_handler(
         MagicMock(), bot.adapter, bot.handler.handle, bot.api
     )
-    monkeypatch.setattr(
-        "backend.copilot.executor.utils.dispatch_turn", executor.dispatch
-    )
+    dispatched.side_effect = executor.dispatch
     return bot
 
 
