@@ -27,16 +27,30 @@ Event vocabulary (PostHog event name -> SQL equivalent):
 - ``expert_hired``        a user hired an expert from a template.
 - ``integration_connected`` a user connected a credential (OAuth or manual).
                           IntegrationCredential rows by createdByUserId.
+- ``credential_oauth_started`` the backend issued an OAuth login URL.  With
+                          ``integration_connected`` and the event below it gives
+                          started / connected / failed per provider.
+- ``credential_oauth_exchange_failed`` the OAuth callback returned an error, by
+                          ``failure_class``.  No SQL equivalent: nothing is stored.
+
+``run_agent`` is not the same as a "task": the ``analytics.*`` views count a
+copilot-started run through the chat turn that asked for it, so a task is
+``run_agent`` / ``run_expert`` with ``trigger`` other than ``copilot``, plus
+every ``run_autopilot`` and chat-turn ``run_expert``. Event names live in
+``backend.util.posthog_events``; the full list and the task filter are in
+``docs/platform/tracking-plan.md``.
 
 Every emitter is best-effort: tracking can never break the work it describes.
 """
 
 import logging
+import re
+from collections.abc import Iterable
 from datetime import datetime
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.util.posthog_client import get_posthog_client
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -47,20 +61,26 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 
-class ActivationEvent(StrEnum):
-    RUN_AGENT = "run_agent"
-    RUN_AUTOPILOT = "run_autopilot"
-    RUN_EXPERT = "run_expert"
-    AGENT_RUN_COMPLETED = "agent_run_completed"
-    AGENT_RUN_FAILED = "agent_run_failed"
-    SCHEDULE_CREATED = "schedule_created"
-    SCHEDULE_FIRED = "schedule_fired"
-    TRIGGER_FIRED = "trigger_fired"
-    EXPERT_HIRED = "expert_hired"
-    INTEGRATION_CONNECTED = "integration_connected"
-
-
 ScheduleTarget = Literal["agent", "autopilot", "expert"]
+
+# Where an OAuth callback failed. Dashboards and alerts group on these values,
+# so renaming one breaks them.
+OAuthExchangeFailureClass = Literal[
+    "invalid_state",  # state token missing, expired or for another provider
+    "provider_unavailable",  # no OAuth handler, or client id/secret not set
+    "token_exchange",  # the provider rejected the code, or the exchange raised
+    "credential_merge",  # the new token could not be stored on an existing one
+]
+
+_DETAIL_MAX_CHARS = 200
+# The patterns below backtrack on long runs, and an error can embed a whole
+# response body, so they only ever see this much of it.
+_DETAIL_SCAN_MAX_CHARS = 2000
+_URL_QUERY_RE = re.compile(r"(https?://[^\s?#]+)[?#]\S*")
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# Long runs with a digit look like codes, tokens or ids; words and exception
+# names do not.
+_TOKEN_RE = re.compile(r"(?=[\w~+=-]*\d)[\w~+=-]{20,}")
 
 # Triggers that mean "a person asked for this run now". Schedule and webhook
 # runs are reported as schedule_fired / trigger_fired by their own emitters,
@@ -74,7 +94,7 @@ def _enum_value(value: Any) -> Any:
 
 def track(
     user_id: str | None,
-    event: ActivationEvent,
+    event: PostHogEvent,
     properties: dict[str, Any] | None = None,
 ) -> None:
     """Send one event for *user_id*. Silently no-ops when analytics is off."""
@@ -122,11 +142,11 @@ def track_agent_run_started(
     if expert_id:
         track(
             user_id,
-            ActivationEvent.RUN_EXPERT,
+            PostHogEvent.RUN_EXPERT,
             {**properties, "kind": "workflow_run"},
         )
     else:
-        track(user_id, ActivationEvent.RUN_AGENT, properties)
+        track(user_id, PostHogEvent.RUN_AGENT, properties)
 
 
 def track_agent_run_finished(
@@ -146,9 +166,9 @@ def track_agent_run_finished(
         return
     status_value = _enum_value(status)
     if status_value == "COMPLETED":
-        event = ActivationEvent.AGENT_RUN_COMPLETED
+        event = PostHogEvent.AGENT_RUN_COMPLETED
     elif status_value == "FAILED":
-        event = ActivationEvent.AGENT_RUN_FAILED
+        event = PostHogEvent.AGENT_RUN_FAILED
     else:
         return
     track(
@@ -206,7 +226,7 @@ def track_chat_turn(
         return
     track(
         user_id,
-        ActivationEvent.RUN_EXPERT if expert_id else ActivationEvent.RUN_AUTOPILOT,
+        PostHogEvent.RUN_EXPERT if expert_id else PostHogEvent.RUN_AUTOPILOT,
         {
             "session_id": session_id,
             "expert_id": expert_id,
@@ -236,7 +256,7 @@ def track_schedule_created(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.SCHEDULE_CREATED,
+        PostHogEvent.SCHEDULE_CREATED,
         {
             "schedule_id": schedule_id,
             "target": target,
@@ -262,7 +282,7 @@ def track_schedule_fired(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.SCHEDULE_FIRED,
+        PostHogEvent.SCHEDULE_FIRED,
         {
             "schedule_id": schedule_id,
             "target": target,
@@ -285,7 +305,7 @@ def track_trigger_fired(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.TRIGGER_FIRED,
+        PostHogEvent.TRIGGER_FIRED,
         {
             "webhook_id": webhook_id,
             "graph_id": graph_id,
@@ -306,7 +326,7 @@ def track_expert_hired(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.EXPERT_HIRED,
+        PostHogEvent.EXPERT_HIRED,
         {"expert_id": expert_id, "template_id": template_id, "name": name},
     )
 
@@ -320,10 +340,56 @@ def track_integration_connected(
 ) -> None:
     track(
         user_id,
-        ActivationEvent.INTEGRATION_CONNECTED,
+        PostHogEvent.INTEGRATION_CONNECTED,
         {
             "provider": _enum_value(provider),
             "credential_type": _enum_value(credential_type),
             "method": method,
         },
     )
+
+
+def track_credential_oauth_started(*, user_id: str, provider: str) -> None:
+    track(
+        user_id,
+        PostHogEvent.CREDENTIAL_OAUTH_STARTED,
+        {"provider": _enum_value(provider)},
+    )
+
+
+def track_credential_oauth_exchange_failed(
+    *,
+    user_id: str,
+    provider: str,
+    failure_class: OAuthExchangeFailureClass,
+    status_code: int | None,
+    detail: str,
+    redact: Iterable[str] = (),
+) -> None:
+    track(
+        user_id,
+        PostHogEvent.CREDENTIAL_OAUTH_EXCHANGE_FAILED,
+        {
+            "provider": _enum_value(provider),
+            "failure_class": failure_class,
+            "status_code": status_code,
+            "detail": safe_error_detail(detail, redact),
+        },
+    )
+
+
+def safe_error_detail(detail: str, redact: Iterable[str] = ()) -> str:
+    """An error message fit for analytics: no known secrets, query strings,
+    emails or token-like strings, and at most ``_DETAIL_MAX_CHARS`` long."""
+    for secret in redact:
+        if secret:
+            detail = detail.replace(secret, "[redacted]")
+    detail = " ".join(detail.split())
+    if len(detail) > _DETAIL_SCAN_MAX_CHARS:
+        # Drop the word cut in half: a partial token or email would no longer
+        # match the patterns below.
+        detail = detail[:_DETAIL_SCAN_MAX_CHARS].rsplit(" ", 1)[0]
+    detail = _URL_QUERY_RE.sub(r"\1?[redacted]", detail)
+    detail = _EMAIL_RE.sub("[email]", detail)
+    detail = _TOKEN_RE.sub("[redacted]", detail)
+    return detail[:_DETAIL_MAX_CHARS]

@@ -122,6 +122,7 @@ Inside the `autogpt_platform` directory, you can use:
 | `make logs-core`       | Tail the logs for core services                                               |
 | `make format`          | Format & lint backend (Python) and frontend (TypeScript) code                 |
 | `make migrate`         | Run backend database migrations                                               |
+| `make publish-skills`  | Publish the skills catalog (marketplace skills and the expert roster) into your database; run `make load-store-agents` first if you want the experts' preload workflows too |
 | `make run-backend`     | Run the backend FastAPI server                                                |
 | `make run-frontend`    | Run the frontend Next.js development server                                   |
 
@@ -129,9 +130,13 @@ Inside the `autogpt_platform` directory, you can use:
 ```sh
 make init-env
 make start-core
+make migrate
+make publish-skills
 make run-backend
 make run-frontend
 ```
+
+`docker compose up` runs the migrations and the skills catalog publish for you: the `publish_skills` service downloads the public `Significant-Gravitas/skills-catalog` repository after `migrate` finishes, so the Skills Hub and the roster experts are there on first start. It needs network access to GitHub; offline, point `SKILLS_CATALOG_PATH` in `backend/.env` at a local checkout of that repository.
 
 > `make init-env` matters when running the frontend outside Docker: Next.js
 > only reads `.env` (not `.env.default`), and the frontend's embedded auth

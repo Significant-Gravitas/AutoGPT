@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Forward02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { bubbleClassFor } from "../ColorStep/helpers";
-import { aboutPlaceholderFor } from "../RoleStep/helpers";
+import { aboutPlaceholderFor } from "./helpers";
 
 interface Props {
   submittedAbout: string | null;

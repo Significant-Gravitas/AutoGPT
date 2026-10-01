@@ -1,5 +1,6 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { colorForCategory } from "../components/CategoryStep/helpers";
 import { draftWithPrefilledRole, EMPTY_DRAFT, saveDraft } from "../helpers";
 import RaisePage from "../page";
 
@@ -64,7 +65,7 @@ afterEach(() => {
 });
 
 describe("/raise?role= — the greeting page's raise door", () => {
-  it("opens on the job title question with the role already answered", async () => {
+  it("opens on the job title question with the area already answered", async () => {
     searchParams.current = new URLSearchParams("role=support");
 
     render(<RaisePage />);
@@ -76,7 +77,7 @@ describe("/raise?role= — the greeting page's raise door", () => {
         { timeout: 5000 },
       ),
     ).toBeDefined();
-    // Support's job titles, so the role really did land in the draft.
+    // Support's job titles, so the role's area really did land in the draft.
     expect(
       screen.getByRole("button", { name: "Customer Success Manager" }),
     ).toBeDefined();
@@ -86,7 +87,8 @@ describe("/raise?role= — the greeting page's raise door", () => {
     const inProgress = {
       ...EMPTY_DRAFT,
       hasStarted: true,
-      role: "marketer",
+      category: "marketing" as const,
+      color: "orange-300",
       jobTitle: "Marketing Manager",
       name: "Nova",
       step: "avatar" as const,
@@ -96,18 +98,19 @@ describe("/raise?role= — the greeting page's raise door", () => {
     expect(draftWithPrefilledRole(inProgress, "support")).toEqual(inProgress);
   });
 
-  it("ignores a role the wizard cannot use", () => {
+  it("ignores a role outside the wizard's role ids", () => {
     expect(draftWithPrefilledRole(EMPTY_DRAFT, "")).toEqual(EMPTY_DRAFT);
-    expect(draftWithPrefilledRole(EMPTY_DRAFT, "x".repeat(101))).toEqual(
+    expect(draftWithPrefilledRole(EMPTY_DRAFT, "Chief of staff")).toEqual(
       EMPTY_DRAFT,
     );
   });
 
-  it("keeps a free-text role the wizard would have accepted by hand", () => {
-    expect(draftWithPrefilledRole(EMPTY_DRAFT, "  Chief of staff  ")).toEqual({
+  it("answers the area and its color from the role", () => {
+    expect(draftWithPrefilledRole(EMPTY_DRAFT, "analyst")).toEqual({
       ...EMPTY_DRAFT,
       hasStarted: true,
-      role: "Chief of staff",
+      category: "finance",
+      color: colorForCategory("finance"),
       step: "jobTitle",
     });
   });

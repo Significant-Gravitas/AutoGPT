@@ -80,7 +80,6 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
     value,
     advance,
     goBack,
-    pickAnswer,
     setAnswer,
     skip,
   } = useExpertOnboardingCard({ steps: onboarding.steps, isLive });
@@ -162,7 +161,6 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
             labelId={labelId}
             autoFocus={current > 0}
             onChange={setAnswer}
-            onPick={pickAnswer}
             onSubmit={advance}
           />
         </m.div>

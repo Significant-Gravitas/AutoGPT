@@ -9,6 +9,7 @@ from replicate.helpers import FileOutput
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -129,6 +130,7 @@ class AIImageCustomizerBlock(Block):
                 ),
             },
             test_credentials=TEST_CREDENTIALS,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
