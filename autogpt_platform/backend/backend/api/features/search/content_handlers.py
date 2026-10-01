@@ -334,13 +334,15 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
     if not block.name:
         logger.warning(f"Block {block_id} has no name — using block_id as fallback")
     display_name = split_camelcase(block.name) if block.name else ""
+    # Sorted: a set iterates in hash-seed order, and the stale check compares text.
+    categories = sorted(str(cat.value) for cat in block.categories)
     parts = []
     if display_name:
         parts.append(display_name)
     if block.description:
         parts.append(block.description)
-    if block.categories:
-        parts.append(" ".join(str(cat.value) for cat in block.categories))
+    if categories:
+        parts.append(" ".join(categories))
 
     # Add input schema field descriptions
     parts += [
@@ -350,10 +352,6 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
     ]
 
     searchable_text = " ".join(parts)
-
-    categories_list = (
-        [cat.value for cat in block.categories] if block.categories else []
-    )
 
     # Extract provider names from credentials fields
     credentials_info = block.input_schema.get_credentials_fields_info()
@@ -376,7 +374,7 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
         searchable_text=searchable_text,
         metadata={
             "name": display_name or block.name or block_id,
-            "categories": categories_list,
+            "categories": categories,
             "providers": provider_names,
             "has_llm_model_field": has_llm_model_field,
             "is_integration": is_integration,

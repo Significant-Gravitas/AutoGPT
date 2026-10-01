@@ -2,6 +2,9 @@
 Tests for content handlers (blocks, store agents, documentation).
 """
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -270,6 +273,38 @@ async def test_block_handler_reembeds_stale_searchable_text():
             items = await handler.get_missing_items(batch_size=10)
 
     assert [item.content_id for item in items] == ["renamed-block"]
+
+
+def test_block_searchable_text_is_identical_across_processes():
+    """The stale check compares stored text with freshly built text, so text that
+    varies with the interpreter's hash seed re-embeds the block in every process."""
+    runs = [
+        subprocess.Popen(
+            [sys.executable, "-c", _BUILD_MULTI_CATEGORY_BLOCK_TEXT],
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for seed in ("0", "1", "2", "3")
+    ]
+    texts = set()
+    for run in runs:
+        out, err = run.communicate(timeout=120)
+        assert run.returncode == 0, err
+        texts.add(out)
+
+    assert len(texts) == 1, texts
+
+
+# Three categories, which these four seeds iterate in three different orders.
+_BUILD_MULTI_CATEGORY_BLOCK_TEXT = """
+from backend.api.features.search.content_handlers import _build_block_content_item
+from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
+block = UnrealTextToSpeechBlock()
+assert len(block.categories) == 3, block.categories
+print(_build_block_content_item("block-id", block).searchable_text)
+"""
 
 
 @pytest.mark.asyncio(loop_scope="session")
