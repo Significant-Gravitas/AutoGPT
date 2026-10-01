@@ -61,6 +61,9 @@ export enum Flag {
   // The chat's approval mode selector. Mirror of the backend ``Flag`` enum,
   // which ignores a sent mode when off. Fail-closed.
   COPILOT_AUTO_MODE = "copilot-auto-mode",
+  // The chat's own stream runtime in place of the AI SDK's: resume at a
+  // cursor, render from the persisted rows. Frontend only; fail-closed.
+  COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -95,6 +98,7 @@ const defaultFlags = {
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
   [Flag.COPILOT_AUTO_MODE]: false,
+  [Flag.COPILOT_STREAM_RUNTIME]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -162,6 +166,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_AUTO_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
+    case Flag.COPILOT_STREAM_RUNTIME:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }

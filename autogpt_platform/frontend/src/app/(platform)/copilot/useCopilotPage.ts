@@ -23,6 +23,7 @@ import {
 } from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
+import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
@@ -62,7 +63,9 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
   return null;
 }
 
-export function useCopilotPage() {
+export function useCopilotPage({
+  isStreamRuntime = false,
+}: { isStreamRuntime?: boolean } = {}) {
   const { user, isUserLoading, isLoggedIn } = useAuth();
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
@@ -123,6 +126,7 @@ export function useCopilotPage() {
   const {
     sessionId,
     setSessionId,
+    sessionView,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
     sessionExpertId,
@@ -169,10 +173,32 @@ export function useCopilotPage() {
   const isExpertSendLocked =
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
+  const streamArgs = {
+    userId: user?.id ?? null,
+    sessionId,
+    sessionView,
+    hydratedMessages,
+    rawSessionMessages,
+    sessionAuthProvider: sessionLlmAuthProvider,
+    sessionCredentialId: sessionLlmCredentialId,
+    activeTurnStartMessageId,
+    hasActiveStream,
+    refetchSession,
+    // Sent whenever the picker can set it. The tier control is not behind
+    // CHAT_MODE_OPTION -- it renders from the server's connection offer --
+    // so gating the value on that flag silently ran the turn on the tier the
+    // user had not chosen. Entitlement is the server's call, not the flag's.
+    copilotModel: copilotLlmModel,
+  };
+  // The host keys its mount by the flag, so this never changes within one.
+  const useStream = isStreamRuntime
+    ? useCopilotRuntimeStream
+    : useCopilotStream;
+  const stream = useStream(streamArgs);
+  const runtimeStream = "appendLocalUserRows" in stream ? stream : null;
   const {
     followBackendTurn,
     messages: currentMessages,
-    setMessages,
     sendMessage,
     stop,
     status,
@@ -187,39 +213,29 @@ export function useCopilotPage() {
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
-  } = useCopilotStream({
-    userId: user?.id ?? null,
-    sessionId,
-    hydratedMessages,
-    rawSessionMessages,
-    sessionAuthProvider: sessionLlmAuthProvider,
-    sessionCredentialId: sessionLlmCredentialId,
-    activeTurnStartMessageId,
-    hasActiveStream,
-    refetchSession,
-    // Sent whenever the picker can set it. The tier control is not behind
-    // CHAT_MODE_OPTION -- it renders from the server's connection offer --
-    // so gating the value on that flag silently ran the turn on the tier the
-    // user had not chosen. Entitlement is the server's call, not the flag's.
-    copilotModel: copilotLlmModel,
-  });
+  } = stream;
   const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
-      initialOldestSequence: oldestSequence,
+      initialOldestSequence: runtimeStream
+        ? runtimeStream.oldestSequence
+        : oldestSequence,
       initialHasMore: hasMoreMessages,
       initialPageRawMessages: rawSessionMessages,
     });
 
   // Merge the older-pages and current-page stat maps; current-page (historical)
   // wins on overlap since it was persisted more recently.
+  const currentTurnStats = runtimeStream
+    ? runtimeStream.turnStats
+    : historicalTurnStats;
   const turnStats = useMemo(() => {
     const merged = new Map(pagedTurnStats);
-    historicalTurnStats?.forEach((v, k) => merged.set(k, v));
+    currentTurnStats?.forEach((v, k) => merged.set(k, v));
     return merged;
-  }, [pagedTurnStats, historicalTurnStats]);
+  }, [pagedTurnStats, currentTurnStats]);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
   // Updated synchronously on every render so it always reflects the latest
@@ -257,18 +273,22 @@ export function useCopilotPage() {
     () => stripReplayPrefix(cachedRawMessages),
     [cachedRawMessages],
   );
-  const restoreStatusMessage = useMemo(
+  const latestStatusMessage = useMemo(
     () =>
       isRestoringActiveSession
         ? getLatestAssistantStatusMessage(messages)
         : null,
     [isRestoringActiveSession, messages],
   );
+  // The runtime's restore state is a passive notice; it never trims the list.
+  const restoreStatusMessage = runtimeStream
+    ? runtimeStream.restoreStatusMessage
+    : latestStatusMessage;
   const displayMessages = useMemo(() => {
-    if (!isRestoringActiveSession) return messages;
+    if (!isRestoringActiveSession || runtimeStream) return messages;
     if (hasAssistantTail(cachedMessages)) return cachedMessages;
     return trimVisibleMessagesForActiveRestore(messages);
-  }, [isRestoringActiveSession, messages, cachedMessages]);
+  }, [isRestoringActiveSession, runtimeStream, messages, cachedMessages]);
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
@@ -276,7 +296,12 @@ export function useCopilotPage() {
     sessionId,
     status,
     messages,
-    setMessages,
+    ...("setMessages" in stream
+      ? { setMessages: stream.setMessages }
+      : {
+          appendLocalUserRows: stream.appendLocalUserRows,
+          drainedCount: stream.drainedCount,
+        }),
   });
 
   useCopilotNotifications(sessionId);

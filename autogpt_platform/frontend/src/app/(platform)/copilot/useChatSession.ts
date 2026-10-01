@@ -417,6 +417,8 @@ export function useChatSession({
   return {
     sessionId,
     setSessionId,
+    /** The session GET as last fetched; null while a fetch is in flight. */
+    sessionView: freshSessionData,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
     sessionExpertId,

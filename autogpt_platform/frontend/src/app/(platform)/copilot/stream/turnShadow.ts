@@ -237,7 +237,7 @@ function reportDrift(
 }
 
 // `crypto.subtle` exists only in secure contexts; a plain-HTTP LAN origin skips the check.
-async function sha256Hex(text: string): Promise<string | null> {
+export async function sha256Hex(text: string): Promise<string | null> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return null;
   const hash = await subtle.digest("SHA-256", new TextEncoder().encode(text));
