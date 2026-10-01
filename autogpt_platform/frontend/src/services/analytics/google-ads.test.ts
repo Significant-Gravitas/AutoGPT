@@ -30,7 +30,7 @@ describe("trackAdsConversion", () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
     vi.stubEnv(
       "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
-      "sign_up=SIGNUP,subscribe=SUB",
+      "sign_up=SIGNUP,subscribe=SUB,trial_started=TS",
     );
     configureCookiebot();
     installCookiebot();
@@ -118,6 +118,25 @@ describe("trackAdsConversion", () => {
 
     expect(pushed).toEqual([
       ["event", "conversion", { send_to: "AW-123/SIGNUP" }],
+    ]);
+  });
+
+  it("sends a trial start to its own action", () => {
+    trackAdsConversion("trial_started", {
+      transactionID: "user-1",
+      email: "ada@example.com",
+    });
+
+    expect(pushed).toEqual([
+      [
+        "event",
+        "conversion",
+        {
+          send_to: "AW-123/TS",
+          transaction_id: "user-1",
+          user_data: { email: "ada@example.com" },
+        },
+      ],
     ]);
   });
 
@@ -271,9 +290,9 @@ describe("parseConversionLabels", () => {
   it("reads key=label pairs and ignores unknown or malformed parts", () => {
     expect(
       parseConversionLabels(
-        " sign_up=AbC , subscribe=DeF,unknown=X,,broken,top_up= ",
+        " sign_up=AbC , subscribe=DeF,unknown=X,,broken,top_up= ,trial_started=GhI",
       ),
-    ).toEqual({ sign_up: "AbC", subscribe: "DeF" });
+    ).toEqual({ sign_up: "AbC", subscribe: "DeF", trial_started: "GhI" });
   });
 
   it("returns nothing for an unset value", () => {

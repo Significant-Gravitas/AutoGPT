@@ -1,6 +1,7 @@
 import { usePostTrialsConfirmTrial } from "@/app/api/__generated__/endpoints/trials/trials";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -12,6 +13,7 @@ export function useTrialCheckoutReturn() {
   const isReturn = useRef(false);
   if (params.get("trial") === "success") isReturn.current = true;
   const requested = useRef<string | null>(null);
+  const reportedTrialStart = useRef<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{
     userID: string;
@@ -44,6 +46,12 @@ export function useTrialCheckoutReturn() {
           throw new Error(
             "Your trial is not active. Review your card setup and try again.",
           );
+        if (
+          response.data.active &&
+          reportedTrialStart.current !== userID &&
+          reportTrialStart(userID)
+        )
+          reportedTrialStart.current = userID;
         setResult({ userID, trial: response.data });
       })
       .catch((error: unknown) => {
@@ -70,4 +78,28 @@ export function useTrialCheckoutReturn() {
     active: current?.trial?.active || current?.trial?.converted,
     retry,
   };
+}
+
+// The return URL carries no Checkout session id, and a user only ever gets one
+// trial, so the user id is the dedup key. Google only receives it with
+// advertising consent; for everyone else the latch and the dropped query param
+// are what stop a re-render or a reload from counting twice.
+function reportTrialStart(userID: string): boolean {
+  const reported = trackAdsConversion("trial_started", {
+    transactionID: userID,
+    email: useAuthStore.getState().user?.email,
+  });
+  if (reported) dropTrialReturnParam();
+  return reported;
+}
+
+function dropTrialReturnParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("trial")) return;
+  url.searchParams.delete("trial");
+  window.history.replaceState(
+    null,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
 }

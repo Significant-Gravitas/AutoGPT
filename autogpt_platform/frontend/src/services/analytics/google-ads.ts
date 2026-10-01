@@ -16,6 +16,7 @@ export const ADS_CONVERSIONS = [
   "subscribe",
   "onboarding_complete",
   "top_up",
+  "trial_started",
 ] as const;
 export type AdsConversion = (typeof ADS_CONVERSIONS)[number];
 
