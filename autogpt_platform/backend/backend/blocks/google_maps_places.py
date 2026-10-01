@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -135,6 +136,7 @@ class GoogleMapsResolvePlacesBlock(Block):
                     _TEST_PLACE if query.startswith("Eiffel") else None
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -248,6 +250,7 @@ class GoogleMapsResolveLinksBlock(Block):
                 ),
                 "_find_place": lambda api_key, target: _TEST_PLACE,
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
