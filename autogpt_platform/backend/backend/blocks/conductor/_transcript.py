@@ -41,6 +41,8 @@ NON_AGENT_TYPES = USER_TYPES | {"system"}
 # started events, say nothing about whether the agent produced anything.
 STARTUP_RAW_TYPES = frozenset({"system", "command_lifecycle"})
 STARTUP_CODEX_EVENTS = frozenset({"thread.started", "turn.started"})
+# Session states in which no agent turn is running.
+SETTLED_STATES = frozenset({"idle", "error"})
 
 
 async def wait_for_reply(
@@ -60,7 +62,9 @@ async def wait_for_reply(
     the agent, is not a finished one); the transcript is then read once more
     for rows written just before the status changed. Sleeps and requests
     never outlive `timeout_seconds`: nothing is started once it has elapsed,
-    and a reply that completes after it is reported as timed out.
+    and a reply that completes after it is reported as timed out. `next_after`
+    is the id of the last row read, so a timed-out wait can be continued from
+    it with `wait_until_idle` plus `fetch_latest_after`.
     """
     deadline = time.monotonic() + timeout_seconds
 
@@ -101,7 +105,43 @@ async def wait_for_reply(
         "reply": reply_text(messages),
         "timed_out": timed_out,
         "truncated": turn.truncated,
+        "next_after": turn.cursor,
     }
+
+
+async def wait_until_idle(
+    client: ConductorClient,
+    session_id: str,
+    timeout_seconds: float,
+    poll_interval_seconds: float,
+) -> tuple[dict[str, Any], bool]:
+    """Poll the session status until it is `idle` or `error`.
+
+    Returns the last status read and whether `timeout_seconds` elapsed first.
+    The status is checked at once, so a session that is already idle costs a
+    single request; as in `wait_for_reply`, no sleep or request outlives the
+    deadline. Unlike `wait_for_reply` this does not know which prompt it is
+    waiting for, so an idle session is taken at its word even if a prompt is
+    still queued.
+    """
+    deadline = time.monotonic() + timeout_seconds
+
+    def remaining() -> float:
+        return deadline - time.monotonic()
+
+    status: dict[str, Any] = {}
+    while True:
+        try:
+            status = await bounded(client.session_status(session_id), remaining)
+        except TimeoutError:
+            return status, True
+        if str(status.get("status") or "") in SETTLED_STATES:
+            return status, False
+        if expired(remaining):
+            return status, True
+        await asyncio.sleep(min(poll_interval_seconds, max(0.0, remaining())))
+        if expired(remaining):
+            return status, True
 
 
 def reply_text(messages: list[dict[str, Any]]) -> str:

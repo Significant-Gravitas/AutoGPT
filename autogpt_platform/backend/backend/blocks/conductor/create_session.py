@@ -14,11 +14,17 @@ from backend.sdk import (
 from backend.util.exceptions import BlockExecutionError
 
 from ._api import (
+    DEFAULT_WAIT_SECONDS,
     MAX_WAIT_SECONDS,
+    NEXT_AFTER_DESCRIPTION,
+    POLL_INTERVAL_DESCRIPTION,
+    TIMEOUT_DESCRIPTION,
+    WAIT_GUIDANCE,
     ConductorAgent,
     ConductorClient,
     ConductorEffort,
     clean,
+    poll_interval_for,
 )
 from ._config import conductor
 from ._mocks import WAIT_MOCK_REPLY
@@ -60,20 +66,20 @@ class ConductorCreateSessionBlock(Block):
         name: str = SchemaField(description="Session name", default="")
         wait_for_reply: bool = SchemaField(
             description="After sending the initial prompt, wait until the agent is "
-            "idle and return its reply",
+            "idle and return its reply. " + WAIT_GUIDANCE,
             default=False,
             advanced=False,
         )
         timeout_seconds: int = SchemaField(
-            description="How long to wait for the reply",
-            default=900,
+            description=TIMEOUT_DESCRIPTION,
+            default=DEFAULT_WAIT_SECONDS,
             ge=1,
             le=MAX_WAIT_SECONDS,
         )
         poll_interval_seconds: int = SchemaField(
-            description="Seconds between status checks while waiting",
-            default=10,
-            ge=1,
+            description=POLL_INTERVAL_DESCRIPTION,
+            default=0,
+            ge=0,
             le=300,
         )
 
@@ -97,6 +103,7 @@ class ConductorCreateSessionBlock(Block):
             description="True when the turn produced more messages than are "
             "kept; messages holds the newest ones and reply may be incomplete"
         )
+        next_after: str = SchemaField(description=NEXT_AFTER_DESCRIPTION)
         error_message: str = SchemaField(description="Session error, if any")
 
     def __init__(self):
@@ -104,7 +111,7 @@ class ConductorCreateSessionBlock(Block):
             id="3d4b2ccb-d654-4b5d-9750-e67f393f53f0",
             description="Start a new agent session (chat) in an existing Conductor "
             "workspace, optionally with a first prompt, and optionally wait for "
-            "the agent's reply.",
+            "the agent's reply. " + WAIT_GUIDANCE,
             categories={BlockCategory.DEVELOPER_TOOLS},
             effect=BlockEffect.EXTERNAL,
             input_schema=self.Input,
@@ -135,6 +142,7 @@ class ConductorCreateSessionBlock(Block):
                 ("messages", lambda m: len(m) == 1),
                 ("timed_out", False),
                 ("truncated", False),
+                ("next_after", "row_2"),
                 ("error_message", ""),
             ],
             test_mock={
@@ -212,7 +220,9 @@ class ConductorCreateSessionBlock(Block):
                 session_id,
                 message_id,
                 input_data.timeout_seconds,
-                input_data.poll_interval_seconds,
+                poll_interval_for(
+                    input_data.timeout_seconds, input_data.poll_interval_seconds
+                ),
             )
         except Exception as e:
             raise BlockExecutionError(
@@ -225,4 +235,5 @@ class ConductorCreateSessionBlock(Block):
         yield "messages", waited["messages"]
         yield "timed_out", waited["timed_out"]
         yield "truncated", bool(waited.get("truncated", False))
+        yield "next_after", str(waited.get("next_after") or "")
         yield "error_message", waited["error_message"]

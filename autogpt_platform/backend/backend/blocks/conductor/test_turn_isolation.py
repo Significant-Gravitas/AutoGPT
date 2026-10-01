@@ -1,5 +1,6 @@
 import pytest
 
+from backend.blocks.conductor._paging import fetch_latest_after
 from backend.blocks.conductor._transcript import wait_for_reply
 from backend.blocks.conductor.test_fixtures import (
     RECEIPT,
@@ -39,3 +40,28 @@ async def test_tagged_reply_excludes_untagged_rows():
     assert result["timed_out"] is False
     assert result["reply"] == "Correct answer"
     assert [row["id"] for row in result["messages"]] == ["prompt", "answer"]
+
+
+@pytest.mark.asyncio
+async def test_timed_out_wait_resumes_after_next_after_without_rereading_rows():
+    """`next_after` is the last row read, tagged or not, so a continuation
+    from it sees only rows that arrived after the wait gave up."""
+    rows = [
+        user_row("prompt", RECEIPT, 1),
+        agent_row("unrelated", "", 2, claude_text("Wrong turn")),
+    ]
+    transcript = FakeTranscript(rows)
+    client = wait_client(transcript, [{"status": "working"}])
+    with wait_clock():
+        result = await wait_for_reply(client, "s1", RECEIPT, 30, 10)
+
+    assert result["timed_out"] is True
+    assert [row["id"] for row in result["messages"]] == ["prompt"]
+    assert result["next_after"] == "unrelated"
+
+    transcript.rows.append(agent_row("answer", RECEIPT, 3, claude_text("Late")))
+    continued, skipped = await fetch_latest_after(
+        client, "s1", result["next_after"], 10
+    )
+    assert [row["id"] for row in continued] == ["answer"]
+    assert skipped is False
