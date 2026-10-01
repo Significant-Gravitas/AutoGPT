@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -162,6 +163,7 @@ class GoogleCalendarSuggestMeetingTimesBlock(Block):
                     }
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -7,6 +7,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -111,6 +112,7 @@ class GoogleCalendarRespondToEventBlock(Block):
                 "_patch_event": lambda *args, **kwargs: _TEST_ACCEPTED,
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

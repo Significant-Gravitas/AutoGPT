@@ -9,6 +9,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -135,6 +136,7 @@ class GoogleCalendarUpdateEventBlock(Block):
                 "_patch_event": lambda *args, **kwargs: _TEST_UPDATED_RESOURCE,
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -333,6 +335,7 @@ class GoogleCalendarDeleteEventBlock(Block):
             test_output=[("event_id", TEST_EVENT_RESOURCE["id"])],
             test_mock={"_delete_event": lambda *args, **kwargs: None},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

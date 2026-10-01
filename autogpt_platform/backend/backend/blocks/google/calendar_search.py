@@ -7,6 +7,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -108,6 +109,7 @@ class GoogleCalendarListCalendarsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("calendars", [ops_calendar]), ("calendar", ops_calendar)],
             test_mock={"_list_calendars": lambda *args, **kwargs: _TEST_CALENDARS},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -223,6 +225,7 @@ class GoogleCalendarSearchEventsBlock(Block):
                     "nextPageToken": "next-page",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -329,6 +332,7 @@ class GoogleCalendarGetEventBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("event", _TEST_EVENT)],
             test_mock={"_get_event": lambda *args, **kwargs: TEST_EVENT_RESOURCE},
+            effect=BlockEffect.READ,
         )
 
     async def run(
