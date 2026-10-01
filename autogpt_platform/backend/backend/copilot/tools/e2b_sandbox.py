@@ -1063,6 +1063,36 @@ async def pause_sandbox_direct(
         return False
 
 
+async def keep_sandbox_running(
+    sandbox: "AsyncSandbox", seconds: int, owner: SandboxOwner | None = None
+) -> bool:
+    """Re-arm the box's running-time limit to *seconds* from now.
+
+    Only a connect re-arms the limit, once per turn, and E2B pauses the box
+    at it whatever is running: a command started late in a long turn is cut
+    off mid-run.  The screen's stream password lives as long as the box could
+    run (``_settle_stream``), so it is pushed out with it, never shortened.
+    Best effort: returns ``False`` when E2B did not take the new limit.
+    """
+    try:
+        await asyncio.wait_for(
+            sandbox.set_timeout(seconds), timeout=_E2B_API_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Could not extend sandbox %.12s to %ds: %s",
+            sandbox.sandbox_id,
+            seconds,
+            exc,
+        )
+        return False
+    if owner is not None:
+        with contextlib.suppress(Exception):
+            redis = await get_redis_async()
+            await redis.expire(owner.stream_key(), seconds, gt=True)
+    return True
+
+
 async def kill_sandbox(session_id: str, api_key: str) -> bool:
     """Kill a session's box: the chat is gone, so is its scratch computer.
 
