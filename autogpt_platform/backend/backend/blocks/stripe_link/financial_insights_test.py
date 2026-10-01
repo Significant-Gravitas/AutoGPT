@@ -1,5 +1,6 @@
-"""Financial-insights block behaviour: the wait for freshly connected accounts,
-refused grants, pagination and query building, and tolerant parsing.
+"""Financial-insights block behaviour: the deployment gate, the wait for freshly
+connected accounts, refused grants, pagination and query building, and
+tolerant parsing.
 
 Wire contract: Stripe's Link SDK (`_operations.py`, `models.py`) and
 https://docs.stripe.com/financial-connections/agents/financial-insights
@@ -21,7 +22,13 @@ from backend.blocks.stripe_link._auth import (
     LinkAPIError,
     link_api_request,
 )
+from backend.integrations.oauth import stripe_link_hosted
 
+FINANCIAL_BLOCKS = (
+    fi.StripeLinkListFinancialAccountsBlock,
+    fi.StripeLinkListTransactionsBlock,
+    fi.StripeLinkGetBalancesBlock,
+)
 PENDING = {
     "code": "external_data_retrieval_pending",
     "description": "We are still retrieving external financial data.",
@@ -85,6 +92,42 @@ def waits(monkeypatch) -> list[float]:
 
 
 # ---------------------------------------------------------------------------
+# Deployment gate
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("disabled", [True, False])
+def test_the_blocks_follow_the_deployment_gate(monkeypatch, disabled):
+    monkeypatch.setattr(fi, "FINANCIAL_INSIGHTS_DISABLED", disabled)
+
+    for block_cls in FINANCIAL_BLOCKS:
+        assert block_cls().disabled is disabled, block_cls.__name__
+
+
+@pytest.mark.parametrize(
+    "registered_client, opted_in, disabled",
+    [
+        # Device code: every connection asks for the access.
+        (False, False, False),
+        (False, True, False),
+        # Registered client: only once the operator opts in.
+        (True, False, True),
+        (True, True, False),
+    ],
+)
+def test_the_gate_follows_the_link_client_and_the_opt_in(
+    monkeypatch, registered_client, opted_in, disabled
+):
+    """The test above patches the constant, so this pins the predicate it is
+    built from: hiding the blocks on a device-code deployment, or showing them
+    where no connection is asked to share accounts, would both pass there."""
+    monkeypatch.setattr(fi, "STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED", registered_client)
+    monkeypatch.setattr(
+        stripe_link_hosted._config, "stripe_link_financial_insights", opted_in
+    )
+
+    assert fi.financial_insights_disabled() is disabled
+
+
+# ---------------------------------------------------------------------------
 # A freshly connected account (202 external_data_retrieval_pending)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
@@ -123,14 +166,7 @@ async def test_data_still_loading_after_the_wait_says_to_try_again_shortly(waits
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 403])
-@pytest.mark.parametrize(
-    "block_cls",
-    [
-        fi.StripeLinkListFinancialAccountsBlock,
-        fi.StripeLinkListTransactionsBlock,
-        fi.StripeLinkGetBalancesBlock,
-    ],
-)
+@pytest.mark.parametrize("block_cls", FINANCIAL_BLOCKS)
 async def test_a_refused_grant_asks_the_user_to_reconnect(block_cls, status, waits):
     refused = LinkAPIError(
         f"Link API error ({status})", status_code=status, code="feature_unavailable"

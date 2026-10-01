@@ -8,6 +8,8 @@ moves money. Link offers this to US consumers only, on live accounts only
 
 Accounts are shared when the user connects Stripe Link. A connection made
 before the platform asked for that access is refused until it is reconnected.
+Deployments that connect through the registered Link client only ask for it
+once the operator opts in, and hide these blocks until then.
 """
 
 from enum import Enum
@@ -53,6 +55,26 @@ from backend.blocks.stripe_link._financial_testdata import (
     TEST_TRANSACTION,
 )
 from backend.data.model import SchemaField
+from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+    requests_financial_insights,
+)
+
+
+def financial_insights_disabled() -> bool:
+    """Whether this deployment withholds the financial-insights blocks.
+
+    With the registered client configured, Stripe Link connects only through
+    it, and its login asks users to share accounts only when the operator has
+    opted in. Without that grant every read is refused, so the blocks would
+    offer something no new connection can do. Device-code connections always
+    ask for it. A function so the predicate itself is testable: the blocks read
+    the constant below when they are built.
+    """
+    return STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED and not requests_financial_insights()
+
+
+FINANCIAL_INSIGHTS_DISABLED = financial_insights_disabled()
 
 FINANCIAL_CREDENTIALS_DESCRIPTION = (
     "Connect your Stripe Link account and choose which bank accounts and cards "
@@ -108,6 +130,7 @@ class StripeLinkListFinancialAccountsBlock(Block):
                 "with Link, use List Payment Methods instead."
             ),
             categories={BlockCategory.DATA},
+            disabled=FINANCIAL_INSIGHTS_DISABLED,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
@@ -236,6 +259,7 @@ class StripeLinkListTransactionsBlock(Block):
                 "starting_after to keep reading."
             ),
             categories={BlockCategory.DATA},
+            disabled=FINANCIAL_INSIGHTS_DISABLED,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
@@ -328,6 +352,7 @@ class StripeLinkGetBalancesBlock(Block):
                 "USD)."
             ),
             categories={BlockCategory.DATA},
+            disabled=FINANCIAL_INSIGHTS_DISABLED,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},

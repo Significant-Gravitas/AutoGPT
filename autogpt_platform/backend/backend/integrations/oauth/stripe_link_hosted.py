@@ -33,14 +33,15 @@ from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scop
 from backend.integrations.oauth.stripe_link import (
     LINK_AUTH_BASE_URL,
     LINK_HTTP_TIMEOUT,
-    LINK_SOURCE_ACTIONS,
+    StripeLinkDeviceAuthHandler,
     fetch_link_username,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.settings import Secrets
+from backend.util.settings import Config, Secrets
 
 logger = logging.getLogger(__name__)
 
+_config = Config()
 _secrets = Secrets()
 STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
     _secrets.stripe_link_client_id
@@ -50,14 +51,27 @@ STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
 
 HOSTED_FLOW = "authorization_code"
 
-# The financial-insights grant, as the JSON array the authorization endpoint
-# takes in one `authorization_details` parameter (the device endpoint takes the
-# same detail as bracketed form fields instead). Compact, so the URL carries no
-# encoded spaces.
+# The financial-insights grant: the source actions the device-code flow asks
+# for, as the JSON array the authorization endpoint takes in one
+# `authorization_details` parameter (the device endpoint reads the same detail
+# as bracketed form fields). Compact, so the URL carries no encoded spaces.
 # https://docs.stripe.com/financial-connections/agents/financial-insights
 AUTHORIZATION_DETAILS = json.dumps(
-    [{"type": "source", "actions": LINK_SOURCE_ACTIONS}], separators=(",", ":")
+    [{"type": "source", "actions": StripeLinkDeviceAuthHandler.SOURCE_ACTIONS}],
+    separators=(",", ":"),
 )
+
+
+def requests_financial_insights() -> bool:
+    """Whether the hosted login also asks the customer to share bank and card
+    accounts with the financial-insights blocks.
+
+    Opt-in, because Link refuses the whole authorization, payments included,
+    when it cannot grant something asked for: insights need the Stripe account
+    registered for Financial Connections, and Link offers them to US consumers
+    only, while agent payments also serve Canada.
+    """
+    return _config.stripe_link_financial_insights
 
 
 def is_hosted_link_credential(credentials: OAuth2Credentials) -> bool:
@@ -93,11 +107,9 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
             "state": state,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
-            # Asks the customer to share bank and card accounts with the
-            # financial-insights blocks. The scopes above cover payments and
-            # profile only; without this, those blocks get 403s.
-            "authorization_details": AUTHORIZATION_DETAILS,
         }
+        if requests_financial_insights():
+            params["authorization_details"] = AUTHORIZATION_DETAILS
         return f"{LINK_AUTH_BASE_URL}/auth?{urlencode(params)}"
 
     async def exchange_code_for_tokens(

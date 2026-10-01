@@ -11,9 +11,10 @@ revoke an account in the Link app at any time. A connection made before the
 platform asked for this access, or one whose accounts were revoked, gets an
 error asking the user to reconnect. A deployment that connects Stripe Link
 through its own OAuth client (`STRIPE_LINK_CLIENT_ID` and the related settings)
-must also register that Stripe account for Financial Connections in the Stripe
-Dashboard; without the registration Stripe allows only Link's own transactions
-to be requested.
+hides these blocks until `STRIPE_LINK_FINANCIAL_INSIGHTS` is turned on. Turn it
+on only after registering that Stripe account for Financial Connections in the
+Stripe Dashboard: Link refuses a connection that asks for access it cannot
+grant, payments included.
 <!-- END MANUAL -->
 
 ## Stripe Link Get Balances

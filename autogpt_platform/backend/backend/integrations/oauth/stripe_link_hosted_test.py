@@ -19,6 +19,7 @@ from backend.integrations.oauth.stripe_link_hosted import (
     StripeLinkHostedOAuthHandler,
     is_hosted_link_credential,
 )
+from backend.util.settings import Config
 
 CALLBACK = "https://platform.example/auth/integrations/oauth_callback"
 
@@ -43,7 +44,19 @@ def handler(monkeypatch) -> StripeLinkHostedOAuthHandler:
         "stripe_link_publishable_key",
         "pk_test_publishable",
     )
+    # Pinned rather than read from a developer's .env.
+    monkeypatch.setattr(
+        stripe_link_hosted._config, "stripe_link_financial_insights", False
+    )
     return StripeLinkHostedOAuthHandler("lwlcid_client", "client-secret", CALLBACK)
+
+
+@pytest.fixture
+def financial_insights(monkeypatch) -> None:
+    """The operator has opted in to asking for financial-insights access."""
+    monkeypatch.setattr(
+        stripe_link_hosted._config, "stripe_link_financial_insights", True
+    )
 
 
 @pytest.fixture
@@ -117,14 +130,34 @@ def test_login_url_matches_the_documented_authorization_request(handler):
         "state": ["state-token"],
         "code_challenge": ["c" * 43],
         "code_challenge_method": ["S256"],
-        "authorization_details": [
-            json.dumps(FINANCIAL_INSIGHTS_DETAILS, separators=(",", ":"))
-        ],
     }
     assert "client-secret" not in url
 
 
-def test_login_url_carries_authorization_details_as_one_encoded_json_value(handler):
+def test_financial_insights_are_off_unless_the_operator_turns_them_on():
+    """Link refuses the whole authorization, payments included, when it cannot
+    grant something asked for, and financial insights need Financial
+    Connections registration and a US consumer. Asking by default would break
+    hosted connects for Canadian users, or before the operator registers."""
+    assert Config.model_fields["stripe_link_financial_insights"].default is False
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_login_url_asks_for_financial_insights_only_when_turned_on(
+    handler, monkeypatch, enabled
+):
+    monkeypatch.setattr(
+        stripe_link_hosted._config, "stripe_link_financial_insights", enabled
+    )
+
+    url = handler.get_login_url([], "state-token", "c" * 43)
+
+    assert ("authorization_details" in parse_qs(urlsplit(url).query)) is enabled
+
+
+def test_login_url_carries_authorization_details_as_one_encoded_json_value(
+    handler, financial_insights
+):
     """Stripe's financial-insights contract: a JSON array, URL-encoded, in a
     single `authorization_details` parameter. Without it the customer is never
     asked to share accounts and every financial-insights block gets a 403."""
@@ -141,7 +174,9 @@ def test_login_url_carries_authorization_details_as_one_encoded_json_value(handl
 
 
 @pytest.mark.asyncio
-async def test_hosted_and_device_flows_ask_for_the_same_source_actions(handler, link):
+async def test_hosted_and_device_flows_ask_for_the_same_source_actions(
+    handler, link, financial_insights
+):
     """One grant for both flows. An action added to only one would leave the
     financial-insights blocks working for some connections and 403ing for
     the rest, depending on how each user happened to connect."""
