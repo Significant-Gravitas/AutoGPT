@@ -1176,6 +1176,48 @@ async def _warn_if_stripe_subscription_drifts(
     )
 
 
+async def get_stripe_sweep_revert_warning(
+    user_id: str, tier: SubscriptionTier
+) -> str | None:
+    """Explain when the Stripe reconciliation sweep would undo an admin grant.
+
+    The sweep treats every user who has a Stripe customer (other than
+    ENTERPRISE) as Stripe-billed and sets their tier from the live
+    subscription, NO_TIER when there is none. Granting a paid tier to a user
+    who already has a customer but no active subscription (an old top-up, a
+    canceled plan) is therefore reverted on the next sweep, silently. Returns
+    a message for the admin in that case, None when the grant is safe.
+
+    Raises on Stripe/DB failure; the caller decides how to degrade.
+    """
+    if tier in (SubscriptionTier.NO_TIER, SubscriptionTier.ENTERPRISE):
+        return None
+    # Local import: breaks a credit <-> rate_limit circular at module load.
+    from backend.data.credit import _get_active_subscription
+    from backend.util.settings import Config
+
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return None
+    if await _get_active_subscription(user.stripe_customer_id) is not None:
+        return None
+    hours = Config().stripe_tier_reconcile_interval_hours
+    logger.warning(
+        "Admin tier grant will be reverted by the Stripe sweep: user=%s"
+        " admin_tier=%s stripe_customer=%s has no active subscription",
+        user_id,
+        tier.value,
+        user.stripe_customer_id,
+    )
+    return (
+        f"This user already has a Stripe customer with no active subscription. "
+        f"The Stripe reconciliation sweep treats such accounts as Stripe-billed "
+        f"and will revert this {tier.value} grant to NO_TIER within {hours} "
+        f"hour{'s' if hours != 1 else ''}. Use ENTERPRISE for a plan Stripe must "
+        f"not manage, or give the user a real Stripe subscription."
+    )
+
+
 async def get_global_rate_limits(
     user_id: str,
     config_daily: int,

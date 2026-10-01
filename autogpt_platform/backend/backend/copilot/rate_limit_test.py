@@ -3041,3 +3041,112 @@ class TestBuildBudgetCtx:
                 default_weekly_cost_limit=1_000_000_000,
             )
         assert block == ""
+
+
+# ---------------------------------------------------------------------------
+# get_stripe_sweep_revert_warning — admin grant vs. the Stripe sweep
+# ---------------------------------------------------------------------------
+
+
+class TestGetStripeSweepRevertWarning:
+    """The Stripe reconciliation sweep reverts any paid tier on a user who has
+    a Stripe customer but no active subscription (SECRT-2770). Admins granting
+    such a tier must be told, since nothing else surfaces the revert."""
+
+    @staticmethod
+    def _user(stripe_customer_id: str | None) -> MagicMock:
+        user = MagicMock()
+        user.stripe_customer_id = stripe_customer_id
+        return user
+
+    @pytest.mark.asyncio
+    async def test_warns_when_customer_has_no_active_subscription(self, caplog):
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user("cus_old_topup"),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as active_sub,
+            patch("backend.util.settings.Config") as config_cls,
+        ):
+            config_cls.return_value.stripe_tier_reconcile_interval_hours = 6
+            with caplog.at_level("WARNING", logger="backend.copilot.rate_limit"):
+                warning = await get_stripe_sweep_revert_warning(
+                    _USER, SubscriptionTier.PRO
+                )
+
+        active_sub.assert_awaited_once_with("cus_old_topup")
+        assert warning is not None
+        assert "PRO" in warning
+        assert "NO_TIER" in warning
+        assert "6 hours" in warning
+        assert "ENTERPRISE" in warning
+        assert any(
+            "will be reverted by the Stripe sweep" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_customer_is_safe(self):
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user(None),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+            ) as active_sub,
+        ):
+            warning = await get_stripe_sweep_revert_warning(_USER, SubscriptionTier.PRO)
+
+        assert warning is None
+        active_sub.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_active_subscription_is_safe(self):
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user("cus_paying"),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=MagicMock(id="sub_1"),
+            ),
+        ):
+            warning = await get_stripe_sweep_revert_warning(_USER, SubscriptionTier.PRO)
+
+        assert warning is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "tier", [SubscriptionTier.ENTERPRISE, SubscriptionTier.NO_TIER]
+    )
+    async def test_tiers_the_sweep_never_revokes_skip_the_lookup(self, tier):
+        """ENTERPRISE is excluded from the sweep and NO_TIER is what the sweep
+        would set anyway, so neither needs a Stripe round-trip."""
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with patch(
+            "backend.copilot.rate_limit.get_user_by_id",
+            new_callable=AsyncMock,
+        ) as get_user:
+            warning = await get_stripe_sweep_revert_warning(_USER, tier)
+
+        assert warning is None
+        get_user.assert_not_awaited()
