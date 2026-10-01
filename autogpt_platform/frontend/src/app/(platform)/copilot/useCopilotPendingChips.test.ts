@@ -760,6 +760,25 @@ describe("useCopilotPendingChips", () => {
     }
   });
 
+  it("backstop poll runs when the transcript does not end on an assistant", async () => {
+    vi.useFakeTimers();
+    try {
+      const { view, getMessages } = setupHook([
+        { id: "user-1", role: "user", parts: [{ type: "text", text: "hi" }] },
+      ]);
+      act(() => {
+        view.result.current.queueMessage("follow up");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(storedFallbacks(getMessages())).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   describe("restoring the buffer on session load", () => {
     /** Hold every peek GET open. `resolveAll` answers each with the same
      *  one-message buffer, the way the backend does while a follow-up is

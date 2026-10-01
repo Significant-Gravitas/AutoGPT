@@ -15,6 +15,9 @@ const sessionState = vi.hoisted(() => ({ sessionId: "session-1" as string }));
 
 const sendNewMessage = vi.hoisted(() => vi.fn());
 const queueFollowUpMessage = vi.hoisted(() => vi.fn());
+const toast = vi.hoisted(() => vi.fn());
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({ toast }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
@@ -164,6 +167,7 @@ beforeEach(() => {
 afterEach(() => {
   sendNewMessage.mockReset();
   queueFollowUpMessage.mockReset();
+  toast.mockReset();
 });
 
 describe("useCopilotPage — follow-up after the backend's turn ended", () => {
@@ -259,6 +263,28 @@ describe("useCopilotPage — follow-up after the backend's turn ended", () => {
     view.unmount();
     await send;
     expect(sendNewMessage).not.toHaveBeenCalled();
+  });
+
+  it("reports a follow-up whose dispatched send fails", async () => {
+    const view = renderHook(() => useCopilotPage());
+    sendNewMessage.mockRejectedValue(new Error("network down"));
+
+    const send = view.result.current.onSend("follow-up");
+    await flushMicrotasks();
+    setStream({ status: "ready" });
+    view.rerender();
+    await flushMicrotasks();
+    await send;
+    await flushMicrotasks();
+
+    expect(sendNewMessage).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't send message",
+        description: expect.stringContaining("network down"),
+        variant: "destructive",
+      }),
+    );
   });
 
   it("resolves the follow-up once dispatched rather than when its answer ends", async () => {

@@ -446,6 +446,20 @@ describe("ChatInput Enter while streaming", () => {
     expect(mockOnSend).not.toHaveBeenCalled();
   });
 
+  it("ignores Enter mid-turn when the box holds only whitespace", async () => {
+    const mockOnEnqueue = vi.fn();
+    render(
+      <ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} isStreaming />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "   " } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(mockOnEnqueue).not.toHaveBeenCalled();
+    expect(mockOnSend).not.toHaveBeenCalled();
+  });
+
   it("still sends on Enter mid-turn when nothing can queue the message", async () => {
     render(<ChatInput onSend={mockOnSend} isStreaming />);
     const textarea = screen.getByTestId("textarea");
