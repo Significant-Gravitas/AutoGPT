@@ -10,7 +10,7 @@ Create a Conductor cloud workspace for a project or repository, optionally start
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `repository_url` (both or neither is an input error). Blank optional fields are omitted so Conductor applies its defaults; `model` is passed through as-is, so use an id Conductor accepts (for example `fable-5-1`, `opus-5-5-1m`, `sonnet-5-1m`, `gpt-6-astra` or `auto`). When `message` is set the agent starts on it immediately and `initial_message_id` is returned. With `wait_for_reply` the block then waits the same way as Send Message: it reads the transcript and then `GET /v0/sessions/{id}/status` every `poll_interval_seconds` (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the transcript rows with the prompt's turn (a freshly initializing workspace reports idle until the agent actually starts, and startup events alone are not treated as done), and returns those rows with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read).
+The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `repository_url` (both or neither is an input error). Blank optional fields are omitted so Conductor applies its defaults; `model` is passed through as-is, so use an id Conductor accepts (for example `fable-5-1`, `opus-5-5-1m`, `sonnet-5-1m`, `gpt-6-astra` or `auto`). When `message` is set the agent starts on it immediately and `initial_message_id` is returned. With `wait_for_reply` the block then waits the same way as Send Message: it reads the transcript and then `GET /v0/sessions/{id}/status` every `poll_interval_seconds` (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the transcript rows with the prompt's turn (a freshly initializing workspace reports idle until the agent actually starts, and startup events alone are not treated as done), and returns the visible agent text joined into `reply`, the kept-row `message_count` and `next_after`, the ID of the newest transcript row read, for Get Session to continue from (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read). The raw rows are only returned, in `messages`, when `include_messages` is on.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -32,6 +32,7 @@ The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `re
 | wait_for_reply | After sending the initial prompt, wait until the agent is idle and return its reply | bool | No |
 | timeout_seconds | How long to wait for the reply | int | No |
 | poll_interval_seconds | Seconds between status checks while waiting | int | No |
+| include_messages | Also return the raw transcript rows of the turn in messages. Off by default: a long turn is hundreds of kilobytes, while reply, session_status and next_after cover the usual needs | bool | No |
 
 ### Outputs
 
@@ -44,9 +45,11 @@ The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `re
 | initial_message_id | ID of the initial prompt message, empty when none was sent | str |
 | session_status | idle, working or error once waiting finished | str |
 | reply | Text the agent produced in response | str |
-| messages | Raw transcript messages after the prompt | List[Dict[str, Any]] |
+| next_after | ID of the newest transcript row read while waiting; pass it as after to Get Session to read what follows | str |
+| message_count | Number of transcript rows of the turn that were kept | int |
+| messages | Raw transcript rows of the turn, oldest first; only emitted when include_messages is on | List[Dict[str, Any]] |
 | timed_out | True when the wait ended before the agent went idle | bool |
-| truncated | True when the turn produced more messages than are kept; messages holds the newest ones and reply may be incomplete | bool |
+| truncated | True when the turn produced more rows than are kept; the newest ones were kept and reply may be incomplete | bool |
 | error_message | Session error, if any | str |
 
 ### Possible use case

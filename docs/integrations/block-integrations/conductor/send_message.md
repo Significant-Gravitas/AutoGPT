@@ -10,7 +10,7 @@ Send a prompt to a Conductor agent session and, by default, wait for the agent t
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts `{message}` to `POST /v0/sessions/{id}/messages` and returns the receipt (`message_id`, `state` queued or sent, `deep_link`). With `wait_for_reply` (the default) it then polls every `poll_interval_seconds`: each poll reads the transcript rows that arrived since the previous one and then `GET /v0/sessions/{id}/status`, so the status is never older than the rows it is judged against. The receipt ID is the prompt's `content.id` in the transcript (not a row ID, so it cannot be used as a cursor); the block looks for that row among the newest 300 rows, then in up to 1000 older rows, and otherwise resolves the turn from agent rows tagged with the receipt as their `turnId`, reporting the omitted history through `truncated`. It finishes when the session reports `error`, or `idle` after the turn has progressed past its startup events (Claude `system`/`command_lifecycle`, Codex `thread.started`/`turn.started`), reading the transcript once more for rows written just before the status changed; a session that is idle because the prompt is still queued, or has only launched the agent, is not treated as finished. `reply` joins the visible agent text of the turn (Claude `assistant` text, completed Codex `agentMessage` items); `messages` has the raw rows of the turn, newest kept when a turn exceeds 1000 rows (`truncated` is set). `timeout_seconds` is a wall-clock bound: sleeps and requests are capped by it, nothing is requested once it has elapsed, and when it elapses `timed_out` is set and whatever arrived so far is returned. The block's own execution cap is two hours, so `timeout_seconds` is limited to that.
+The block posts `{message}` to `POST /v0/sessions/{id}/messages` and returns the receipt (`message_id`, `state` queued or sent, `deep_link`). With `wait_for_reply` (the default) it then polls every `poll_interval_seconds`: each poll reads the transcript rows that arrived since the previous one and then `GET /v0/sessions/{id}/status`, so the status is never older than the rows it is judged against. The receipt ID is the prompt's `content.id` in the transcript (not a row ID, so it cannot be used as a cursor); the block looks for that row among the newest 300 rows, then in up to 1000 older rows, and otherwise resolves the turn from agent rows tagged with the receipt as their `turnId`, reporting the omitted history through `truncated`. It finishes when the session reports `error`, or `idle` after the turn has progressed past its startup events (Claude `system`/`command_lifecycle`, Codex `thread.started`/`turn.started`), reading the transcript once more for rows written just before the status changed; a session that is idle because the prompt is still queued, or has only launched the agent, is not treated as finished. `reply` joins the visible agent text of the turn (Claude `assistant` text, completed Codex `agentMessage` items), `message_count` is the number of rows of the turn that were kept (the newest 1000 when a turn is longer; `truncated` is set) and `next_after` is the ID of the newest transcript row the wait read, which Get Session accepts as `after` to continue polling. The raw rows themselves are only returned, in `messages`, when `include_messages` is on: a long turn runs to hundreds of kilobytes, so the default output stays small enough to read directly. `timeout_seconds` is a wall-clock bound: sleeps and requests are capped by it, nothing is requested once it has elapsed, and when it elapses `timed_out` is set and whatever arrived so far is returned. The block's own execution cap is two hours, so `timeout_seconds` is limited to that.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -22,6 +22,7 @@ The block posts `{message}` to `POST /v0/sessions/{id}/messages` and returns the
 | wait_for_reply | Wait until the agent is idle and return its reply | bool | No |
 | timeout_seconds | How long to wait for the reply | int | No |
 | poll_interval_seconds | Seconds between status checks while waiting | int | No |
+| include_messages | Also return the raw transcript rows of the turn in messages. Off by default: a long turn is hundreds of kilobytes, while reply, session_status and next_after cover the usual needs | bool | No |
 
 ### Outputs
 
@@ -33,9 +34,11 @@ The block posts `{message}` to `POST /v0/sessions/{id}/messages` and returns the
 | deep_link | Link that opens the message | str |
 | session_status | idle, working or error once waiting finished | str |
 | reply | Text the agent produced in response | str |
-| messages | Raw transcript messages after the prompt | List[Dict[str, Any]] |
+| next_after | ID of the newest transcript row read while waiting; pass it as after to Get Session to read what follows | str |
+| message_count | Number of transcript rows of the turn that were kept | int |
+| messages | Raw transcript rows of the turn, oldest first; only emitted when include_messages is on | List[Dict[str, Any]] |
 | timed_out | True when the wait ended before the agent went idle | bool |
-| truncated | True when the turn produced more messages than are kept; messages holds the newest ones and reply may be incomplete | bool |
+| truncated | True when the turn produced more rows than are kept; the newest ones were kept and reply may be incomplete | bool |
 | error_message | Session error, if any | str |
 
 ### Possible use case

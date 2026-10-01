@@ -49,4 +49,5 @@ WAIT_MOCK_REPLY = {
     "reply": "All tests pass now.",
     "timed_out": False,
     "truncated": False,
+    "next_after": "row_2",
 }

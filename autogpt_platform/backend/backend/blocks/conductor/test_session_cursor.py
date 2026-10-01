@@ -23,6 +23,7 @@ async def test_incremental_poll_preserves_cursor_without_a_new_row_id(messages: 
             "credentials": TEST_CREDENTIALS_INPUT,
             "session_id": "s1",
             "after": "last-seen-row",
+            "include_messages": True,
         },
     )
 

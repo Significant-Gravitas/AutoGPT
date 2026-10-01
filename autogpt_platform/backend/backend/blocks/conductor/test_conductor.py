@@ -207,6 +207,8 @@ async def test_send_message_surfaces_truncation():
     )
     assert outputs["truncated"] is True
     assert outputs["reply"] == "partial"
+    assert outputs["next_after"] == ""
+    assert outputs["message_count"] == 0
 
 
 @pytest.mark.asyncio

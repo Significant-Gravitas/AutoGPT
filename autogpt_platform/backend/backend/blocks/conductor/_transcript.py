@@ -61,6 +61,10 @@ async def wait_for_reply(
     for rows written just before the status changed. Sleeps and requests
     never outlive `timeout_seconds`: nothing is started once it has elapsed,
     and a reply that completes after it is reported as timed out.
+
+    `next_after` is the id of the newest transcript row the wait read (not
+    only of the turn), so a caller can keep polling from there with
+    Get Session without re-reading anything.
     """
     deadline = time.monotonic() + timeout_seconds
 
@@ -101,6 +105,7 @@ async def wait_for_reply(
         "reply": reply_text(messages),
         "timed_out": timed_out,
         "truncated": turn.truncated,
+        "next_after": turn.cursor,
     }
 
 
