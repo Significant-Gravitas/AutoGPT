@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.transports import ChatTransportResponse
 
 from .delegate_to_expert import DelegateToExpertTool
 from .expert_delegation import CALLER_NAME_LIMIT
@@ -58,6 +59,10 @@ def _expert(
     expert.color = "violet"
     expert.is_archived = is_archived
     expert.schedules_paused_at = schedules_paused_at
+    # Unpinned unless a test says otherwise: a bare MagicMock attribute is
+    # truthy and would read as a pin to an unknown provider.
+    expert.llm_auth_provider = None
+    expert.llm_credential_id = None
     return expert
 
 
@@ -109,6 +114,8 @@ def mock_sessions(monkeypatch):
         sess.dry_run = kwargs.get("dry_run", False)
         sess.metadata.delegated_by_expert_id = kwargs.get("delegated_by_expert_id")
         sess.metadata.delegated_by_session_id = kwargs.get("delegated_by_session_id")
+        sess.metadata.llm_auth_provider = kwargs.get("llm_auth_provider")
+        sess.metadata.llm_credential_id = kwargs.get("llm_credential_id")
         # Without this the MagicMock answers any origin assertion truthily, so
         # a test for origin propagation would pass with the kwarg dropped.
         sess.metadata.origin = kwargs.get("origin")
@@ -523,6 +530,137 @@ class TestDelegation:
         )
         assert len(mock_sessions) == 1, "resume must not open a second thread"
         assert mock_turn.await_args.kwargs["session_id"] == "inner-1"
+
+
+class TestDelegatedRoute:
+    """Which AI connection the teammate's thread runs on."""
+
+    @pytest.fixture
+    def pinned_target(self, roster, monkeypatch):
+        """Bea is pinned to her own ChatGPT account, and the pin resolves."""
+        roster["expert-b"].llm_auth_provider = "codex"
+        roster["expert-b"].llm_credential_id = "cred-bea"
+        resolve = AsyncMock(
+            return_value=ChatTransportResponse(
+                auth_provider="codex",
+                credential_id="cred-bea",
+                label="ChatGPT",
+                available=True,
+                default=False,
+            )
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.resolve_pinned_chat_route",
+            resolve,
+        )
+        return resolve
+
+    @pytest.mark.asyncio
+    async def test_a_new_thread_runs_on_the_teammates_pin(
+        self, pinned_target, mock_turn, mock_sessions
+    ):
+        parent = _session(session_id="s1")
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_sessions[0].metadata.llm_auth_provider == "codex"
+        assert mock_sessions[0].metadata.llm_credential_id == "cred-bea"
+        # Resolved as unattended: a delegated turn does tool work with nobody
+        # watching, so a Microsoft pin must fall through here too.
+        assert pinned_target.await_args.kwargs["unattended"] is True
+        assert pinned_target.await_args.args[1:] == ("codex", "cred-bea")
+
+    @pytest.mark.asyncio
+    async def test_an_unpinned_teammate_inherits_the_callers_route(
+        self, roster, mock_turn, mock_sessions
+    ):
+        parent = _session(session_id="s1")
+        parent.metadata.llm_auth_provider = "codex"
+        parent.metadata.llm_credential_id = "cred-alice"
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_sessions[0].metadata.llm_auth_provider == "codex"
+        assert mock_sessions[0].metadata.llm_credential_id == "cred-alice"
+
+    @pytest.mark.asyncio
+    async def test_a_stale_pin_falls_back_to_the_callers_route(
+        self, roster, monkeypatch, mock_turn, mock_sessions
+    ):
+        roster["expert-b"].llm_auth_provider = "codex"
+        roster["expert-b"].llm_credential_id = "cred-unlinked"
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.resolve_pinned_chat_route",
+            AsyncMock(return_value=None),
+        )
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s1"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_sessions[0].metadata.llm_auth_provider == "platform"
+        assert mock_sessions[0].metadata.llm_credential_id is None
+
+    @pytest.mark.asyncio
+    async def test_resume_compares_against_the_teammates_route_not_the_callers(
+        self, pinned_target, mock_turn, mock_sessions
+    ):
+        """The caller is on platform and Bea on ChatGPT; the thread opened
+        on Bea's connection must still be resumable from the caller's chat."""
+        parent = _session(session_id="s1")
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="first",
+            wait_for_result=0,
+        )
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="follow up",
+            delegated_session_id="inner-1",
+            wait_for_result=0,
+        )
+        assert not isinstance(result, ErrorResponse)
+        assert len(mock_sessions) == 1
+
+    @pytest.mark.asyncio
+    async def test_resume_refuses_a_thread_opened_before_the_pin_changed(
+        self, pinned_target, mock_turn, mock_sessions
+    ):
+        parent = _session(session_id="s1")
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="first",
+            wait_for_result=0,
+        )
+        # Bea was moved back to the account default (platform) since.
+        pinned_target.return_value = None
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="follow up",
+            delegated_session_id="inner-1",
+            wait_for_result=0,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "different model connection" in result.message
+        assert len(mock_sessions) == 1
 
 
 class TestHandoffReentry:

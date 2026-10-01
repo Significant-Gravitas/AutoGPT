@@ -16,8 +16,10 @@ backs every other copilot turn, so the delegated work:
 - attributes the agent runs it starts to the *target's* weekly budget (only
   graph executions accrue weekly spend; the delegated conversation's own LLM
   cost does not), which is why a paused/archived teammate is refused here,
-- inherits the caller's ``dry_run`` and LLM routing, and can only ever narrow
-  the caller's tool permissions (``merged_with_parent``).
+- runs on the target's pinned AI connection when they have one that can run
+  unattended, otherwise inherits the caller's LLM routing; inherits the
+  caller's ``dry_run`` and can only ever narrow the caller's tool permissions
+  (``merged_with_parent``).
 
 Provenance lives in the sub's session metadata rather than a new column:
 ``delegated_by_expert_id`` records who asked, and ``delegated_by_session_id``
@@ -34,6 +36,7 @@ from typing import Any
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.budget_signal import build_spawn_state_note
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
     ChatSession,
@@ -42,6 +45,7 @@ from backend.copilot.model import (
     get_chat_session,
 )
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
+from backend.copilot.transports import resolve_pinned_chat_route
 from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
@@ -281,12 +285,15 @@ class DelegateToExpertTool(BaseTool):
         session can never read or steer another scope's conversation by
         guessing an id.
         """
+        llm_auth_provider, llm_credential_id = await self._target_route(
+            user_id, session, target
+        )
         if not delegated_session_id:
             new_session = await create_chat_session(
                 user_id,
                 dry_run=session.dry_run,
-                llm_auth_provider=session.metadata.llm_auth_provider,
-                llm_credential_id=session.metadata.llm_credential_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
                 expert_id=target.id,
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
@@ -309,17 +316,37 @@ class DelegateToExpertTool(BaseTool):
                 session,
             )
         if (
-            prior.metadata.llm_auth_provider != session.metadata.llm_auth_provider
-            or prior.metadata.llm_credential_id != session.metadata.llm_credential_id
+            prior.metadata.llm_auth_provider != llm_auth_provider
+            or prior.metadata.llm_credential_id != llm_credential_id
         ):
             return self._error(
                 f"That delegation thread with {target.name} runs on a "
-                "different model connection than this chat does, so it "
-                "cannot be resumed from here. Leave delegated_session_id "
+                f"different model connection than {target.name} does now, so "
+                "it cannot be resumed from here. Leave delegated_session_id "
                 "empty to open a fresh one.",
                 session,
             )
         return delegated_session_id
+
+    async def _target_route(
+        self, user_id: str, session: ChatSession, target: Expert
+    ) -> tuple[CopilotLlmAuthProvider, str | None]:
+        """The connection a thread with this teammate runs on.
+
+        The teammate's own pin when it still resolves and can run tools — a
+        delegated turn does tool work with nobody watching, so Microsoft 365
+        Copilot is refused here as it is for schedules. Otherwise the caller's
+        route, as before: an unpinned teammate follows the chat that asked.
+        """
+        pinned = await resolve_pinned_chat_route(
+            user_id,
+            target.llm_auth_provider,
+            target.llm_credential_id,
+            unattended=True,
+        )
+        if pinned is not None:
+            return pinned.auth_provider, pinned.credential_id
+        return session.metadata.llm_auth_provider, session.metadata.llm_credential_id
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
         """Who to introduce the hand-off as. Plain sessions are Otto."""

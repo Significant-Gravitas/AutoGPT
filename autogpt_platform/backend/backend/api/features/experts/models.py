@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.data.expert_run_output import OutputType
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
@@ -308,6 +309,19 @@ class Expert(BaseModel):
     weekly_budget: int | None = None
     weekly_spend: int = 0
     schedules_paused_at: datetime | None = None
+    # The AI connection this expert's new threads, routines, follow-ups and
+    # delegations run on. Both None = follow the owner's account default
+    # (Settings). Stored as the pair, never provider alone, so two linked
+    # ChatGPT accounts stay distinct.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
+    # What the pin is called ("ChatGPT"), resolved server-side so the client
+    # never has to match credential ids. None when on the account default.
+    llm_route_label: str | None = None
+    # False when the pin names a connection the owner can no longer chat over
+    # (unlinked, expired, or dropped from their plan). The expert then falls
+    # back to the account default until it is reconnected or re-pinned.
+    llm_route_available: bool = True
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
     # A hire's workflows, skills and routines land after it is returned.
@@ -532,6 +546,19 @@ class ExpertBudgetUpdate(BaseModel):
     """
 
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
+
+
+class ExpertLlmRouteUpdate(BaseModel):
+    """Pin an expert to an AI connection, or clear the pin.
+
+    ``auth_provider=None`` means "follow the account default". A non-platform
+    provider must name the credential it runs as; the server checks the pair
+    is one the owner can chat over, with the same rules and error codes as
+    saving the account default.
+    """
+
+    auth_provider: CopilotLlmAuthProvider | None = None
+    credential_id: str | None = Field(default=None, max_length=128)
 
 
 class ExpertAvatarUpdate(BaseModel):

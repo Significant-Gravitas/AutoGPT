@@ -77,17 +77,34 @@ def is_deployment_chat_available() -> bool:
     return bool(config.test_mode or config.use_claude_code_subscription or api_key)
 
 
+def transport_label(auth_provider: str) -> str:
+    """What a route is called everywhere it is shown.
+
+    One place rather than three string literals, so an expert pinned to a
+    connection that has since been unlinked can still be described by name
+    ("ChatGPT connection missing") when there is no transport row to read
+    the label from.
+    """
+    if auth_provider == "platform":
+        return (
+            "AutoGPT Platform"
+            if settings.config.behave_as == BehaveAs.CLOUD
+            else "Self-hosted chat"
+        )
+    if auth_provider == "codex":
+        return "ChatGPT"
+    if auth_provider == "microsoft_365_copilot":
+        return "Microsoft 365 Copilot"
+    return auth_provider
+
+
 async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
     """Every transport this user can chat over, one of them marked default."""
     transports = [
         ChatTransportResponse(
             auth_provider="platform",
             credential_id=None,
-            label=(
-                "AutoGPT Platform"
-                if settings.config.behave_as == BehaveAs.CLOUD
-                else "Self-hosted chat"
-            ),
+            label=transport_label("platform"),
             available=is_deployment_chat_available(),
             default=False,
         )
@@ -96,7 +113,7 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
         ChatTransportResponse(
             auth_provider="codex",
             credential_id=credentials.id,
-            label="ChatGPT",
+            label=transport_label("codex"),
             available=True,
             default=False,
         )
@@ -106,7 +123,7 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
         ChatTransportResponse(
             auth_provider="microsoft_365_copilot",
             credential_id=credentials.id,
-            label="Microsoft 365 Copilot",
+            label=transport_label("microsoft_365_copilot"),
             available=True,
             default=False,
         )
@@ -141,23 +158,82 @@ async def resolve_default_chat_route(
     default = next((transport for transport in transports if transport.default), None)
     if default is None:
         return "platform", None
-    if default.auth_provider == "microsoft_365_copilot":
-        # Copilot Chat returns prose and never runs AutoGPT tools, so a
-        # schedule, briefing or bot turn routed there would silently do
-        # nothing. Unattended callers stay on the platform route; the saved
-        # default still applies to chats the user opens themselves.
+    if not runs_tools_unattended(default):
         return "platform", None
     return default.auth_provider, default.credential_id
 
 
-async def save_default_chat_route(
+def runs_tools_unattended(transport: ChatTransportResponse) -> bool:
+    """Whether an unattended turn may run on this transport.
+
+    Copilot Chat returns prose and never runs AutoGPT tools, so a schedule,
+    briefing, bot turn or delegation routed there would silently do nothing.
+    Unattended callers stay on the platform route; a saved default or an
+    expert pin on Microsoft still applies to chats the user opens themselves.
+    """
+    return transport.auth_provider != "microsoft_365_copilot"
+
+
+async def resolve_pinned_chat_route(
+    user_id: str,
+    auth_provider: str | None,
+    credential_id: str | None,
+    *,
+    transports: list[ChatTransportResponse] | None = None,
+    unattended: bool = False,
+) -> ChatTransportResponse | None:
+    """The transport a saved (provider, credential) pin still names, or None.
+
+    ``None`` covers every way a pin stops being an answer: nothing pinned, a
+    credential that has been unlinked or has expired, a plan that no longer
+    includes ChatGPT, a provider this server does not know, and — for
+    ``unattended`` callers — a Microsoft 365 Copilot pin, which cannot run
+    tools. Callers fall through to the account default exactly as
+    :func:`saved_route_transport` does for the user-level setting: the pin is left
+    in place so reconnecting restores it, and nothing here ever raises.
+    """
+    if auth_provider is None:
+        return None
+    if transports is None:
+        try:
+            transports = await get_chat_transports(user_id)
+        except Exception:
+            logger.warning(
+                "Could not resolve the pinned chat route for user ...%s",
+                user_id[-8:],
+                exc_info=True,
+            )
+            return None
+    pinned = saved_route_transport(transports, auth_provider, credential_id)
+    if pinned is None:
+        logger.info(
+            "Pinned chat route %s/%s is no longer available for user ...%s; "
+            "falling back to the account default",
+            auth_provider,
+            (credential_id or "-")[:8],
+            user_id[-8:],
+        )
+        return None
+    if unattended and not runs_tools_unattended(pinned):
+        logger.info(
+            "Pinned chat route %s cannot run unattended for user ...%s; "
+            "falling back to the account default",
+            auth_provider,
+            user_id[-8:],
+        )
+        return None
+    return pinned
+
+
+async def validate_chat_route(
     user_id: str, route: DefaultChatRoute
 ) -> list[ChatTransportResponse]:
-    """Validate and persist a default, returning the refreshed transport list."""
+    """Check a route can be saved, returning the transport list it was checked
+    against. Shared by the account default and the per-expert pin so both
+    speak the same error vocabulary."""
     if route.auth_provider is None:
         if route.credential_id is not None:
             raise InvalidDefaultChatRoute("codex_credential_not_allowed")
-        await set_user_default_chat_route(user_id, None, None)
         return await get_chat_transports(user_id)
 
     if route.auth_provider == "platform" and route.credential_id is not None:
@@ -175,8 +251,16 @@ async def save_default_chat_route(
             if route.auth_provider != "platform"
             else "chat_transport_not_configured"
         )
+    return transports
 
+
+async def save_default_chat_route(
+    user_id: str, route: DefaultChatRoute
+) -> list[ChatTransportResponse]:
+    """Validate and persist a default, returning the refreshed transport list."""
+    transports = await validate_chat_route(user_id, route)
     await set_user_default_chat_route(user_id, route.auth_provider, route.credential_id)
+    # With nothing saved, this falls through to the server's own pick.
     _mark_default(transports, route.auth_provider, route.credential_id)
     return transports
 
@@ -186,14 +270,14 @@ def _mark_default(
     saved_provider: Optional[str],
     saved_credential_id: Optional[str],
 ) -> None:
-    chosen = _saved_default(
+    chosen = saved_route_transport(
         transports, saved_provider, saved_credential_id
     ) or _automatic_default(transports)
     for transport in transports:
         transport.default = transport is chosen
 
 
-def _saved_default(
+def saved_route_transport(
     transports: list[ChatTransportResponse],
     saved_provider: Optional[str],
     saved_credential_id: Optional[str],

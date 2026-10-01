@@ -42,6 +42,7 @@ from backend.api.features.experts.models import (
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
+from backend.copilot.transports import DefaultChatRoute, InvalidDefaultChatRoute
 from backend.util.exceptions import ConflictError, NotFoundError
 from backend.util.feature_flag import Flag
 
@@ -843,7 +844,7 @@ def test_get_expert_of_other_user_returns_404(
 
     assert response.status_code == 404
     mock_get.assert_awaited_once_with(
-        test_user_id, "expert-1", include_credentials=True
+        test_user_id, "expert-1", include_credentials=True, include_llm_route=True
     )
 
 
@@ -862,7 +863,7 @@ def test_get_expert_returns_expert(
     assert response.status_code == 200
     assert response.json()["id"] == "expert-1"
     mock_get.assert_awaited_once_with(
-        test_user_id, "expert-1", include_credentials=True
+        test_user_id, "expert-1", include_credentials=True, include_llm_route=True
     )
 
 
@@ -1626,7 +1627,9 @@ def test_delete_then_list_excludes_archived(
 ) -> None:
     experts = [_make_expert(id="expert-1"), _make_expert(id="expert-2", name="Max")]
 
-    async def _list_experts(user_id: str) -> list[Expert]:
+    async def _list_experts(
+        user_id: str, *, include_llm_route: bool = False
+    ) -> list[Expert]:
         assert user_id == test_user_id
         return [e for e in experts if not e.is_archived]
 
@@ -2127,3 +2130,159 @@ def test_existing_custom_avatar_can_be_kept_without_review(mocker):
         "/experts/expert-1/avatar", json={"avatar_url": expert.avatar_url}
     )
     assert response.status_code == 200
+
+
+# ─── PATCH /experts/{id}/llm-route ─────────────────────────────────────
+
+
+def _mock_llm_route_update(mocker: pytest_mock.MockerFixture, **kwargs):
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    validate = mocker.patch(
+        "backend.api.features.experts.routes.validate_chat_route",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_llm_route",
+        new_callable=AsyncMock,
+        **kwargs,
+    )
+    return validate, update
+
+
+def test_update_expert_llm_route_pins_a_connection(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    validate, update = _mock_llm_route_update(
+        mocker,
+        return_value=_make_expert(
+            llm_auth_provider="codex",
+            llm_credential_id="cred-1",
+            llm_route_label="ChatGPT",
+        ),
+    )
+
+    response = client.patch(
+        "/experts/expert-1/llm-route",
+        json={"auth_provider": "codex", "credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_auth_provider"] == "codex"
+    assert body["llm_credential_id"] == "cred-1"
+    assert body["llm_route_label"] == "ChatGPT"
+    assert body["llm_route_available"] is True
+    validate.assert_awaited_once_with(
+        test_user_id, DefaultChatRoute(auth_provider="codex", credential_id="cred-1")
+    )
+    update.assert_awaited_once_with(test_user_id, "expert-1", "codex", "cred-1")
+
+
+def test_update_expert_llm_route_null_returns_to_account_default(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    _, update = _mock_llm_route_update(mocker, return_value=_make_expert())
+
+    response = client.patch("/experts/expert-1/llm-route", json={"auth_provider": None})
+
+    assert response.status_code == 200
+    assert response.json()["llm_auth_provider"] is None
+    assert response.json()["llm_route_label"] is None
+    update.assert_awaited_once_with(test_user_id, "expert-1", None, None)
+
+
+def test_update_expert_llm_route_speaks_the_transport_error_vocabulary(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A malformed route is a 422 and an unowned credential a 404, exactly as
+    ``PUT /chat/transports/default`` answers the same mistakes."""
+    validate, update = _mock_llm_route_update(mocker)
+    validate.side_effect = InvalidDefaultChatRoute("codex_credential_required")
+
+    response = client.patch(
+        "/experts/expert-1/llm-route", json={"auth_provider": "codex"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_credential_required"
+    update.assert_not_awaited()
+
+    validate.side_effect = InvalidDefaultChatRoute("codex_credential_not_found")
+    response = client.patch(
+        "/experts/expert-1/llm-route",
+        json={"auth_provider": "codex", "credential_id": "someone-elses"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "codex_credential_not_found"
+    update.assert_not_awaited()
+
+
+def test_update_expert_llm_route_rejects_an_unknown_provider() -> None:
+    response = client.patch(
+        "/experts/expert-1/llm-route",
+        json={"auth_provider": "gemini", "credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_expert_llm_route_unknown_expert_returns_404_before_validating(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Templates, archived hires and other users' experts are all "not found",
+    and the route is never checked for them — so the response can't tell a
+    probing caller whether a credential id exists."""
+    validate, update = _mock_llm_route_update(mocker)
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.patch(
+        "/experts/template-1/llm-route",
+        json={"auth_provider": "codex", "credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 404
+    validate.assert_not_awaited()
+    update.assert_not_awaited()
+
+
+def test_update_expert_llm_route_lost_race_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_llm_route_update(
+        mocker, side_effect=experts_db.ExpertNotFoundError("expert-1")
+    )
+
+    response = client.patch("/experts/expert-1/llm-route", json={"auth_provider": None})
+
+    assert response.status_code == 404
+
+
+def test_get_expert_reports_a_missing_pinned_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(
+            llm_auth_provider="codex",
+            llm_credential_id="cred-gone",
+            llm_route_label="ChatGPT",
+            llm_route_available=False,
+        ),
+    )
+
+    response = client.get("/experts/expert-1")
+
+    assert response.status_code == 200
+    assert response.json()["llm_route_available"] is False
+    assert response.json()["llm_route_label"] == "ChatGPT"

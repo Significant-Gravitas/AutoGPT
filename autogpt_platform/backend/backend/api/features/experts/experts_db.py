@@ -44,6 +44,10 @@ from backend.api.features.experts.errors import (
     ExpertTemplateNotFoundError,
     RaisedExpertLifetimeLimitExceededError,
 )
+from backend.api.features.experts.llm_route import (
+    annotate_llm_routes,
+    known_auth_provider,
+)
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
@@ -103,6 +107,7 @@ from backend.copilot.tools.skills import (
     get_default_skill_with_body,
     skill_name_key,
 )
+from backend.copilot.transports import transport_label
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.expert_attribution import (
@@ -269,6 +274,7 @@ def _to_model(
     else:
         voice_preferences, voice_samples = row.voicePreferences, []
     presentation = template_presentation(row)
+    llm_auth_provider = known_auth_provider(row.llmAuthProvider)
     return Expert(
         id=row.id,
         name=row.name,
@@ -295,6 +301,13 @@ def _to_model(
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=row.llmCredentialId if llm_auth_provider else None,
+        # Availability is resolved against the owner's live connections by
+        # ``annotate_llm_routes``; the column alone can only name the pin.
+        llm_route_label=(
+            transport_label(llm_auth_provider) if llm_auth_provider else None
+        ),
         pod_id=row.podId,
         setup_status=_setup_status(row),
         setup_failures=row.setupFailures or [],
@@ -423,7 +436,9 @@ async def _weekly_spends(expert_ids: list[str]) -> dict[str, int]:
     return dict(await asyncio.gather(*(read(expert_id) for expert_id in expert_ids)))
 
 
-async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Expert]:
+async def list_experts(
+    user_id: str, *, with_metrics: bool = True, include_llm_route: bool = False
+) -> list[Expert]:
     """List the user's hired roster, with workflow names always included.
 
     Set ``with_metrics=False`` to skip the ``AgentGraphExecution`` lookup and
@@ -431,6 +446,11 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
     and workflow names (e.g. the copilot team-context roster) would otherwise
     pay for ``latest_run``/``weekly_spend`` data they discard. Those fields
     come back as their unset defaults (``None`` / ``0``) in that case.
+
+    Set ``include_llm_route=True`` to resolve each pinned AI connection
+    against the owner's live transports (``llm_route_available``). Off by
+    default because it reads the credential store and the plan entitlement;
+    the Team page wants it, a turn resolving its own route does not.
     """
     rows = await prisma.models.Expert.prisma().find_many(
         where={
@@ -442,16 +462,22 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
         include=_ROSTER_WORKFLOW_INCLUDE,
     )
     if not with_metrics:
-        return [_to_model(row) for row in rows]
-    latest_runs = await _latest_runs([row.id for row in rows])
-    weekly_spends = await _weekly_spends([row.id for row in rows])
-    credential_providers = await _credential_providers(user_id, rows)
-    return [
-        _to_model(
-            row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)
-        ).model_copy(update=_credential_fields(credential_providers.get(row.id, [])))
-        for row in rows
-    ]
+        experts = [_to_model(row) for row in rows]
+    else:
+        latest_runs = await _latest_runs([row.id for row in rows])
+        weekly_spends = await _weekly_spends([row.id for row in rows])
+        credential_providers = await _credential_providers(user_id, rows)
+        experts = [
+            _to_model(
+                row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)
+            ).model_copy(
+                update=_credential_fields(credential_providers.get(row.id, []))
+            )
+            for row in rows
+        ]
+    if not include_llm_route:
+        return experts
+    return await annotate_llm_routes(user_id, experts)
 
 
 async def _credential_providers(
@@ -559,6 +585,7 @@ async def get_expert(
     include_workflows: bool = True,
     include_archived: bool = False,
     include_credentials: bool = False,
+    include_llm_route: bool = False,
 ) -> Expert | None:
     """Fetch a hired expert owned by *user_id*.
 
@@ -571,6 +598,11 @@ async def get_expert(
     ``credential_providers`` the way the roster does. Off by default because
     the read seeds the expert's allow-list on first touch, and most callers
     (hire, raise, the scheduler's scope gate) only need the expert's columns.
+
+    Set ``include_llm_route=True`` to check the expert's pinned AI connection
+    against the owner's live transports (``llm_route_available``). Off by
+    default for the same reason as credentials: most callers only need the
+    pin itself, and resolving it reads the credential store.
 
     Archived experts are hidden by default so product surfaces treat them as
     gone. Set ``include_archived=True`` when the caller must distinguish
@@ -594,12 +626,15 @@ async def get_expert(
         return None
     latest_runs = await _latest_runs([row.id])
     expert = _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
-    if not include_credentials:
+    if include_credentials:
+        credential_providers = await _credential_providers(user_id, [row])
+        expert = expert.model_copy(
+            update=_credential_fields(credential_providers.get(row.id, []))
+        )
+    if not include_llm_route:
         return expert
-    credential_providers = await _credential_providers(user_id, [row])
-    return expert.model_copy(
-        update=_credential_fields(credential_providers.get(row.id, []))
-    )
+    (expert,) = await annotate_llm_routes(user_id, [expert])
+    return expert
 
 
 async def list_expert_runs(
@@ -1172,9 +1207,16 @@ async def _reserve_hired_expert(
             if not existing.isArchived:
                 return existing, "existing"
             await _ensure_active_expert_capacity(tx, user_id)
+            # A re-hire starts on the account default: the connection the
+            # archived copy ran on may be long gone, and a fresh hire must not
+            # quietly inherit a bill nobody re-chose.
             revived = await tx.expert.update(
                 where={"id": existing.id},
-                data={"isArchived": False},
+                data={
+                    "isArchived": False,
+                    "llmAuthProvider": None,
+                    "llmCredentialId": None,
+                },
                 include=_WORKFLOW_INCLUDE,
             )
             if revived is None:
@@ -1724,6 +1766,41 @@ async def update_budget(
         raise ExpertNotFoundError(expert_id)
 
     expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+async def update_llm_route(
+    user_id: str,
+    expert_id: str,
+    auth_provider: str | None,
+    credential_id: str | None,
+) -> Expert:
+    """Persist an expert's AI connection pin; ``auth_provider=None`` clears it.
+
+    Validation that the pair is one the owner can chat over happens in the
+    route layer (``transports.validate_chat_route``). Like the budget, the pin
+    is only writable on a PRIVATE active hire: an org-shared expert pinned to
+    one member's ChatGPT would bill that member for everyone's chats.
+    """
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
+        data={
+            "llmAuthProvider": auth_provider,
+            "llmCredentialId": credential_id if auth_provider is not None else None,
+        },
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id, include_llm_route=True)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
     return expert

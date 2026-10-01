@@ -61,6 +61,10 @@ def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
         AsyncMock(return_value=("platform", None)),
     )
     monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_expert_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
         "backend.executor.schedule_events.record_schedule_created", MagicMock()
     )
 
@@ -370,6 +374,59 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         llm_credential_id=None,
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-expert-session"
+
+
+@pytest.mark.asyncio
+async def test_fresh_expert_session_runs_on_the_experts_pinned_connection(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A routine or follow-up that mints a chat for an expert asks the expert
+    resolver — which honours the expert's pin — not the account default."""
+    expert_route = AsyncMock(return_value=("codex", "cred-expert"))
+    account_route = AsyncMock(return_value=("platform", None))
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.resolve_expert_chat_route", expert_route)
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.resolve_default_chat_route", account_route)
+    args = _args(session_id=None, expert_id="expert-1")
+    new_session = MagicMock(session_id="new-expert-session", expert_id="expert-1")
+    mock_create_session = AsyncMock(return_value=new_session)
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="active"),
+        ),
+        patch(f"{_SCHEDULER_PATH}.create_chat_session", new=mock_create_session),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    expert_route.assert_awaited_once_with("user-1", "expert-1")
+    account_route.assert_not_awaited()
+    create_kwargs = mock_create_session.call_args.kwargs
+    assert create_kwargs["llm_auth_provider"] == "codex"
+    assert create_kwargs["llm_credential_id"] == "cred-expert"
+
+
+@pytest.mark.asyncio
+async def test_fresh_otto_session_never_consults_the_expert_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    expert_route = AsyncMock(return_value=("codex", "cred-expert"))
+    account_route = AsyncMock(return_value=("platform", None))
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.resolve_expert_chat_route", expert_route)
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.resolve_default_chat_route", account_route)
+    args = _args(session_id=None)
+    mock_create_session = AsyncMock(return_value=MagicMock(session_id="new"))
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(f"{_SCHEDULER_PATH}.create_chat_session", new=mock_create_session),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    expert_route.assert_not_awaited()
+    account_route.assert_awaited_once_with("user-1")
+    assert mock_create_session.call_args.kwargs["llm_auth_provider"] == "platform"
 
 
 @pytest.mark.asyncio
