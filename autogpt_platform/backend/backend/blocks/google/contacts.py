@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -151,6 +152,7 @@ class GoogleContactsSearchBlock(Block):
                     [_TEST_OTHER_CONTACT],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -232,6 +234,7 @@ class GoogleContactsGetMyProfileBlock(Block):
                 ("locale", "en-GB"),
             ],
             test_mock={"_get_profile": lambda *args, **kwargs: _TEST_PROFILE},
+            effect=BlockEffect.READ,
         )
 
     async def run(

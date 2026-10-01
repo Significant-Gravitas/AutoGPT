@@ -5,6 +5,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -116,6 +117,7 @@ class GoogleContactsSearchDirectoryBlock(Block):
                     "totalSize": 12,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
