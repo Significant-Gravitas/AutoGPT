@@ -5,6 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/home/home.msw";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -74,6 +75,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
+function setSignedInUser(userID: string | null) {
+  useAuthStore.setState({
+    user: userID
+      ? { id: userID, email: `${userID}@example.com`, user_metadata: {} }
+      : null,
+    isUserLoading: false,
+    hasLoadedUser: true,
+  });
+}
+
 function renderSidebar() {
   return render(
     <SidebarProvider>
@@ -85,11 +96,13 @@ function renderSidebar() {
 beforeEach(() => {
   routerPush.mockClear();
   useGetFlagMock.mockReturnValue(false);
+  setSignedInUser("sidebar-user");
   server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
 });
 
 afterEach(() => {
   server.resetHandlers();
+  server.events.removeAllListeners();
 });
 
 describe("AppSidebar", () => {
@@ -195,5 +208,34 @@ describe("AppSidebar", () => {
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: /Maria/i })).toBeNull(),
     );
+  });
+
+  // A signed-out marketplace visit mounts this sidebar until the session check
+  // settles; any user-data read it makes then is a guaranteed 401.
+  it.each([
+    ["while the session check is still running", true],
+    ["once the visitor turns out to be signed out", false],
+  ])("does not ask for chats or experts %s", async (_, isUserLoading) => {
+    useGetFlagMock.mockReturnValue(true);
+    useAuthStore.setState({
+      user: null,
+      isUserLoading,
+      hasLoadedUser: !isUserLoading,
+    });
+    const userDataRequests: string[] = [];
+    server.events.on("request:start", ({ request }) => {
+      const { pathname } = new URL(request.url);
+      if (
+        pathname.endsWith("/chat/sessions") ||
+        pathname.endsWith("/experts/identities")
+      )
+        userDataRequests.push(pathname);
+    });
+
+    renderSidebar();
+
+    expect(screen.getByText("Recent chats")).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(userDataRequests).toEqual([]);
   });
 });
