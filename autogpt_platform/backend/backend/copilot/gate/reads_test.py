@@ -389,12 +389,18 @@ async def test_an_approved_held_read_arrives_as_its_late_result_byte_identical(r
     (call,) = rows.held
     assert call.tool_call_id == "call-7"
     rows.answer(ReviewStatus.APPROVED)
+    delivered: list[PendingMessage] = []
 
-    [late] = await _resolved(session)
+    with patch("backend.copilot.tools.get_tool", return_value=tool):
+        heard = [
+            s async for s in held.resolve_answered("user-1", session, delivered.append)
+        ]
 
+    [late] = delivered
     assert late.metadata["held_call"]["outcome"] == "approved"
     assert _late_body(late) == _plain_output(_MARKER)
     assert tool.runs == 1, "the late result must be the stored bytes, not a refetch"
+    assert heard == [], "a released read is not an action the chat hears run"
     assert rows.rows == {}
 
 

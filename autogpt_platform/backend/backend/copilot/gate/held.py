@@ -183,11 +183,24 @@ async def resolve_answered(
     if not user_id:
         return
     for call in await answered(user_id, session.session_id):
+        try:
+            rows = await review_db().get_reviews_by_node_exec_ids(
+                [call.review_id], user_id
+            )
+        except Exception:
+            logger.warning(f"Held call {call.review_id} unreadable", exc_info=True)
+            continue
+        row = rows.get(call.review_id)
+        tool = _due(call, row)
+        # Before the claim: a stream closed at this yield leaves the call held.
+        if tool:
+            yield StreamStatus(
+                message=f"Running the action you approved: {_headline(call, row)}"
+            )
         if not await _claim(session.session_id, call.review_id):
             continue
         try:
-            async for status in _resolve(user_id, session, call, deliver, cap):
-                yield status
+            await _resolve(user_id, session, call, row, tool, deliver, cap)
         except Exception:
             logger.warning(f"Held call {call.review_id} not delivered", exc_info=True)
             for result in await _recover(user_id, session.session_id, call):
@@ -294,26 +307,15 @@ async def _resolve(
     user_id: str,
     session: ChatSession,
     call: HeldCall,
+    row: "PendingHumanReviewModel | None",
+    tool: "BaseTool | None",
     deliver: Callable[[PendingMessage], None],
     cap: Callable[[str], str],
-) -> AsyncIterator[StreamStatus]:
-    from backend.copilot.tools import get_tool
-
-    tool = get_tool(call.tool_name)
-    rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
-    row = rows.get(call.review_id)
-    if row is None or row.status == ReviewStatus.WAITING:
-        outcome, output = "closed", "Nothing ran: this card is no longer open."
-    elif settled := await _settled(user_id, session, call, row):
-        outcome, output = settled
-    elif tool is None:
-        await review_store.consume(call.review_id, user_id)
-        outcome, output = "closed", "Nothing ran: this tool no longer exists."
-    else:
-        yield StreamStatus(
-            message=f"Running the action you approved: {_headline(call, row)}"
-        )
+) -> None:
+    if tool:
         outcome, output = await _run(user_id, session, call, tool)
+    else:
+        outcome, output = await _settled(user_id, session, call, row)
     try:
         deliver(_result_row(call, cap(output), outcome))
     except Exception:
@@ -366,14 +368,36 @@ def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage
     )
 
 
+def _due(call: HeldCall, row: "PendingHumanReviewModel | None") -> "BaseTool | None":
+    """The tool an answered card's approved call runs with; None when it runs
+    nothing, which :func:`_settled` then says."""
+    from backend.copilot.tools import get_tool
+
+    from .reads import is_held_read
+
+    if (
+        row is None
+        or row.status != ReviewStatus.APPROVED
+        or is_held_read(call.review_id)
+        or _expired(row)
+        or call.lost
+    ):
+        return None
+    return get_tool(call.tool_name)
+
+
 async def _settled(
-    user_id: str, session: ChatSession, call: HeldCall, row: "PendingHumanReviewModel"
-) -> tuple[Outcome, str] | None:
-    """What an answered card delivers without running anything; None when its
-    approved call is due to run."""
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    row: "PendingHumanReviewModel | None",
+) -> tuple[Outcome, str]:
+    """What an answered card delivers when its call does not run."""
     # Deferred: reads imports this package's __init__, which imports this module.
     from .reads import answered_read, is_held_read
 
+    if row is None or row.status == ReviewStatus.WAITING:
+        return "closed", "Nothing ran: this card is no longer open."
     if is_held_read(call.review_id):
         return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
@@ -388,22 +412,25 @@ async def _settled(
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."
         )
-    approved_at = row.reviewed_at or row.updated_at or row.created_at
-    if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
-        await review_store.consume(call.review_id, user_id)
+    await review_store.consume(call.review_id, user_id)
+    if _expired(row):
         return "expired", (
             "Nothing ran: the approval expired an hour after it was given. "
             "Propose the call again if it is still needed."
         )
     if call.lost:
-        await review_store.consume(call.review_id, user_id)
         return "closed", _RESEND
-    return None
+    return "closed", "Nothing ran: this tool no longer exists."
 
 
-def _headline(call: HeldCall, row: "PendingHumanReviewModel") -> str:
+def _expired(row: "PendingHumanReviewModel") -> bool:
+    approved_at = row.reviewed_at or row.updated_at or row.created_at
+    return datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL
+
+
+def _headline(call: HeldCall, row: "PendingHumanReviewModel | None") -> str:
     """The card's own headline, which the user approved."""
-    payload = row.payload if isinstance(row.payload, dict) else {}
+    payload = row.payload if row and isinstance(row.payload, dict) else {}
     if "headline" in payload:
         return review_store.payload_headline(payload)
     return headline_for(call.tool_name, call.args).text

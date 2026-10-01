@@ -309,6 +309,26 @@ async def test_a_failure_after_the_claim_keeps_the_call_for_the_next_turn(
     assert "posted flaky" in delivered.content
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_turn_closed_at_the_status_keeps_the_call_for_the_next_turn(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """A stream closed or cancelled while the status goes out runs nothing."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "closed")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    delivered: list[PendingMessage] = []
+
+    turn = held.resolve_answered(test_user_id, session, delivered.append)
+    await anext(turn)
+    await turn.aclose()
+
+    assert post_tool.runs == [] and delivered == []
+    [result] = await _resolved(test_user_id, session)
+    assert post_tool.runs == [{"text": "closed"}]
+    assert result.metadata["held_call"]["outcome"] == "approved"
+
+
 @pytest.mark.parametrize(
     "status, expect",
     [(ReviewStatus.APPROVED, "posted keep"), (ReviewStatus.REJECTED, "declined")],
