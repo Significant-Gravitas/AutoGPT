@@ -340,6 +340,14 @@ class BaseTool:
         raise NotImplementedError
 
     @property
+    def search_keywords(self) -> tuple[str, ...]:
+        """Extra words ``find_capability`` indexes for this tool.
+
+        Index-only: never sent to the model, so they cost no schema budget.
+        """
+        return ()
+
+    @property
     def requires_auth(self) -> bool:
         """Whether this tool requires authentication."""
         return False
