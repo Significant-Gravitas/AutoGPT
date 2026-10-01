@@ -50,6 +50,7 @@ from backend.util.process import set_service_name
 from backend.util.retry import func_retry
 from backend.util.workspace_storage import shutdown_workspace_storage
 
+from .scheduled_turn_alert import ScheduledTurnWatch
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 if TYPE_CHECKING:
@@ -553,6 +554,7 @@ class CoPilotProcessor:
         error_msg = None
         credential_lease = None
         cost_context_stack = AsyncExitStack()
+        scheduled_watch = ScheduledTurnWatch.for_entry(entry)
 
         try:
             from backend.copilot.model import get_chat_session
@@ -769,6 +771,8 @@ class CoPilotProcessor:
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
                         break
+                    if scheduled_watch is not None:
+                        scheduled_watch.observe(chunk)
 
                     current_time = time.monotonic()
                     if current_time - last_refresh >= refresh_interval:
@@ -794,6 +798,8 @@ class CoPilotProcessor:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
+            if scheduled_watch is not None:
+                scheduled_watch.report(error_msg)
             try:
                 if credential_lease is not None:
                     try:
