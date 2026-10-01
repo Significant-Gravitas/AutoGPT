@@ -318,13 +318,23 @@ class ChannelCard(BaseModel):
 class CardAnswer(BaseModel):
     """What a click on a card's button did.
 
-    ``follow_up`` is set only when the click answered the row: it is the
-    clicker's next message, whose turn carries the result. ``text`` then
-    replaces the buttons; otherwise only the clicker is shown it.
+    ``follow`` is set only when the click answered the row: the answer woke
+    the turn that carries the result, for the bot to stream where the card
+    was. ``text`` then replaces the buttons; otherwise only the clicker is
+    shown it.
     """
 
     text: str
-    follow_up: str | None = None
+    follow: "CardTurn | None" = None
+
+
+class CardTurn(BaseModel):
+    """The chat's first turn after ``after_turn_id``: every turn starts by
+    running the cards answered before it."""
+
+    session_id: str
+    user_id: str
+    after_turn_id: str | None = None
 
 
 class ChatSessionSummary(BaseModel):

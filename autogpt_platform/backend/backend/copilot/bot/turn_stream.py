@@ -20,7 +20,7 @@ from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
     extract_artifact_links,
 )
-from backend.platform_linking.models import TurnDenial
+from backend.platform_linking.models import ChatTurnHandle, TurnDenial
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 
@@ -145,7 +145,10 @@ class TurnStreamer:
         target_id: str,
         file_ids: list[str] | None = None,
         session_id: str | None = None,
+        turn: ChatTurnHandle | None = None,
     ) -> None:
+        """Start a turn from ``batch`` and stream its reply here; with
+        ``turn``, stream that one instead, which something else started."""
         prefixed = format_batch(batch, ctx.platform)
 
         redis = await get_redis_async()
@@ -280,19 +283,30 @@ class TurnStreamer:
         draft = DraftStreamer(adapter, target_id)
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
         try:
-            async for chunk in self._api.stream_chat(
-                platform=ctx.platform,
-                platform_user_id=ctx.user_id,
-                message=prefixed,
-                session_id=active_session_id,
-                platform_server_id=ctx.server_id,
-                file_ids=file_ids,
-                on_session_id=_on_session_id,
-                on_setup_required=_on_setup_required,
-                on_setup_dropped=_on_setup_dropped,
-                on_clarification_needed=_on_clarification_needed,
-                on_approval_needed=_on_approval_needed,
-            ):
+            if turn is not None:
+                await _on_session_id(turn.session_id)
+                chunks = self._api.stream_turn(
+                    turn,
+                    on_setup_required=_on_setup_required,
+                    on_setup_dropped=_on_setup_dropped,
+                    on_clarification_needed=_on_clarification_needed,
+                    on_approval_needed=_on_approval_needed,
+                )
+            else:
+                chunks = self._api.stream_chat(
+                    platform=ctx.platform,
+                    platform_user_id=ctx.user_id,
+                    message=prefixed,
+                    session_id=active_session_id,
+                    platform_server_id=ctx.server_id,
+                    file_ids=file_ids,
+                    on_session_id=_on_session_id,
+                    on_setup_required=_on_setup_required,
+                    on_setup_dropped=_on_setup_dropped,
+                    on_clarification_needed=_on_clarification_needed,
+                    on_approval_needed=_on_approval_needed,
+                )
+            async for chunk in chunks:
                 buffer += chunk
                 reply_chars += len(chunk)
                 await draft.update(buffer)

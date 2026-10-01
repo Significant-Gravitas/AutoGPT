@@ -29,7 +29,9 @@ from backend.platform_linking.models import (
     BotEventInput,
     BotGuildInput,
     CardAnswer,
+    CardTurn,
     ChannelCard,
+    ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     EnsureSessionResult,
@@ -516,7 +518,37 @@ class BotBackend:
             raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
+        async for chunk in self.stream_turn(
+            handle,
+            on_setup_required=on_setup_required,
+            on_setup_dropped=on_setup_dropped,
+            on_clarification_needed=on_clarification_needed,
+            on_approval_needed=on_approval_needed,
+        ):
+            yield chunk
 
+    async def turn_after(self, follow: CardTurn) -> ChatTurnHandle | None:
+        """The chat's turn now, when it is not the one before the card was
+        answered: the turn that runs it, whether woken by the answer or by the
+        end of the turn that was running then."""
+        current = await stream_registry.get_session(follow.session_id)
+        if current is None or current.turn_id == follow.after_turn_id:
+            return None
+        return ChatTurnHandle(
+            session_id=follow.session_id,
+            turn_id=current.turn_id,
+            user_id=follow.user_id,
+        )
+
+    async def stream_turn(
+        self,
+        handle: ChatTurnHandle,
+        on_setup_required: SetupRequiredCallback | None = None,
+        on_setup_dropped: SetupDroppedCallback | None = None,
+        on_clarification_needed: ClarificationNeededCallback | None = None,
+        on_approval_needed: ApprovalNeededCallback | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Yield a running or finished turn's text deltas, from its start."""
         queue = await stream_registry.subscribe_to_session(
             session_id=handle.session_id,
             user_id=handle.user_id,

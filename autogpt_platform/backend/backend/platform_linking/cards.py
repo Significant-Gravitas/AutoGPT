@@ -13,14 +13,14 @@ from typing import Literal
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
+from backend.copilot import stream_registry
 from backend.copilot.gate import channel
-from backend.copilot.gate.held import WAKE_MESSAGE
 from backend.copilot.gate.review import GATE_NODE_PREFIX
 from backend.data.db_accessors import platform_linking_db, review_db
 from backend.data.redis_client import get_redis_async
 
 from .chat import resolve_owner
-from .models import CardAnswer, ChannelCard, Platform
+from .models import CardAnswer, CardTurn, ChannelCard, Platform
 
 AnswerPolicy = Literal["linking_owner", "any_member"]
 # Toran, 2026-09-30: anyone who can message the bot can already make it do
@@ -99,7 +99,8 @@ async def answer_card(
     """Answer the row a button names, if the clicker may.
 
     A read first, so a click the policy refuses changes nothing; then GETDEL,
-    so the answerer's own double-click answers once.
+    so the answerer's own double-click answers once. The answer wakes the
+    chat's next turn, which the bot carries into the channel.
     """
     redis = await get_redis_async()
     raw = await redis.get(_key(token))
@@ -112,6 +113,8 @@ async def answer_card(
         return CardAnswer(text=_NOT_YOURS)
     if not 0 <= index < len(card.options):
         return CardAnswer(text=_EXPIRED)
+    # Read before the answer wakes a turn: that turn is the next one.
+    current = await stream_registry.get_session(card.session_id)
     if not await redis.getdel(_key(token)):
         return CardAnswer(text=_ANSWERED)
     option = card.options[index]
@@ -125,7 +128,14 @@ async def answer_card(
         return CardAnswer(text=_EXPIRED)
     if outcome == "answered_elsewhere":
         return CardAnswer(text=_ANSWERED)
-    return CardAnswer(text=option.receipt, follow_up=WAKE_MESSAGE)
+    return CardAnswer(
+        text=option.receipt,
+        follow=CardTurn(
+            session_id=card.session_id,
+            user_id=card.user_id,
+            after_turn_id=current.turn_id if current else None,
+        ),
+    )
 
 
 def may_answer(card: PostedCard, clicker_id: str, server_id: str | None) -> bool:

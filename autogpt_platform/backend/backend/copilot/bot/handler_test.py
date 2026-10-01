@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.platform_linking.models import (
+    CardTurn,
+    ChatTurnHandle,
     EnsureSessionResult,
     TurnDenial,
     WorkspaceArtifact,
@@ -537,6 +539,33 @@ class TestBatching:
             [("Bently", "user-1", "first")],
             [("Later", "u2", "follow-up")],
         ]
+        assert "target-1" not in handler._targets
+
+    @pytest.mark.asyncio
+    async def test_a_card_answered_mid_reply_streams_its_turn_once_after_it(self):
+        api = _api()
+        api.turn_after = AsyncMock(
+            return_value=ChatTurnHandle(session_id="s", turn_id="woken", user_id="u")
+        )
+        handler = MessageHandler(api)
+        state = TargetState()
+        handler._targets["target-1"] = state
+        follow = CardTurn(session_id="s", user_id="u", after_turn_id="running")
+        streamed: list[tuple[list, ChatTurnHandle | None]] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, turn=None, **_):
+            streamed.append((list(batch), turn))
+            if len(streamed) == 1:
+                state.follows.extend([follow, follow])
+
+        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
+        await handler._enqueue_and_process(_ctx(text="first"), _adapter(), "target-1")
+
+        assert [turn.turn_id if turn else None for _, turn in streamed] == [
+            None,
+            "woken",
+        ]
+        assert streamed[1][0] == []
         assert "target-1" not in handler._targets
 
     @pytest.mark.asyncio
