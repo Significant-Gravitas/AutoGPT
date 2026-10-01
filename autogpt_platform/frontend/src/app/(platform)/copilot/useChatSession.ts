@@ -48,6 +48,17 @@ export function useChatSession({
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
+  const clearNewChatChoice = useAutopilotModeStore(
+    (state) => state.clearNewChatChoice,
+  );
+
+  // A mode picked in a new chat belongs to that composer and recipient. Once
+  // the user moves on without sending (another new chat, a different expert)
+  // the pick must not travel with them, or it would override the next
+  // expert's own default.
+  useEffect(() => {
+    if (!sessionId) clearNewChatChoice();
+  }, [sessionId, expertId, clearNewChatChoice]);
 
   const transportQuery = useGetV2ListChatTransports({
     query: {

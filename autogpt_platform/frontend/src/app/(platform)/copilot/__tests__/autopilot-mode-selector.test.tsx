@@ -235,6 +235,50 @@ describe("AutoPilot mode selector", () => {
     expect(bodies[0]).not.toHaveProperty("autopilot_mode");
   });
 
+  it("drops a pick left over from an earlier new chat that was never sent", async () => {
+    flags.experts = true;
+    const createBodies: Record<string, unknown>[] = [];
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+      getGetV2ListChatTransportsMockHandler({
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      }),
+      getPostV2CreateSessionMockHandler(async ({ request }) => {
+        createBodies.push((await request.json()) as Record<string, unknown>);
+        return {
+          id: TEST_SESSION_ID,
+          created_at: "2026-05-13T00:00:00Z",
+          user_id: "test-user",
+          expert_id: "expert-maria",
+        };
+      }),
+    );
+    captureStreamBodies();
+    // Picked while composing an earlier new chat, then abandoned.
+    useAutopilotModeStore.getState().choose(null, "unsupervised");
+
+    renderHost({ searchParams: "?expertId=expert-maria" });
+
+    expect(
+      await screen.findByRole("button", { name: /approval mode: ask first/i }),
+    ).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(createBodies).toHaveLength(1), {
+      timeout: 5000,
+    });
+    expect(createBodies[0]).not.toHaveProperty("autopilot_mode");
+  });
+
   it("keeps a thread's stored mode over the expert's default", async () => {
     flags.experts = true;
     server.use(
@@ -264,6 +308,17 @@ describe("autopilotModeStore", () => {
 
     expect(useAutopilotModeStore.getState().choices).toEqual({
       "created-1": "ask_first",
+    });
+  });
+
+  it("clearing the new chat pick leaves session picks alone", () => {
+    const store = useAutopilotModeStore.getState();
+    store.choose(null, "ask_first");
+    store.choose("session-1", "unsupervised");
+    store.clearNewChatChoice();
+
+    expect(useAutopilotModeStore.getState().choices).toEqual({
+      "session-1": "unsupervised",
     });
   });
 
