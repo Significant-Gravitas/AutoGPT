@@ -427,6 +427,13 @@ describe("PaywallModal — upgrade mutation", () => {
         },
       ]);
     });
+    const conversion = gtagCalls.find((call) => call[1] === "conversion");
+    (conversion?.[2] as { event_callback: () => void }).event_callback();
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      );
+    });
     removeGtagShim();
     vi.unstubAllEnvs();
   });
