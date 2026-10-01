@@ -65,9 +65,7 @@ class LocalSandbox:
         self.workdir = workdir
         self.calls: list[dict] = []
 
-    async def execute_code(
-        self, *, code, language, envs=None, input_files=None, **_
-    ):
+    async def execute_code(self, *, code, language, envs=None, input_files=None, **_):
         env = {**os.environ, **(envs or {})}
         for sandbox_path, data in (input_files or {}).items():
             local = self.workdir / Path(sandbox_path).name
