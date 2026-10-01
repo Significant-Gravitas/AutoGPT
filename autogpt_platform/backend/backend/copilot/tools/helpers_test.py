@@ -2003,3 +2003,131 @@ async def _store_workspace_file(path: str):
             dry_run=False,
             expert_id="expert-a",
         )
+
+
+# ---------------------------------------------------------------------------
+# Credential choice on unattended turns (SECRT-2804)
+# ---------------------------------------------------------------------------
+
+
+def _exa_key(cred_id: str):
+    from pydantic import SecretStr
+
+    from backend.data.model import APIKeyCredentials
+
+    return APIKeyCredentials(
+        id=cred_id, provider="exa", title=cred_id, api_key=SecretStr("k")
+    )
+
+
+async def _prepare_exa_search(session, saved_creds: list) -> Any:
+    """Prepare an Exa search the way run_block does, inside *session*'s turn."""
+    from backend.blocks.exa.search import ExaSearchBlock
+    from backend.copilot.context import set_execution_context
+    from backend.integrations.credentials_store import exa_credentials
+
+    set_execution_context(_USER, session)
+    try:
+        with (
+            patch(
+                "backend.copilot.tools.utils.IntegrationCredentialsManager"
+            ) as creds_mgr,
+            patch(
+                "backend.copilot.tools.utils.selected_credentials",
+                AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.expand_file_refs_in_args",
+                AsyncMock(side_effect=lambda d, *a, **kw: d),
+            ),
+        ):
+            creds_mgr.return_value.store = AsyncMock()
+            # The store lists the user's own credentials first, oldest first,
+            # then the platform's.
+            creds_mgr.return_value.store.get_all_creds.return_value = [
+                *saved_creds,
+                exa_credentials,
+            ]
+            return await prepare_block_for_execution(
+                block_id=ExaSearchBlock().id,
+                input_data={"query": "daily briefing"},
+                user_id=_USER,
+                session=session,
+                session_id=session.session_id,
+                dry_run=False,
+            )
+    finally:
+        set_execution_context(None, None)
+
+
+def _scheduled_session():
+    session = make_session(_USER)
+    session.metadata.origin = "automation"
+    return session
+
+
+@pytest.mark.asyncio
+async def test_scheduled_turn_with_two_exa_keys_runs_on_the_first_saved() -> None:
+    # Nobody is watching a scheduled turn, so a "which account?" card would
+    # never be answered and the step would end as "not configured".
+    result = await _prepare_exa_search(
+        _scheduled_session(), [_exa_key("exa-old"), _exa_key("exa-new")]
+    )
+
+    assert isinstance(result, BlockPreparation), getattr(result, "message", result)
+    assert result.matched_credentials["credentials"].id == "exa-old"
+
+
+@pytest.mark.asyncio
+async def test_scheduled_turn_into_a_users_chat_does_not_ask_either() -> None:
+    # A pinned follow-up fires into the user's own (interactive) chat; the
+    # turn is still unattended.
+    from backend.copilot.context import set_turn_unattended
+
+    set_turn_unattended(True)
+    try:
+        result = await _prepare_exa_search(
+            make_session(_USER), [_exa_key("exa-old"), _exa_key("exa-new")]
+        )
+    finally:
+        set_turn_unattended(False)
+
+    assert isinstance(result, BlockPreparation), getattr(result, "message", result)
+    assert result.matched_credentials["credentials"].id == "exa-old"
+
+
+@pytest.mark.asyncio
+async def test_interactive_turn_with_two_exa_keys_still_asks() -> None:
+    result = await _prepare_exa_search(
+        make_session(_USER), [_exa_key("exa-old"), _exa_key("exa-new")]
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_turn_without_any_exa_key_fails_naming_the_provider() -> None:
+    from backend.blocks.exa.search import ExaSearchBlock
+
+    # No platform key configured and none saved: nothing fits.
+    session = _scheduled_session()
+    with patch(
+        "backend.copilot.tools.helpers.match_credentials_to_requirements",
+        AsyncMock(
+            return_value=(
+                {},
+                [
+                    CredentialsMetaInput(
+                        id="credentials",
+                        provider=ProviderName.EXA,
+                        type="api_key",
+                    )
+                ],
+            )
+        ),
+    ):
+        result = await _prepare_exa_search(session, [])
+
+    assert isinstance(result, ErrorResponse)
+    assert "exa" in result.message.lower()
+    assert ExaSearchBlock().name in result.message
