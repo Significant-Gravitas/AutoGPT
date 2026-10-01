@@ -83,6 +83,7 @@ export interface UserSegment {
   /** `sent` is the turn's own prompt; `chip` a promoted follow-up. */
   origin: "sent" | "chip";
   rawId: string | null;
+  createdAt: string | null;
 }
 
 export interface TurnSegment {
@@ -97,6 +98,8 @@ export interface TurnSegment {
   /** Fields that never stream, adopted at the reconcile. */
   durationMs: number | null;
   createdAt: string | null;
+  /** When each persisted row was written, by row key. */
+  rowCreatedAt: Readonly<Record<string, string>>;
 }
 
 /** Persisted rows the tail holds but no turn of this mount produced. */
@@ -283,6 +286,7 @@ export class TurnRuntime {
       sequence: null,
       origin: "sent",
       rawId: null,
+      createdAt: null,
     });
     this.emitNow();
     const body = streamRequestBody(this.sessionId, message, model);
@@ -326,6 +330,7 @@ export class TurnRuntime {
         sequence: null,
         origin: "chip",
         rawId: null,
+        createdAt: null,
       });
     }
     this.emit();
@@ -851,17 +856,23 @@ export class TurnRuntime {
     const durations = raw
       .map((r) => (r as { duration_ms?: unknown }).duration_ms)
       .filter((d): d is number => typeof d === "number");
-    this.updateTurn(seg.key, (s) => ({
-      ...s,
-      reconciled: true,
-      ended: true,
-      log: {
-        ...closeBlocks(s.log),
-        rows: s.frozen ? persisted : mergeRows(s.log.rows, persisted),
-      },
-      durationMs: durations.length ? Math.max(...durations) : s.durationMs,
-      createdAt: createdAtOf(raw[raw.length - 1]) ?? s.createdAt,
-    }));
+    this.updateTurn(seg.key, (s) => {
+      const rows = s.frozen ? persisted : mergeRows(s.log.rows, persisted);
+      const rowCreatedAt: Record<string, string> = {};
+      rows.forEach((row, i) => {
+        const at = createdAtOf(raw[i]);
+        if (at) rowCreatedAt[row.key] = at;
+      });
+      return {
+        ...s,
+        reconciled: true,
+        ended: true,
+        log: { ...closeBlocks(s.log), rows },
+        durationMs: durations.length ? Math.max(...durations) : s.durationMs,
+        createdAt: createdAtOf(raw[raw.length - 1]) ?? s.createdAt,
+        rowCreatedAt,
+      };
+    });
     this.adoptPromptSequence(seg.key, start, rows);
   }
 
@@ -916,6 +927,7 @@ export class TurnRuntime {
       ...before,
       sequence: start - 1,
       rawId: typeof rawId === "string" ? rawId : null,
+      createdAt: createdAtOf(row),
     };
   }
 
@@ -969,6 +981,7 @@ export class TurnRuntime {
       reconciled: false,
       durationMs: null,
       createdAt: null,
+      rowCreatedAt: {},
     };
     this.segments.push(seg);
     return seg;

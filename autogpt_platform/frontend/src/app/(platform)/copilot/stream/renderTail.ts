@@ -31,7 +31,12 @@ export function createTailRenderer(sessionId: string) {
           continue;
         }
         messages.push(seg.message as UiMessage);
-        if (seg.rawId) stats.set(seg.key, { rawMessageId: seg.rawId });
+        if (seg.rawId || seg.createdAt) {
+          stats.set(seg.key, {
+            ...(seg.rawId ? { rawMessageId: seg.rawId } : {}),
+            ...(seg.createdAt ? { createdAt: seg.createdAt } : {}),
+          });
+        }
       } else if (seg.kind === "rows") {
         let converted = rowsMessages.get(seg);
         if (!converted) {
@@ -51,6 +56,11 @@ export function createTailRenderer(sessionId: string) {
         }
         const rendered = render(seg.log);
         messages.push(...rendered);
+        for (const message of rendered) {
+          const at = seg.rowCreatedAt[message.id];
+          if (message.role === "user" && at)
+            stats.set(message.id, { createdAt: at });
+        }
         const last = rendered.findLast((m) => m.role === "assistant");
         if (last && (seg.durationMs !== null || seg.createdAt)) {
           stats.set(last.id, {
@@ -61,6 +71,39 @@ export function createTailRenderer(sessionId: string) {
       }
     }
     return { messages, stats };
+  };
+}
+
+/**
+ * Join consecutive assistant messages as a reload does (two turns with no user
+ * row between them are one bubble), keeping the first one's key. A join is
+ * cached on its two inputs, so an unchanged pair stays the same object.
+ */
+export function createAssistantRunJoiner() {
+  const joins = new WeakMap<UiMessage, WeakMap<UiMessage, UiMessage>>();
+  return function joinAssistantRuns(messages: UiMessage[]) {
+    const joined: UiMessage[] = [];
+    for (const message of messages) {
+      const last = joined[joined.length - 1];
+      if (
+        last?.role !== "assistant" ||
+        message.role !== "assistant" ||
+        last.metadata ||
+        message.metadata
+      ) {
+        joined.push(message);
+        continue;
+      }
+      let byNext = joins.get(last);
+      if (!byNext) joins.set(last, (byNext = new WeakMap()));
+      let pair = byNext.get(message);
+      if (!pair) {
+        pair = { ...last, parts: [...last.parts, ...message.parts] };
+        byNext.set(message, pair);
+      }
+      joined[joined.length - 1] = pair;
+    }
+    return joined;
   };
 }
 

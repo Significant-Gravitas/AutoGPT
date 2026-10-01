@@ -30,7 +30,10 @@ import {
   type ProviderFailure,
 } from "./providerFailure";
 import { useCopilotUIStore, type CopilotLlmModel } from "./store";
-import { createTailRenderer } from "./stream/renderTail";
+import {
+  createAssistantRunJoiner,
+  createTailRenderer,
+} from "./stream/renderTail";
 import {
   getTurnRuntime,
   type RuntimePhase,
@@ -138,9 +141,13 @@ export function useCopilotRuntimeStream({
     [sessionId],
   );
   const tail = useMemo(() => renderTail(snapshot), [renderTail, snapshot]);
+  const joinAssistantRuns = useMemo(() => createAssistantRunJoiner(), []);
   const messages = useMemo(
-    () => (sessionId ? [...history.messages, ...tail.messages] : []),
-    [sessionId, history.messages, tail.messages],
+    () =>
+      sessionId
+        ? joinAssistantRuns([...history.messages, ...tail.messages])
+        : [],
+    [sessionId, joinAssistantRuns, history.messages, tail.messages],
   );
   const turnStats = useMemo(
     () => withLatestUser(messages, history.stats, tail.stats),
