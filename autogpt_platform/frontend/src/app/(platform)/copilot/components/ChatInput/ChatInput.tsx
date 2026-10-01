@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   ClipboardEvent,
+  FormEvent,
   KeyboardEvent,
   ReactNode,
   useEffect,
@@ -221,6 +222,30 @@ export function ChatInput({
 
   const [isEnqueueing, setIsEnqueueing] = useState(false);
 
+  async function handleEnqueue() {
+    if (!onEnqueue || isEnqueueing) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setIsEnqueueing(true);
+    try {
+      await onEnqueue(trimmed);
+      setValue("");
+    } finally {
+      setIsEnqueueing(false);
+    }
+  }
+
+  // While a turn streams, the composer's own send is still pending (it only
+  // settles when the stream ends), so Enter takes the queue button's path.
+  function handleFormSubmit(e: FormEvent<HTMLFormElement>) {
+    if (!isStreaming || !onEnqueue) {
+      handleSubmit(e);
+      return;
+    }
+    e.preventDefault();
+    void handleEnqueue();
+  }
+
   const {
     isRecording,
     isTranscribing,
@@ -340,7 +365,10 @@ export function ChatInput({
       : undefined;
 
   return (
-    <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
+    <form
+      onSubmit={handleFormSubmit}
+      className={cn("relative flex-1", className)}
+    >
       {mentions.isOpen && (
         <MentionDropdown
           options={mentions.options}
@@ -506,19 +534,7 @@ export function ChatInput({
                 tooltip="Queue message"
                 variant="default"
                 disabled={isEnqueueing}
-                onClick={async () => {
-                  if (isEnqueueing) return;
-                  const trimmed = value.trim();
-                  if (trimmed) {
-                    setIsEnqueueing(true);
-                    try {
-                      await onEnqueue(trimmed);
-                      setValue("");
-                    } finally {
-                      setIsEnqueueing(false);
-                    }
-                  }
-                }}
+                onClick={handleEnqueue}
                 className={cn(
                   "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
                   sendButtonClass,

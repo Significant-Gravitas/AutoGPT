@@ -464,6 +464,16 @@ function useMidTurnDrainPromotion({
     );
   }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
 
+  // The stream is re-paced on the client, so the backend can have drained
+  // the buffer at the end of a turn while this tab is still typing out the
+  // answer. Promoting then puts the bubble above the unfinished answer; the
+  // hint or the auto-continue assistant that follows the text places it
+  // below. The backstop waits for the text to finish on this tab.
+  const latestMessagesRef = useRef(messages);
+  useEffect(() => {
+    latestMessagesRef.current = messages;
+  }, [messages]);
+
   // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
     if (!sessionId) return;
@@ -471,19 +481,36 @@ function useMidTurnDrainPromotion({
     if (!isActive || queue.length === 0) return;
 
     const requestSessionId = sessionId;
-    const isCurrentSession = () =>
-      latestSessionIdRef.current === requestSessionId;
+    // Checked again once the GET resolves: text can start drawing while the
+    // request is in flight, and the next tick retries once it has finished.
+    const canPromote = () =>
+      latestSessionIdRef.current === requestSessionId &&
+      !isDrawingTrailingText(latestMessagesRef.current);
     const interval = setInterval(() => {
+      if (!canPromote()) return;
       void pollBackendAndPromote(
         sessionId,
         queue,
         setMessages,
         setQueue,
-        isCurrentSession,
+        canPromote,
       );
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
   }, [sessionId, status, queue, setMessages, setQueue]);
+}
+
+// Whether this tab is still typing out the trailing assistant's text: the
+// smoothing transform holds `text-end` behind the deltas, so the part stays
+// `streaming` until the last word has been drawn here.
+function isDrawingTrailingText(messages: UIMessage[]): boolean {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return false;
+  return last.parts.some(
+    (part) =>
+      (part.type === "text" || part.type === "reasoning") &&
+      part.state === "streaming",
+  );
 }
 
 // Count ``data-pending-drained`` hint parts the backend emits at each
@@ -504,7 +531,7 @@ async function pollBackendAndPromote(
   snapshotQueue: QueuedMessage[],
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
-  isCurrentSession: () => boolean,
+  canPromote: () => boolean,
   flavour: PromotionFlavour = "midturn",
 ): Promise<void> {
   let backendCount: number;
@@ -515,10 +542,10 @@ async function pollBackendAndPromote(
   } catch {
     return; // harmless; next tick or hydration will reconcile
   }
-  // Bail if the user switched sessions while the GET was in flight —
-  // promoting these entries to messages for a different session would
-  // leak old-session bubbles into the new session.
-  if (!isCurrentSession()) return;
+  // Re-checked after the GET: the user may have switched sessions while it
+  // was in flight (promoting then would leak old-session bubbles into the
+  // new session), or the backstop's local hold may now apply.
+  if (!canPromote()) return;
   if (snapshotQueue.length === 0) return;
   if (backendCount >= snapshotQueue.length) return;
 

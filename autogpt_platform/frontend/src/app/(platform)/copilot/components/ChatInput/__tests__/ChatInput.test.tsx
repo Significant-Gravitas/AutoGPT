@@ -402,6 +402,91 @@ describe("ChatInput queue button", () => {
   });
 });
 
+describe("ChatInput Enter while streaming", () => {
+  it("queues the text instead of sending when Enter is pressed mid-turn", async () => {
+    const mockOnEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} isStreaming />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "  follow-up  " } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(mockOnEnqueue).toHaveBeenCalledWith("follow-up");
+    expect(mockOnSend).not.toHaveBeenCalled();
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("does not queue twice while the first follow-up is still being accepted", async () => {
+    let acceptFollowUp: () => void = () => undefined;
+    const mockOnEnqueue = vi.fn(
+      () => new Promise<void>((resolve) => (acceptFollowUp = resolve)),
+    );
+    render(
+      <ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} isStreaming />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "first" } });
+    const form = textarea.closest("form")!;
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.click(screen.getByLabelText(/queue message/i));
+    });
+    expect(mockOnEnqueue).toHaveBeenCalledTimes(1);
+    expect((textarea as HTMLTextAreaElement).value).toBe("first");
+
+    await act(async () => {
+      acceptFollowUp();
+    });
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+    expect(mockOnSend).not.toHaveBeenCalled();
+  });
+
+  it("ignores Enter mid-turn when the box holds only whitespace", async () => {
+    const mockOnEnqueue = vi.fn();
+    render(
+      <ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} isStreaming />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "   " } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(mockOnEnqueue).not.toHaveBeenCalled();
+    expect(mockOnSend).not.toHaveBeenCalled();
+  });
+
+  it("still sends on Enter mid-turn when nothing can queue the message", async () => {
+    render(<ChatInput onSend={mockOnSend} isStreaming />);
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "no queue here" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(mockOnSend).toHaveBeenCalledWith(
+      "no queue here",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("sends on Enter when no turn is streaming", async () => {
+    const mockOnEnqueue = vi.fn();
+    render(<ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} />);
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "idle send" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(mockOnSend).toHaveBeenCalledWith("idle send", undefined, undefined);
+    expect(mockOnEnqueue).not.toHaveBeenCalled();
+  });
+});
+
 describe("ChatInput dry-run toggle", () => {
   it("does not render dry-run toggle when flag is disabled", () => {
     mockFlagValue = false;
