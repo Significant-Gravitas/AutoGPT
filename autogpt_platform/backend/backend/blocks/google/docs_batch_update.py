@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -100,6 +101,7 @@ class GoogleDocsBatchUpdateBlock(Block):
                     "writeControl": {"requiredRevisionId": "ALm37BVTest"},
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
