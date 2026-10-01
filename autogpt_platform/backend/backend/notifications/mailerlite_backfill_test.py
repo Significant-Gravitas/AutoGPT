@@ -253,6 +253,13 @@ async def test_apply_paces_batches_for_the_import_limit(
     ] * 2
 
 
+# MailerLite's validation error, echoing the address back in another case.
+_REFUSAL = {
+    "message": "The given data was invalid.",
+    "errors": {"email": ["Bad@x.io is not a deliverable address."]},
+}
+
+
 @pytest.mark.asyncio
 async def test_apply_counts_failures_and_treats_gone_as_removed(
     configured, no_sleep, monkeypatch, caplog
@@ -260,7 +267,7 @@ async def test_apply_counts_failures_and_treats_gone_as_removed(
     client = MagicMock()
     client.post = AsyncMock(
         side_effect=[
-            _response(200, {"responses": [{"code": 422}]}),
+            _response(200, {"responses": [{"code": 422, "body": _REFUSAL}]}),
             _response(200, {"responses": [{"code": 404}]}),
         ]
     )
@@ -274,8 +281,32 @@ async def test_apply_counts_failures_and_treats_gone_as_removed(
 
     assert result.failed[Decision.ADD_CHANGELOG] == 1
     assert result.succeeded[Decision.REMOVE_CHANGELOG] == 1
-    assert "bad@x.io" not in caplog.text
-    assert mailerlite._pseudonym("bad@x.io") in caplog.text
+    assert "bad@x.io" not in caplog.text.lower()
+    assert f"{mailerlite._pseudonym('bad@x.io')} at .io with 422" in caplog.text
+    assert "The given data was invalid." in caplog.text
+    assert "is not a deliverable address" in caplog.text
+
+
+def test_failure_reason_without_a_body():
+    assert mailerlite_backfill._failure_reason(None, "a@x.io") == "no reason given"
+    assert mailerlite_backfill._failure_reason({}, "a@x.io") == "no reason given"
+
+
+@pytest.mark.parametrize(
+    "email, expected",
+    [
+        ("a@example.com", ".com"),
+        ("a@mail.example.co", ".co"),
+        ("a@example.fart", ".fart"),
+        ("a@example.co.uk", ".co.uk"),
+        ("a@Example.COM.AU ", ".com.au"),
+        ("a@co.uk", ".uk"),
+        ("a@localhost", "no TLD"),
+        ("a@example.", "no TLD"),
+    ],
+)
+def test_top_level_domain(email, expected):
+    assert mailerlite_backfill._top_level_domain(email) == expected
 
 
 @pytest.mark.asyncio

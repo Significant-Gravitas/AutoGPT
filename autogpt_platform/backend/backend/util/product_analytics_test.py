@@ -1,5 +1,6 @@
 """Tests for the activation event vocabulary and its emitters."""
 
+import time
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -485,3 +486,88 @@ def test_signed_out_download_is_not_tracked(capture: Mock) -> None:
     )
 
     capture.assert_not_called()
+
+
+def test_credential_oauth_started(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "local")
+    product_analytics.track_credential_oauth_started(
+        user_id="user-1", provider="google"
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "credential_oauth_started"
+    assert properties == {
+        "environment": "local",
+        "source": "platform",
+        "provider": "google",
+    }
+
+
+def test_credential_oauth_exchange_failed(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "local")
+    product_analytics.track_credential_oauth_exchange_failed(
+        user_id="user-1",
+        provider="google",
+        failure_class="token_exchange",
+        status_code=400,
+        detail="InvalidGrantError: (invalid_grant) Missing code verifier.",
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "credential_oauth_exchange_failed"
+    assert properties == {
+        "environment": "local",
+        "source": "platform",
+        "provider": "google",
+        "failure_class": "token_exchange",
+        "status_code": 400,
+        "detail": "InvalidGrantError: (invalid_grant) Missing code verifier.",
+    }
+
+
+@pytest.mark.parametrize(
+    "detail, expected",
+    [
+        (
+            "(invalid_grant) Missing code verifier.",
+            "(invalid_grant) Missing code verifier.",
+        ),
+        ("bad code the-auth-code", "bad code [redacted]"),
+        ("no access for alice.b+x@example.co.uk", "no access for [email]"),
+        (
+            "POST https://example.com/token?code=abc&secret=def failed",
+            "POST https://example.com/token?[redacted] failed",
+        ),
+        ("got ya29.a0AfH6SMBx3example9token back", "got ya29.[redacted] back"),
+        ("HTTP Error: 400 -\n  invalid_request", "HTTP Error: 400 - invalid_request"),
+    ],
+)
+def test_safe_error_detail_removes_secrets(detail: str, expected: str) -> None:
+    assert product_analytics.safe_error_detail(detail, ["the-auth-code"]) == expected
+
+
+def test_safe_error_detail_is_truncated() -> None:
+    assert len(product_analytics.safe_error_detail("word " * 100)) == 200
+
+
+def test_safe_error_detail_is_fast_on_a_huge_body() -> None:
+    body = "a" * 200_000 + " alice@example.com"
+    start = time.monotonic()
+    assert product_analytics.safe_error_detail(body) == "a" * 200
+    assert time.monotonic() - start < 1
+
+
+def test_safe_error_detail_drops_a_word_cut_by_the_scan_limit() -> None:
+    # The query string shrinks to a placeholder, which would pull the start of
+    # the cut token into the first 200 characters.
+    url = "https://example.com/token?" + "q" * 1960
+    token = "ya29" + "x" * 40
+    assert len(url) < 2000 < len(url) + 1 + len(token)
+    assert (
+        product_analytics.safe_error_detail(f"{url} {token}")
+        == "https://example.com/token?[redacted]"
+    )
