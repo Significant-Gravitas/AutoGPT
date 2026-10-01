@@ -31,10 +31,18 @@ interface SessionChatMessage {
   metadata: Record<string, unknown> | null;
 }
 
+// Assistant rows the backend posts on its own, outside any turn: a run-post
+// WorkCard, or the scheduler's "your follow-up did not run" notice. Each is
+// its own bubble so it never reads as part of a neighbouring reply.
+const STANDALONE_METADATA_KINDS = new Set([
+  "expert_run",
+  "scheduled_followup_outcome",
+]);
+
 function getRunMetadata(metadata: unknown): Record<string, unknown> | null {
-  return metadata &&
-    typeof metadata === "object" &&
-    (metadata as Record<string, unknown>).kind === "expert_run"
+  if (!metadata || typeof metadata !== "object") return null;
+  const kind = (metadata as Record<string, unknown>).kind;
+  return typeof kind === "string" && STANDALONE_METADATA_KINDS.has(kind)
     ? (metadata as Record<string, unknown>)
     : null;
 }

@@ -23,6 +23,7 @@ from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data import user as user_db
+from backend.data.activity_event import SCHEDULE_FIRE_EVENT_TYPES
 from backend.data.credit import get_credit_model
 from backend.data.execution import GraphExecutionMeta
 from backend.data.execution_cost_summary import (
@@ -265,6 +266,9 @@ async def _get_work_events(
             since=since,
             categories=["FILE", "INTEGRATION", "SCHEDULE"],
             limit=_WORK_EVENT_LIMIT,
+            # One row per copilot follow-up fire; a five-minute cron would
+            # otherwise fill the bounded window and push real work out.
+            exclude_event_types=list(SCHEDULE_FIRE_EVENT_TYPES),
         )
     except Exception:
         logger.warning(

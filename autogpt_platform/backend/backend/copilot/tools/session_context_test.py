@@ -7,7 +7,7 @@ server-side block is re-injected.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -16,10 +16,48 @@ from backend.copilot.tools.session_context import (
     _MAX_LISTED_FOLLOWUPS,
     build_session_context,
 )
+from backend.data.activity_event import ActivityEvent
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 _USER = "test-user-session-ctx"
 _SESSION = "96d58196-3e3c-47de-ab70-4ebf11d21e61"
+_CTX_PATH = "backend.copilot.tools.session_context"
+
+
+@pytest.fixture(autouse=True)
+def outcome_events():
+    """The block also reads undelivered fire outcomes for the session;
+    default to none so the pending-list tests keep their exact shapes."""
+    store = MagicMock()
+    store.list_activity_events_by_type = AsyncMock(return_value=[])
+    with patch(f"{_CTX_PATH}.activity_event_db", return_value=store):
+        yield store
+
+
+def _undelivered(
+    *,
+    event_id: str = "evt-1",
+    status: str = "dropped",
+    preview: str = "check CI on PR #999",
+    retry_schedule_id: str | None = None,
+) -> ActivityEvent:
+    return ActivityEvent(
+        id=event_id,
+        user_id=_USER,
+        created_at=datetime(2026, 9, 30, 6, 12, 25, tzinfo=timezone.utc),
+        category="SCHEDULE",
+        event_type=f"schedule.{status}",
+        title="x",
+        schedule_id="cop-gone",
+        session_id=_SESSION,
+        data={
+            "status": status,
+            "reason": "the account was at its concurrent-turn limit",
+            "scheduled_for": "2026-09-30T06:12:00+00:00",
+            "message_preview": preview,
+            "retry_schedule_id": retry_schedule_id,
+        },
+    )
 
 
 def _one_shot(*, schedule_id: str, name: str, fires_at: str) -> CopilotTurnJobInfo:
@@ -237,6 +275,79 @@ async def test_unnamed_followup_falls_back_to_placeholder():
 
 
 @pytest.mark.asyncio
+async def test_undelivered_followup_is_listed_even_with_nothing_pending(
+    outcome_events,
+):
+    """SECRT-2787: the dropped one-shot is no longer pending, so without
+    this line the block would read ``pending_followups: 0`` and the model
+    would conclude nothing was ever scheduled."""
+    outcome_events.list_activity_events_by_type.return_value = [_undelivered()]
+    with _patch_scheduler([]):
+        ctx = await build_session_context(_SESSION, _USER)
+
+    assert ctx == (
+        f"session_id: {_SESSION}\n"
+        "pending_followups: 0\n"
+        "undelivered_followups: 1\n"
+        '- "check CI on PR #999" due 2026-09-30T06:12:00+00:00: dropped '
+        "(the account was at its concurrent-turn limit)"
+    )
+    kwargs = outcome_events.list_activity_events_by_type.call_args.kwargs
+    assert kwargs["session_id"] == _SESSION
+    assert kwargs["user_id"] == _USER
+    # Dispatched fires are visible as turns in the chat already; only the
+    # ones the user never got are worth the tokens.
+    assert set(kwargs["event_types"]) == {
+        "schedule.skipped",
+        "schedule.dropped",
+        "schedule.failed",
+    }
+    assert kwargs["limit"] == _MAX_LISTED_FOLLOWUPS
+
+
+@pytest.mark.asyncio
+async def test_undelivered_followup_points_at_its_retry(outcome_events):
+    outcome_events.list_activity_events_by_type.return_value = [
+        _undelivered(status="skipped", retry_schedule_id="cop-gone-cap-retry"),
+    ]
+    with _patch_scheduler([]):
+        ctx = await build_session_context(_SESSION, _USER)
+
+    assert "undelivered_followups: 1" in ctx
+    assert "skipped" in ctx
+    assert "retry schedule_id cop-gone-cap-retry" in ctx
+
+
+@pytest.mark.asyncio
+async def test_undelivered_followups_follow_the_pending_list(outcome_events):
+    outcome_events.list_activity_events_by_type.return_value = [
+        _undelivered(preview='say "hi"'),
+    ]
+    jobs = [
+        _one_shot(
+            schedule_id="cop-1", name="Check CI", fires_at="2026-05-22T13:50:00+00:00"
+        )
+    ]
+    with _patch_scheduler(jobs):
+        ctx = await build_session_context(_SESSION, _USER)
+
+    lines = ctx.split("\n")
+    assert lines[1] == "pending_followups: 1"
+    assert lines[2].startswith('- "Check CI"')
+    assert lines[3] == "undelivered_followups: 1"
+    assert lines[4].startswith('- "say \\"hi\\"" due ')
+
+
+@pytest.mark.asyncio
+async def test_outcome_read_failure_degrades_to_pending_only(outcome_events):
+    outcome_events.list_activity_events_by_type.side_effect = RuntimeError("db down")
+    with _patch_scheduler([]):
+        ctx = await build_session_context(_SESSION, _USER)
+
+    assert ctx == f"session_id: {_SESSION}; pending_followups: 0"
+
+
+@pytest.mark.asyncio
 async def test_scheduler_rpc_failure_degrades_to_session_id_only():
     """If the scheduler RPC raises, the turn must still proceed — the
     block degrades to the single-line ``pending_followups: 0`` form so
@@ -341,7 +452,9 @@ def test_malformed_nested_session_context_fully_consumed():
 
 
 @pytest.mark.asyncio
-async def test_build_session_context_skips_scheduler_when_followups_disabled():
+async def test_build_session_context_skips_scheduler_when_followups_disabled(
+    outcome_events,
+):
     scheduler_spy = AsyncMock(
         side_effect=AssertionError("scheduler must not be called when flag off")
     )
@@ -360,3 +473,4 @@ async def test_build_session_context_skips_scheduler_when_followups_disabled():
 
     assert result == "session_id: sess-1; pending_followups: 0"
     scheduler_spy.assert_not_awaited()
+    outcome_events.list_activity_events_by_type.assert_not_awaited()

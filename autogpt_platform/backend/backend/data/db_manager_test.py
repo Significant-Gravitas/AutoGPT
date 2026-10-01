@@ -8,6 +8,15 @@ def test_async_client_exposes_chat_methods() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "update_chat_session_llm_route")
 
 
+def test_followup_outcome_methods_registered() -> None:
+    """The Prisma-less scheduler records follow-up fire outcomes and posts
+    their notices through the DatabaseManager; the copilot tools read them
+    back the same way."""
+    for method in ("list_activity_events_by_type", "append_session_notice"):
+        assert hasattr(DatabaseManager, method)
+        assert hasattr(DatabaseManagerAsyncClient, method)
+
+
 def test_bot_analytics_methods_registered() -> None:
     for method in (
         "record_bot_event",

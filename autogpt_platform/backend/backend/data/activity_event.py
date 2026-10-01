@@ -16,6 +16,19 @@ from backend.util.json import SafeJson
 
 ActivityEventCategory = Literal["FILE", "INTEGRATION", "RUN", "SCHEDULE"]
 
+# One row per scheduled copilot follow-up fire, written by the scheduler from
+# every exit of its dispatch path (see ``backend.executor.schedule_events``).
+# They answer "did my follow-up run?" for ``list_schedules`` and the per-turn
+# ``<session_context>`` block, and are kept out of the Home feed: a chatty
+# cron would otherwise push every file and integration event out of its
+# bounded window.
+SCHEDULE_FIRE_EVENT_TYPES: tuple[str, ...] = (
+    "schedule.dispatched",
+    "schedule.skipped",
+    "schedule.dropped",
+    "schedule.failed",
+)
+
 
 class ActivityEventDraft(BaseModel):
     """What an emitter knows at the moment the work happens.
@@ -98,10 +111,39 @@ async def list_activity_events(
     since: datetime,
     categories: list[ActivityEventCategory] | None = None,
     limit: int = 200,
+    exclude_event_types: list[str] | None = None,
 ) -> list[ActivityEvent]:
     where: dict[str, Any] = {"userId": user_id, "createdAt": {"gte": since}}
     if categories:
         where["category"] = {"in": categories}
+    if exclude_event_types:
+        where["eventType"] = {"not_in": exclude_event_types}
+    rows = await prisma.models.ActivityEvent.prisma().find_many(
+        where=where, order={"createdAt": "desc"}, take=limit
+    )
+    return [ActivityEvent.from_db(row) for row in rows]
+
+
+async def list_activity_events_by_type(
+    user_id: str,
+    since: datetime,
+    event_types: list[str],
+    session_id: str | None = None,
+    limit: int = 20,
+) -> list[ActivityEvent]:
+    """Newest-first events of the given types, optionally for one session.
+
+    The per-session form backs the ``<session_context>`` block on every turn,
+    so it is bounded by ``limit`` and the ``sessionId`` index rather than by
+    the user's whole history.
+    """
+    where: dict[str, Any] = {
+        "userId": user_id,
+        "createdAt": {"gte": since},
+        "eventType": {"in": event_types},
+    }
+    if session_id is not None:
+        where["sessionId"] = session_id
     rows = await prisma.models.ActivityEvent.prisma().find_many(
         where=where, order={"createdAt": "desc"}, take=limit
     )
