@@ -10,8 +10,7 @@ block and re-loads every skill at the top of each turn to be safe
 The durable record of those calls is the session's message history, so
 this module derives the answer from it rather than keeping new state:
 every ``describe_capability`` / ``run_capability`` / ``read_skill`` call
-persisted on an assistant row, minus the ones whose tool result was an
-error.  The engines prepend the rendered block to the current turn's
+persisted on an assistant row whose tool result is a non-error response.  The engines prepend the rendered block to the current turn's
 model input only — like ``<skills_update>`` it is never persisted, so it
 is re-derived from the same history on every turn.
 """
@@ -74,14 +73,17 @@ def _call_name_and_args(tool_call: Mapping[str, Any]) -> tuple[str, dict[str, An
     return (str(name or "").strip(), args)
 
 
-def _failed_tool_call_ids(session: ChatSession) -> set[str]:
-    """Ids of tool calls whose persisted result is an error response.
+def _answered_tool_call_ids(session: ChatSession) -> set[str]:
+    """Ids of tool calls whose persisted result is a non-error tool response.
 
-    A describe that answered "unknown capability" or a run that hit a gate
-    taught the model nothing about the id, so those calls must not mark it
-    as seen.
+    Only an answer that parses as a tool response object with a non-error
+    ``type`` proves the model learned something about the id.  Anything
+    else — an ``error`` response, an ``input_validation_error``, a
+    plain-text interrupted marker, a result row that never landed — is
+    treated as unanswered so the id is not marked as seen; the worst case
+    is one more describe, which is today's behaviour.
     """
-    failed: set[str] = set()
+    answered: set[str] = set()
     for msg in session.messages:
         if msg.role != "tool" or not msg.tool_call_id or not msg.content:
             continue
@@ -92,9 +94,17 @@ def _failed_tool_call_ids(session: ChatSession) -> set[str]:
             payload = json.loads(content)
         except ValueError:
             continue
-        if isinstance(payload, Mapping) and payload.get("type") == "error":
-            failed.add(msg.tool_call_id)
-    return failed
+        if not isinstance(payload, Mapping):
+            continue
+        kind = payload.get("type")
+        if not isinstance(kind, str) or _is_error_type(kind):
+            continue
+        answered.add(msg.tool_call_id)
+    return answered
+
+
+def _is_error_type(kind: str) -> bool:
+    return kind == "error" or kind.endswith("_error")
 
 
 def _capability_id(args: Mapping[str, Any]) -> str:
@@ -106,14 +116,14 @@ def seen_capabilities(session: ChatSession) -> SeenCapabilities:
     """What the session history shows the model already described or loaded.
 
     Walks the persisted assistant rows newest-first so the lists favour the
-    ids the model used most recently, dedupes, and drops calls whose result
-    was an error.  ``run_capability`` on a ``skill:<name>`` id is a skill
+    ids the model used most recently, dedupes, and keeps only calls whose
+    persisted result is a non-error tool response.  ``run_capability`` on a ``skill:<name>`` id is a skill
     load (the dispatcher turns it into ``read_skill``; the baseline engine
     persists the call as made); on any other id it counts as described —
     a run that went through had the schema, and a run with bad input was
     answered with it.
     """
-    failed = _failed_tool_call_ids(session)
+    answered = _answered_tool_call_ids(session)
     described: dict[str, None] = {}
     skills: dict[str, None] = {}
     for msg in reversed(session.messages):
@@ -122,7 +132,7 @@ def seen_capabilities(session: ChatSession) -> SeenCapabilities:
         for tool_call in reversed(msg.tool_calls):
             if not isinstance(tool_call, Mapping):
                 continue
-            if str(tool_call.get("id") or "") in failed:
+            if str(tool_call.get("id") or "") not in answered:
                 continue
             name, args = _call_name_and_args(tool_call)
             if name == READ_SKILL_TOOL:

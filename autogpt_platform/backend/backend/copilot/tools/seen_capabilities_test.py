@@ -99,7 +99,7 @@ def test_a_skill_run_through_the_dispatcher_counts_as_loaded():
     assert seen.described == ["skill:other"]
 
 
-def test_calls_whose_result_was_an_error_do_not_count():
+def test_calls_without_a_non_error_result_do_not_count():
     session = _session()
     session.messages.extend(
         [
@@ -107,10 +107,18 @@ def test_calls_whose_result_was_an_error_do_not_count():
                 _call("describe_capability", {"id": "block:nope"}, "c1"),
                 _call("read_skill", {"name": "missing"}, "c2"),
                 _call("describe_capability", {"id": "block:ok"}, "c3"),
+                _call("describe_capability", {"id": "block:interrupted"}, "c4"),
+                _call("describe_capability", {"id": "block:orphan"}, "c5"),
+                _call("run_capability", {"id": "block:bad-input"}, "c6"),
+                _call("describe_capability", {"id": "block:untyped"}, "c7"),
             ),
             _result("c1", {"type": "error", "message": "Unknown capability id."}),
             _result("c2", {"type": "error", "message": "not found"}),
             _result("c3", {"type": "block_details"}),
+            _result("c4", "[Tool call interrupted before it produced a result]"),
+            # c5 never got a result row at all.
+            _result("c6", {"type": "input_validation_error", "errors": []}),
+            _result("c7", {"message": "no type field"}),
         ]
     )
 
@@ -140,7 +148,9 @@ def test_malformed_rows_are_skipped_not_fatal():
                     },
                 ],
             ),
-            _result("c3", "plain text result"),
+            _result("c1", {"type": "capability_details"}),
+            _result("c2", {"type": "block_details"}),
+            _result("c3", {"type": "block_details"}),
         ]
     )
 
@@ -154,6 +164,9 @@ def test_the_list_is_bounded_and_keeps_the_most_recent_ids():
         for i in range(MAX_LISTED_IDS + 5)
     ]
     session.messages.append(_assistant(*calls))
+    session.messages.extend(
+        _result(f"c{i}", {"type": "block_details"}) for i in range(len(calls))
+    )
 
     seen = seen_capabilities(session)
 
