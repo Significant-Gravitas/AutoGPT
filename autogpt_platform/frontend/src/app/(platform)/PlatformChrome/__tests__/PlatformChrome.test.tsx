@@ -12,10 +12,12 @@ import { PlatformChrome } from "../PlatformChrome";
 
 const showNewLayoutMock = vi.fn<() => boolean>(() => false);
 const showTourSidebarMock = vi.fn<() => boolean>(() => false);
+const isLayoutPendingMock = vi.fn<() => boolean>(() => false);
 vi.mock("../usePlatformChrome", () => ({
   usePlatformChrome: () => ({
     showNewLayout: showNewLayoutMock(),
     showTourSidebar: showTourSidebarMock(),
+    isLayoutPending: isLayoutPendingMock(),
   }),
 }));
 
@@ -65,6 +67,21 @@ describe("PlatformChrome", () => {
   beforeEach(() => {
     showNewLayoutMock.mockReturnValue(false);
     showTourSidebarMock.mockReturnValue(false);
+    isLayoutPendingMock.mockReturnValue(false);
+  });
+
+  it("renders the content with no navigation while the shell is unknown", () => {
+    isLayoutPendingMock.mockReturnValue(true);
+    render(
+      <PlatformChrome>
+        <div data-testid="child">content</div>
+      </PlatformChrome>,
+    );
+
+    expect(screen.queryByTestId("navbar")).toBeNull();
+    expect(screen.queryByTestId("app-sidebar")).toBeNull();
+    expect(screen.getByTestId("child")).toBeDefined();
+    expect(screen.getByTestId("global-search")).toBeDefined();
   });
 
   it("renders the classic Navbar shell when the new layout is off", () => {

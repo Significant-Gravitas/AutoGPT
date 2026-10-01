@@ -45,7 +45,11 @@ export function CopilotPage() {
   // Use the same mount-gated decision as PlatformChrome so the ChatSidebar is
   // hidden in lockstep with the layout swap — avoids a one-frame flash where
   // the classic shell renders without its sidebar before the new layout mounts.
-  const { showNewLayout } = usePlatformChrome();
+  // While the shell is still unknown PlatformChrome paints a neutral frame, so
+  // the classic-only chrome stays hidden too instead of flashing at sidebar
+  // users.
+  const { showNewLayout, isLayoutPending } = usePlatformChrome();
+  const showClassicChrome = !showNewLayout && !isLayoutPending;
   const { isUserLoading, isLoggedIn } = useAuth();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -76,25 +80,26 @@ export function CopilotPage() {
       // layout subtracts the navbar + preview banner. `svh` keeps the input
       // visible when mobile browser chrome is shown.
       style={
-        showNewLayout
-          ? { height: "100svh" }
-          : {
+        showClassicChrome
+          ? {
               height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
             }
+          : { height: "100svh" }
       }
       className="min-h-0"
     >
-      {!isMobile && !showNewLayout && <ChatSidebar />}
+      {!isMobile && showClassicChrome && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
         showNewLayout={showNewLayout}
+        showClassicChrome={showClassicChrome}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
       />
       {isMobile && sessionId && <ContextPanel sessionId={sessionId} mobile />}
       {isMobile && <ArtifactPanel mobile />}
-      {isMobile && !showNewLayout && <MobileDrawer />}
+      {isMobile && showClassicChrome && <MobileDrawer />}
       {!isBrainDumpEnabled && <NotificationDialog />}
       <CopilotModals />
     </SidebarProvider>
@@ -104,6 +109,7 @@ export function CopilotPage() {
 interface MainAreaProps {
   isMobile: boolean;
   showNewLayout: boolean;
+  showClassicChrome: boolean;
   sessionId: string | null;
   droppedFiles: File[];
   setDroppedFiles: (files: File[]) => void;
@@ -112,6 +118,7 @@ interface MainAreaProps {
 function MainArea({
   isMobile,
   showNewLayout,
+  showClassicChrome,
   sessionId,
   droppedFiles,
   setDroppedFiles,
@@ -125,7 +132,7 @@ function MainArea({
         >
           {/* New layout replaces these floating buttons: sessions live in the
               app sidebar, workspace files toggle sits in the inset header. */}
-          {isMobile && !showNewLayout && <MobileHeader />}
+          {isMobile && showClassicChrome && <MobileHeader />}
           <div
             className={cn(
               "flex flex-col gap-3 px-4 pt-4 empty:hidden",

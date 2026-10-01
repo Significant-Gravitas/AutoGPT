@@ -92,8 +92,10 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
+    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
   },
   useGetFlag: () => false,
+  useFlagStatus: () => ({ enabled: false, ready: true, answered: true }),
 }));
 
 // Auth check moved into CopilotPage directly — default to a logged-in

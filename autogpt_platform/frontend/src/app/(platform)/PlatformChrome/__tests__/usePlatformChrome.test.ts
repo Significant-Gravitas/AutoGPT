@@ -1,6 +1,9 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement, ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LayoutHintProvider } from "../components/LayoutHintProvider/LayoutHintProvider";
+import { LAYOUT_HINT_COOKIE, LayoutHint } from "../helpers";
 import { usePlatformChrome } from "../usePlatformChrome";
 
 const pathnameMock = vi.fn<() => string>(() => "/marketplace");
@@ -16,7 +19,17 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => authMock(),
 }));
 
-const flagMock = vi.fn<(flag: string) => boolean>(() => true);
+interface FlagStatus {
+  enabled: boolean;
+  ready: boolean;
+  answered: boolean;
+}
+
+const flagMock = vi.fn<(flag: string) => FlagStatus>(() => ({
+  enabled: true,
+  ready: true,
+  answered: true,
+}));
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -24,15 +37,40 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flagMock(flag),
+    useFlagStatus: (flag: string) => flagMock(flag),
   };
 });
+
+function setFlag(status: Partial<FlagStatus>) {
+  flagMock.mockReturnValue({
+    enabled: true,
+    ready: true,
+    answered: true,
+    ...status,
+  });
+}
+
+function withHint(hint: LayoutHint | undefined) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return createElement(LayoutHintProvider, { hint, children });
+  };
+}
+
+function layoutCookie() {
+  return document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${LAYOUT_HINT_COOKIE}=`));
+}
 
 describe("usePlatformChrome", () => {
   beforeEach(() => {
     pathnameMock.mockReturnValue("/marketplace");
-    flagMock.mockReturnValue(true);
+    setFlag({ enabled: true });
     authMock.mockReturnValue({ isLoggedIn: true, isUserLoading: false });
+  });
+
+  afterEach(() => {
+    document.cookie = `${LAYOUT_HINT_COOKIE}=; path=/; max-age=0`;
   });
 
   it("enables the new layout after mount when the flag is on and route is allowed", async () => {
@@ -44,12 +82,99 @@ describe("usePlatformChrome", () => {
   });
 
   it("keeps the classic layout when the flag is off", async () => {
-    flagMock.mockReturnValue(false);
+    setFlag({ enabled: false });
     const { result } = renderHook(() => usePlatformChrome());
 
     await waitFor(() => {
       expect(result.current.showNewLayout).toBe(false);
+      expect(result.current.isLayoutPending).toBe(false);
     });
+  });
+
+  it("never paints the classic shell before the flag has answered", async () => {
+    setFlag({ ready: false, answered: false });
+    const { result } = renderHook(() => usePlatformChrome());
+
+    // Same on the server and across mount: no cookie, no answer, no shell.
+    expect(result.current.isLayoutPending).toBe(true);
+    expect(result.current.showNewLayout).toBe(false);
+    expect(result.current.isNewLayoutActive).toBe(false);
+
+    await waitFor(() => {
+      expect(result.current.isLayoutPending).toBe(true);
+    });
+    expect(layoutCookie()).toBeUndefined();
+  });
+
+  it("renders the shell the cookie remembers while the flag is still answering", () => {
+    setFlag({ ready: false, answered: false });
+    const { result } = renderHook(() => usePlatformChrome(), {
+      wrapper: withHint("new"),
+    });
+
+    expect(result.current.isLayoutPending).toBe(false);
+    expect(result.current.showNewLayout).toBe(true);
+    expect(result.current.isNewLayoutActive).toBe(true);
+  });
+
+  it("honours a classic cookie before the flag has answered", () => {
+    setFlag({ ready: false, answered: false });
+    const { result } = renderHook(() => usePlatformChrome(), {
+      wrapper: withHint("classic"),
+    });
+
+    expect(result.current.isLayoutPending).toBe(false);
+    expect(result.current.showNewLayout).toBe(false);
+  });
+
+  it("lets the flag's answer override a stale cookie", async () => {
+    setFlag({ enabled: false });
+    const { result } = renderHook(() => usePlatformChrome(), {
+      wrapper: withHint("new"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.showNewLayout).toBe(false);
+    });
+    expect(result.current.isLayoutPending).toBe(false);
+  });
+
+  it("remembers the flag's answer in the layout cookie", async () => {
+    renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(layoutCookie()).toBe(`${LAYOUT_HINT_COOKIE}=new`);
+    });
+
+    setFlag({ enabled: false });
+    renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(layoutCookie()).toBe(`${LAYOUT_HINT_COOKIE}=classic`);
+    });
+  });
+
+  it("keeps the remembered shell when the flag vendor times out", async () => {
+    setFlag({ enabled: false, ready: true, answered: false });
+    const { result } = renderHook(() => usePlatformChrome(), {
+      wrapper: withHint("new"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.showNewLayout).toBe(true);
+    });
+    // A timeout is not an answer worth remembering.
+    expect(layoutCookie()).toBeUndefined();
+  });
+
+  it("falls back to the flag default on a vendor timeout with no cookie", async () => {
+    setFlag({ enabled: false, ready: true, answered: false });
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(result.current.isLayoutPending).toBe(false);
+    });
+    expect(result.current.showNewLayout).toBe(false);
   });
 
   it("excludes the /settings route from the new layout", async () => {
@@ -100,7 +225,7 @@ describe("usePlatformChrome", () => {
     },
   );
 
-  it("passes the flag enum to useGetFlag", async () => {
+  it("passes the flag enum to useFlagStatus", async () => {
     renderHook(() => usePlatformChrome());
     await waitFor(() => {
       expect(flagMock).toHaveBeenCalledWith("autogpt-new-layout");

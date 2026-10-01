@@ -37,6 +37,7 @@ export function PlatformChrome({ children }: Props) {
   const {
     showNewLayout,
     isNewLayoutActive,
+    isLayoutPending,
     showTourSidebar,
     overlayInsetHeader,
     isCopilotRoute,
@@ -112,6 +113,20 @@ export function PlatformChrome({ children }: Props) {
           <section className="flex-1">{content}</section>
         </SidebarInset>
       </SidebarProvider>
+    );
+  }
+
+  // Neither shell is known yet (no layout cookie, flag vendor still
+  // answering): a frame with no navigation at all, never the classic Navbar
+  // on speculation. Content still renders so crawlers and the page's own
+  // data fetching aren't held back.
+  if (isLayoutPending) {
+    return (
+      <main className="flex h-screen w-full flex-col">
+        <AdminImpersonationBanner />
+        <GlobalSearchOverlay />
+        <section className="flex-1">{content}</section>
+      </main>
     );
   }
 
