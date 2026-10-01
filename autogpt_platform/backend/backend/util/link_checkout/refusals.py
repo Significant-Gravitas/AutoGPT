@@ -54,10 +54,10 @@ RAISE_NOT_HIGHER = (
     "The new total must be higher than the checkout's current total. A lower "
     "final price needs no change: the approved amount covers it."
 )
-RAISE_REFUSED = (
-    "Link would not raise this request, so it stays approved at its original "
-    "amount. Prepare a new checkout for the full total if the store will not "
-    "accept the original amount."
+RAISE_CLOSED = (
+    "This purchase is no longer open in Link: it was declined, canceled, paid "
+    "or has expired, so its total can't change. Prepare a new checkout if the "
+    "customer still wants it."
 )
 
 MESSAGES = frozenset(
@@ -73,7 +73,7 @@ MESSAGES = frozenset(
         LINK_ACCOUNT_NOT_CHOSEN,
         PAY_TOKEN_UNAVAILABLE,
         RAISE_NOT_HIGHER,
-        RAISE_REFUSED,
+        RAISE_CLOSED,
     }
 )
 

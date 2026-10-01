@@ -16,7 +16,7 @@ from backend.copilot.tools import browser_checkout_support as support
 from backend.copilot.tools.browser_checkout_support import CheckoutResponse
 from backend.util.link_checkout import approval
 from backend.util.link_checkout.preflight import PurchaseBlocker
-from backend.util.link_checkout.refusals import RAISE_NOT_HIGHER, RAISE_REFUSED
+from backend.util.link_checkout.refusals import RAISE_CLOSED, RAISE_NOT_HIGHER
 
 REASON = "Sales tax was added on the final checkout step."
 
@@ -82,13 +82,14 @@ async def test_a_higher_total_is_reapproved_in_link_then_paid_once(tools, plan):
     assert raised.status == "pending_approval"
     assert raised.approval_mode == "link"
     assert raised.approval_url.startswith("https://app.link.com/")
-    assert tools.calls == ["create", "raise"]
-    assert tools.amounts == [100, 250]
+    # Link raises only an approved request, so its status is read first.
+    assert tools.calls == ["create", "status", "raise"]
+    assert tools.amounts == [100, 100, 250]
 
     paid = await complete(created.checkout_id)
 
     assert paid.status == "submitted"
-    assert tools.calls == ["create", "raise", "status", "pay"]
+    assert tools.calls == ["create", "status", "raise", "status", "pay"]
     assert tools.amounts[-1] == 250
 
 
@@ -145,17 +146,45 @@ async def test_a_raise_beyond_the_chat_policy_moves_to_link(tools, plan, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_link_refusing_a_raise_keeps_the_approved_total(tools, plan):
+async def test_link_refusing_a_raise_asks_again_for_the_new_total(tools, plan):
+    """Link's guide: an increase can fail; cancel the request and create one
+    for the new total, which the user approves in Link."""
     created = await request(plan)
     tools.raise_error = "link_rejected"
 
-    refused = await raise_to(created.checkout_id, 250)
+    raised = parsed(await raise_to(created.checkout_id, 250))
 
-    assert RAISE_REFUSED in refused.output
+    assert raised.status == "pending_approval"
+    assert raised.amount == 250
+    assert tools.calls == ["create", "status", "raise", "cancel", "create"]
+    assert tools.amounts[-1] == 250
     paid = await complete(created.checkout_id)
     assert paid.status == "submitted"
-    assert paid.amount == 100
-    assert tools.amounts[-1] == 100
+    assert tools.amounts[-1] == 250
+
+
+@pytest.mark.asyncio
+async def test_a_request_not_yet_approved_is_asked_for_again(tools, plan):
+    """Link raises only an approved request; one still waiting for approval
+    is canceled and asked for again at the new total."""
+    created = await request(plan)
+    tools.status = "pending_approval"
+
+    raised = parsed(await raise_to(created.checkout_id, 250))
+
+    assert raised.amount == 250
+    assert tools.calls == ["create", "status", "cancel", "create"]
+
+
+@pytest.mark.asyncio
+async def test_a_purchase_declined_in_link_cannot_be_raised(tools, plan):
+    created = await request(plan)
+    tools.status = "denied"
+
+    result = await raise_to(created.checkout_id, 250)
+
+    assert RAISE_CLOSED in result.output
+    assert tools.calls == ["create", "status"]
 
 
 @pytest.mark.asyncio

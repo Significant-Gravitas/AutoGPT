@@ -41,7 +41,7 @@ sequenceDiagram
 
 A checkout often shows its final total only at the last step (tax, shipping, a fee). Link calls the fix incremental authorization. Until the payment is attempted, the agent can call `browser_raise_link_payment` with the higher total and the reason, and the user approves the new total afresh:
 
-- If Link already has the request, it is raised there (`POST /spend_requests/{id}` with the new total, then `POST /spend_requests/{id}/request_approval`), and the user approves it in Link. If Link won't raise it, the request stays usable at its old amount.
+- If Link already has the request and the user approved it, it is raised there (`POST /spend_requests/{id}` with the new total, then `POST /spend_requests/{id}/request_approval`), and the user approves it again in Link. As Stripe's guide recommends, a request Link won't raise, or one still waiting for approval, is canceled and asked for again at the new total. A request the user declined, or one that is over, can't be raised.
 - If only the chat has it (in-chat approval, nothing created in Link yet), the chat's approval record is rewritten as a new revision showing the new total, the one it replaced and the reason. A decision names the revision its card showed, so a card still showing the old total can't approve the new one. If the user's Link policy no longer covers the new total, the approval moves to Link and the chat's record is closed.
 
 Each raise is a new revision of the purchase with its own Link idempotency keys, and restarts the ten-minute deadline. A lower final price needs no change: the approved amount covers it.
@@ -195,7 +195,7 @@ Code can't settle these:
 
 ## Code map
 
-- `backend/util/link_checkout/`: the engine (`engine.py`), the broker state machine (`broker_checkout.py`, with its Link calls in `broker_link.py`, its record in `checkout_record.py`, its view in `checkout_view.py` and the refusals the agent may see in `refusals.py`), browser control (`cdp.py`, `cdp_scripts.py`, `pay_token.py`, `runtime.py`), the worker (`runner.py`, `worker.py`, `link.py`), Link's status guidance (`status.py`), the pre-flight check (`preflight.py`), in-chat approval (`approval.py`, `policy.py`), the broker service (`broker_service.py`, `broker_client.py`, `broker_routing.py`) and egress (`egress.py`)
+- `backend/util/link_checkout/`: the engine (`engine.py`), the broker state machine (`broker_checkout.py`, with raised totals in `broker_raise.py`, its Link calls in `broker_link.py`, its record in `checkout_record.py`, its view in `checkout_view.py` and the refusals the agent may see in `refusals.py`), browser control (`cdp.py`, `cdp_scripts.py`, `pay_token.py`, `runtime.py`), the worker (`runner.py`, `worker.py`, `link.py`), Link's status guidance (`status.py`), the pre-flight check (`preflight.py`), in-chat approval (`approval.py`, `policy.py`), the broker service (`broker_service.py`, `broker_client.py`, `broker_routing.py`) and egress (`egress.py`)
 - `backend/copilot/tools/browser_checkout*.py`: the five tools, with their parameters in `browser_checkout_schemas.py`
 - `backend/api/features/chat/link_checkout.py`: the approve and decline routes
 - `frontend/src/app/(platform)/copilot/tools/GenericTool/components/LinkCheckout/`: the purchase card

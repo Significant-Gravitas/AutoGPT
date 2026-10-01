@@ -421,4 +421,4 @@ async def test_a_raise_crosses_the_broker_and_is_reapproved_in_link(
         lower = await raise_to(200)
         assert lower.status_code == 422
         assert lower.json()["detail"] == RAISE_NOT_HIGHER
-    assert local_broker.calls == ["create", "raise"]
+    assert local_broker.calls == ["create", "status", "raise"]

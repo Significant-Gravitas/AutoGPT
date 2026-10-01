@@ -22,7 +22,6 @@ from backend.util.link_checkout.broker_checkout import (
     complete_checkout,
     create_checkout,
     get_checkout,
-    raise_checkout,
     reconcile,
     reset_browser,
 )
@@ -37,6 +36,7 @@ from backend.util.link_checkout.broker_protocol import (
     Principal,
     RaiseCheckout,
 )
+from backend.util.link_checkout.broker_raise import raise_checkout
 from backend.util.link_checkout.refusals import CheckoutRefused
 
 

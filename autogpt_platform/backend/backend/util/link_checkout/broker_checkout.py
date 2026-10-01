@@ -30,7 +30,6 @@ from backend.util.link_checkout.broker_protocol import (
     CheckoutReference,
     CheckoutView,
     CreateCheckout,
-    RaiseCheckout,
     session_key,
 )
 from backend.util.link_checkout.cdp import prepare_browser
@@ -56,7 +55,6 @@ from backend.util.link_checkout.models import (
 from backend.util.link_checkout.refusals import (
     ATTEMPT_UNRECONCILED,
     LIVE_PAYMENTS_DISABLED,
-    RAISE_NOT_HIGHER,
     CheckoutRefused,
 )
 from backend.util.link_checkout.runtime import (
@@ -70,7 +68,7 @@ CHECKOUT_TTL_SECONDS = 600
 
 
 async def create_checkout(request: CreateCheckout) -> CheckoutView:
-    _require_payable(request.plan.test_mode)
+    require_payable(request.plan.test_mode)
     key = session_key(request)
     async with browser_operation(key) as directory:
         await _clear_finished(directory, request.access_token)
@@ -90,7 +88,7 @@ async def create_checkout(request: CreateCheckout) -> CheckoutView:
         save_intent(directory, intent)
         if intent.approval_mode == "in_app":
             return view(intent)
-        spend = await _first_spend(directory, intent, request.access_token, None)
+        spend = await first_spend(directory, intent, request.access_token, None)
         return view(intent, spend)
 
 
@@ -102,13 +100,13 @@ async def complete_checkout(request: AuthorizedCheckout) -> CheckoutView:
             return await _reconcile(directory, intent, request.access_token)
         if intent.expires_at <= time.time():
             return await _expired(directory, intent, request.access_token)
-        _require_payable(intent.plan.test_mode)
+        require_payable(intent.plan.test_mode)
         if intent.spend_request_id is not None:
             spend = await broker_link.status(intent, request.access_token)
         elif intent.approval_mode == "in_app" and request.approval is None:
             return view(intent)
         else:
-            spend = await _first_spend(
+            spend = await first_spend(
                 directory, intent, request.access_token, request.approval
             )
         validate_spend(intent, spend)
@@ -116,42 +114,6 @@ async def complete_checkout(request: AuthorizedCheckout) -> CheckoutView:
             return view(intent, spend)
         consume_intent(directory, intent)
         return await _attempt(directory, key, intent, spend, request.access_token)
-
-
-async def raise_checkout(request: RaiseCheckout) -> CheckoutView:
-    """Raise an unpaid checkout's total when the final price came out higher.
-    The customer approves the new total afresh: in Link, by raising the
-    request it already has there (incremental authorization), or in the chat
-    while nothing exists in Link yet. The deadline restarts with it."""
-    key = session_key(request)
-    async with browser_operation(key) as directory:
-        intent = read_intent(directory, request.checkout_id, request.user_id, key)
-        _require_payable(intent.plan.test_mode)
-        if request.amount <= intent.plan.amount:
-            raise CheckoutRefused(RAISE_NOT_HIGHER)
-        raised = intent.model_copy(
-            update={
-                "plan": intent.plan.model_copy(update={"amount": request.amount}),
-                "revision": intent.revision + 1,
-                "expires_at": time.time() + CHECKOUT_TTL_SECONDS,
-                "approval_mode": (
-                    "link" if intent.spend_request_id else request.approval_mode
-                ),
-            }
-        )
-        if raised.spend_request_id is not None:
-            spend = await broker_link.raise_total(raised, request.access_token)
-            raised.approval_url = (
-                link_action_url(spend.approval_url) or raised.approval_url
-            )
-            validate_spend(raised, spend)
-            replace_intent(directory, raised)
-            return view(raised, spend)
-        replace_intent(directory, raised)
-        if raised.approval_mode == "in_app":
-            return view(raised)
-        spend = await _first_spend(directory, raised, request.access_token, None)
-        return view(raised, spend)
 
 
 async def reconcile(request: AuthorizedCheckout) -> CheckoutView:
@@ -196,7 +158,7 @@ def load_checkout(directory: Path, request: CheckoutReference) -> CheckoutIntent
     )
 
 
-def _require_payable(test_mode: bool) -> None:
+def require_payable(test_mode: bool) -> None:
     if not test_mode and not live_payments_allowed():
         raise CheckoutRefused(LIVE_PAYMENTS_DISABLED)
 
@@ -237,7 +199,7 @@ async def _expired(
     )
 
 
-async def _first_spend(
+async def first_spend(
     directory: Path,
     intent: CheckoutIntent,
     token: SecretStr,
