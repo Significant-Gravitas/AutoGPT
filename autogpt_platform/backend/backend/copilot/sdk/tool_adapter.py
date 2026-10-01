@@ -1135,6 +1135,8 @@ SDK_DISALLOWED_TOOLS = [
     "CronCreate",
     "CronList",
     "CronDelete",
+    "ListAgents",
+    "SendMessage",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
