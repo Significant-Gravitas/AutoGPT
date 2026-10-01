@@ -41,6 +41,7 @@ from backend.copilot.bot.adapters.base import (
 )
 from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.redis_client import get_redis_async
@@ -52,9 +53,8 @@ from .text import mention_entities, mention_token, to_teams_markdown
 logger = logging.getLogger(__name__)
 
 MESSAGES_PATH = "/api/copilot-webhooks/teams/messages"
-_EXPIRED_NOTICE = "This question has expired — type your answer instead."
-_NOT_YOUR_QUESTION = (
-    "This question was for someone else — they still need to answer it."
+_UNREADABLE_CLICK = (
+    "Couldn't read this click, so nothing ran. Answer in AutoGPT instead."
 )
 
 # Conversations we keep a learned serviceUrl for. Evicting one is cheap:
@@ -231,11 +231,10 @@ class TeamsAdapter(WebhookAdapter):
             logger.exception("Teams activity handler failed")
 
     async def _dispatch_choice_click(
-        self, activity: dict[str, Any], token: str, index: int
+        self, activity: dict[str, Any], kind: ButtonKind, token: str, index: int
     ) -> None:
-        """Resolve a clicked ask_question choice button and feed the answer
-        back through the normal message pipeline, exactly like a typed
-        reply.
+        """Resolve a clicked choice or card button and feed the answer back
+        through the normal message pipeline, exactly like a typed reply.
 
         Teams' classic card actions have no update-the-original-card API
         wired here (unlike the other adapters' edit-in-place ack) — a short
@@ -245,29 +244,26 @@ class TeamsAdapter(WebhookAdapter):
         conversation_id = (activity.get("conversation") or {}).get("id")
         if not conversation_id:
             return
-        clicker_id = str((activity.get("from") or {}).get("id", ""))
-        resolved = await choices.resolve_choice("teams", token, index, clicker_id)
-        if resolved.text is None:
+        ctx = await self._build_context(activity)
+        if ctx is None:
+            # Only a turn posts a button, and _build_context admitted that
+            # turn's message; a click it refuses is still owed an answer.
             await self._post(
-                conversation_id,
-                {
-                    "type": "message",
-                    "text": (
-                        _NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE
-                    ),
-                },
+                conversation_id, {"type": "message", "text": _UNREADABLE_CLICK}
             )
             return
-        option = resolved.text
+        answer = await choices.answer_button(
+            self._api, "teams", kind, token, index, ctx.user_id, ctx.server_id
+        )
+        if answer.reply is None:
+            await self._post(conversation_id, {"type": "message", "text": answer.text})
+            return
         # The token is already consumed, so the answer exists only here. The
         # ack is cosmetic; a Connector error must not cost the user the turn.
         try:
             await self._post(
                 conversation_id,
-                {
-                    "type": "message",
-                    "text": self.localize_markup(f"✅ You answered: {option}"),
-                },
+                {"type": "message", "text": self.localize_markup(answer.text)},
             )
         except Exception:
             logger.exception(
@@ -280,10 +276,9 @@ class TeamsAdapter(WebhookAdapter):
         # from the activity yields False, and in a *channel* the turn is then
         # dropped by the handler's `if not ctx.bot_mentioned: return` — after
         # the ack above has already told the user their answer was accepted.
-        ctx = await self._build_context({**activity, "text": option})
-        if ctx is not None:
-            ctx.bot_mentioned = True
-            await self._on_message_callback(ctx, self)
+        ctx.text = answer.reply
+        ctx.bot_mentioned = True
+        await self._on_message_callback(ctx, self)
 
     async def _is_duplicate_activity(self, activity: dict[str, Any]) -> bool:
         """Drop redeliveries — first delivery of an activity id wins.
@@ -436,11 +431,12 @@ class TeamsAdapter(WebhookAdapter):
         options: list[str],
         token: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
     ) -> bool:
         activity = {
             "type": "message",
             "attachments": [
-                choice_ui.choice_card(self.localize_markup(text), token, options)
+                choice_ui.choice_card(self.localize_markup(text), token, options, kind)
             ],
         }
         await self._post(channel_id, activity)

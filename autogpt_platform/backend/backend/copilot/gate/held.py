@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
         PendingHumanReviewModel,
     )
+    from backend.copilot.model import ChatMessage
     from backend.copilot.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -51,10 +52,20 @@ _MAX_RESULT_CHARS = 120_000
 Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
+# Metadata on the user rows an answered card writes: the wake, and each result.
+_WAKE_KEY = "held_calls_answered"
+_RESULT_KEY = "held_call"
 _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
 )
+
+
+def is_answer_row(message: "ChatMessage") -> bool:
+    """A user row the gate wrote for an answered card, not something the user typed."""
+    return bool(message.metadata) and (
+        _WAKE_KEY in message.metadata or _RESULT_KEY in message.metadata
+    )
 
 
 class HeldResult(PendingMessage):
@@ -227,7 +238,7 @@ async def wake(
             logger.info(f"Held calls in {session_id} wait for its open question")
             return
         permissions = resolve_session_permissions(info)
-        metadata = {"held_calls_answered": True}
+        metadata = {_WAKE_KEY: True}
         try:
             async with acquire_turn_slot(user_id, session_id) as slot:
                 # Not admitted: a turn is already running, and its end wakes us.
@@ -344,7 +355,7 @@ def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage
             f"{output}\n</held_call_result>"
         ),
         metadata={
-            "held_call": {
+            _RESULT_KEY: {
                 "review_id": call.review_id,
                 "tool_name": call.tool_name,
                 "tool_call_id": call.tool_call_id,

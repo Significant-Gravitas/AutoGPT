@@ -269,7 +269,7 @@ async function attemptCreateAuthState(
     await loginPage.login(email, password);
     await page.waitForURL(
       (url: URL) =>
-        /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+        /\/(onboarding|marketplace|copilot|home|library)/.test(url.pathname),
       { timeout: 20000 },
     );
     await skipOnboardingIfPresent(page, "/marketplace");
