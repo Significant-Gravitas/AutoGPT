@@ -438,6 +438,38 @@ describe("PaywallModal — upgrade mutation", () => {
     vi.unstubAllEnvs();
   });
 
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    stubLocation();
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const { mutateFn } = setupMocks({
+      mutateFn: vi.fn().mockResolvedValue({
+        status: 200,
+        data: { url: "https://checkout.stripe.com/pay/cs_test" },
+      }),
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+    const upgrade = screen.getByRole("button", { name: /upgrade to pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      );
+    });
+    expect(mutateFn).toHaveBeenCalledTimes(1);
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  });
+
   it("401 from updateTier routes to /login instead of toasting a dead-end error", async () => {
     stubLocation();
     const mutateFn = vi

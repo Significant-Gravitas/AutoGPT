@@ -74,8 +74,12 @@ export function useYourPlanCard() {
     },
   });
 
-  const { mutateAsync: updateTier, isPending: isUpdatingTier } =
+  const { mutateAsync: updateTier, isPending: isUpdatePending } =
     useUpdateSubscriptionTier();
+  // The mutation settles before the Checkout redirect starts; this keeps the
+  // plan actions busy across the wait for the Ads conversion too.
+  const [isChangingTier, setIsChangingTier] = useState(false);
+  const isUpdatingTier = isUpdatePending || isChangingTier;
 
   const effectiveTier = subscription.data?.tier ?? null;
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
@@ -189,6 +193,19 @@ export function useYourPlanCard() {
     effectiveTier !== "NO_TIER";
 
   async function changeTier(
+    tier: SubscriptionTierRequestTier,
+    billingCycle?: SubscriptionTierRequestBillingCycle,
+  ) {
+    if (isUpdatingTier) return false;
+    setIsChangingTier(true);
+    try {
+      return await requestTierChange(tier, billingCycle);
+    } finally {
+      setIsChangingTier(false);
+    }
+  }
+
+  async function requestTierChange(
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
   ) {

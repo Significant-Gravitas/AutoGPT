@@ -105,6 +105,11 @@ export function usePaywallModal() {
   const trial = useTrialCard("billing");
   const trialOffer = getEligibleTrialOffer(trial, plans);
 
+  // selectedTier spans the whole click: the request, the wait for the Ads
+  // conversion and the start of the redirect. isPending alone ends before the
+  // redirect, which left the plan buttons clickable for a second checkout.
+  const isCheckingOut = isPending || selectedTier !== null;
+
   const hasActiveStripeSubscription = Boolean(
     subscription?.has_active_stripe_subscription,
   );
@@ -160,7 +165,7 @@ export function usePaywallModal() {
   }
 
   async function handleSelectPlan(tier: string) {
-    if (isPending) return;
+    if (isCheckingOut) return;
     // Team (BUSINESS) is contact-sales, not a self-serve Stripe Checkout —
     // divert to the intake form like onboarding + Settings billing do.
     // Without this, the POST hits the backend with tier=BUSINESS which 422s
@@ -180,7 +185,7 @@ export function usePaywallModal() {
   }
 
   async function confirmPendingTier() {
-    if (!pendingTier) return;
+    if (!pendingTier || isCheckingOut) return;
     const tier = pendingTier;
     await fireUpdate(tier);
     setPendingTier(null);
@@ -215,7 +220,7 @@ export function usePaywallModal() {
     selectedCycle,
     setSelectedCycle,
     handleSelectPlan,
-    isPending,
+    isPending: isCheckingOut,
     selectedTier,
     pendingTier,
     pendingTierLabel,

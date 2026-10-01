@@ -29,6 +29,9 @@ export function useSubscriptionTierSection() {
   const [pendingUpgradeTier, setPendingUpgradeTier] = useState<string | null>(
     null,
   );
+  // The mutation settles before the Checkout redirect starts; this keeps the
+  // tier buttons busy across the wait for the Ads conversion too.
+  const [isChangingTier, setIsChangingTier] = useState(false);
 
   const {
     data: subscription,
@@ -43,9 +46,10 @@ export function useSubscriptionTierSection() {
 
   const {
     mutateAsync: doUpdateTier,
-    isPending,
+    isPending: isUpdatePending,
     variables,
   } = useUpdateSubscriptionTier();
+  const isPending = isUpdatePending || isChangingTier;
 
   useEffect(() => {
     if (subscriptionStatus === "success") {
@@ -71,7 +75,9 @@ export function useSubscriptionTierSection() {
   }, [subscriptionStatus, refetch, toast, router, pathname]);
 
   async function changeTier(tier: string) {
+    if (isPending) return;
     setTierError(null);
+    setIsChangingTier(true);
     try {
       // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
       // report the subscription to Google Ads. This surface has no cycle
@@ -111,6 +117,8 @@ export function useSubscriptionTierSection() {
       const msg =
         e instanceof Error ? e.message : "Failed to change subscription tier";
       setTierError(msg);
+    } finally {
+      setIsChangingTier(false);
     }
   }
 
