@@ -990,9 +990,14 @@ async def test_cap_rejection_on_cron_records_a_skip_without_a_retry_job(
     record = _fired_record(outcome_sinks)
     assert record.status == "skipped"
     assert record.cron == "*/5 * * * *"
-    assert "next scheduled run" in record.reason
+    assert record.reason == "the account was at its concurrent-turn limit"
     content = outcome_sinks.notice.call_args.kwargs["content"]
-    assert "next scheduled run will try again" in content
+    # The retry hint comes from the notice text alone, so it appears once.
+    assert content.count("next scheduled run will try again") == 1
+    assert content.endswith(
+        "did not run: the account was at its concurrent-turn limit. "
+        "The next scheduled run will try again."
+    )
 
 
 @pytest.mark.asyncio

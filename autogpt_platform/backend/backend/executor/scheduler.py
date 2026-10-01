@@ -663,10 +663,12 @@ async def _execute_copilot_turn(**kwargs):
         )
         unavailable = "the expert workspace was unavailable"
         if args.run_at is None:
+            # Just the cause: the notice text adds "the next scheduled run
+            # will try again" for every cron skip itself.
             await _record_copilot_turn_outcome(
                 args,
                 status="skipped",
-                reason=f"{unavailable}; the next scheduled run will try again",
+                reason=unavailable,
                 session_id=target_session_id,
             )
         else:
@@ -693,7 +695,7 @@ async def _execute_copilot_turn(**kwargs):
             await _record_copilot_turn_outcome(
                 args,
                 status="skipped",
-                reason=f"{capped}; the next scheduled run will try again",
+                reason=capped,
                 session_id=target_session_id,
             )
         else:
