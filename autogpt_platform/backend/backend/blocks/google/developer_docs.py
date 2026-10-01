@@ -2,6 +2,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -133,6 +134,7 @@ class SearchGoogleDeveloperDocsBlock(Block):
                     "nextPageToken": "next-page",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -229,6 +231,7 @@ class AskGoogleDeveloperDocsBlock(Block):
                     }
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -309,6 +312,7 @@ class GetGoogleDeveloperDocsBlock(Block):
             test_mock={
                 "_batch_get": lambda *args, **kwargs: {"documents": [_TEST_DOCUMENT]}
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -1,6 +1,7 @@
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -75,6 +76,7 @@ class SearchGoogleMapsPlatformDocsBlock(Block):
             test_mock={
                 "_retrieve": lambda *args, **kwargs: {"contexts": [_TEST_CONTEXT]}
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -135,6 +137,7 @@ class GetGoogleMapsPlatformCodingInstructionsBlock(Block):
                     "systemInstructions": _TEST_INSTRUCTIONS
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
