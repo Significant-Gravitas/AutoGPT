@@ -898,6 +898,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "role": "Marketing Specialist",
             "job_title": None,
             "is_archived": True,
+            "autopilot_mode": None,
         }
     ]
     mock_list.assert_awaited_once_with(test_user_id)
