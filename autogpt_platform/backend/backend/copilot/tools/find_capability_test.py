@@ -24,6 +24,7 @@ GITHUB_UNGRANTED = ConnectionState(ungranted=GITHUB_STATE)
 def _clean_context():
     set_execution_context(USER, make_session(USER))
     yield
+    set_execution_context(None, None)
 
 
 @pytest.fixture(autouse=True)
