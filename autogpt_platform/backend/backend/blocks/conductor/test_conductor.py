@@ -155,6 +155,17 @@ async def test_create_workspace_builds_a_clean_payload():
     assert "reply" not in outputs
 
 
+def test_create_workspace_keeps_the_branch_saved_before_the_rename():
+    defaults = ConductorCreateWorkspaceBlock.Input.get_input_defaults
+    assert defaults({"project_id": "p1", "branch": "dev"}) == {
+        "project_id": "p1",
+        "branch": "dev",
+        "base_branch": "dev",
+    }
+    assert defaults({"branch": "main", "base_branch": "dev"})["base_branch"] == "dev"
+    assert defaults({"project_id": "p1"}) == {"project_id": "p1"}
+
+
 @pytest.mark.asyncio
 async def test_create_workspace_without_base_branch_reports_it_as_unknown():
     block = ConductorCreateWorkspaceBlock()

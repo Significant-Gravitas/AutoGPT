@@ -1,5 +1,6 @@
 from typing import Any
 
+from backend.blocks._base import BlockInput
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -103,6 +104,13 @@ class ConductorCreateWorkspaceBlock(Block):
             ge=1,
             le=300,
         )
+
+        @classmethod
+        def get_input_defaults(cls, data: BlockInput) -> BlockInput:
+            # Nodes saved before the input was renamed still carry `branch`.
+            if "base_branch" not in data and data.get("branch"):
+                return {**data, "base_branch": data["branch"]}
+            return data
 
     class Output(BlockSchemaOutput):
         workspace_id: str = SchemaField(description="ID of the new workspace")
