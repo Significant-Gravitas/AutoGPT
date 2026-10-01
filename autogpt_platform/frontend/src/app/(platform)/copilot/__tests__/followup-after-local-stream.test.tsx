@@ -270,6 +270,10 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
     );
     expect(queueMessage).toHaveBeenCalledWith("second");
+    // Both held copies are released: one went out, one is now the
+    // backend's chip.
+    await waitFor(() => expect(result.current.queuedMessages).toEqual([]));
+    expect(window.sessionStorage.length).toBe(0);
   });
 
   it("still queues normally when the backend accepts the follow-up", async () => {

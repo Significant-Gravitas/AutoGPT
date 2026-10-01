@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   forgetHeldFollowUp,
   rememberHeldFollowUp,
@@ -31,6 +31,35 @@ describe("heldFollowUps", () => {
     rememberHeldFollowUp("s1", "only");
     forgetHeldFollowUp("s1", "only");
     expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("keeps going when storage refuses the write", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const real = window.sessionStorage;
+    const full = {
+      getItem: () => null,
+      setItem: () => {
+        throw new DOMException("full", "QuotaExceededError");
+      },
+      removeItem: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    };
+    Object.defineProperty(window, "sessionStorage", {
+      value: full,
+      configurable: true,
+    });
+    try {
+      expect(() => rememberHeldFollowUp("s1", "text")).not.toThrow();
+      expect(() => takeHeldFollowUps("s1")).not.toThrow();
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      Object.defineProperty(window, "sessionStorage", {
+        value: real,
+        configurable: true,
+      });
+      warn.mockRestore();
+    }
   });
 
   it("ignores a corrupt entry instead of throwing", () => {

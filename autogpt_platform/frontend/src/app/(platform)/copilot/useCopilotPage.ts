@@ -409,6 +409,7 @@ export function useCopilotPage() {
 
       try {
         await queueFollowUpMessage(sessionId, trimmed);
+        if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
         queueMessage(trimmed);
         return;
       } catch (err) {
@@ -417,6 +418,7 @@ export function useCopilotPage() {
         if (
           !(err instanceof Error && err.name === "QueueFollowUpNotActiveError")
         ) {
+          if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
           throw err;
         }
       }
@@ -427,8 +429,8 @@ export function useCopilotPage() {
       // while its id matches, and the new user bubble takes that slot (see
       // midTurnSplit.ts). Hold the follow-up until the local stream has
       // settled, then send it as a normal turn below the finished answer.
+      if (!heldForLocalSettle) holdFollowUp(sessionId, trimmed);
       heldForLocalSettle = true;
-      holdFollowUp(sessionId, trimmed);
       if (!(await waitForLocalSettle())) return;
     }
 

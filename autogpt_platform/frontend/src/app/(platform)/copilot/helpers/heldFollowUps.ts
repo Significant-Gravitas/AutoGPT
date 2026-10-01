@@ -19,9 +19,14 @@ function read(store: Storage, key: string): string[] {
   }
 }
 
+// Best effort: a full or blocked storage must not stop the follow-up itself.
 function write(store: Storage, key: string, texts: string[]) {
-  if (texts.length === 0) store.removeItem(key);
-  else store.setItem(key, JSON.stringify(texts));
+  try {
+    if (texts.length === 0) store.removeItem(key);
+    else store.setItem(key, JSON.stringify(texts));
+  } catch (error) {
+    console.warn("Could not persist held follow-ups", error);
+  }
 }
 
 /**
@@ -57,6 +62,6 @@ export function takeHeldFollowUps(sessionId: string): string[] {
   if (!store) return [];
   const key = `${KEY_PREFIX}${sessionId}`;
   const texts = read(store, key);
-  store.removeItem(key);
+  write(store, key, []);
   return texts;
 }
