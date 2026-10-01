@@ -17,13 +17,15 @@ import { useApprovalQueue } from "./useApprovalQueue";
 interface Props {
   // Oldest first, as the gate raised them.
   items: ApprovalItem[];
+  // The chat's Expert, or null in a chat with Otto.
+  expertName?: string | null;
   onAnswered: () => void;
 }
 
 // From this many cards up, each collapses to one line.
 export const COMPACT_FROM = 4;
 
-export function ApprovalQueue({ items, onAnswered }: Props) {
+export function ApprovalQueue({ items, expertName = null, onAnswered }: Props) {
   const queue = useApprovalQueue({ items, onAnswered });
   const { pending, receipts } = queue;
   if (pending.length === 0 && receipts.length === 0) return null;
@@ -83,7 +85,10 @@ export function ApprovalQueue({ items, onAnswered }: Props) {
                 item={item}
                 status={queue.statusOf(item.reviewId)}
                 failed={queue.hasFailed(item.reviewId)}
-                onApprove={(rule) => queue.answer([item], true, rule)}
+                expertName={expertName}
+                onApprove={(rule, scope) =>
+                  queue.answer([item], true, rule, scope)
+                }
                 onReject={() => queue.answer([item], false)}
               />
             )}

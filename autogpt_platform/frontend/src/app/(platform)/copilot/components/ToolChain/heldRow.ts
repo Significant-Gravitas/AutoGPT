@@ -1,4 +1,6 @@
 import type { HeldOutcome } from "../ChatMessagesContainer/heldCallRows";
+import type { HeldAnswer } from "../ApprovalQueue/heldAnswersStore";
+import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { fallbackAsk } from "../ApprovalQueue/helpers";
 import type { ChainRow } from "./helpers";
 import { asObject, str } from "./resultHelpers";
@@ -16,19 +18,23 @@ export type HeldState =
 export interface HeldRowInfo {
   state: HeldState;
   reviewId: string | null;
+  // A read held for carrying instructions, not an action held for approval.
+  read?: boolean;
 }
 
 // A held call's row names the action while it waits, then what became of it.
 export function applyHeldOutcome(
   row: ChainRow,
   outcomes: ReadonlyMap<string, HeldOutcome>,
+  answers: Readonly<Record<string, HeldAnswer>> = {},
 ): ChainRow {
   const data = asObject(row.output);
   if (!row.tool || data?.type !== "approval_required") return row;
   const reviewId = str(data, "review_id");
   const tool = heldToolName(data, row.tool);
   const ask = heldAskText(data, tool);
-  const didnt = `Didn't ${lowerFirst(ask)}`;
+  const read = isHeldReadId(reviewId);
+  const didnt = read ? ask : `Didn't ${lowerFirst(ask)}`;
   if (!reviewId) {
     return settle(
       row,
@@ -38,33 +44,43 @@ export function applyHeldOutcome(
     );
   }
   const outcome = outcomes.get(row.key);
+  // Answered here and not yet run: the tag flips now, the result lands later.
+  const answer = outcome ? undefined : answers[reviewId];
+  if (answer === "rejected") return settle(row, didnt, answer, reviewId, read);
+  // Approved but not run: nothing to show until its result lands.
+  if (answer === "approved") {
+    return { ...settle(row, ask, answer, reviewId, read), output: undefined };
+  }
   if (!outcome) {
     return {
       ...row,
       text: ask,
       requiresAction: true,
-      held: { state: "waiting", reviewId },
+      held: { state: "waiting", reviewId, read },
     };
   }
   // It may have run; claim neither success nor a refusal.
   if (outcome.outcome === "unknown") {
-    return settle(row, ask, "unknown", reviewId);
+    return settle(row, ask, "unknown", reviewId, read);
   }
   if (outcome.outcome !== "approved") {
-    return settle(row, didnt, outcome.outcome, reviewId);
+    return settle(row, didnt, outcome.outcome, reviewId, read);
   }
   const result = asObject(outcome.output);
   const done = getCatalogLabel(tool, row.input, "done")?.text ?? ask;
   // It ran and failed: the normal error row, still marked as approved.
   if (result?.type === "error") {
     return {
-      ...settle(row, done, "approved", reviewId),
+      ...settle(row, done, "approved", reviewId, read),
       state: "error",
       detail: str(result, "message", "error") ?? undefined,
       output: outcome.output,
     };
   }
-  return { ...settle(row, done, "approved", reviewId), output: outcome.output };
+  return {
+    ...settle(row, done, "approved", reviewId, read),
+    output: outcome.output,
+  };
 }
 
 // The held call's own tool, which a capability row names only in its output.
@@ -87,8 +103,18 @@ function settle(
   text: string,
   state: HeldState,
   reviewId: string | null,
+  read = false,
 ): ChainRow {
-  return { ...row, text, requiresAction: false, held: { state, reviewId } };
+  return {
+    ...row,
+    text,
+    requiresAction: false,
+    held: { state, reviewId, read },
+  };
+}
+
+function isHeldReadId(reviewId: string | null) {
+  return !!reviewId?.startsWith(`${COPILOT_GATE_NODE_PREFIX}read-`);
 }
 
 function lowerFirst(text: string) {

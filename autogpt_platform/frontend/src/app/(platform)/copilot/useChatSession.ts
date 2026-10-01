@@ -9,6 +9,7 @@ import type { CreateSessionRequest } from "@/app/api/__generated__/models/create
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -63,6 +64,8 @@ export function useChatSession({
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
+      retry: (failureCount, error) =>
+        !isDefinitiveSessionFailure(error) && failureCount < 3,
     },
   });
 
@@ -425,6 +428,8 @@ export function useChatSession({
     // flips back to ``true`` mid-refetch, silently dropping the message.
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
+    // Another account's session and a missing one are the same 404 by design.
+    isSessionNotFound: isDefinitiveSessionFailure(sessionQuery.error),
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
@@ -433,4 +438,10 @@ export function useChatSession({
     sessionSentFrom,
     sessionAutopilotMode,
   };
+}
+
+function isDefinitiveSessionFailure(error: unknown) {
+  return (
+    error instanceof ApiError && (error.status === 403 || error.status === 404)
+  );
 }
