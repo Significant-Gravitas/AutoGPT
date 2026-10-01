@@ -1,0 +1,42 @@
+$ GET /api/experts/{id}   (after pinning in the UI)
+{
+  "name": "Dev",
+  "llm_auth_provider": "codex",
+  "llm_credential_id": "evidence-chatgpt-credential",
+  "llm_route_label": "ChatGPT",
+  "llm_route_available": true
+}
+
+$ POST /api/chat/sessions {"expert_id": ...}   (new thread, no route named -> expert pin)
+{
+  "id": "9a9754b6-48d0-4497-b393-bcb125cb9d56",
+  "expert_id": "6604adda-59da-411d-a38b-3b6b86a55a0d",
+  "llm_auth_provider": "codex",
+  "llm_credential_id": "evidence-chatgpt-credential"
+}
+
+$ POST /api/chat/sessions {"expert_id": ..., "expert_kickoff": true}   (kickoff thread -> expert pin)
+{
+  "id": "9a9754b6-48d0-4497-b393-bcb125cb9d56",
+  "expert_id": "6604adda-59da-411d-a38b-3b6b86a55a0d",
+  "llm_auth_provider": "codex",
+  "llm_credential_id": "evidence-chatgpt-credential"
+}
+
+$ POST /api/chat/sessions {"expert_id": ..., "llm_auth_provider": "platform"}   (explicit per-chat override wins for that thread only)
+{
+  "id": "8c89c32e-0e1c-4798-b5df-edd539b9a730",
+  "llm_auth_provider": "platform",
+  "llm_credential_id": null
+}
+
+$ GET /api/experts/{id}   (the override did not rewrite the pin)
+{"llm_auth_provider":"codex","llm_credential_id":"evidence-chatgpt-credential"}
+
+$ POST /api/chat/sessions   (a plain Otto chat still follows the account default)
+{"expert_id":null,"llm_auth_provider":"platform"}
+
+$ PATCH /api/experts/{id}/llm-route {"auth_provider": "codex"}   (same validation vocabulary as the account default)
+{"detail":"codex_credential_required"}  -> HTTP 422
+$ PATCH /api/experts/{id}/llm-route {"auth_provider": "codex", "credential_id": "not-mine"}
+{"detail":"codex_credential_not_found"}  -> HTTP 404

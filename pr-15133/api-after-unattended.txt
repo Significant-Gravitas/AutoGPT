@@ -1,0 +1,11 @@
+$ resolve_expert_chat_route(user, expert)   (what the scheduler, dreams and run-result threads ask, inside the running backend)
+/app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/graphiti_core/driver/search_interface/search_interface.py:22: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+  class SearchInterface(BaseModel):
+/app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/redis/cluster.py:2677: DeprecationWarning: Call to '__init__' function with deprecated usage of input argument/s 'retry_on_timeout'. (TimeoutError is included by default.) -- Deprecated since version 6.0.0.
+  r = self.create_redis_node(
+/app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/redis/cluster.py:2485: DeprecationWarning: Call to '__init__' function with deprecated usage of input argument/s 'retry_on_timeout'. (TimeoutError is included by default.) -- Deprecated since version 6.0.0.
+  node.redis_connection = self.create_redis_node(
+expert route : ('codex', 'evidence-chatgpt-credential')
+account route: ('platform', None)
+/app/autogpt_platform/backend/backend/data/redis_client.py:242: DeprecationWarning: Call to deprecated close. (Use aclose() instead) -- Deprecated since version 5.0.0.
+  await client.close()

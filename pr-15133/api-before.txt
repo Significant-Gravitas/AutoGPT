@@ -1,0 +1,16 @@
+$ GET /api/experts/{id}   (before: no pin)
+{
+  "name": "Dev",
+  "llm_auth_provider": null,
+  "llm_credential_id": null,
+  "llm_route_label": null,
+  "llm_route_available": true
+}
+
+$ POST /api/chat/sessions {"expert_id": ...}   (before: expert follows the account default)
+{
+  "id": "1722b969-b885-4cd7-8455-f0858e8c2be9",
+  "expert_id": "6604adda-59da-411d-a38b-3b6b86a55a0d",
+  "llm_auth_provider": "platform",
+  "llm_credential_id": null
+}

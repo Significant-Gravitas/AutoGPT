@@ -1,0 +1,13 @@
+$ DELETE /api/integrations/codex/credentials/evidence-chatgpt-credential   (the owner unlinks the ChatGPT account the expert is pinned to)
+{"deleted":true,"revoked":true}  -> HTTP 200
+
+$ GET /api/experts/{id}   (pin kept, reported as unavailable)
+{
+  "llm_auth_provider": "codex",
+  "llm_credential_id": "evidence-chatgpt-credential",
+  "llm_route_label": "ChatGPT",
+  "llm_route_available": false
+}
+
+$ POST /api/chat/sessions {"expert_id": ...}   (falls back to the account default instead of failing)
+{"id":"ecd33e80-2187-4510-969a-ef920c40d406","llm_auth_provider":"platform","llm_credential_id":null}
