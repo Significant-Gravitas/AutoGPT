@@ -16,7 +16,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   centsToUSD,
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 
 import { formatCents, formatShortDate } from "../../../helpers";
@@ -74,8 +74,12 @@ export function useYourPlanCard() {
     },
   });
 
-  const { mutateAsync: updateTier, isPending: isUpdatingTier } =
+  const { mutateAsync: updateTier, isPending: isUpdatePending } =
     useUpdateSubscriptionTier();
+  // The mutation settles before the Checkout redirect starts; this keeps the
+  // plan actions busy across the wait for the Ads conversion too.
+  const [isChangingTier, setIsChangingTier] = useState(false);
+  const isUpdatingTier = isUpdatePending || isChangingTier;
 
   const effectiveTier = subscription.data?.tier ?? null;
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
@@ -192,6 +196,19 @@ export function useYourPlanCard() {
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
   ) {
+    if (isUpdatingTier) return false;
+    setIsChangingTier(true);
+    try {
+      return await requestTierChange(tier, billingCycle);
+    } finally {
+      setIsChangingTier(false);
+    }
+  }
+
+  async function requestTierChange(
+    tier: SubscriptionTierRequestTier,
+    billingCycle?: SubscriptionTierRequestBillingCycle,
+  ) {
     const cycle = billingCycle ?? "monthly";
     // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
     // report the subscription to Google Ads.
@@ -215,7 +232,7 @@ export function useYourPlanCard() {
         // plan-card figure is only the fallback when the tier isn't priced there.
         const cents =
           cycle === "yearly" ? tierCostsYearly[tier] : tierCosts[tier];
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: centsToUSD(cents) ?? getSubscriptionValue(tier, cycle),
         });
         // Navigating away — don't refetch (would set state on an
