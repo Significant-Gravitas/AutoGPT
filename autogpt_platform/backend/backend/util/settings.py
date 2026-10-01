@@ -650,6 +650,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="Whether to enable example blocks in production",
     )
+    stripe_link_financial_insights: bool = Field(
+        default=False,
+        description="Ask users connecting through the registered Stripe Link "
+        "client to also share bank and card accounts with the financial-insights "
+        "blocks, which stay hidden on such deployments while this is off. Turn on "
+        "only after that Stripe account is registered for Financial Connections. "
+        "Link offers financial insights to US consumers only, and can refuse the "
+        "whole connection, payments included, for a user it cannot grant them to.",
+    )
 
     cloud_storage_cleanup_interval_hours: int = Field(
         default=6,
