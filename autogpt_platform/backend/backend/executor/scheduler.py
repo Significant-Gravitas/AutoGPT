@@ -552,6 +552,9 @@ async def _execute_copilot_turn(**kwargs):
             is_user_message=persist_as_user_turn,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
+            # Even when the target is the user's own chat, nobody is there to
+            # answer this turn's questions, e.g. which of two accounts to use.
+            unattended=True,
             organization_id=args.organization_id,
             team_id=args.team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,

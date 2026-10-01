@@ -135,6 +135,11 @@ _current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
 _current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
     "_current_hidden_tools", default=frozenset()
 )
+# Set by the executor for a turn nobody is watching even though its chat may
+# be the user's own: a scheduled follow-up pinned to that chat.
+_current_turn_unattended: ContextVar[bool] = ContextVar(
+    "_current_turn_unattended", default=False
+)
 
 
 def encode_cwd_for_cli(cwd: str) -> str:
@@ -190,6 +195,26 @@ def get_current_envelope() -> "TurnEnvelope | None":
 def get_current_hidden_tools() -> frozenset[str]:
     """Short tool names hidden from the model this turn."""
     return _current_hidden_tools.get()
+
+
+def set_turn_unattended(unattended: bool) -> None:
+    """Mark the running turn as one nobody is watching. Set every turn by the
+    executor, so a flag never carries over to the next turn it runs."""
+    _current_turn_unattended.set(unattended)
+
+
+def is_unattended_turn() -> bool:
+    """Whether nobody can answer a question this turn puts to the user.
+
+    True for a turn the scheduler fired, and for every turn of a chat that an
+    automation opened (a scheduled run's own chat, a sub-session, a graph's
+    AutoPilot block). A legacy chat without an origin counts as watched, the
+    way ``pauses_irreversible_actions`` reads it.
+    """
+    if _current_turn_unattended.get():
+        return True
+    session = _current_session.get()
+    return session is not None and session.metadata.origin == "automation"
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":

@@ -13,6 +13,7 @@ from backend.api.features.library.model import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.gate.subject import (
     NO_OP,
     Subject,
@@ -61,7 +62,11 @@ from .expert_scope import (
     require_installed_workflow,
     ungranted_credential_hint,
 )
-from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
+from .helpers import (
+    get_inputs_from_schema,
+    get_picker_inputs_from_schema,
+    unattended_missing_credentials_error,
+)
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -730,6 +735,15 @@ class RunAgentTool(BaseTool):
                 expert_id,
                 build_missing_credentials_from_graph(graph, graph_credentials),
             )
+            if is_unattended_turn():
+                return graph_credentials, unattended_missing_credentials_error(
+                    f"Agent '{graph.name}'",
+                    {
+                        provider_slug(m.get("provider", ""))
+                        for m in missing_credentials_dict.values()
+                    },
+                    session_id,
+                )
             return graph_credentials, SetupRequirementsResponse(
                 message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)
                 + await ungranted_credential_hint(

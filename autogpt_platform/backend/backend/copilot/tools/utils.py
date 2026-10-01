@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from backend.api.features.library import model as library_model
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.credential_selection import selected_credentials
 from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
@@ -284,10 +285,11 @@ async def match_credentials_to_requirements(
 
     available_creds = await get_user_credentials(user_id, expert_id)
     selected = await selected_credentials(session_id)
+    can_ask = _can_ask_user(session_id)
 
     for field_name, field_info in requirements.items():
         matching_cred = find_matching_credential(
-            available_creds, field_info, selected, ask_when_ambiguous=bool(session_id)
+            available_creds, field_info, selected, ask_when_ambiguous=can_ask
         )
 
         if matching_cred:
@@ -354,6 +356,17 @@ async def scope_credentials_to_expert(
 
     allowed = set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
     return filter_credentials_for_expert(credentials, allowed)
+
+
+def _can_ask_user(session_id: str | None) -> bool:
+    """Whether a choice between the user's accounts can be handed back to them.
+
+    Only a chat tool can, and only on a turn someone is watching. A scheduled
+    turn's setup card goes unanswered and the step ends as "not configured"
+    (SECRT-2804), so there the first fit is used, as it is for every other
+    caller with nobody to ask. A pick made earlier in the chat still wins.
+    """
+    return bool(session_id) and not is_unattended_turn()
 
 
 def find_matching_credential(
@@ -469,7 +482,7 @@ async def match_user_credentials_to_graph(
             available_creds,
             credential_requirements,
             selected,
-            ask_when_ambiguous=bool(session_id),
+            ask_when_ambiguous=_can_ask_user(session_id),
         )
 
         if matching_cred:

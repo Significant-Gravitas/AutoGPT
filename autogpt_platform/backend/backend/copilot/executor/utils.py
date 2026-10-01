@@ -315,6 +315,12 @@ class CoPilotExecutionEntry(BaseModel):
     at dispatch from the spawning turn's. ``None`` only for entries queued
     before the field existed."""
 
+    unattended: bool = False
+    """Nobody is watching this turn even if its chat is the user's own: the
+    scheduler fired it. Tools then never hand a question back to the user
+    (SECRT-2804). An unattended chat (``origin="automation"``) is read from
+    the session itself."""
+
     request_arrival_at: float = 0.0
     """Unix-epoch seconds (server clock) when the originating HTTP
     ``/stream`` request arrived.  The executor's turn-start drain uses
@@ -353,6 +359,7 @@ async def enqueue_copilot_turn(
     message_metadata: dict[str, Any] | None = None,
     *,
     envelope: TurnEnvelope,
+    unattended: bool = False,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -396,6 +403,7 @@ async def enqueue_copilot_turn(
         request_arrival_at=request_arrival_at,
         message_metadata=message_metadata,
         envelope=envelope,
+        unattended=unattended,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -426,6 +434,7 @@ async def schedule_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    unattended: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -493,6 +502,7 @@ async def schedule_turn(
             request_arrival_at=request_arrival_at,
             spawn=spawn,
             message_metadata=message_metadata,
+            unattended=unattended,
         )
 
 
@@ -517,6 +527,7 @@ async def dispatch_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    unattended: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -588,6 +599,7 @@ async def dispatch_turn(
             request_arrival_at=request_arrival_at,
             message_metadata=message_metadata,
             envelope=envelope,
+            unattended=unattended,
         )
         slot.keep()
         committed = True

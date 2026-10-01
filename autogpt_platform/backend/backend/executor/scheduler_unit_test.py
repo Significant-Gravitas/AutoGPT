@@ -336,6 +336,27 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
 
 
 @pytest.mark.asyncio
+async def test_execute_copilot_turn_into_the_users_chat_is_marked_unattended():
+    """A follow-up pinned to the user's own chat still has nobody watching it,
+    so its tools must not hand questions back to the user (SECRT-2804)."""
+    args = _args()
+    mock_schedule_turn = AsyncMock()
+    users_chat = MagicMock(session_id="session-1", expert_id=None)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=users_chat),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_awaited_once()
+    assert mock_schedule_turn.call_args.kwargs["unattended"] is True
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope():
     args = _args(
         session_id=None,

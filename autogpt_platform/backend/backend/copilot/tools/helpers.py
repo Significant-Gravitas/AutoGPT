@@ -13,6 +13,7 @@ from pydantic_core import PydanticUndefined
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.capabilities.block_meta import get_block_provider
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
@@ -751,6 +752,35 @@ async def resolve_block_credentials(
     )
 
 
+def unattended_missing_credentials_error(
+    subject: str, providers: set[str], session_id: str
+) -> ErrorResponse:
+    """The answer when a turn nobody watches has no credential to run with.
+
+    A setup card there is never answered, and the step used to end as a quiet
+    "not configured" (SECRT-2804). Name the provider, so the turn's reply tells
+    the user what to connect, and log it so the failure can be found.
+    """
+    names = ", ".join(sorted(providers - {""})) or "an integration"
+    logger.warning(
+        "Unattended copilot turn in session %s: %s has no %s credential to use",
+        session_id,
+        subject,
+        names,
+    )
+    return ErrorResponse(
+        message=(
+            f"{subject} needs a {names} credential and none is connected, so "
+            "this step did not run. Nobody is watching this turn (it was "
+            "scheduled), so there is no one to connect one now. Say plainly "
+            "in your reply that this step was skipped and that the user needs "
+            f"to connect {names} in their integrations before the next run."
+        ),
+        error="missing_credentials",
+        session_id=session_id,
+    )
+
+
 @dataclass
 class BlockPreparation:
     """Result of successful block validation, ready for execution or task creation.
@@ -908,6 +938,12 @@ async def prepare_block_for_execution(
     if (missing_credentials or picker_fields_missing) and not (
         dry_run or validate_only
     ):
+        if missing_credentials and is_unattended_turn():
+            return unattended_missing_credentials_error(
+                f"Block '{block.name}'",
+                {provider_slug(m.provider) for m in missing_credentials},
+                session_id,
+            )
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = await annotate_expert_grants(
             user_id,
