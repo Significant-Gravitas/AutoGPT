@@ -5,6 +5,7 @@ from googleapiclient.errors import HttpError
 
 from backend.blocks._base import (
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -199,6 +200,7 @@ class GmailGetMessageBlock(GmailBase):
                 "_find_by_header": lambda *args, **kwargs: _TEST_MESSAGE["id"],
                 "_fetch_draft": lambda *args, **kwargs: _TEST_DRAFT,
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -343,6 +345,7 @@ class GmailListDraftsBlock(GmailBase):
                 },
                 "_fetch_draft": lambda *args, **kwargs: _TEST_DRAFT,
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
