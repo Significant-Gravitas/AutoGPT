@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -132,6 +133,7 @@ class GoogleSlidesReadPresentationBlock(Block):
                 ("presentation", TEST_PRESENTATION_FILE),
             ],
             test_mock={"_get_presentation": lambda *args, **kwargs: TEST_PRESENTATION},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -231,6 +233,7 @@ class GoogleSlidesGetSlideBlock(Block):
                 ("presentation", TEST_PRESENTATION_FILE),
             ],
             test_mock={"_get_page": lambda *args, **kwargs: TEST_REVENUE_SLIDE},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -321,6 +324,7 @@ class GoogleSlidesGetSlideThumbnailBlock(Block):
                 "_download": lambda *args, **kwargs: b"\x89PNG\r\n\x1a\n",
                 "_store": lambda *args, **kwargs: "data:image/png;base64,iVBORw0KGgo=",
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(

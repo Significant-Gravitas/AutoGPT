@@ -7,6 +7,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -99,6 +100,7 @@ class GoogleSlidesCreatePresentationBlock(Block):
                     "title": "Q3 Business Review",
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -198,6 +200,7 @@ class GoogleSlidesAddSlideBlock(Block):
                 "_get_page": lambda *args, **kwargs: TEST_NEW_SLIDE,
                 "_batch_update": lambda *args, **kwargs: {"replies": [{}, {}]},
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
