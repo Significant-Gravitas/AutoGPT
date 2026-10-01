@@ -2119,7 +2119,7 @@ async def test_scheduled_turn_without_any_exa_key_fails_naming_the_provider() ->
                 [
                     CredentialsMetaInput(
                         id="credentials",
-                        provider=ProviderName.EXA,
+                        provider=ProviderName("exa"),
                         type="api_key",
                     )
                 ],
