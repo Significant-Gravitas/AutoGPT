@@ -2,8 +2,19 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
+from collections.abc import Container
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Optional, Self, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Final,
+    Literal,
+    Optional,
+    Self,
+    cast,
+    get_args,
+)
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -168,6 +179,10 @@ class NodeModel(Node):
           wire up their own)
         - fields the block schema marks with `secret: true` via
           `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
+          which name the owner's file and embed their `_credentials_id`. These
+          are nulled rather than removed: an explicit None tells the executor the
+          file was cleared, so importers and forks pick their own.
         - `webhook_id` (points at the original owner's webhook subscription)
         """
         stripped_node = self.model_copy(deep=True)
@@ -184,9 +199,54 @@ class NodeModel(Node):
                 ):
                     stripped_node.input_default.pop(field_name, None)
 
+            for field_name in _auto_credentials_field_names(self):
+                if field_name in stripped_node.input_default:
+                    stripped_node.input_default[field_name] = None
+
         stripped_node.webhook_id = None
 
         return stripped_node
+
+
+def _auto_credentials_field_names(node: Node) -> list[str]:
+    """Inputs of the node's block that hold a picked file: the auto-credentials
+    picker fields its schema declares, plus any input typed as a file carrying
+    `_credentials_id`. The second covers the default of an agent's Google Drive
+    file input, whose picker is only declared per node."""
+    if get_block(node.block_id) is None:
+        # The block was removed, so no schema says which inputs are pickers.
+        # Treat any value that embeds a `_credentials_id` as one, so a picked
+        # file doesn't slip through exports and non-owner reads.
+        return [
+            field_name
+            for field_name, value in node.input_default.items()
+            if isinstance(value, dict) and "_credentials_id" in value
+        ]
+    input_schema = node.block.input_schema
+    declared = [
+        info["field_name"]
+        for info in input_schema.get_auto_credentials_fields().values()
+    ]
+    typed = [
+        field_name
+        for field_name, field in input_schema.model_fields.items()
+        if field_name not in declared and _holds_picked_file(field.annotation)
+    ]
+    return declared + typed
+
+
+def _holds_picked_file(annotation: Any) -> bool:
+    """Whether a field of this type holds a picked file: a model with a
+    `_credentials_id` field, like GoogleDriveFile, or an Optional of one."""
+    return any(
+        isinstance(candidate, type)
+        and issubclass(candidate, BaseModel)
+        and any(
+            field.alias == "_credentials_id"
+            for field in candidate.model_fields.values()
+        )
+        for candidate in (annotation, *get_args(annotation))
+    )
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -782,20 +842,43 @@ class GraphModel(Graph, GraphMeta):
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
-        # Clear auto-credentials references (e.g., _credentials_id in
-        # GoogleDriveFile fields) so the new user must re-authenticate
-        # with their own account. We null the entire field rather than
-        # just the _credentials_id key — a partial object (e.g. a bare
-        # {"id": "...", "name": "..."} left over after stripping) would
-        # be rejected by the auto-credentials validator added below,
-        # breaking fork_graph() for agents that previously had a
-        # picker-selected Drive file.
-        for node in graph.nodes:
-            if not node.input_default:
-                continue
-            for key, value in list(node.input_default.items()):
-                if isinstance(value, dict) and "_credentials_id" in value:
-                    node.input_default[key] = None
+    def clear_auto_credentials(
+        self, keep_ids: Container[str] = frozenset()
+    ) -> list[tuple[Node, str, Any]]:
+        """
+        Null every picked file (see `auto_credentials_refs`) whose embedded
+        `_credentials_id` is not in `keep_ids`, in this graph and its sub-graphs,
+        and return the cleared ones in the shape `auto_credentials_refs` uses.
+
+        A save keeps the saving user's own (see `before_graph_activate`), and a
+        read by someone who doesn't own the graph keeps none (see `get_graph`).
+        Exports, forks and copies strip picked files in
+        `NodeModel.stripped_for_export`. The whole field is nulled, not just the
+        key, because a file object without a `_credentials_id` is rejected by
+        the auto-credentials check in `_validate_graph`.
+        """
+        cleared = [
+            (node, field_name, credentials_id)
+            for node, field_name, credentials_id in self.auto_credentials_refs()
+            if not (isinstance(credentials_id, str) and credentials_id in keep_ids)
+        ]
+        for node, field_name, _ in cleared:
+            node.input_default[field_name] = None
+        return cleared
+
+    def auto_credentials_refs(self) -> list[tuple[Node, str, Any]]:
+        """Files picked into auto-credentials inputs (e.g. a GoogleDriveFile), in
+        this graph and its sub-graphs, as (node, input name, embedded
+        `_credentials_id`). Other inputs are left alone even when they happen to
+        hold a `_credentials_id` key."""
+        return [
+            (node, field_name, value["_credentials_id"])
+            for graph in (self, *self.sub_graphs)
+            for node in graph.nodes
+            for field_name in _auto_credentials_field_names(node)
+            if isinstance(value := node.input_default.get(field_name), dict)
+            and "_credentials_id" in value
+        ]
 
     def validate_graph(
         self,
@@ -1434,13 +1517,19 @@ async def get_graph(
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
-        return GraphModel.from_db(
+        graph_model = GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
             for_export=for_export,
         )
+    else:
+        graph_model = GraphModel.from_db(graph, for_export)
 
-    return GraphModel.from_db(graph, for_export)
+    if user_id is not None and not skip_access_check and graph.userId != user_id:
+        # Only the owner sees the files they picked and the credentials
+        # embedded in them. Marketplace readers and teammates pick their own.
+        graph_model.clear_auto_credentials()
+    return graph_model
 
 
 # PENDING is included so admin review can open a not-yet-approved submission
@@ -1513,11 +1602,15 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
         order={"agentGraphVersion": "desc"},
     )
 
-    return {
+    graphs = {
         listing.agentGraphId: GraphModel.from_db(listing.AgentGraph)
         for listing in store_listings
         if listing.AgentGraph
     }
+    for graph in graphs.values():
+        # Public reads never carry the publisher's picked files.
+        graph.clear_auto_credentials()
+    return graphs
 
 
 async def get_graph_as_admin(
@@ -1683,7 +1776,13 @@ async def get_graph_all_versions(
     if not graph_versions:
         return []
 
-    return [GraphModel.from_db(graph) for graph in graph_versions]
+    versions = [GraphModel.from_db(graph) for graph in graph_versions]
+    for version in versions:
+        if version.user_id != user_id:
+            # A teammate reading the history: only the owner sees the files
+            # they picked and the credentials embedded in them.
+            version.clear_auto_credentials()
+    return versions
 
 
 async def delete_graph(

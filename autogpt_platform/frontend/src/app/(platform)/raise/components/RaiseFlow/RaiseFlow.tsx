@@ -33,7 +33,7 @@ export function RaiseFlow() {
     hasStarted,
     items,
     name,
-    role,
+    category,
     jobTitle,
     color,
     avatarUrl,
@@ -139,7 +139,7 @@ export function RaiseFlow() {
           <div className="relative flex h-full items-center justify-center p-4 sm:p-6">
             <SoulPreviewPanel
               name={name}
-              role={role}
+              category={category}
               jobTitle={jobTitle}
               avatarUrl={avatarUrl || null}
               color={color}

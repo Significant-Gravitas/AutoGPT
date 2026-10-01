@@ -1,9 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Book04Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SectionHeader } from "../SectionHeader";
 import {
@@ -54,8 +52,6 @@ export function SkillsList({ category }: Props) {
       className="mb-16 scroll-mt-24"
     >
       <SectionHeader
-        size="small"
-        titleIcon={<Icon icon={Book04Icon} size="2.2rem" aria-hidden />}
         title="Skills"
         titleId={HEADING_ID}
         subtitle="Playbooks your experts pick up as they work."

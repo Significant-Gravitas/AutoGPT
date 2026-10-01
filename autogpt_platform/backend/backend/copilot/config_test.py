@@ -246,7 +246,7 @@ class TestSdkModelVendorCompatibility:
             # aux check.
             aux_api_key="or-aux-key",
         )
-        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5-5"
 
     def test_openrouter_with_kimi_override_succeeds(self):
         """Kimi slug round-trips cleanly when OpenRouter is on — exercised
@@ -593,7 +593,7 @@ class TestLocalAuxModels:
     def test_cloud_transport_does_not_inherit(self):
         """Cloud transports leave the per-field cloud defaults alone — an
         operator might genuinely want gpt-4o-mini for titles even though
-        their primary model is anthropic/claude-sonnet-5."""
+        their primary model is anthropic/claude-sonnet-5-5."""
         cfg = ChatConfig(
             use_openrouter=True,
             api_key="or-key",
