@@ -51,6 +51,21 @@ _W = f"{_HOME}/workspace"
         ("bash < data.txt x.sh", [f"{_HOME}/x.sh"]),
         ("python x.py < data.csv > out.log 2>&1", [f"{_HOME}/x.py"]),
         ("echo ${HOME}; bash x.sh", [f"{_HOME}/x.sh"]),
+        # `-s` and a lone `-` read the code from stdin; the words after are arguments.
+        ("bash -s < x.sh", [f"{_HOME}/x.sh"]),
+        ("bash -s prod < x.sh", [f"{_HOME}/x.sh"]),
+        ("sh -es < x.sh", [f"{_HOME}/x.sh"]),
+        ("python -u - data.csv < x.py", [f"{_HOME}/x.py"]),
+        ("bash <<EOF x.sh\nhi\nEOF", [f"{_HOME}/x.sh"]),
+        ("node - --fast < x.js", [f"{_HOME}/x.js"]),
+        # A `<<` in quotes or a comment opens no heredoc, and `#` inside a word
+        # starts no comment.
+        ("echo '<<EOF here'\nbash x.sh", [f"{_HOME}/x.sh"]),
+        ('echo "a\n<<EOF here"\nbash x.sh', [f"{_HOME}/x.sh"]),
+        ("echo hi # <<EOF\nbash x.sh", [f"{_HOME}/x.sh"]),
+        ("echo a#; bash x.sh", [f"{_HOME}/x.sh"]),
+        # A heredoc's body starts after the whole command line, `\` continuation included.
+        ("cat <<EOF \\\n; bash x.sh\nbody\nEOF", [f"{_HOME}/x.sh"]),
     ],
 )
 def test_a_direct_run_names_the_file(command, paths):
@@ -71,6 +86,10 @@ def test_a_direct_run_names_the_file(command, paths):
         "python -m http.server",
         "command -v jq",
         "bash <<'EOF'\necho hi\nEOF",
+        "bash -s",
+        "bash -s <<'EOF'\necho hi\nEOF",
+        # A heredoc inside `"$(...)"` is still one: its body is data.
+        'git commit -m "$(cat <<\'EOF\'\nFits a 5" screen.\n./deploy.sh is fixed\nEOF\n)"',
         # Not a run.
         "cat x.sh",
         "echo bash x.sh",
@@ -105,6 +124,10 @@ def test_other_commands_name_nothing(command):
         "bash &> log x.sh",
         # Redirections apply left to right: which one feeds the code is unclear.
         "bash < first.sh < second.sh",
+        "bash <<EOF < x.sh\necho hi\nEOF",
+        # Arithmetic `<<` is a shift, so the run after it is still found.
+        "echo $((1 << 2))\nbash x.sh",
+        "(( n = 1 << 2 ))\nbash x.sh",
     ],
 )
 def test_a_run_it_cannot_resolve_is_unclear_not_guessed(command):

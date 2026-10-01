@@ -280,7 +280,3 @@ class BashExecTool(BaseTool):
                 error="e2b_execution_error",
                 session_id=session_id,
             )
-
-
-# A platform command in this sandbox goes through sandbox_login.run_internal, never
-# commands.run; whichever of #15037 and #15053 merges second moves _resolves_to_itself.
