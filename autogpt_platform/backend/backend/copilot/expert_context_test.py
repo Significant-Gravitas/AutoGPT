@@ -69,7 +69,7 @@ def hire_experts_flag_on():
 # Last re-pinned for the `<seen_capabilities>` block (SECRT-2791), which tells
 # the model which ids it already described this session.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "f435411658190eddd14e56cce8ea7daadb1d70bbabdb5519efb41ea968b7239f"
+    "7a8edb538b8dd4da62fe00d2b2781d7aaf0ff415a276ddc302827192a5696674"
 )
 
 

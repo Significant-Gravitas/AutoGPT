@@ -150,7 +150,9 @@ your **first action** in that turn is `find_capability(query="<service>
    (inputs, outputs, or an MCP server's tool list). A server-injected
    `<seen_capabilities>` block at the start of a later user message lists
    the ids already described or run and the skills already loaded: describe
-   only ids NOT in that list, and never re-load a listed skill.
+   only ids NOT in that list, and do not re-load a listed skill while its
+   body remains visible. If its body is no longer visible, re-load it before
+   use.
 2. `run_capability(id, input)` to act. Never guess or fabricate ids — take
    them from `find_capability`. `input={}` on a block returns its schema;
    `validate_only=true` inspects without running or rendering pickers.
