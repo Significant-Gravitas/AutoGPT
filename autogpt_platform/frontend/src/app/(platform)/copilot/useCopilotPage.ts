@@ -26,9 +26,11 @@ import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
+import { useLocalStreamSettle } from "./useLocalStreamSettle";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
+import { describeSendFailure } from "./components/ChatInput/helpers";
 import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
@@ -231,6 +233,14 @@ export function useCopilotPage() {
   const isInflightRef = useRef(false);
   isInflightRef.current =
     !isUserStopping && (status === "streaming" || status === "submitted");
+  // The stream is re-paced into word-sized steps on the client, so this tab
+  // can still be drawing an answer after the backend's turn has ended. A new
+  // turn started in that window lands a user row inside the live answer and
+  // freezes it (see midTurnSplit.ts), so a send has to wait for this to clear.
+  const { waitForLocalSettle } = useLocalStreamSettle({
+    sessionId,
+    isSettled: !isInflightRef.current && !isFinishProbing && !isReconnecting,
+  });
 
   // Combine paginated messages with current page messages, merging consecutive
   // assistant UIMessages at the page boundary so reasoning + response parts
@@ -345,7 +355,23 @@ export function useCopilotPage() {
           err instanceof Error &&
           err.name === "QueueFollowUpNotActiveError"
         ) {
-          await sendNewMessage(message, files, workspaceFiles, metadata);
+          // The backend's turn is over but this tab may still be drawing it.
+          // A chat switch or teardown while waiting drops the follow-up: its
+          // composer is gone, and the send must not reach another chat.
+          if (!(await waitForLocalSettle(sessionId))) return;
+          isInflightRef.current = true;
+          // Resolves once the follow-up is dispatched, like the queued path
+          // resolves once it is accepted: the composer clears and takes the
+          // next follow-up while the answer streams.
+          void sendNewMessage(message, files, workspaceFiles, metadata).catch(
+            (sendError: unknown) => {
+              toast({
+                title: "Couldn't send message",
+                description: describeSendFailure(sendError, "please try again"),
+                variant: "destructive",
+              });
+            },
+          );
           return;
         }
         toast({

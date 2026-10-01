@@ -718,6 +718,48 @@ describe("useCopilotPendingChips", () => {
     }
   });
 
+  it("backstop poll waits until this tab has finished drawing the answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const typing: Messages[number] = {
+        id: ASSISTANT_ID,
+        role: "assistant",
+        parts: [{ type: "text", text: "The next", state: "streaming" }],
+      };
+      const { view, getMessages, rerender } = setupHook([typing]);
+      act(() => {
+        view.result.current.queueMessage("follow up");
+      });
+
+      // The backend drained the chip at the end of its turn, but the answer
+      // is still typing out here: promoting now would draw the follow-up
+      // above the unfinished answer.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(mockGetPending).not.toHaveBeenCalled();
+      expect(view.result.current.queuedMessages).toEqual(["follow up"]);
+      expect(storedFallbacks(getMessages())).toEqual([]);
+
+      await act(async () => {
+        rerender([
+          {
+            ...typing,
+            parts: [{ type: "text", text: "The next step.", state: "done" }],
+          },
+        ]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(storedFallbacks(getMessages())).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   describe("restoring the buffer on session load", () => {
     /** Hold every peek GET open. `resolveAll` answers each with the same
      *  one-message buffer, the way the backend does while a follow-up is

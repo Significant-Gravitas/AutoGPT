@@ -464,6 +464,16 @@ function useMidTurnDrainPromotion({
     );
   }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
 
+  // The stream is re-paced on the client, so the backend can have drained
+  // the buffer at the end of a turn while this tab is still typing out the
+  // answer. Promoting then puts the bubble above the unfinished answer; the
+  // hint or the auto-continue assistant that follows the text places it
+  // below. The backstop waits for the text to finish on this tab.
+  const latestMessagesRef = useRef(messages);
+  useEffect(() => {
+    latestMessagesRef.current = messages;
+  }, [messages]);
+
   // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
     if (!sessionId) return;
@@ -474,6 +484,7 @@ function useMidTurnDrainPromotion({
     const isCurrentSession = () =>
       latestSessionIdRef.current === requestSessionId;
     const interval = setInterval(() => {
+      if (isDrawingTrailingText(latestMessagesRef.current)) return;
       void pollBackendAndPromote(
         sessionId,
         queue,
@@ -484,6 +495,19 @@ function useMidTurnDrainPromotion({
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
   }, [sessionId, status, queue, setMessages, setQueue]);
+}
+
+// Whether this tab is still typing out the trailing assistant's text: the
+// smoothing transform holds `text-end` behind the deltas, so the part stays
+// `streaming` until the last word has been drawn here.
+function isDrawingTrailingText(messages: UIMessage[]): boolean {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return false;
+  return last.parts.some(
+    (part) =>
+      (part.type === "text" || part.type === "reasoning") &&
+      part.state === "streaming",
+  );
 }
 
 // Count ``data-pending-drained`` hint parts the backend emits at each
