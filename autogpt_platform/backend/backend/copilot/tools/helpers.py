@@ -13,13 +13,13 @@ from pydantic_core import PydanticUndefined
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.capabilities.block_meta import get_block_provider
-from backend.copilot.context import is_unattended_turn
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
     MAX_TOOL_WAIT_SECONDS,
 )
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
