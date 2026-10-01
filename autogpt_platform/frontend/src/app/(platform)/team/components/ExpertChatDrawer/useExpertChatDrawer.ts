@@ -441,6 +441,7 @@ export function useExpertChatDrawer({
         // The composer restores the draft and shows the one toast for it.
         throw err;
       }
+      return;
     }
     sendMessage({ text: trimmed });
   }

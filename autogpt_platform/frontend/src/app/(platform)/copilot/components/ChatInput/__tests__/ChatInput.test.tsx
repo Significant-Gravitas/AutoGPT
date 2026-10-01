@@ -511,6 +511,21 @@ describe("ChatInput Enter while streaming", () => {
     );
   });
 
+  it("hides the queue button while attachments are present", async () => {
+    const { rerender } = render(
+      <ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    rerender(<ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    expect(screen.queryByLabelText(/queue message/i)).toBeNull();
+  });
+
   it("falls back to a normal send when nothing can queue", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} isStreaming />);

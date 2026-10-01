@@ -502,7 +502,7 @@ export function ChatInput({
                 }}
               />
             )}
-            {isStreaming && canSend && onEnqueue && (
+            {isStreaming && canSend && onEnqueue && !hasAttachments && (
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
