@@ -53,7 +53,7 @@ class TargetState(BaseModel):
     # diverge). None for text-only batches, which resolve the session normally.
     session_id: str | None = None
     # Turns woken by a card answered here, streamed before the next batch.
-    follows: list[CardTurn] = Field(default_factory=list)
+    follows: list[ChatTurnHandle] = Field(default_factory=list)
 
 
 class MessageHandler:
@@ -188,11 +188,19 @@ class MessageHandler:
         where the card was, after any reply already streaming there."""
         if not await self._ensure_linked(ctx, adapter):
             return
+        try:
+            turn = await self._api.woken_turn(follow)
+        except Exception:
+            # The answer stands and its turn runs; only the reply here is lost.
+            logger.exception("Could not find the turn a card answer woke")
+            return
+        if turn is None:
+            return
         target_id = await self._resolve_target(ctx, adapter)
         if not target_id:
             return
         state = self._targets.setdefault(target_id, TargetState())
-        state.follows.append(follow)
+        state.follows.append(turn)
         await self._process(ctx, adapter, target_id, state)
 
     async def _report_skipped_only(
@@ -341,9 +349,8 @@ class MessageHandler:
         try:
             while state.pending or state.follows:
                 if state.follows:
-                    follows = list(state.follows)
-                    state.follows.clear()
-                    await self._stream_follows(follows, ctx, adapter, target_id)
+                    turn = state.follows.pop(0)
+                    await self._stream_batch([], ctx, adapter, target_id, turn=turn)
                     continue
                 batch = list(state.pending)
                 batch_file_ids = list(state.pending_file_ids)
@@ -372,26 +379,6 @@ class MessageHandler:
             # the bot's lifetime.
             if not state.pending and not state.follows:
                 self._targets.pop(target_id, None)
-
-    async def _stream_follows(
-        self,
-        follows: list[CardTurn],
-        ctx: MessageContext,
-        adapter: PlatformAdapter,
-        target_id: str,
-    ) -> None:
-        streamed: set[str] = set()
-        for follow in follows:
-            try:
-                turn = await self._api.turn_after(follow)
-            except Exception:
-                # The answer stands and its turn runs; only the reply here is lost.
-                logger.exception("Could not find the turn a card answer woke")
-                continue
-            if turn is None or turn.turn_id in streamed:
-                continue
-            streamed.add(turn.turn_id)
-            await self._stream_batch([], ctx, adapter, target_id, turn=turn)
 
     # -- Linking --
 

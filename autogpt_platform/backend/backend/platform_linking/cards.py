@@ -13,7 +13,6 @@ from typing import Literal
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
-from backend.copilot import stream_registry
 from backend.copilot.gate import channel
 from backend.copilot.gate.review import GATE_NODE_PREFIX
 from backend.data.db_accessors import platform_linking_db, review_db
@@ -113,8 +112,6 @@ async def answer_card(
         return CardAnswer(text=_NOT_YOURS)
     if not 0 <= index < len(card.options):
         return CardAnswer(text=_EXPIRED)
-    # Read before the answer wakes a turn: that turn is the next one.
-    current = await stream_registry.get_session(card.session_id)
     if not await redis.getdel(_key(token)):
         return CardAnswer(text=_ANSWERED)
     option = card.options[index]
@@ -133,7 +130,7 @@ async def answer_card(
         follow=CardTurn(
             session_id=card.session_id,
             user_id=card.user_id,
-            after_turn_id=current.turn_id if current else None,
+            review_id=card.review_id,
         ),
     )
 

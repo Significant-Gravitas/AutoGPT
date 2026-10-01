@@ -9,13 +9,14 @@ discord/telegram/slack code never touches Pyro / Redis Streams plumbing.
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
 from pydantic import BaseModel
 
-from backend.copilot import stream_registry
+from backend.copilot import stream_registry, woken_turns
 from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
     StreamError,
@@ -23,6 +24,7 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolOutputAvailable,
 )
+from backend.data.redis_client import get_redis_async
 from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
@@ -55,6 +57,14 @@ from .prompt import clamp_prompt
 # up. Covers the case where the backend crashes mid-stream and never sends
 # ``StreamFinish`` — without this, the bot would hang forever on ``queue.get()``.
 STREAM_CHUNK_TIMEOUT_SECONDS = 120
+
+# A card answered mid-reply is woken by that turn's end, so a follow waits out
+# any running turn, up to the life of a turn's stream.
+_WAKE_POLL_SECONDS = 0.5
+_WAKE_WAIT_SECONDS = 60 * 60
+# Between a turn's end and the wake it starts, the chat briefly reads idle.
+_WAKE_GRACE_SECONDS = 15
+_FOLLOWED_KEY = "copilot-bot:followed-turn:"
 
 logger = logging.getLogger(__name__)
 
@@ -527,18 +537,24 @@ class BotBackend:
         ):
             yield chunk
 
-    async def turn_after(self, follow: CardTurn) -> ChatTurnHandle | None:
-        """The chat's turn now, when it is not the one before the card was
-        answered: the turn that runs it, whether woken by the answer or by the
-        end of the turn that was running then."""
-        current = await stream_registry.get_session(follow.session_id)
-        if current is None or current.turn_id == follow.after_turn_id:
-            return None
-        return ChatTurnHandle(
-            session_id=follow.session_id,
-            turn_id=current.turn_id,
-            user_id=follow.user_id,
-        )
+    async def woken_turn(self, follow: CardTurn) -> ChatTurnHandle | None:
+        """The turn a wake started to carry this card, once one has; None when
+        no wake carries it, or another click already follows that turn."""
+        started = time.monotonic()
+        idle_since: float | None = None
+        while time.monotonic() - started < _WAKE_WAIT_SECONDS:
+            turn_id = await woken_turns.turn_for(follow.session_id, follow.review_id)
+            if turn_id is not None:
+                return await _claim(follow, turn_id)
+            current = await stream_registry.get_session(follow.session_id)
+            if current is not None and current.status == "running":
+                idle_since = None
+            elif idle_since is None:
+                idle_since = time.monotonic()
+            elif time.monotonic() - idle_since > _WAKE_GRACE_SECONDS:
+                return None
+            await asyncio.sleep(_WAKE_POLL_SECONDS)
+        return None
 
     async def stream_turn(
         self,
@@ -553,6 +569,7 @@ class BotBackend:
             session_id=handle.session_id,
             user_id=handle.user_id,
             last_message_id=handle.subscribe_from,
+            turn_id=handle.turn_id,
         )
         if queue is None:
             raise BotStreamError(
@@ -655,6 +672,18 @@ class BotBackend:
                 session_id=handle.session_id,
                 subscriber_queue=queue,
             )
+
+
+async def _claim(follow: CardTurn, turn_id: str) -> ChatTurnHandle | None:
+    """Cards answered together wake one turn; the first click carries it."""
+    redis = await get_redis_async()
+    if not await redis.set(
+        f"{_FOLLOWED_KEY}{turn_id}", "1", nx=True, ex=_WAKE_WAIT_SECONDS
+    ):
+        return None
+    return ChatTurnHandle(
+        session_id=follow.session_id, turn_id=turn_id, user_id=follow.user_id
+    )
 
 
 def _is_corrupted_setup_requirements(output: str | dict[str, Any]) -> bool:

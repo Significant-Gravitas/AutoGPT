@@ -149,7 +149,6 @@ class TurnStreamer:
     ) -> None:
         """Start a turn from ``batch`` and stream its reply here; with
         ``turn``, stream that one instead, which something else started."""
-        prefixed = format_batch(batch, ctx.platform)
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
@@ -296,7 +295,7 @@ class TurnStreamer:
                 chunks = self._api.stream_chat(
                     platform=ctx.platform,
                     platform_user_id=ctx.user_id,
-                    message=prefixed,
+                    message=format_batch(batch, ctx.platform),
                     session_id=active_session_id,
                     platform_server_id=ctx.server_id,
                     file_ids=file_ids,

@@ -329,12 +329,11 @@ class CardAnswer(BaseModel):
 
 
 class CardTurn(BaseModel):
-    """The chat's first turn after ``after_turn_id``: every turn starts by
-    running the cards answered before it."""
+    """The card a click answered, whose wake the bot carries into the channel."""
 
     session_id: str
     user_id: str
-    after_turn_id: str | None = None
+    review_id: str
 
 
 class ChatSessionSummary(BaseModel):

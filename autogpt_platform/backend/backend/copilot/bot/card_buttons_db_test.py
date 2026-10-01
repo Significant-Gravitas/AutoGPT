@@ -18,6 +18,7 @@ from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview, PlatformLink
 
 from backend.copilot import stream_registry
+from backend.copilot.active_turns import acquire_turn_slot
 from backend.copilot.bot import sessions as bot_sessions
 from backend.copilot.bot.adapters.discord import choice_ui as discord_ui
 from backend.copilot.bot.adapters.slack.adapter import SlackAdapter
@@ -108,10 +109,12 @@ class _InProcessBot:
 
 class _Executor:
     """Runs a dispatched turn as the executor would, minus the model: the turn
-    registers, says ``reply`` and ends."""
+    registers, says ``reply`` and ends. With ``then``, a turn the user starts
+    from the web follows the instant it ends, and says that."""
 
-    def __init__(self, reply: str) -> None:
+    def __init__(self, reply: str, then: str | None = None) -> None:
         self.reply = reply
+        self.then = then
 
     async def enqueue(self, **turn: Any) -> None:
         await self._finish(turn["session_id"], turn["turn_id"])
@@ -121,10 +124,18 @@ class _Executor:
             turn["session_id"], turn["user_id"], "chat_stream", "chat", turn["turn_id"]
         )
         await self._finish(turn["session_id"], turn["turn_id"])
+        if self.then is not None:
+            web = str(uuid.uuid4())
+            await stream_registry.create_session(
+                turn["session_id"], turn["user_id"], "chat_stream", "chat", web
+            )
+            await self._finish(turn["session_id"], web, self.then)
 
-    async def _finish(self, session_id: str, turn_id: str) -> None:
+    async def _finish(
+        self, session_id: str, turn_id: str, reply: str | None = None
+    ) -> None:
         await stream_registry.publish_chunk(
-            turn_id, StreamTextDelta(id="reply", delta=self.reply)
+            turn_id, StreamTextDelta(id="reply", delta=reply or self.reply)
         )
         await stream_registry.mark_session_completed(session_id, turn_id=turn_id)
 
@@ -769,30 +780,85 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_click_follows_the_turn_after_the_one_running_when_it_landed(
-    one_linked: _Channel, test_user_id, gate_on
+async def test_a_click_carries_the_turn_its_answer_woke_not_the_one_after_it(
+    one_linked: _Channel, test_user_id, gate_on, monkeypatch
 ):
-    """Clicked mid-reply, the answer waits for that turn's end to wake the next;
-    the bot must carry the next one, never the reply it already streamed."""
+    """The user starts a web turn the moment the woken one ends: the channel
+    gets the woken turn's reply, never the web one's."""
     session, _, card = await _held_card(one_linked, test_user_id)
-    running = str(uuid.uuid4())
-    await stream_registry.create_session(
-        session.session_id, test_user_id, "chat_stream", "chat", running
-    )
-    answer = await cards.answer_card(
-        Platform(one_linked.platform.upper()),
-        one_linked.server_id,
-        one_linked.owner,
-        card.token,
-        0,
-    )
-    assert answer.follow is not None
-    api = _InProcessBot().api
+    executor = _Executor("Posted it.", then="Here is your web answer.")
 
-    assert await api.turn_after(answer.follow) is None
-    woken = str(uuid.uuid4())
-    await stream_registry.create_session(
-        session.session_id, test_user_id, "chat_stream", "chat", woken
+    bot = await _bot_following(one_linked, session, executor, monkeypatch)
+    await one_linked.click(card, one_linked.owner)
+
+    said = [c.args[1] for c in bot.adapter.send_message.await_args_list]
+    assert said == ["Posted it."]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cards_answered_mid_reply_are_carried_once_when_that_turn_ends(
+    one_linked: _Channel, test_user_id, gate_on, monkeypatch
+):
+    """Two clicks while a turn runs: neither answer can start a turn, so both
+    wait for the one that turn's end wakes, which carries both, once."""
+    session, _, first = await _held_card(one_linked, test_user_id)
+    second = await _another_card(one_linked, test_user_id, session)
+    running = str(uuid.uuid4())
+    async with acquire_turn_slot(test_user_id, session.session_id) as slot:
+        assert slot.admitted
+        await stream_registry.create_session(
+            session.session_id, test_user_id, "chat_stream", "chat", running
+        )
+        slot.keep()
+    executor = _Executor("Posted both.")
+
+    bot = await _bot_following(one_linked, session, executor, monkeypatch)
+    clicks = [
+        asyncio.create_task(one_linked.click(card, one_linked.owner))
+        for card in (first, second)
+    ]
+    try:
+        await asyncio.sleep(1)
+        assert not any(click.done() for click in clicks)
+    finally:
+        # Left running, the turn holds one of the shared test user's slots.
+        await stream_registry.mark_session_completed(
+            session.session_id, turn_id=running
+        )
+    await asyncio.wait_for(asyncio.gather(*clicks), timeout=30)
+
+    said = [c.args[1] for c in bot.adapter.send_message.await_args_list]
+    assert said == ["Posted both."]
+
+
+async def _bot_following(
+    channel: _Channel, session: ChatSession, executor: _Executor, monkeypatch
+) -> _InProcessBot:
+    """The real bot, wired to the channel's clicks and the session's thread,
+    with ``executor`` running whatever turn a wake dispatches."""
+    thread = str(_Discord.thread_id)
+    await bot_sessions.set_session(channel.platform, thread, session.session_id)
+    bot = _InProcessBot()
+    discord_ui.register_choice_handler(
+        MagicMock(), bot.adapter, bot.handler.handle, bot.api
     )
-    turn = await api.turn_after(answer.follow)
-    assert turn is not None and turn.turn_id == woken
+    monkeypatch.setattr(
+        "backend.copilot.executor.utils.dispatch_turn", executor.dispatch
+    )
+    return bot
+
+
+async def _another_card(
+    channel: _Channel, user_id: str, session: ChatSession
+) -> ChannelCard:
+    decision = await check_action(_POST, {"text": "again"}, user_id, session, "call-2")
+    assert not decision.allowed and decision.review_id
+    card = await cards.open_card(
+        Platform(channel.platform.upper()),
+        channel.server_id,
+        channel.member,
+        session.session_id,
+        decision.review_id,
+    )
+    assert card is not None
+    return card
