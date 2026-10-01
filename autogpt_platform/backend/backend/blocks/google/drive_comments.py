@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -166,6 +167,7 @@ class GoogleDriveListCommentsBlock(Block):
             test_mock={
                 "_list_comments": lambda *args, **kwargs: [_TEST_COMMENT_RESOURCE]
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

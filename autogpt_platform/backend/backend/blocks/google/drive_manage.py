@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -145,6 +146,7 @@ class GoogleDriveCreateFileBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("file", to_drive_file(_TEST_CREATED, TEST_CREDENTIALS.id))],
             test_mock={"_create": lambda *args, **kwargs: _TEST_CREATED},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -256,6 +258,7 @@ class GoogleDriveCreateFolderBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("folder", to_drive_file(_TEST_FOLDER, TEST_CREDENTIALS.id))],
             test_mock={"_create_folder": lambda *args, **kwargs: _TEST_FOLDER},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -318,6 +321,7 @@ class GoogleDriveCopyFileBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("file", to_drive_file(copied, TEST_CREDENTIALS.id))],
             test_mock={"_copy": lambda *args, **kwargs: copied},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -381,6 +385,7 @@ class GoogleDriveMoveFileBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("file", to_drive_file(moved, TEST_CREDENTIALS.id))],
             test_mock={"_move": lambda *args, **kwargs: moved},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
