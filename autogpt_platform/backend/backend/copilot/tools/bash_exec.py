@@ -17,11 +17,11 @@ limits.  Requires bubblewrap to be installed (Linux only).
 import asyncio
 import logging
 import shlex
-from dataclasses import dataclass
 from typing import Any
 
 from e2b import AsyncSandbox, CommandExitException
 from e2b.exceptions import NotFoundException, TimeoutException
+from pydantic import BaseModel
 
 from backend.copilot.context import (
     E2B_WORKDIR,
@@ -36,6 +36,7 @@ from backend.copilot.integration_creds import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
+from backend.util.e2b_network import reattach_command
 
 from .base import BaseTool
 from .connect_integration import requested_scopes
@@ -55,8 +56,7 @@ _MAX_RECONNECTS = 3
 _KILL_TIMEOUT_SECONDS = 10
 
 
-@dataclass
-class _E2BRun:
+class _E2BRun(BaseModel):
     """How a command on the box ended, with all the output we received."""
 
     stdout: str
@@ -66,8 +66,9 @@ class _E2BRun:
     timed_out: bool = False
     # Kill sent after a timeout: True done, False not found, None unknown.
     killed: bool | None = None
-    # Why we stopped following a command that had not ended.
-    lost: Exception | None = None
+    # Why we stopped following a command that had not ended: the stream
+    # error's type name.
+    lost: str | None = None
     # The command ended while we were not attached: no exit code.
     ended_unseen: bool = False
     reconnects: int = 0
@@ -351,10 +352,11 @@ async def _follow_command(
                 exc,
             )
             if reconnects >= _MAX_RECONNECTS:
-                return outcome(lost=exc)
+                return outcome(lost=type(exc).__name__)
             reconnects += 1
             try:
-                handle = await sandbox.commands.connect(
+                handle = await reattach_command(
+                    sandbox,
                     pid,
                     timeout=remaining,
                     on_stdout=stdout.append,
@@ -368,7 +370,7 @@ async def _follow_command(
                     pid,
                     reconnect_exc,
                 )
-                return outcome(lost=exc)
+                return outcome(lost=type(exc).__name__)
 
 
 async def _kill(sandbox: AsyncSandbox, pid: int) -> bool | None:
@@ -422,7 +424,7 @@ def _run_response(
         )
         message = (
             f"{note}. It did not time out and was not killed (the stream "
-            f"to it broke: {type(run.lost).__name__}). "
+            f"to it broke: {run.lost}). "
             "Check whether it is still running (e.g. with ps) before running "
             "it again."
         )
