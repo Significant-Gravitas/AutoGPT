@@ -112,11 +112,14 @@ async def test_gate_is_inactive_for_anonymous_turns(gate_on):
     assert not await gate_active(None, _session())
 
 
-@pytest.mark.parametrize("source_platform, gated", [(None, True), ("discord", False)])
-async def test_a_chat_driven_from_a_linked_bot_runs_ungated(
+@pytest.mark.parametrize(
+    "source_platform, gated",
+    [(None, True), ("discord", True), ("whatsapp", False), ("github", False)],
+)
+async def test_a_linked_chat_is_gated_only_where_its_channel_can_show_a_card(
     gate_on, clean_session_state, source_platform, gated
 ):
-    """The channel cannot show a card, so a held call would strand the chat."""
+    """Without buttons to answer it in the channel, a held call strands the chat."""
     session = _session("ask_first", source_platform=source_platform)
     decision = await check_action("post_to_chat_platform", {"text": "hi"}, "u", session)
     assert decision.allowed is not gated

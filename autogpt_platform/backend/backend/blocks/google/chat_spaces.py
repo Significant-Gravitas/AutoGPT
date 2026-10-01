@@ -5,6 +5,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -112,6 +113,7 @@ class GoogleChatListSpacesBlock(Block):
                     "nextPageToken": "next-page",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -197,6 +199,7 @@ class GoogleChatSearchSpacesBlock(Block):
                     "results": [{"space": _TEST_SPACE_RESOURCE}]
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -297,6 +300,7 @@ class GoogleChatFindGroupChatsBlock(Block):
                     "spaces": [_TEST_GROUP_CHAT_RESOURCE]
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

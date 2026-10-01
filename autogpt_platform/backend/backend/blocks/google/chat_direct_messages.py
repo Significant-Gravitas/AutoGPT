@@ -5,6 +5,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -76,6 +77,7 @@ class GoogleChatFindDirectMessageBlock(Block):
             test_mock={
                 "_find_direct_message": lambda *args, **kwargs: _TEST_DM_RESOURCE
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -138,6 +140,7 @@ class GoogleChatStartDirectMessageBlock(Block):
             test_mock={
                 "_set_up_direct_message": lambda *args, **kwargs: _TEST_DM_RESOURCE
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

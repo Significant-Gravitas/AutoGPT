@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -155,6 +156,7 @@ class GoogleChatSearchMessagesBlock(Block):
                     "results": [{"message": _TEST_RESULT_RESOURCE}]
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
