@@ -5,6 +5,7 @@ import { getCategoryHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { CategoryTag } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -149,6 +150,11 @@ export function ExpertTeamCard({
           />
           <div className="flex items-center gap-2 empty:hidden">
             {topic ? <CategoryTag category={topic} /> : null}
+            {expert.autopilot_mode === "unsupervised" ? (
+              <Badge variant="warning" size="small">
+                Unsupervised
+              </Badge>
+            ) : null}
             <IntegrationIcons
               expertName={expert.name}
               providers={expert.credential_providers ?? []}
