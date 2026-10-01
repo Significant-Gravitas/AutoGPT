@@ -17,6 +17,8 @@ LIVE_EVENT_NAMES = {
     "trigger_fired",
     "expert_hired",
     "integration_connected",
+    "credential_oauth_started",
+    "credential_oauth_exchange_failed",
     "hire_failed",
     "writing_style_added",
     "workflow_installed_on_expert",

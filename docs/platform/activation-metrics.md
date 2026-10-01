@@ -75,7 +75,29 @@ Every event carries `environment` and `source: "platform"`.
 | — | `agent_run_finished` with `status: completed` | A run reaches COMPLETED. | `trigger`, `cost_cents`, `duration_seconds` |
 | — | `expert_hired` | A user hires an expert from a template, from any surface. | `expert_id`, `template_id`, `surface` |
 | — | `integration_connected` | A user connects a credential, by OAuth or by pasting a key. | `provider`, `credential_type`, `method` |
+| — | `credential_oauth_started` | The backend issues an OAuth login URL (`GET /api/integrations/{provider}/login`). Not Codex, which signs in with a device login. | `provider` |
+| — | `credential_oauth_exchange_failed` | `POST /api/integrations/{provider}/callback` returns an error, on any path. Not Codex. | `provider`, `status_code` (unset for an unexpected error), `failure_class`, `detail` (error message or class, secrets removed, at most 200 characters) |
 | agent_idle, stale account | *(not events)* | Computed states, see `agent_health` and `user_lifecycle`. | — |
+
+`credential_oauth_started`, `integration_connected` (`method: oauth`) and
+`credential_oauth_exchange_failed` give started / connected / failed per
+provider. They are sent by the backend so they are not held back by the
+browser's analytics consent. `failure_class` says where the callback failed:
+
+| `failure_class` | Status | Cause |
+| --- | --- | --- |
+| `invalid_state` | 400 | State token missing, expired, or issued for another provider. |
+| `provider_unavailable` | 400 / 404 / 500 / 501 | No OAuth handler for the provider, or its client id and secret are not set. |
+| `token_exchange` | 400 | The provider rejected the code, or the exchange raised. |
+| `credential_merge` | 400 | The new token could not be stored on an existing credential (username or provider mismatch, managed or system credential). |
+
+An unexpected error (not an HTTP error we raise, e.g. a database error) keeps
+the class of the step it happened in, with only the exception class as
+`detail` and no `status_code`: the app's exception handlers pick the response
+status later (`ValueError` is a 400, for example).
+
+A granted scope set narrower than the one requested is not a callback
+failure: the credential is stored and `integration_connected` fires.
 
 The event names follow the product analytics plan; the chat events
 (`chat_tool_called`, `chat_outcome`, ...) and billing events (`topup_completed`,

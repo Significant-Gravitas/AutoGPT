@@ -64,7 +64,7 @@ export function getNewChatHref(
   expertId: string | null,
   activeExpertIds: ReadonlySet<string>,
 ) {
-  if (!expertId) return "/copilot";
+  if (!expertId) return "/home";
   if (!activeExpertIds.has(expertId)) return null;
-  return `/copilot?expertId=${encodeURIComponent(expertId)}`;
+  return `/home?expertId=${encodeURIComponent(expertId)}`;
 }
