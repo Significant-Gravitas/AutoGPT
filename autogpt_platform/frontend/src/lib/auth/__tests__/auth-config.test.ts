@@ -273,6 +273,50 @@ describe("email verification", () => {
   });
 });
 
+describe("team email sign-up", () => {
+  type CreateUserHook = (
+    user: { email: string },
+    ctx: { path?: string } | null,
+  ) => Promise<void>;
+
+  async function loadCreateUserHook() {
+    const options = (await loadAuthOptions()) as unknown as {
+      databaseHooks: { user: { create: { before: CreateUserHook } } };
+    };
+    return options.databaseHooks.user.create.before;
+  }
+
+  it("refuses a password sign-up as an @agpt.co address", async () => {
+    const createUser = await loadCreateUserHook();
+
+    await expect(
+      createUser({ email: "made-up@agpt.co" }, { path: "/sign-up/email" }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      body: { code: "TEAM_EMAIL_REQUIRES_GOOGLE" },
+    });
+  });
+
+  it("lets Google create an @agpt.co account", async () => {
+    const createUser = await loadCreateUserHook();
+
+    await expect(
+      createUser({ email: "someone@agpt.co" }, { path: "/callback/google" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("leaves other password sign-ups to the signup gate", async () => {
+    const createUser = await loadCreateUserHook();
+
+    await expect(
+      createUser({ email: "qa@previews.agpt.co" }, { path: "/sign-up/email" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      createUser({ email: "new@example.com" }, { path: "/sign-up/email" }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("change email", () => {
   it("enables email change and routes the approval mail to the current address", async () => {
     const options = await loadAuthOptions();

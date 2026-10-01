@@ -13,6 +13,7 @@ import {
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -75,7 +76,11 @@ export const auth = betterAuth({
         // a user row. Existing users and the SQL data-migration bypass it.
         // The thrown message is phrased so the frontend `isWaitlistError()`
         // maps it to the existing "not allowed" modal.
-        before: async (user: { email: string }) => {
+        before: async (
+          user: { email: string },
+          ctx: { path?: string } | null,
+        ) => {
+          assertTeamEmailUsesGoogle(user.email, ctx);
           const decision = isSignupAllowed(user.email, readSignupGateConfig());
           if (!decision.allowed) {
             throw new APIError("FORBIDDEN", {

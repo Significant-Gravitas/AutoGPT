@@ -222,3 +222,18 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
     expect(sentEmails).toEqual([]);
   });
 });
+
+describe("team addresses", () => {
+  it.each([true, false])(
+    "refuses a password sign-up as @agpt.co (verification %s)",
+    async (requireVerification) => {
+      const { handler, db } = await createAuthHandler(requireVerification);
+
+      const response = await signUp(handler, "made-up@agpt.co");
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).code).toBe("TEAM_EMAIL_REQUIRES_GOOGLE");
+      expect(db.UserAuthIdentity).toEqual([]);
+    },
+  );
+});
