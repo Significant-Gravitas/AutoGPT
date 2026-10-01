@@ -7,7 +7,7 @@ ensuring multi-user isolation and preventing unauthorized operations.
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterable
 from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
@@ -118,9 +118,16 @@ def _validate_workspace_path(
 
 
 def _validate_tool_access(
-    tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None = None
+    tool_name: str,
+    tool_input: dict[str, Any],
+    sdk_cwd: str | None = None,
+    allowed_tools: Collection[str] = frozenset(),
 ) -> dict[str, Any]:
     """Validate that a tool call is allowed.
+
+    A tool outside *allowed_tools* is denied: ``allowed_tools`` on
+    ``ClaudeAgentOptions`` only pre-approves, so a CLI built-in that needs no
+    permission runs unless this hook refuses it.
 
     Returns:
         Empty dict to allow, or dict with hookSpecificOutput to deny
@@ -141,6 +148,9 @@ def _validate_tool_access(
             "Use the CoPilot-specific MCP tools instead."
         )
 
+    if tool_name not in allowed_tools:
+        return _deny_unlisted(tool_name)
+
     # Check for dangerous patterns in tool input
     # Use json.dumps for predictable format (str() produces Python repr)
     input_str = json.dumps(tool_input) if tool_input else ""
@@ -156,6 +166,14 @@ def _validate_tool_access(
             )
 
     return {}
+
+
+def _deny_unlisted(tool_name: str) -> dict[str, Any]:
+    logger.warning(f"Blocked tool outside the session's allowed set: {tool_name}")
+    return _deny(
+        f"[SECURITY] Tool '{tool_name}' is not available in this session. "
+        "This is enforced by the platform and cannot be bypassed."
+    )
 
 
 def _validate_user_isolation(
@@ -195,6 +213,8 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    *,
+    allowed_tools: Iterable[str],
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -212,10 +232,13 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
+        allowed_tools: The ``allowed_tools`` passed to ``ClaudeAgentOptions``;
+            every other tool is denied.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
     """
+    allowed = frozenset(allowed_tools)
     try:
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
@@ -268,12 +291,16 @@ def create_security_hooks(
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
-            # Only block non-CoPilot tools; our MCP-registered tools
-            # (including Read for oversized results) are already sandboxed.
+            # Our MCP tools sandbox themselves, so they skip the path and
+            # pattern checks — but not the allowed set.
             if not is_copilot_tool:
-                result = _validate_tool_access(clean_name, tool_input, sdk_cwd)
+                result = _validate_tool_access(
+                    clean_name, tool_input, sdk_cwd, allowed_tools=allowed
+                )
                 if result:
                     return cast(SyncHookJSONOutput, result)
+            elif tool_name not in allowed:
+                return cast(SyncHookJSONOutput, _deny_unlisted(tool_name))
 
             # Validate user isolation
             result = _validate_user_isolation(clean_name, tool_input, user_id)

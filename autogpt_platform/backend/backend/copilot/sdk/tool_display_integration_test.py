@@ -27,6 +27,7 @@ from backend.copilot.sdk.tool_adapter import (
     _build_input_schema,
     _execute_tool_sync,
     _make_truncating_wrapper,
+    get_copilot_tool_names,
     pop_pending_tool_output,
     set_execution_context,
 )
@@ -100,7 +101,9 @@ async def test_hook_to_mcp_handler_keeps_provider_identity_and_clean_stash(
     tool_name, args, display_name, name_key
 ):
     bridge = SDKToolDisplayBridge()
-    hooks = create_security_hooks("user", tool_display_bridge=bridge)
+    hooks = create_security_hooks(
+        "user", tool_display_bridge=bridge, allowed_tools=get_copilot_tool_names()
+    )
     pre_hook = hooks["PreToolUse"][0].hooks[0]
     decision = await pre_hook(
         {

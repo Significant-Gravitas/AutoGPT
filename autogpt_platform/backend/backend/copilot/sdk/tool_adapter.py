@@ -1123,6 +1123,15 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
 #   exposed lets the model promise unattended monitoring that silently never
 #   fires — `schedule_followup` is the primitive that actually persists.
+# ListAgents/SendMessage: reach other CLI sessions in the same pod.
+# NotebookEdit: writes files outside the MCP Write/Edit tools.
+# Skill: Claude Code's own skills; copilot skills go through read_skill.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.
+# EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
+# TaskStop: unused here, and permissions cannot name it, so filtered sessions
+#   would drop it anyway.
+# A built-in in neither this list nor _SDK_BUILTIN_* is denied by
+# security_hooks and fails cli_builtin_tools_test.py.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1137,6 +1146,13 @@ SDK_DISALLOWED_TOOLS = [
     "CronDelete",
     "ListAgents",
     "SendMessage",
+    "NotebookEdit",
+    "Skill",
+    "Workflow",
+    "EnterWorktree",
+    "ExitWorktree",
+    "ReportFindings",
+    "TaskStop",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
