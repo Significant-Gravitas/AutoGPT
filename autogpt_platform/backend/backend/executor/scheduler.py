@@ -50,6 +50,7 @@ from backend.copilot.dream.scheduling import (
     clear_registration_marker,
 )
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
+from backend.copilot.expert_route import resolve_expert_chat_route
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
@@ -454,9 +455,17 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
-            llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
-                args.user_id
-            )
+            # An expert's follow-up runs on the connection pinned to that
+            # expert, when there is one and it can still run unattended;
+            # Otto's, and an unpinned expert's, on the account default.
+            if args.expert_id is not None:
+                llm_auth_provider, llm_credential_id = await resolve_expert_chat_route(
+                    args.user_id, args.expert_id
+                )
+            else:
+                llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
+                    args.user_id
+                )
             if await _refuse_if_turn_may_not_start(args, llm_auth_provider):
                 return
             new_session = await create_chat_session(
