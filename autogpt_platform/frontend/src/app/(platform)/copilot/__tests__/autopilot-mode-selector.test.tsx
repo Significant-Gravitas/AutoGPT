@@ -1,7 +1,9 @@
 import {
   getGetV2ListChatTransportsMockHandler,
+  getGetV2ListSessionsMockHandler200,
   getPostV2CreateSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
@@ -20,7 +22,7 @@ import {
   typeAndSend,
 } from "./sse-helpers";
 
-const flags = vi.hoisted(() => ({ autoMode: false }));
+const flags = vi.hoisted(() => ({ autoMode: false, experts: false }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -30,7 +32,11 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === actual.Flag.COPILOT_AUTO_MODE ? flags.autoMode : false,
+      flag === actual.Flag.COPILOT_AUTO_MODE
+        ? flags.autoMode
+        : flag === actual.Flag.HIRE_EXPERTS
+          ? flags.experts
+          : false,
   };
 });
 
@@ -59,6 +65,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 beforeEach(() => {
   flags.autoMode = true;
+  flags.experts = false;
 });
 
 afterEach(() => {
@@ -186,6 +193,67 @@ describe("AutoPilot mode selector", () => {
     await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 5000 });
     expect(bodies[0]).toMatchObject({ autopilot_mode: "ask_first" });
   });
+  it("starts a new expert thread on the expert's default without sending it", async () => {
+    flags.experts = true;
+    const bodies = captureStreamBodies();
+    const createBodies: Record<string, unknown>[] = [];
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+      getGetV2ListChatTransportsMockHandler({
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      }),
+      getPostV2CreateSessionMockHandler(async ({ request }) => {
+        createBodies.push((await request.json()) as Record<string, unknown>);
+        return {
+          id: TEST_SESSION_ID,
+          created_at: "2026-05-13T00:00:00Z",
+          user_id: "test-user",
+          expert_id: "expert-maria",
+        };
+      }),
+    );
+
+    renderHost({ searchParams: "?expertId=expert-maria" });
+
+    expect(
+      await screen.findByRole("button", { name: /approval mode: ask first/i }),
+    ).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 5000 });
+    expect(createBodies).toHaveLength(1);
+    expect(createBodies[0]).not.toHaveProperty("autopilot_mode");
+    expect(bodies[0]).not.toHaveProperty("autopilot_mode");
+  });
+
+  it("keeps a thread's stored mode over the expert's default", async () => {
+    flags.experts = true;
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "unsupervised" },
+      },
+    });
+
+    expect(
+      await screen.findByRole("button", {
+        name: /approval mode: unsupervised/i,
+      }),
+    ).toBeDefined();
+  });
 });
 
 describe("autopilotModeStore", () => {
@@ -226,4 +294,16 @@ async function pickMode(trigger: RegExp, option: RegExp) {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: trigger }));
   await user.click(await screen.findByRole("menuitemradio", { name: option }));
+}
+
+function mariaIdentity(autopilotMode: "ask_first" | "auto" | "unsupervised") {
+  return {
+    id: "expert-maria",
+    name: "Maria",
+    avatar_url: null,
+    color: "orange-500",
+    role: "Marketing",
+    is_archived: false,
+    autopilot_mode: autopilotMode,
+  };
 }

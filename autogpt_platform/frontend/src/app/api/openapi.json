@@ -7451,6 +7451,56 @@
         }
       }
     },
+    "/api/experts/{expert_id}/mode": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Mode",
+        "description": "Set the approval mode new web chats with this expert start on.\n\nThreads already open keep the mode stored on them, and the composer's\nselector still overrides it per thread. Routines, scheduled follow-ups\nand chats driven from a linked chat platform are not gated by it.",
+        "operationId": "update_expert_mode",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertModeUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Approval modes are not enabled for this account"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/onboarding": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -20221,6 +20271,16 @@
             "type": "boolean",
             "title": "Expert Kickoff",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           }
         },
         "additionalProperties": false,
@@ -21884,6 +21944,16 @@
             ],
             "title": "Schedules Paused At"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
@@ -22155,11 +22225,38 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Job Title"
           },
-          "is_archived": { "type": "boolean", "title": "Is Archived" }
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
         },
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertModeUpdate": {
+        "properties": {
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
+        },
+        "type": "object",
+        "title": "ExpertModeUpdate",
+        "description": "Set the approval mode new web chats with an expert start on.\n\n``None`` clears it back to the platform default."
       },
       "ExpertOnboardingResponse": {
         "properties": {
@@ -22560,6 +22657,16 @@
               { "type": "null" }
             ],
             "title": "Schedules Paused At"
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
