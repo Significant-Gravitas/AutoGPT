@@ -397,6 +397,9 @@ class CreateSessionRequest(BaseModel):
     llm_credential_id: str | None = Field(default=None, max_length=128)
     expert_id: str | None = Field(default=None, max_length=128)
     expert_kickoff: bool = False
+    # The approval mode the chat starts on. Leave unset to start on the
+    # expert's default (or the platform default); send only a deliberate pick.
+    autopilot_mode: AutopilotMode | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -793,6 +796,7 @@ async def create_session(
     builder_graph_id = request.builder_graph_id if request else None
     expert_id = request.expert_id if request else None
     expert_kickoff = request.expert_kickoff if request else False
+    autopilot_mode = request.autopilot_mode if request else None
 
     if expert_kickoff and expert_id is None:
         raise HTTPException(
@@ -850,6 +854,7 @@ async def create_session(
             team_id=ctx.team_id,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            autopilot_mode=autopilot_mode,
         )
     else:
         try:
@@ -861,6 +866,7 @@ async def create_session(
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
                 expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
             )
         except experts_db.ExpertNotFoundError as e:
             raise HTTPException(status_code=404, detail="Expert not found") from e

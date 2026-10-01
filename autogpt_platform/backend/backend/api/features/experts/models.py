@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.copilot.model import AutopilotMode
 from backend.data.expert_run_output import OutputType
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
@@ -146,6 +147,8 @@ class ExpertIdentity(BaseModel):
     role: str
     job_title: str | None = None
     is_archived: bool
+    # The approval mode a new web chat with this expert starts on.
+    autopilot_mode: AutopilotMode | None = None
 
     @field_validator("avatar_url")
     @classmethod
@@ -308,6 +311,9 @@ class Expert(BaseModel):
     weekly_budget: int | None = None
     weekly_spend: int = 0
     schedules_paused_at: datetime | None = None
+    # Approval mode every new web chat with this expert starts on; None =
+    # platform default. Hire-only, never set on templates.
+    autopilot_mode: AutopilotMode | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
     # A hire's workflows, skills and routines land after it is returned.
@@ -532,6 +538,15 @@ class ExpertBudgetUpdate(BaseModel):
     """
 
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
+
+
+class ExpertModeUpdate(BaseModel):
+    """Set the approval mode new web chats with an expert start on.
+
+    ``None`` clears it back to the platform default.
+    """
+
+    autopilot_mode: AutopilotMode | None = None
 
 
 class ExpertAvatarUpdate(BaseModel):

@@ -34,6 +34,7 @@ from backend.util.exceptions import (
     NotFoundError,
     RedisError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .config import ChatConfig, CopilotLlmAuthProvider
 
@@ -64,6 +65,7 @@ RoutingSource = Literal[
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
 AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
+AUTOPILOT_MODES: frozenset[str] = frozenset({"ask_first", "auto", "unsupervised"})
 
 
 # Redis cache key prefix for chat sessions
@@ -520,6 +522,7 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -540,6 +543,7 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                autopilot_mode=autopilot_mode,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1372,6 +1376,7 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1396,6 +1401,12 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        autopilot_mode: The approval mode the chat starts on. An explicit
+            value wins; otherwise an expert session starts on the expert's
+            own default, and anything else on the platform default. Stored
+            on the session, so a later change to the expert's default never
+            rewrites an open thread. Ignored while the approval-mode flag
+            is off, like the per-thread override.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1406,6 +1417,9 @@ async def create_chat_session(
         organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
             user_id, expert_id
         )
+    autopilot_mode = await _resolve_new_session_autopilot_mode(
+        user_id, expert_id, autopilot_mode, origin
+    )
 
     session = ChatSession.new(
         user_id,
@@ -1422,6 +1436,7 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        autopilot_mode=autopilot_mode,
     )
 
     # Create in database first - fail fast if this fails
@@ -1455,6 +1470,27 @@ async def create_chat_session(
     return session
 
 
+async def _resolve_new_session_autopilot_mode(
+    user_id: str,
+    expert_id: str | None,
+    requested: AutopilotMode | None,
+    origin: ChatSessionOrigin,
+) -> AutopilotMode | None:
+    """Explicit request > the expert's default > None (platform default).
+
+    The expert default is for threads a person drives: a routine, a
+    scheduled follow-up or a block-opened session is not gated, so it is
+    not looked up for one.
+    """
+    if requested is None and (expert_id is None or origin != "interactive"):
+        return None
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return None
+    if requested is not None or expert_id is None:
+        return requested
+    return await experts_db().get_autopilot_mode(user_id, expert_id)
+
+
 def expert_kickoff_session_id(
     user_id: str,
     expert_id: str,
@@ -1478,8 +1514,13 @@ async def get_or_create_expert_kickoff_session(
     team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
-    """Atomically create or adopt the canonical expert kickoff session."""
+    """Atomically create or adopt the canonical expert kickoff session.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted
+    kickoff keeps the mode it already has.
+    """
     sessions, _ = await get_user_sessions(
         user_id,
         limit=1,
@@ -1507,6 +1548,7 @@ async def get_or_create_expert_kickoff_session(
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
     except DatabaseError:
         existing = await get_chat_session(session_id, user_id)

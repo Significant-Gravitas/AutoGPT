@@ -38,6 +38,7 @@ class PostHogEvent(StrEnum):
     WRITING_STYLE_ADDED = "writing_style_added"
     WORKFLOW_INSTALLED_ON_EXPERT = "workflow_installed_on_expert"
     EXPERT_FIRED = "expert_fired"
+    EXPERT_MODE_SET_UNSUPERVISED = "expert_mode_set_unsupervised"
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
     EXPERT_RUN_COMPLETED = "expert_run_completed"

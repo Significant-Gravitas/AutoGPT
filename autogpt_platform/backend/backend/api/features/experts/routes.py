@@ -23,6 +23,7 @@ from backend.api.features.experts.models import (
     ExpertCredentialRef,
     ExpertDetachPreview,
     ExpertIdentity,
+    ExpertModeUpdate,
     ExpertPod,
     ExpertRun,
     ExpertSetupItem,
@@ -46,6 +47,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -588,6 +590,35 @@ async def update_expert_budget(
 ) -> Expert:
     try:
         return await experts_db.update_budget(user_id, expert_id, request.weekly_budget)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch(
+    "/{expert_id}/mode",
+    operation_id="update_expert_mode",
+    responses={
+        403: {"description": "Approval modes are not enabled for this account"},
+        404: {"description": "Expert not found"},
+    },
+)
+async def update_expert_mode(
+    expert_id: str,
+    request: ExpertModeUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    """Set the approval mode new web chats with this expert start on.
+
+    Threads already open keep the mode stored on them, and the composer's
+    selector still overrides it per thread. Routines, scheduled follow-ups
+    and chats driven from a linked chat platform are not gated by it.
+    """
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        raise fastapi.HTTPException(status_code=403, detail="feature_disabled")
+    try:
+        return await experts_db.update_autopilot_mode(
+            user_id, expert_id, request.autopilot_mode
+        )
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
