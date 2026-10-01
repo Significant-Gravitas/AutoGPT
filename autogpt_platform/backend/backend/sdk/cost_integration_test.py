@@ -1,8 +1,12 @@
 """SDK `with_base_cost` prices reach every process, and only bill platform keys.
 
 The executor and copilot executor never run `initialize_blocks()`; they only
-load blocks (`get_block` -> `load_all_blocks`). These tests start from that
-state: the block's BLOCK_COSTS entry removed and the block cache cleared.
+load blocks (`get_block` -> `load_all_blocks`), which syncs provider costs. The
+in-process tests start from that state: the block's BLOCK_COSTS entry removed,
+then priced by the same `sync_all_provider_costs` call `load_all_blocks` makes.
+They never clear or re-run the cached `load_all_blocks()`: in the full suite,
+test modules define their own Block subclasses (e.g. `TestWebhookBlock`), so a
+fresh load would pick those up and fail. The subprocess test covers the loader.
 """
 
 import subprocess
@@ -12,7 +16,6 @@ import textwrap
 import pytest
 from pydantic import SecretStr
 
-from backend.blocks import load_all_blocks
 from backend.blocks.agent_mail._config import agent_mail
 from backend.blocks.agent_mail.inbox import AgentMailListInboxesBlock
 from backend.blocks.baas.bots import BaasBotJoinMeetingBlock
@@ -40,7 +43,6 @@ def restore_block_costs():
     yield
     BLOCK_COSTS.clear()
     BLOCK_COSTS.update(saved)
-    load_all_blocks.cache_clear()
 
 
 def _credentials(cred_id: str, provider: str) -> dict:
@@ -48,12 +50,12 @@ def _credentials(cred_id: str, provider: str) -> dict:
 
 
 def _block_loaded_like_the_executor(block_class: type):
-    """Fetch the block the way the executor does, in a process that never ran
-    initialize_blocks(): no BLOCK_COSTS entry yet, blocks loaded on demand."""
+    """Price the block the way the executor's `load_all_blocks()` does, in a
+    process that never ran initialize_blocks(): no BLOCK_COSTS entry yet, then
+    the provider costs synced for the loaded blocks."""
     BLOCK_COSTS.pop(block_class, None)
-    load_all_blocks.cache_clear()
-    blocks = load_all_blocks()
-    return blocks[block_class().id]()
+    sync_all_provider_costs([block_class])
+    return block_class()
 
 
 def test_fresh_process_bills_sdk_price_like_the_executor():
