@@ -11,6 +11,27 @@ from backend.copilot.model import AutopilotMode
 
 DEFAULT_MODE: AutopilotMode = "auto"
 
+# Strictest first: a chat in ``ask_first`` asks the most.
+_MODES_BY_STRICTNESS: tuple[AutopilotMode, ...] = ("ask_first", "auto", "unsupervised")
+
+
+def strictest_mode(*modes: AutopilotMode) -> AutopilotMode:
+    return min(modes, key=_MODES_BY_STRICTNESS.index)
+
+
+def child_autopilot_mode(
+    parent: AutopilotMode | None, expert_default: AutopilotMode | None
+) -> AutopilotMode | None:
+    """The mode a delegated thread starts on.
+
+    An expert with no default follows the chat that delegated to it. One with
+    a default never gets a looser thread than that chat: a parent in
+    ``ask_first`` cannot farm work out to an unsupervised teammate.
+    """
+    if expert_default is None:
+        return parent
+    return strictest_mode(parent or DEFAULT_MODE, expert_default)
+
 
 class Effect(str, Enum):
     READ = "read"
