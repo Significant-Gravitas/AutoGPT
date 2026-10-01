@@ -16,7 +16,11 @@ from backend.util.link_checkout.models import (
     WorkerReceipt,
     WorkerResult,
 )
-from backend.util.link_checkout.refusals import DUPLICATE_REQUEST, CheckoutRefused
+from backend.util.link_checkout.refusals import (
+    DUPLICATE_REQUEST,
+    RAISE_REFUSED,
+    CheckoutRefused,
+)
 from backend.util.link_checkout.runner import run_worker
 from backend.util.link_checkout.runtime import retire_payment_browser
 
@@ -47,6 +51,18 @@ async def create_delegated(
     )
     if result.error == "link_rejected":
         return None
+    return _created(result)
+
+
+async def raise_total(intent: CheckoutIntent, token: SecretStr) -> SpendRequest:
+    """Raise the checkout's Link request to the intent's new total and ask the
+    customer to approve it again in Link (incremental authorization). If Link
+    refuses, the request stays usable at its old amount."""
+    result = await run_worker(
+        WorkerJob(action="raise", intent=intent, access_token=token)
+    )
+    if result.error == "link_rejected":
+        raise CheckoutRefused(RAISE_REFUSED)
     return _created(result)
 
 

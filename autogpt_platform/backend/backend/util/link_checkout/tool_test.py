@@ -40,6 +40,7 @@ def tools(local_broker, fake_redis, monkeypatch):
     monkeypatch.setattr(
         request_tools, "in_app_approval_allowed", AsyncMock(return_value=False)
     )
+    monkeypatch.setattr(request_tools, "purchase_blocker", AsyncMock(return_value=None))
     monkeypatch.setattr("backend.copilot.tools.base._record_activity", AsyncMock())
     return local_broker
 

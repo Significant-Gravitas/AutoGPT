@@ -26,6 +26,7 @@ from backend.util.link_checkout.broker_protocol import (
     CheckoutView,
     CreateCheckout,
     Principal,
+    RaiseCheckout,
 )
 from backend.util.link_checkout.broker_routing import configured as remote_broker
 from backend.util.link_checkout.broker_routing import routed
@@ -127,6 +128,12 @@ async def complete(request: AuthorizedCheckout) -> CheckoutView:
     if remote_broker():
         return await _remote("checkout/complete", request)
     return await broker_checkout.complete_checkout(request)
+
+
+async def raise_total(request: RaiseCheckout) -> CheckoutView:
+    if remote_broker():
+        return await _remote("checkout/raise", request)
+    return await broker_checkout.raise_checkout(request)
 
 
 async def status(request: AuthorizedCheckout) -> CheckoutView:

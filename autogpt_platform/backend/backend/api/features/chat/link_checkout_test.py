@@ -14,7 +14,11 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.chat import link_checkout as routes
 from backend.util.link_checkout import approval
-from backend.util.link_checkout.approval import PendingApproval, open_approval
+from backend.util.link_checkout.approval import (
+    PendingApproval,
+    open_approval,
+    reopen_approval,
+)
 
 app = fastapi.FastAPI()
 app.include_router(routes.router)
@@ -93,6 +97,9 @@ async def test_the_card_reads_the_purchase_as_recorded(purchase):
         "currency": "usd",
         "test_mode": True,
         "expires_at": response.json()["expires_at"],
+        "revision": 0,
+        "previous_amount": None,
+        "reason": "",
     }
 
 
@@ -141,3 +148,43 @@ def test_a_malformed_checkout_id_is_rejected():
         f"/sessions/{SESSION_ID}/link-checkouts/not-a-checkout/approve"
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_raised_purchase_is_decided_on_the_revision_the_card_showed(
+    purchase, test_user_id
+):
+    await purchase()
+    await reopen_approval(
+        PendingApproval(
+            checkout_id=CHECKOUT_ID,
+            user_id=test_user_id,
+            session_id=SESSION_ID,
+            merchant_name="Test store",
+            merchant_url="https://shop.example/checkout",
+            context=CONTEXT,
+            amount=1500,
+            currency="usd",
+            test_mode=True,
+            expires_at=time.time() + 60,
+            revision=1,
+            previous_amount=1250,
+            reason="Sales tax was added on the final step.",
+        )
+    )
+
+    card = client.get(url()).json()
+    assert (card["amount"], card["previous_amount"], card["revision"]) == (
+        1500,
+        1250,
+        1,
+    )
+    assert card["reason"] == "Sales tax was added on the final step."
+    # A card still showing the first total cannot approve the raised one.
+    assert client.post(url("approve")).status_code == 409
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 409
+
+    approved = client.post(url("approve"), json={"revision": 1})
+
+    assert approved.status_code == 200
+    assert approved.json()["state"] == "approved"

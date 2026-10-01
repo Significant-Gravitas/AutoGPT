@@ -70,3 +70,21 @@ def test_consumed_checkout_cannot_be_replayed_after_reload(tmp_path, intent):
     with pytest.raises(RuntimeError):
         read_intent(tmp_path, intent.id, intent.user_id, intent.session_id)
     assert (tmp_path / "sensitive").exists()
+
+
+def test_a_pay_token_plan_names_only_the_pay_button_and_is_live(plan):
+    fields = plan.model_dump(exclude={"number", "cvc", "expiry"})
+    live = {**fields, "execution": "link_pay_token", "test_mode": False}
+    assert CheckoutPlan.model_validate(live).payment_fields()["number"] is None
+
+    for invalid in (
+        {**live, "number": "#number"},
+        {**live, "test_mode": True},
+    ):
+        with pytest.raises(ValidationError):
+            CheckoutPlan.model_validate(invalid)
+
+
+def test_a_card_plan_still_needs_the_card_fields(plan):
+    with pytest.raises(ValidationError):
+        CheckoutPlan.model_validate(plan.model_dump(exclude={"number"}))

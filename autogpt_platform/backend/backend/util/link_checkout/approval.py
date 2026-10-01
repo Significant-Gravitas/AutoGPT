@@ -8,7 +8,10 @@ tool then reads the decision before it asks Link for a spend request that is
 already approved.
 
 A decision is written once (``SET NX``): the first click wins, a second click
-of the same kind is idempotent, and nothing can overwrite it.
+of the same kind is idempotent, and nothing can overwrite it. When the agent
+raises the total, the record is rewritten as a new revision, which needs a
+decision of its own; a click names the revision the customer saw, so a card
+showing the old total can't approve the new one.
 """
 
 import time
@@ -38,6 +41,11 @@ class PendingApproval(BaseModel):
     currency: str
     test_mode: bool
     expires_at: float
+    # Bumped each time the agent raises the total; each revision is approved
+    # afresh. A raise records the total it replaced and the agent's reason.
+    revision: int = 0
+    previous_amount: int | None = None
+    reason: str = ""
 
 
 class Decision(BaseModel):
@@ -71,13 +79,24 @@ async def open_approval(pending: PendingApproval) -> None:
         raise RuntimeError("This checkout already has an approval record")
 
 
+async def reopen_approval(pending: PendingApproval) -> None:
+    """Replace the purchase with a new revision (a raised total), which waits
+    for a decision of its own."""
+    redis = await get_redis_async()
+    await redis.set(
+        _record_key(pending.checkout_id),
+        JSONCryptor().encrypt(pending.model_dump(mode="json")),
+        ex=_TTL_SECONDS,
+    )
+
+
 async def read_approval(checkout_id: str) -> ApprovalView | None:
     redis = await get_redis_async()
     record = await redis.get(_record_key(checkout_id))
     if record is None:
         return None
     pending = PendingApproval.model_validate(JSONCryptor().decrypt(_text(record)))
-    raw_decision = await redis.get(_decision_key(checkout_id))
+    raw_decision = await redis.get(_decision_key(checkout_id, pending.revision))
     decision = (
         Decision.model_validate(JSONCryptor().decrypt(_text(raw_decision)))
         if raw_decision is not None
@@ -95,8 +114,10 @@ async def decide(
     *,
     approve: bool,
     user_agent: str | None,
+    revision: int = 0,
 ) -> ApprovalView | None:
-    """Record the customer's decision. None when no such purchase is theirs."""
+    """Record the customer's decision on the revision they saw. None when no
+    such purchase is theirs."""
     view = await read_approval(checkout_id)
     if (
         view is None
@@ -104,6 +125,8 @@ async def decide(
         or view.pending.session_id != session_id
     ):
         return None
+    if revision != view.pending.revision:
+        raise ApprovalConflict("This purchase changed; review its new total")
     if view.decision is None:
         if view.state == "expired":
             raise ApprovalConflict("This purchase request has expired")
@@ -114,12 +137,16 @@ async def decide(
         )
         redis = await get_redis_async()
         await redis.set(
-            _decision_key(checkout_id),
+            _decision_key(checkout_id, view.pending.revision),
             JSONCryptor().encrypt(decision.model_dump(mode="json")),
             nx=True,
             ex=_TTL_SECONDS,
         )
         view = await read_approval(checkout_id)
+        if view is not None and view.pending.revision != revision:
+            # Raised between the read and the write: the decision was for
+            # the old total, and the new one still waits for its own.
+            raise ApprovalConflict("This purchase changed; review its new total")
         if view is None or view.decision is None:
             raise RuntimeError("The approval could not be recorded")
     if view.decision.approved != approve:
@@ -158,5 +185,6 @@ def _record_key(checkout_id: str) -> str:
     return f"copilot:link_approval:{{{checkout_id}}}:record"
 
 
-def _decision_key(checkout_id: str) -> str:
-    return f"copilot:link_approval:{{{checkout_id}}}:decision"
+def _decision_key(checkout_id: str, revision: int) -> str:
+    suffix = f":{revision}" if revision else ""
+    return f"copilot:link_approval:{{{checkout_id}}}:decision{suffix}"

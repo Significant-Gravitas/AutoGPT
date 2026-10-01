@@ -98,9 +98,13 @@ class FakeWorker:
         # Link's refusal of the next create: "link_rejected", "link_duplicate".
         self.create_error: Literal["link_rejected", "link_duplicate"] | None = None
         self.delegated_error: Literal["link_rejected", "link_duplicate"] | None = None
+        self.raise_error: Literal["link_rejected"] | None = None
+        # The total each job carried, in order: a raise sends the new one.
+        self.amounts: list[int] = []
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
+        self.amounts.append(job.intent.plan.amount)
         if job.action == "pay":
             directory = runtime.session_home(job.intent.session_id)
             self.sealed_when_paying.append(
@@ -112,9 +116,14 @@ class FakeWorker:
             return WorkerResult(error=self.delegated_error)
         if job.action == "create" and self.create_error:
             return WorkerResult(error=self.create_error)
+        if job.action == "raise" and self.raise_error:
+            return WorkerResult(error=self.raise_error)
         spend = await synthetic_spend(job)
         if job.action == "cancel":
             spend.status = "canceled"
+        elif job.action == "raise":
+            # Raised, then waiting for the customer's approval in Link again.
+            spend.status = "pending_approval"
         elif job.action != "create":
             spend.status = self.status
         return WorkerResult(spend=spend)

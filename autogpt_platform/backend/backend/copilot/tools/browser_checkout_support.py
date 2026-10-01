@@ -5,7 +5,6 @@ import logging
 import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -31,79 +30,6 @@ from backend.util.link_checkout.refusals import (
 from backend.util.settings import BehaveAs, Settings
 
 LINK_PAYMENT_SCOPE = "payment_methods.agentic"
-
-# Written out rather than generated: the model sees plain selector strings,
-# and ``CheckoutPlan`` enforces the patterns and bounds when the call arrives.
-REQUEST_PARAMETERS: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "credentials_id": {
-            "type": "string",
-            "description": "Stripe Link credential to pay with. Leave it out to "
-            "use the account connected in this chat.",
-        },
-        "payment_method_id": {
-            "type": "string",
-            "description": "Link payment method to pay with (csmrpd_...).",
-        },
-        "merchant_name": {"type": "string", "description": "Merchant the user pays."},
-        "checkout_url": {
-            "type": "string",
-            "description": "Exact HTTPS URL of the open checkout tab.",
-        },
-        "amount": {
-            "type": "integer",
-            "description": "Final total in the currency's smallest unit (1250 = 12.50).",
-        },
-        "currency": {"type": "string", "description": "Lowercase ISO code; usd."},
-        "context": {
-            "type": "string",
-            "description": "What is being bought and why, shown to the user "
-            "(at least 100 characters).",
-        },
-        "number": {"type": "string", "description": "Selector of the card number."},
-        "cvc": {"type": "string", "description": "Selector of the CVC."},
-        "expiry": {
-            "type": "string",
-            "description": "Selector of a combined MM/YY field; else give "
-            "exp_month and exp_year.",
-        },
-        "exp_month": {"type": "string", "description": "Selector of the month."},
-        "exp_year": {"type": "string", "description": "Selector of the year."},
-        "submit": {"type": "string", "description": "Selector of the pay button."},
-        "frame_urls": {
-            "type": "object",
-            "description": "For fields inside an iframe: field name (number, cvc, "
-            "expiry, exp_month, exp_year, submit) to the frame's exact URL.",
-            "additionalProperties": {"type": "string"},
-        },
-        "test_mode": {
-            "type": "boolean",
-            "description": "Test payment with no charge. Default true.",
-        },
-    },
-    "required": [
-        "payment_method_id",
-        "merchant_name",
-        "checkout_url",
-        "amount",
-        "context",
-        "number",
-        "cvc",
-        "submit",
-    ],
-}
-
-CHECKOUT_ID_PARAMETERS: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "checkout_id": {
-            "type": "string",
-            "description": "checkout_id from tool:browser_request_link_payment.",
-        }
-    },
-    "required": ["checkout_id"],
-}
 
 _credentials = IntegrationCredentialsManager()
 _settings = Settings()
@@ -131,6 +57,8 @@ class CheckoutResponse(ToolResponseBase):
     paid: bool = False
     attempted: bool = False
     expires_at: float = 0
+    # Bumped each time the total was raised (tool:browser_raise_link_payment).
+    revision: int = 0
     receipt: WorkerReceipt | None = None
 
 
@@ -224,6 +152,7 @@ def approval_for(
             pending.amount,
             pending.currency,
             pending.test_mode,
+            pending.revision,
         )
         != (
             view.merchant_name,
@@ -231,6 +160,7 @@ def approval_for(
             view.amount,
             view.currency,
             view.test_mode,
+            view.revision,
         )
     ):
         return None
@@ -253,15 +183,15 @@ def checkout_response(
     return response
 
 
-def invalid_plan(error: ValidationError) -> str:
+def invalid_plan(error: ValidationError, what: str = "checkout plan") -> str:
     """Which arguments were wrong and why, so the agent can fix its call.
-    ``CheckoutPlan`` hides inputs in its errors, so only field names and the
-    rule they broke come back."""
+    The checkout's models hide inputs in their errors, so only field names and
+    the rule they broke come back."""
     problems = "; ".join(
         f"{'.'.join(map(str, detail['loc'])) or 'plan'}: {detail['msg']}"
         for detail in error.errors(include_url=False, include_input=False)[:6]
     )
-    return f"Invalid checkout plan. {problems}"[:900]
+    return f"Invalid {what}. {problems}"[:900]
 
 
 def log_failure(step: str, error: BaseException) -> None:

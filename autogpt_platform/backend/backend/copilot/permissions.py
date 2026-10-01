@@ -91,6 +91,7 @@ ToolName = Literal[
     "browser_complete_link_payment",
     "browser_link_payment_status",
     "browser_navigate",
+    "browser_raise_link_payment",
     "browser_request_link_payment",
     "browser_reset_after_payment",
     "browser_screenshot",

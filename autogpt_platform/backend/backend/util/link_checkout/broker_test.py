@@ -5,12 +5,18 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from backend.util.link_checkout import broker_commands, broker_link, broker_service
+from backend.util.link_checkout import (
+    broker_checkout,
+    broker_commands,
+    broker_link,
+    broker_service,
+)
 from backend.util.link_checkout.models import ApprovalDetails, WorkerReceipt
 from backend.util.link_checkout.refusals import (
     ATTEMPT_UNRECONCILED,
     DUPLICATE_REQUEST,
     LIVE_PAYMENTS_DISABLED,
+    RAISE_NOT_HIGHER,
 )
 
 SECRET = "test-controller-credential-" + "x" * 32
@@ -104,8 +110,11 @@ async def test_validation_never_echoes_secret_input(broker):
 
 @pytest.mark.asyncio
 async def test_link_approval_pays_once_then_waits_for_links_final_status(
-    broker, local_broker, plan
+    broker, local_broker, plan, monkeypatch
 ):
+    # A live payment: Link settles it, and until then nothing else may start.
+    monkeypatch.setattr(broker_checkout, "live_payments_allowed", lambda: True)
+    plan = plan.model_copy(update={"test_mode": False})
     async with client(broker) as api:
         created = await create(api, plan)
         assert created["status"] == "pending_approval"
@@ -151,6 +160,30 @@ async def test_link_approval_pays_once_then_waits_for_links_final_status(
         assert again["checkout_id"] != created["checkout_id"]
         gone = await api.post("/v1/checkout/complete", json=authorized)
         assert gone.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_a_test_payment_left_approved_lets_the_chat_buy_again(
+    broker, local_broker, plan
+):
+    """Link never charges a test card, so an attempted test payment stays
+    approved for good; once that is read back it can't block the chat."""
+    async with client(broker) as api:
+        created = await create(api, plan)
+        authorized = {
+            **PRINCIPAL,
+            "checkout_id": created["checkout_id"],
+            "access_token": "synthetic",
+        }
+        await api.post("/v1/checkout/complete", json=authorized)
+        status = (await api.post("/v1/checkout/status", json=authorized)).json()
+        assert status["status"] == "approved"
+        assert status["paid"] is False
+        assert "never reaches 'succeeded'" in status["message"]
+
+        again = await create(api, plan)
+
+    assert again["checkout_id"] != created["checkout_id"]
 
 
 @pytest.mark.asyncio
@@ -359,3 +392,33 @@ async def test_an_unpaid_checkout_can_be_reset_without_a_link_status(
         )
         assert reset.status_code == 200
         assert reset.json()["status"] == "browser_reset"
+
+
+@pytest.mark.asyncio
+async def test_a_raise_crosses_the_broker_and_is_reapproved_in_link(
+    broker, local_broker, plan
+):
+    async with client(broker) as api:
+        created = await create(api, plan)
+
+        def raise_to(amount: int):
+            return api.post(
+                "/v1/checkout/raise",
+                json={
+                    **PRINCIPAL,
+                    "checkout_id": created["checkout_id"],
+                    "access_token": "synthetic",
+                    "amount": amount,
+                },
+            )
+
+        raised = await raise_to(250)
+        assert raised.status_code == 200, raised.text
+        body = raised.json()
+        assert (body["amount"], body["revision"]) == (250, 1)
+        assert body["status"] == "pending_approval"
+
+        lower = await raise_to(200)
+        assert lower.status_code == 422
+        assert lower.json()["detail"] == RAISE_NOT_HIGHER
+    assert local_broker.calls == ["create", "raise"]

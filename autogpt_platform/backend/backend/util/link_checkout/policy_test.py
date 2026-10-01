@@ -2,7 +2,15 @@ import httpx
 import pytest
 
 from backend.util.link_checkout import policy
-from backend.util.link_checkout.policy import in_app_approval_allowed
+from backend.util.link_checkout.policy import Purchase, in_app_approval_allowed
+
+
+def purchase(plan) -> Purchase:
+    return Purchase(
+        amount=plan.amount,
+        currency=plan.currency,
+        payment_method_id=plan.payment_method_id,
+    )
 
 
 @pytest.fixture
@@ -38,7 +46,7 @@ async def test_a_purchase_within_the_customers_policy_is_approved_in_chat(
     reply, seen = link_policy
     reply["json"] = {"rules": [rule(methods=["csmrpd_test"])]}
 
-    assert await in_app_approval_allowed("liwltoken_test", plan)
+    assert await in_app_approval_allowed("liwltoken_test", purchase(plan))
     assert str(seen[0].url) == "https://api.link.com/approval-policy"
     assert seen[0].headers["Authorization"] == "Bearer liwltoken_test"
 
@@ -59,7 +67,7 @@ async def test_anything_outside_the_policy_is_approved_in_link(
 ):
     reply, _ = link_policy
     reply["json"] = {"rules": rules}
-    assert not await in_app_approval_allowed("liwltoken_test", plan)
+    assert not await in_app_approval_allowed("liwltoken_test", purchase(plan))
 
 
 @pytest.mark.asyncio
@@ -70,4 +78,4 @@ async def test_anything_outside_the_policy_is_approved_in_link(
 async def test_an_unreadable_policy_falls_back_to_link(plan, link_policy, status, json):
     reply, _ = link_policy
     reply["status"], reply["json"] = status, json
-    assert not await in_app_approval_allowed("liwltoken_test", plan)
+    assert not await in_app_approval_allowed("liwltoken_test", purchase(plan))

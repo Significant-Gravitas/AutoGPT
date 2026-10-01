@@ -22,6 +22,7 @@ from .browser_checkout import (
     BrowserCompleteLinkPaymentTool,
     BrowserRequestLinkPaymentTool,
 )
+from .browser_checkout_raise import BrowserRaiseLinkPaymentTool
 from .browser_checkout_status import (
     BrowserLinkPaymentStatusTool,
     BrowserResetAfterPaymentTool,
@@ -191,6 +192,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "browser_screenshot": BrowserScreenshotTool(),
     "browser_request_link_payment": BrowserRequestLinkPaymentTool(),
     "browser_complete_link_payment": BrowserCompleteLinkPaymentTool(),
+    "browser_raise_link_payment": BrowserRaiseLinkPaymentTool(),
     "browser_link_payment_status": BrowserLinkPaymentStatusTool(),
     "browser_reset_after_payment": BrowserResetAfterPaymentTool(),
     # Sandboxed code execution (bubblewrap)

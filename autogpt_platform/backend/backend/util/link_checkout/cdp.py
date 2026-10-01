@@ -13,8 +13,20 @@ from backend.util.link_checkout.cdp_models import (
     Response,
     Result,
 )
-from backend.util.link_checkout.models import BoundField, BrowserBinding, CheckoutPlan
+from backend.util.link_checkout.cdp_scripts import (
+    CARD_AUTOCOMPLETE,
+    CHECK_CONTROL,
+    CHECK_TOKEN_FIELD,
+    FIND_ONE,
+)
+from backend.util.link_checkout.models import (
+    BoundField,
+    BrowserBinding,
+    CheckoutPlan,
+    FieldTarget,
+)
 from backend.util.link_checkout.network import NetworkDrain
+from backend.util.link_checkout.pay_token import PAY_TOKEN_SELECTOR, enable_pay_token
 from backend.util.link_checkout.refusals import (
     FIELDS_NOT_READY,
     FRAME_NOT_FOUND,
@@ -27,46 +39,6 @@ _logger = logging.getLogger("link_checkout.cdp")
 _logger.addHandler(logging.NullHandler())
 _logger.propagate = False
 _logger.disabled = True
-
-
-# The autofill field names (the last token of ``autocomplete``) each card role
-# must declare. Payment processors' card frames and merchants' own card forms
-# set them so browsers can autofill; nothing else on a page uses them.
-CARD_AUTOCOMPLETE = {
-    "number": ["cc-number"],
-    "cvc": ["cc-csc"],
-    "expiry": ["cc-exp"],
-    "exp_month": ["cc-exp-month"],
-    "exp_year": ["cc-exp-year"],
-}
-
-# The one element a selector matches. A selector the page cannot parse (an
-# agent's Playwright-only :visible, say) is reported rather than thrown, so the
-# agent is told what to fix instead of getting a generic failure.
-_FIND_ONE = (
-    "function(selector) { let nodes; try { nodes = document.querySelectorAll(selector); }"
-    " catch (error) { return 'invalid_selector'; }"
-    " return nodes.length === 1 ? nodes[0] : null; }"
-)
-_CHECK_CONTROL = r"""function(names) {
-    const box = this.getBoundingClientRect();
-    const style = getComputedStyle(this);
-    if (!this.isConnected || box.width <= 0 || box.height <= 0 ||
-        style.visibility !== 'visible' || style.display === 'none' ||
-        this.disabled) return 'not_ready';
-    if (names === null) {
-        const button = this instanceof HTMLButtonElement ||
-            (this instanceof HTMLInputElement &&
-             ['submit', 'button', 'image'].includes(this.type));
-        return button ? 'ok' : 'not_card_field';
-    }
-    if (!(this instanceof HTMLInputElement) || this.type === 'hidden' ||
-        this.readOnly) return 'not_card_field';
-    const tokens = (this.getAttribute('autocomplete') || '').trim().toLowerCase()
-        .split(/\s+/);
-    if (!names.includes(tokens[tokens.length - 1])) return 'not_card_field';
-    return this.value === '' ? 'ok' : 'not_ready';
-}"""
 
 
 class CDP:
@@ -173,16 +145,18 @@ class CDP:
     ) -> dict[str, Control]:
         frames = await self.frames(binding)
         controls: dict[str, Control] = {}
-        for role, target in plan.payment_fields().items():
+        for role, target in _targets(binding, plan).items():
             if target is None:
                 continue
-            matches = [
-                f
-                for f in frames
-                if f.frame.url == (target.frame_url or plan.checkout_url)
-            ]
+            wanted = target.frame_url or plan.checkout_url
+            matches = [f for f in frames if f.frame.url == wanted]
             if not matches and target.frame_url:
-                raise CheckoutRefused(FRAME_NOT_FOUND)
+                # The agent can rarely read a frame's full address, query
+                # included; the address without it is enough when only one
+                # loaded frame has it.
+                matches = [f for f in frames if same_document(f.frame.url, wanted)]
+                if len(matches) != 1:
+                    raise CheckoutRefused(FRAME_NOT_FOUND)
             if len(matches) != 1 or not matches[0].frame.loaderId:
                 raise CheckoutRefused(FIELDS_NOT_READY)
             context = matches[0]
@@ -192,7 +166,9 @@ class CDP:
                 raise RuntimeError(
                     "Payment document or field changed after preparation"
                 )
-            await self.check_control(control, role)
+            # Some checkouts enable their pay button only once the card is in;
+            # the worker waits for it after filling (``worker.submit``).
+            await self.check_control(control, role, allow_disabled=role == "submit")
             controls[role] = control
         if len(
             {
@@ -214,7 +190,7 @@ class CDP:
         element = await self.call(
             "Runtime.callFunctionOn",
             {
-                "functionDeclaration": _FIND_ONE,
+                "functionDeclaration": FIND_ONE,
                 "arguments": [{"value": selector}],
                 "executionContextId": world.executionContextId,
             },
@@ -246,16 +222,23 @@ class CDP:
             object_id=element.result.objectId,
         )
 
-    async def check_control(self, control: Control, role: str) -> None:
+    async def check_control(
+        self, control: Control, role: str, *, allow_disabled: bool = False
+    ) -> None:
         """A card role must be an empty input that declares itself that card
         field, so no selector can aim the card at an address, note or search
         box; the pay role must be a button."""
         result = await self.call(
             "Runtime.callFunctionOn",
             {
-                "functionDeclaration": _CHECK_CONTROL,
+                "functionDeclaration": (
+                    CHECK_TOKEN_FIELD if role == "link_pay_token" else CHECK_CONTROL
+                ),
                 "objectId": control.object_id,
-                "arguments": [{"value": CARD_AUTOCOMPLETE.get(role)}],
+                "arguments": [
+                    {"value": CARD_AUTOCOMPLETE.get(role)},
+                    {"value": allow_disabled},
+                ],
                 "returnByValue": True,
             },
             control.session,
@@ -265,6 +248,33 @@ class CDP:
             raise CheckoutRefused(NOT_CARD_FIELDS)
         if verdict != "ok":
             raise CheckoutRefused(FIELDS_NOT_READY)
+
+
+def _targets(
+    binding: BrowserBinding, plan: CheckoutPlan
+) -> dict[str, FieldTarget | None]:
+    """The plan's controls, plus the Link Pay Token field found when the
+    checkout was prepared."""
+    targets: dict[str, FieldTarget | None] = {
+        role: target for role, target in plan.payment_fields().items()
+    }
+    if binding.pay_token is not None:
+        targets["link_pay_token"] = FieldTarget(
+            selector=PAY_TOKEN_SELECTOR, frame_url=binding.pay_token.frame_url
+        )
+    return targets
+
+
+def same_document(url: str, other: str) -> bool:
+    """The same page address, ignoring query and fragment."""
+    a, b = urlsplit(url), urlsplit(other)
+    return (
+        bool(a.hostname)
+        and a.scheme == b.scheme
+        and (a.hostname or "").lower() == (b.hostname or "").lower()
+        and a.port == b.port
+        and a.path == b.path
+    )
 
 
 def flatten_frames(tree: FrameTree) -> list[Frame]:
@@ -290,6 +300,8 @@ async def prepare_browser(endpoint: str, plan: CheckoutPlan) -> BrowserBinding:
     async with connection(endpoint) as socket:
         cdp = CDP(socket)
         binding = await cdp.bind(plan.checkout_url)
+        if plan.execution == "link_pay_token":
+            binding.pay_token = await enable_pay_token(cdp, binding)
         controls = await cdp.controls(binding, plan, capture=True)
         binding.fields = [control.binding for control in controls.values()]
         binding.endpoint = endpoint

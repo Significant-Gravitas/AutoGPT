@@ -11,9 +11,11 @@ from pydantic import ValidationError
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool
-from backend.copilot.tools.browser_checkout_support import (
+from backend.copilot.tools.browser_checkout_schemas import (
     CHECKOUT_ID_PARAMETERS,
     REQUEST_PARAMETERS,
+)
+from backend.copilot.tools.browser_checkout_support import (
     approval_for,
     available,
     chat_link_credential,
@@ -41,7 +43,8 @@ from backend.util.link_checkout.broker_protocol import (
 )
 from backend.util.link_checkout.config import live_payments_enabled
 from backend.util.link_checkout.models import CheckoutPlan, CompleteCheckout
-from backend.util.link_checkout.policy import in_app_approval_allowed
+from backend.util.link_checkout.policy import Purchase, in_app_approval_allowed
+from backend.util.link_checkout.preflight import purchase_blocker
 from backend.util.link_checkout.refusals import LIVE_PAYMENTS_DISABLED, CheckoutRefused
 from backend.util.request import validate_url_host
 
@@ -60,7 +63,8 @@ class BrowserRequestLinkPaymentTool(BaseTool):
             "block. Pass selectors of the empty card inputs (autocomplete "
             "cc-number, cc-csc, cc-exp) and the pay button; no scripts or card "
             "values. Once the user approves, call "
-            "tool:browser_complete_link_payment with the returned checkout_id."
+            "tool:browser_complete_link_payment with the returned checkout_id; "
+            "if the total rises first, tool:browser_raise_link_payment."
         )
 
     @property
@@ -103,8 +107,17 @@ class BrowserRequestLinkPaymentTool(BaseTool):
         try:
             await validate_url_host(plan.checkout_url)
             async with link_credentials(principal.user_id, plan.credentials_id) as c:
+                token = c.access_token.get_secret_value()
+                blocker = await purchase_blocker(token, plan.amount, plan.currency)
+                if blocker is not None:
+                    return failure(session, blocker.message)
                 in_app = await in_app_approval_allowed(
-                    c.access_token.get_secret_value(), plan
+                    token,
+                    Purchase(
+                        amount=plan.amount,
+                        currency=plan.currency,
+                        payment_method_id=plan.payment_method_id,
+                    ),
                 )
                 view = await engine.create(
                     CreateCheckout(

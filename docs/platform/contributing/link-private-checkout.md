@@ -4,7 +4,7 @@ AutoPilot can pay at an ordinary card checkout with the user's [Link Agent Walle
 
 The feature is off unless an operator turns it on. Its three pillars: a browser broker outside the agent's reach, agent access paused while credentials are filled, and single-use cards bound to one merchant and amount.
 
-Stores that take Link Pay Tokens or shared payment tokens don't need any of this; the Stripe Link blocks already pay them without a card form.
+A Stripe checkout with Stripe's "I am an AI agent" option is paid with a Link Pay Token instead of a card (see below). Stores that take shared payment tokens, or the Machine Payments Protocol, don't need a browser at all; the Stripe Link blocks pay them directly.
 
 ## How a purchase flows
 
@@ -30,21 +30,38 @@ sequenceDiagram
   A->>B: browser_link_payment_status → only Link's "succeeded" means paid
 ```
 
-1. The agent finishes login, cart, delivery and billing in its browser, then calls `browser_request_link_payment` with CSS selectors for the empty card fields and the pay button. It passes no script and no card data.
-2. The engine binds each selector to one DOM node in one document of one tab. Each card field has to declare itself: its `autocomplete` must be `cc-number`, `cc-csc`, `cc-exp` (or `cc-exp-month` and `cc-exp-year`), and the pay control must be a button. Without that, a selector could aim the card at an address, order-note or search field. If a field is replaced or the page reloads before payment, the checkout stops before any card is retrieved.
+1. The agent finishes login, cart, delivery and billing in its browser, then calls `browser_request_link_payment` with CSS selectors for the empty card fields and the pay button. It passes no script and no card data. Before the user is asked anything, Link's `GET /userinfo` is checked for blockers Link would hit anyway: a verification the account still needs, or the user's agent spending limits (per purchase, per day, per 30 days). The agent is told which, with Link's link when there is one.
+2. The engine binds each selector to one DOM node in one document of one tab. Each card field has to declare itself: its `autocomplete` must be `cc-number`, `cc-csc`, `cc-exp` (or `cc-exp-month` and `cc-exp-year`), and the pay control must be a button. Without that, a selector could aim the card at an address, order-note or search field. If a field is replaced or the page reloads before payment, the checkout stops before any card is retrieved. A pay button may be disabled until the card is in; the worker waits briefly for it to enable after the fill.
 3. The user approves (see below). `browser_complete_link_payment` takes only the checkout ID, so the merchant, amount and fields can't change.
 4. The engine confirms Link approved this exact purchase, records the single attempt and seals the browser. Only then does the worker retrieve the card. A repeated or concurrent completion reconciles; it never pays twice.
 5. The worker fills the pinned fields, clicks the pinned button once, waits for the page's requests to settle (bounded), and retires the browser and its profile. Once that browser is gone the chat can browse again, in a fresh, signed-out browser. If the checkout stopped before the card reached the page, its Link request is canceled and nothing more is needed.
-6. A submitted form isn't proof of payment. `browser_link_payment_status` reads Link's status; only `succeeded` means paid. Another checkout in the chat waits until the attempt has a final status. If the payment browser couldn't be retired, the chat stays sealed until `browser_reset_after_payment`, which also needs a final status.
+6. A submitted form isn't proof of payment. `browser_link_payment_status` reads Link's status; only `succeeded` means paid. Another checkout in the chat waits until the attempt has a final status. If the payment browser couldn't be retired, the chat stays sealed until `browser_reset_after_payment`, which also needs a final status. Link never charges a test card, so an attempted test payment that Link leaves `approved` counts as final.
+
+## When the price goes up
+
+A checkout often shows its final total only at the last step (tax, shipping, a fee). Link calls the fix incremental authorization. Until the payment is attempted, the agent can call `browser_raise_link_payment` with the higher total and the reason, and the user approves the new total afresh:
+
+- If Link already has the request, it is raised there (`POST /spend_requests/{id}` with the new total, then `POST /spend_requests/{id}/request_approval`), and the user approves it in Link. If Link won't raise it, the request stays usable at its old amount.
+- If only the chat has it (in-chat approval, nothing created in Link yet), the chat's approval record is rewritten as a new revision showing the new total, the one it replaced and the reason. A decision names the revision its card showed, so a card still showing the old total can't approve the new one. If the user's Link policy no longer covers the new total, the approval moves to Link and the chat's record is closed.
+
+Each raise is a new revision of the purchase with its own Link idempotency keys, and restarts the ten-minute deadline. A lower final price needs no change: the approved amount covers it.
+
+## When Link needs something from the user
+
+A `requires_action` status carries Link's `next_action`, and the agent is told what to do by its resolution, as Link's guide asks: `auto_resume` (a 3D Secure challenge) keeps the request alive once the user finishes at Link's link; the other resolutions end it, after the user picks another card, adds one, verifies their identity or contacts Link support, and a new checkout is needed. A request ended that way counts as final. A failed payment names its decline code when Link gives a well-formed one.
+
+## Stripe checkouts: the Link Pay Token
+
+A Stripe-hosted or embedded checkout has a visually hidden "I am an AI agent" option (`.AiAgentPaymentSteering`). With `execution: link_pay_token`, the agent names only the pay button. When the checkout is prepared, the engine finds that option in exactly one frame of the tab, ticks it, waits for the page to show its token field and name its Stripe account (`data-stripe-merchant-account`), and pins the token field like a card field. The spend request carries `execution_method: link_pay_token` and that account; Link resolves the merchant from it. After approval, the worker fetches the token (`include=link_pay_token`), sets it in the pinned field, lets the page swap its card form for the user's saved card, and clicks Pay once. The agent never sees the token, and no card number exists anywhere. Link has no test mode for Pay Tokens, so this path is live only.
 
 ## Approval in the chat, or in Link
 
 If the user's Link approval policy for AutoGPT covers the purchase, the card in the chat shows **Approve** and **Decline**. The policy (`GET /approval-policy`) sets a per-purchase limit per currency, optionally restricted to some payment methods.
 
 - With this route Link shows the user nothing, so the card carries everything they approve. It reads the purchase from the server's record, not from the transcript: merchant, the site the card will be used on, total, and the agent's description of what is being bought. The Approve button names the recorded total.
-- The click goes to `POST /api/chat/sessions/{session_id}/link-checkouts/{checkout_id}/approve`, which needs the user's session. No copilot tool can reach it, so the model can't approve its own purchase. The card with the buttons is drawn only for the four checkout tools' results.
+- The click goes to `POST /api/chat/sessions/{session_id}/link-checkouts/{checkout_id}/approve`, which needs the user's session. No copilot tool can reach it, so the model can't approve its own purchase. The card with the buttons is drawn only for the five checkout tools' results.
 - The decision is stored once, in Redis (`backend.util.link_checkout.approval`), next to the purchase exactly as the card showed it: merchant, site, description, amount, currency, test mode, expiry.
-- On the next completion the engine checks that decision still names the same purchase, site included. It then asks Link for a spend request that is already approved (`POST /spend_requests/create_delegated`), with the approval's time, method (`click`) and browser user agent as `approval_details`.
+- On the next completion the engine checks that decision still names the same purchase, site and revision included. It then asks Link for a spend request that is already approved (`POST /spend_requests/create_delegated`), with the approval's time, method (`click`) and browser user agent as `approval_details`. Stripe's open-source Link CLI and SDKs ship these calls (`approval-policy retrieve`, `spend-request create --approve`, and `update_delegated` for a raised total) with the same `approval_details` fields, though docs.stripe.com doesn't list them yet.
 - If Link refuses the delegated request, the purchase falls back to approval in Link, and nothing is paid on the chat approval alone. If Link refuses it as a duplicate of a request still open, the agent is told to wait for that one instead; asking again another way would meet the same refusal.
 
 Anything outside the policy, or any failure to read it, uses Link's own approval page. Link's per-purchase limits apply in both routes.
@@ -54,6 +71,7 @@ Anything outside the policy, or any failure to read it, uses Link's own approval
 | Control | Where |
 | --- | --- |
 | The agent passes selectors, never scripts or card values; plans reject extra fields | `CheckoutPlan` in `models.py` |
+| A Link Pay Token is set only by the worker, into the token field the engine found and pinned, on the Stripe account the page named | `pay_token.py`, `worker.py` |
 | Fields pinned to tab, frame, document and DOM node; any change stops the checkout | `cdp.py` |
 | Each card field must declare its autofill role (`cc-number`, `cc-csc`, `cc-exp*`) and the pay control must be a button, checked when pinned and again before the fill | `cdp.py` |
 | A live card is filled only behind the restricted egress proxy, in-process as well as in a remote broker | `config.live_payments_allowed` |
@@ -158,12 +176,13 @@ Attach only the controller to `control`. Keep the client key with the controller
 ## Limits
 
 - One checkout per chat, at most 50,000 in the currency's smallest unit (500.00 USD), and ten minutes from request to completion. These are engineering limits, not the card's.
-- Fields must be visible, empty inputs, identified by a unique selector, with an exact `frame_url` when they sit in an iframe. Closed shadow roots, ambiguous frames and custom widgets stop the checkout.
+- Fields must be visible, empty inputs, identified by a unique selector, with a `frame_url` when they sit in an iframe. The frame's address without its query string is enough when only one loaded frame has it. Closed shadow roots, ambiguous frames and custom widgets stop the checkout.
 - Card fields must set `autocomplete`. Payment processors' card frames (Stripe, Braintree, Adyen, Shopify) and most merchant card forms do; a page whose card fields don't can't be paid privately.
 - A remote broker reaches only the hosts on its egress allowlist: every merchant, processor, asset and redirect host a checkout needs. That makes it a curated-merchant pilot.
 - After payment the browser starts signed out. A private browser's profile is also deleted after an hour without a browser step, so a chat left that long signs in again.
 - An unfinished checkout that is replaced, expires or stops before the card reaches the page cancels its Link request. A reset without a final status doesn't, and that request expires on its own.
 - Link's agent payments serve US and Canadian consumers.
+- Link Pay Tokens have no test mode, and Link checks the user's agent spending limits regardless of the pre-flight check, which compares them only for US dollars.
 
 ## Before live hosted spending
 
@@ -176,7 +195,7 @@ Code can't settle these:
 
 ## Code map
 
-- `backend/util/link_checkout/`: the engine (`engine.py`), the broker state machine (`broker_checkout.py`, with its Link calls in `broker_link.py`, its record in `checkout_record.py` and the refusals the agent may see in `refusals.py`), browser control (`cdp.py`, `runtime.py`), the worker (`runner.py`, `worker.py`, `link.py`), in-chat approval (`approval.py`, `policy.py`), the broker service (`broker_service.py`, `broker_client.py`, `broker_routing.py`) and egress (`egress.py`)
-- `backend/copilot/tools/browser_checkout*.py`: the four tools
+- `backend/util/link_checkout/`: the engine (`engine.py`), the broker state machine (`broker_checkout.py`, with its Link calls in `broker_link.py`, its record in `checkout_record.py`, its view in `checkout_view.py` and the refusals the agent may see in `refusals.py`), browser control (`cdp.py`, `cdp_scripts.py`, `pay_token.py`, `runtime.py`), the worker (`runner.py`, `worker.py`, `link.py`), Link's status guidance (`status.py`), the pre-flight check (`preflight.py`), in-chat approval (`approval.py`, `policy.py`), the broker service (`broker_service.py`, `broker_client.py`, `broker_routing.py`) and egress (`egress.py`)
+- `backend/copilot/tools/browser_checkout*.py`: the five tools, with their parameters in `browser_checkout_schemas.py`
 - `backend/api/features/chat/link_checkout.py`: the approve and decline routes
 - `frontend/src/app/(platform)/copilot/tools/GenericTool/components/LinkCheckout/`: the purchase card

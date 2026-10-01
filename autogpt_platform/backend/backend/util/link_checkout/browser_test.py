@@ -10,7 +10,13 @@ from pydantic import SecretStr
 
 from backend.util.link_checkout import checkout_record, runner, runtime
 from backend.util.link_checkout.cdp import connection, prepare_browser
-from backend.util.link_checkout.models import CheckoutIntent, CheckoutPlan, WorkerJob
+from backend.util.link_checkout.models import (
+    CheckoutIntent,
+    CheckoutPlan,
+    WorkerJob,
+    WorkerResult,
+)
+from backend.util.link_checkout.synthetic_link import SYNTHETIC_PAY_TOKEN
 
 # These drive a real Chromium through agent-browser, so they run only where the
 # private runtime can: Linux, agent-browser, no swap, no core dumps and a tmpfs
@@ -40,31 +46,95 @@ document.querySelector('form').onsubmit = event => {
 };
 </script></body></html>"""
 
+# A Stripe checkout's "I am an AI agent" option, kept off-screen as Stripe does:
+# ticking it adds the token field and names the Stripe account; a token in the
+# field swaps the card form for the customer's saved card.
+PAY_TOKEN_HTML = (
+    """<html><body>
+<p>Stripe checkout. Total 1.00 USD.</p>
+<div class="AiAgentPaymentSteering" style="position:absolute;left:-9999px">
+<label><input type="checkbox" id="agent"> I am an AI agent</label></div>
+<form id="checkout"><div id="card"><input id="number" autocomplete="cc-number">
+</div><button id="pay">Pay</button></form>
+<script>
+const steering = document.querySelector('.AiAgentPaymentSteering');
+agent.addEventListener('change', () => {
+  if (!agent.checked) return;
+  const account = document.createElement('span');
+  account.setAttribute('data-stripe-merchant-account', 'acct_1TestMerchant');
+  const token = document.createElement('input');
+  token.type = 'hidden';
+  token.name = 'link_pay_token';
+  token.addEventListener('input', () => { card.textContent = 'Saved card'; });
+  steering.append(account, token);
+});
+document.querySelector('form').onsubmit = event => {
+  event.preventDefault();
+  const token = document.querySelector('input[name="link_pay_token"]').value;
+  const ok = token === '"""
+    + SYNTHETIC_PAY_TOKEN
+    + """' && !document.getElementById('number');
+  fetch('/accepted?valid=' + ok, {method:'POST'});
+};
+</script></body></html>"""
+)
+
+CONTEXT = "Testing same browser checkout with logged in account and existing cart. " * 2
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("processor_delay", [0, 5])
 async def test_real_worker_pays_in_existing_browser_without_returning_card(
     monkeypatch, processor_delay
 ):
-    monkeypatch.setenv("COPILOT_LINK_PRIVATE_CHECKOUT", "true")
-    session_id = f"checkout-test-{uuid.uuid4().hex}"
-    directory = runtime.session_home(session_id)
-    rc, _, _ = await browse(session_id, "open", "about:blank")
-    assert rc == 0
-    endpoint = await browser_endpoint(session_id)
     plan = CheckoutPlan(
         credentials_id="wallet",
         payment_method_id="csmrpd_test",
         merchant_name="Test store",
         checkout_url="https://shop.example/checkout",
         amount=100,
-        context="Testing same browser checkout with logged in account and existing cart. "
-        * 2,
+        context=CONTEXT,
         number="#number",
         cvc="#cvc",
         expiry="#expiry",
         submit="#pay",
     )
+    result = await pay_in_real_browser(monkeypatch, plan, HTML, processor_delay)
+
+    assert "4242424242424242" not in result.model_dump_json()
+    assert "987" not in result.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_real_worker_pays_a_stripe_checkout_with_the_pay_token(monkeypatch):
+    plan = CheckoutPlan(
+        credentials_id="wallet",
+        payment_method_id="csmrpd_test",
+        merchant_name="Test store",
+        checkout_url="https://shop.example/checkout",
+        amount=100,
+        context=CONTEXT,
+        execution="link_pay_token",
+        submit="#pay",
+        test_mode=False,
+    )
+    result = await pay_in_real_browser(monkeypatch, plan, PAY_TOKEN_HTML)
+
+    assert SYNTHETIC_PAY_TOKEN not in result.model_dump_json()
+
+
+async def pay_in_real_browser(
+    monkeypatch, plan: CheckoutPlan, html: str, processor_delay: int = 0
+) -> WorkerResult:
+    """Prepare and pay ``plan`` in a real private browser serving ``html``,
+    with the synthetic Link; the merchant must accept exactly the expected
+    payment, and the browser must be gone afterwards."""
+    monkeypatch.setenv("COPILOT_LINK_PRIVATE_CHECKOUT", "true")
+    session_id = f"checkout-test-{uuid.uuid4().hex}"
+    directory = runtime.session_home(session_id)
+    rc, _, _ = await browse(session_id, "open", "about:blank")
+    assert rc == 0
+    endpoint = await browser_endpoint(session_id)
     async with connection(endpoint) as observer:
         await observer.send(json.dumps({"id": 1, "method": "Target.getTargets"}))
         targets = json.loads(await observer.recv())["result"]["targetInfos"]
@@ -97,7 +167,7 @@ async def test_real_worker_pays_in_existing_browser_without_returning_card(
         await next_response(observer, 3)
         accepted = asyncio.Event()
         loop = asyncio.create_task(
-            merchant(observer, cdp_session, accepted, processor_delay)
+            merchant(observer, cdp_session, accepted, processor_delay, html)
         )
         navigated = await browse(session_id, "open", plan.checkout_url)
         assert navigated[0] == 0, navigated
@@ -129,11 +199,7 @@ async def test_real_worker_pays_in_existing_browser_without_returning_card(
             assert result.receipt is not None
             assert result.receipt.status == "submitted", result.model_dump_json()
             assert result.receipt.paid is False
-            assert (
-                accepted.is_set()
-            ), "Merchant did not receive the card in the logged-in cart"
-            assert "4242424242424242" not in result.model_dump_json()
-            assert "987" not in result.model_dump_json()
+            assert accepted.is_set(), "Merchant did not receive the expected payment"
             with pytest.raises(RuntimeError):
                 await browse(session_id, "snapshot")
         finally:
@@ -141,6 +207,7 @@ async def test_real_worker_pays_in_existing_browser_without_returning_card(
             await asyncio.gather(loop, return_exceptions=True)
             assert await runtime.retire_payment_browser(session_id)
             assert not (directory / "engine").exists()
+    return result
 
 
 async def browse(key: str, *args: str) -> tuple[int, str, str]:
@@ -160,7 +227,7 @@ async def next_response(socket, identifier):
             return message
 
 
-async def merchant(socket, session, accepted, processor_delay=0):
+async def merchant(socket, session, accepted, processor_delay=0, html=HTML):
     sequence = 100
     async for raw in socket:
         event = json.loads(raw)
@@ -183,7 +250,7 @@ async def merchant(socket, session, accepted, processor_delay=0):
                         "responseHeaders": [
                             {"name": "Content-Type", "value": "text/html"}
                         ],
-                        "body": base64.b64encode(HTML.encode()).decode(),
+                        "body": base64.b64encode(html.encode()).decode(),
                     },
                 }
             )
