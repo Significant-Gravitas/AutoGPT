@@ -3446,6 +3446,26 @@ redis = ["redis (>=2.10.5)"]
 test-filesource = ["pyyaml (>=5.3.1)", "watchdog (>=3.0.0)"]
 
 [[package]]
+name = "linkup-sdk"
+version = "0.23.1"
+description = "A Python Client SDK for the Linkup API"
+optional = false
+python-versions = "<4.0,>=3.10"
+groups = ["main"]
+files = [
+    {file = "linkup_sdk-0.23.1-py3-none-any.whl", hash = "sha256:29a1e1c9537588ee7206017b3fbdabc46ce99a09901b55c819300498fa0d60f9"},
+    {file = "linkup_sdk-0.23.1.tar.gz", hash = "sha256:4474ea8608e404d04074928ae1612a2eca4800627960f7485d99d25c967255f0"},
+]
+
+[package.dependencies]
+httpx = ">=0.23.0"
+pydantic = ">=2.0.0"
+
+[package.extras]
+build = ["uv (>=0.11.6,<0.12.0)"]
+x402 = ["x402[evm,httpx] (>=2.0.0)"]
+
+[[package]]
 name = "markdown-it-py"
 version = "4.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -8934,4 +8954,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "b0e521f9ac5ca2e76866dff633eabc71e5798e68ea94054470f4c6928b2b3a34"
+content-hash = "c8835ea2a74ca0ca34513a12cb1b0cf27ecf3a3c97792538e2d9b442a80d057b"

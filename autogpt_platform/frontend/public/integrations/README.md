@@ -12,6 +12,7 @@ The generic `database.png` and `generic_webhook.png` icons are rendered from `Da
 | `conductor.png`   | [Conductor site icon](https://www.conductor.build/icon.png), linked from [conductor.build](https://www.conductor.build); resized to 256x256                                              |
 | `dataforb2b.png`  | [DataForB2B favicon](https://dataforb2b.ai/asset/favicon-192x192.png)                                                                                                            |
 | `elevenlabs.png`  | [ElevenLabs app icon](https://elevenlabs.io/apple-icon.png)                                                                                                                      |
+| `linkup.png`      | [Linkup favicon](https://www.linkup.so/_next/static/immutable/media/favicon.0nnprkm5qsjim.png), linked from [linkup.so](https://www.linkup.so)                                   |
 | `openseo.png`     | [OpenSEO app icon](https://github.com/every-app/open-seo/blob/0ffff93101043aad7600a3b6a499a0cd2887ef49/public/apple-touch-icon.png), served at [openseo.so](https://openseo.so)  |
 | `posthog.png`     | [PostHog brand logomark](https://github.com/PostHog/posthog.com/blob/master/static/brand/posthog-logomark%402x.png)                                                              |
 | `rmfg.png`        | [RMFG app icon](https://rmfg.com/apple-icon.png)                                                                                                                                 |
