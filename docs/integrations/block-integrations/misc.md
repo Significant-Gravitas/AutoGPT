@@ -322,6 +322,14 @@ Executes code in a sandbox environment with internet access.
 This block executes Python, JavaScript, or Bash code in an isolated E2B sandbox with internet access. Use setup_commands to install dependencies before running your code.
 
 The sandbox includes pip and npm pre-installed. Set timeout to limit execution time, and use dispose_sandbox to clean up after execution or keep the sandbox running for follow-up steps.
+
+**Passing data in with `variables` (Python and JavaScript):** each key becomes a variable of the same name in your code, and its value arrives exactly as given, whatever quotes, backslashes or unicode it holds. The limit is 10 MB of JSON in total:
+
+- Up to 64 KB, the data is also in the `AGPT_VARIABLES` environment variable as base64-encoded JSON.
+- From 64 KB to 10 MB, it is written to a JSON file in the sandbox instead, and `AGPT_VARIABLES_FILE` holds that file's path. The variables are still set for you; read the file yourself only if you want the raw JSON.
+- Over 10 MB, the block returns an error. Put the data at a URL (or in a file your code can fetch) and download it from your code.
+
+JSON has no `NaN` or `Infinity`. In JavaScript they arrive as `null`, the same as `JSON.stringify` produces; Python keeps them as floats.
 <!-- END MANUAL -->
 
 ### Inputs

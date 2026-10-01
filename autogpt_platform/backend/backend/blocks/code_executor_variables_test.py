@@ -80,7 +80,8 @@ class LocalSandbox:
         )
         proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
         if proc.returncode != 0:
-            raise RuntimeError(proc.stderr.strip().splitlines()[-1])
+            lines = proc.stderr.strip().splitlines()
+            raise RuntimeError(next((ln for ln in lines if "Error" in ln), lines[-1]))
         return [], "", proc.stdout, proc.stderr, "local", []
 
 
