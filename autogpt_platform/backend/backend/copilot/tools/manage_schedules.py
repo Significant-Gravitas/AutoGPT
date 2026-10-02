@@ -1,5 +1,6 @@
 """Tools for listing and deleting scheduled jobs (agent runs + copilot turns)."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -12,9 +13,10 @@ from backend.api.features.schedule_visibility import (
     is_visible_schedule,
 )
 from backend.copilot.model import ChatSession
-from backend.data.activity_event import SCHEDULE_FIRE_EVENT_TYPES, ActivityEventDraft
+from backend.data.activity_event import ActivityEvent, ActivityEventDraft
 from backend.data.db_accessors import activity_event_db
 from backend.executor.schedule_events import (
+    UNDELIVERED_OUTCOME_STATUSES,
     FollowupOutcomeStatus,
     ScheduleFireOutcome,
     fire_outcome_from_event,
@@ -133,16 +135,15 @@ def _to_outcome_summary(outcome: ScheduleFireOutcome) -> ScheduleOutcomeSummary:
     )
 
 
-async def _recent_outcomes(
-    user_id: str, session: ChatSession
-) -> list[ScheduleOutcomeSummary]:
-    """Follow-up fire outcomes in scope for this session, best-effort: a
-    failed read costs the history, never the pending list."""
+async def _outcome_events(
+    user_id: str, session: ChatSession, statuses: tuple[str, ...]
+) -> list[ActivityEvent]:
+    """Best-effort: a failed read costs the history, never the pending list."""
     try:
-        events = await activity_event_db().list_activity_events_by_type(
+        return await activity_event_db().list_activity_events_by_type(
             user_id=user_id,
             since=datetime.now(tz=timezone.utc) - _OUTCOME_WINDOW,
-            event_types=list(SCHEDULE_FIRE_EVENT_TYPES),
+            event_types=[f"schedule.{status}" for status in statuses],
             # Scoped in the query, not after it: an expert must see its own
             # dropped check even when twenty newer fires belong to others.
             expert_id=session.expert_id,
@@ -155,6 +156,22 @@ async def _recent_outcomes(
             exc_info=True,
         )
         return []
+
+
+async def _recent_outcomes(
+    user_id: str, session: ChatSession
+) -> list[ScheduleOutcomeSummary]:
+    """Follow-up fire outcomes in scope for this session, newest first.
+
+    Undelivered and dispatched fires are capped separately, so a busy cron's
+    dispatched rows cannot push an older drop out of the list."""
+    undelivered, dispatched = await asyncio.gather(
+        _outcome_events(user_id, session, UNDELIVERED_OUTCOME_STATUSES),
+        _outcome_events(user_id, session, ("dispatched",)),
+    )
+    events = sorted(
+        [*undelivered, *dispatched], key=lambda event: event.created_at, reverse=True
+    )
     outcomes = [fire_outcome_from_event(event) for event in events]
     return [
         _to_outcome_summary(outcome)
