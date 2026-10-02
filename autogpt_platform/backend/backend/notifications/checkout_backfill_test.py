@@ -214,3 +214,30 @@ def test_the_built_in_country_is_written_but_never_created():
     assert SubscriberField.COUNTRY not in mailerlite.FIELD_TYPES
     assert mailerlite.field_type(SubscriberField.COUNTRY) == "text"
     assert mailerlite.FIELD_TYPES[SubscriberField.CHECKOUT_OPENED] == "date"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_write_is_counted_and_the_run_goes_on(monkeypatch, caplog):
+    """A network error on one person's write must not end a run of
+    thousands: it is counted, logged without the address, and the next
+    person is still written."""
+    monkeypatch.setattr(checkout_backfill.asyncio, "sleep", AsyncMock())
+    plan = checkout_backfill.plan(
+        [_opener(email="a@acme.com"), _opener(email="b@acme.com")], {}, {}
+    )
+    client = MagicMock(
+        post=AsyncMock(
+            side_effect=[RuntimeError("connection reset"), MagicMock(status=200)]
+        )
+    )
+    with (
+        patch.object(checkout_backfill, "_client", return_value=client),
+        patch.object(
+            checkout_backfill, "_find_subscriber", AsyncMock(return_value=None)
+        ),
+        caplog.at_level("WARNING"),
+    ):
+        result = await checkout_backfill.apply(plan.changes, "grp_checkout")
+    assert result == (1, 1, 0)
+    assert client.post.await_count == 2
+    assert "a@acme.com" not in caplog.text

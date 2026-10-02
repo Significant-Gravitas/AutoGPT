@@ -421,9 +421,10 @@ class AudienceAction(Enum):
     REMOVE_TRIAL = "remove_trial"
     # No group change: only the subscriber's fields.
     UPDATE_FIELDS = "update_fields"
-    # No longer queued: signups stay out of MailerLite until they open
-    # checkout. Kept so a message queued before that change still parses; it
-    # only updates someone MailerLite already has (see `mailerlite.record_signup`).
+    # Nothing queues this: a signup stays out of MailerLite until it opens
+    # checkout. It exists so an older queued or dead-lettered message still
+    # parses, and only updates someone MailerLite already has (see
+    # `mailerlite.record_signup`).
     SIGNUP = "signup"
     # Someone opened Stripe checkout: into the checkout openers group, with
     # the fields GTM segments them on (see `mailerlite.record_checkout_opened`).
