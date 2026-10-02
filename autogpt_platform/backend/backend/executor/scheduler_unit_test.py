@@ -1135,6 +1135,57 @@ async def test_inactive_expert_scope_records_a_skip_in_the_pinned_chat(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["archived", "paused"])
+async def test_inactive_expert_on_a_cron_records_each_skip_silently(
+    status, outcome_sinks: OutcomeSinks
+):
+    """A cron notice is keyed on its fire time, so it never dedupes: a paused
+    expert would post the same "did not run" line every tick. The owner did
+    this themselves, so the record and metric stay and the chat stays quiet."""
+    args = _args(run_at=None, cron="*/5 * * * *", expert_id="expert-1")
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value=status),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "skipped"
+    assert status in record.reason
+    outcome_sinks.notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unavailable_expert_on_a_cron_still_notifies(
+    outcome_sinks: OutcomeSinks,
+):
+    """A lookup outage is not the owner's doing, so the missed tick is told."""
+    args = _args(run_at=None, cron="*/5 * * * *", expert_id="expert-1")
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert _fired_record(outcome_sinks).status == "skipped"
+    assert outcome_sinks.notice.call_args.kwargs["session_id"] == "session-1"
+
+
+@pytest.mark.asyncio
 async def test_switched_off_routine_records_a_skip_silently(
     outcome_sinks: OutcomeSinks,
 ):

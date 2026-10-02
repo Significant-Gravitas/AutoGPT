@@ -366,8 +366,13 @@ async def _skip_inactive_expert_scope(
                 retry=retry,
             )
     else:
+        # Archive and pause are the owner's own doing. A lost one-shot earns
+        # one notice; a cron would post the same one every tick until undone.
         await _record_copilot_turn_outcome(
-            args, status="skipped", reason=f"the expert is {status}"
+            args,
+            status="skipped",
+            reason=f"the expert is {status}",
+            notify=status == "unavailable" or args.run_at is not None,
         )
 
 
