@@ -237,11 +237,15 @@ async def validate_chat_route(
 ) -> list[ChatTransportResponse]:
     """Check a route can be saved, returning the transport list it was checked
     against. Shared by the account default and the per-expert pin so both
-    speak the same error vocabulary."""
+    speak the same error vocabulary.
+
+    Clearing (no provider) needs no transport to check against, so it returns
+    an empty list without fetching; a caller that wants the list afterwards
+    fetches it itself."""
     if route.auth_provider is None:
         if route.credential_id is not None:
             raise InvalidDefaultChatRoute("codex_credential_not_allowed")
-        return await get_chat_transports(user_id)
+        return []
 
     if route.auth_provider == "platform" and route.credential_id is not None:
         raise InvalidDefaultChatRoute("codex_credential_not_allowed")
@@ -267,6 +271,8 @@ async def save_default_chat_route(
     """Validate and persist a default, returning the refreshed transport list."""
     transports = await validate_chat_route(user_id, route)
     await set_user_default_chat_route(user_id, route.auth_provider, route.credential_id)
+    if route.auth_provider is None:
+        transports = await get_chat_transports(user_id)
     # With nothing saved, this falls through to the server's own pick.
     _mark_default(transports, route.auth_provider, route.credential_id)
     return transports

@@ -60,9 +60,8 @@ export function useChatSession({
       : undefined;
   // The connection the addressed expert is pinned to. The server applies it
   // when the request names no route, so the client only has to know it exists.
-  const { route: expertLlmRoute } = useExpertLlmRoute(
-    sessionId ? null : expertId,
-  );
+  const { route: expertLlmRoute, isLoading: isExpertLlmRouteLoading } =
+    useExpertLlmRoute(sessionId ? null : expertId);
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
@@ -261,8 +260,10 @@ export function useChatSession({
     }
     // With no explicit pick, an expert pinned to a connection the user can
     // still chat over needs no choice here: the server starts the thread on
-    // the expert's connection, which is what the pin is for.
-    const expertRoutesThisChat = copilotLlmAuth === null && !!expertLlmRoute;
+    // the expert's connection, which is what the pin is for. While the pin is
+    // still loading the server is the one that knows it, so defer to it too.
+    const expertRoutesThisChat =
+      copilotLlmAuth === null && (!!expertLlmRoute || isExpertLlmRouteLoading);
     if (!resolvedLLMAuth && !expertRoutesThisChat) {
       const connectionsAreLoading = chatTransports === undefined;
       toast({

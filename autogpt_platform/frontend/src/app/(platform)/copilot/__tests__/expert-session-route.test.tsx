@@ -165,6 +165,29 @@ describe("useChatSession for an expert with a pinned connection", () => {
     expect(testState.toast).not.toHaveBeenCalled();
   });
 
+  it("defers to the server when the user sends before the pin has loaded", async () => {
+    let releaseExpert: (expert: Expert) => void = () => {};
+    server.use(
+      getGetExpertMockHandler(() => {
+        expertRequests += 1;
+        return new Promise<Expert>((resolve) => {
+          releaseExpert = resolve;
+        });
+      }),
+    );
+    const getRequestBody = captureCreateRequest();
+    render(<SessionHarness />);
+    await waitFor(() => expect(expertRequests).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create session" }));
+
+    await waitFor(() => {
+      expect(getRequestBody()).toEqual({ expert_id: EXPERT_ID });
+    });
+    expect(testState.toast).not.toHaveBeenCalled();
+    releaseExpert(pinnedExpert);
+  });
+
   it("still sends a connection the user picked for this chat", async () => {
     mockExpert(pinnedExpert);
     useCopilotUIStore.getState().setCopilotLlmAuth({

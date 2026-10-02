@@ -321,6 +321,29 @@ async def test_clearing_hands_the_decision_back_to_the_server() -> None:
 
 
 @pytest.mark.asyncio
+async def test_clearing_returns_the_list_with_the_server_pick_marked() -> None:
+    _connect("cred-codex")
+    _saved("codex", "cred-codex")
+
+    transport_list = await save_default_chat_route(USER_ID, DefaultChatRoute())
+
+    assert _default_of(transport_list) == ("platform", None)
+
+
+@pytest.mark.asyncio
+async def test_validating_a_clear_does_not_fetch_transports(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    lookup = mocker.patch.object(transports, "get_chat_transports", new=AsyncMock())
+
+    assert await validate_chat_route(USER_ID, DefaultChatRoute()) == []
+    lookup.assert_not_awaited()
+    with pytest.raises(InvalidDefaultChatRoute, match="codex_credential_not_allowed"):
+        await validate_chat_route(USER_ID, DefaultChatRoute(credential_id="cred-codex"))
+    lookup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_chatgpt_without_an_account_is_rejected() -> None:
     _connect("cred-codex")
 
