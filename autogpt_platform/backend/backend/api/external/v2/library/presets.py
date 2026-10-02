@@ -211,7 +211,7 @@ async def run_preset(
     """
     await graph_exec_limiter.check(auth.user_id)
 
-    async with idempotent_run(idempotency, auth.user_id) as claim:
+    async with idempotent_run(idempotency, auth) as claim:
         if claim.existing_run_id:
             return await replayed_run(claim, auth)
 
