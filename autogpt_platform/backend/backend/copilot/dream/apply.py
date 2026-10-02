@@ -24,6 +24,7 @@ import uuid as uuidlib
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
+from backend.copilot.expert_route import resolve_expert_chat_route
 from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
@@ -442,8 +443,14 @@ async def _create_dream_session(
     session_id = str(uuidlib.uuid4())
     # A dream is unattended, but the user reads and replies to it, and on a
     # self-hosted install the platform route may not exist at all — so it
-    # starts on the same connection the user chose for everything else.
-    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    # starts on the same connection the user chose for everything else, or
+    # the one pinned to the expert whose dream it is.
+    if expert_id is not None:
+        llm_auth_provider, llm_credential_id = await resolve_expert_chat_route(
+            user_id, expert_id
+        )
+    else:
+        llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
     metadata = ChatSessionMetadata(
         kind="dream",
         dream_pass_id=pass_id,

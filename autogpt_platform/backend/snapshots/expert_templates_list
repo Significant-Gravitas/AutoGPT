@@ -22,6 +22,10 @@
     "job_title": null,
     "last_run_at": null,
     "last_run_status": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "llm_route_available": true,
+    "llm_route_label": null,
     "name": "Maria",
     "pod_id": null,
     "protected_soul_rules": [

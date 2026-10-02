@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
+from backend.api.features.experts.models import Expert
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
@@ -153,6 +154,7 @@ from backend.copilot.transports import (
     InvalidDefaultChatRoute,
     get_chat_transports,
     is_deployment_chat_available,
+    resolve_pinned_chat_route,
     save_default_chat_route,
 )
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
@@ -683,6 +685,7 @@ async def set_default_chat_transport(
 async def _resolve_new_session_llm_route(
     user_id: str,
     request: CreateSessionRequest | None,
+    expert: Expert | None = None,
 ) -> tuple[CopilotLlmAuthProvider, str | None]:
     auth_provider = request.llm_auth_provider if request else "platform"
     credential_id = request.llm_credential_id if request else None
@@ -740,6 +743,21 @@ async def _resolve_new_session_llm_route(
                     detail="chat_transport_not_configured",
                 )
             return auth_provider, credential_id
+
+    if expert is not None:
+        # The expert's own pin, when it still names a connection the user can
+        # chat over. Only reached without an explicit route: a connection the
+        # user picks in the composer applies to that one thread and never
+        # rewrites the expert. A chat the user opens themselves may run on
+        # Microsoft 365 Copilot, so this is the attended form of the check.
+        pinned = await resolve_pinned_chat_route(
+            user_id,
+            expert.llm_auth_provider,
+            expert.llm_credential_id,
+            transports=transports,
+        )
+        if pinned is not None:
+            return pinned.auth_provider, pinned.credential_id
 
     default_route = next(
         (transport for transport in transports if transport.default),
@@ -808,13 +826,14 @@ async def create_session(
             detail="builder_graph_id and expert_id are mutually exclusive",
         )
 
+    expert = None
     if expert_id is not None:
         expert = await experts_db.get_expert(user_id, expert_id)
         if expert is None or expert.is_archived:
             raise HTTPException(status_code=404, detail="Expert not found")
 
     llm_auth_provider, llm_credential_id = await _resolve_new_session_llm_route(
-        user_id, request
+        user_id, request, expert
     )
 
     if llm_auth_provider == "platform":

@@ -28,6 +28,7 @@ import {
 import { useAutopilotModeStore } from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
+import { useExpertLlmRoute } from "./useExpertLlmRoute";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -57,6 +58,10 @@ export function useChatSession({
     transportQuery.data?.status === 200
       ? transportQuery.data.data.transports
       : undefined;
+  // The connection the addressed expert is pinned to. The server applies it
+  // when the request names no route, so the client only has to know it exists.
+  const { route: expertLlmRoute, isLoading: isExpertLlmRouteLoading } =
+    useExpertLlmRoute(sessionId ? null : expertId);
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
@@ -253,7 +258,13 @@ export function useChatSession({
       });
       throw new Error("chat_transport_not_configured");
     }
-    if (!resolvedLLMAuth) {
+    // With no explicit pick, an expert pinned to a connection the user can
+    // still chat over needs no choice here: the server starts the thread on
+    // the expert's connection, which is what the pin is for. While the pin is
+    // still loading the server is the one that knows it, so defer to it too.
+    const expertRoutesThisChat =
+      copilotLlmAuth === null && (!!expertLlmRoute || isExpertLlmRouteLoading);
+    if (!resolvedLLMAuth && !expertRoutesThisChat) {
       const connectionsAreLoading = chatTransports === undefined;
       toast({
         variant: "destructive",
@@ -273,7 +284,7 @@ export function useChatSession({
     if (
       copilotLlmAuth !== null &&
       copilotLlmAuth.authProvider !== "platform" &&
-      resolvedLLMAuth.authProvider === "platform"
+      resolvedLLMAuth?.authProvider === "platform"
     ) {
       toast({
         title: "AI connections changed",
@@ -289,8 +300,9 @@ export function useChatSession({
       // once quietly became the account's default and how a default changed
       // in Settings stopped taking effect: the server skips its own default
       // whenever the client names one. `copilotLlmAuth` is null until the
-      // user actually picks, and null means "use whatever the server says".
-      if (copilotLlmAuth !== null) {
+      // user actually picks, and null means "use whatever the server says" —
+      // the account default, or the connection pinned to the expert.
+      if (copilotLlmAuth !== null && resolvedLLMAuth) {
         sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
         if (resolvedLLMAuth.authProvider !== "platform") {
           sessionData.llm_credential_id = resolvedLLMAuth.credentialId;

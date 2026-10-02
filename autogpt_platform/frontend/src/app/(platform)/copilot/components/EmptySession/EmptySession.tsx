@@ -103,7 +103,7 @@ export function EmptySession({
       {/* Which connection the new chat runs on, kept out of the composer and
           in the page corner, level with the inset header's controls. */}
       <div className="absolute right-3 top-3 z-30 empty:hidden">
-        <ConnectionPicker className="ml-0" />
+        <ConnectionPicker className="ml-0" expertId={expertId} />
       </div>
       <motion.div
         className={cn(

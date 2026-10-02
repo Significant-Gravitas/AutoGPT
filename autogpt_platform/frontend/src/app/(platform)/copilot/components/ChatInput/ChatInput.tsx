@@ -475,7 +475,10 @@ export function ChatInput({
                 changeable between turns in an existing session. The card
                 composer leaves this to the page's top-right control. */}
             {!stacked && !isCompact && (!hasSession || !isStreaming) && (
-              <ConnectionPicker connectionLocked={hasSession} />
+              <ConnectionPicker
+                connectionLocked={hasSession}
+                expertId={hasSession ? null : expertId}
+              />
             )}
             {modeSelector}
             {showAdvancedComposerControls && !hasSession && (

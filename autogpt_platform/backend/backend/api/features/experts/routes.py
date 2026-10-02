@@ -23,6 +23,7 @@ from backend.api.features.experts.models import (
     ExpertCredentialRef,
     ExpertDetachPreview,
     ExpertIdentity,
+    ExpertLlmRouteUpdate,
     ExpertPod,
     ExpertRun,
     ExpertSetupItem,
@@ -44,6 +45,11 @@ from backend.copilot.computer import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
+from backend.copilot.transports import (
+    DefaultChatRoute,
+    InvalidDefaultChatRoute,
+    validate_chat_route,
+)
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
@@ -260,7 +266,7 @@ async def list_experts(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> list[Expert]:
     """List the user's active hired experts."""
-    return await experts_db.list_experts(user_id)
+    return await experts_db.list_experts(user_id, include_llm_route=True)
 
 
 # Pod routes are declared before "/{expert_id}" so "/experts/pods" is not
@@ -337,7 +343,9 @@ async def get_expert(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
-    expert = await experts_db.get_expert(user_id, expert_id, include_credentials=True)
+    expert = await experts_db.get_expert(
+        user_id, expert_id, include_credentials=True, include_llm_route=True
+    )
     if expert is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     return expert
@@ -588,6 +596,51 @@ async def update_expert_budget(
 ) -> Expert:
     try:
         return await experts_db.update_budget(user_id, expert_id, request.weekly_budget)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch(
+    "/{expert_id}/llm-route",
+    operation_id="update_expert_llm_route",
+    responses={
+        404: {"description": "Expert not found, or the credential is not yours"},
+        422: {"description": "The route is malformed"},
+    },
+)
+async def update_expert_llm_route(
+    expert_id: str,
+    request: ExpertLlmRouteUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    """Pin the AI connection this expert's new threads run on.
+
+    Applies to every thread, kickoff, routine, follow-up and delegation that
+    starts after the change; existing threads keep the connection they were
+    created with. ``auth_provider=null`` returns the expert to the account
+    default chosen in Settings. The same codes as ``PUT /chat/transports/
+    default`` describe a route that cannot be saved.
+    """
+    current = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if current is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    try:
+        await validate_chat_route(
+            user_id,
+            DefaultChatRoute(
+                auth_provider=request.auth_provider,
+                credential_id=request.credential_id,
+            ),
+        )
+    except InvalidDefaultChatRoute as e:
+        raise fastapi.HTTPException(
+            status_code=404 if e.detail.endswith("_credential_not_found") else 422,
+            detail=e.detail,
+        ) from e
+    try:
+        return await experts_db.update_llm_route(
+            user_id, expert_id, request.auth_provider, request.credential_id
+        )
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 

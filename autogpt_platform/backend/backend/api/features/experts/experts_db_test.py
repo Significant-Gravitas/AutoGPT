@@ -1857,6 +1857,74 @@ async def test_hired_experts_do_not_consume_raised_lifetime_cap(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_llm_route_pins_and_clears_the_connection(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with patch(
+        "backend.api.features.experts.llm_route.get_chat_transports",
+        new=AsyncMock(return_value=[]),
+    ):
+        pinned = await experts_db.update_llm_route(
+            test_user.id, hired.expert.id, "codex", "cred-1"
+        )
+        assert (pinned.llm_auth_provider, pinned.llm_credential_id) == (
+            "codex",
+            "cred-1",
+        )
+        assert pinned.llm_route_label == "ChatGPT"
+        # No transport lists the credential, so the pin reads as missing.
+        assert pinned.llm_route_available is False
+
+        cleared = await experts_db.update_llm_route(
+            test_user.id, hired.expert.id, None, "cred-1"
+        )
+    assert (cleared.llm_auth_provider, cleared.llm_credential_id) == (None, None)
+    assert cleared.llm_route_label is None
+    assert cleared.llm_route_available is True
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": hired.expert.id})
+    assert row is not None
+    assert (row.llmAuthProvider, row.llmCredentialId) == (None, None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_llm_route_refuses_templates_and_archived_hires(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.update_llm_route(test_user.id, template.id, "codex", "c")
+    with pytest.raises(NotFoundError):
+        await experts_db.update_llm_route(
+            test_user.id, hired.expert.id, "codex", "cred-1"
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rehire_after_archive_starts_on_the_account_default(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.update_llm_route(test_user.id, hired.expert.id, "codex", "cred-1")
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    revived = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert revived.expert.id == hired.expert.id
+    assert (revived.expert.llm_auth_provider, revived.expert.llm_credential_id) == (
+        None,
+        None,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_rehire_after_archive_revives_expert(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)

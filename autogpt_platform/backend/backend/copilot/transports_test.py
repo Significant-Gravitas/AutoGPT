@@ -12,7 +12,9 @@ from backend.copilot.transports import (
     InvalidDefaultChatRoute,
     get_chat_transports,
     resolve_default_chat_route,
+    resolve_pinned_chat_route,
     save_default_chat_route,
+    validate_chat_route,
 )
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import (
@@ -319,6 +321,29 @@ async def test_clearing_hands_the_decision_back_to_the_server() -> None:
 
 
 @pytest.mark.asyncio
+async def test_clearing_returns_the_list_with_the_server_pick_marked() -> None:
+    _connect("cred-codex")
+    _saved("codex", "cred-codex")
+
+    transport_list = await save_default_chat_route(USER_ID, DefaultChatRoute())
+
+    assert _default_of(transport_list) == ("platform", None)
+
+
+@pytest.mark.asyncio
+async def test_validating_a_clear_does_not_fetch_transports(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    lookup = mocker.patch.object(transports, "get_chat_transports", new=AsyncMock())
+
+    assert await validate_chat_route(USER_ID, DefaultChatRoute()) == []
+    lookup.assert_not_awaited()
+    with pytest.raises(InvalidDefaultChatRoute, match="codex_credential_not_allowed"):
+        await validate_chat_route(USER_ID, DefaultChatRoute(credential_id="cred-codex"))
+    lookup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_chatgpt_without_an_account_is_rejected() -> None:
     _connect("cred-codex")
 
@@ -448,3 +473,136 @@ async def test_expired_microsoft_token_without_refresh_is_not_listed() -> None:
         for transport in await get_chat_transports(USER_ID)
         if transport.auth_provider == "microsoft_365_copilot"
     ]
+
+
+# ─── a pin saved somewhere other than the user row (an expert's) ─────────
+
+
+def _link_microsoft() -> None:
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_microsoft_credentials()] if provider == "microsoft_365_copilot" else []
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_pin_the_user_can_still_chat_over_is_honoured() -> None:
+    _connect("cred-codex")
+
+    pinned = await resolve_pinned_chat_route(USER_ID, "codex", "cred-codex")
+
+    assert pinned is not None
+    assert (pinned.auth_provider, pinned.credential_id) == ("codex", "cred-codex")
+    assert pinned.label == "ChatGPT"
+
+
+@pytest.mark.asyncio
+async def test_nothing_pinned_resolves_to_nothing_without_a_lookup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    lookup = mocker.patch.object(transports, "get_chat_transports", new=AsyncMock())
+
+    assert await resolve_pinned_chat_route(USER_ID, None, None) is None
+    lookup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_pin_to_an_unlinked_account_is_not_honoured() -> None:
+    _connect("cred-other")
+
+    assert await resolve_pinned_chat_route(USER_ID, "codex", "cred-gone") is None
+
+
+@pytest.mark.asyncio
+async def test_a_pin_outlives_a_lost_entitlement_but_is_not_honoured() -> None:
+    _connect("cred-codex")
+    transports.has_codex_access_for_discovery.return_value = False
+
+    assert await resolve_pinned_chat_route(USER_ID, "codex", "cred-codex") is None
+
+
+@pytest.mark.asyncio
+async def test_a_pin_from_a_newer_server_reads_as_unpinned() -> None:
+    assert await resolve_pinned_chat_route(USER_ID, "gemini", "cred-1") is None
+
+
+@pytest.mark.asyncio
+async def test_a_microsoft_pin_holds_for_an_attended_chat_only() -> None:
+    _link_microsoft()
+
+    attended = await resolve_pinned_chat_route(
+        USER_ID, "microsoft_365_copilot", "cred-microsoft"
+    )
+    unattended = await resolve_pinned_chat_route(
+        USER_ID, "microsoft_365_copilot", "cred-microsoft", unattended=True
+    )
+
+    assert attended is not None and attended.auth_provider == "microsoft_365_copilot"
+    assert unattended is None
+
+
+@pytest.mark.asyncio
+async def test_a_pin_is_checked_against_a_list_the_caller_already_has(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _connect("cred-codex")
+    transport_list = await get_chat_transports(USER_ID)
+    lookup = mocker.patch.object(transports, "get_chat_transports", new=AsyncMock())
+
+    pinned = await resolve_pinned_chat_route(
+        USER_ID, "codex", "cred-codex", transports=transport_list
+    )
+
+    assert pinned is not None
+    lookup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_broken_lookup_leaves_the_pin_unhonoured_rather_than_raising(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(
+        transports,
+        "get_chat_transports",
+        new=AsyncMock(side_effect=RuntimeError("credential store down")),
+    )
+
+    assert await resolve_pinned_chat_route(USER_ID, "codex", "cred-codex") is None
+
+
+@pytest.mark.asyncio
+async def test_validation_is_shared_with_the_account_default() -> None:
+    """Saving an expert pin and saving the account default must refuse the same
+    routes with the same codes, so a client only learns one vocabulary."""
+    _connect("cred-codex")
+
+    assert [
+        (t.auth_provider, t.credential_id)
+        for t in await validate_chat_route(
+            USER_ID, DefaultChatRoute(auth_provider="codex", credential_id="cred-codex")
+        )
+    ] == [("platform", None), ("codex", "cred-codex")]
+    with pytest.raises(InvalidDefaultChatRoute, match="codex_credential_required"):
+        await validate_chat_route(USER_ID, DefaultChatRoute(auth_provider="codex"))
+    with pytest.raises(InvalidDefaultChatRoute, match="codex_credential_not_found"):
+        await validate_chat_route(
+            USER_ID, DefaultChatRoute(auth_provider="codex", credential_id="nope")
+        )
+    transports.set_user_default_chat_route.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unrouted_callers_can_hand_over_a_list_they_already_have(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _connect("cred-codex")
+    _saved("codex", "cred-codex")
+    transport_list = await get_chat_transports(USER_ID)
+    lookup = mocker.patch.object(transports, "get_chat_transports", new=AsyncMock())
+
+    assert await resolve_default_chat_route(USER_ID, transports=transport_list) == (
+        "codex",
+        "cred-codex",
+    )
+    lookup.assert_not_awaited()

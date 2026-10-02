@@ -26,6 +26,7 @@ from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
+from .expert_route import resolve_expert_chat_route
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -1475,18 +1476,24 @@ async def update_chat_session_status(
 
 
 async def _default_route_metadata(
-    user_id: str, *, origin: str | None = None
+    user_id: str, *, origin: str | None = None, expert_id: str | None = None
 ) -> ChatSessionMetadata:
     """Session metadata carrying the user's default connection.
 
     These sessions exist to hold an outbound message, but the user replies in
     them — so they start on the same connection a chat the user opened
     themselves would, instead of silently falling back to the platform route.
+    A thread opened for an expert starts on that expert's pinned connection.
 
     ``origin`` is passed through for the sessions a user is meant to type into,
     which have to declare themselves interactive.
     """
-    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    if expert_id is not None:
+        llm_auth_provider, llm_credential_id = await resolve_expert_chat_route(
+            user_id, expert_id
+        )
+    else:
+        llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
     fields: dict[str, object] = {
         "llm_auth_provider": llm_auth_provider,
         "llm_credential_id": llm_credential_id,
@@ -1527,7 +1534,7 @@ async def append_expert_run_message(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
             expert_id=expert_id,
-            metadata=await _default_route_metadata(user_id),
+            metadata=await _default_route_metadata(user_id, expert_id=expert_id),
         )
         session_id = created.session_id
 

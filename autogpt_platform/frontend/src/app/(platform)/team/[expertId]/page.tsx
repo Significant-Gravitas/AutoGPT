@@ -38,7 +38,7 @@ import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
 import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
-import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
+import { ExpertSettingsSection } from "./components/ExpertSettingsSection/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
 import { ExpertSummaryCard } from "./components/ExpertSummaryCard";
 import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";

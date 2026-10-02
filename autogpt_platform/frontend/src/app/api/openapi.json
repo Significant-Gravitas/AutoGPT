@@ -7454,6 +7454,48 @@
         }
       }
     },
+    "/api/experts/{expert_id}/llm-route": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Llm Route",
+        "description": "Pin the AI connection this expert's new threads run on.\n\nApplies to every thread, kickoff, routine, follow-up and delegation that\nstarts after the change; existing threads keep the connection they were\ncreated with. ``auth_provider=null`` returns the expert to the account\ndefault chosen in Settings. The same codes as ``PUT /chat/transports/\ndefault`` describe a route that cannot be saved.",
+        "operationId": "update_expert_llm_route",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertLlmRouteUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": {
+            "description": "Expert not found, or the credential is not yours"
+          },
+          "422": { "description": "The route is malformed" }
+        }
+      }
+    },
     "/api/experts/{expert_id}/onboarding": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -21887,6 +21929,29 @@
             ],
             "title": "Schedules Paused At"
           },
+          "llm_auth_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["platform", "codex", "microsoft_365_copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Llm Auth Provider"
+          },
+          "llm_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Credential Id"
+          },
+          "llm_route_label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Route Label"
+          },
+          "llm_route_available": {
+            "type": "boolean",
+            "title": "Llm Route Available",
+            "default": true
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
@@ -22163,6 +22228,30 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertLlmRouteUpdate": {
+        "properties": {
+          "auth_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["platform", "codex", "microsoft_365_copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Auth Provider"
+          },
+          "credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Credential Id"
+          }
+        },
+        "type": "object",
+        "title": "ExpertLlmRouteUpdate",
+        "description": "Pin an expert to an AI connection, or clear the pin.\n\n``auth_provider=None`` means \"follow the account default\". A non-platform\nprovider must name the credential it runs as; the server checks the pair\nis one the owner can chat over, with the same rules and error codes as\nsaving the account default."
       },
       "ExpertOnboardingResponse": {
         "properties": {
@@ -22563,6 +22652,29 @@
               { "type": "null" }
             ],
             "title": "Schedules Paused At"
+          },
+          "llm_auth_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["platform", "codex", "microsoft_365_copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Llm Auth Provider"
+          },
+          "llm_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Credential Id"
+          },
+          "llm_route_label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Route Label"
+          },
+          "llm_route_available": {
+            "type": "boolean",
+            "title": "Llm Route Available",
+            "default": true
           },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
