@@ -7116,7 +7116,6 @@ files = [
 anthropic = {version = ">=0.16", optional = true, markers = "extra == \"anthropic\""}
 certifi = "*"
 fastapi = {version = ">=0.79.0", optional = true, markers = "extra == \"fastapi\""}
-launchdarkly-server-sdk = {version = ">=9.8.0", optional = true, markers = "extra == \"launchdarkly\""}
 openai = {version = ">=1.0.0", optional = true, markers = "extra == \"openai\""}
 sqlalchemy = {version = ">=1.2", optional = true, markers = "extra == \"sqlalchemy\""}
 tiktoken = {version = ">=0.3.0", optional = true, markers = "extra == \"openai\""}
@@ -8956,4 +8955,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "efbf0cee2a00244065d295df2f906cd5df977c333e4c1a9965fe8dd34eae12bc"
+content-hash = "d1de5d17644763798884f9e8cf6f996b144d50db3e896dbf1528d3fa0b268f69"

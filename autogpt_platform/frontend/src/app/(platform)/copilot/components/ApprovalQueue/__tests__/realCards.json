@@ -1323,7 +1323,7 @@
           "irreversible": false,
           "block_id": null
         },
-        "reason": "This action is too long to check automatically.",
+        "reason": "it overwrites a file in the blog folder if one exists.",
         "reason_kind": "supervisor",
         "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
