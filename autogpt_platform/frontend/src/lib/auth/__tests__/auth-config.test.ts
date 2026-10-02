@@ -51,6 +51,7 @@ interface CapturedAuthOptions {
           id: string;
           email: string;
           name: string;
+          emailVerified?: boolean;
         }) => Promise<void>;
       };
     };
@@ -411,5 +412,49 @@ describe("auth table names", () => {
     // Reuses the shared auth pool rather than opening a second connection.
     expect(pool).toBeDefined();
     expect(provisionedUser).toEqual(user);
+  });
+
+  it("defers an unverified password sign-up's User row to the verification link when verification is required", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
+    const options = await loadAuthOptions();
+
+    await options.databaseHooks.user.create.after({
+      id: "user-1",
+      email: "new@example.com",
+      name: "new",
+      emailVerified: false,
+    });
+
+    expect(provisionPlatformUserMock).not.toHaveBeenCalled();
+  });
+
+  it("still provisions a Google identity at creation when verification is required", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
+    const options = await loadAuthOptions();
+    const user = {
+      id: "user-1",
+      email: "new@gmail.com",
+      name: "new",
+      emailVerified: true,
+    };
+
+    await options.databaseHooks.user.create.after(user);
+
+    expect(provisionPlatformUserMock).toHaveBeenCalledTimes(1);
+    expect(provisionPlatformUserMock.mock.calls[0][1]).toEqual(user);
+  });
+
+  it("provisions an unverified password sign-up at creation when verification is off", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
+    const options = await loadAuthOptions();
+
+    await options.databaseHooks.user.create.after({
+      id: "user-1",
+      email: "new@example.com",
+      name: "new",
+      emailVerified: false,
+    });
+
+    expect(provisionPlatformUserMock).toHaveBeenCalledTimes(1);
   });
 });

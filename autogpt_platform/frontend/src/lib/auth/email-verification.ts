@@ -26,6 +26,16 @@ export function getEmailVerificationCallbackURL(next?: string | null) {
   return `/auth/callback?${params.toString()}`;
 }
 
+// The user.create.after hook skips these. Provisioning the platform User (and
+// the personal org behind it) waits for the verification link, so an address
+// nobody has proven they own never gets an account.
+export function isAwaitingEmailVerification(
+  user: { emailVerified?: boolean | null },
+  requireEmailVerification: boolean,
+) {
+  return requireEmailVerification && !user.emailVerified;
+}
+
 export function getEmailVerificationNotice(
   value: string | null,
 ): EmailVerificationNotice | null {

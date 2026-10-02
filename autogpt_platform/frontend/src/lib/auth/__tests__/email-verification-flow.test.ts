@@ -29,6 +29,9 @@ vi.mock("../email-mirror", () => ({
   mirrorVerifiedEmailToPlatformUser: vi.fn(),
 }));
 
+const provisionPlatformUser = vi.hoisted(() => vi.fn());
+vi.mock("../provision-platform-user", () => ({ provisionPlatformUser }));
+
 const sentEmails = vi.hoisted(
   () => [] as Array<{ to: string; type: string; url: string }>,
 );
@@ -108,6 +111,7 @@ function lastVerifyLink(to: string) {
 
 beforeEach(() => {
   sentEmails.length = 0;
+  provisionPlatformUser.mockReset();
 });
 
 afterEach(() => {
@@ -178,6 +182,18 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect((await signIn(handler, "new@example.com")).status).toBe(200);
   });
 
+  it("creates no platform User row until the link is opened", async () => {
+    const { handler } = await createAuthHandler(true);
+
+    await signUp(handler, "new@example.com");
+    await handler(new Request(lastVerifyLink("new@example.com") ?? ""));
+
+    // Neither the sign-up nor the verify link provisions: /auth/callback
+    // does, through POST /auth/user, which also answers "created" for the
+    // sign-up conversion.
+    expect(provisionPlatformUser).not.toHaveBeenCalled();
+  });
+
   it("sends an expired or tampered link back to the callback with an error", async () => {
     const { handler } = await createAuthHandler(true);
 
@@ -220,6 +236,20 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
     expect((await response.json()).token).toEqual(expect.any(String));
     expect(db.UserAuthSession).toHaveLength(1);
     expect(sentEmails).toEqual([]);
+  });
+
+  it("creates the platform User row with the identity, before the session is used", async () => {
+    const { handler } = await createAuthHandler(false);
+
+    await signUp(handler, "new@example.com");
+
+    expect(provisionPlatformUser).toHaveBeenCalledTimes(1);
+    expect(provisionPlatformUser.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        email: "new@example.com",
+        emailVerified: false,
+      }),
+    );
   });
 });
 

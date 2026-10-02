@@ -6,6 +6,7 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import { isAwaitingEmailVerification } from "./email-verification";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
@@ -64,6 +65,9 @@ if (process.env.NODE_ENV !== "production") {
   globalForAuthDb.__authDbPool = authDbPool;
 }
 
+const requireEmailVerification =
+  process.env.AUTH_REQUIRE_EMAIL_VERIFICATION === "true";
+
 export const auth = betterAuth({
   baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
@@ -94,7 +98,18 @@ export const auth = betterAuth({
         // session can never outrun it. Better Auth runs this after the commit
         // and awaits it before the sign-up response returns; it must never
         // throw, see provision-platform-user.ts for why.
-        after: async (user: { id: string; email: string; name: string }) => {
+        // With email verification required, an unverified identity gets no
+        // session and no row: /auth/callback?method=email provisions it once
+        // the link is opened.
+        after: async (user: {
+          id: string;
+          email: string;
+          name: string;
+          emailVerified?: boolean | null;
+        }) => {
+          if (isAwaitingEmailVerification(user, requireEmailVerification)) {
+            return;
+          }
           await provisionPlatformUser(authDbPool, user);
         },
       },
@@ -147,8 +162,7 @@ export const auth = betterAuth({
     // flow's signOut({ scope: "global" }) — the standard defense when a
     // user resets their password to evict a stolen session.
     revokeSessionsOnPasswordReset: true,
-    requireEmailVerification:
-      process.env.AUTH_REQUIRE_EMAIL_VERIFICATION === "true",
+    requireEmailVerification,
     password: {
       // bcrypt instead of Better Auth's default scrypt so password hashes
       // migrated from Supabase GoTrue keep verifying without a reset.
