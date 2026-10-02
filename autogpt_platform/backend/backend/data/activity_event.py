@@ -136,9 +136,10 @@ async def list_activity_events_by_type(
     or one expert.
 
     The per-session form backs the ``<session_context>`` block on every turn,
-    so it is bounded by ``limit`` and the ``sessionId`` index rather than by
-    the user's whole history. Scoping happens here, before ``limit`` applies,
-    so a busy account cannot push one expert's rows out of its own window.
+    so it is bounded by ``limit`` and the ``(sessionId, createdAt)`` index
+    rather than by the user's whole history. Scoping happens here, before
+    ``limit`` applies, so a busy account cannot push one expert's rows out of
+    its own window.
     """
     where: dict[str, Any] = {
         "userId": user_id,
