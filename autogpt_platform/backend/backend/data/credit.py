@@ -368,10 +368,23 @@ class UserCreditBase(ABC):
         pass
 
     @staticmethod
-    async def create_billing_portal_session(user_id: str) -> str:
+    async def create_billing_portal_session(user_id: str) -> str | None:
+        """Return a Stripe billing-portal URL, or None when there is nothing
+        to manage.
+
+        The billing page requests this on load, so it must NOT create a Stripe
+        Customer as a side effect (same contract as ``list_invoices``). A user
+        with no customer has no card, invoices, or subscription to manage, and
+        creating one here would make an admin-granted plan look Stripe-billed
+        to the reconciliation sweep, which would then revoke it to NO_TIER.
+        Checkout still provisions the customer when the user actually buys.
+        """
+        user = await get_user_by_id(user_id)
+        if not user.stripe_customer_id:
+            return None
         session = await stripe_call(
             stripe.billing_portal.Session.create_async,
-            customer=await get_stripe_customer_id(user_id),
+            customer=user.stripe_customer_id,
             return_url=base_url + "/settings/billing",
         )
         return session.url
@@ -2549,6 +2562,11 @@ def _is_stripe_reconcilable(user: AppUser) -> bool:
     and are not on ENTERPRISE. Manual/admin grants are modeled as a paid tier
     with no Stripe customer, or as ENTERPRISE — both are managed out-of-band and
     must never be auto-revoked by Stripe reconciliation.
+
+    That model only holds while read paths never provision a customer: anything
+    the billing page requests on load (``create_billing_portal_session``,
+    ``list_invoices``) must return empty for a user without one, otherwise an
+    admin grant becomes reconcilable and the sweep revokes it (SECRT-2770).
     """
     return (
         user.stripe_customer_id is not None

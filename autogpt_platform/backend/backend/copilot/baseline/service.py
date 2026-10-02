@@ -143,6 +143,7 @@ from backend.copilot.tools.e2b_sandbox import (
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
+from backend.copilot.tools.seen_capabilities import build_seen_capabilities_notice
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import (
     build_skills_context,
@@ -2191,6 +2192,11 @@ async def stream_chat_completion_baseline(
         _prepend_skills_notice_to_current_message(openai_messages, skills_notice)
         # NOTE: keep the helper above in sync with _maybe_prepend_skills_update
         # in sdk/service.py — both engines share the query-only contract.
+        # Already-seen capability record (SECRT-2791) — same contract, see
+        # _maybe_prepend_seen_capabilities in sdk/service.py.
+        _prepend_skills_notice_to_current_message(
+            openai_messages, build_seen_capabilities_notice(session)
+        )
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,

@@ -15,7 +15,9 @@ from typing import Any
 from prometheus_client import Counter
 from pydantic import BaseModel
 from typesafe_sdk import Choice, Noul, Score
+from typesafe_sdk._core.json import serialize
 
+from backend.blocks.typesafe._budget import prepare_state
 from backend.blocks.typesafe._client import call_jev
 from backend.copilot.config import ChatConfig
 from backend.util.settings import Settings
@@ -103,7 +105,7 @@ async def judge(prompt: str) -> JevVerdict | None:
         result = await asyncio.wait_for(
             call_jev(
                 _api_key,
-                JEV_RUBRIC + "\n\n" + prompt,
+                _state(prompt),
                 QUESTIONS,
                 model=config.gate_jev_model,
                 timeout=config.gate_jev_timeout_s,
@@ -132,6 +134,16 @@ async def judge(prompt: str) -> JevVerdict | None:
     return verdict
 
 
+def overflow(prompt: str) -> int:
+    """Serialized bytes of ``prompt`` past what one Jev call reads whole; 0 when
+    it fits."""
+    state = _state(prompt)
+    prepared = prepare_state(state, QUESTIONS)
+    if not prepared.truncated:
+        return 0
+    return len(serialize(state)) - len(serialize(prepared.state))
+
+
 def flag_line(verdict: JevVerdict) -> str:
     n = verdict.flagged
     return (
@@ -145,6 +157,10 @@ def unpinned_reason(verdict: JevVerdict) -> str:
         f"A check flagged this as possibly {RUBRIC_QUESTIONS[verdict.flagged]}; "
         "could not pinpoint where."
     )
+
+
+def _state(prompt: str) -> str:
+    return JEV_RUBRIC + "\n\n" + prompt
 
 
 def _read(answers: dict[str, dict[str, Any]]) -> JevVerdict | None:

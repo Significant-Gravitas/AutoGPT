@@ -924,6 +924,12 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> dict[str, str]:
+) -> dict[str, str | None]:
+    """Return a Stripe billing-portal URL for the caller.
+
+    ``url`` is ``None`` when the user has no Stripe customer yet: this route is
+    requested on every Settings > Billing load, so it must never provision a
+    customer as a side effect (see ``create_billing_portal_session``).
+    """
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return {"url": await credit_model.create_billing_portal_session(user_id)}

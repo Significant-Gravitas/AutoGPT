@@ -5731,6 +5731,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Manage payment methods",
+        "description": "Return a Stripe billing-portal URL for the caller.\n\n``url`` is ``None`` when the user has no Stripe customer yet: this route is\nrequested on every Settings > Billing load, so it must never provision a\ncustomer as a side effect (see ``create_billing_portal_session``).",
         "operationId": "getV1Manage payment methods",
         "responses": {
           "200": {
@@ -5738,7 +5739,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": { "type": "string" },
+                  "additionalProperties": {
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
                   "type": "object",
                   "title": "Response Getv1Manage Payment Methods"
                 }
@@ -33373,7 +33376,11 @@
       "UserTierResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "warning": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Warning"
+          }
         },
         "type": "object",
         "required": ["user_id", "tier"],
