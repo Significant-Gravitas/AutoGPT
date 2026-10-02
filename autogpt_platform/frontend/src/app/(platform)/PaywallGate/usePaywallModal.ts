@@ -190,10 +190,11 @@ export function usePaywallModal() {
     setPendingTier(null);
   }
 
-  // Route through the shared /logout page (same path the Navbar uses) rather
-  // than calling logOut() inline: it runs the full sign-out, then redirects to
-  // /login. Navigating away also unmounts this modal — without the redirect the
-  // user would be left logged-out but stranded behind the paywall.
+  // Route through the shared /logout page (same path the account menu uses)
+  // rather than calling logOut() inline: it runs the full sign-out, then
+  // redirects to /login. Navigating away also unmounts this modal — without
+  // the redirect the user would be left logged-out but stranded behind the
+  // paywall.
   function handleLogout() {
     router.replace("/logout");
   }

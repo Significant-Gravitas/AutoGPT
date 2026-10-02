@@ -47,14 +47,11 @@ describe("dream/graphiti flag defaults fail closed", () => {
   });
 });
 
-// These two have been flipped to `true` in the defaults map twice now, and
+// This one has been flipped to `true` in the defaults map twice now, and
 // both times it silently swapped the onboarding wizard for every
 // LaunchDarkly-less environment — local dev, CI, Playwright — which is how
 // auth-happy-path stopped finding the pillbox step.
-const ONBOARDING_FLAGS = [
-  Flag.ONBOARDING_BRAIN_DUMP,
-  Flag.AUTOGPT_NEW_LAYOUT,
-] as const;
+const ONBOARDING_FLAGS = [Flag.ONBOARDING_BRAIN_DUMP] as const;
 
 describe("onboarding flag defaults fail closed", () => {
   beforeEach(() => {

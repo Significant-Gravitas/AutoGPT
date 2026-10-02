@@ -20,7 +20,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
     HIRE_EXPERTS: "hire-experts",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
   },
   useFlagStatus: (flag: string) => ({
     enabled: flags.current[flag] ?? false,
@@ -167,7 +166,6 @@ describe("useTabIntroCard — workflow migration", () => {
     flags.current = {
       "onboarding-brain-dump": true,
       "hire-experts": true,
-      "autogpt-new-layout": true,
     };
   });
 
@@ -180,21 +178,18 @@ describe("useTabIntroCard — workflow migration", () => {
     expect(window.localStorage.getItem(SEEN_KEY)).toBeNull();
   });
 
-  it.each(["hire-experts", "autogpt-new-layout"])(
-    "waits for %s before deciding which intro applies",
-    (flag) => {
-      flags.current[flag] = false;
-      flagReadiness.current[flag] = false;
-      const { result, rerender } = renderGate();
-      expect(result.current.isOpen).toBe(false);
-      expect(capture).not.toHaveBeenCalled();
+  it("waits for hire-experts before deciding which intro applies", () => {
+    flags.current["hire-experts"] = false;
+    flagReadiness.current["hire-experts"] = false;
+    const { result, rerender } = renderGate();
+    expect(result.current.isOpen).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
 
-      flagReadiness.current[flag] = true;
-      rerender();
+    flagReadiness.current["hire-experts"] = true;
+    rerender();
 
-      expect(result.current.isOpen).toBe(true);
-    },
-  );
+    expect(result.current.isOpen).toBe(true);
+  });
 
   it.each(["marketplace", "build"] as const)(
     "preserves the %s intro for existing users",

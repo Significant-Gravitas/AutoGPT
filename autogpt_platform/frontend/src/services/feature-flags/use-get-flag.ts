@@ -15,8 +15,6 @@ export enum Flag {
   ARTIFACTS_PAGE = "artifacts-page",
   CHAT_MODE_OPTION = "chat-mode-option",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
-  CHAT_SEARCH = "chat-search",
-  AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
@@ -71,8 +69,6 @@ const defaultFlags = {
   [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  [Flag.CHAT_SEARCH]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
@@ -130,10 +126,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
-    case Flag.CHAT_SEARCH:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
-    case Flag.AUTOGPT_NEW_LAYOUT:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
     case Flag.CHAT_WORKSPACE_FILES:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
     case Flag.CHAT_PINNING:

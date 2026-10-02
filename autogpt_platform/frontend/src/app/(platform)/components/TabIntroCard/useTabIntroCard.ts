@@ -29,12 +29,10 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
   // of their own.
   const { enabled, ready } = useFlagStatus(Flag.ONBOARDING_BRAIN_DUMP);
   const experts = useFlagStatus(Flag.HIRE_EXPERTS);
-  const layout = useFlagStatus(Flag.AUTOGPT_NEW_LAYOUT);
   const isMigrationCohort =
     tab === "agents" && isPreExpertsUser(user?.created_at);
   const hasMigrationNotice =
-    isMigrationCohort &&
-    (!experts.ready || !layout.ready || (experts.enabled && layout.enabled));
+    isMigrationCohort && (!experts.ready || experts.enabled);
   const step = TAB_INTRO_STEPS[tab];
 
   // Who closed the card in this mounted session, rather than a boolean: a

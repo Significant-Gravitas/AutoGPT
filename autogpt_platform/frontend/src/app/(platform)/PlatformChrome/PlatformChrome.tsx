@@ -5,7 +5,6 @@ import { CSSProperties, ReactNode } from "react";
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { cn } from "@/lib/utils";
-import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
   SidebarInset,
@@ -35,15 +34,11 @@ const mobileTriggerClassName =
 
 export function PlatformChrome({ children }: Props) {
   const {
-    showNewLayout,
-    isNewLayoutActive,
-    isLayoutPending,
+    showAppSidebar,
     showTourSidebar,
     overlayInsetHeader,
     isCopilotRoute,
     hasInsetHeaderTitle,
-    isSettingsRoute,
-    isAdminRoute,
     isBuilderRoute,
   } = usePlatformChrome();
   // The collapsed-by-default sidebar ships with the brain-dump experience.
@@ -71,7 +66,7 @@ export function PlatformChrome({ children }: Props) {
     );
   }
 
-  if (showNewLayout) {
+  if (showAppSidebar) {
     return (
       <SidebarProvider
         defaultOpen={!isBuilderRoute && !isBrainDumpEnabled}
@@ -116,37 +111,10 @@ export function PlatformChrome({ children }: Props) {
     );
   }
 
-  // Neither shell is known yet (no layout cookie, flag vendor still
-  // answering): a frame with no navigation at all, never the classic Navbar
-  // on speculation. Content still renders so crawlers and the page's own
-  // data fetching aren't held back.
-  if (isLayoutPending) {
-    return (
-      <main className="flex h-screen w-full flex-col">
-        <AdminImpersonationBanner />
-        <GlobalSearchOverlay />
-        <section className="flex-1">{content}</section>
-      </main>
-    );
-  }
-
-  // Settings and admin render their own sidebar shells (with a Back link) —
-  // no top Navbar. Only the new layout drops the Navbar here; classic users
-  // keep it below so they don't lose global nav (wallet, account menu) or a
-  // way back on mobile.
-  if ((isSettingsRoute || isAdminRoute) && isNewLayoutActive) {
-    return (
-      <main className="flex h-screen w-full flex-col">
-        <AdminImpersonationBanner />
-        <GlobalSearchOverlay />
-        <section className="flex-1">{content}</section>
-      </main>
-    );
-  }
-
+  // Settings and admin render their own sidebar shells (with a Back link);
+  // the unauthenticated routes (reset-password, auth errors) get a bare frame.
   return (
     <main className="flex h-screen w-full flex-col">
-      <Navbar />
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

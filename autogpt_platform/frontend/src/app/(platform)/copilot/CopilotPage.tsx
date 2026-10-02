@@ -3,20 +3,14 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
-import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
-import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
-import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
-import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
 import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
@@ -42,14 +36,6 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  // Use the same mount-gated decision as PlatformChrome so the ChatSidebar is
-  // hidden in lockstep with the layout swap — avoids a one-frame flash where
-  // the classic shell renders without its sidebar before the new layout mounts.
-  // While the shell is still unknown PlatformChrome paints a neutral frame, so
-  // the classic-only chrome stays hidden too instead of flashing at sidebar
-  // users.
-  const { showNewLayout, isLayoutPending } = usePlatformChrome();
-  const showClassicChrome = !showNewLayout && !isLayoutPending;
   const { isUserLoading, isLoggedIn } = useAuth();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -68,38 +54,27 @@ export function CopilotPage() {
   return (
     <SidebarProvider
       defaultOpen={true}
-      // Both layouts need an explicit, viewport-bound height: the chat column
-      // relies on a definite height so its inner `min-h-0` chain lets the
-      // messages area (not the page) absorb growth — e.g. expanding the task
-      // progress accordion above the input. The new-layout ancestors
-      // (SidebarProvider `min-h-svh` → SidebarInset `flex-1` → `section flex-1`)
-      // only set a *minimum* height, so `height: 100%` there resolves to
-      // content height and the accordion pushes the input below the fold.
-      // The new layout gets the full viewport — its inset header overlays the
-      // chat (see PlatformChrome) instead of stacking above it. The classic
-      // layout subtracts the navbar + preview banner. `svh` keeps the input
+      // The chat column needs an explicit, viewport-bound height: it relies on
+      // a definite height so its inner `min-h-0` chain lets the messages area
+      // (not the page) absorb growth — e.g. expanding the task progress
+      // accordion above the input. The chrome's ancestors (SidebarProvider
+      // `min-h-svh` → SidebarInset `flex-1` → `section flex-1`) only set a
+      // *minimum* height, so `height: 100%` would resolve to content height
+      // and the accordion would push the input below the fold. The inset
+      // header overlays the chat (see PlatformChrome) instead of stacking
+      // above it, so the full viewport is available. `svh` keeps the input
       // visible when mobile browser chrome is shown.
-      style={
-        showClassicChrome
-          ? {
-              height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
-            }
-          : { height: "100svh" }
-      }
+      style={{ height: "100svh" }}
       className="min-h-0"
     >
-      {!isMobile && showClassicChrome && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
-        showNewLayout={showNewLayout}
-        showClassicChrome={showClassicChrome}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
       />
       {isMobile && sessionId && <ContextPanel sessionId={sessionId} mobile />}
       {isMobile && <ArtifactPanel mobile />}
-      {isMobile && showClassicChrome && <MobileDrawer />}
       {!isBrainDumpEnabled && <NotificationDialog />}
       <CopilotModals />
     </SidebarProvider>
@@ -108,8 +83,6 @@ export function CopilotPage() {
 
 interface MainAreaProps {
   isMobile: boolean;
-  showNewLayout: boolean;
-  showClassicChrome: boolean;
   sessionId: string | null;
   droppedFiles: File[];
   setDroppedFiles: (files: File[]) => void;
@@ -117,8 +90,6 @@ interface MainAreaProps {
 
 function MainArea({
   isMobile,
-  showNewLayout,
-  showClassicChrome,
   sessionId,
   droppedFiles,
   setDroppedFiles,
@@ -130,17 +101,10 @@ function MainArea({
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-0"
           onFilesDropped={setDroppedFiles}
         >
-          {/* New layout replaces these floating buttons: sessions live in the
-              app sidebar, workspace files toggle sits in the inset header. */}
-          {isMobile && showClassicChrome && <MobileHeader />}
-          <div
-            className={cn(
-              "flex flex-col gap-3 px-4 pt-4 empty:hidden",
-              // Clear the floating inset-header controls (sidebar toggle +
-              // workspace-files trigger) that overlay the top-left corner.
-              showNewLayout && "max-lg:pt-16",
-            )}
-          >
+          {/* max-lg:pt-16 clears the floating inset-header controls (sidebar
+              toggle + workspace-files trigger) that overlay the top-left
+              corner. */}
+          <div className="flex flex-col gap-3 px-4 pt-4 empty:hidden max-lg:pt-16">
             <LowCreditBanner />
             <NotificationBanner />
           </div>
@@ -148,7 +112,7 @@ function MainArea({
             key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
-            hasFloatingControls={showNewLayout}
+            hasFloatingControls
           />
           {/* Owns the session-entry reset that forgets the previous chat's
               artifact. */}

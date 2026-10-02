@@ -43,7 +43,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
     HIRE_EXPERTS: "hire-experts",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
   },
   useGetFlag: (flag: string) => context.flags[flag] ?? false,
   useFlagStatus: (flag: string) => ({
@@ -100,7 +99,6 @@ beforeEach(() => {
   context.flags = {
     "onboarding-brain-dump": true,
     "hire-experts": true,
-    "autogpt-new-layout": true,
   };
   context.readiness = {};
   context.state = { completedSteps: ["ONBOARDING_COMPLETE"] };
@@ -148,10 +146,7 @@ describe("migration notice with production first-visit tutorials", () => {
     "never flashes the agents tutorial when %s arrives first",
     async (first) => {
       context.state = null;
-      context.readiness = {
-        "hire-experts": false,
-        "autogpt-new-layout": false,
-      };
+      context.readiness = { "hire-experts": false };
       const { refresh } = renderTogether();
       expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
       if (first === "flags") {
@@ -209,27 +204,24 @@ describe("migration notice with production first-visit tutorials", () => {
     expect(context.postedStep).not.toHaveBeenCalled();
   });
 
-  it.each(["hire-experts", "autogpt-new-layout"])(
-    "preserves the old tutorial when delayed %s resolves off",
-    async (flag) => {
-      context.flags[flag] = false;
-      context.readiness[flag] = false;
-      const { refresh } = renderTogether();
-      expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
-      context.readiness[flag] = true;
-      refresh();
-      expectOnlyDialog("Your mission control.");
-      expectNoWrites();
-      await userEvent.click(
-        screen.getByRole("button", { name: "See my agents" }),
-      );
-      expect(context.completeStep).toHaveBeenCalledExactlyOnceWith(
-        "AGENTS_TAB_INTRO",
-      );
-      expect(context.getState).not.toHaveBeenCalled();
-      expect(context.postedStep).not.toHaveBeenCalled();
-    },
-  );
+  it("preserves the old tutorial when delayed hire-experts resolves off", async () => {
+    context.flags["hire-experts"] = false;
+    context.readiness["hire-experts"] = false;
+    const { refresh } = renderTogether();
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
+    context.readiness["hire-experts"] = true;
+    refresh();
+    expectOnlyDialog("Your mission control.");
+    expectNoWrites();
+    await userEvent.click(
+      screen.getByRole("button", { name: "See my agents" }),
+    );
+    expect(context.completeStep).toHaveBeenCalledExactlyOnceWith(
+      "AGENTS_TAB_INTRO",
+    );
+    expect(context.getState).not.toHaveBeenCalled();
+    expect(context.postedStep).not.toHaveBeenCalled();
+  });
 
   it.each([
     [

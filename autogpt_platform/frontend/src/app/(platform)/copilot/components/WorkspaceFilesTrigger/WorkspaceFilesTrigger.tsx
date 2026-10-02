@@ -9,7 +9,7 @@ interface Props {
   className?: string;
 }
 
-// Sits next to the sidebar toggle in the new-layout inset header and mirrors
+// Sits next to the sidebar toggle in the chrome's inset header and mirrors
 // SidebarTrigger's ghost styling (no border, no shadow).
 export function WorkspaceFilesTrigger({ className }: Props) {
   const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);

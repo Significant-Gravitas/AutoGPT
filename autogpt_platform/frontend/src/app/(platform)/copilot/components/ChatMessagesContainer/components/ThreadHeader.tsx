@@ -20,7 +20,7 @@ interface Props {
   expertIdentity?: ExpertIdentity | null;
   /** The roster has not settled yet for an expert-scoped session. */
   isResolvingExpertIdentity?: boolean;
-  /** The new layout floats the sidebar and workspace-files controls over the
+  /** The chrome floats the sidebar and workspace-files controls over the
    *  chat's top-left corner below `lg`; the chip clears them. */
   hasFloatingControls?: boolean;
 }

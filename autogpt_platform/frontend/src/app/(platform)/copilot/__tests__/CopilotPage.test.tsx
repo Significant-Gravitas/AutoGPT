@@ -12,17 +12,8 @@ import { CopilotPage } from "../CopilotPage";
 vi.mock("../components/ChatContainer/ChatContainer", () => ({
   ChatContainer: () => <div data-testid="chat-container" />,
 }));
-vi.mock("../components/ChatSidebar/ChatSidebar", () => ({
-  ChatSidebar: () => <div data-testid="chat-sidebar" />,
-}));
 vi.mock("../components/DeleteChatDialog/DeleteChatDialog", () => ({
   DeleteChatDialog: () => null,
-}));
-vi.mock("../components/MobileDrawer/MobileDrawer", () => ({
-  MobileDrawer: () => null,
-}));
-vi.mock("../components/MobileHeader/MobileHeader", () => ({
-  MobileHeader: () => null,
 }));
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
@@ -92,7 +83,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
   },
   useGetFlag: () => false,
   useFlagStatus: () => ({ enabled: false, ready: true, answered: true }),
