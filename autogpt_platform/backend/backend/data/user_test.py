@@ -700,3 +700,159 @@ class TestSetUserDefaultChatRoute:
         by_id_del.assert_called_once_with("user-1")
         by_email_del.assert_called_once_with("user@example.com")
         goc_clear.assert_called_once_with()
+
+
+class TestHealOrphanedAuthIdentities:
+    """Auth identity -> platform User is an invariant; the healer restores it
+    and reports what it could not restore."""
+
+    @staticmethod
+    def _identity(user_id: str, email: str, email_owner_id: str | None = None):
+        return user_module.OrphanedAuthIdentity(
+            id=user_id,
+            email=email,
+            name="Someone",
+            createdAt=datetime.now(timezone.utc),
+            email_owner_id=email_owner_id,
+        )
+
+    @pytest.mark.asyncio
+    async def test_provisions_each_orphan_from_its_own_email(self):
+        orphans = [
+            self._identity("auth-1", "one@example.com"),
+            self._identity("auth-2", "two@example.com"),
+        ]
+        provision = AsyncMock()
+        with (
+            patch.object(
+                user_module,
+                "find_orphaned_auth_identities",
+                AsyncMock(return_value=orphans),
+            ) as find,
+            patch.object(user_module, "get_or_create_user_with_status", provision),
+        ):
+            report = await user_module.heal_orphaned_auth_identities(
+                grace_secs=300, limit=50
+            )
+
+        assert report.healed == ["auth-1", "auth-2"]
+        assert report.collided == []
+        assert report.failed == []
+        # The same provisioning as POST /auth/user, keyed by the identity id
+        # and its (already lowercased) auth email.
+        assert provision.await_args_list[0].args[0] == {
+            "sub": "auth-1",
+            "email": "one@example.com",
+            "user_metadata": {"name": "Someone"},
+        }
+        # Grace window: identities younger than this are still signing up.
+        older_than = find.await_args.args[0]
+        assert older_than < datetime.now(timezone.utc)
+        assert find.await_args.args[1] == 50
+
+    @pytest.mark.asyncio
+    async def test_reports_an_email_collision_instead_of_guessing(self):
+        # A different platform User already owns this email, so the unique
+        # index makes the identity unprovisionable. That needs a human.
+        collided = self._identity("auth-new", "taken@example.com", "user-old")
+        provision = AsyncMock()
+        with (
+            patch.object(
+                user_module,
+                "find_orphaned_auth_identities",
+                AsyncMock(return_value=[collided]),
+            ),
+            patch.object(user_module, "get_or_create_user_with_status", provision),
+        ):
+            report = await user_module.heal_orphaned_auth_identities()
+
+        assert report.collided == [collided]
+        assert report.healed == []
+        provision.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_one_failure_does_not_stop_the_sweep(self):
+        orphans = [
+            self._identity("auth-1", "one@example.com"),
+            self._identity("auth-2", "two@example.com"),
+        ]
+        provision = AsyncMock(side_effect=[DatabaseError("boom"), MagicMock()])
+        with (
+            patch.object(
+                user_module,
+                "find_orphaned_auth_identities",
+                AsyncMock(return_value=orphans),
+            ),
+            patch.object(user_module, "get_or_create_user_with_status", provision),
+        ):
+            report = await user_module.heal_orphaned_auth_identities()
+
+        assert report.failed == ["auth-1"]
+        assert report.healed == ["auth-2"]
+        assert not report.is_clean
+
+    @pytest.mark.asyncio
+    async def test_clean_when_nothing_is_orphaned(self):
+        with patch.object(
+            user_module, "find_orphaned_auth_identities", AsyncMock(return_value=[])
+        ):
+            report = await user_module.heal_orphaned_auth_identities()
+
+        assert report.is_clean
+
+
+class TestFindOrphanedAuthIdentities:
+    @pytest.mark.asyncio
+    async def test_queries_identities_without_a_user_row(self):
+        cutoff = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        rows = [
+            {
+                "id": "auth-1",
+                "email": "one@example.com",
+                "name": None,
+                "createdAt": cutoff,
+                "email_owner_id": None,
+            }
+        ]
+        with patch.object(
+            user_module, "query_raw_with_schema", AsyncMock(return_value=rows)
+        ) as query:
+            found = await user_module.find_orphaned_auth_identities(cutoff, limit=7)
+
+        assert [i.id for i in found] == ["auth-1"]
+        assert found[0].has_email_collision is False
+        sql, older_than, limit = query.await_args.args
+        assert '"UserAuthIdentity" a' in sql
+        assert "u.id IS NULL" in sql
+        # A migrated identity may differ from its platform row only by case;
+        # a case-sensitive owner match would heal a duplicate account.
+        assert "LOWER(owner.email) = LOWER(a.email)" in sql
+        # ... and the owner must be a scalar subquery, not a join: several
+        # case-variant platform rows would otherwise return the identity once
+        # per variant and let duplicates consume the batch limit.
+        assert "LIMIT 1) AS email_owner_id" in sql
+        assert "JOIN" not in sql.split("AS email_owner_id")[0]
+        assert older_than == cutoff.isoformat()
+        assert limit == 7
+
+    @pytest.mark.asyncio
+    async def test_maps_a_foreign_email_owner_to_a_collision(self):
+        # The SQL aliases the owning platform User's id as email_owner_id; the
+        # model must read that back as a collision when it is someone else.
+        cutoff = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        rows = [
+            {
+                "id": "auth-new",
+                "email": "Taken@Example.com",
+                "name": "Someone",
+                "createdAt": cutoff,
+                "email_owner_id": "user-old",
+            }
+        ]
+        with patch.object(
+            user_module, "query_raw_with_schema", AsyncMock(return_value=rows)
+        ):
+            found = await user_module.find_orphaned_auth_identities(cutoff)
+
+        assert found[0].email_owner_id == "user-old"
+        assert found[0].has_email_collision is True
