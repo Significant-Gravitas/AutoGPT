@@ -72,6 +72,18 @@ describe("SignupPage", () => {
     ).toBeDefined();
   });
 
+  test("does not link to the demo tour", () => {
+    render(<SignupPage />);
+
+    expect(screen.getByRole("button", { name: "Sign up" })).toBeDefined();
+    expect(screen.queryByText(/watch the demo/i)).toBeNull();
+    expect(
+      screen
+        .queryAllByRole("link")
+        .some((link) => link.getAttribute("href")?.startsWith("/tour")),
+    ).toBe(false);
+  });
+
   test("does not server-render an interactive form before auth initializes", () => {
     const markup = renderToStaticMarkup(<SignupPage />);
 

@@ -20,12 +20,11 @@ import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 import { environment } from "@/services/environment";
-import NextLink from "next/link";
 import { useSearchParams } from "next/navigation";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { SignupMarketingPanel } from "./components/SignupMarketingPanel";
 import { useSignupPage } from "./useSignupPage";
-import { Alert02Icon, PlayCircleIcon } from "@hugeicons/core-free-icons";
+import { Alert02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const dynamic = "force-dynamic";
@@ -212,24 +211,6 @@ export default function SignupPage() {
           behaveAs={environment.getBehaveAs()}
         />
       </Form>
-
-      <div className="mt-6 flex w-full justify-center">
-        <NextLink
-          href="/tour/chat?utm_source=platform_signup"
-          className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50/60 px-4 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-violet-100/60"
-        >
-          <Icon
-            icon={PlayCircleIcon}
-            className="size-5 shrink-0 text-violet-600"
-          />
-          <span>
-            Want to see it first?{" "}
-            <span className="font-semibold text-violet-700">
-              Watch the demo
-            </span>
-          </span>
-        </NextLink>
-      </div>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
         <Text variant="body-medium" className="!text-slate-500">
