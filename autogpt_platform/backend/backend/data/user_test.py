@@ -452,7 +452,9 @@ class TestGetOrCreateUserStatus:
             ),
         ):
             mock_prisma.user.find_unique = AsyncMock(side_effect=[None, db_user])
-            mock_prisma.user.create = AsyncMock(side_effect=prisma.errors.UniqueViolationError({}))
+            mock_prisma.user.create = AsyncMock(
+                side_effect=prisma.errors.UniqueViolationError({})
+            )
 
             result = await user_module.get_or_create_user_with_status(
                 {"sub": "user-raced", "email": "race@example.com"}
@@ -464,7 +466,9 @@ class TestGetOrCreateUserStatus:
     async def test_an_email_owned_by_another_user_still_fails(self):
         with patch.object(user_module, "prisma") as mock_prisma:
             mock_prisma.user.find_unique = AsyncMock(return_value=None)
-            mock_prisma.user.create = AsyncMock(side_effect=prisma.errors.UniqueViolationError({}))
+            mock_prisma.user.create = AsyncMock(
+                side_effect=prisma.errors.UniqueViolationError({})
+            )
 
             with pytest.raises(DatabaseError):
                 await user_module.get_or_create_user_with_status(
