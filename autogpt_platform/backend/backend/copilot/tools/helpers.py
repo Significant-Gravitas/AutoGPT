@@ -752,30 +752,48 @@ async def resolve_block_credentials(
     )
 
 
-def unattended_missing_credentials_error(
-    subject: str, providers: set[str], session_id: str
+async def unattended_missing_credentials_error(
+    subject: str,
+    providers: set[str],
+    session_id: str,
+    user_id: str,
+    expert_id: str | None,
 ) -> ErrorResponse:
     """The answer when a turn nobody watches has no credential to run with.
 
     A setup card there is never answered, and the step used to end as a quiet
     "not configured" (SECRT-2804). Name the provider, so the turn's reply tells
-    the user what to connect, and log it so the failure can be found.
+    the user what to connect, and log it so the failure can be found. When the
+    account already has a matching credential the expert was never granted,
+    say to grant that one, since connecting another would not help.
     """
-    names = ", ".join(sorted(providers - {""})) or "an integration"
+    providers = providers - {""}
+    names = ", ".join(sorted(providers)) or "an integration"
+    grant_hint = await ungranted_credential_hint(user_id, expert_id, providers)
     logger.warning(
         "Unattended copilot turn in session %s: %s has no %s credential to use",
         session_id,
         subject,
         names,
     )
+    if grant_hint:
+        state = "granted to this expert"
+        fix = (
+            "grant this expert one of the existing credentials listed below, "
+            f"or connect {names} in their integrations,"
+        )
+    else:
+        state = "connected"
+        fix = f"connect {names} in their integrations"
     return ErrorResponse(
         message=(
-            f"{subject} has no {names} credential connected, so this step "
+            f"{subject} has no {names} credential {state}, so this step "
             "did not run. Nobody is watching this turn (it was "
-            "scheduled), so there is no one to connect one now. Say plainly "
+            "scheduled), so there is no one to fix it now. Say plainly "
             "in your reply that this step was skipped and that the user needs "
-            f"to connect {names} in their integrations before the next run."
-        ),
+            f"to {fix} before the next run."
+        )
+        + grant_hint,
         error="missing_credentials",
         session_id=session_id,
     )
@@ -939,10 +957,12 @@ async def prepare_block_for_execution(
         dry_run or validate_only
     ):
         if missing_credentials and is_unattended_turn():
-            return unattended_missing_credentials_error(
+            return await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
                 {provider_slug(m.provider) for m in missing_credentials},
                 session_id,
+                user_id,
+                session.expert_id,
             )
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = await annotate_expert_grants(
