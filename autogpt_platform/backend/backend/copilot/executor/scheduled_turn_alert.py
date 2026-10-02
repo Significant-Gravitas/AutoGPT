@@ -8,6 +8,7 @@ failed scheduled turn raises one Sentry event and a metric.
 """
 
 import logging
+import re
 
 import orjson
 import sentry_sdk
@@ -22,12 +23,15 @@ from .utils import CoPilotExecutionEntry, ScheduledTurnOrigin
 
 logger = logging.getLogger(__name__)
 
-_MAX_ERROR_CHARS = 500
+# A tool's error text can quote the user's data, and neither the log sinks nor
+# Sentry are redacted, so a failure is reported by its error code alone.
+_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
+UNCLASSIFIED = "unclassified"
 
 
 class ToolFailure(BaseModel):
     tool: str
-    error: str
+    error_type: str
 
 
 class ScheduledTurnWatch:
@@ -48,10 +52,10 @@ class ScheduledTurnWatch:
     def observe(self, chunk: StreamBaseResponse) -> None:
         if not isinstance(chunk, StreamToolOutputAvailable):
             return
-        error = tool_error(chunk.output)
-        if error is not None:
+        error_type = tool_error_type(chunk.output)
+        if error_type is not None:
             self.tool_failures.append(
-                ToolFailure(tool=chunk.toolName or "unknown", error=error)
+                ToolFailure(tool=chunk.toolName or "unknown", error_type=error_type)
             )
 
     def report(self, turn_error: str | None) -> None:
@@ -90,16 +94,18 @@ class ScheduledTurnWatch:
             "cron": self._origin.cron,
             "session_id": self._entry.session_id,
             "turn_id": self._entry.turn_id,
-            "turn_error": turn_error,
+            "turn_error_type": error_type(turn_error) if turn_error else None,
             "tool_failures": [f.model_dump() for f in self.tool_failures],
         }
-        # Error text stays in the Sentry context: a tool's error can quote the
-        # user's data, and the log sinks are not redacted.
-        failed_tools = ", ".join(f.tool for f in self.tool_failures)
+        failed_tools = ", ".join(
+            f"{f.tool} ({f.error_type})" for f in self.tool_failures
+        )
         logger.warning(
             f"Scheduled copilot turn failed: {summary} "
             f"(schedule {self._origin.schedule_id}, session "
-            f"{self._entry.session_id[:12]}, failed tools: {failed_tools or 'none'})"
+            f"{self._entry.session_id[:12]}, turn error: "
+            f"{details['turn_error_type'] or 'none'}, "
+            f"failed tools: {failed_tools or 'none'})"
         )
         with sentry_sdk.new_scope() as scope:
             scope.set_tag("copilot_scheduled_turn_failure", reason)
@@ -110,10 +116,10 @@ class ScheduledTurnWatch:
             )
 
 
-def tool_error(output: str | dict) -> str | None:
-    """The error a copilot tool reported, or None when it did not report one.
-    Tools report failures as an ``ErrorResponse`` payload rather than by
-    raising, so a turn can carry on and still look successful."""
+def tool_error_type(output: str | dict) -> str | None:
+    """The type of error a copilot tool reported, or None when it did not
+    report one. Tools report failures as an ``ErrorResponse`` payload rather
+    than by raising, so a turn can carry on and still look successful."""
     payload = output
     if isinstance(output, str):
         try:
@@ -122,5 +128,12 @@ def tool_error(output: str | dict) -> str | None:
             return None
     if not isinstance(payload, dict) or payload.get("type") != ResponseType.ERROR:
         return None
-    error = payload.get("error") or payload.get("message") or "unknown error"
-    return str(error)[:_MAX_ERROR_CHARS]
+    return error_type(payload.get("error"))
+
+
+def error_type(error: object) -> str:
+    """*error* when it is an error code such as ``library_agent_not_found``.
+    Free text, which can carry anything, is reported only as unclassified."""
+    if isinstance(error, str) and _ERROR_CODE.fullmatch(error):
+        return error
+    return UNCLASSIFIED

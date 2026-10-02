@@ -6,7 +6,11 @@ import pytest
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.processor import CoPilotProcessor
-from backend.copilot.executor.scheduled_turn_alert import ScheduledTurnWatch, tool_error
+from backend.copilot.executor.scheduled_turn_alert import (
+    UNCLASSIFIED,
+    ScheduledTurnWatch,
+    tool_error_type,
+)
 from backend.copilot.executor.utils import (
     CoPilotExecutionEntry,
     CoPilotLogMetadata,
@@ -75,11 +79,15 @@ def test_interactive_turns_are_not_watched():
     assert ScheduledTurnWatch.for_entry(_entry(None)) is None
 
 
-def test_tool_error_reads_error_payloads_only():
-    assert tool_error(_run_agent_failure().output) == _PRISMA_ERROR
-    assert tool_error({"type": "error", "message": "nope"}) == "nope"
-    assert tool_error(_run_agent_success().output) is None
-    assert tool_error("plain text from a built-in tool") is None
+def test_tool_error_type_reads_error_payloads_only():
+    assert tool_error_type(_run_agent_failure().output) == UNCLASSIFIED
+    assert (
+        tool_error_type({"type": "error", "error": "library_agent_not_found"})
+        == "library_agent_not_found"
+    )
+    assert tool_error_type({"type": "error", "message": "nope"}) == UNCLASSIFIED
+    assert tool_error_type(_run_agent_success().output) is None
+    assert tool_error_type("plain text from a built-in tool") is None
 
 
 def test_scheduled_turn_whose_tool_errors_raises_one_alert():
@@ -103,16 +111,22 @@ def test_scheduled_turn_whose_tool_errors_raises_one_alert():
     assert context["schedule_id"] == "sched-weekly"
     assert context["cron"] == "0 10 * * 1"
     assert context["session_id"] == "sess-weekly-report"
-    assert context["tool_failures"] == [{"tool": "run_agent", "error": _PRISMA_ERROR}]
+    assert context["tool_failures"] == [
+        {"tool": "run_agent", "error_type": UNCLASSIFIED}
+    ]
     assert _failures("tool_error", "run_agent") == before + 1
 
 
-def test_the_failure_log_line_carries_no_error_text(caplog):
+def test_neither_the_log_nor_sentry_carries_error_text(caplog):
+    """A tool's error can quote the user's data; only codes leave the turn."""
     watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
     assert watch is not None
     private = "Customer list for jane@example.com could not be read"
 
-    with patch(f"{_ALERT}.sentry_sdk"), caplog.at_level(logging.WARNING, _ALERT):
+    with (
+        patch(f"{_ALERT}.sentry_sdk") as sentry,
+        caplog.at_level(logging.WARNING, _ALERT),
+    ):
         watch.observe(
             StreamToolOutputAvailable(
                 toolCallId="call-1",
@@ -120,12 +134,26 @@ def test_the_failure_log_line_carries_no_error_text(caplog):
                 output=ErrorResponse(message=private, error=private).model_dump_json(),
             )
         )
+        watch.observe(
+            StreamToolOutputAvailable(
+                toolCallId="call-2",
+                toolName="run_block",
+                output=ErrorResponse(
+                    message=private, error="block_not_found"
+                ).model_dump_json(),
+            )
+        )
         watch.report(None)
         watch.report(private)
 
-    assert "Scheduled copilot turn failed" in caplog.text
-    assert "failed tools: run_agent" in caplog.text
+    assert "failed tools: run_agent (unclassified), run_block (block_not_found)" in (
+        caplog.text
+    )
+    assert "turn error: unclassified" in caplog.text
     assert "jane@example.com" not in caplog.text
+    sent = str(sentry.mock_calls)
+    assert "block_not_found" in sent
+    assert "jane@example.com" not in sent
 
 
 def test_scheduled_turn_that_errors_raises_an_alert():
