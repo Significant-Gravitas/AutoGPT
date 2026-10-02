@@ -78,10 +78,8 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
-from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
-from backend.util.posthog_events import PostHogEvent
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
     continuous_retry,
@@ -713,27 +711,6 @@ async def _enqueue_next_nodes(
     ]
 
 
-def _expert_run_completed_event(
-    graph_exec: GraphExecutionEntry, status: ExecutionStatus
-) -> Optional[dict]:
-    """Funnel payload for a finished top-level expert run, else None.
-
-    Mirrors the gating in ``expert_posts._post_run_result`` so the funnel
-    counts exactly the runs that can post: an expert-attributed, non-dry-run,
-    top-level execution that reached a terminal status. Execution origin
-    (schedule vs manual vs webhook) is not persisted anywhere, so the event
-    covers every such run rather than pretending to know the trigger.
-    """
-    expert_id = expert_posts.completed_expert_id(graph_exec, status)
-    if expert_id is None:
-        return None
-    return {
-        "expert_id": expert_id,
-        "status": status.value,
-        "graph_exec_id": graph_exec.graph_exec_id,
-    }
-
-
 class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
@@ -1130,15 +1107,6 @@ class ExecutionProcessor:
                 status=exec_meta.status,
                 stats=exec_stats,
             )
-            # Only once the terminal state is persisted.
-            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
-            if run_event is not None:
-                emit_funnel_event(
-                    graph_exec.user_id,
-                    PostHogEvent.EXPERT_RUN_COMPLETED,
-                    run_event,
-                    f"expert_run_completed:{graph_exec.graph_exec_id}",
-                )
 
     async def charge_node_usage(
         self,
