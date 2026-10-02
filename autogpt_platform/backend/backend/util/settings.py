@@ -606,6 +606,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Blank leaves trial customers out of MailerLite."
         ),
     )
+    mailerlite_checkout_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding everyone who opened Stripe checkout, "
+            "which GTM segments for outreach. Blank leaves checkout openers "
+            "out of MailerLite."
+        ),
+    )
     mailerlite_api_url: str = Field(
         default="https://connect.mailerlite.com/api",
         description=(

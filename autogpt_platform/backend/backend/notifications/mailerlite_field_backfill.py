@@ -1,9 +1,10 @@
-"""Give every account the MailerLite status and dates the live code would have.
+"""Give accounts the MailerLite status and dates the live code would have.
 
 Signups were never synced and the lifecycle handlers only react to new
 events, so this works out each account's fields from scratch: the signup date
 from our database, the rest from Stripe, by the rules in `subscriber_fields.py`.
-Accounts with no Stripe customer are `signed`.
+Only accounts with a Stripe customer are given (see `cli/mailerlite_backfill`):
+MailerLite holds checkout openers, not every signup.
 
 Resumable by construction: the fields MailerLite already holds are read first
 and only the difference is written, so an interrupted or repeated run picks up
@@ -21,11 +22,11 @@ from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 from backend.data.notifications import SubscriberField, SubscriptionStatus
 from backend.notifications.mailerlite import (
     API_BASE,
-    FIELD_TYPES,
     MailerLiteError,
     _client,
     _headers,
     _require_token,
+    field_type,
 )
 from backend.notifications.mailerlite_backfill import (
     BATCH_SIZE,
@@ -55,6 +56,9 @@ class Person(BaseModel):
     email: str
     created_at: datetime
     subscriptions: list[Subscription] = []
+    stripe_customer_id: str | None = None
+    # The browser's IANA timezone, for the checkout opener's country.
+    timezone: str | None = None
 
 
 class FieldChange(BaseModel):
@@ -237,7 +241,7 @@ def _normalise(field: SubscriberField, value: object) -> str | None:
         return None
     text = str(value)
     # A date may come back with a time part.
-    return text[:10] if FIELD_TYPES[field] == "date" else text
+    return text[:10] if field_type(field) == "date" else text
 
 
 def _valid(email: str) -> bool:
