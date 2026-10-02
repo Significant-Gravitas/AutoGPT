@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
@@ -21,6 +21,7 @@ from backend.copilot.active_turns import (
 )
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
+from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
     SpawnRequest,
@@ -315,6 +316,17 @@ class CoPilotExecutionEntry(BaseModel):
     at dispatch from the spawning turn's. ``None`` only for entries queued
     before the field existed."""
 
+    unattended: bool = False
+    """The scheduler fired this turn, so nobody is watching it even if its chat
+    is the user's own. Tools then never hand a question back to the user
+    (SECRT-2804); see ``set_turn_unattended``."""
+
+    credential_pins: CredentialPins = Field(default_factory=dict)
+    """``{provider: pin}``: the accounts the schedule that fired this turn was
+    set up to run on. They win over the chat's own picks, and a pinned account
+    that is gone fails the step rather than falling back to another one; see
+    ``set_turn_credential_pins``. Empty for every other turn."""
+
     request_arrival_at: float = 0.0
     """Unix-epoch seconds (server clock) when the originating HTTP
     ``/stream`` request arrived.  The executor's turn-start drain uses
@@ -353,6 +365,8 @@ async def enqueue_copilot_turn(
     message_metadata: dict[str, Any] | None = None,
     *,
     envelope: TurnEnvelope,
+    unattended: bool = False,
+    credential_pins: CredentialPins | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -396,6 +410,8 @@ async def enqueue_copilot_turn(
         request_arrival_at=request_arrival_at,
         message_metadata=message_metadata,
         envelope=envelope,
+        unattended=unattended,
+        credential_pins=credential_pins or {},
     )
 
     queue_client = await get_async_copilot_queue()
@@ -426,6 +442,8 @@ async def schedule_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    unattended: bool = False,
+    credential_pins: CredentialPins | None = None,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -493,6 +511,8 @@ async def schedule_turn(
             request_arrival_at=request_arrival_at,
             spawn=spawn,
             message_metadata=message_metadata,
+            unattended=unattended,
+            credential_pins=credential_pins,
         )
 
 
@@ -517,6 +537,8 @@ async def dispatch_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    unattended: bool = False,
+    credential_pins: CredentialPins | None = None,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -588,6 +610,8 @@ async def dispatch_turn(
             request_arrival_at=request_arrival_at,
             message_metadata=message_metadata,
             envelope=envelope,
+            unattended=unattended,
+            credential_pins=credential_pins,
         )
         slot.keep()
         committed = True
