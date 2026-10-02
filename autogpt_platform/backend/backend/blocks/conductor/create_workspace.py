@@ -23,7 +23,7 @@ from ._api import (
     clean,
 )
 from ._config import conductor
-from ._transcript import wait_for_reply
+from ._transcript import find_prompt_row, prompt_cursor, wait_for_reply
 
 CREDENTIALS_DESCRIPTION = "Conductor API key from app.conductor.build/users/api-keys"
 
@@ -134,6 +134,12 @@ class ConductorCreateWorkspaceBlock(Block):
         initial_message_id: str = SchemaField(
             description="ID of the initial prompt message, empty when none was sent"
         )
+        next_after: str = SchemaField(
+            description="Transcript row ID of the prompt's row; pass it as "
+            "`after` to Get Session to read the agent's turn. Falls back to "
+            "initial_message_id while the prompt has no row yet, which Get Session "
+            "also accepts"
+        )
         session_status: str = SchemaField(
             description="idle, working or error once waiting finished"
         )
@@ -184,11 +190,13 @@ class ConductorCreateWorkspaceBlock(Block):
                 ("deep_link", "conductor://workspace/ws_1"),
                 ("base_branch", ""),
                 ("initial_message_id", "msg_1"),
+                ("next_after", "row_1"),
                 ("workspace_id", "ws_1"),
                 ("session_id", "sess_1"),
                 ("deep_link", "conductor://workspace/ws_1"),
                 ("base_branch", "dev"),
                 ("initial_message_id", "msg_1"),
+                ("next_after", "row_1"),
                 ("session_status", "idle"),
                 ("reply", "Done, the fix is on branch fix-login."),
                 ("messages", lambda m: len(m) == 1),
@@ -207,6 +215,7 @@ class ConductorCreateWorkspaceBlock(Block):
                         "deepLink": "conductor://m/1",
                     },
                 },
+                "_prompt_row": lambda *args, **kwargs: "row_1",
                 "_wait": lambda *args, **kwargs: {
                     "session_status": "idle",
                     "error_message": "",
@@ -236,6 +245,7 @@ class ConductorCreateWorkspaceBlock(Block):
                     "reply": "Done, the fix is on branch fix-login.",
                     "timed_out": False,
                     "truncated": False,
+                    "prompt_row_id": "row_1",
                 },
             },
         )
@@ -244,6 +254,13 @@ class ConductorCreateWorkspaceBlock(Block):
         self, credentials: APIKeyCredentials, payload: dict[str, Any]
     ) -> dict[str, Any]:
         return await ConductorClient(credentials).create_workspace(payload)
+
+    async def _prompt_row(
+        self, credentials: APIKeyCredentials, session_id: str, message_id: str
+    ) -> str:
+        return await find_prompt_row(
+            ConductorClient(credentials), session_id, message_id, search_history=False
+        )
 
     async def _wait(
         self,
@@ -311,7 +328,12 @@ class ConductorCreateWorkspaceBlock(Block):
         yield "base_branch", input_data.base_branch
         yield "initial_message_id", message_id
 
-        if not (input_data.wait_for_reply and session_id and message_id):
+        if not (session_id and message_id):
+            return
+        if not input_data.wait_for_reply:
+            yield "next_after", await prompt_cursor(
+                self._prompt_row(credentials, session_id, message_id), message_id
+            )
             return
         try:
             waited = await self._wait(
@@ -327,6 +349,7 @@ class ConductorCreateWorkspaceBlock(Block):
                 block_name=self.name,
                 block_id=self.id,
             ) from e
+        yield "next_after", str(waited.get("prompt_row_id") or message_id)
         yield "session_status", waited["session_status"]
         yield "reply", waited["reply"]
         yield "messages", waited["messages"]
