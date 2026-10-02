@@ -20,9 +20,11 @@ from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
 )
+from backend.executor import schedule_events
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
+    FOLLOWUP_NOTICE_KIND,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -34,8 +36,12 @@ from backend.executor.scheduler import (
     _execute_copilot_turn,
     _execute_graph,
     _expert_scope_status,
+    _followup_notice_text,
+    _format_fire_time,
     _job_to_info,
     _next_run_time_iso,
+    _post_followup_notice,
+    _record_copilot_turn_outcome,
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
     _routine_turn_permissions,
@@ -52,6 +58,25 @@ from backend.util.service import EXPOSED_FLAG
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+
+
+class OutcomeSinks(NamedTuple):
+    """Where a fire outcome lands: the activity-event recorder and the
+    pinned-chat notice. Both are stubbed for every test so no dispatch path
+    reaches the DatabaseManager RPC; tests that care assert on them."""
+
+    fired: MagicMock
+    notice: AsyncMock
+
+
+@pytest.fixture(autouse=True)
+def outcome_sinks(monkeypatch: pytest.MonkeyPatch) -> OutcomeSinks:
+    sinks = OutcomeSinks(fired=MagicMock(), notice=AsyncMock())
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_fired", sinks.fired
+    )
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}._post_followup_notice", sinks.notice)
+    return sinks
 
 
 @pytest.fixture(autouse=True)
@@ -557,7 +582,7 @@ async def test_fresh_expert_one_shot_retries_when_workspace_is_unavailable():
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_schedule_turn.assert_not_awaited()
-    mock_reschedule.assert_awaited_once_with(args)
+    mock_reschedule.assert_awaited_once_with(args, session_id=None)
 
 
 @pytest.mark.asyncio
@@ -833,6 +858,491 @@ async def test_execute_copilot_turn_swallows_generic_exceptions():
     ):
         # Must not raise — scheduler can't propagate exceptions out of jobs.
         await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# Fire outcome records (SECRT-2787)
+#
+# APScheduler forgets a one-shot the moment it fires, so every exit of
+# ``_execute_copilot_turn`` must leave a record a later ``list_schedules`` or
+# ``<session_context>`` can read, and a pinned chat must hear about a turn
+# that never went out.
+# ---------------------------------------------------------------------------
+
+
+def _fired_record(sinks: OutcomeSinks) -> schedule_events.ScheduleFiredRecord:
+    sinks.fired.assert_called_once()
+    return sinks.fired.call_args.args[0]
+
+
+def _retry_info(schedule_id: str = "sched-1-cap-retry") -> CopilotTurnJobInfo:
+    return CopilotTurnJobInfo(
+        schedule_id=schedule_id,
+        user_id="user-1",
+        session_id="session-1",
+        message="check CI",
+        run_at=datetime(2026, 9, 30, 6, 17, tzinfo=timezone.utc),
+        id=schedule_id,
+        name="retry",
+        next_run_time="2026-09-30T06:17:25+00:00",
+        timezone="UTC",
+    )
+
+
+@pytest.mark.asyncio
+async def test_cap_rejection_on_pinned_one_shot_leaves_a_record_and_a_notice(
+    outcome_sinks: OutcomeSinks,
+):
+    """The SECRT-2787 scenario: a pinned one-shot hits the concurrency cap.
+    The retry is scheduled AND the fire is recorded as skipped (pointing at
+    the retry) AND the chat is told — not just a log line."""
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
+    args = _args()
+    retry = _retry_info()
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("cap")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id=None)),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_cap",
+            new=AsyncMock(return_value=retry),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "skipped"
+    assert record.schedule_id == "sched-1"
+    assert record.session_id == "session-1"
+    assert record.retry_schedule_id == "sched-1-cap-retry"
+    assert "concurrent-turn limit" in record.reason
+    assert "retrying at 2026-09-30T06:17:25+00:00" in record.reason
+
+    outcome_sinks.notice.assert_awaited_once()
+    kwargs = outcome_sinks.notice.call_args.kwargs
+    assert kwargs["session_id"] == "session-1"
+    assert "did not run" in kwargs["content"]
+    assert kwargs["metadata"]["kind"] == FOLLOWUP_NOTICE_KIND
+    assert kwargs["metadata"]["status"] == "skipped"
+    assert kwargs["metadata"]["retry_schedule_id"] == "sched-1-cap-retry"
+
+
+@pytest.mark.asyncio
+async def test_cap_rejection_with_retries_exhausted_records_a_drop(
+    outcome_sinks: OutcomeSinks,
+):
+    """Once the cap retry budget is spent the turn is gone for good. That
+    drop — the one that cost ~85 minutes in SECRT-2787 — must be recorded
+    as ``dropped`` and told to the chat with a reschedule hint."""
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
+    args = _args(cap_retry_count=_MAX_CAP_RETRIES)
+    mock_client = AsyncMock()
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("cap")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id=None)),
+        ),
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
+    record = _fired_record(outcome_sinks)
+    assert record.status == "dropped"
+    assert record.retry_schedule_id is None
+    assert "concurrency cap" in record.reason
+
+    content = outcome_sinks.notice.call_args.kwargs["content"]
+    assert "did not run" in content
+    assert "schedule it again" in content
+
+
+@pytest.mark.asyncio
+async def test_fresh_chat_drop_is_recorded_and_noticed_in_the_minted_session(
+    outcome_sinks: OutcomeSinks,
+):
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
+    args = _args(session_id=None, cap_retry_count=_MAX_CAP_RETRIES)
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("cap")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=AsyncMock(return_value=MagicMock(session_id="fresh-1", expert_id=None)),
+        ),
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=AsyncMock()),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "dropped"
+    assert record.session_id == "fresh-1"
+    outcome_sinks.notice.assert_awaited_once()
+    assert outcome_sinks.notice.call_args.kwargs["session_id"] == "fresh-1"
+
+
+@pytest.mark.asyncio
+async def test_cap_rejection_on_cron_records_a_skip_without_a_retry_job(
+    outcome_sinks: OutcomeSinks,
+):
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
+    args = _args(run_at=None, cron="*/5 * * * *")
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("cap")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id=None)),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "skipped"
+    assert record.cron == "*/5 * * * *"
+    assert record.reason == "the account was at its concurrent-turn limit"
+    content = outcome_sinks.notice.call_args.kwargs["content"]
+    # The retry hint comes from the notice text alone, so it appears once.
+    assert content.count("next scheduled run will try again") == 1
+    assert content.endswith(
+        "did not run: the account was at its concurrent-turn limit. "
+        "The next scheduled run will try again."
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_exception_records_a_failure_and_alerts(
+    outcome_sinks: OutcomeSinks,
+):
+    """A queue blip used to be a single ``logger.error``. Now it is a
+    ``failed`` record, a notice in the chat, and a Sentry event."""
+    args = _args()
+    error = RuntimeError("transient queue error")
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock(side_effect=error)),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id=None)),
+        ),
+        patch(f"{_SCHEDULER_PATH}.sentry_sdk.capture_exception") as capture,
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "failed"
+    assert "RuntimeError" in record.reason
+    # The raw exception text stays out of the user-facing reason.
+    assert "transient queue error" not in record.reason
+    capture.assert_called_once_with(error)
+    assert outcome_sinks.notice.call_args.kwargs["session_id"] == "session-1"
+
+
+@pytest.mark.asyncio
+async def test_successful_dispatch_records_dispatched_without_a_notice(
+    outcome_sinks: OutcomeSinks,
+):
+    args = _args()
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id=None)),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "dispatched"
+    assert record.session_id == "session-1"
+    outcome_sinks.notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fresh_session_dispatch_records_the_minted_session(
+    outcome_sinks: OutcomeSinks,
+):
+    args = _args(session_id=None)
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=AsyncMock(return_value=MagicMock(session_id="fresh-1", expert_id=None)),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert _fired_record(outcome_sinks).session_id == "fresh-1"
+
+
+@pytest.mark.asyncio
+async def test_missing_session_records_a_skip_but_cannot_notify(
+    outcome_sinks: OutcomeSinks,
+):
+    args = _args()
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", new=AsyncMock(return_value=None)),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", new=AsyncMock()),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "skipped"
+    assert "no longer exists" in record.reason
+    outcome_sinks.notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_inactive_expert_scope_records_a_skip_in_the_pinned_chat(
+    outcome_sinks: OutcomeSinks,
+):
+    args = _args(expert_id="expert-1")
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="paused"),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "skipped"
+    assert record.expert_id == "expert-1"
+    assert "paused" in record.reason
+    assert outcome_sinks.notice.call_args.kwargs["session_id"] == "session-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["archived", "paused"])
+async def test_inactive_expert_on_a_cron_records_each_skip_silently(
+    status, outcome_sinks: OutcomeSinks
+):
+    """A cron notice is keyed on its fire time, so it never dedupes: a paused
+    expert would post the same "did not run" line every tick. The owner did
+    this themselves, so the record and metric stay and the chat stays quiet."""
+    args = _args(run_at=None, cron="*/5 * * * *", expert_id="expert-1")
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value=status),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "skipped"
+    assert status in record.reason
+    outcome_sinks.notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unavailable_expert_on_a_cron_still_notifies(
+    outcome_sinks: OutcomeSinks,
+):
+    """A lookup outage is not the owner's doing, so the missed tick is told."""
+    args = _args(run_at=None, cron="*/5 * * * *", expert_id="expert-1")
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=AsyncMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert _fired_record(outcome_sinks).status == "skipped"
+    assert outcome_sinks.notice.call_args.kwargs["session_id"] == "session-1"
+
+
+@pytest.mark.asyncio
+async def test_switched_off_routine_records_a_skip_silently(
+    outcome_sinks: OutcomeSinks,
+):
+    args = _args(routine_id="routine-1")
+    routine = MagicMock(id="routine-1", enabled=False, session_id=None)
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}._routine_for_turn",
+            new=AsyncMock(return_value=routine),
+        ),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", new=AsyncMock()),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert _fired_record(outcome_sinks).status == "skipped"
+    outcome_sinks.notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_lookup_retry_exhaustion_records_a_drop(
+    outcome_sinks: OutcomeSinks,
+):
+    args = _args(expert_lookup_retry_count=_MAX_EXPERT_LOOKUP_RETRIES)
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await _reschedule_one_shot_after_expert_unavailable(args)
+
+    assert result is None
+    record = _fired_record(outcome_sinks)
+    assert record.status == "dropped"
+    assert "expert lookup" in record.reason
+
+
+@pytest.mark.asyncio
+async def test_reschedule_returns_the_retry_job(outcome_sinks: OutcomeSinks):
+    args = _args(cap_retry_count=0)
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule.return_value = _retry_info()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await _reschedule_one_shot_after_cap(args)
+
+    assert result is not None and result.id == "sched-1-cap-retry"
+    # The caller records the skip; the reschedule itself records nothing.
+    outcome_sinks.fired.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reschedule_failure_records_a_drop(outcome_sinks: OutcomeSinks):
+    args = _args(cap_retry_count=0)
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule.side_effect = RuntimeError("scheduler down")
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await _reschedule_one_shot_after_cap(args)
+
+    assert result is None
+    record = _fired_record(outcome_sinks)
+    assert record.status == "dropped"
+    assert "could not be scheduled" in record.reason
+
+
+@pytest.mark.asyncio
+async def test_record_outcome_survives_both_sinks_failing(
+    outcome_sinks: OutcomeSinks,
+):
+    """It runs inside the handlers that keep the scheduler alive, so a
+    broken recorder or chat write must not turn into a crashed job."""
+    outcome_sinks.fired.side_effect = RuntimeError("db manager down")
+    outcome_sinks.notice.side_effect = RuntimeError("redis down")
+    await _record_copilot_turn_outcome(
+        _args(), status="failed", reason="boom", error=RuntimeError("boom")
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_outcome_increments_the_metric():
+    from backend.monitoring.instrumentation import COPILOT_FOLLOWUP_OUTCOMES
+
+    before = COPILOT_FOLLOWUP_OUTCOMES.labels(status="dropped")._value.get()
+    await _record_copilot_turn_outcome(_args(), status="dropped", reason="x")
+    assert COPILOT_FOLLOWUP_OUTCOMES.labels(status="dropped")._value.get() == (
+        before + 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_followup_notice_writes_a_deterministic_message_id():
+    """Same schedule + fire + status → same message id, so a double fire
+    dedupes in ``append_session_notice`` instead of posting twice."""
+    args = _args()
+    store = MagicMock()
+    store.append_session_notice = AsyncMock(return_value=True)
+    due = "2026-09-30T06:12:25+00:00"
+    first_attempt = {
+        "fired_at": "2026-09-30T06:12:26+00:00",
+        "status": "dropped",
+        "scheduled_for": due,
+    }
+    replay = {
+        "fired_at": "2026-09-30T06:14:00+00:00",
+        "status": "dropped",
+        "scheduled_for": due,
+    }
+    cron_tick = {
+        "fired_at": "2026-09-30T06:14:00+00:00",
+        "status": "dropped",
+        "scheduled_for": None,
+    }
+    with patch(f"{_SCHEDULER_PATH}.chat_db", return_value=store):
+        for metadata in (first_attempt, replay, cron_tick):
+            await _post_followup_notice(
+                args, session_id="session-1", content="notice", metadata=metadata
+            )
+
+    first, second, third = store.append_session_notice.call_args_list
+    # Same occurrence, later attempt: same id, so the chat gets one notice.
+    assert first.kwargs["message_id"] == second.kwargs["message_id"]
+    # No due time (cron): the fire time keeps each tick's notice distinct.
+    assert third.kwargs["message_id"] != first.kwargs["message_id"]
+    assert first.kwargs["user_id"] == "user-1"
+    assert first.kwargs["session_id"] == "session-1"
+    assert first.kwargs["metadata"] is first_attempt
+
+
+def test_notice_text_names_the_due_time_in_the_users_zone():
+    args = _args(
+        run_at=datetime(2026, 9, 30, 6, 12, tzinfo=timezone.utc),
+        user_timezone="Europe/Berlin",
+        message="check CI on PR #999",
+    )
+    text = _followup_notice_text(
+        args,
+        status="dropped",
+        reason="the account was at its concurrent-turn limit",
+        fired_at=datetime.now(tz=timezone.utc),
+        retry=None,
+    )
+    assert "2026-09-30 08:12 CEST" in text
+    assert '"check CI on PR #999"' in text
+    assert text.endswith("Ask me to schedule it again if you still want it.")
+
+
+def test_notice_text_for_a_deferred_fire_has_no_reschedule_hint():
+    text = _followup_notice_text(
+        _args(),
+        status="skipped",
+        reason="cap; retrying at 2026-09-30T06:17:25+00:00",
+        fired_at=datetime.now(tz=timezone.utc),
+        retry=_retry_info(),
+    )
+    assert "retrying at" in text
+    assert "schedule it again" not in text
+
+
+def test_format_fire_time_falls_back_to_utc_on_a_bad_zone():
+    when = datetime(2026, 9, 30, 6, 12, tzinfo=timezone.utc)
+    assert _format_fire_time(when, "Not/AZone") == "2026-09-30 06:12 UTC"
+    assert _format_fire_time(when, None) == "2026-09-30 06:12 UTC"
 
 
 # ---------------------------------------------------------------------------

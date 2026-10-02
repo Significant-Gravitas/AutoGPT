@@ -59,7 +59,10 @@ from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_cre
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
-from backend.data.activity_event import create_activity_event
+from backend.data.activity_event import (
+    create_activity_event,
+    list_activity_events_by_type,
+)
 from backend.data.alerts import (
     count_alerts_sent_since,
     get_briefing_alert_conditions,
@@ -488,6 +491,7 @@ class DatabaseManager(AppService):
 
     # ============ Activity Events ============ #
     create_activity_event = _(create_activity_event)
+    list_activity_events_by_type = _(list_activity_events_by_type)
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
@@ -644,6 +648,8 @@ class DatabaseManager(AppService):
     # Exposed so the Prisma-less scheduler process can compose, store and
     # post a briefing via db_accessors / the DatabaseManager RPC.
     append_plain_session_message = _(chat_db.append_plain_session_message)
+    # Scheduled follow-up outcome notices (scheduler; runs Prisma-less).
+    append_session_notice = _(chat_db.append_session_notice)
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefings = _(get_latest_briefings)
@@ -728,6 +734,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Activity events (executor completion hook)
     create_activity_event = _(d.create_activity_event)
+    list_activity_events_by_type = _(d.list_activity_events_by_type)
 
     # Morning briefing (scheduler cron; runs Prisma-less)
     append_plain_session_message = _(d.append_plain_session_message)
@@ -844,6 +851,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message
+    append_session_notice = d.append_session_notice
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
     get_latest_briefings = d.get_latest_briefings
@@ -937,6 +945,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Activity Events ============ #
     create_activity_event = d.create_activity_event
+    list_activity_events_by_type = d.list_activity_events_by_type
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions

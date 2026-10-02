@@ -468,7 +468,7 @@ model ActivityEvent {
 
   @@index([userId, createdAt])
   @@index([userId, category, createdAt])
-  @@index([sessionId])
+  @@index([sessionId, createdAt])
   @@index([expertId, createdAt])
 }
 

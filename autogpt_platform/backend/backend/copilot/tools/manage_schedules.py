@@ -1,6 +1,8 @@
 """Tools for listing and deleting scheduled jobs (agent runs + copilot turns)."""
 
+import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -11,7 +13,14 @@ from backend.api.features.schedule_visibility import (
     is_visible_schedule,
 )
 from backend.copilot.model import ChatSession
-from backend.data.activity_event import ActivityEventDraft
+from backend.data.activity_event import ActivityEvent, ActivityEventDraft
+from backend.data.db_accessors import activity_event_db
+from backend.executor.schedule_events import (
+    UNDELIVERED_OUTCOME_STATUSES,
+    FollowupOutcomeStatus,
+    ScheduleFireOutcome,
+    fire_outcome_from_event,
+)
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -77,11 +86,109 @@ class ScheduleSummary(BaseModel):
     message: str | None = None
 
 
+class ScheduleOutcomeSummary(BaseModel):
+    """How one recent copilot follow-up fire ended.
+
+    APScheduler forgets a one-shot the moment it fires, so this is the only
+    way the model can tell "already ran" from "was dropped" from "never
+    existed" — all three otherwise read as an empty schedule list.
+    """
+
+    schedule_id: str | None
+    status: FollowupOutcomeStatus
+    reason: str
+    fired_at: str
+    # The time the one-shot was due; None for a cron tick.
+    scheduled_for: str | None = None
+    session_id: str | None = None
+    expert_id: str | None = None
+    message: str
+    # Set when the fire was deferred into a new one-shot; look it up to see
+    # whether that retry is still pending.
+    retry_schedule_id: str | None = None
+
+
 class ScheduleListResponse(ToolResponseBase):
     """Response containing a list of schedules."""
 
     type: ResponseType = ResponseType.SCHEDULE_LIST
     schedules: list[ScheduleSummary]
+    # Copilot follow-up fires from the last ``_OUTCOME_WINDOW``, newest first.
+    recent_outcomes: list[ScheduleOutcomeSummary] = []
+
+
+_OUTCOME_WINDOW = timedelta(hours=24)
+_MAX_OUTCOMES = 20
+
+
+def _to_outcome_summary(outcome: ScheduleFireOutcome) -> ScheduleOutcomeSummary:
+    return ScheduleOutcomeSummary(
+        schedule_id=outcome.schedule_id,
+        status=outcome.status,
+        reason=outcome.reason,
+        fired_at=outcome.fired_at.isoformat(),
+        scheduled_for=outcome.scheduled_for,
+        session_id=outcome.session_id,
+        expert_id=outcome.expert_id,
+        message=outcome.message_preview,
+        retry_schedule_id=outcome.retry_schedule_id,
+    )
+
+
+async def _outcome_events(
+    user_id: str, session: ChatSession, statuses: tuple[str, ...]
+) -> list[ActivityEvent]:
+    """Best-effort: a failed read costs the history, never the pending list."""
+    try:
+        return await activity_event_db().list_activity_events_by_type(
+            user_id=user_id,
+            since=datetime.now(tz=timezone.utc) - _OUTCOME_WINDOW,
+            event_types=[f"schedule.{status}" for status in statuses],
+            # Scoped in the query, not after it: an expert must see its own
+            # dropped check even when twenty newer fires belong to others.
+            expert_id=session.expert_id,
+            limit=_MAX_OUTCOMES,
+        )
+    except Exception:
+        logger.warning(
+            "list_schedules: could not load follow-up outcomes for user %s",
+            user_id[:12],
+            exc_info=True,
+        )
+        return []
+
+
+async def _recent_outcomes(
+    user_id: str, session: ChatSession
+) -> list[ScheduleOutcomeSummary]:
+    """Follow-up fire outcomes in scope for this session, newest first.
+
+    Undelivered and dispatched fires are capped separately, so a busy cron's
+    dispatched rows cannot push an older drop out of the list."""
+    undelivered, dispatched = await asyncio.gather(
+        _outcome_events(user_id, session, UNDELIVERED_OUTCOME_STATUSES),
+        _outcome_events(user_id, session, ("dispatched",)),
+    )
+    events = sorted(
+        [*undelivered, *dispatched], key=lambda event: event.created_at, reverse=True
+    )
+    outcomes = [fire_outcome_from_event(event) for event in events]
+    return [
+        _to_outcome_summary(outcome)
+        for outcome in outcomes
+        if outcome is not None
+        and (session.expert_id is None or outcome.expert_id == session.expert_id)
+    ]
+
+
+def _outcome_sentence(outcomes: list[ScheduleOutcomeSummary]) -> str:
+    if not outcomes:
+        return ""
+    undelivered = sum(1 for o in outcomes if o.status != "dispatched")
+    sentence = f" {len(outcomes)} follow-up fire(s) in the last 24h"
+    if undelivered:
+        sentence += f", {undelivered} of which did not run (see recent_outcomes)"
+    return sentence + "."
 
 
 def _to_summary(
@@ -140,8 +247,13 @@ class ListSchedulesTool(BaseTool):
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
-            "follow-ups). Use before tool:delete_schedule. Pending follow-ups "
-            "for this session are already summarised in <session_context>."
+            "follow-ups), plus recent_outcomes: how each copilot follow-up "
+            "that fired in the last 24h ended (dispatched, skipped, dropped, "
+            "failed). A one-shot leaves the pending list once it fires, so "
+            "check recent_outcomes before concluding a follow-up was never "
+            "scheduled. Use before tool:delete_schedule. Pending and "
+            "undelivered follow-ups for this session are already summarised "
+            "in <session_context>."
         )
 
     @property
@@ -213,14 +325,16 @@ class ListSchedulesTool(BaseTool):
             _to_summary(job) for job in in_scope if is_visible_schedule(job, hidden)
         ]
 
+        recent_outcomes = await _recent_outcomes(user_id, session)
         message = (
             f"Found {len(schedules)} schedule(s)."
             if schedules
             else "No schedules found."
-        )
+        ) + _outcome_sentence(recent_outcomes)
         return ScheduleListResponse(
             message=message,
             schedules=schedules,
+            recent_outcomes=recent_outcomes,
             session_id=session_id,
         )
 

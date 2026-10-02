@@ -28950,12 +28950,54 @@
             "items": { "$ref": "#/components/schemas/ScheduleSummary" },
             "type": "array",
             "title": "Schedules"
+          },
+          "recent_outcomes": {
+            "items": { "$ref": "#/components/schemas/ScheduleOutcomeSummary" },
+            "type": "array",
+            "title": "Recent Outcomes",
+            "default": []
           }
         },
         "type": "object",
         "required": ["message", "schedules"],
         "title": "ScheduleListResponse",
         "description": "Response containing a list of schedules."
+      },
+      "ScheduleOutcomeSummary": {
+        "properties": {
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["dispatched", "skipped", "dropped", "failed"],
+            "title": "Status"
+          },
+          "reason": { "type": "string", "title": "Reason" },
+          "fired_at": { "type": "string", "title": "Fired At" },
+          "scheduled_for": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scheduled For"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "retry_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Retry Schedule Id"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_id", "status", "reason", "fired_at", "message"],
+        "title": "ScheduleOutcomeSummary",
+        "description": "How one recent copilot follow-up fire ended.\n\nAPScheduler forgets a one-shot the moment it fires, so this is the only\nway the model can tell \"already ran\" from \"was dropped\" from \"never\nexisted\" — all three otherwise read as an empty schedule list."
       },
       "ScheduleSummary": {
         "properties": {

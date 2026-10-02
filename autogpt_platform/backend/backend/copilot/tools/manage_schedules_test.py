@@ -1,6 +1,6 @@
 """Tests for ListSchedulesTool and DeleteScheduleTool."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,12 +15,63 @@ from backend.copilot.tools.manage_schedules import (
     ScheduleToggledResponse,
 )
 from backend.copilot.tools.models import ErrorResponse
+from backend.data.activity_event import ActivityEvent
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from ._test_data import make_session
 
 _USER = "test-user-schedules"
 _SCHEDULES_PATH = "backend.copilot.tools.manage_schedules"
+
+
+@pytest.fixture(autouse=True)
+def outcome_events():
+    """The list tool also reads recent follow-up fire outcomes; default to
+    none so the pre-existing listing tests see exactly what they always did."""
+    store = MagicMock()
+    store.list_activity_events_by_type = AsyncMock(return_value=[])
+    with patch(f"{_SCHEDULES_PATH}.activity_event_db", return_value=store):
+        yield store
+
+
+def _serve(store: MagicMock, events: list[ActivityEvent]) -> None:
+    """Answer each read like the real query: only the asked-for types,
+    newest first, at most ``limit`` rows."""
+
+    async def list_by_type(*, event_types, limit, **_):
+        matching = [e for e in events if e.event_type in event_types]
+        matching.sort(key=lambda e: e.created_at, reverse=True)
+        return matching[:limit]
+
+    store.list_activity_events_by_type = AsyncMock(side_effect=list_by_type)
+
+
+def _fire_event(
+    *,
+    event_id: str = "evt-1",
+    status: str = "dropped",
+    schedule_id: str = "cop-gone",
+    expert_id: str | None = None,
+    session_id: str = "session-xyz",
+    created_at: datetime = datetime(2026, 9, 30, 6, 12, 25, tzinfo=timezone.utc),
+) -> ActivityEvent:
+    return ActivityEvent(
+        id=event_id,
+        user_id=_USER,
+        created_at=created_at,
+        category="SCHEDULE",
+        event_type=f"schedule.{status}",
+        title="x",
+        schedule_id=schedule_id,
+        session_id=session_id,
+        expert_id=expert_id,
+        data={
+            "status": status,
+            "reason": "the account was at its concurrent-turn limit",
+            "scheduled_for": "2026-09-30T06:12:00+00:00",
+            "message_preview": "check CI on PR #999",
+        },
+    )
 
 
 def _make_graph_info(
@@ -163,6 +214,148 @@ async def test_list_schedules_empty(list_tool, session):
     assert isinstance(result, ScheduleListResponse)
     assert len(result.schedules) == 0
     assert "No schedules" in result.message
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_reports_a_dropped_followup_after_the_job_is_gone(
+    list_tool, session, outcome_events
+):
+    """SECRT-2787: the one-shot fired and was dropped, so the scheduler has
+    nothing pending — but the outcome record still tells the model the
+    check never ran instead of letting it conclude nothing was scheduled."""
+    _serve(outcome_events, [_fire_event()])
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert result.schedules == []
+    assert len(result.recent_outcomes) == 1
+    outcome = result.recent_outcomes[0]
+    assert outcome.schedule_id == "cop-gone"
+    assert outcome.status == "dropped"
+    assert outcome.reason == "the account was at its concurrent-turn limit"
+    assert outcome.scheduled_for == "2026-09-30T06:12:00+00:00"
+    assert outcome.fired_at == "2026-09-30T06:12:25+00:00"
+    assert outcome.message == "check CI on PR #999"
+    assert result.message == (
+        "No schedules found. 1 follow-up fire(s) in the last 24h, "
+        "1 of which did not run (see recent_outcomes)."
+    )
+    calls = outcome_events.list_activity_events_by_type.call_args_list
+    assert {call.kwargs["user_id"] for call in calls} == {_USER}
+    assert sorted(set(call.kwargs["event_types"]) for call in calls) == sorted(
+        [
+            {"schedule.skipped", "schedule.dropped", "schedule.failed"},
+            {"schedule.dispatched"},
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_keeps_an_older_drop_behind_a_busy_cron(
+    list_tool, session, outcome_events
+):
+    """Dispatched and undelivered fires are capped separately, so twenty
+    newer dispatched ticks cannot push an earlier drop out of the list."""
+    base = datetime(2026, 9, 30, 6, 0, tzinfo=timezone.utc)
+    ticks = [
+        _fire_event(
+            event_id=f"tick-{i}",
+            status="dispatched",
+            schedule_id="cop-cron",
+            created_at=base + timedelta(minutes=5 * (i + 1)),
+        )
+        for i in range(25)
+    ]
+    _serve(outcome_events, [*ticks, _fire_event(created_at=base)])
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    statuses = [o.status for o in result.recent_outcomes]
+    assert statuses.count("dispatched") == 20
+    assert statuses[-1] == "dropped"
+    assert result.recent_outcomes[0].fired_at == ticks[-1].created_at.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_counts_dispatched_fires_as_delivered(
+    list_tool, session, outcome_events
+):
+    _serve(outcome_events, [_fire_event(event_id="evt-1", status="dispatched")])
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_copilot_info()])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert result.message == "Found 1 schedule(s). 1 follow-up fire(s) in the last 24h."
+    assert result.recent_outcomes[0].status == "dispatched"
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_scopes_outcomes_like_schedules(list_tool, outcome_events):
+    """An expert sees only its own follow-ups' outcomes; personal AutoPilot
+    sees every outcome on the account — the same rule as the pending list."""
+    _serve(
+        outcome_events,
+        [
+            _fire_event(event_id="evt-a", schedule_id="cop-a", expert_id="expert-a"),
+            _fire_event(event_id="evt-b", schedule_id="cop-b", expert_id="expert-b"),
+            _fire_event(event_id="evt-c", schedule_id="cop-c", expert_id=None),
+        ],
+    )
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        as_expert = await list_tool._execute(
+            user_id=_USER, session=make_session(_USER, expert_id="expert-a")
+        )
+        as_autopilot = await list_tool._execute(
+            user_id=_USER, session=make_session(_USER)
+        )
+
+    assert isinstance(as_expert, ScheduleListResponse)
+    assert [o.schedule_id for o in as_expert.recent_outcomes] == ["cop-a"]
+    # Scoped in the query itself, before the row limit applies.
+    calls = outcome_events.list_activity_events_by_type.call_args_list
+    assert [call.kwargs["expert_id"] for call in calls] == [
+        "expert-a",
+        "expert-a",
+        None,
+        None,
+    ]
+    assert isinstance(as_autopilot, ScheduleListResponse)
+    assert {o.schedule_id for o in as_autopilot.recent_outcomes} == {
+        "cop-a",
+        "cop-b",
+        "cop-c",
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_degrades_when_outcome_read_fails(
+    list_tool, session, outcome_events
+):
+    outcome_events.list_activity_events_by_type.side_effect = RuntimeError("db down")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_copilot_info()])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert len(result.schedules) == 1
+    assert result.recent_outcomes == []
+    assert result.message == "Found 1 schedule(s)."
 
 
 @pytest.mark.asyncio
