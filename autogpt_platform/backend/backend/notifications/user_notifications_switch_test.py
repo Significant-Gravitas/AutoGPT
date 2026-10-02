@@ -30,17 +30,23 @@ def _manager(sender: AsyncMock) -> delivery.NotificationManager:
 
 
 def _event(notification_type: NotificationType) -> SimpleNamespace:
-    return SimpleNamespace(type=notification_type, user_id="user-1", data=None)
+    return SimpleNamespace(type=notification_type, user_id="user-1", data=MagicMock())
 
 
+# `raising=False` so that on a build without the switch these fail on what was
+# sent, not in setup.
 @pytest.fixture
 def notifications_off(monkeypatch):
-    monkeypatch.setattr(delivery.settings.config, "enable_user_notifications", False)
+    monkeypatch.setattr(
+        delivery.settings.config, "enable_user_notifications", False, raising=False
+    )
 
 
 @pytest.fixture
 def notifications_on(monkeypatch):
-    monkeypatch.setattr(delivery.settings.config, "enable_user_notifications", True)
+    monkeypatch.setattr(
+        delivery.settings.config, "enable_user_notifications", True, raising=False
+    )
 
 
 @contextmanager
@@ -58,6 +64,7 @@ def _consumer(manager, notification_type, db_client):
                 delivery, "get_database_manager_async_client", return_value=db_client
             )
         )
+        stack.enter_context(patch.object(delivery, "TrialUpdateData"))
         stack.enter_context(
             patch.object(delivery, "generate_unsubscribe_link", return_value="u")
         )
@@ -73,9 +80,7 @@ def _consumer(manager, notification_type, db_client):
                 )
             ),
             cap=stack.enter_context(
-                patch.object(
-                    delivery, "claim_daily_send", AsyncMock(return_value=True)
-                )
+                patch.object(delivery, "claim_daily_send", AsyncMock(return_value=True))
             ),
         )
 
