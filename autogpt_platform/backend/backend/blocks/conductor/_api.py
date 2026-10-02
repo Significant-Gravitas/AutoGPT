@@ -26,18 +26,17 @@ WAIT_GUIDANCE = (
     "(wait_until_idle=true, after=next_after, prompt_message_id=the prompt's "
     "message id) rather than scheduling a check."
 )
+NEXT_AFTER_CONTINUATION = (
+    " When timed_out is true, pass it as after to Get Session with "
+    "wait_until_idle=true and the prompt's message id as prompt_message_id "
+    "to keep waiting for the reply."
+)
 TIMEOUT_DESCRIPTION = (
     f"How long to wait, in seconds (max {MAX_WAIT_SECONDS}). " + WAIT_GUIDANCE
 )
 POLL_INTERVAL_DESCRIPTION = (
     "Seconds between status checks while waiting; 0 scales it with "
     f"timeout_seconds ({MIN_POLL_INTERVAL_SECONDS}-{MAX_POLL_INTERVAL_SECONDS}s)"
-)
-NEXT_AFTER_DESCRIPTION = (
-    "ID of the last transcript row read while waiting; when timed_out is "
-    "true pass it as after to Conductor Get Session with wait_until_idle "
-    "(and the prompt's message id as prompt_message_id) to continue waiting "
-    "from where this block stopped"
 )
 
 # The API serves at most this many rows per list request (larger `limit`
@@ -120,6 +119,14 @@ def poll_interval_for(timeout_seconds: int, poll_interval_seconds: int = 0) -> i
     return max(1, min(interval, timeout_seconds // 2))
 
 
+class ConductorAPIError(ValueError):
+    """A non-2xx response from the Conductor API, with its HTTP status."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
 def clean(payload: dict[str, Any]) -> dict[str, Any]:
     """Drop None and empty-string values.
 
@@ -168,7 +175,7 @@ class ConductorClient:
             method, url, json=json_body, params=query or None
         )
         if not response.ok:
-            raise ValueError(_error_message(response))
+            raise ConductorAPIError(_error_message(response), response.status)
         try:
             body = response.json()
         except Exception:
@@ -338,7 +345,9 @@ class ConductorClient:
         """One page of a session's transcript, oldest first.
 
         `after` is an exclusive row-id cursor and cannot be combined with
-        `offset`. Pages are clamped to PAGE_SIZE rows server-side.
+        `offset`; the API answers 404 for an id that is not a row of this
+        session, which includes the receipt ids returned when a prompt is
+        sent. Pages are clamped to PAGE_SIZE rows server-side.
         """
         return await self._call(
             "GET",

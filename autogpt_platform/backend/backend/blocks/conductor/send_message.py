@@ -16,7 +16,7 @@ from backend.util.exceptions import BlockExecutionError, BlockInputError
 from ._api import (
     DEFAULT_WAIT_SECONDS,
     MAX_WAIT_SECONDS,
-    NEXT_AFTER_DESCRIPTION,
+    NEXT_AFTER_CONTINUATION,
     POLL_INTERVAL_DESCRIPTION,
     TIMEOUT_DESCRIPTION,
     WAIT_GUIDANCE,
@@ -25,7 +25,7 @@ from ._api import (
 )
 from ._config import conductor
 from ._mocks import WAIT_MOCK_REPLY
-from ._transcript import wait_for_reply
+from ._transcript import find_prompt_row, prompt_cursor, wait_for_reply
 
 CREDENTIALS_DESCRIPTION = "Conductor API key from app.conductor.build/users/api-keys"
 
@@ -62,6 +62,12 @@ class ConductorSendMessageBlock(Block):
         message_id: str = SchemaField(description="ID of the sent prompt")
         state: str = SchemaField(description="queued or sent")
         deep_link: str = SchemaField(description="Link that opens the message")
+        next_after: str = SchemaField(
+            description="Transcript row ID of the prompt's row; pass it as "
+            "`after` to Get Session to read the agent's turn. Falls back to "
+            "message_id while the prompt has no row yet, which Get Session "
+            "also accepts." + NEXT_AFTER_CONTINUATION
+        )
         session_status: str = SchemaField(
             description="idle, working or error once waiting finished"
         )
@@ -76,7 +82,6 @@ class ConductorSendMessageBlock(Block):
             description="True when the turn produced more messages than are "
             "kept; messages holds the newest ones and reply may be incomplete"
         )
-        next_after: str = SchemaField(description=NEXT_AFTER_DESCRIPTION)
         error_message: str = SchemaField(description="Session error, if any")
 
     def __init__(self):
@@ -99,12 +104,12 @@ class ConductorSendMessageBlock(Block):
                 ("message_id", "msg_1"),
                 ("state", "queued"),
                 ("deep_link", "conductor://m/1"),
+                ("next_after", "row_1"),
                 ("session_status", "idle"),
                 ("reply", "All tests pass now."),
                 ("messages", lambda m: len(m) == 1),
                 ("timed_out", False),
                 ("truncated", False),
-                ("next_after", "row_2"),
                 ("error_message", ""),
             ],
             test_mock={
@@ -114,6 +119,7 @@ class ConductorSendMessageBlock(Block):
                     "deepLink": "conductor://m/1",
                 },
                 "_wait": lambda *args, **kwargs: WAIT_MOCK_REPLY,
+                "_prompt_row": lambda *args, **kwargs: "row_1",
             },
         )
 
@@ -121,6 +127,13 @@ class ConductorSendMessageBlock(Block):
         self, credentials: APIKeyCredentials, session_id: str, message: str
     ) -> dict[str, Any]:
         return await ConductorClient(credentials).send_message(session_id, message)
+
+    async def _prompt_row(
+        self, credentials: APIKeyCredentials, session_id: str, message_id: str
+    ) -> str:
+        return await find_prompt_row(
+            ConductorClient(credentials), session_id, message_id, search_history=False
+        )
 
     async def _wait(
         self,
@@ -171,6 +184,10 @@ class ConductorSendMessageBlock(Block):
         yield "deep_link", str(sent.get("deepLink") or "")
 
         if not input_data.wait_for_reply:
+            yield "next_after", await prompt_cursor(
+                self._prompt_row(credentials, input_data.session_id, message_id),
+                message_id,
+            )
             return
         try:
             waited = await self._wait(
@@ -188,10 +205,10 @@ class ConductorSendMessageBlock(Block):
                 block_name=self.name,
                 block_id=self.id,
             ) from e
+        yield "next_after", str(waited.get("prompt_row_id") or message_id)
         yield "session_status", waited["session_status"]
         yield "reply", waited["reply"]
         yield "messages", waited["messages"]
         yield "timed_out", waited["timed_out"]
         yield "truncated", bool(waited.get("truncated", False))
-        yield "next_after", str(waited.get("next_after") or "")
         yield "error_message", waited["error_message"]

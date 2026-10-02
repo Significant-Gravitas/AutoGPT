@@ -85,7 +85,7 @@ async def test_timed_out_wait_continues_with_get_session_after_next_after():
         )
     assert sent["timed_out"] is True
     assert sent["reply"] == "Reading."
-    assert sent["next_after"] == "r-interim"
+    assert sent["next_after"] == "row-prompt"
 
     transcript.rows.extend(turn[4:])
     client = wait_client(transcript, [{"status": "working"}, {"status": "idle"}])
@@ -126,7 +126,7 @@ async def test_send_message_scales_the_poll_interval_with_the_timeout():
 
     def wait(_creds, _session, _after, timeout, poll):
         seen.update(timeout=timeout, poll=poll)
-        return {**WAIT_MOCK_REPLY, "timed_out": True, "next_after": "row-7"}
+        return {**WAIT_MOCK_REPLY, "timed_out": True, "prompt_row_id": "row-7"}
 
     mock_block(
         block,

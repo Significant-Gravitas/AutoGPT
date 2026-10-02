@@ -22,8 +22,8 @@ from ._api import (
 )
 from ._config import conductor
 from ._mocks import MOCK_PROMPT_MESSAGE, MOCK_REPLY_MESSAGE
-from ._paging import fetch_after, fetch_latest_after, fetch_tail
-from ._transcript import latest_reply, wait_until_idle
+from ._paging import fetch_tail
+from ._transcript import latest_reply, read_after, wait_until_idle
 
 CREDENTIALS_DESCRIPTION = "Conductor API key from app.conductor.build/users/api-keys"
 
@@ -46,13 +46,17 @@ class ConductorGetSessionBlock(Block):
             advanced=False,
         )
         after: str = SchemaField(
-            description="Read forward from this transcript message ID (exclusive) "
-            "instead of returning the most recent messages; use next_after from "
-            "a previous call to poll incrementally",
+            description="Read forward from this message (exclusive) instead of "
+            "returning the most recent messages. Accepts a transcript row ID "
+            "(next_after from a previous call or from Send Message / Create "
+            "Session) or the prompt ID those blocks return as message_id / "
+            "initial_message_id, which is resolved to the prompt's row",
             default="",
         )
         message_id: str = SchemaField(
-            description="Also fetch this single message by ID", default=""
+            description="Also fetch this single message by its transcript row ID "
+            "(not a prompt ID returned by Send Message)",
+            default="",
         )
         wait_until_idle: bool = SchemaField(
             description="Block until the session is idle or errored before "
@@ -111,8 +115,9 @@ class ConductorGetSessionBlock(Block):
             "with wait_until_idle older ones following after"
         )
         next_after: str = SchemaField(
-            description="ID of the last returned message; pass it as after to read "
-            "what follows, or to continue a wait that timed out"
+            description="Transcript row ID of the last returned message (or the "
+            "row `after` resolved to when nothing followed it); pass it as "
+            "after to read what follows, or to continue a wait that timed out"
         )
         timed_out: bool = SchemaField(
             description="True when wait_until_idle was set and the session was "
@@ -189,20 +194,15 @@ class ConductorGetSessionBlock(Block):
             result["status"] = await client.session_status(input_data.session_id)
         result["session"] = await client.get_session(input_data.session_id)
         if input_data.message_limit > 0:
-            if input_data.after and input_data.wait_until_idle:
-                rows, has_more = await fetch_latest_after(
+            if input_data.after:
+                rows, has_more, cursor = await read_after(
                     client,
                     input_data.session_id,
                     input_data.after,
                     input_data.message_limit,
+                    latest=input_data.wait_until_idle,
                 )
-            elif input_data.after:
-                rows, has_more = await fetch_after(
-                    client,
-                    input_data.session_id,
-                    input_data.after,
-                    input_data.message_limit,
-                )
+                result["cursor"] = cursor
             else:
                 rows, has_more = await fetch_tail(
                     client, input_data.session_id, input_data.message_limit
@@ -236,10 +236,9 @@ class ConductorGetSessionBlock(Block):
         yield "messages", messages
         yield "latest_reply", latest_reply(messages)
         yield "has_more", bool(listing.get("hasMore", False))
+        cursor = str(data.get("cursor") or input_data.after)
         yield "next_after", (
-            str(messages[-1].get("id") or input_data.after)
-            if messages
-            else input_data.after
+            str(messages[-1].get("id") or cursor) if messages else cursor
         )
         yield "timed_out", bool(data.get("timed_out", False))
         if data.get("message"):

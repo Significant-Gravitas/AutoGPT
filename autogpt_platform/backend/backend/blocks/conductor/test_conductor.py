@@ -165,6 +165,7 @@ async def test_send_message_without_waiting_returns_only_the_receipt():
                 "state": "sent",
                 "deepLink": "d",
             },
+            "_prompt_row": lambda *a, **k: "row-m1",
             "_wait": lambda *a, **k: pytest.fail("should not wait"),
         },
     )
@@ -177,7 +178,12 @@ async def test_send_message_without_waiting_returns_only_the_receipt():
             "wait_for_reply": False,
         },
     )
-    assert outputs == {"message_id": "m1", "state": "sent", "deep_link": "d"}
+    assert outputs == {
+        "message_id": "m1",
+        "state": "sent",
+        "deep_link": "d",
+        "next_after": "row-m1",
+    }
 
 
 @pytest.mark.asyncio
