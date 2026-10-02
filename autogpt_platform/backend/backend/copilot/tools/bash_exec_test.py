@@ -51,6 +51,7 @@ class _FakeRedisLock:
 @pytest.fixture(autouse=True)
 def stream_password_store():
     """Where the screen's stream password expiry lives, Redis in production."""
+    _FakeRedisLock._held.clear()
     redis = MagicMock()
     redis.expire = AsyncMock()
     redis.lock = MagicMock(side_effect=_FakeRedisLock)
