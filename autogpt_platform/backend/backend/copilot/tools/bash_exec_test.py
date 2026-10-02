@@ -607,6 +607,18 @@ class TestBashExecE2BTimeouts:
         box.set_timeout.assert_awaited_once_with(3660)
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_timeout_past_the_hung_tool_cap_is_capped(self):
+        # The turn gives up on a pending tool after two hours and pauses the
+        # box, so a longer timeout would only bill a box nobody is following.
+        from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
+
+        box = _FakeBox(limit=30, process=_counting(0.1))
+
+        await _run(box, timeout=7 * 24 * 60 * 60)
+
+        box.set_timeout.assert_awaited_once_with(HUNG_TOOL_CAP_SECONDS + 60)
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_a_short_command_leaves_a_longer_limit_alone(self):
         # Another command on the box (a parallel call, or another session of
         # the same expert) already pushed the limit out to an hour.

@@ -23,6 +23,7 @@ from e2b import AsyncSandbox, CommandExitException
 from e2b.exceptions import NotFoundException, TimeoutException
 from pydantic import BaseModel
 
+from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
@@ -239,7 +240,9 @@ class BashExecTool(BaseTool):
         for any user with connected accounts. E2B has full internet access, so
         CLI tools like ``gh`` work without manual authentication.
         """
-        timeout = max(timeout, 1)
+        # The turn stops following a tool after the hung-tool cap and pauses
+        # the box, so a longer timeout only keeps an unwatched box billing.
+        timeout = min(max(timeout, 1), HUNG_TOOL_CAP_SECONDS)
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         }
