@@ -1057,6 +1057,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
+    google_api_key: str = Field(default="", description="Google Gemini API key")
     webshare_proxy_username: str = Field(
         default="", description="Webshare Proxy Username"
     )
