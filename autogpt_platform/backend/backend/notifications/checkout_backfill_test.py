@@ -13,6 +13,7 @@ from backend.notifications.mailerlite_backfill import Subscription
 from backend.notifications.mailerlite_field_backfill import Person
 
 OPENED = int(datetime(2026, 7, 15, 9, 0, tzinfo=UTC).timestamp())
+OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
 
 
 def _opener(email="sam@acme.com", subscriptions=None, **kwargs):
@@ -24,6 +25,7 @@ def _opener(email="sam@acme.com", subscriptions=None, **kwargs):
             subscriptions=subscriptions or [],
             stripe_customer_id="cus_1",
             timezone=kwargs.pop("timezone", "Asia/Kolkata"),
+            marketing_opt_out_at=kwargs.pop("opted_out_at", None),
         ),
         opened_at=OPENED,
         signin_providers=["google"],
@@ -309,3 +311,34 @@ async def test_a_failed_stripe_refresh_is_counted_and_retried_later(monkeypatch)
     )
     assert result == (0, 1, 0)
     client.post.assert_not_awaited()
+
+
+def _with_an_opted_out_opener() -> checkout_backfill.OpenerPlan:
+    """Held by MailerLite but outside the group, and German: every reason to
+    be written and tallied, had they not opted out."""
+    opted_out = _opener(
+        email="out@acme.com", stripe_country="DE", opted_out_at=OPTED_OUT
+    )
+    return checkout_backfill.plan(
+        [opted_out, _opener()], current={"out@acme.com": {}}, members={}
+    )
+
+
+def test_an_opted_out_opener_is_counted_but_never_planned_or_tallied():
+    plan = _with_an_opted_out_opener()
+    assert [c.opener.person.email for c in plan.changes] == ["sam@acme.com"]
+    assert plan.openers == 2
+    assert plan.opted_out == 1
+    assert plan.invalid == 0
+    assert plan.countries == {"IN": 1}
+    assert plan.exclude_de_at == 0
+    assert sum(plan.email_types.values()) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_opener_is_never_written(monkeypatch):
+    plan = _with_an_opted_out_opener()
+    result, client = await _apply_with(monkeypatch, plan, held=None, refresh=None)
+    assert result == (1, 0, 0)
+    written = [c.kwargs["json"]["email"] for c in client.post.await_args_list]
+    assert written == ["sam@acme.com"]

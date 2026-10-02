@@ -43,7 +43,8 @@ def mailerlite_backfill_command(
     gets its subscription_status and dates. Nobody is created here: a Stripe
     customer alone does not mean they opened checkout (the billing portal
     makes one too), so new people come only from mailerlite-checkout-backfill.
-    Accounts without a Stripe customer are never read.
+    Accounts without a Stripe customer are never read. Accounts that opted out
+    of marketing are never written, removals included.
 
     Dry run by default: prints counts and one pseudonymised line per customer,
     and writes nothing. Idempotent, so a partial or repeated --apply is safe,
@@ -69,6 +70,7 @@ def mailerlite_checkout_backfill_command(apply: bool, yes: bool):
     checkout_opened_date (their first session), email_type, signin_method,
     country and country_code (the Stripe billing address, else the browser's
     timezone), country_source and exclude_de_at, plus their status and dates.
+    Openers who opted out of marketing are counted and never written.
 
     Visits one person every two seconds, re-reading each just before the
     write so nothing the live checkout event wrote meanwhile is overwritten.
@@ -273,6 +275,7 @@ async def _people(subscriptions: "dict[str, list[Subscription]]") -> "list[Perso
                     ],
                     stripe_customer_id=user.stripeCustomerId,
                     timezone=user.timezone,
+                    marketing_opt_out_at=user.marketingOptOutAt,
                 )
             )
         if len(page) < _ACCOUNT_PAGE:
@@ -287,6 +290,7 @@ def _customer(person: "Person") -> "Customer":
         user_id=person.user_id,
         email=person.email,
         subscriptions=person.subscriptions,
+        marketing_opt_out_at=person.marketing_opt_out_at,
     )
 
 
@@ -317,6 +321,7 @@ def _report_fields(plan: "FieldPlan", accounts: int) -> None:
     for status, count in plan.statuses.items():
         click.echo(f"  {status.value}: {count}")
     click.echo(f"  invalid email (skipped): {plan.invalid}")
+    click.echo(f"  opted out of marketing (skipped): {plan.opted_out}")
     click.echo(
         f"{len(plan.changes)} existing MailerLite subscribers to update "
         "(nobody is created here; see mailerlite-checkout-backfill)"
@@ -463,6 +468,7 @@ def _report_checkout(
     )
     click.echo("  Accounts without a Stripe customer: never read or written")
     click.echo(f"  invalid email (skipped): {plan.invalid}")
+    click.echo(f"  opted out of marketing (skipped): {plan.opted_out}")
     click.echo(f"\nCountry source: {counts(plan.country_sources)}")
     click.echo(f"Countries: {counts(plan.countries)}")
     click.echo(f"exclude_de_at=yes: {plan.exclude_de_at}")

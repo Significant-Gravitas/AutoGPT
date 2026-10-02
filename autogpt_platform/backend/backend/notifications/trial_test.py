@@ -141,7 +141,12 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
             "user_db",
             return_value=MagicMock(
                 get_user_by_id=AsyncMock(
-                    return_value=SimpleNamespace(name="Sam", email="sam@example.com")
+                    return_value=SimpleNamespace(
+                        id="user-1",
+                        name="Sam",
+                        email="sam@example.com",
+                        marketing_opt_out_at=None,
+                    )
                 )
             ),
         ),

@@ -108,10 +108,13 @@ async def _notify(
     raises=False,
     email=EMAIL,
     claim_welcome=None,
+    opted_out_at=None,
 ):
     audience = audience or AsyncMock(return_value=NotificationResult(success=True))
     notice = AsyncMock(return_value=NotificationResult(success=True))
-    user = SimpleNamespace(name="Sam", email=email)
+    user = SimpleNamespace(
+        id="user-1", name="Sam", email=email, marketing_opt_out_at=opted_out_at
+    )
     users = MagicMock(
         get_user_by_id=AsyncMock(return_value=user),
         claim_welcome_email=claim_welcome or AsyncMock(return_value=not welcomed),
@@ -238,6 +241,34 @@ async def test_joining_the_paying_audience_never_fails_the_sent_conversion(trial
     assert got == [AudienceAction.REMOVE_TRIAL]
     notice.assert_awaited_once()
     release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "canceled", "resumed", "ended"])
+async def test_an_opted_out_trialist_gets_the_notice_but_no_group_change(trial, kind):
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(
+        trial, raw, kind, opted_out_at=datetime.now(UTC)
+    )
+    assert got == []
+    notice.assert_awaited_once()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("welcomed", [False, True])
+async def test_an_opted_out_conversion_still_takes_the_welcome_claim(trial, welcomed):
+    """The claim decides whether a later resubscription is welcomed as a first
+    subscription; that is service mail, so it is taken whatever the consent.
+    Only the tour or changelog is skipped."""
+    trial, raw = _state(trial, "converted")
+    claim = AsyncMock(return_value=not welcomed)
+    got, notice, _ = await _notify(
+        trial, raw, "converted", claim_welcome=claim, opted_out_at=datetime.now(UTC)
+    )
+    assert got == []
+    claim.assert_awaited_once_with("user-1")
+    notice.assert_awaited_once()
 
 
 @pytest.fixture

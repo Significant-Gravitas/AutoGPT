@@ -24,6 +24,7 @@ from backend.notifications import lifecycle, subscriber_fields
 from backend.notifications.lifecycle_plan import card_from_invoice
 
 CUSTOMER = "cus_1"
+OPTED_OUT = datetime(2026, 10, 2, tzinfo=timezone.utc)
 PLAN_PATCH = "backend.notifications.lifecycle.plan_from_subscription"
 INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 
@@ -31,11 +32,12 @@ INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 class _User:
     """Shaped like `BillingEmailRecipient`, which is what the RPC returns."""
 
-    def __init__(self, welcome_sent_at=None):
+    def __init__(self, welcome_sent_at=None, opted_out_at=None):
         self.id = "user-1"
         self.email = "sam@example.com"
         self.name = "Sam Carter"
         self.welcome_email_sent_at = welcome_sent_at
+        self.marketing_opt_out_at = opted_out_at
 
 
 def _subscription(**over) -> dict:
@@ -552,3 +554,82 @@ async def test_an_ended_subscription_sets_stripes_end_date_on_the_churn(fields_o
         SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_ENDED.value,
         SubscriberField.SUBSCRIPTION_ENDED: _day(1789200000),
     }
+
+
+# ── opted out of marketing ─────────────────────────────────────────────────
+#
+# Every billing email still goes out; MailerLite never hears of them.
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_first_subscription_is_welcomed_but_not_enrolled():
+    user = _User(welcome_sent_at=None, opted_out_at=OPTED_OUT)
+    with patch(
+        "backend.notifications.lifecycle._claim_welcome",
+        AsyncMock(return_value=True),
+    ) as claimed:
+        calls = await _run(
+            lambda: lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER}, _subscription()
+            ),
+            user,
+        )
+    claimed.assert_awaited_once_with(user)
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
+    calls["audience"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_returning_customer_is_not_added_to_the_changelog():
+    user = _User(
+        welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        opted_out_at=OPTED_OUT,
+    )
+    calls = await _run(
+        lambda: lifecycle.on_checkout_completed(
+            {"customer": CUSTOMER}, _subscription()
+        ),
+        user,
+    )
+    calls["notify"].assert_not_awaited()
+    calls["audience"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "subscription, previous, sent",
+    [
+        (
+            _subscription(cancel_at_period_end=True, canceled_at=1789100000),
+            {"cancel_at_period_end": False},
+            NotificationType.SUBSCRIPTION_CANCELLED,
+        ),
+        (
+            _subscription(cancel_at_period_end=False),
+            {"cancel_at_period_end": True, "canceled_at": 1789100000},
+            NotificationType.SUBSCRIPTION_RESUMED,
+        ),
+    ],
+    ids=["cancelled", "resumed"],
+)
+async def test_an_opted_out_cancel_or_resume_emails_but_writes_no_fields(
+    fields_on, subscription, previous, sent
+):
+    calls = await _run(
+        lambda: lifecycle.on_subscription_updated(subscription, previous),
+        _User(opted_out_at=OPTED_OUT),
+    )
+    assert calls["notify"].await_args.args[0].type is sent
+    fields_on.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_churn_emails_but_leaves_mailerlite_alone():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(opted_out_at=OPTED_OUT),
+    )
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.SUBSCRIPTION_ENDED
+    calls["audience"].assert_not_awaited()

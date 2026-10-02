@@ -19,6 +19,10 @@ transition:
    checkout joins it, and nobody else enters MailerLite through us: a signup
    alone does not create a subscriber. GTM segments it for outreach.
 
+Someone who opted out of marketing enters none of these. Every write below
+upserts the subscriber, a removal or a field update included, so nothing is
+queued for them at all (`consent.py`), and the backfills leave them out.
+
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.
 

@@ -13,6 +13,7 @@ import logging
 from datetime import datetime
 from typing import Protocol
 
+from backend.data.notifications import AudienceAction
 from backend.notifications.mailerlite import _pseudonym
 
 logger = logging.getLogger(__name__)
@@ -23,8 +24,26 @@ class MarketingConsent(Protocol):
     def marketing_opt_out_at(self) -> datetime | None: ...
 
 
+class MarketingContact(MarketingConsent, Protocol):
+    """An account an audience change would be queued for."""
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def email(self) -> str: ...
+
+
 def marketing_allowed(user: MarketingConsent) -> bool:
     return user.marketing_opt_out_at is None
+
+
+def audience_change_allowed(user: MarketingContact, action: AudienceAction) -> bool:
+    """Whether `action` may be queued for this account. A refusal is logged."""
+    if marketing_allowed(user):
+        return True
+    log_opted_out_skip(user.email, action.value)
+    return False
 
 
 def log_opted_out_skip(email: str, what: str) -> None:
