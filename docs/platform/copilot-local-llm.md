@@ -390,7 +390,7 @@ rewrites the cloud OpenAI defaults to local Ollama equivalents:
 | Setting | Cloud default | Local default |
 |---|---|---|
 | `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
-| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-nano` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
 | `GRAPHITI_EMBEDDER_MODEL` | `text-embedding-3-small` | `nomic-embed-text` |
 
 The LLM + reranker reuse the same Ornith 1.5 9B model the `--with-ollama`

@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # logit_bias restricts the vocabulary to "True"/"False").
 MIN_COMPLETION_TOKENS = 16
 
-DEFAULT_MODEL = "gpt-4.1-nano"
+DEFAULT_MODEL = "gpt-4.1-mini"
 
 
 class CompatOpenAIRerankerClient(OpenAIRerankerClient):

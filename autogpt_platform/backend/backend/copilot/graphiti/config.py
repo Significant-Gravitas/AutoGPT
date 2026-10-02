@@ -21,7 +21,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 # the validator can't drift — same pattern as
 # ``copilot/config.py::_DEFAULT_TITLE_MODEL`` etc.
 _DEFAULT_LLM_MODEL = "gpt-4.1-mini"
-_DEFAULT_RERANKER_MODEL = "gpt-4.1-nano"
+_DEFAULT_RERANKER_MODEL = "gpt-4.1-mini"
 _DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 
 # Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
@@ -91,10 +91,10 @@ class GraphitiConfig(BaseSettings):
     # Cross-encoder reranker (P-1.4) — used by warm-context retrieval to
     # rerank top edges from BM25 + cosine + BFS. Graphiti's built-in
     # OpenAIRerankerClient runs concurrent boolean-classifier prompts
-    # against gpt-4.1-nano by default (one prompt per candidate; log-
+    # against gpt-4.1-mini by default (one prompt per candidate; log-
     # probabilities decide the score). The audit estimated ~10–15%
     # precision lift on warm context at the cost of one LLM call per
-    # session start. Defaults match Graphiti's own default so the
+    # session start. Shares the ``llm_model`` cloud slug so the
     # reranker can ship with no env config.
     reranker_model: str = Field(
         default=_DEFAULT_RERANKER_MODEL,
@@ -278,7 +278,7 @@ class GraphitiConfig(BaseSettings):
         - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
           (matches dev's chat default — one Ollama pull powers both
           surfaces; vetted for structured output / tool-calling shape).
-        - ``reranker_model`` (``gpt-4.1-nano``) → same Ornith slug.
+        - ``reranker_model`` (``gpt-4.1-mini``) → same Ornith slug.
           Reranker prompts are simpler than extraction; reusing the
           chat model avoids pulling a second model just for reranking.
         - ``embedder_model`` (``text-embedding-3-small``) →
