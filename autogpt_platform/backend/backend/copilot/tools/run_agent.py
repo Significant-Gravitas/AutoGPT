@@ -617,7 +617,7 @@ class RunAgentTool(BaseTool):
         if is_unattended_turn():
             return await unattended_missing_credentials_error(
                 f"Agent '{graph.name}'",
-                {provider_slug(m.get("provider", "")) for m in missing.values()},
+                missing,
                 session_id,
                 user_id,
                 expert_id,
@@ -746,10 +746,7 @@ class RunAgentTool(BaseTool):
             if is_unattended_turn():
                 return graph_credentials, await unattended_missing_credentials_error(
                     f"Agent '{graph.name}'",
-                    {
-                        provider_slug(m.get("provider", ""))
-                        for m in missing_credentials_dict.values()
-                    },
+                    missing_credentials_dict,
                     session_id,
                     user_id,
                     expert_id,
@@ -764,6 +761,7 @@ class RunAgentTool(BaseTool):
                         for m in missing_credentials_dict.values()
                     }
                     - {""},
+                    missing_credentials_dict.values(),
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(

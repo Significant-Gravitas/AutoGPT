@@ -7,7 +7,10 @@ from typing import Any
 
 from backend.api.features.library import model as library_model
 from backend.copilot.context import is_unattended_turn
-from backend.copilot.credential_selection import selected_credentials
+from backend.copilot.credential_selection import (
+    selected_credentials,
+    turn_credential_pins,
+)
 from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
@@ -283,7 +286,7 @@ async def match_credentials_to_requirements(
     if not requirements:
         return matched, missing
 
-    available_creds = await get_user_credentials(user_id, expert_id)
+    available_creds = without_lost_pins(await get_user_credentials(user_id, expert_id))
     selected = await selected_credentials(session_id)
     can_ask = _can_ask_user(session_id)
 
@@ -358,6 +361,27 @@ async def scope_credentials_to_expert(
     return filter_credentials_for_expert(credentials, allowed)
 
 
+def lost_pins(available: list[Credentials]) -> set[str]:
+    """Providers the running turn's schedule pinned to an account that is no
+    longer among *available*: deleted, or no longer granted to the expert."""
+    present = {c.id for c in available}
+    return {p for p, pin in turn_credential_pins().items() if pin.id not in present}
+
+
+def without_lost_pins(available: list[Credentials]) -> list[Credentials]:
+    """Leave out every credential of a provider whose pinned account is gone.
+
+    The user chose that account for the schedule; running on another one of
+    theirs, or on the platform's, is the silent switch the pin exists to
+    prevent. With nothing left the step reports a missing credential, and the
+    unattended error names the account that went (SECRT-2804).
+    """
+    lost = lost_pins(available)
+    if not lost:
+        return available
+    return [c for c in available if _provider_slug(c) not in lost]
+
+
 def _can_ask_user(session_id: str | None) -> bool:
     """Whether a choice between the user's accounts can be handed back to them.
 
@@ -390,9 +414,18 @@ def find_matching_credential(
         for cred in fits:
             if selected.get(_provider_slug(cred)) == cred.id:
                 return cred
-    if not ask_when_ambiguous:
-        return fits[0] if fits else None
     own = [c for c in fits if not is_system_credential(c.id)]
+    if not ask_when_ambiguous:
+        if len(own) > 1 and is_unattended_turn():
+            # A schedule made before accounts were chosen at creation.
+            logger.info(
+                "Unattended turn with no account pinned for %s: using the "
+                "first saved of %d (%s)",
+                _provider_slug(own[0]),
+                len(own),
+                fits[0].id,
+            )
+        return fits[0] if fits else None
     if len(own) > 1:
         return None
     return own[0] if own else (fits[0] if fits else None)
@@ -464,8 +497,10 @@ async def match_user_credentials_to_graph(
 
     # Get the credentials available for the user, narrowed to the expert's grants
     creds_manager = IntegrationCredentialsManager()
-    available_creds = await scope_credentials_to_expert(
-        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+    available_creds = without_lost_pins(
+        await scope_credentials_to_expert(
+            user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+        )
     )
     selected = await selected_credentials(session_id)
 

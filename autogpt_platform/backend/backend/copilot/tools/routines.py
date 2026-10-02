@@ -21,13 +21,24 @@ from backend.api.features.experts.routines import (
     RoutineNotFoundError,
     RoutineUnansweredAsksError,
 )
+from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
 from .expert_scope import RoutineOwner, resolve_routine_owner
-from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .models import (
+    ErrorResponse,
+    ResponseType,
+    SetupRequirementsResponse,
+    ToolResponseBase,
+)
+from .schedule_credentials import (
+    INTEGRATIONS_PARAM,
+    has_account_choices,
+    pin_schedule_credentials,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +219,7 @@ class ScheduleRoutineTool(BaseTool):
                         "the user agreed to THIS routine using their accounts."
                     ),
                 },
+                "integrations": INTEGRATIONS_PARAM,
                 "expert_id": _EXPERT_ID_PARAM,
             },
             "required": ["enabled"],
@@ -264,9 +276,14 @@ class ScheduleRoutineTool(BaseTool):
         pinned = await self._pinned_session(user_id, session, owner, kwargs)
         if isinstance(pinned, ErrorResponse):
             return pinned
+        credential_pins = await self._credential_pins(
+            user_id, session, owner, routine_id, enabled, kwargs
+        )
+        if isinstance(credential_pins, SetupRequirementsResponse):
+            return credential_pins
         try:
             routine = await self._apply(
-                user_id, owner, routine_id, enabled, pinned, kwargs
+                user_id, owner, routine_id, enabled, pinned, credential_pins, kwargs
             )
         except RoutineUnansweredAsksError as e:
             return ErrorResponse(
@@ -356,6 +373,44 @@ class ScheduleRoutineTool(BaseTool):
             session_id=current,
         )
 
+    async def _credential_pins(
+        self,
+        user_id: str,
+        session: ChatSession,
+        owner: RoutineOwner,
+        routine_id: str,
+        enabled: bool,
+        kwargs: dict[str, Any],
+    ) -> CredentialPins | SetupRequirementsResponse | None:
+        """The accounts the routine's turns run on, chosen now, while the
+        owner is here to say which (SECRT-2804).
+
+        ``None`` leaves the row's pins as they are: switching a routine off,
+        or one that reaches no connected service, has no account to choose.
+        Changing one starts from the pins it has, so only a provider named
+        again, or picked again in this chat, moves to another account.
+        """
+        integrations = kwargs.get("integrations")
+        if not enabled or not await has_account_choices(session, integrations):
+            return None
+        existing = None
+        grant = kwargs.get("grants_credentials")
+        if routine_id:
+            current = await experts_db().get_routine(routine_id)
+            if current is not None and current.expert_id == owner.expert_id:
+                existing = current.credential_pins
+                if grant is None:
+                    grant = current.grants_credentials
+        if grant is False:
+            return None
+        return await pin_schedule_credentials(
+            user_id,
+            session,
+            owner.expert_id,
+            integrations,
+            existing,
+        )
+
     async def _apply(
         self,
         user_id: str,
@@ -363,6 +418,7 @@ class ScheduleRoutineTool(BaseTool):
         routine_id: str,
         enabled: bool,
         pinned_session_id: str | None,
+        credential_pins: CredentialPins | None,
         kwargs: dict[str, Any],
     ) -> ExpertRoutine:
         run_at = _run_at(kwargs.get("delay_seconds"))
@@ -383,6 +439,7 @@ class ScheduleRoutineTool(BaseTool):
                 # ``None`` is "they did not say", which on a new row is the
                 # default rather than a change to leave alone.
                 grants_credentials=True if grant is None else bool(grant),
+                credential_pins=credential_pins,
             )
             if not enabled:
                 return created
@@ -409,6 +466,7 @@ class ScheduleRoutineTool(BaseTool):
             # Absent means "leave the grant alone", so rewording a routine
             # never quietly widens what it can touch.
             grants_credentials=grant,
+            credential_pins=credential_pins,
         )
 
 
@@ -440,4 +498,10 @@ def _confirmation(routine: ExpertRoutine) -> str:
         when = f"once at {routine.run_at:%Y-%m-%d %H:%M} UTC"
     else:
         when = "at no time it can name"
-    return f"'{routine.title}' is on: {when}, {where}. {reach}"
+    accounts = ""
+    if routine.grants_credentials and routine.credential_pins:
+        accounts = " Every run uses these accounts: " + ", ".join(
+            f"{provider}: '{pin.title or pin.id}'"
+            for provider, pin in sorted(routine.credential_pins.items())
+        ) + "."
+    return f"'{routine.title}' is on: {when}, {where}. {reach}{accounts}"

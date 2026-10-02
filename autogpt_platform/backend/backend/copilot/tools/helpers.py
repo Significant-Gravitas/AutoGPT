@@ -20,6 +20,7 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.context import is_unattended_turn
+from backend.copilot.credential_selection import turn_credential_pins
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
@@ -72,6 +73,8 @@ from .models import (
 from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
+    get_user_credentials,
+    lost_pins,
     match_credentials_to_requirements,
     sanitize_provider_message,
 )
@@ -754,22 +757,63 @@ async def resolve_block_credentials(
 
 async def unattended_missing_credentials_error(
     subject: str,
-    providers: set[str],
+    missing: dict[str, dict[str, Any]],
     session_id: str,
     user_id: str,
     expert_id: str | None,
 ) -> ErrorResponse:
     """The answer when a turn nobody watches has no credential to run with.
 
-    A setup card there is never answered, and the step used to end as a quiet
-    "not configured" (SECRT-2804). Name the provider, so the turn's reply tells
-    the user what to connect, and log it so the failure can be found. When the
-    account already has a matching credential the expert was never granted,
-    say to grant that one, since connecting another would not help.
+    *missing* holds the setup card's entries, one per credential field that
+    nothing fitted. A setup card there is never answered, and the step used to
+    end as a quiet "not configured" (SECRT-2804). Name the provider, so the
+    turn's reply tells the user what to connect, and log it so the failure can
+    be found.
+
+    When the schedule pinned an account that is gone, name that account: the
+    run refused to switch to another one, and the user has to know which they
+    lost. When the account already has a credential the expert was never
+    granted and a field would accept, say to grant that one, since connecting
+    another would not help.
     """
-    providers = providers - {""}
+    providers = {provider_slug(m.get("provider", "")) for m in missing.values()}
+    providers -= {""}
     names = ", ".join(sorted(providers)) or "an integration"
-    grant_hint = await ungranted_credential_hint(user_id, expert_id, providers)
+    pins = turn_credential_pins()
+    lost = (
+        sorted(lost_pins(await get_user_credentials(user_id, expert_id)) & providers)
+        if pins
+        else []
+    )
+    if lost:
+        accounts = ", ".join(
+            f"the {p} account '{pins[p].title or pins[p].id}' "
+            f"(credential_id={pins[p].id})"
+            for p in lost
+        )
+        logger.warning(
+            "Unattended copilot turn in session %s: %s is pinned to %s, "
+            "which is no longer available",
+            session_id,
+            subject,
+            accounts,
+        )
+        return ErrorResponse(
+            message=(
+                f"{subject} did not run. This schedule is set to use {accounts}, "
+                "and that credential has been deleted or is no longer "
+                "available to this run. It did not switch to a different "
+                "account. Say plainly in your reply that this step was "
+                "skipped, name that account, and tell the user to reconnect "
+                "it or choose another account for this schedule before the "
+                "next run."
+            ),
+            error="pinned_credential_missing",
+            session_id=session_id,
+        )
+    grant_hint = await ungranted_credential_hint(
+        user_id, expert_id, providers, missing.values()
+    )
     logger.warning(
         "Unattended copilot turn in session %s: %s has no %s credential to use",
         session_id,
@@ -956,21 +1000,20 @@ async def prepare_block_for_execution(
     if (missing_credentials or picker_fields_missing) and not (
         dry_run or validate_only
     ):
+        credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
+        missing_entries = build_missing_credentials_from_field_info(
+            credentials_fields_info, set(matched_credentials.keys())
+        )
         if missing_credentials and is_unattended_turn():
             return await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
-                {provider_slug(m.provider) for m in missing_credentials},
+                missing_entries,
                 session_id,
                 user_id,
                 session.expert_id,
             )
-        credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = await annotate_expert_grants(
-            user_id,
-            session.expert_id,
-            build_missing_credentials_from_field_info(
-                credentials_fields_info, set(matched_credentials.keys())
-            ),
+            user_id, session.expert_id, missing_entries
         )
         missing_creds_list = list(missing_creds_dict.values())
         if missing_credentials:
@@ -982,6 +1025,7 @@ async def prepare_block_for_execution(
                 user_id,
                 session.expert_id,
                 {provider_slug(m.provider) for m in missing_credentials},
+                missing_entries.values(),
             )
         else:
             message = (

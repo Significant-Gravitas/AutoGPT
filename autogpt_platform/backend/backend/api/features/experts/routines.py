@@ -32,12 +32,15 @@ firing turn makes back to the row — lives in ``routine_jobs``.
 import logging
 from datetime import datetime, timezone
 
+import prisma
 import prisma.enums
 import prisma.models
 import prisma.types
 from apscheduler.triggers.cron import CronTrigger
+from pydantic import ValidationError
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.api.features.experts.routine_jobs import (
     create_routine_schedules,
     delete_routine_schedules,
@@ -72,7 +75,23 @@ def to_model(row: prisma.models.ExpertRoutine) -> ExpertRoutine:
         enabled=row.enabledAt is not None and row.firedAt is None,
         customized=row.customizedAt is not None,
         grants_credentials=row.grantsCredentials,
+        credential_pins=_credential_pins(row.credentialPins),
     )
+
+
+def _credential_pins(raw: object) -> CredentialPins:
+    """Read the stored pins, dropping any entry that no longer parses: a lost
+    pin means a step that cannot choose an account says so, never a routine
+    that cannot load at all."""
+    if not isinstance(raw, dict):
+        return {}
+    pins: CredentialPins = {}
+    for provider, value in raw.items():
+        try:
+            pins[str(provider)] = CredentialPin.model_validate(value)
+        except ValidationError:
+            logger.warning("Dropping unreadable credential pin for %s", provider)
+    return pins
 
 
 async def get_routine(routine_id: str) -> ExpertRoutine | None:
@@ -162,6 +181,7 @@ async def enable_routine(
     session_mode: str | None = None,
     pinned_session_id: str | None = None,
     grants_credentials: bool | None = None,
+    credential_pins: CredentialPins | None = None,
 ) -> ExpertRoutine:
     """Switch a routine on, resolving the proposal into what actually runs.
 
@@ -268,6 +288,10 @@ async def enable_routine(
     # direction, so a rewording never quietly widens what a routine can touch.
     if grants_credentials is not None:
         data["grantsCredentials"] = grants_credentials
+    # Same rule for the accounts it runs on: ``None`` keeps the ones chosen
+    # when it was set up.
+    if credential_pins is not None:
+        data["credentialPins"] = _pins_json(credential_pins)
     if customized:
         data["customizedAt"] = now
     try:
@@ -289,6 +313,12 @@ async def enable_routine(
     # clearing first would leave a routine that says it is running and is not.
     await delete_routine_schedules(user_id, row)
     return to_model(updated)
+
+
+def _pins_json(pins: CredentialPins) -> prisma.Json:
+    return prisma.Json(
+        {provider: pin.model_dump() for provider, pin in pins.items()}
+    )
 
 
 def _session_mode(value: str) -> prisma.enums.ExpertRoutineSession:
@@ -316,6 +346,7 @@ async def create_routine(
     session_mode: str | None = None,
     session_id: str | None = None,
     grants_credentials: bool = True,
+    credential_pins: CredentialPins | None = None,
 ) -> ExpertRoutine:
     """Record standing work worked out with the owner in conversation.
 
@@ -356,6 +387,8 @@ async def create_routine(
         "grantsCredentials": grants_credentials,
         "customizedAt": datetime.now(timezone.utc),
     }
+    if credential_pins:
+        data["credentialPins"] = _pins_json(credential_pins)
     if expert_id is None:
         data["userId"] = user_id
     else:
