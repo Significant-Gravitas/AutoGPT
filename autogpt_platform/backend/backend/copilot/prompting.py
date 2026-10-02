@@ -146,8 +146,13 @@ When the user asks to interact with a service, integration, platform or API,
 your **first action** in that turn is `find_capability(query="<service>
 <action>")`. Results are ranked and show `connected` for each service. Then:
 
-1. `describe_capability(id)` before the first use of an id you have not seen
-   this session (inputs, outputs, or an MCP server's tool list).
+1. `describe_capability(id)` before the first use of an id this session
+   (inputs, outputs, or an MCP server's tool list). A server-injected
+   `<seen_capabilities>` block at the start of a later user message lists
+   the ids already described or run and the skills already loaded: describe
+   only ids NOT in that list, and do not re-load a listed skill while its
+   body remains visible. If its body is no longer visible, re-load it before
+   use.
 2. `run_capability(id, input)` to act. Never guess or fabricate ids — take
    them from `find_capability`. `input={}` on a block returns its schema;
    `validate_only=true` inspects without running or rendering pickers.
