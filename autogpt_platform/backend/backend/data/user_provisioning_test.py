@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from prisma.models import AuthSession, AuthUser, User
+from prisma.models import AuthSession, AuthUser, Organization, User
 
 from backend.data.db import execute_raw_with_schema
 from backend.data.user import (
@@ -99,17 +99,23 @@ async def test_first_bootstrap_after_the_auth_hook_reports_the_account_created(
     conversion header) exactly once, and only that call."""
     user_id = str(uuid4())
     payload = {"sub": user_id, "email": f"{user_id}@example.com"}
-    # The exact statement in frontend/src/lib/auth/provision-platform-user.ts.
-    await execute_raw_with_schema(
-        'INSERT INTO {schema_prefix}"User" (id, email, name, "updatedAt") '
-        "VALUES ($1, $2, $3, NOW()) ON CONFLICT (id) DO NOTHING",
-        user_id,
-        payload["email"],
-        None,
-    )
+    try:
+        # The exact statement in frontend/src/lib/auth/provision-platform-user.ts.
+        await execute_raw_with_schema(
+            'INSERT INTO {schema_prefix}"User" (id, email, name, "updatedAt") '
+            "VALUES ($1, $2, $3, NOW()) ON CONFLICT (id) DO NOTHING",
+            user_id,
+            payload["email"],
+            None,
+        )
 
-    first = await get_or_create_user_with_status(payload)
-    second = await get_or_create_user_with_status(payload)
+        first = await get_or_create_user_with_status(payload)
+        second = await get_or_create_user_with_status(payload)
 
-    assert first.was_created is True
-    assert second.was_created is False
+        assert first.was_created is True
+        assert second.was_created is False
+    finally:
+        # The personal org has no FK to its User, so it would outlive the
+        # User's cascade; deleting it takes its members, team and balance.
+        await Organization.prisma().delete_many(where={"bootstrapUserId": user_id})
+        await User.prisma().delete_many(where={"id": user_id})
