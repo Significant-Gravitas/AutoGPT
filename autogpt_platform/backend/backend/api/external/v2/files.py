@@ -6,14 +6,13 @@ Provides file upload, download, listing, metadata, and deletion functionality.
 
 import base64
 import logging
-import re
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Security, UploadFile
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from prisma.enums import APIKeyPermission
 from starlette import status
 
+from backend.api.features.workspace.routes import create_file_download_response
 from backend.data.workspace import (
     count_workspace_files,
     get_workspace,
@@ -24,7 +23,6 @@ from backend.data.workspace import (
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
-from backend.util.workspace_storage import get_workspace_storage
 
 from .models import UploadWorkspaceFileResponse, WorkspaceFileInfo
 from .pagination import Page, PageRequest, page_request
@@ -235,18 +233,6 @@ async def upload_file(
 # ============================================================================
 
 
-def _sanitize_filename_for_header(filename: str) -> str:
-    """Sanitize filename for Content-Disposition header."""
-    sanitized = re.sub(r"[\r\n\x00]", "", filename)
-    sanitized = sanitized.replace('"', '\\"')
-    try:
-        sanitized.encode("ascii")
-        return f'attachment; filename="{sanitized}"'
-    except UnicodeEncodeError:
-        encoded = quote(sanitized, safe="")
-        return f"attachment; filename*=UTF-8''{encoded}"
-
-
 @file_workspace_router.get(
     path="/{file_id}/download",
     summary="Download file from workspace",
@@ -271,45 +257,4 @@ async def download_file(
             detail=f"File #{file_id} not found",
         )
 
-    storage = await get_workspace_storage()
-
-    # For local storage, stream directly
-    if file.storage_path.startswith("local://"):
-        content = await storage.retrieve(file.storage_path)
-        return Response(
-            content=content,
-            media_type=file.mime_type,
-            headers={
-                "Content-Disposition": _sanitize_filename_for_header(file.name),
-                "Content-Length": str(len(content)),
-            },
-        )
-
-    # For cloud storage, try signed URL redirect, fall back to streaming
-    try:
-        url = await storage.get_download_url(file.storage_path, expires_in=300)
-        if url.startswith("/api/"):
-            content = await storage.retrieve(file.storage_path)
-            return Response(
-                content=content,
-                media_type=file.mime_type,
-                headers={
-                    "Content-Disposition": _sanitize_filename_for_header(file.name),
-                    "Content-Length": str(len(content)),
-                },
-            )
-        return RedirectResponse(url=url, status_code=302)
-    except Exception:
-        logger.error(
-            f"Failed to get download URL for file {file.id}, falling back to stream",
-            exc_info=True,
-        )
-        content = await storage.retrieve(file.storage_path)
-        return Response(
-            content=content,
-            media_type=file.mime_type,
-            headers={
-                "Content-Disposition": _sanitize_filename_for_header(file.name),
-                "Content-Length": str(len(content)),
-            },
-        )
+    return await create_file_download_response(file)
