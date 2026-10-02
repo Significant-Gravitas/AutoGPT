@@ -91,11 +91,11 @@ class GraphitiConfig(BaseSettings):
     # Cross-encoder reranker (P-1.4) — used by warm-context retrieval to
     # rerank top edges from BM25 + cosine + BFS. Graphiti's built-in
     # OpenAIRerankerClient runs concurrent boolean-classifier prompts
-    # against gpt-4.1-mini by default (one prompt per candidate; log-
-    # probabilities decide the score). The audit estimated ~10–15%
-    # precision lift on warm context at the cost of one LLM call per
-    # session start. Shares the ``llm_model`` cloud slug so the
-    # reranker can ship with no env config.
+    # (one prompt per candidate; log-probabilities decide the score).
+    # This config defaults the classifier to gpt-4.1-mini — the same
+    # cloud slug as ``llm_model`` — so the reranker can ship with no
+    # env config. The audit estimated ~10–15% precision lift on warm
+    # context at the cost of one LLM call per session start.
     reranker_model: str = Field(
         default=_DEFAULT_RERANKER_MODEL,
         description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
