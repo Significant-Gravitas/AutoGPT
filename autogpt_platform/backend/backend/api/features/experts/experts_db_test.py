@@ -48,6 +48,7 @@ from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
+from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.model import create_chat_session
 from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
@@ -6804,6 +6805,46 @@ async def test_an_expert_can_record_a_routine_it_agreed_in_conversation(
     assert [
         r.id for r in await experts_db.list_routines(test_user.id, hired.expert.id)
     ] == [created.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_keeps_the_account_it_was_set_up_on(
+    server: SpinTestServer, test_user
+):
+    """The account picked in the chat lives on the row, so switching the
+    routine off and on again, or rewording it, keeps running on it
+    (SECRT-2804). Re-enabling without naming pins leaves them alone."""
+    template = await _seed_template(name="Briefer", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    work = CredentialPin(id="exa-new", title="Work")
+
+    created = await experts_db.create_routine(
+        test_user.id,
+        hired.expert.id,
+        title="Morning briefing",
+        prompt="Search Exa for AI news.",
+        crons=["H 8 * * *"],
+        credential_pins={"exa": work},
+    )
+    assert created.credential_pins == {"exa": work}
+
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        reworded = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, created.id, prompt="Search Exa daily."
+        )
+        assert reworded.credential_pins == {"exa": work}
+        moved = await experts_db.enable_routine(
+            test_user.id,
+            hired.expert.id,
+            created.id,
+            credential_pins={"exa": CredentialPin(id="exa-old", title="Personal")},
+        )
+    assert moved.credential_pins["exa"].id == "exa-old"
+    assert (await experts_db.get_routine(created.id)).credential_pins[
+        "exa"
+    ].id == "exa-old"
 
 
 @pytest.mark.asyncio(loop_scope="session")

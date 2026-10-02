@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
     COPILOT_CANCEL_EXCHANGE,
@@ -124,6 +125,18 @@ class TestCoPilotExecutionEntry:
             '{"session_id": "s1", "user_id": "u1", "message": "hi"}'
         )
         assert legacy.unattended is False
+
+    def test_credential_pins_survive_the_queue_and_default_to_none(self):
+        pin = CredentialPin(id="exa-new", title="Work key")
+        entry = CoPilotExecutionEntry(
+            session_id="s1", user_id="u1", message="hi", credential_pins={"exa": pin}
+        )
+        restored = CoPilotExecutionEntry.model_validate_json(entry.model_dump_json())
+        assert restored.credential_pins == {"exa": pin}
+        legacy = CoPilotExecutionEntry.model_validate_json(
+            '{"session_id": "s1", "user_id": "u1", "message": "hi"}'
+        )
+        assert legacy.credential_pins == {}
 
 
 class TestCancelCoPilotEvent:

@@ -10,7 +10,8 @@ account.
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.features.experts.routine_jobs import spread_cron
-from backend.api.features.experts.routines import _session_mode
+from backend.api.features.experts.routines import _credential_pins, _session_mode
+from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
@@ -254,3 +255,11 @@ def test_an_unknown_session_mode_falls_back_to_thread():
     thread — the mode that keeps its memory — not fail a call the owner already
     agreed to."""
     assert _session_mode("here").value == "THREAD"
+
+
+def test_a_routines_stored_pins_load_and_an_unreadable_one_is_dropped():
+    pins = _credential_pins(
+        {"exa": {"id": "exa-new", "title": "Work"}, "github": "not a pin"}
+    )
+    assert pins == {"exa": CredentialPin(id="exa-new", title="Work")}
+    assert _credential_pins(None) == {}
