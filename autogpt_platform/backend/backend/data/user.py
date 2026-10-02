@@ -84,17 +84,24 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
             raise HTTPException(status_code=401, detail="Email not found in token")
 
         user = await prisma.user.find_unique(where={"id": user_id})
+        row_created = False
         if not user:
-            user = await prisma.user.create(
-                data=UserCreateInput(
-                    id=user_id,
-                    email=user_email,
-                    name=user_data.get("user_metadata", {}).get("name"),
+            try:
+                user = await prisma.user.create(
+                    data=UserCreateInput(
+                        id=user_id,
+                        email=user_email,
+                        name=user_data.get("user_metadata", {}).get("name"),
+                    )
                 )
-            )
-            row_created = True
-        else:
-            row_created = False
+                row_created = True
+            except UniqueViolationError:
+                # A concurrent first request (the verify link opened in two
+                # browsers at once) created it since the lookup. If it is the
+                # email that clashes instead, there is still no row: re-raise.
+                user = await prisma.user.find_unique(where={"id": user_id})
+                if user is None:
+                    raise
 
         # Ensure every user has a marketplace Profile (required to publish
         # agents). Best-effort: a failure must not block user resolution — the

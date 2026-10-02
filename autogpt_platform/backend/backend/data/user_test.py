@@ -439,6 +439,41 @@ class TestGetOrCreateUserStatus:
         posthog_sync.assert_called_once_with("user-hooked")
 
     @pytest.mark.asyncio
+    async def test_a_row_created_concurrently_is_read_back_not_an_error(self):
+        """Two first requests for one account (the verify link opened in two
+        browsers at once) both miss the row and both create it. The loser's
+        unique violation on the id means the row exists: read it back."""
+        db_user = MagicMock(id="user-raced", email="race@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-raced", "race@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(side_effect=[None, db_user])
+            mock_prisma.user.create = AsyncMock(side_effect=prisma.errors.UniqueViolationError({}))
+
+            result = await user_module.get_or_create_user_with_status(
+                {"sub": "user-raced", "email": "race@example.com"}
+            )
+
+        assert result.was_created is False
+
+    @pytest.mark.asyncio
+    async def test_an_email_owned_by_another_user_still_fails(self):
+        with patch.object(user_module, "prisma") as mock_prisma:
+            mock_prisma.user.find_unique = AsyncMock(return_value=None)
+            mock_prisma.user.create = AsyncMock(side_effect=prisma.errors.UniqueViolationError({}))
+
+            with pytest.raises(DatabaseError):
+                await user_module.get_or_create_user_with_status(
+                    {"sub": "user-new", "email": "taken@example.com"}
+                )
+
+    @pytest.mark.asyncio
     async def test_existing_account_syncs_nothing(self, stub_user_provisioning):
         _, sync_signup, posthog_sync = stub_user_provisioning
         db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
