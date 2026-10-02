@@ -85,6 +85,85 @@ async def test_reattach_fails_before_preset_update_when_expert_is_unavailable(
     preset_client.update_many.assert_not_awaited()
 
 
+def _schedule(schedule_id: str, *, paused_by_expert_archive: bool) -> SimpleNamespace:
+    return SimpleNamespace(
+        kind="graph",
+        id=schedule_id,
+        name=schedule_id,
+        expert_id="expert-1",
+        paused_by_expert_archive=paused_by_expert_archive,
+    )
+
+
+def _stub_reattach_prereqs(mocker) -> None:
+    """Presets/routines pass through reattach before the schedule sweep; give
+    them inert clients so the schedule assertions stay the focus."""
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("org", "team")),
+    )
+    preset_client = mocker.MagicMock()
+    preset_client.update_many = AsyncMock(return_value=0)
+    mocker.patch.object(
+        scheduling.prisma.models.AgentPreset, "prisma", return_value=preset_client
+    )
+    mocker.patch.object(
+        scheduling.routine_jobs, "resume_routines_after_revive", new=AsyncMock()
+    )
+
+
+@pytest.mark.asyncio
+async def test_reattach_resumes_only_the_schedules_archiving_paused(mocker) -> None:
+    """A schedule the user had deliberately paused must survive re-hire:
+    re-hire resumes exactly the set the archive flow parked, nothing else."""
+    _stub_reattach_prereqs(mocker)
+    scheduler_client = mocker.MagicMock()
+    scheduler_client.get_execution_schedules = AsyncMock(
+        return_value=[
+            _schedule("archive-paused", paused_by_expert_archive=True),
+            _schedule("user-paused", paused_by_expert_archive=False),
+        ]
+    )
+    scheduler_client.resume_schedule = AsyncMock()
+    mocker.patch.object(
+        scheduling, "get_scheduler_client", return_value=scheduler_client
+    )
+
+    await scheduling.reattach_expert_triggers("owner", "expert-1")
+
+    scheduler_client.resume_schedule.assert_awaited_once_with(
+        "archive-paused", user_id="owner"
+    )
+
+
+@pytest.mark.asyncio
+async def test_detach_marks_its_pauses_as_expert_archive(mocker) -> None:
+    """The marker is what re-hire reads; a detach that forgets it strands
+    every paused schedule forever."""
+    preset_client = mocker.MagicMock()
+    preset_client.update_many = AsyncMock(return_value=0)
+    mocker.patch.object(
+        scheduling.prisma.models.AgentPreset, "prisma", return_value=preset_client
+    )
+    mocker.patch.object(
+        scheduling.routine_jobs, "pause_routines_for_archive", new=AsyncMock()
+    )
+    scheduler_client = mocker.MagicMock()
+    scheduler_client.get_execution_schedules = AsyncMock(
+        return_value=[_schedule("sched-1", paused_by_expert_archive=False)]
+    )
+    scheduler_client.pause_schedule = AsyncMock()
+    mocker.patch.object(
+        scheduling, "get_scheduler_client", return_value=scheduler_client
+    )
+
+    await scheduling.detach_expert_triggers("owner", "expert-1")
+
+    scheduler_client.pause_schedule.assert_awaited_once_with(
+        "sched-1", user_id="owner", by_expert_archive=True
+    )
+
+
 @pytest.mark.asyncio
 async def test_pause_only_mutates_private_expert(mocker) -> None:
     expert_client = mocker.MagicMock()

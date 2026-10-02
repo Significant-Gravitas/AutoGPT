@@ -23264,6 +23264,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "paused_by_expert_archive": {
+            "type": "boolean",
+            "title": "Paused By Expert Archive",
+            "default": false
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },

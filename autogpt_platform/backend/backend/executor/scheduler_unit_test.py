@@ -12,6 +12,8 @@ from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from apscheduler.jobstores.memory import MemoryJobStore
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
@@ -27,6 +29,7 @@ from backend.executor.scheduler import (
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
     GraphExecutionJobInfo,
+    Jobstores,
     Scheduler,
     _best_effort_unschedule,
     _build_trigger,
@@ -2279,3 +2282,154 @@ class TestPostHogLifecycleSweepRegistration:
         assert not getattr(
             Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
         )
+
+
+# ---------------------------------------------------------------------------
+# pause/resume: recording who parked the job
+# ---------------------------------------------------------------------------
+
+
+def _noop(**kwargs) -> None:
+    """Accept persisted schedule arguments without dispatching an execution."""
+
+
+def _graph_job_kwargs(schedule_id: str, user_id: str = "user-1") -> dict:
+    """Build valid expert-attributed graph metadata for pause/resume tests."""
+    return GraphExecutionJobArgs(
+        schedule_id=schedule_id,
+        user_id=user_id,
+        graph_id="graph-1",
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+        expert_id="expert-1",
+    ).model_dump(mode="json")
+
+
+@pytest.fixture
+def memory_scheduler():
+    """A Scheduler backed by a real in-memory jobstore, started in paused
+    mode so triggers resolve ``next_run_time`` without ever firing."""
+    scheduler = Scheduler(register_system_tasks=False)
+    scheduler.scheduler = BackgroundScheduler(
+        jobstores={Jobstores.EXECUTION.value: MemoryJobStore()},
+        timezone=timezone.utc,
+    )
+    scheduler.scheduler.start(paused=True)
+    yield scheduler
+    scheduler.scheduler.shutdown(wait=False)
+
+
+def _add_job(
+    scheduler: Scheduler, schedule_id: str, kwargs: dict | None = None
+) -> None:
+    """Add an active recurring job with optional legacy or customized metadata."""
+    scheduler.scheduler.add_job(
+        _noop,
+        kwargs=kwargs or _graph_job_kwargs(schedule_id),
+        trigger=CronTrigger.from_crontab("0 9 * * *"),
+        id=schedule_id,
+        jobstore=Jobstores.EXECUTION.value,
+        replace_existing=True,
+    )
+
+
+def _get_job(scheduler: Scheduler, schedule_id: str):
+    """Retrieve a test schedule and fail explicitly if it was removed."""
+    job = scheduler.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+    assert job is not None
+    return job
+
+
+def test_pause_records_who_parked_the_job(memory_scheduler):
+    """Ordinary pauses must not be attributed to expert archiving."""
+    _add_job(memory_scheduler, "sched-1")
+
+    assert memory_scheduler.pause_execution_schedule("sched-1", user_id="user-1")
+
+    job = _get_job(memory_scheduler, "sched-1")
+    assert job.next_run_time is None
+    assert job.kwargs["paused_by_expert_archive"] is False
+
+
+def test_archive_pause_marks_the_job(memory_scheduler):
+    """The pause and its provenance reach the job store in one update."""
+    _add_job(memory_scheduler, "sched-1")
+    original_kwargs = dict(_get_job(memory_scheduler, "sched-1").kwargs)
+
+    with patch.object(
+        memory_scheduler.scheduler,
+        "modify_job",
+        wraps=memory_scheduler.scheduler.modify_job,
+    ) as modify_job:
+        assert memory_scheduler.pause_execution_schedule(
+            "sched-1", user_id="user-1", by_expert_archive=True
+        )
+
+    modify_job.assert_called_once_with(
+        "sched-1",
+        jobstore=Jobstores.EXECUTION.value,
+        next_run_time=None,
+        kwargs={**original_kwargs, "paused_by_expert_archive": True},
+    )
+
+    job = _get_job(memory_scheduler, "sched-1")
+    assert job.next_run_time is None
+    assert job.kwargs["paused_by_expert_archive"] is True
+    info = _job_to_info(job)
+    assert info is not None and info.paused_by_expert_archive is True
+
+
+def test_archive_sweep_cannot_claim_a_user_paused_job(memory_scheduler):
+    """The re-hire regression: the archive sweep hits an already-paused job
+    and must leave the user's marker alone, or re-hire would resume a
+    schedule the owner had deliberately switched off."""
+    _add_job(memory_scheduler, "sched-1")
+    memory_scheduler.pause_execution_schedule("sched-1", user_id="user-1")
+
+    assert not memory_scheduler.pause_execution_schedule(
+        "sched-1", user_id="user-1", by_expert_archive=True
+    )
+
+    assert (
+        _get_job(memory_scheduler, "sched-1").kwargs["paused_by_expert_archive"]
+        is False
+    )
+
+
+def test_user_pause_overwrites_a_stale_archive_marker(memory_scheduler):
+    """A new user pause replaces the provenance retained from an earlier archive."""
+    _add_job(memory_scheduler, "sched-1")
+    memory_scheduler.pause_execution_schedule(
+        "sched-1", user_id="user-1", by_expert_archive=True
+    )
+    memory_scheduler.resume_execution_schedule("sched-1", user_id="user-1")
+
+    memory_scheduler.pause_execution_schedule("sched-1", user_id="user-1")
+
+    assert (
+        _get_job(memory_scheduler, "sched-1").kwargs["paused_by_expert_archive"]
+        is False
+    )
+
+
+def test_resume_still_recomputes_the_next_fire(memory_scheduler):
+    """Resuming an archive-paused recurring job restores a future firing."""
+    _add_job(memory_scheduler, "sched-1")
+    memory_scheduler.pause_execution_schedule(
+        "sched-1", user_id="user-1", by_expert_archive=True
+    )
+
+    assert memory_scheduler.resume_execution_schedule("sched-1", user_id="user-1")
+
+    assert _get_job(memory_scheduler, "sched-1").next_run_time is not None
+
+
+def test_jobs_predating_the_marker_read_as_not_archive_paused(memory_scheduler):
+    """Legacy jobs default to unmarked so revival cannot claim their pauses."""
+    kwargs = _graph_job_kwargs("sched-1")
+    kwargs.pop("paused_by_expert_archive")
+    _add_job(memory_scheduler, "sched-1", kwargs=kwargs)
+
+    info = _job_to_info(_get_job(memory_scheduler, "sched-1"))
+    assert info is not None and info.paused_by_expert_archive is False
