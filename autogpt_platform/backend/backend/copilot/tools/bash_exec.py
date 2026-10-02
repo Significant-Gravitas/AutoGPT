@@ -51,7 +51,9 @@ logger = logging.getLogger(__name__)
 # the box is still up to report the result (or the timeout) and to be killed.
 _SANDBOX_LIMIT_MARGIN_SECONDS = 60
 # A stream that breaks this close to the command's deadline is its timeout.
-_DEADLINE_SLACK_SECONDS = 1.0
+# The SDK's own deadline starts after ours and is rounded to the millisecond,
+# so it never fires earlier than this; any earlier break is the box's doing.
+_DEADLINE_SLACK_SECONDS = 0.05
 # Reattaches to a running command after its stream to the box drops.
 _MAX_RECONNECTS = 3
 _KILL_TIMEOUT_SECONDS = 10
@@ -368,6 +370,8 @@ async def _follow_command(
             except NotFoundException:
                 return outcome(ended_unseen=True)
             except Exception as reconnect_exc:
+                if deadline - loop.time() <= _DEADLINE_SLACK_SECONDS:
+                    return outcome(timed_out=True, killed=await _kill(sandbox, pid))
                 logger.warning(
                     "[E2B] bash_exec could not reattach to pid %s: %s",
                     pid,

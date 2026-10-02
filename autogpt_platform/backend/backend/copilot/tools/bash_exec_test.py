@@ -726,6 +726,40 @@ class TestBashExecE2BTimeouts:
         assert proc.killed is False
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_box_pausing_in_the_last_second_is_not_the_timeout(self):
+        # The box pauses 1.2s into a 2s timeout; the command needs 1.6s.
+        box = _FakeBox(limit=1.2, process=_counting(1.6))
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        result = await _run(box, timeout=2)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is False
+        assert result.exit_code == 0
+        assert result.stdout == "".join(f"{i}\n" for i in range(1, 17))
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_reattach_failing_past_the_deadline_is_the_timeout(self):
+        # The box pauses just before the deadline and the reattach only
+        # fails once the deadline has passed.
+        proc = _counting(60)
+        box = _FakeBox(limit=1.8, process=proc)
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        async def slow_failing_connect(*args, **kwargs):
+            await asyncio.sleep(0.4)
+            raise TimeoutException("deadline exceeded while reconnecting")
+
+        box.commands.connect = AsyncMock(side_effect=slow_failing_connect)
+
+        result = await _run(box, timeout=2)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is True
+        assert result.message == "Timed out after 2s; it was killed."
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_real_timeout_keeps_partial_output_and_kills_the_command(self):
         proc = _FakeProcess(
             [(0.1, "stdout", "partial\n"), (0.2, "stderr", "warning: slow\n")],
