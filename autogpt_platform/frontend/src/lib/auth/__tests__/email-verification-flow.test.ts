@@ -209,6 +209,42 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     );
   });
 
+  it("emails a fresh link when an unverified address signs up again", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    await signUp(handler, "again@example.com");
+    sentEmails.length = 0;
+
+    // Better Auth answers a repeat sign-up like a new one, and the page then
+    // says a link was sent, so one has to be.
+    const response = await signUp(handler, "again@example.com");
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).token).toBeNull();
+    expect(db.UserAuthIdentity).toHaveLength(1);
+    const link = new URL(lastVerifyLink("again@example.com") ?? "");
+    expect(link.pathname).toBe("/api/auth/verify-email");
+    expect(link.searchParams.get("callbackURL")).toBe(callbackURL);
+    const verified = await handler(new Request(link));
+    expect(verified.status).toBe(302);
+    expect(verified.headers.get("location")).toBe(callbackURL);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: true }),
+    ]);
+  });
+
+  it("sends nothing when a verified address signs up again", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "taken@example.com");
+    await handler(new Request(lastVerifyLink("taken@example.com") ?? ""));
+    sentEmails.length = 0;
+
+    const response = await signUp(handler, "taken@example.com");
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).token).toBeNull();
+    expect(sentEmails).toEqual([]);
+  });
+
   it("re-sends the link through the resend endpoint", async () => {
     const { handler } = await createAuthHandler(true);
     await signUp(handler, "new@example.com");

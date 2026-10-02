@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
+import { emailRepeatSignUp } from "./existing-user-sign-up";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
@@ -67,6 +68,8 @@ if (process.env.NODE_ENV !== "production") {
 
 const requireEmailVerification =
   process.env.AUTH_REQUIRE_EMAIL_VERIFICATION === "true";
+// 24h, as GoTrue's confirmation links were; Better Auth's default is 1h.
+const emailVerificationExpiresIn = 60 * 60 * 24;
 
 export const auth = betterAuth({
   baseURL,
@@ -163,6 +166,16 @@ export const auth = betterAuth({
     // user resets their password to evict a stolen session.
     revokeSessionsOnPasswordReset: true,
     requireEmailVerification,
+    // Only called with requireEmailVerification on, for a sign-up whose
+    // address already has an account: see existing-user-sign-up.ts.
+    onExistingUserSignUp: async ({ user }) => {
+      await emailRepeatSignUp({
+        user,
+        baseURL,
+        secret: process.env.BETTER_AUTH_SECRET ?? "",
+        expiresIn: emailVerificationExpiresIn,
+      });
+    },
     password: {
       // bcrypt instead of Better Auth's default scrypt so password hashes
       // migrated from Supabase GoTrue keep verifying without a reset.
@@ -186,8 +199,7 @@ export const auth = betterAuth({
     // The link signs the user in and redirects to the callbackURL the
     // sign-up/sign-in action passed, which is /auth/callback?method=email.
     autoSignInAfterVerification: true,
-    // 24h, as GoTrue's confirmation links were; Better Auth's default is 1h.
-    expiresIn: 60 * 60 * 24,
+    expiresIn: emailVerificationExpiresIn,
     sendVerificationEmail: async ({ user, url }) => {
       await sendAuthEmail({
         to: user.email,
