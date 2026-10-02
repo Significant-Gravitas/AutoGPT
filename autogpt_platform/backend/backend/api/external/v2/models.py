@@ -1409,7 +1409,7 @@ class MarketplaceAgent(BaseModel):
             creator_avatar=agent.creator_avatar,
             runs=agent.runs,
             rating=agent.rating,
-            image_url=agent.agent_image,
+            image_url=agent.agent_image or None,
         )
 
 
