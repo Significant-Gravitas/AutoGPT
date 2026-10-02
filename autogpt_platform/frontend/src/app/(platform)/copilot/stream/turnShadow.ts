@@ -22,6 +22,8 @@ interface ShadowTurn {
   verified: number;
   reportedErrors: number;
   compared: boolean;
+  /** Its stream ended before `finish`: closed from outside, or cancelled by the client. */
+  ended: "abandoned" | "stopped" | null;
 }
 
 /** A finished turn keeps its slot until compared, so the next turn's entries
@@ -34,28 +36,46 @@ interface SessionShadow {
 // Each slot holds a whole turn's rows; only the most recent sessions keep one.
 const MAX_SESSIONS = 5;
 const shadows = new Map<string, SessionShadow>();
+let shadowRate = 0;
+const sampledSessions = new Map<string, boolean>();
 
-/** Wrap the transport's fetch so every stream response is teed into the shadow. */
+/** The share of chat sessions the shadow tees, from `copilot-stream-shadow`; 0 is off. */
+export function setStreamShadowRate(rate: unknown) {
+  shadowRate =
+    typeof rate === "number" && Number.isFinite(rate)
+      ? Math.min(1, Math.max(0, rate))
+      : 0;
+}
+
+/** Wrap the transport's fetch so a sampled session's stream responses are teed into the shadow. */
 export function createShadowFetch(
   sessionId: string,
   inner: typeof fetch = (input, init) => fetch(input, init),
 ): typeof fetch {
   return async (input, init) => {
     const response = await inner(input, init);
-    if (!response.ok || !response.body) return response;
+    if (!response.ok || !response.body || !isSampled(sessionId)) {
+      return response;
+    }
     const [main, tap] = response.body.tee();
     const stopTap = new AbortController();
     const stop = () => stopTap.abort();
     init?.signal?.addEventListener("abort", stop);
+    let turnId: string | null = null;
     void readSseFrames(
       tap,
       (frame) => {
-        if (frame.kind === "entry") applyShadowEntry(sessionId, frame.entry);
+        if (frame.kind !== "entry") return;
+        turnId = frame.entry.turn;
+        applyShadowEntry(sessionId, frame.entry);
       },
       stopTap.signal,
     )
       .catch(() => {})
-      .finally(() => init?.signal?.removeEventListener("abort", stop));
+      .finally(() => {
+        init?.signal?.removeEventListener("abort", stop);
+        markEnded(sessionId, turnId, stopTap.signal.aborted);
+      });
     return new Response(
       onCancel(main, () => stopTap.abort()),
       {
@@ -71,6 +91,7 @@ export function applyShadowEntry(sessionId: string, entry: StreamEntry) {
   try {
     const shadow = shadowFor(sessionId, entry.turn);
     shadow.log = applyEntry(shadow.log, entry);
+    shadow.ended = null;
     if (!isWholeTurn(shadow.log)) return;
     reportProtocolErrors(shadow);
     void verifyCheckpoints(shadow);
@@ -97,6 +118,8 @@ export function getShadowLog(sessionId: string): TurnLog | null {
 
 export function resetShadows() {
   shadows.clear();
+  sampledSessions.clear();
+  shadowRate = 0;
 }
 
 /** One entry per differing row, with the fields that differ. */
@@ -118,6 +141,32 @@ interface SessionView {
   has_more_messages?: boolean;
 }
 
+// Sampled per session, not per request, so a turn's resumes are teed when its POST was.
+function isSampled(sessionId: string) {
+  if (shadowRate <= 0) return false;
+  let sampled = sampledSessions.get(sessionId);
+  if (sampled === undefined) {
+    sampled = Math.random() < shadowRate;
+    sampledSessions.set(sessionId, sampled);
+  }
+  return sampled;
+}
+
+function markEnded(
+  sessionId: string,
+  turnId: string | null,
+  byClient: boolean,
+) {
+  const slot = shadows.get(sessionId);
+  const shadow = [slot?.current, slot?.previous].find(
+    (s) => s && turnId !== null && s.log.turnId === turnId,
+  );
+  const over =
+    shadow?.log.status === "finished" || shadow?.log.status === "failed";
+  if (!shadow || over) return;
+  shadow.ended = byClient ? "stopped" : "abandoned";
+}
+
 function shadowFor(sessionId: string, turnId: string): ShadowTurn {
   const slot = shadows.get(sessionId);
   if (slot?.current.log.turnId === turnId) return slot.current;
@@ -127,6 +176,7 @@ function shadowFor(sessionId: string, turnId: string): ShadowTurn {
     verified: 0,
     reportedErrors: 0,
     compared: false,
+    ended: null,
   };
   const pending = slot && !slot.current.compared ? slot.current : null;
   shadows.delete(sessionId);
@@ -144,8 +194,18 @@ function shadowFor(sessionId: string, turnId: string): ShadowTurn {
 function compareTurn(shadow: ShadowTurn, session: SessionView) {
   if (shadow.compared || !isWholeTurn(shadow.log)) return;
   const { log } = shadow;
-  if (log.status !== "finished" && log.status !== "failed") return;
   if (session.active_stream?.turn_id === log.turnId) return;
+  if (log.status !== "finished" && log.status !== "failed") {
+    // The server is done with a turn whose stream the client lost: what the
+    // screen shows stopped where the stream did.
+    if (!shadow.ended) return;
+    shadow.compared = true;
+    reportDrift(shadow.ended, log, {
+      rows: log.rows.length,
+      checkpoints: log.checkpoints.length,
+    });
+    return;
+  }
   const last = log.checkpoints[log.checkpoints.length - 1];
   if (!last) {
     shadow.compared = true;
