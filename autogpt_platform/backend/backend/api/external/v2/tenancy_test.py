@@ -131,7 +131,7 @@ async def test_run_creation_carries_org_and_team(
     from .models import AgentRunRequest
 
     mocker.patch(
-        "backend.api.external.v2.library.agents.get_credit_model",
+        "backend.api.external.v2.library.helpers.get_credit_model",
         new_callable=AsyncMock,
         return_value=Mock(get_credits=AsyncMock(return_value=100)),
     )
@@ -172,7 +172,7 @@ async def test_billing_uses_the_org_credit_model(
     balance = await get_balance(auth=_key_for(ORG_A))
 
     assert credit_model.await_args.args == (USER_ID, ORG_A)
-    assert balance.balance == 42
+    assert balance.balance_cents == 42
 
 
 @pytest.mark.asyncio
@@ -369,7 +369,7 @@ async def test_org_a_key_cannot_run_an_org_b_library_agent(
     from .models import AgentRunRequest
 
     mocker.patch(
-        "backend.api.external.v2.library.agents.get_credit_model",
+        "backend.api.external.v2.library.helpers.get_credit_model",
         new_callable=AsyncMock,
         return_value=Mock(get_credits=AsyncMock(return_value=100)),
     )
@@ -418,10 +418,10 @@ async def test_org_a_key_cannot_delete_an_org_b_library_agent(
 async def test_org_a_key_cannot_execute_an_org_b_preset(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    from .library.presets import execute_preset
+    from .library.presets import run_preset
 
     mocker.patch(
-        "backend.api.external.v2.library.presets.get_credit_model",
+        "backend.api.external.v2.library.helpers.get_credit_model",
         new_callable=AsyncMock,
         return_value=Mock(get_credits=AsyncMock(return_value=100)),
     )
@@ -437,7 +437,7 @@ async def test_org_a_key_cannot_execute_an_org_b_preset(
     )
 
     with pytest.raises(NotFoundError):
-        await execute_preset(preset_id="p-1", auth=_key_for(ORG_A))
+        await run_preset(preset_id="p-1", auth=_key_for(ORG_A))
     add_execution.assert_not_awaited()
 
 
