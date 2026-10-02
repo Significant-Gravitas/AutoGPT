@@ -1,9 +1,11 @@
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
 
+from backend.copilot.context import set_turn_unattended
 from backend.data.execution import ExecutionStatus
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
@@ -1891,3 +1893,38 @@ async def test_validation_error_card_carries_expert_grants(
     assert all(
         entry["expert_grant"]["expert_id"] == "expert-a" for entry in missing.values()
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_validation_race_on_a_scheduled_turn_fails_instead_of_asking():
+    """A preset's stale credential reaches the race handler without the
+    prerequisite check; on a turn nobody watches, a setup card would never
+    be answered, so the step must fail naming the provider (SECRT-2804)."""
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Daily Scraper"
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+    session = make_session("test-user")
+    session.metadata.origin = "automation"
+
+    async def turn():
+        set_turn_unattended(session, scheduled=False)
+        return await RunAgentTool()._handle_graph_validation_race(
+            error=error,
+            graph=graph,
+            user_id="test-user",
+            session_id=session.session_id,
+            action_verb="running",
+        )
+
+    with patch(
+        "backend.copilot.tools.run_agent.build_missing_credentials_from_graph",
+        return_value={"credentials": {"provider": "firecrawl"}},
+    ):
+        response = await asyncio.create_task(turn())
+
+    assert isinstance(response, ErrorResponse)
+    assert response.error == "missing_credentials"
+    assert "firecrawl" in response.message

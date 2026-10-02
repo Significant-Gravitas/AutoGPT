@@ -2120,3 +2120,29 @@ async def test_scheduled_turn_without_any_exa_key_fails_naming_the_provider() ->
     assert isinstance(result, ErrorResponse)
     assert "exa" in result.message.lower()
     assert ExaSearchBlock().name in result.message
+
+
+@pytest.mark.asyncio
+async def test_scheduled_expert_turn_names_the_credential_to_grant() -> None:
+    # The account has an Exa key, but the expert was never granted it, so
+    # connecting another one would not help: the reply must say to grant it.
+    missing = CredentialsMetaInput(
+        id="credentials", provider=ProviderName("exa"), type="api_key"
+    )
+    session = make_session(_USER, expert_id="expert-a")
+    session.metadata.origin = "automation"
+    with (
+        patch(
+            "backend.copilot.tools.helpers.match_credentials_to_requirements",
+            AsyncMock(return_value=({}, [missing])),
+        ),
+        patch(
+            "backend.copilot.tools.expert_scope._ungranted_credentials",
+            AsyncMock(return_value=[_exa_key("exa-old")]),
+        ),
+    ):
+        result = await _prepare_exa_search(session, [])
+
+    assert isinstance(result, ErrorResponse)
+    assert "exa-old" in result.message
+    assert "grant" in result.message.lower()
