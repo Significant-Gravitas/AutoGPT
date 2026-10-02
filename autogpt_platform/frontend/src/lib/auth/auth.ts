@@ -71,9 +71,11 @@ const requireEmailVerification =
 // 24h, as GoTrue's confirmation links were; Better Auth's default is 1h.
 const emailVerificationExpiresIn = 60 * 60 * 24;
 
+const authSecret = process.env.BETTER_AUTH_SECRET;
+
 export const auth = betterAuth({
   baseURL,
-  secret: process.env.BETTER_AUTH_SECRET,
+  secret: authSecret,
   database: authDbPool,
   telemetry: { enabled: false },
   databaseHooks: {
@@ -172,7 +174,7 @@ export const auth = betterAuth({
       await emailRepeatSignUp({
         user,
         baseURL,
-        secret: process.env.BETTER_AUTH_SECRET ?? "",
+        secret: authSecret,
         expiresIn: emailVerificationExpiresIn,
       });
     },

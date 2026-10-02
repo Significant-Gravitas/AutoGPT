@@ -5,7 +5,7 @@ import { getEmailVerificationCallbackURL } from "./email-verification";
 interface Args {
   user: { email: string; emailVerified?: boolean | null };
   baseURL: string;
-  secret: string;
+  secret: string | undefined;
   expiresIn: number;
 }
 
@@ -29,6 +29,8 @@ export async function emailRepeatSignUp({
 }: Args) {
   if (user.emailVerified) return;
   try {
+    // An empty secret would sign a link that verify-email then rejects.
+    if (!secret) throw new Error("BETTER_AUTH_SECRET is not set");
     const token = await createEmailVerificationToken(
       secret,
       user.email,

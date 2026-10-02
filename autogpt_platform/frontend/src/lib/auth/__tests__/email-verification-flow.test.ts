@@ -47,13 +47,16 @@ const callbackURL = "/auth/callback?method=email";
 
 type Handler = (request: Request) => Promise<Response>;
 
-async function createAuthHandler(requireVerification: boolean) {
+async function createAuthHandler(
+  requireVerification: boolean,
+  secret: string | null = "test-secret-that-is-at-least-32-chars",
+) {
   vi.stubEnv(
     "AUTH_REQUIRE_EMAIL_VERIFICATION",
     requireVerification ? "true" : "false",
   );
   vi.stubEnv("BETTER_AUTH_URL", baseURL);
-  vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-that-is-at-least-32-chars");
+  vi.stubEnv("BETTER_AUTH_SECRET", secret ?? undefined);
   vi.doUnmock("../auth");
   vi.resetModules();
 
@@ -249,6 +252,27 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(consoleError).toHaveBeenCalledWith(
       "Failed to email a repeat sign-up its verification link",
       { error: "mailer down" },
+    );
+    consoleError.mockRestore();
+  });
+
+  it("sends a repeat sign-up no link it cannot sign", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { handler, db } = await createAuthHandler(true, null);
+    await signUp(handler, "unsigned@example.com");
+    sentEmails.length = 0;
+
+    const response = await signUp(handler, "unsigned@example.com");
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).token).toBeNull();
+    expect(db.UserAuthIdentity).toHaveLength(1);
+    expect(lastVerifyLink("unsigned@example.com")).toBeUndefined();
+    expect(consoleError).toHaveBeenCalledWith(
+      "Failed to email a repeat sign-up its verification link",
+      { error: "BETTER_AUTH_SECRET is not set" },
     );
     consoleError.mockRestore();
   });
