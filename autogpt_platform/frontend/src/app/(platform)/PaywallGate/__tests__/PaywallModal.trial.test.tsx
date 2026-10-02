@@ -179,7 +179,7 @@ test("reports the offer impression against the billing surface", async () => {
 
   await screen.findByRole("button", { name: "Start 7-day trial" });
   expect(posthog.capture).toHaveBeenCalledWith(
-    "subscription_trial_offer_viewed",
+    "trial_offer_viewed",
     expect.objectContaining({ surface: "billing" }),
   );
 });

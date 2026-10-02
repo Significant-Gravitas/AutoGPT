@@ -582,16 +582,17 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-26: $0.30/$1.20 per 1M
-                # (OpenRouter raised this route from $0.14/$0.42). OpenRouter
-                # reprices this route continuously (by design); this is the
-                # latest snapshot at PR time, re-checked immediately before
-                # merge. Flagged by scripts/check_openrouter_prices.py.
+                # Live OpenRouter rate as of 2026-10-02: $0.03/$0.75 per
+                # 1M (cache read $0.00375), down from $0.30/$1.20 on
+                # 2026-09-26. OpenRouter reprices this route continuously
+                # (by design); this is the latest snapshot at PR time,
+                # re-checked immediately before merge. Flagged by
+                # scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=45.0,
-                    output_credits_per_1m=180.0,
-                    cache_read_credits_per_1m=0.63,
+                    input_credits_per_1m=4.5,
+                    output_credits_per_1m=112.5,
+                    cache_read_credits_per_1m=0.5625,
                 ),
             ),
             CatalogModel(
@@ -979,10 +980,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=262144,
                 max_output_tokens=262144,
                 price_tier=2,
+                # Live OpenRouter rate as of 2026-10-02: $0.43415/$1.828 per
+                # 1M (cheapest route, Baidu), down from $0.65/$3.41.
+                # Flagged by scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=97.5,
-                    output_credits_per_1m=511.5,
+                    input_credits_per_1m=65.1225,
+                    output_credits_per_1m=274.2,
                 ),
             ),
             CatalogModel(
@@ -1045,7 +1049,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=22.5, output_credits_per_1m=90.0
+                    run_credits=1, input_credits_per_1m=5.55, output_credits_per_1m=25.5
                 ),
             ),
             CatalogModel(
@@ -1630,6 +1634,24 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=4,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1500.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6.1-sol",
+                display_name="GPT-6.1 Sol",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $2/1M in, $10/1M out — same list price as gpt-6-sol,
+                # live OpenRouter rate as of 2026-09-30. Tier 2 like
+                # gpt-6-sol.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
                 ),
             ),
             CatalogModel(
