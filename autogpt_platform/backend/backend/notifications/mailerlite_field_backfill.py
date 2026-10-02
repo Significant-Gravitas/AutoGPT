@@ -125,7 +125,11 @@ def desired(person: Person) -> tuple[SubscriptionStatus, Fields]:
     }
 
 
-def plan(people: list[Person], current: Current) -> FieldPlan:
+def plan(people: list[Person], current: Current, *, create: bool = True) -> FieldPlan:
+    """Each person's fields that differ from MailerLite's. With create=False,
+    someone MailerLite does not hold is left out: only the checkout openers
+    backfill brings new people in, since a Stripe customer alone does not
+    mean they opened checkout (the billing portal creates one too)."""
     result = FieldPlan(
         statuses={s: 0 for s in SubscriptionStatus}, changes=[], invalid=0
     )
@@ -136,6 +140,8 @@ def plan(people: list[Person], current: Current) -> FieldPlan:
         status, fields = desired(person)
         result.statuses[status] += 1
         held = current.get(person.email.strip().lower())
+        if held is None and not create:
+            continue
         differ = {
             key: value
             for key, value in fields.items()

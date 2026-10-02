@@ -116,10 +116,13 @@ async def test_each_opener_is_one_paced_upsert_into_the_group(monkeypatch, caplo
     )
     with (
         patch.object(checkout_backfill, "_client", return_value=client),
+        patch.object(
+            checkout_backfill, "_find_subscriber", AsyncMock(return_value=None)
+        ),
         caplog.at_level("WARNING"),
     ):
-        ok, failed = await checkout_backfill.apply(plan.changes, "grp_checkout")
-    assert (ok, failed) == (1, 1)
+        result = await checkout_backfill.apply(plan.changes, "grp_checkout")
+    assert result == (1, 1, 0)
     first = client.post.await_args_list[0]
     assert first.args[0].endswith("/subscribers")
     assert first.kwargs["json"]["groups"] == ["grp_checkout"]
@@ -127,6 +130,78 @@ async def test_each_opener_is_one_paced_upsert_into_the_group(monkeypatch, caplo
     sleep.assert_awaited_once_with(checkout_backfill.WRITE_INTERVAL_SECONDS)
     assert "The given data was invalid." in caplog.text
     assert "b@acme.com" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_live_write_made_during_the_run_is_not_overwritten(monkeypatch):
+    """Planned from an early snapshot as Indian by timezone; while the run
+    went on, the live event recorded a German billing address. The write is
+    merged against a fresh read, so Germany and the exclusion stay."""
+    monkeypatch.setattr(checkout_backfill.asyncio, "sleep", AsyncMock())
+    opener = _opener()
+    plan = checkout_backfill.plan([opener], current={}, members={})
+    fresh = {
+        **_held(opener),
+        "country": "Germany",
+        "country_code": "DE",
+        "country_source": "stripe",
+        "exclude_de_at": "yes",
+    }
+    client = MagicMock(post=AsyncMock(return_value=MagicMock(status=200)))
+    with (
+        patch.object(checkout_backfill, "_client", return_value=client),
+        patch.object(
+            checkout_backfill,
+            "_find_subscriber",
+            AsyncMock(return_value={"fields": fresh}),
+        ),
+    ):
+        result = await checkout_backfill.apply(plan.changes, "grp_checkout")
+    assert result == (1, 0, 0)
+    body = client.post.await_args.kwargs["json"]
+    assert body["groups"] == ["grp_checkout"]
+    assert "fields" not in body
+
+
+@pytest.mark.asyncio
+async def test_someone_already_up_to_date_is_skipped(monkeypatch):
+    monkeypatch.setattr(checkout_backfill.asyncio, "sleep", AsyncMock())
+    opener = _opener()
+    plan = checkout_backfill.plan(
+        [opener], current={"sam@acme.com": {}}, members={"sam@acme.com": "1"}
+    )
+    client = MagicMock(post=AsyncMock())
+    with (
+        patch.object(checkout_backfill, "_client", return_value=client),
+        patch.object(
+            checkout_backfill,
+            "_find_subscriber",
+            AsyncMock(return_value={"fields": _held(opener)}),
+        ),
+    ):
+        result = await checkout_backfill.apply(plan.changes, "grp_checkout")
+    assert result == (0, 0, 1)
+    client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_reread_is_counted_and_retried_later(monkeypatch, caplog):
+    monkeypatch.setattr(checkout_backfill.asyncio, "sleep", AsyncMock())
+    plan = checkout_backfill.plan([_opener()], current={}, members={})
+    client = MagicMock(post=AsyncMock())
+    with (
+        patch.object(checkout_backfill, "_client", return_value=client),
+        patch.object(
+            checkout_backfill,
+            "_find_subscriber",
+            AsyncMock(side_effect=RuntimeError("MailerLite down")),
+        ),
+        caplog.at_level("WARNING"),
+    ):
+        result = await checkout_backfill.apply(plan.changes, "grp_checkout")
+    assert result == (0, 1, 0)
+    client.post.assert_not_awaited()
+    assert "sam@acme.com" not in caplog.text
 
 
 def _refused(body: dict) -> MagicMock:
