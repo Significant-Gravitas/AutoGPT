@@ -23,6 +23,7 @@ export function SettingsGroup({
         variant="body-medium"
         as="h3"
         tone={isDanger ? "danger" : "primary"}
+        className="px-4"
       >
         {title}
       </Text>

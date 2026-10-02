@@ -238,13 +238,21 @@ describe("an expert's AI connection", () => {
   });
 
   it("tells the owner chat on a subscription does not count against the budget", async () => {
+    const user = userEvent.setup();
     server.use(getGetExpertMockHandler(mariaOnChatGPT));
     render(<ExpertDetailPage />);
 
     const budget = await screen.findByRole("region", { name: "Maria budget" });
-    expect(
-      await within(budget).findByText(/Chat is not metered on ChatGPT/),
-    ).toBeDefined();
+    const metering = await within(budget).findByRole("button", {
+      name: "Budget metering",
+    });
+    expect(within(budget).queryByText(/not metered/)).toBeNull();
+
+    await user.hover(metering);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toBe(
+      "Chat is not metered on ChatGPT. Only workflow runs on platform credits count here.",
+    );
   });
 
   it("keeps the budget quiet about metering on the platform route", async () => {
@@ -254,6 +262,9 @@ describe("an expert's AI connection", () => {
     await openTab("Settings");
     await findRouteSelect();
     expect(within(budget).queryByText(/not metered/)).toBeNull();
+    expect(
+      within(budget).queryByRole("button", { name: "Budget metering" }),
+    ).toBeNull();
   });
 
   it("keeps the budget quiet about metering when the pinned connection is gone", async () => {
@@ -270,6 +281,9 @@ describe("an expert's AI connection", () => {
     await openTab("Settings");
     await findRouteSelect();
     expect(within(budget).queryByText(/not metered/)).toBeNull();
+    expect(
+      within(budget).queryByRole("button", { name: "Budget metering" }),
+    ).toBeNull();
   });
 
   it("warns when the pinned connection has gone missing", async () => {

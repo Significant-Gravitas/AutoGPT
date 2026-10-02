@@ -2,9 +2,23 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
+import {
+  BUTTON_ICON_SIZE,
+  extendedButtonVariants,
+} from "@/components/atoms/Button/helpers";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { creditsToUsdLabel } from "@/lib/credits";
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+import {
+  InformationCircleIcon,
+  PencilEdit02Icon,
+} from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SpendMeter } from "../../components/ExpertTeamCard/components/SpendMeter";
 import { getWeeklySpend } from "../../helpers";
@@ -18,6 +32,8 @@ interface Props {
 export function ExpertBudgetSection({ expert }: Props) {
   const weeklySpend = getWeeklySpend(expert);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const isChatUnmetered =
+    isOnSubscription(expert) && expert.llm_route_available !== false;
 
   return (
     <section
@@ -37,6 +53,33 @@ export function ExpertBudgetSection({ expert }: Props) {
             aria-label="Edit budget"
             onClick={() => setIsEditOpen(true)}
           />
+          {isChatUnmetered ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Budget metering"
+                  className={cn(
+                    extendedButtonVariants({
+                      variant: "ghost",
+                      size: "icon-xs",
+                    }),
+                    "shrink-0",
+                  )}
+                >
+                  <Icon
+                    icon={InformationCircleIcon}
+                    size={BUTTON_ICON_SIZE["icon-xs"]}
+                    aria-hidden
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Chat is not metered on {expert.llm_route_label}. Only workflow
+                runs on platform credits count here.
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
         <Text
           variant="body-medium"
@@ -54,12 +97,6 @@ export function ExpertBudgetSection({ expert }: Props) {
         budget={weeklySpend?.budget ?? 1}
         muted={!weeklySpend}
       />
-      {isOnSubscription(expert) && expert.llm_route_available !== false ? (
-        <Text variant="small" tone="muted">
-          Chat is not metered on {expert.llm_route_label}. Only workflow runs on
-          platform credits count here.
-        </Text>
-      ) : null}
       <EditBudgetDialog
         expert={expert}
         open={isEditOpen}
