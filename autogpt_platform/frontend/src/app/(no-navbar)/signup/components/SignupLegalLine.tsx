@@ -1,7 +1,6 @@
 import {
   Link,
   linkBaseClasses,
-  linkFocusClasses,
   linkVariantClasses,
 } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
@@ -42,7 +41,7 @@ export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
         className={cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
-          linkFocusClasses,
+          "rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50",
         )}
       >
