@@ -12,6 +12,7 @@ from unittest import mock
 
 import pytest
 
+from backend.blocks.conductor._transcript import reply_text
 from backend.blocks.conductor.create_session import ConductorCreateSessionBlock
 from backend.blocks.conductor.create_workspace import ConductorCreateWorkspaceBlock
 from backend.blocks.conductor.get_session import ConductorGetSessionBlock
@@ -45,12 +46,14 @@ COMPACT_WAIT_OUTPUTS = {
 
 
 def long_turn(rows: int = 1000) -> list[dict[str, Any]]:
-    """A prompt followed by tool calls and interim text, the shape of a real
-    coding-agent turn, long enough to fill the kept-row budget."""
+    """A prompt, mostly tool calls with occasional interim text, then the
+    answer: the shape of a real coding-agent turn, long enough to fill the
+    kept-row budget."""
     turn = [user_row("row-0", RECEIPT, 0)]
-    for i in range(1, rows):
-        raw = CLAUDE_TOOL_USE if i % 2 else claude_text(f"Step {i} of the work.")
+    for i in range(1, rows - 1):
+        raw = claude_text(f"Step {i} of the work.") if i % 25 == 0 else CLAUDE_TOOL_USE
         turn.append(agent_row(f"row-{i}", RECEIPT, i, raw))
+    turn.append(agent_row(f"row-{rows - 1}", RECEIPT, rows - 1, claude_text("Done.")))
     return turn
 
 
@@ -59,7 +62,7 @@ def waited_with(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "session_status": "idle",
         "error_message": "",
         "messages": rows,
-        "reply": "Done.",
+        "reply": reply_text(rows),
         "timed_out": False,
         "truncated": False,
         "prompt_row_id": rows[0]["id"],
@@ -128,7 +131,7 @@ async def test_waiting_blocks_omit_raw_rows_by_default():
 
         assert "messages" not in outputs, type(block).__name__
         assert COMPACT_WAIT_OUTPUTS <= set(outputs), type(block).__name__
-        assert outputs["reply"] == "Done."
+        assert outputs["reply"] == reply_text(rows)
         assert outputs["next_after"] == "row-0"
         assert outputs["message_count"] == 5
 
@@ -150,6 +153,7 @@ async def test_default_wait_outputs_stay_under_the_digest_threshold():
         compact = await collect(block, inputs)
         raw = await collect(block, {**inputs, "include_messages": True})
 
+        assert compact["reply"] == reply_text(rows), type(block).__name__
         assert serialized_size(compact) < _DIGEST_THRESHOLD, type(block).__name__
         assert serialized_size(raw) > _DIGEST_THRESHOLD, type(block).__name__
 
@@ -179,7 +183,7 @@ async def test_get_session_omits_raw_rows_by_default():
 
     assert "messages" not in outputs
     assert outputs["status"] == "working"
-    assert outputs["latest_reply"] == "Step 498 of the work."
+    assert outputs["latest_reply"] == "Done."
     assert outputs["next_after"] == "row-499"
     assert outputs["message_count"] == 500
     assert outputs["has_more"] is True
