@@ -74,7 +74,7 @@ from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
     get_user_credentials,
-    lost_pins,
+    is_per_target_credential,
     match_credentials_to_requirements,
     sanitize_provider_message,
 )
@@ -770,47 +770,20 @@ async def unattended_missing_credentials_error(
     turn's reply tells the user what to connect, and log it so the failure can
     be found.
 
-    When the schedule pinned an account that is gone, name that account: the
-    run refused to switch to another one, and the user has to know which they
-    lost. When the account already has a credential the expert was never
+    When the schedule pinned an account that is gone or cannot do this step,
+    name that account: the run refused to switch to another one, and the user
+    has to know which. When the account already has a credential the expert was never
     granted and a field would accept, say to grant that one, since connecting
     another would not help.
     """
     providers = {provider_slug(m.get("provider", "")) for m in missing.values()}
     providers -= {""}
     names = ", ".join(sorted(providers)) or "an integration"
-    pins = turn_credential_pins()
-    lost = (
-        sorted(lost_pins(await get_user_credentials(user_id, expert_id)) & providers)
-        if pins
-        else []
+    pinned = await _pinned_account_error(
+        subject, providers, session_id, user_id, expert_id
     )
-    if lost:
-        accounts = ", ".join(
-            f"the {p} account '{pins[p].title or pins[p].id}' "
-            f"(credential_id={pins[p].id})"
-            for p in lost
-        )
-        logger.warning(
-            "Unattended copilot turn in session %s: %s is pinned to %s, "
-            "which is no longer available",
-            session_id,
-            subject,
-            accounts,
-        )
-        return ErrorResponse(
-            message=(
-                f"{subject} did not run. This schedule is set to use {accounts}, "
-                "and that credential has been deleted or is no longer "
-                "available to this run. It did not switch to a different "
-                "account. Say plainly in your reply that this step was "
-                "skipped, name that account, and tell the user to reconnect "
-                "it or choose another account for this schedule before the "
-                "next run."
-            ),
-            error="pinned_credential_missing",
-            session_id=session_id,
-        )
+    if pinned is not None:
+        return pinned
     grant_hint = await ungranted_credential_hint(
         user_id, expert_id, providers, missing.values()
     )
@@ -839,6 +812,66 @@ async def unattended_missing_credentials_error(
         )
         + grant_hint,
         error="missing_credentials",
+        session_id=session_id,
+    )
+
+
+async def _pinned_account_error(
+    subject: str,
+    providers: set[str],
+    session_id: str,
+    user_id: str,
+    expert_id: str | None,
+) -> ErrorResponse | None:
+    """The error when a missing provider is pinned to an account this run
+    could not use, or ``None`` when no pin explains it."""
+    pins = turn_credential_pins()
+    pinned = set(pins) & providers
+    if not pinned:
+        return None
+    by_id = {c.id: c for c in await get_user_credentials(user_id, expert_id)}
+    lost = sorted(p for p in pinned if pins[p].id not in by_id)
+    unfit = sorted(
+        p
+        for p in pinned
+        if pins[p].id in by_id and not is_per_target_credential(by_id[pins[p].id])
+    )
+    if not lost and not unfit:
+        return None
+
+    def account(p: str) -> str:
+        return (
+            f"the {p} account '{pins[p].title or pins[p].id}' "
+            f"(credential_id={pins[p].id})"
+        )
+
+    detail = "; ".join(
+        [
+            f"{account(p)}, which has been deleted or is no longer available "
+            "to this run"
+            for p in lost
+        ]
+        + [
+            f"{account(p)}, which cannot do this step (it lacks the type or "
+            "permissions the step needs)"
+            for p in unfit
+        ]
+    )
+    logger.warning(
+        "Unattended copilot turn in session %s: %s is pinned to %s",
+        session_id,
+        subject,
+        detail,
+    )
+    return ErrorResponse(
+        message=(
+            f"{subject} did not run. This schedule is set to use {detail}. It "
+            "did not switch to a different account. Say plainly in your reply "
+            "that this step was skipped, name that account, and tell the user "
+            "to reconnect it with the access this step needs, or choose "
+            "another account for this schedule, before the next run."
+        ),
+        error="pinned_credential_missing" if lost else "pinned_credential_unusable",
         session_id=session_id,
     )
 

@@ -286,7 +286,7 @@ async def match_credentials_to_requirements(
     if not requirements:
         return matched, missing
 
-    available_creds = without_lost_pins(await get_user_credentials(user_id, expert_id))
+    available_creds = keep_to_pins(await get_user_credentials(user_id, expert_id))
     selected = await selected_credentials(session_id)
     can_ask = _can_ask_user(session_id)
 
@@ -361,25 +361,32 @@ async def scope_credentials_to_expert(
     return filter_credentials_for_expert(credentials, allowed)
 
 
-def lost_pins(available: list[Credentials]) -> set[str]:
-    """Providers the running turn's schedule pinned to an account that is no
-    longer among *available*: deleted, or no longer granted to the expert."""
-    present = {c.id for c in available}
-    return {p for p, pin in turn_credential_pins().items() if pin.id not in present}
+def keep_to_pins(available: list[Credentials]) -> list[Credentials]:
+    """For each provider the running turn's schedule pinned, leave only the
+    pinned account.
 
-
-def without_lost_pins(available: list[Credentials]) -> list[Credentials]:
-    """Leave out every credential of a provider whose pinned account is gone.
-
-    The user chose that account for the schedule; running on another one of
+    The user chose that account for the schedule. Running on another of
     theirs, or on the platform's, is the silent switch the pin exists to
-    prevent. With nothing left the step reports a missing credential, and the
-    unattended error names the account that went (SECRT-2804).
+    prevent, whether the pinned one was deleted or cannot do this step (a
+    missing scope). Then nothing fits, and the unattended error names the
+    pinned account (SECRT-2804). Host-scoped and MCP credentials are one per
+    target, not one per account, so a pin for one target leaves the others.
     """
-    lost = lost_pins(available)
-    if not lost:
+    pins = turn_credential_pins()
+    if not pins:
         return available
-    return [c for c in available if _provider_slug(c) not in lost]
+    return [
+        c
+        for c in available
+        if _provider_slug(c) not in pins
+        or c.id == pins[_provider_slug(c)].id
+        or is_per_target_credential(c)
+    ]
+
+
+def is_per_target_credential(cred: Credentials) -> bool:
+    """One credential per host or MCP server, rather than one per account."""
+    return cred.type == "host_scoped" or cred.provider == ProviderName.MCP
 
 
 def _can_ask_user(session_id: str | None) -> bool:
@@ -497,7 +504,7 @@ async def match_user_credentials_to_graph(
 
     # Get the credentials available for the user, narrowed to the expert's grants
     creds_manager = IntegrationCredentialsManager()
-    available_creds = without_lost_pins(
+    available_creds = keep_to_pins(
         await scope_credentials_to_expert(
             user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
         )
