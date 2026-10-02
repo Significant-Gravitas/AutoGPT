@@ -1,3 +1,4 @@
+from backend.data.db_accessors import experts_db
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 Job = GraphExecutionJobInfo | CopilotTurnJobInfo
@@ -13,12 +14,10 @@ async def hidden_expert_ids(jobs: list[Job], user_id: str) -> set[str]:
     batched query, because a request that previously did no expert work at all
     must not grow a lookup per archived expert.
     """
-    # Imported here, not at module scope: experts_db reaches back into
-    # copilot.tools, which imports this module, and that is a cycle.
-    from backend.api.features.experts import experts_db
-
     paused = {j.expert_id for j in jobs if j.expert_id and not j.next_run_time}
-    return paused - await experts_db.active_expert_ids(user_id, paused)
+    # The copilot schedule tools call this from the copilot executor, which
+    # has no Prisma connection of its own.
+    return paused - await experts_db().active_expert_ids(user_id, paused)
 
 
 async def visible_graph_schedules(

@@ -174,9 +174,10 @@ async def test_list_schedules_by_library_agent(list_tool, session):
 
     with (
         patch(
-            f"{_SCHEDULES_PATH}.get_library_agent",
-            new_callable=AsyncMock,
-            return_value=mock_agent,
+            f"{_SCHEDULES_PATH}.library_db",
+            return_value=MagicMock(
+                get_library_agent=AsyncMock(return_value=mock_agent)
+            ),
         ),
         patch(
             f"{_SCHEDULES_PATH}.get_scheduler_client",
@@ -200,9 +201,10 @@ async def test_list_schedules_library_agent_not_found(list_tool, session):
     from backend.util.exceptions import NotFoundError
 
     with patch(
-        f"{_SCHEDULES_PATH}.get_library_agent",
-        new_callable=AsyncMock,
-        side_effect=NotFoundError("not found"),
+        f"{_SCHEDULES_PATH}.library_db",
+        return_value=MagicMock(
+            get_library_agent=AsyncMock(side_effect=NotFoundError("not found"))
+        ),
     ):
         result = await list_tool._execute(
             user_id=_USER,
@@ -621,9 +623,7 @@ def copilot_executor_db(mocker):
         mocker.patch(f"prisma.models.{model}.prisma", return_value=disconnected)
 
     db_manager = MagicMock()
-    db_manager.get_library_agent = AsyncMock(
-        return_value=MagicMock(graph_id="graph-1")
-    )
+    db_manager.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
     db_manager.active_expert_ids = AsyncMock(return_value={"expert-live"})
     mocker.patch(
         "backend.util.clients.get_database_manager_async_client",
@@ -659,7 +659,7 @@ async def test_list_schedules_checks_paused_experts_without_prisma(
 ):
     live = _make_graph_info(schedule_id="sched-live", expert_id="expert-live")
     gone = _make_graph_info(schedule_id="sched-gone", expert_id="expert-gone")
-    live.next_run_time = gone.next_run_time = None
+    live.next_run_time = gone.next_run_time = ""
     scheduler = AsyncMock()
     scheduler.get_execution_schedules = AsyncMock(return_value=[live, gone])
 

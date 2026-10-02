@@ -11,12 +11,10 @@ from backend.api.features.workspace import embeddings
 @pytest.fixture
 def embedding_calls(mocker):
     embeddings._embedded.clear()
-    mocker.patch.object(
-        embeddings, "get_content_embedding", AsyncMock(return_value=None)
-    )
-    store = mocker.patch.object(
-        embeddings, "store_content_embedding", AsyncMock(return_value=True)
-    )
+    db = MagicMock()
+    db.get_content_embedding = AsyncMock(return_value=None)
+    store = db.store_content_embedding = AsyncMock(return_value=True)
+    mocker.patch.object(embeddings, "embeddings_db", return_value=db)
     generate = mocker.patch.object(
         embeddings, "generate_embedding", AsyncMock(return_value=[0.5, 0.25])
     )
