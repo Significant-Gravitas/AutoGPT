@@ -150,7 +150,7 @@ async def session_expert_entries(
 def may_hire(session: ChatSession) -> bool:
     """Whether ``hire_expert`` runs in this session: the engines hide it from
     expert sessions (``expert_admin``) and from origins nobody is driving
-    (``origin_disabled_tools``); ``session_registry_test`` holds them equal."""
+    (``origin_disabled_tools``); ``expert_capabilities_test`` holds them equal."""
     return session.expert_id is None and session.metadata.origin == "interactive"
 
 

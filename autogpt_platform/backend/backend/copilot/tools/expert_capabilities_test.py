@@ -26,7 +26,9 @@ from backend.copilot.tools import (
 from ._test_data import make_session
 from .describe_capability import DescribeCapabilityTool
 from .find_capability import FindCapabilityTool
+from .hire_expert import HireExpertTool
 from .models import CapabilityDetailsResponse, CapabilityListResponse
+from .run_capability import RunCapabilityTool
 from .session_registry import _hireable_roster, may_hire, session_expert_entries
 
 USER = "user-1"
@@ -150,6 +152,26 @@ async def test_describe_expert_asks_only_for_what_the_id_does_not_carry(team):
     assert "calls hire_expert" in result.message
     assert set(result.parameters["properties"]) == {"name"}
     assert result.parameters["required"] == []
+
+
+@pytest.mark.parametrize("validate_only", [True, False])
+async def test_run_capability_itself_describes_an_expert_and_hires_no_one(
+    team, validate_only
+):
+    # The engines dispatch an expert id to hire_expert; a call that reaches
+    # run_capability undispatched must not hire past the approval card.
+    with patch.object(HireExpertTool, "_execute", AsyncMock()) as hire:
+        result = await RunCapabilityTool()._execute(
+            USER,
+            make_session(USER),
+            id="expert:tpl-jules",
+            input={},
+            validate_only=validate_only,
+        )
+
+    assert isinstance(result, CapabilityDetailsResponse)
+    assert "calls hire_expert" in result.message
+    hire.assert_not_awaited()
 
 
 @pytest.mark.parametrize("expert_id", [None, "exp-1"])
