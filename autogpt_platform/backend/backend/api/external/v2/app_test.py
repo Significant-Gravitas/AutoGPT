@@ -11,8 +11,10 @@ heavy dependencies that are irrelevant for error handling tests.
 """
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
+import aiohttp
 import fastapi
 import fastapi.testclient
 import pytest
@@ -20,9 +22,11 @@ import pytest_mock
 from prisma.enums import APIKeyPermission
 from pytest_snapshot.plugin import Snapshot
 
+from backend.data.workspace import WorkspaceFile
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .errors import add_v2_exception_handlers
+from .files import file_workspace_router
 from .library.agents import agents_router
 from .marketplace import marketplace_router
 from .tenancy import TenantContext, require_auth
@@ -45,6 +49,7 @@ _mock_auth = TenantContext(
 app = fastapi.FastAPI()
 app.include_router(agents_router, prefix="/library")
 app.include_router(marketplace_router, prefix="/marketplace")
+app.include_router(file_workspace_router, prefix="/files")
 add_v2_exception_handlers(app)
 
 
@@ -283,3 +288,54 @@ def test_all_error_responses_have_consistent_format(
             "message",
             "details",
         }, f"Wrong error keys for {type(exc).__name__}: {body}"
+
+
+# ============================================================================
+# A file download whose content cannot be read
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "storage_error, expected_status",
+    [
+        (FileNotFoundError("blob missing"), 404),
+        (aiohttp.ClientError("connection reset"), 502),
+    ],
+    ids=["missing-blob", "storage-failure"],
+)
+def test_a_download_that_cannot_read_its_content(
+    mocker: pytest_mock.MockFixture,
+    storage_error: Exception,
+    expected_status: int,
+) -> None:
+    now = datetime.now(timezone.utc)
+    mocker.patch(
+        "backend.api.external.v2.files.get_workspace",
+        new_callable=AsyncMock,
+        return_value=Mock(id="ws-1"),
+    )
+    mocker.patch(
+        "backend.api.external.v2.files.get_workspace_file",
+        new_callable=AsyncMock,
+        return_value=WorkspaceFile(
+            id="file-1",
+            workspace_id="ws-1",
+            created_at=now,
+            updated_at=now,
+            name="report.pdf",
+            path="/report.pdf",
+            storage_path="local://ws-1/report.pdf",
+            mime_type="application/pdf",
+            size_bytes=3,
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_storage",
+        new_callable=AsyncMock,
+        return_value=Mock(retrieve=AsyncMock(side_effect=storage_error)),
+    )
+
+    response = client.get("/files/file-1/download")
+
+    assert response.status_code == expected_status
+    assert set(response.json()) == {"error"}
