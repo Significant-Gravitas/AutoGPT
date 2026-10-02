@@ -774,6 +774,80 @@ class TestRequestContextProvisioning:
 
         ensure.assert_not_awaited()
 
+    @pytest.fixture
+    def bootstrap(self, mocker: MockerFixture, wiring):
+        """The row exists (the auth hook wrote it bare); stub the full
+        get-or-create that ``POST /auth/user`` would have run."""
+        import sys
+        import types
+
+        ensure, calls = wiring
+
+        async def _ensure(user_id, payload):
+            calls.append("ensure_platform_user")
+            return True
+
+        ensure.side_effect = _ensure
+
+        async def _get_or_create(payload):
+            calls.append("get_or_create_user_with_status")
+
+        provisioner = AsyncMock(side_effect=_get_or_create)
+        user_mod = types.ModuleType("backend.data.user")
+        mocker.patch.object(
+            user_mod, "get_or_create_user_with_status", provisioner, create=True
+        )
+        mocker.patch.dict(sys.modules, {"backend.data.user": user_mod})
+        return ensure, provisioner, calls
+
+    @pytest.mark.asyncio
+    async def test_finishes_the_account_bootstrap_for_a_bare_row(self, bootstrap):
+        """A session that never reached ``POST /auth/user`` still gets the
+        Profile and sign-up sync that call would have run, not the org alone."""
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        _, provisioner, calls = bootstrap
+        payload = {"sub": "user-1", "email": "new@example.com"}
+
+        await get_request_context(self._request(), payload)
+
+        provisioner.assert_awaited_once_with(payload)
+        assert calls == [
+            "ensure_platform_user",
+            "get_or_create_user_with_status",
+            "get_user_default_team",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_account_bootstrap_still_runs_the_org_bootstrap(
+        self, bootstrap
+    ):
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        _, provisioner, calls = bootstrap
+        provisioner.side_effect = RuntimeError("profile insert failed")
+
+        ctx = await get_request_context(
+            self._request(), {"sub": "user-1", "email": "a@b.c"}
+        )
+
+        assert calls[-1] == "get_user_default_team"
+        assert ctx.org_id == "org-1"
+
+    @pytest.mark.asyncio
+    async def test_no_account_bootstrap_when_the_row_is_not_confirmed(self, bootstrap):
+        """Impersonation, a token without an email, or a failed provision:
+        ``_ensure_platform_user`` says no, and the claims must not be used."""
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        ensure, provisioner, _ = bootstrap
+        ensure.side_effect = None
+        ensure.return_value = False
+
+        await get_request_context(self._request(), {"sub": "user-1", "email": "a@b.c"})
+
+        provisioner.assert_not_awaited()
+
 
 class TestEnsurePlatformUserRaceLogging:
     """A losing create race must not be reported as a failure.

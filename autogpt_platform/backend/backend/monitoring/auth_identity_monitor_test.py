@@ -20,7 +20,17 @@ def wiring(mocker):
         monitor_module, "get_notification_manager_client", return_value=notifications
     )
     sentry = mocker.patch.object(monitor_module, "sentry_capture_error")
+    mocker.patch.dict(monitor_module._collisions_paged_at, clear=True)
     return db, notifications, sentry
+
+
+def _collision(identity_id: str = "auth-new") -> OrphanedAuthIdentity:
+    return OrphanedAuthIdentity(
+        id=identity_id,
+        email="taken@example.com",
+        createdAt=datetime.now(timezone.utc),
+        email_owner_id="user-old",
+    )
 
 
 def test_quiet_when_the_invariant_holds(wiring):
@@ -64,3 +74,56 @@ def test_pages_when_it_had_to_heal_or_could_not(wiring):
     assert "auth-2" in result
     # Ids only: no email addresses in an alert that goes to Discord/Sentry.
     assert "taken@example.com" not in result
+
+
+def test_a_repeat_collision_pages_once_a_day(wiring, mocker):
+    """A collision needs a human but comes back on every 15-minute sweep;
+    paging each time would be ~96 alerts a day per account."""
+    db, notifications, sentry = wiring
+    clock = mocker.patch.object(monitor_module.time, "monotonic", return_value=1000.0)
+    db.heal_orphaned_auth_identities.return_value = OrphanedAuthIdentityReport(
+        collided=[_collision()]
+    )
+    warning = mocker.patch.object(monitor_module.logger, "warning")
+
+    report_orphaned_auth_identities()
+    report_orphaned_auth_identities()
+
+    assert sentry.call_count == 1
+    assert notifications.discord_system_alert.call_count == 1
+    warning.assert_called_once()
+
+    clock.return_value = 1000.0 + monitor_module._COLLISION_REPAGE_SECS
+    report_orphaned_auth_identities()
+
+    assert sentry.call_count == 2
+
+
+def test_a_new_collision_still_pages_next_to_a_known_one(wiring):
+    db, notifications, sentry = wiring
+    db.heal_orphaned_auth_identities.return_value = OrphanedAuthIdentityReport(
+        collided=[_collision("auth-a")]
+    )
+    report_orphaned_auth_identities()
+    db.heal_orphaned_auth_identities.return_value = OrphanedAuthIdentityReport(
+        collided=[_collision("auth-a"), _collision("auth-b")]
+    )
+
+    report_orphaned_auth_identities()
+
+    assert sentry.call_count == 2
+
+
+def test_a_heal_always_pages_even_beside_a_known_collision(wiring):
+    db, notifications, sentry = wiring
+    db.heal_orphaned_auth_identities.return_value = OrphanedAuthIdentityReport(
+        collided=[_collision()]
+    )
+    report_orphaned_auth_identities()
+    db.heal_orphaned_auth_identities.return_value = OrphanedAuthIdentityReport(
+        healed=["auth-1"], collided=[_collision()]
+    )
+
+    report_orphaned_auth_identities()
+
+    assert sentry.call_count == 2

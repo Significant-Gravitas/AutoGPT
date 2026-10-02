@@ -27,22 +27,9 @@ IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id"
 
 logger = logging.getLogger(__name__)
 
-# User ids the self-heal in ``get_user_id`` has recently settled, so it costs
-# one indexed read per (process, user, TTL) instead of one per request.
-# Bounded LRU of id -> monotonic expiry.
-#
-# A confirmed row is remembered for ``_PROVISIONED_USER_TTL_SECS``: nothing
-# deletes a ``User`` row today, but the TTL keeps that an observation rather
-# than a load-bearing assumption -- if a deletion path ever appears, a stale
-# entry can hide a missing row for at most that long.
-#
-# A heal that could not provision is remembered for the much shorter
-# ``_FAILED_HEAL_BACKOFF_SECS``. Without that, an account nothing can
-# provision (its email already belongs to a different platform User) would
-# re-run the heal, and re-emit its Sentry error, on every one of the ~20
-# requests a page load fans out -- the per-request storm the org-scoped heal
-# was deliberately shaped to avoid. The backoff keeps healing best-effort
-# while bounding a permanently broken account to one attempt per minute.
+# Recently settled self-heals, id -> monotonic expiry: a confirmed row for the
+# TTL, a failed heal (e.g. an email owned by another User) only for the
+# backoff, so it can't storm.
 _PROVISIONED_USER_IDS: "OrderedDict[str, float]" = OrderedDict()
 _PROVISIONED_USER_IDS_MAX = 10_000
 _PROVISIONED_USER_TTL_SECS = 15 * 60
@@ -303,6 +290,28 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> bool:
     return True
 
 
+async def _finish_account_bootstrap(jwt_payload: dict) -> None:
+    """Run ``POST /auth/user``'s bootstrap for a row that never got one.
+
+    The auth hook inserts a bare ``User`` row when the identity is created. If
+    that session never reaches ``POST /auth/user`` (the OAuth flow lost its
+    redirect), the org bootstrap below would leave the account without its
+    marketplace Profile, and without the MailerLite and PostHog sign-up sync.
+    Only reached once ``_ensure_platform_user`` has confirmed the row for the
+    token's own subject, and best-effort: the org bootstrap still runs after it.
+    """
+    from backend.data.user import get_or_create_user_with_status  # deferred
+
+    try:
+        await get_or_create_user_with_status(jwt_payload)
+    except Exception:
+        logger.warning(
+            f"Account bootstrap failed for {jwt_payload.get('sub')}; "
+            "falling back to the org bootstrap",
+            exc_info=True,
+        )
+
+
 async def get_request_context(
     request: fastapi.Request,
     jwt_payload: dict = fastapi.Security(get_jwt_payload),
@@ -369,7 +378,8 @@ async def get_request_context(
             # recoverable: the personal org, or the platform User row the org
             # would hang off. Provision the user first so the bootstrap below
             # has something to work with.
-            await _ensure_platform_user(user_id, jwt_payload)
+            if await _ensure_platform_user(user_id, jwt_payload):
+                await _finish_account_bootstrap(jwt_payload)
 
             org_id, _ = await get_user_default_team(user_id)
             if org_id is None:

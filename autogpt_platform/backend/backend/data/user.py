@@ -57,6 +57,10 @@ class UserCreationResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     user: User
+    # True for the one call that set the account up: it created the ``User``
+    # row, or bootstrapped the personal org for a row the auth hook inserted
+    # bare at sign-up. Drives the sign-up conversion (via the route's
+    # ``X-AutoGPT-User-Created`` header), the MailerLite sync and PostHog.
     was_created: bool
 
 
@@ -88,10 +92,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
                     name=user_data.get("user_metadata", {}).get("name"),
                 )
             )
-            was_created = True
-            _sync_signup(user)
+            row_created = True
         else:
-            was_created = False
+            row_created = False
 
         # Ensure every user has a marketplace Profile (required to publish
         # agents). Best-effort: a failure must not block user resolution — the
@@ -111,9 +114,14 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # organization context available", so a failure here must fail the
         # request loudly instead of returning a bricked account. Idempotent and
         # race-safe (see ensure_personal_org).
-        await ensure_personal_org(user.id)
+        org_created = await ensure_personal_org(user.id)
 
+        # The auth hook inserts a bare row the moment the identity is created
+        # (see provision-platform-user.ts), so the row alone no longer marks a
+        # new account: the org this call bootstrapped for it does.
+        was_created = row_created or org_created
         if was_created:
+            _sync_signup(user)
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
@@ -321,11 +329,22 @@ async def find_orphaned_auth_identities(
 ) -> list[OrphanedAuthIdentity]:
     """Auth identities created before *older_than* that have no ``User`` row.
 
-    Every auth identity must have a platform row with the same id: the auth
-    hook writes it at sign-up, the client's ``POST /auth/user`` writes it after
-    sign-in, and every authenticated request self-heals it. An identity that
-    still has none after the grace window is therefore an invariant breach
-    worth both healing and reporting.
+    Every auth identity that can sign in must have a platform row with the
+    same id: the auth hook writes it at sign-up, the client's ``POST /auth/user``
+    writes it after sign-in, and every authenticated request self-heals it. An
+    identity that still has none after the grace window is therefore an
+    invariant breach worth both healing and reporting.
+
+    An unverified identity that has never held a session is not one. With
+    ``AUTH_REQUIRE_EMAIL_VERIFICATION`` on, a password sign-up gets no session
+    and no row until its link is opened, and healing it would give an address
+    nobody has proven they own an account (and page about it every sweep).
+    With the flag off every sign-up gets a session at once, so it is still
+    covered.
+
+    Identities whose email another platform User owns sort last: they are
+    never healed, so sorting by age alone would let them fill every batch and
+    starve the healable ones behind them.
     """
     rows = await query_raw_with_schema(
         # The owner lookup is case-insensitive on purpose: the auth migration
@@ -342,7 +361,11 @@ async def find_orphaned_auth_identities(
         'FROM {schema_prefix}"UserAuthIdentity" a '
         'LEFT JOIN {schema_prefix}"User" u ON u.id = a.id '
         'WHERE u.id IS NULL AND a."createdAt" < $1::timestamptz '
-        'ORDER BY a."createdAt" ASC '
+        'AND (a."emailVerified" OR EXISTS (SELECT 1 FROM '
+        '{schema_prefix}"UserAuthSession" s WHERE s."userId" = a.id)) '
+        'ORDER BY EXISTS (SELECT 1 FROM {schema_prefix}"User" o '
+        "WHERE LOWER(o.email) = LOWER(a.email)), "
+        'a."createdAt" ASC '
         "LIMIT $2::int",
         older_than.isoformat(),
         limit,
@@ -372,7 +395,7 @@ async def heal_orphaned_auth_identities(
             report.collided.append(identity)
             continue
         try:
-            await get_or_create_user_with_status(
+            result = await get_or_create_user_with_status(
                 {
                     "sub": identity.id,
                     "email": identity.email,
@@ -385,7 +408,10 @@ async def heal_orphaned_auth_identities(
             )
             report.failed.append(identity.id)
             continue
-        report.healed.append(identity.id)
+        # A sign-in that landed between the query and here provisioned it
+        # already: nothing was broken, so nothing to page about.
+        if result.was_created:
+            report.healed.append(identity.id)
     return report
 
 

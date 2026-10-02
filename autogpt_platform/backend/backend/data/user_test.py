@@ -352,9 +352,18 @@ class TestGetOrCreateUserStatus:
     def stub_user_provisioning(self):
         with (
             patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
-            patch.object(user_module, "ensure_personal_org", new_callable=AsyncMock),
+            patch.object(
+                user_module,
+                "ensure_personal_org",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as ensure_org,
+            patch.object(user_module, "_sync_signup") as sync_signup,
+            patch.object(
+                user_module, "schedule_posthog_lifecycle_sync"
+            ) as posthog_sync,
         ):
-            yield
+            yield ensure_org, sync_signup, posthog_sync
 
     @pytest.mark.asyncio
     async def test_reports_newly_created_user(self):
@@ -398,6 +407,59 @@ class TestGetOrCreateUserStatus:
         assert result.was_created is False
         mock_prisma.user.create.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_reports_created_for_a_row_the_auth_hook_inserted_bare(
+        self, stub_user_provisioning
+    ):
+        """The auth hook writes the User row before the client's
+        ``POST /auth/user``, which then finds it. The first call to bootstrap
+        that row's personal org is still the account's creation: it drives the
+        sign-up conversion header, MailerLite and PostHog, exactly once."""
+        ensure_org, sync_signup, posthog_sync = stub_user_provisioning
+        ensure_org.return_value = True
+        db_user = MagicMock(id="user-hooked", email="hook@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-hooked", "hook@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            result = await user_module.get_or_create_user_with_status(
+                {"sub": "user-hooked", "email": "hook@example.com"}
+            )
+
+        assert result.was_created is True
+        mock_prisma.user.create.assert_not_called()
+        sync_signup.assert_called_once_with(db_user)
+        posthog_sync.assert_called_once_with("user-hooked")
+
+    @pytest.mark.asyncio
+    async def test_existing_account_syncs_nothing(self, stub_user_provisioning):
+        _, sync_signup, posthog_sync = stub_user_provisioning
+        db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-existing", "bob@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            await user_module.get_or_create_user_with_status(
+                {"sub": "user-existing", "email": "bob@example.com"}
+            )
+
+        sync_signup.assert_not_called()
+        posthog_sync.assert_not_called()
+
 
 class TestGetOrCreateUserProfile:
     """get_or_create_user must guarantee a marketplace Profile exists, since
@@ -411,7 +473,10 @@ class TestGetOrCreateUserProfile:
         branch. Tests that assert on the bootstrap use the yielded mock.
         """
         with patch.object(
-            user_module, "ensure_personal_org", new_callable=AsyncMock
+            user_module,
+            "ensure_personal_org",
+            new_callable=AsyncMock,
+            return_value=False,
         ) as m:
             yield m
 
@@ -546,7 +611,10 @@ class TestGetOrCreateUserPersonalOrg:
             ),
             patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
             patch.object(
-                user_module, "ensure_personal_org", new_callable=AsyncMock
+                user_module,
+                "ensure_personal_org",
+                new_callable=AsyncMock,
+                return_value=False,
             ) as ensure_org,
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
@@ -792,6 +860,24 @@ class TestHealOrphanedAuthIdentities:
         assert not report.is_clean
 
     @pytest.mark.asyncio
+    async def test_does_not_page_for_an_identity_provisioned_meanwhile(self):
+        # A sign-in between the query and the heal already set the account
+        # up, so nothing was broken.
+        provision = AsyncMock(return_value=MagicMock(was_created=False))
+        with (
+            patch.object(
+                user_module,
+                "find_orphaned_auth_identities",
+                AsyncMock(return_value=[self._identity("auth-1", "one@example.com")]),
+            ),
+            patch.object(user_module, "get_or_create_user_with_status", provision),
+        ):
+            report = await user_module.heal_orphaned_auth_identities()
+
+        provision.assert_awaited_once()
+        assert report.is_clean
+
+    @pytest.mark.asyncio
     async def test_clean_when_nothing_is_orphaned(self):
         with patch.object(
             user_module, "find_orphaned_auth_identities", AsyncMock(return_value=[])
@@ -832,6 +918,13 @@ class TestFindOrphanedAuthIdentities:
         # per variant and let duplicates consume the batch limit.
         assert "LIMIT 1) AS email_owner_id" in sql
         assert "JOIN" not in sql.split("AS email_owner_id")[0]
+        # An unverified identity that never held a session is waiting on its
+        # verification link, not orphaned.
+        assert 'a."emailVerified" OR EXISTS' in sql
+        assert '"UserAuthSession" s WHERE s."userId" = a.id' in sql
+        # Collisions are never healed, so they sort behind healable rows.
+        order_by = sql.split("ORDER BY EXISTS")[1]
+        assert "LOWER(o.email) = LOWER(a.email)" in order_by
         assert older_than == cutoff.isoformat()
         assert limit == 7
 

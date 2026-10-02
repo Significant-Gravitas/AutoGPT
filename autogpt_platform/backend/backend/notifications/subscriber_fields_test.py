@@ -123,7 +123,7 @@ async def _get_or_create(existing, queue_signup):
     with (
         patch.object(user_data, "prisma", prisma),
         patch.object(user_data, "_ensure_user_profile", AsyncMock()),
-        patch.object(user_data, "ensure_personal_org", AsyncMock()),
+        patch.object(user_data, "ensure_personal_org", AsyncMock(return_value=False)),
         patch.object(user_data.User, "from_db", MagicMock()),
         patch.object(user_data, "UserCreationResult", MagicMock()),
         patch.object(user_data, "queue_signup", queue_signup),

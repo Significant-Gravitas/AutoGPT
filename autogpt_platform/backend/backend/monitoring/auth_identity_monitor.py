@@ -10,6 +10,7 @@ when a user reports a broken account.
 """
 
 import logging
+import time
 
 from backend.util.clients import (
     get_database_manager_client,
@@ -20,6 +21,26 @@ from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 config = Config()
+
+# A collision comes back unchanged on every sweep until a human reconciles it.
+# Page for each one at most this often (per scheduler process), and log the
+# repeats at WARNING, so the alert channel is not trained into noise.
+_COLLISION_REPAGE_SECS = 24 * 60 * 60
+_collisions_paged_at: dict[str, float] = {}
+
+
+def _has_unpaged_collision(collided_ids: list[str]) -> bool:
+    now = time.monotonic()
+    for stale in [
+        identity_id
+        for identity_id, paged_at in _collisions_paged_at.items()
+        if now - paged_at >= _COLLISION_REPAGE_SECS
+    ]:
+        del _collisions_paged_at[stale]
+    fresh = [i for i in collided_ids if i not in _collisions_paged_at]
+    for identity_id in fresh:
+        _collisions_paged_at[identity_id] = now
+    return bool(fresh)
 
 
 class OrphanedAuthIdentityException(Exception):
@@ -70,8 +91,14 @@ class AuthIdentityMonitor:
             )
 
         msg = "\n".join(message_parts)
-        sentry_capture_error(OrphanedAuthIdentityException(msg))
-        self.notification_client.discord_system_alert(msg)
+        # Recorded before the check so a collision paged alongside a heal is
+        # not paged again on the next sweep.
+        new_collision = _has_unpaged_collision([i.id for i in report.collided])
+        if report.healed or report.failed or new_collision:
+            sentry_capture_error(OrphanedAuthIdentityException(msg))
+            self.notification_client.discord_system_alert(msg)
+        else:
+            logger.warning(msg)
         return msg
 
 
