@@ -15,6 +15,9 @@ transition:
 4. ENTER and LEAVE · the trial group: both owned here. It holds exactly the
    customers currently on a trial, so any MailerLite automation on it may send
    mail but must never move people in or out.
+5. ENTER · the checkout openers group: owned here. Everyone who opened Stripe
+   checkout joins it, and nobody else enters MailerLite through us: a signup
+   alone does not create a subscriber. GTM segments it for outreach.
 
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.
@@ -32,6 +35,7 @@ import logging
 from collections.abc import Mapping
 
 from backend.data.notifications import SubscriberField
+from backend.notifications.audience_enrichment import merge_with_held
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -54,7 +58,8 @@ settings = Settings()
 API_BASE = settings.config.mailerlite_api_url.rstrip("/")
 _OK_STATUSES = (200, 201, 202, 204)
 
-# The type MailerLite stores each field as. A date is written YYYY-MM-DD.
+# The type MailerLite stores each of our custom fields as, which is also what
+# `ensure_fields` creates. A date is written YYYY-MM-DD.
 FIELD_TYPES: dict[SubscriberField, str] = {
     SubscriberField.STATUS: "text",
     SubscriberField.SIGNUP: "date",
@@ -62,13 +67,29 @@ FIELD_TYPES: dict[SubscriberField, str] = {
     SubscriberField.SUBSCRIPTION_STARTED: "date",
     SubscriberField.SUBSCRIPTION_CANCELED: "date",
     SubscriberField.SUBSCRIPTION_ENDED: "date",
+    SubscriberField.CHECKOUT_OPENED: "date",
+    SubscriberField.EMAIL_TYPE: "text",
+    SubscriberField.SIGNIN_METHOD: "text",
+    SubscriberField.COUNTRY_CODE: "text",
+    SubscriberField.COUNTRY_SOURCE: "text",
+    SubscriberField.EXCLUDE_DE_AT: "text",
 }
+
+# MailerLite's own fields: written like ours, but never created.
+BUILT_IN_FIELD_TYPES: dict[SubscriberField, str] = {SubscriberField.COUNTRY: "text"}
+
+
+def field_type(field: SubscriberField) -> str:
+    return FIELD_TYPES.get(field) or BUILT_IN_FIELD_TYPES[field]
+
 
 Fields = Mapping[SubscriberField, str | None]
 
 # Set once this process has seen every field exist, so it is checked once,
 # not on every write.
 _fields_ready = False
+# Logged once: without a checkout group, checkout openers are dropped.
+_checkout_off_logged = False
 
 
 class MailerLiteNotConfigured(RuntimeError):
@@ -144,18 +165,47 @@ async def update_fields(email: str, fields: Fields | None = None) -> None:
 
 
 async def record_signup(email: str, fields: Fields | None = None) -> None:
-    """A new account's fields. `signed` is where every subscriber starts, so
-    it never replaces a status MailerLite already holds: the signup is queued
-    in the background, and a checkout queued before it must not be undone.
-    The audience queue is worked one message at a time, so nothing of ours
-    writes between the read and the write."""
+    """A signup queued before signups stopped being sent here. It only fills
+    in someone MailerLite already has: a signup alone must not create a
+    subscriber, since only checkout openers belong in MailerLite. `signed` is
+    where every subscriber starts, so it never replaces a status MailerLite
+    already holds. The audience queue is worked one message at a time, so
+    nothing of ours writes between the read and the write."""
     if not fields:
         return
     _require_token()
-    held = (await _find_subscriber(email) or {}).get("fields") or {}
-    if held.get(SubscriberField.STATUS.value):
+    subscriber = await _find_subscriber(email)
+    if subscriber is None:
+        return
+    if (subscriber.get("fields") or {}).get(SubscriberField.STATUS.value):
         fields = {k: v for k, v in fields.items() if k != SubscriberField.STATUS}
     await update_fields(email, fields)
+
+
+async def record_checkout_opened(email: str, fields: Fields | None = None) -> None:
+    """Someone opened Stripe checkout: into the checkout openers group, with
+    the fields GTM segments on. Whatever MailerLite already holds that is
+    better than ours stays (`audience_enrichment.merge_with_held`): the audience
+    queue is worked one message at a time, so nothing of ours writes between
+    the read and the write.
+
+    Without a checkout group the change is dropped rather than dead-lettered:
+    the group is how this is switched on, and the backfill brings in anyone
+    opened while it was off."""
+    group_id = settings.config.mailerlite_checkout_group_id
+    if not group_id:
+        global _checkout_off_logged
+        if not _checkout_off_logged:
+            logger.warning(
+                "MAILERLITE_CHECKOUT_GROUP_ID is not set; dropping checkout openers"
+            )
+            _checkout_off_logged = True
+        return
+    _require_token()
+    held = (await _find_subscriber(email) or {}).get("fields") or {}
+    await _add_to_group(
+        email, group_id, "checkout openers", merge_with_held(fields or {}, held)
+    )
 
 
 async def ensure_fields() -> list[SubscriberField]:
