@@ -409,3 +409,44 @@ async def test_the_error_names_a_pinned_account_that_cannot_do_the_step():
     assert result.error == "pinned_credential_unusable"
     assert "'Work'" in result.message
     assert "did not switch" in result.message
+
+
+async def test_a_pin_for_one_host_is_not_blamed_for_a_step_on_another():
+    # A host pin never filters another host's credentials (see keep_to_pins),
+    # so a step on a host with none failed for want of one, as it would
+    # unpinned. Naming the pinned account would send the user to fix the wrong
+    # credential.
+    import asyncio
+
+    from backend.copilot.credential_selection import (
+        CredentialPin,
+        set_turn_credential_pins,
+    )
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+
+    async def turn():
+        set_turn_credential_pins(
+            {"http": CredentialPin(id="example-host", title="example-host")}
+        )
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_user_credentials",
+                AsyncMock(return_value=[_host_cred("example-host")]),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.ungranted_credential_hint",
+                AsyncMock(return_value=""),
+            ),
+        ):
+            return await unattended_missing_credentials_error(
+                "Block 'Send Web Request'",
+                {"credentials": {"provider": "http", "types": ["host_scoped"]}},
+                "s1",
+                "test-user",
+                None,
+            )
+
+    result = await asyncio.create_task(turn())
+    assert result.error == "missing_credentials"
+    assert "has no http credential" in result.message
+    assert "example-host" not in result.message
