@@ -8,6 +8,7 @@ and the raw rows only when `include_messages` is on.
 
 import json
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -17,13 +18,18 @@ from backend.blocks.conductor.get_session import ConductorGetSessionBlock
 from backend.blocks.conductor.send_message import ConductorSendMessageBlock
 from backend.blocks.conductor.test_fixtures import (
     CLAUDE_TOOL_USE,
+    OLD_TURN,
     RECEIPT,
     TEST_CREDENTIALS_INPUT,
+    FakeTranscript,
     agent_row,
     claude_text,
+    claude_turn,
     collect,
     mock_block,
     user_row,
+    wait_client,
+    wait_clock,
 )
 from backend.copilot.tools.base import _DIGEST_THRESHOLD
 
@@ -194,3 +200,63 @@ async def test_get_session_returns_raw_rows_on_request():
 
     assert outputs["messages"] == rows
     assert outputs["message_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_wait_next_after_hands_off_to_get_session():
+    """A compact wait result is enough to keep polling: its next_after,
+    passed as Get Session's after, pages the turn from the prompt row with no
+    receipt lookup and surfaces the turn's answer as latest_reply."""
+    turn = claude_turn(RECEIPT, 2, "Done")
+    rows = [
+        user_row("row-old", OLD_TURN, 0),
+        agent_row("row-old-reply", OLD_TURN, 1, claude_text("Earlier answer")),
+        user_row("row-prompt", RECEIPT, 2),
+        *turn,
+    ]
+    transcript = FakeTranscript(rows)
+    sender = ConductorSendMessageBlock()
+    mock_block(sender, {"_send": lambda *a, **k: SENT})
+    with (
+        mock.patch(
+            "backend.blocks.conductor.send_message.ConductorClient",
+            return_value=wait_client(transcript, [{"status": "idle"}]),
+        ),
+        wait_clock(),
+    ):
+        waited = await collect(
+            sender,
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "session_id": "s1",
+                "message": "go",
+            },
+        )
+
+    assert "messages" not in waited
+    assert waited["reply"].endswith("Done")
+    assert waited["next_after"] == "row-prompt"
+
+    transcript.calls.clear()
+    session_client = mock.Mock()
+    session_client.get_session = mock.AsyncMock(return_value={"id": "s1"})
+    session_client.session_status = mock.AsyncMock(return_value={"status": "idle"})
+    session_client.list_messages = transcript.list_messages
+    with mock.patch(
+        "backend.blocks.conductor.get_session.ConductorClient",
+        return_value=session_client,
+    ):
+        polled = await collect(
+            ConductorGetSessionBlock(),
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "session_id": "s1",
+                "after": waited["next_after"],
+                "message_limit": 20,
+            },
+        )
+
+    assert polled["latest_reply"] == "Done"
+    assert polled["message_count"] == len(turn)
+    assert polled["next_after"] == turn[-1]["id"]
+    assert transcript.calls == [{"after": "row-prompt", "limit": 20, "offset": None}]
