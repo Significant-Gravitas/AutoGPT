@@ -15,6 +15,7 @@ import sentry_sdk
 from pydantic import BaseModel
 
 from backend.copilot import stream_registry
+from backend.copilot.permissions import SDK_BUILTIN_TOOL_NAMES
 from backend.copilot.response_model import StreamBaseResponse, StreamToolOutputAvailable
 from backend.copilot.tools.models import ResponseType
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
@@ -53,6 +54,15 @@ class ScheduledTurnWatch:
         if not isinstance(chunk, StreamToolOutputAvailable):
             return
         error_type = tool_error_type(chunk.output)
+        # A platform tool can also fail without an ErrorResponse payload (a
+        # login prompt, a held read, a plain-text error). The CLI's own tools
+        # stay out: a missed Read or Grep is the model probing, not a failure.
+        if (
+            error_type is None
+            and not chunk.success
+            and chunk.toolName not in SDK_BUILTIN_TOOL_NAMES
+        ):
+            error_type = UNCLASSIFIED
         if error_type is not None:
             self.tool_failures.append(
                 ToolFailure(tool=chunk.toolName or "unknown", error_type=error_type)

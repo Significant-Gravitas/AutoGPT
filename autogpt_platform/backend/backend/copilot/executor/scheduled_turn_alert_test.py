@@ -156,6 +156,38 @@ def test_neither_the_log_nor_sentry_carries_error_text(caplog):
     assert "jane@example.com" not in sent
 
 
+def test_a_platform_tool_failing_without_an_error_payload_still_counts():
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+
+    with patch(f"{_ALERT}.sentry_sdk") as sentry:
+        watch.observe(
+            StreamToolOutputAvailable(
+                toolCallId="call-1",
+                toolName="Read",
+                output="File does not exist.",
+                success=False,
+            )
+        )
+        watch.observe(
+            StreamToolOutputAvailable(
+                toolCallId="call-2",
+                toolName="read_workspace_file",
+                output="File does not exist.",
+                success=False,
+            )
+        )
+        watch.report(None)
+
+    assert [f.model_dump() for f in watch.tool_failures] == [
+        {"tool": "read_workspace_file", "error_type": UNCLASSIFIED}
+    ]
+    sentry.capture_message.assert_called_once_with(
+        "Scheduled copilot turn failed: read_workspace_file returned an error",
+        level="error",
+    )
+
+
 def test_scheduled_turn_that_errors_raises_an_alert():
     watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
     assert watch is not None
