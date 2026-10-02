@@ -237,13 +237,17 @@ describe("auth callback GET — signup consent", () => {
     expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
   });
 
-  it("clears the refusal even when provisioning fails", async () => {
+  it("keeps the refusal for the retry when provisioning fails", async () => {
     withOptOutCookie();
     postV1GetOrCreateUserMock.mockRejectedValue(new Error("backend down"));
 
-    await GET(makeCallbackRequest());
+    const response = await GET(makeCallbackRequest());
 
-    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+    expect(response.headers.get("location")).toBe(
+      `${origin}/error?message=user-creation-failed`,
+    );
+    expect(rollbackSessionMock).toHaveBeenCalledOnce();
+    expect(cookieDeleteMock).not.toHaveBeenCalled();
     expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
   });
 

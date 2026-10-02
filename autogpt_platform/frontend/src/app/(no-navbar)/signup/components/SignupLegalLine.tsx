@@ -11,9 +11,10 @@ import { cn } from "@/lib/utils";
 interface Props {
   optedOut: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }
 
-export function SignupLegalLine({ optedOut, onToggle }: Props) {
+export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
   return (
     <Text variant="body" className="mt-6 text-center !text-slate-500">
       By continuing you agree to our{" "}
@@ -37,10 +38,12 @@ export function SignupLegalLine({ optedOut, onToggle }: Props) {
       <button
         type="button"
         onClick={onToggle}
+        disabled={disabled}
         className={cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
           linkFocusClasses,
+          "disabled:cursor-not-allowed disabled:opacity-50",
         )}
       >
         {optedOut ? "Undo" : "opt out"}

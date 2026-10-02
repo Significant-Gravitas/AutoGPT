@@ -34,6 +34,7 @@ export default function SignupPage() {
     hasInitializedAuth,
     isLoading,
     isGoogleLoading,
+    isSigningUp,
     isCloudEnv,
     showNotAllowedModal,
     optedOut,
@@ -135,6 +136,7 @@ export default function SignupPage() {
         <SignupLegalLine
           optedOut={optedOut}
           onToggle={handleToggleMarketingOptOut}
+          disabled={isSigningUp}
         />
 
         <AuthFeedback

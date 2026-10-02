@@ -71,8 +71,12 @@ class UpdateTimezoneRequest(pydantic.BaseModel):
 
 
 class RecordUserConsentRequest(pydantic.BaseModel):
-    # The frontend's TERMS_VERSION, e.g. "2026-10".
-    terms_version: str = pydantic.Field(min_length=1, max_length=32)
+    # The frontend's TERMS_VERSION, e.g. "2026-10", or "2026-10-15" for a
+    # second change in one month. ASCII digits only: `\d` would also take
+    # other scripts' digits.
+    terms_version: str = pydantic.Field(
+        min_length=1, max_length=32, pattern=r"^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$"
+    )
     marketing_opt_out: bool
 
 

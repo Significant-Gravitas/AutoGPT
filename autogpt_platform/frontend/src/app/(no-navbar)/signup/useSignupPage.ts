@@ -64,6 +64,7 @@ export function useSignupPage() {
   });
 
   function handleToggleMarketingOptOut() {
+    if (isSigningUp) return;
     const optOut = !form.getValues("marketingOptOut");
     form.setValue("marketingOptOut", optOut, { shouldDirty: true });
     if (optOut) trackSignupMarketingOptOut();
@@ -184,6 +185,7 @@ export function useSignupPage() {
     hasInitializedAuth,
     isLoading,
     isGoogleLoading,
+    isSigningUp,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,

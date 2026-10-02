@@ -1,5 +1,7 @@
 export const TERMS_OF_USE_URL = "https://agpt.co/legal/platform-terms-of-use";
-export const PRIVACY_POLICY_URL = "https://agpt.co/legal/platform-privacy-policy";
+export const PRIVACY_POLICY_URL =
+  "https://agpt.co/legal/platform-privacy-policy";
 // Bump when the terms or the privacy policy change. Stored on the user as
-// termsVersion so we can tell which text a given account agreed to.
+// termsVersion so we can tell which text a given account agreed to. The
+// backend accepts only YYYY-MM (or YYYY-MM-DD for a second change in a month).
 export const TERMS_VERSION = "2026-10";

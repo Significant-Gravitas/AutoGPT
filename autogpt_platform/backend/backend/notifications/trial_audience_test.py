@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.enums import NotificationType
 
 from backend.data.notifications import (
     AudienceAction,
@@ -22,6 +23,7 @@ from backend.notifications import mailerlite
 from backend.notifications import notifications as delivery
 from backend.notifications import trial as notices
 from backend.notifications import trial_audience
+from backend.notifications.consent_test import _cached_before_consent
 from backend.notifications.notifications import NotificationManager
 
 EMAIL = "sam@example.com"
@@ -109,10 +111,11 @@ async def _notify(
     email=EMAIL,
     claim_welcome=None,
     opted_out_at=None,
+    user=None,
 ):
     audience = audience or AsyncMock(return_value=NotificationResult(success=True))
     notice = AsyncMock(return_value=NotificationResult(success=True))
-    user = SimpleNamespace(
+    user = user or SimpleNamespace(
         id="user-1", name="Sam", email=email, marketing_opt_out_at=opted_out_at
     )
     users = MagicMock(
@@ -269,6 +272,24 @@ async def test_an_opted_out_conversion_still_takes_the_welcome_claim(trial, welc
     assert got == []
     claim.assert_awaited_once_with("user-1")
     notice.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "canceled", "converted"])
+async def test_a_trialist_cached_before_the_consent_fields_still_gets_the_notice(
+    trial, kind
+):
+    """During a rolling deploy the shared cache can hand back a user pickled by
+    the previous release, with no opt-out to read. Its MailerLite changes are
+    skipped; the notice is still queued and its claim kept."""
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(
+        trial, raw, kind, user=_cached_before_consent()
+    )
+    assert got == []
+    notice.assert_awaited_once()
+    assert notice.await_args_list[0].args[0].type == NotificationType.TRIAL_UPDATE
+    release.assert_not_awaited()
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import prisma.errors
 import pytest
@@ -284,18 +284,29 @@ def _accepted(opted_out: bool, version: str = TERMS_VERSION) -> MagicMock:
     )
 
 
-def _written(db: MagicMock) -> dict[str, Any]:
+def _terms_written(db: MagicMock) -> dict[str, Any]:
     db.update.assert_awaited_once()
     assert db.update.await_args is not None
     assert db.update.await_args.kwargs["where"] == {"id": "user-1"}
     return db.update.await_args.kwargs["data"]
 
 
+def _opt_out_written(db: MagicMock) -> dict[str, Any]:
+    """Conditional on no refusal being stored, whatever the earlier read saw."""
+    db.update_many.assert_awaited_once()
+    assert db.update_many.await_args is not None
+    assert db.update_many.await_args.kwargs["where"] == {
+        "id": "user-1",
+        "marketingOptOutAt": None,
+    }
+    return db.update_many.await_args.kwargs["data"]
+
+
 class TestRecordSignupConsent:
     @pytest.fixture
     def db(self) -> Iterator[MagicMock]:
         """`PrismaUser.prisma()`, read and written. from_db hands the row back
-        unchanged, so a test can tell which of the two rows it got."""
+        unchanged, so a test can tell which of the rows it got."""
         with (
             patch.object(user_module, "PrismaUser") as mock_prisma_user,
             patch.object(user_module.User, "from_db", side_effect=lambda row: row),
@@ -303,6 +314,7 @@ class TestRecordSignupConsent:
             db = mock_prisma_user.prisma.return_value
             db.find_unique = AsyncMock(return_value=_consent_row())
             db.update = AsyncMock(return_value=_consent_row())
+            db.update_many = AsyncMock(return_value=1)
             yield db
 
     @pytest.fixture(autouse=True)
@@ -325,18 +337,25 @@ class TestRecordSignupConsent:
 
     @pytest.mark.asyncio
     async def test_first_call_stamps_the_terms_and_the_opt_out(self, db: MagicMock):
+        fresh = _accepted(True)
+        db.find_unique.side_effect = [_consent_row(), fresh]
         before = datetime.now(timezone.utc)
 
         result = await record_signup_consent("user-1", TERMS_VERSION, True)
 
-        db.find_unique.assert_awaited_once_with(where={"id": "user-1"})
-        data = _written(db)
-        assert set(data) == TERMS_FIELDS | OPT_OUT_FIELDS
-        assert data["termsVersion"] == TERMS_VERSION
-        assert data["marketingOptOutSource"] == "signup"
-        assert before <= data["termsAcceptedAt"] <= datetime.now(timezone.utc)
-        assert data["marketingOptOutAt"] == data["termsAcceptedAt"]
-        assert result is db.update.return_value
+        assert db.find_unique.await_args_list == [
+            call(where={"id": "user-1"}),
+            call(where={"id": "user-1"}),
+        ]
+        terms = _terms_written(db)
+        opt_out = _opt_out_written(db)
+        assert set(terms) == TERMS_FIELDS
+        assert set(opt_out) == OPT_OUT_FIELDS
+        assert terms["termsVersion"] == TERMS_VERSION
+        assert opt_out["marketingOptOutSource"] == "signup"
+        assert before <= terms["termsAcceptedAt"] <= datetime.now(timezone.utc)
+        assert opt_out["marketingOptOutAt"] == terms["termsAcceptedAt"]
+        assert result is fresh
 
     @pytest.mark.asyncio
     async def test_first_call_without_opt_out_stamps_only_the_terms(
@@ -344,9 +363,10 @@ class TestRecordSignupConsent:
     ):
         await record_signup_consent("user-1", TERMS_VERSION, False)
 
-        data = _written(db)
-        assert set(data) == TERMS_FIELDS
-        assert data["termsVersion"] == TERMS_VERSION
+        terms = _terms_written(db)
+        assert set(terms) == TERMS_FIELDS
+        assert terms["termsVersion"] == TERMS_VERSION
+        db.update_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -370,7 +390,9 @@ class TestRecordSignupConsent:
         result = await record_signup_consent("user-1", TERMS_VERSION, marketing_opt_out)
 
         assert result is current
+        db.find_unique.assert_awaited_once()
         db.update.assert_not_awaited()
+        db.update_many.assert_not_awaited()
         assert caches.mock_calls == []
 
     @pytest.mark.asyncio
@@ -382,10 +404,11 @@ class TestRecordSignupConsent:
 
         await record_signup_consent("user-1", TERMS_VERSION, marketing_opt_out)
 
-        data = _written(db)
-        assert set(data) == TERMS_FIELDS
-        assert data["termsVersion"] == TERMS_VERSION
-        assert data["termsAcceptedAt"] > CONSENTED_AT
+        terms = _terms_written(db)
+        assert set(terms) == TERMS_FIELDS
+        assert terms["termsVersion"] == TERMS_VERSION
+        assert terms["termsAcceptedAt"] > CONSENTED_AT
+        db.update_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_a_version_without_an_acceptance_date_is_stamped(self, db: MagicMock):
@@ -393,7 +416,7 @@ class TestRecordSignupConsent:
 
         await record_signup_consent("user-1", TERMS_VERSION, False)
 
-        assert set(_written(db)) == TERMS_FIELDS
+        assert set(_terms_written(db)) == TERMS_FIELDS
 
     @pytest.mark.asyncio
     async def test_opt_out_after_accepting_the_same_terms_writes_only_the_opt_out(
@@ -403,28 +426,52 @@ class TestRecordSignupConsent:
 
         await record_signup_consent("user-1", TERMS_VERSION, True)
 
-        data = _written(db)
-        assert set(data) == OPT_OUT_FIELDS
-        assert data["marketingOptOutSource"] == "signup"
-        assert data["marketingOptOutAt"] > CONSENTED_AT
+        db.update.assert_not_awaited()
+        opt_out = _opt_out_written(db)
+        assert set(opt_out) == OPT_OUT_FIELDS
+        assert opt_out["marketingOptOutSource"] == "signup"
+        assert opt_out["marketingOptOutAt"] > CONSENTED_AT
+
+    @pytest.mark.asyncio
+    async def test_a_refusal_recorded_since_the_read_is_not_overwritten(
+        self, db: MagicMock, caches: MagicMock
+    ):
+        """The read saw no refusal, but one landed before the write (a
+        concurrent call, or an unsubscribe). The conditional write matches no
+        row, and the caller gets that refusal back."""
+        unsubscribed = _consent_row(
+            terms_accepted_at=CONSENTED_AT,
+            terms_version=TERMS_VERSION,
+            marketing_opt_out_at=CONSENTED_AT,
+            marketing_opt_out_source="email_unsubscribe",
+        )
+        db.find_unique.side_effect = [_accepted(False), unsubscribed]
+        db.update_many.return_value = 0
+
+        result = await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        _opt_out_written(db)
+        db.update.assert_not_awaited()
+        assert result is unsubscribed
+        assert caches.mock_calls == []
 
     @pytest.mark.asyncio
     async def test_a_write_invalidates_all_three_user_caches(
         self, db: MagicMock, caches: MagicMock
     ):
-        db.update.return_value = _consent_row(email="written@example.com")
+        db.find_unique.return_value = _consent_row(email="read@example.com")
 
         await record_signup_consent("user-1", TERMS_VERSION, True)
 
         caches.by_id_delete.assert_called_once_with("user-1")
-        caches.by_email_delete.assert_called_once_with("written@example.com")
+        caches.by_email_delete.assert_called_once_with("read@example.com")
         caches.or_create_clear.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_a_write_skips_the_email_cache_when_the_row_has_no_email(
         self, db: MagicMock, caches: MagicMock
     ):
-        db.update.return_value = _consent_row(email=None)
+        db.find_unique.return_value = _consent_row(email=None)
 
         await record_signup_consent("user-1", TERMS_VERSION, True)
 
@@ -442,13 +489,16 @@ class TestRecordSignupConsent:
             await record_signup_consent("user-1", TERMS_VERSION, True)
 
         db.update.assert_not_awaited()
+        db.update_many.assert_not_awaited()
         assert caches.mock_calls == []
 
     @pytest.mark.asyncio
     async def test_user_deleted_before_the_write_raises_not_found(
         self, db: MagicMock, caches: MagicMock
     ):
+        db.find_unique.side_effect = [_consent_row(), None]
         db.update.return_value = None
+        db.update_many.return_value = 0
 
         with pytest.raises(NotFoundError, match="user-1"):
             await record_signup_consent("user-1", TERMS_VERSION, True)
@@ -456,12 +506,16 @@ class TestRecordSignupConsent:
         assert caches.mock_calls == []
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("failing_call", ["find_unique", "update"])
+    @pytest.mark.parametrize("failing_call", ["find_unique", "update", "update_many"])
     async def test_wraps_prisma_errors_in_database_error(
         self, db: MagicMock, caches: MagicMock, failing_call: str
     ):
-        failing = db.find_unique if failing_call == "find_unique" else db.update
-        failing.side_effect = RuntimeError("connection lost")
+        calls = {
+            "find_unique": db.find_unique,
+            "update": db.update,
+            "update_many": db.update_many,
+        }
+        calls[failing_call].side_effect = RuntimeError("connection lost")
 
         with pytest.raises(DatabaseError) as exc:
             await record_signup_consent("user-1", TERMS_VERSION, True)

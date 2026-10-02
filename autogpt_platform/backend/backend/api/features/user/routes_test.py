@@ -191,9 +191,17 @@ def test_record_user_consent_route(
     }
 
 
-def test_record_user_consent_route_accepts_a_32_character_version(
+@pytest.mark.parametrize(
+    "terms_version",
+    [
+        pytest.param("2026-10", id="year-month"),
+        pytest.param("2026-10-15", id="second-change-in-a-month"),
+    ],
+)
+def test_record_user_consent_route_accepts_a_dated_version(
     mocker: pytest_mock.MockFixture,
     test_user_id: str,
+    terms_version: str,
 ) -> None:
     record = mocker.patch(
         "backend.api.features.user.routes.record_signup_consent",
@@ -202,11 +210,11 @@ def test_record_user_consent_route_accepts_a_32_character_version(
 
     response = client.post(
         "/auth/user/consent",
-        json={"terms_version": "v" * 32, "marketing_opt_out": False},
+        json={"terms_version": terms_version, "marketing_opt_out": False},
     )
 
     assert response.status_code == 200
-    record.assert_awaited_once_with(test_user_id, "v" * 32, False)
+    record.assert_awaited_once_with(test_user_id, terms_version, False)
 
 
 @pytest.mark.parametrize(
@@ -218,6 +226,25 @@ def test_record_user_consent_route_accepts_a_32_character_version(
         pytest.param(
             {"terms_version": "", "marketing_opt_out": False},
             id="empty-terms-version",
+        ),
+        pytest.param(
+            {"terms_version": "   ", "marketing_opt_out": False},
+            id="blank-terms-version",
+        ),
+        pytest.param(
+            {"terms_version": "latest", "marketing_opt_out": False},
+            id="undated-terms-version",
+        ),
+        pytest.param(
+            {"terms_version": "2026-10; x", "marketing_opt_out": False},
+            id="terms-version-with-a-suffix",
+        ),
+        pytest.param(
+            {
+                "terms_version": "\u0662\u0660\u0662\u0666-\u0661\u0660",
+                "marketing_opt_out": False,
+            },
+            id="terms-version-in-non-ascii-digits",
         ),
         pytest.param(
             {"terms_version": "v" * 33, "marketing_opt_out": False},

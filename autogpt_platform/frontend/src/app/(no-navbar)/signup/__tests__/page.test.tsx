@@ -327,6 +327,95 @@ describe("SignupPage", () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
+  test("locks the opt-out toggle while an email signup is pending and frees it on failure", async () => {
+    let finishSignup: (result: unknown) => void = () => undefined;
+    mockSignupAction.mockReturnValue(
+      new Promise((resolve) => {
+        finishSignup = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+    await waitFor(() => {
+      expect(mockSignupAction).toHaveBeenCalledWith(
+        "new@example.com",
+        "validpassword123",
+        "validpassword123",
+        false,
+      );
+    });
+    const toggle = screen.getByRole<HTMLButtonElement>("button", {
+      name: "opt out",
+    });
+    await waitFor(() => expect(toggle.disabled).toBe(true));
+
+    await user.click(toggle);
+
+    expect(getLegalLine().textContent).toBe(
+      "By continuing you agree to our Terms of Use and Privacy Policy. We may email you product updates and offers; opt out.",
+    );
+    expect(capture).not.toHaveBeenCalled();
+
+    finishSignup({ success: false, error: "Signup failed" });
+    await waitFor(() => expect(toggle.disabled).toBe(false));
+
+    await user.click(toggle);
+
+    expect(getLegalLine().textContent).toBe(
+      "By continuing you agree to our Terms of Use and Privacy Policy. You won't get marketing emails. Undo.",
+    );
+    expect(capture.mock.calls).toEqual([["signup_marketing_opt_out"]]);
+  });
+
+  test("locks the opt-out toggle while a Google signup is starting and frees it on failure", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    let finishProviderStart: (response: Response) => void = () => undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      input === PROVIDER_LOGIN_URL
+        ? new Promise<Response>((resolve) => {
+            finishProviderStart = resolve;
+          })
+        : Promise.resolve(new Response(JSON.stringify({}))),
+    );
+    const user = userEvent.setup();
+    render(<SignupPage />);
+
+    await user.click(
+      screen.getByRole("button", { name: /continue with google/i }),
+    );
+
+    expect(setMarketingOptOutFlag.mock.calls).toEqual([[false]]);
+    const toggle = screen.getByRole<HTMLButtonElement>("button", {
+      name: "opt out",
+    });
+    await waitFor(() => expect(toggle.disabled).toBe(true));
+
+    await user.click(toggle);
+
+    expect(getLegalLine().textContent).toBe(
+      "By continuing you agree to our Terms of Use and Privacy Policy. We may email you product updates and offers; opt out.",
+    );
+    expect(capture).not.toHaveBeenCalled();
+
+    finishProviderStart(
+      new Response(JSON.stringify({ error: "Provider unavailable" }), {
+        status: 500,
+      }),
+    );
+    await waitFor(() => expect(toggle.disabled).toBe(false));
+
+    await user.click(toggle);
+
+    expect(getLegalLine().textContent).toBe(
+      "By continuing you agree to our Terms of Use and Privacy Policy. You won't get marketing emails. Undo.",
+    );
+    expect(capture.mock.calls).toEqual([["signup_marketing_opt_out"]]);
+  });
+
   test("does not link to the demo tour", () => {
     render(<SignupPage />);
 

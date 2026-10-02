@@ -814,37 +814,39 @@ async def record_signup_consent(
     """Record what the user agreed to on the signup page.
 
     Idempotent, so a retried call is harmless: the terms are stamped again only
-    when the version differs, and an opt-out keeps its first date and source.
-    `marketing_opt_out=False` changes nothing: this can refuse marketing but
-    never take a refusal back, which is a settings action.
+    when the version differs, and an opt-out keeps its first date and source,
+    including one recorded after this call read the row (a concurrent call, or
+    an unsubscribe). `marketing_opt_out=False` changes nothing: this can refuse
+    marketing but never take a refusal back, which is a settings action.
+
+    Returns the row as read after any write, so it shows whichever refusal won.
     """
     try:
         current = await PrismaUser.prisma().find_unique(where={"id": user_id})
         if current is None:
             raise NotFoundError(f"User not found with ID: {user_id}")
 
-        now = datetime.now(timezone.utc)
-        data: UserUpdateInput = {}
-        if current.termsAcceptedAt is None or current.termsVersion != terms_version:
-            data["termsAcceptedAt"] = now
-            data["termsVersion"] = terms_version
-        if marketing_opt_out and current.marketingOptOutAt is None:
-            data["marketingOptOutAt"] = now
-            data["marketingOptOutSource"] = MARKETING_OPT_OUT_SOURCE_SIGNUP
-        if not data:
+        stamp_terms = (
+            current.termsAcceptedAt is None or current.termsVersion != terms_version
+        )
+        opt_out = marketing_opt_out and current.marketingOptOutAt is None
+        if not stamp_terms and not opt_out:
             return User.from_db(current)
 
-        user = await PrismaUser.prisma().update(where={"id": user_id}, data=data)
-        if not user:
-            raise NotFoundError(f"User not found with ID: {user_id}")
+        if await _write_signup_consent(
+            user_id, terms_version if stamp_terms else None, opt_out
+        ):
+            # Same invalidation as update_user_timezone: the MailerLite gate
+            # reads the opt-out through get_user_by_id, so a stale cached user
+            # would let a checkout opened right after signup through.
+            get_user_by_id.cache_delete(user_id)
+            if current.email:
+                get_user_by_email.cache_delete(current.email)
+            get_or_create_user.cache_clear()
 
-        # Same invalidation as update_user_timezone: the MailerLite gate reads
-        # the opt-out through get_user_by_id, so a stale cached user would let
-        # a checkout opened right after signup through.
-        get_user_by_id.cache_delete(user_id)
-        if user.email:
-            get_user_by_email.cache_delete(user.email)
-        get_or_create_user.cache_clear()
+        user = await PrismaUser.prisma().find_unique(where={"id": user_id})
+        if user is None:
+            raise NotFoundError(f"User not found with ID: {user_id}")
         return User.from_db(user)
     except NotFoundError:
         raise
@@ -852,6 +854,35 @@ async def record_signup_consent(
         raise DatabaseError(
             f"Failed to record signup consent for user {user_id}: {e}"
         ) from e
+
+
+async def _write_signup_consent(
+    user_id: str, terms_version: str | None, opt_out: bool
+) -> bool:
+    """Stamp the terms (unless `terms_version` is None) and, when `opt_out`,
+    the opt-out. True when either reached the row.
+
+    The opt-out is conditional on none being stored, so a refusal recorded
+    since the caller read the row keeps its own date and source.
+    """
+    now = datetime.now(timezone.utc)
+    written = False
+    if terms_version is not None:
+        stamped = await PrismaUser.prisma().update(
+            where={"id": user_id},
+            data={"termsAcceptedAt": now, "termsVersion": terms_version},
+        )
+        written = stamped is not None
+    if opt_out:
+        opted_out = await PrismaUser.prisma().update_many(
+            where={"id": user_id, "marketingOptOutAt": None},
+            data={
+                "marketingOptOutAt": now,
+                "marketingOptOutSource": MARKETING_OPT_OUT_SOURCE_SIGNUP,
+            },
+        )
+        written = written or opted_out > 0
+    return written
 
 
 class BriefingCandidate(BaseModel):

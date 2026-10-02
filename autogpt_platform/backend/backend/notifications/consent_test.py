@@ -2,10 +2,12 @@
 logged at debug level by pseudonym, never by address."""
 
 import logging
+import pickle
 from datetime import UTC, datetime
 
 import pytest
 
+from backend.data.model import User
 from backend.data.notifications import AudienceAction
 from backend.data.user import BillingEmailRecipient
 from backend.notifications import consent
@@ -24,6 +26,33 @@ def _user(opted_out_at: datetime | None) -> BillingEmailRecipient:
 def test_marketing_is_allowed_until_they_opt_out():
     assert consent.marketing_allowed(_user(None))
     assert not consent.marketing_allowed(_user(OPTED_OUT))
+
+
+CONSENT_FIELDS = (
+    "terms_accepted_at",
+    "terms_version",
+    "marketing_opt_out_at",
+    "marketing_opt_out_source",
+)
+
+
+def _cached_before_consent() -> User:
+    """A `User` as the shared cache hands it back when the previous release
+    pickled it, before the consent fields existed."""
+    user = User(id="user-1", email=EMAIL, created_at=OPTED_OUT, updated_at=OPTED_OUT)
+    for field in CONSENT_FIELDS:
+        del user.__dict__[field]
+    return pickle.loads(pickle.dumps(user))
+
+
+def test_a_user_cached_before_the_consent_fields_is_skipped_without_raising():
+    """During a rolling deploy its consent is unknown, so it fails closed: the
+    MailerLite change is skipped and the backfills catch it up later."""
+    stale = _cached_before_consent()
+    assert not set(CONSENT_FIELDS) & set(stale.__dict__)
+
+    assert not consent.marketing_allowed(stale)
+    assert not consent.audience_change_allowed(stale, AudienceAction.ADD_TRIAL)
 
 
 def test_an_allowed_change_logs_nothing(caplog):

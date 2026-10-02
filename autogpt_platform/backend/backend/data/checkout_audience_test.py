@@ -24,6 +24,7 @@ from backend.data.notifications import (
 )
 from backend.data.subscription_trial_checkout import TrialUnavailable
 from backend.notifications import consent, subscriber_fields
+from backend.notifications.consent_test import _cached_before_consent
 from backend.notifications.mailerlite import _pseudonym
 
 EMAIL = "sam@example.com"
@@ -116,6 +117,24 @@ async def test_an_opted_out_opener_is_never_queued(queued, monkeypatch, caplog):
     providers.assert_not_awaited()
     assert _pseudonym(EMAIL) in caplog.text
     assert EMAIL not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_opener_cached_before_the_consent_fields_queues_nothing(
+    queued, monkeypatch, caplog
+):
+    """During a rolling deploy the shared cache can hand back a user pickled by
+    the previous release, with no opt-out to read. It is skipped, not reported
+    as a failed checkout."""
+    monkeypatch.setattr(
+        checkout_audience,
+        "get_user_by_id",
+        AsyncMock(return_value=_cached_before_consent()),
+    )
+    with caplog.at_level(logging.DEBUG, logger=checkout_audience.__name__):
+        await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
 
 
 @pytest.mark.asyncio

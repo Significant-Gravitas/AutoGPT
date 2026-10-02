@@ -18,6 +18,9 @@ from backend.notifications.mailerlite import _pseudonym
 
 logger = logging.getLogger(__name__)
 
+# Never a stored value, so a missing attribute cannot pass for an unset one.
+_MISSING = object()
+
 
 class MarketingConsent(Protocol):
     @property
@@ -35,7 +38,12 @@ class MarketingContact(MarketingConsent, Protocol):
 
 
 def marketing_allowed(user: MarketingConsent) -> bool:
-    return user.marketing_opt_out_at is None
+    # Shared-cache entries can outlive a rolling deploy. A user pickled by the
+    # previous version has no `marketing_opt_out_at`, so read it defensively
+    # until that cache entry expires. Its consent is unknown, so this fails
+    # closed without raising: only the MailerLite change is skipped, never the
+    # caller's own work (a trial notice), and the backfills catch it up.
+    return getattr(user, "marketing_opt_out_at", _MISSING) is None
 
 
 def audience_change_allowed(user: MarketingContact, action: AudienceAction) -> bool:

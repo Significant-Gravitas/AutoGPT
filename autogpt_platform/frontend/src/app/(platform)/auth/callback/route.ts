@@ -42,12 +42,14 @@ export async function GET(request: Request) {
   const session = await getServerSession();
 
   if (session?.user) {
-    // Consumed on every landing, not just new accounts, so a refusal left by an
-    // abandoned or returning-user attempt can't leak into a later signup.
-    const marketingOptOut = await takeMarketingOptOutFlag();
-
     try {
       const createUserResponse = await postV1GetOrCreateUser();
+      // Consumed once the user exists, new or returning, so a refusal left
+      // by an abandoned or returning-user attempt can't leak into a later
+      // signup. Not taken before provisioning succeeds: a failure redirects
+      // to /error and the retry must still carry the refusal. Never throws,
+      // so it can't reach the rollback below.
+      const marketingOptOut = await takeMarketingOptOutFlag();
       if (wasAccountCreated(createUserResponse)) {
         await scheduleAccountCreatedGoal("google");
         await markAccountCreated("google");
