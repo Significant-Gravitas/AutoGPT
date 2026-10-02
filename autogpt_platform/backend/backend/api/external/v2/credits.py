@@ -38,6 +38,7 @@ from .models import (
     TransactionType,
 )
 from .pagination import Page, PageRequest, page_request, single_page_request
+from .rate_limit import subscription_limiter
 from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
@@ -111,7 +112,12 @@ async def get_transactions(
 async def get_subscription_status(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> SubscriptionStatus:
-    """Get the current subscription tier, pricing, and pending changes."""
+    """Get the current subscription tier, pricing, and pending changes.
+
+    **Rate limit:** 60 requests per minute per user.
+    """
+    await subscription_limiter.check(auth.user_id)
+
     user = await get_user_by_id(auth.user_id)
     tier = user.subscription_tier or SubscriptionTier.NO_TIER
 

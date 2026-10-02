@@ -317,7 +317,7 @@ async def test_v2_run_review_listing_leaves_out_chat_reviews(user_id):
 
     page = await list_reviews(
         run_id=None,
-        status=None,
+        review_status=None,
         page=PageRequest(limit=20),
         auth=TenantContext(
             user_id=user_id,

@@ -77,13 +77,11 @@ async def delete_schedule(
             schedule_id=schedule_id,
             user_id=auth.user_id,
         )
-    except Exception as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Schedule #{schedule_id} not found",
-            )
-        raise
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Schedule #{schedule_id} not found",
+        )
 
 
 @schedules_router.post(
