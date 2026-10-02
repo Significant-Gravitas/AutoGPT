@@ -78,6 +78,7 @@ def capture(
     """
     if not distinct_id:
         return
+    event_name = "<unknown>"
     try:
         event_name = event.value
         client = get_posthog_client()
@@ -103,7 +104,7 @@ def capture(
     except Exception:
         logger.warning(
             "Failed to send PostHog event %s for %s",
-            event,
+            event_name,
             distinct_id,
             exc_info=True,
         )
