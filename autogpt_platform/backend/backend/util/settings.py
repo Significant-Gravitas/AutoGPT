@@ -544,6 +544,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Auth mail (verify email, reset password, change email) is not gated by
+    # this: it always sends, so sign-in keeps working with notifications off.
+    enable_user_notifications: bool = Field(
+        default=True,
+        description=(
+            "Send notification emails to users: Briefings, Alerts, Verdicts, "
+            "subscription and trial mail. When false they are dropped, not "
+            "deferred. Auth emails and internal ops mail are unaffected."
+        ),
+    )
+
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
     billing_sender_email: str = Field(
@@ -604,6 +615,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "MailerLite group holding customers in a card-required trial. "
             "Blank leaves trial customers out of MailerLite."
+        ),
+    )
+    mailerlite_checkout_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding everyone who opened Stripe checkout, "
+            "which GTM segments for outreach. Blank leaves checkout openers "
+            "out of MailerLite."
         ),
     )
     mailerlite_api_url: str = Field(
