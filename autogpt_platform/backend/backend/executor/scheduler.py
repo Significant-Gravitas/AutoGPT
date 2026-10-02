@@ -897,8 +897,8 @@ def _alert_undelivered_followup(
     reason: str,
     error: BaseException | None,
 ) -> None:
-    """Page on the paths where a promised turn never went out. The log line
-    alone was how ~85 minutes went missing unnoticed (SECRT-2787)."""
+    """Page on the paths where a promised turn never went out: a dropped or
+    failed follow-up must reach Sentry, not only the log."""
     try:
         with sentry_sdk.new_scope() as scope:
             scope.set_tag("copilot_followup_status", status)
