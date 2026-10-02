@@ -411,9 +411,21 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
     ok, failed, skipped = await checkout_backfill.apply(
         plan.changes, group_id, _checkout_progress, refresh=_refresher(converted)
     )
+    _finish_checkout(ok, failed, skipped)
+
+
+def _finish_checkout(ok: int, failed: int, skipped: int) -> None:
+    """Report the run, and fail it when anyone was not written: the run goes
+    on past each failure, but a Job or script must not read a partial run as
+    done. A rerun retries only what is left."""
     click.echo(
-        f"checkout openers: {ok} ok, {failed} failed, " f"{skipped} already up to date"
+        f"checkout openers: {ok} ok, {failed} failed, {skipped} already up to date"
     )
+    if failed:
+        raise click.ClickException(
+            f"{failed} checkout openers were not written (the log says why); "
+            "run again to retry them"
+        )
     click.echo("Run the dry run again to confirm nothing is left.")
 
 
