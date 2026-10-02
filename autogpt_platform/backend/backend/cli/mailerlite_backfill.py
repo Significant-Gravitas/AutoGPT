@@ -188,20 +188,50 @@ async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
     page = await stripe_call(stripe.Subscription.list_async, status="all", limit=100)
     async for sub in stripe_list_items(page):
         # Not expanded, so this is the customer ID.
-        subscriptions.setdefault(str(sub.customer), []).append(
-            Subscription(
-                id=str(sub.id),
-                status=str(sub.status),
-                cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
-                from_trial=bool((sub.get("metadata") or {}).get("trial_enrollment_id")),
-                start_date=sub.get("start_date"),
-                trial_start=sub.get("trial_start"),
-                trial_end=sub.get("trial_end"),
-                canceled_at=sub.get("canceled_at"),
-                ended_at=sub.get("ended_at"),
-            )
-        )
+        subscriptions.setdefault(str(sub.customer), []).append(_subscription(sub))
     return subscriptions
+
+
+def _subscription(sub) -> "Subscription":
+    from backend.notifications.mailerlite_backfill import Subscription
+
+    return Subscription(
+        id=str(sub.id),
+        status=str(sub.status),
+        cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
+        from_trial=bool((sub.get("metadata") or {}).get("trial_enrollment_id")),
+        start_date=sub.get("start_date"),
+        trial_start=sub.get("trial_start"),
+        trial_end=sub.get("trial_end"),
+        canceled_at=sub.get("canceled_at"),
+        ended_at=sub.get("ended_at"),
+    )
+
+
+def _refresher(converted: set[str]):
+    """One customer's subscriptions as Stripe has them now, so the checkout
+    backfill writes the current status rather than its snapshot's: a trial
+    that converts during the run is not written back as a trial."""
+
+    async def refresh(customer_id: str) -> "list[Subscription]":
+        import stripe
+
+        from backend.data.stripe_client import stripe_call, stripe_list_items
+
+        page = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=customer_id,
+            status="all",
+            limit=100,
+        )
+        return [
+            _subscription(sub).model_copy(
+                update={"converted": str(sub.id) in converted}
+            )
+            async for sub in stripe_list_items(page)
+        ]
+
+    return refresh
 
 
 async def _people(subscriptions: "dict[str, list[Subscription]]") -> "list[Person]":
@@ -377,8 +407,9 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             f"\nWrite {len(plan.changes)} checkout openers to MailerLite?", abort=True
         )
     await mailerlite.ensure_fields()
+    converted = {s.id for p in people for s in p.subscriptions if s.converted}
     ok, failed, skipped = await checkout_backfill.apply(
-        plan.changes, group_id, _checkout_progress
+        plan.changes, group_id, _checkout_progress, refresh=_refresher(converted)
     )
     click.echo(
         f"checkout openers: {ok} ok, {failed} failed, " f"{skipped} already up to date"

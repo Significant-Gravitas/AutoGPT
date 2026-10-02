@@ -22,7 +22,7 @@ where the last one stopped.
 import asyncio
 import logging
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 
 from pydantic import BaseModel
 
@@ -35,7 +35,11 @@ from backend.notifications.mailerlite import (
     _headers,
     _payload,
 )
-from backend.notifications.mailerlite_backfill import BatchAnswer, _refusal
+from backend.notifications.mailerlite_backfill import (
+    BatchAnswer,
+    Subscription,
+    _refusal,
+)
 from backend.notifications.mailerlite_field_backfill import (
     Current,
     Person,
@@ -166,11 +170,17 @@ async def apply(
     changes: list[OpenerChange],
     group_id: str,
     on_progress: Callable[[int, int], None] | None = None,
+    *,
+    refresh: Callable[[str], Awaitable[list[Subscription]]] | None = None,
 ) -> tuple[int, int, int]:
-    """Visit each planned opener: read them again, and write what they still
-    need as one subscriber upsert into the group. Returns (succeeded, failed,
-    skipped); a failure is logged with MailerLite's reason and left for the
-    next run, and someone who needs nothing any more is skipped."""
+    """Visit each planned opener: read them again from MailerLite and, with
+    `refresh`, their subscriptions again from Stripe, and write what they
+    still need as one subscriber upsert into the group. The status the plan
+    took from Stripe hours earlier is never written over a newer one.
+
+    Returns (succeeded, failed, skipped); a failure is logged with
+    MailerLite's reason and left for the next run, and someone who needs
+    nothing any more is skipped."""
     succeeded = failed = skipped = 0
     for index, change in enumerate(changes):
         if index:
@@ -178,7 +188,15 @@ async def apply(
         if on_progress and index and index % 100 == 0:
             on_progress(index, len(changes))
         email = change.opener.person.email
+        opener = change.opener
         try:
+            if refresh and opener.person.stripe_customer_id:
+                person = opener.person.model_copy(
+                    update={
+                        "subscriptions": await refresh(opener.person.stripe_customer_id)
+                    }
+                )
+                opener = opener.model_copy(update={"person": person})
             subscriber = await _find_subscriber(email)
         except Exception:
             failed += 1
@@ -188,7 +206,7 @@ async def apply(
             )
             continue
         held = None if subscriber is None else (subscriber.get("fields") or {})
-        fields = _changed(_merged(change.opener, held), held)
+        fields = _changed(_merged(opener, held), held)
         if not fields and not change.joins:
             skipped += 1
             continue
