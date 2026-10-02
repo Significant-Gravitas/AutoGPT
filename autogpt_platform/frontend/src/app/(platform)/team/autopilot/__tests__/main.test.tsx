@@ -264,7 +264,7 @@ describe("AutopilotPage", () => {
       within(rows[0])
         .getByRole("link", { name: "Ask about this workflow" })
         .getAttribute("href"),
-    ).toContain("/copilot?autosubmit=true");
+    ).toContain("/home?autosubmit=true");
   });
 
   test("keeps loading library pages so a second-page workflow still counts as Otto's", async () => {

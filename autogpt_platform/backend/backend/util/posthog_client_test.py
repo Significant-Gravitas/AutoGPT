@@ -1,3 +1,4 @@
+import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from threading import Event
 from unittest.mock import Mock
@@ -5,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from backend.util import posthog_client
+from backend.util.posthog_events import PostHogEvent
 
 
 @pytest.fixture(autouse=True)
@@ -103,3 +105,85 @@ def test_initialization_failure_is_safe_and_retryable(
     assert posthog_client.get_posthog_client() is client
     assert posthog_client.get_posthog_client() is client
     assert settings_factory.call_count == 2
+
+
+def test_capture_adds_the_base_properties_last(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+
+    posthog_client.capture(
+        "user-1",
+        PostHogEvent.SUBSCRIPTION_CHANGED,
+        {"subscription_tier": "PRO", "source": "caller"},
+        source="chat_copilot",
+    )
+
+    client.capture.assert_called_once_with(
+        distinct_id="user-1",
+        event="subscription_changed",
+        properties={
+            "subscription_tier": "PRO",
+            "environment": "prod",
+            "source": "chat_copilot",
+        },
+        uuid=None,
+    )
+
+
+def test_capture_defaults_the_source_to_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture("user-1", PostHogEvent.TOPUP_COMPLETED)
+
+    properties = client.capture.call_args.kwargs["properties"]
+    assert properties["source"] == "platform"
+    assert properties["environment"] in {"local", "dev", "prod"}
+
+
+@pytest.mark.parametrize("distinct_id", [None, ""])
+def test_capture_without_a_user_sends_nothing(
+    monkeypatch: pytest.MonkeyPatch, distinct_id: str | None
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture(distinct_id, PostHogEvent.CHAT_TOOL_CALLED)
+
+    client.capture.assert_not_called()
+
+
+def test_capture_is_a_noop_when_analytics_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: None)
+
+    posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED)
+
+
+def test_capture_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = Mock()
+    client.capture.side_effect = RuntimeError("posthog down")
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED)
+
+
+def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture(
+        "user-1", PostHogEvent.BRIEFING_DELIVERED, {}, dedup_key="briefing:b-1"
+    )
+
+    kwargs = client.capture.call_args.kwargs
+    assert kwargs["properties"]["$insert_id"] == "briefing:b-1"
+    assert kwargs["uuid"] == str(
+        uuid.uuid5(uuid.NAMESPACE_URL, "user-1:briefing_delivered:briefing:b-1")
+    )

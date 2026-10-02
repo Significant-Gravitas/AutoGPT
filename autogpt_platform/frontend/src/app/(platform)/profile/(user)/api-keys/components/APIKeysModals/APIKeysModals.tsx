@@ -120,7 +120,7 @@ export const APIKeysModals = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center space-x-2">
-            <code className="flex-1 rounded-md bg-secondary p-2 text-sm">
+            <code className="ph-no-capture flex-1 rounded-md bg-secondary p-2 text-sm">
               {keyState.newApiKey}
             </code>
             <Button size="icon" variant="outline" onClick={handleCopyKey}>

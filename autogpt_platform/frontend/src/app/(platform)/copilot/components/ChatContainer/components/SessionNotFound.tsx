@@ -16,7 +16,7 @@ export function SessionNotFound() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full items-center justify-center bg-[#fafafa] px-6">
+    <div className="flex h-full min-h-0 w-full items-center justify-center bg-white px-6">
       <div
         role="status"
         className="flex max-w-md flex-col items-center gap-3 text-center"

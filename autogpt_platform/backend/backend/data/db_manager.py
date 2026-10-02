@@ -55,6 +55,7 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_credential
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
@@ -141,6 +142,7 @@ from backend.data.human_review import (
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
+    process_all_reviews_for_execution,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -148,6 +150,7 @@ from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
+from backend.data.posthog_lifecycle_sync import start_posthog_lifecycle_sweep
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -362,6 +365,12 @@ class DatabaseManager(AppService):
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
+    # ============ Credential Swap Proxy ============ #
+    # Called by the swap proxy (autogpt_platform/swap_proxy), which has no
+    # database access of its own; see backend/copilot/swap_credentials.py.
+    get_swap_bindings = _(get_swap_bindings)
+    resolve_swap_credential = _(resolve_swap_credential)
+
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
     get_user_email_by_id = _(get_user_email_by_id)
@@ -378,6 +387,7 @@ class DatabaseManager(AppService):
     get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
+    process_all_reviews_for_execution = _(process_all_reviews_for_execution)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -495,6 +505,7 @@ class DatabaseManager(AppService):
     # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
+    start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -795,6 +806,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_chat_session = d.get_pending_reviews_for_chat_session
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
+    process_all_reviews_for_execution = d.process_all_reviews_for_execution
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -935,6 +947,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
+    start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
