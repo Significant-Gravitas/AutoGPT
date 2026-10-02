@@ -32,7 +32,7 @@ export function SettingsGroup({
           "flex flex-col divide-y rounded-2xl",
           isDanger
             ? "divide-red-100 border border-red-200 bg-red-50/50"
-            : "divide-zinc-100 bg-white smooth-shadow-ring-sm",
+            : "divide-zinc-100 border border-zinc-200 bg-white",
         )}
       >
         {children}
