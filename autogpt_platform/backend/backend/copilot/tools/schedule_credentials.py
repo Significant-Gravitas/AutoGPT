@@ -38,12 +38,8 @@ INTEGRATIONS_PARAM: dict[str, Any] = {
     "type": "array",
     "items": {"type": "string"},
     "description": (
-        "Integrations the scheduled work will use with the user's own "
-        "accounts, as provider slugs (e.g. 'exa', 'github'); list the "
-        "providers of the blocks or agents it will run. Where the user has "
-        "several accounts for one, you get a card asking which one this "
-        "schedule should always use: call again with the same arguments once "
-        "they pick. Accounts already picked in this chat are kept either way."
+        "Providers the work uses, e.g. ['exa']. If the user has several "
+        "accounts for one, a card asks which; call again once they pick."
     ),
 }
 
