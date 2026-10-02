@@ -145,9 +145,9 @@ async def get_subscription_status(
         yearly_costs,
     ):
         if m_pid or y_pid:
-            tier_costs[t.value] = m_cost if m_pid else 0
+            tier_costs[t.value] = (m_cost or 0) if m_pid else 0
         if y_pid:
-            tier_costs_yearly[t.value] = y_cost
+            tier_costs_yearly[t.value] = y_cost or 0
 
     multipliers = await get_tier_multipliers()
     tier_multipliers: dict[str, float] = {
@@ -267,8 +267,11 @@ async def get_cost_summary(
 
 
 @cached(ttl_seconds=300, maxsize=32, cache_none=False)
-async def _get_stripe_price_amount(price_id: str | None) -> int:
-    """Return the unit_amount (cents) for a Stripe Price ID, cached 5 minutes."""
+async def _get_stripe_price_amount(price_id: str | None) -> int | None:
+    """Return the unit_amount (cents) for a Stripe Price ID, cached 5 minutes.
+
+    ``None`` on a Stripe error, so ``cache_none=False`` keeps it out of the cache.
+    """
     if not price_id:
         return 0
     try:
@@ -276,7 +279,7 @@ async def _get_stripe_price_amount(price_id: str | None) -> int:
         return price.unit_amount or 0
     except stripe.StripeError:
         logger.warning(
-            "Failed to retrieve Stripe price %s — returning 0 (not cached)",
+            "Failed to retrieve Stripe price %s — returning None (not cached)",
             price_id,
         )
-        return 0
+        return None
