@@ -28,6 +28,7 @@ cache_control breakpoint) so injecting it does not bust the prefix
 cache.  The system prompt itself is unchanged across sessions.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -156,13 +157,21 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     """
     if not await is_followups_feature_enabled(user_id):
         return f"session_id: {session_id}; pending_followups: 0"
-    try:
-        raw_jobs = await get_scheduler_client().get_execution_schedules(
+    # Independent reads on every turn, so neither waits on the other. The
+    # outcome read degrades to "none" by itself; the scheduler RPC is caught
+    # here.
+    raw_jobs, undelivered = await asyncio.gather(
+        get_scheduler_client().get_execution_schedules(
             user_id=user_id,
             session_id=session_id,
             kind="copilot_turn",
-        )
-    except Exception as e:
+        ),
+        _undelivered_followups(session_id, user_id),
+        return_exceptions=True,
+    )
+    if isinstance(undelivered, BaseException):
+        undelivered = []
+    if isinstance(raw_jobs, BaseException):
         # Graceful degradation: scheduler RPC issues must never fail the
         # turn — we still emit the session_id so the model knows which
         # session it is in.
@@ -170,7 +179,7 @@ async def build_session_context(session_id: str, user_id: str) -> str:
             "build_session_context: scheduler RPC failed for session %s (%s); "
             "falling back to session_id-only block",
             session_id,
-            e,
+            raw_jobs,
         )
         return f"session_id: {session_id}; pending_followups: 0"
 
@@ -178,7 +187,6 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     # filter is a belt-and-braces guard against a legacy untyped row that
     # might slip through (matches ``schedules.routes.list_copilot_turn_schedules``).
     jobs = [j for j in raw_jobs if isinstance(j, CopilotTurnJobInfo)]
-    undelivered = await _undelivered_followups(session_id, user_id)
 
     if not jobs and not undelivered:
         # Zero-follow-up sessions are the common case — collapse to one

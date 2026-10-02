@@ -6,6 +6,7 @@ strip of attacker-supplied ``<session_context>`` blocks before the trusted
 server-side block is re-injected.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -345,6 +346,59 @@ async def test_outcome_read_failure_degrades_to_pending_only(outcome_events):
         ctx = await build_session_context(_SESSION, _USER)
 
     assert ctx == f"session_id: {_SESSION}; pending_followups: 0"
+
+
+@pytest.mark.asyncio
+async def test_pending_and_undelivered_reads_run_concurrently(outcome_events):
+    """Both reads sit on every turn's critical path, so neither may wait for
+    the other: the scheduler stub only answers once the outcome read has
+    started, which deadlocks (and times out) if they run back to back."""
+    outcome_read_started = asyncio.Event()
+
+    async def list_outcomes(**_):
+        outcome_read_started.set()
+        return [_undelivered()]
+
+    async def list_jobs(**_):
+        await outcome_read_started.wait()
+        return [
+            _one_shot(
+                schedule_id="cop-1",
+                name="Check CI",
+                fires_at="2026-05-22T13:50:00+00:00",
+            )
+        ]
+
+    outcome_events.list_activity_events_by_type = AsyncMock(side_effect=list_outcomes)
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(side_effect=list_jobs)
+    with patch(f"{_CTX_PATH}.get_scheduler_client", return_value=mock_client):
+        ctx = await asyncio.wait_for(build_session_context(_SESSION, _USER), 5)
+
+    assert "pending_followups: 1" in ctx
+    assert "undelivered_followups: 1" in ctx
+
+
+@pytest.mark.asyncio
+async def test_outcome_reader_crash_still_renders_pending_list():
+    """Even an error the outcome reader does not catch itself costs only the
+    undelivered lines, never the pending list."""
+    jobs = [
+        _one_shot(
+            schedule_id="cop-1", name="Check CI", fires_at="2026-05-22T13:50:00+00:00"
+        )
+    ]
+    with (
+        _patch_scheduler(jobs),
+        patch(
+            f"{_CTX_PATH}._undelivered_followups",
+            new=AsyncMock(side_effect=asyncio.CancelledError()),
+        ),
+    ):
+        ctx = await build_session_context(_SESSION, _USER)
+
+    assert "pending_followups: 1" in ctx
+    assert "undelivered_followups" not in ctx
 
 
 @pytest.mark.asyncio
