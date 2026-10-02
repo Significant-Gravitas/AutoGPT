@@ -123,8 +123,8 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         org_created = await ensure_personal_org(user.id)
 
         # The auth hook inserts a bare row the moment the identity is created
-        # (see provision-platform-user.ts), so the row alone no longer marks a
-        # new account: the org this call bootstrapped for it does.
+        # (see provision-platform-user.ts), so the row alone does not mark a
+        # new account: the personal org this call bootstraps does.
         was_created = row_created or org_created
         if was_created:
             schedule_posthog_lifecycle_sync(user.id)

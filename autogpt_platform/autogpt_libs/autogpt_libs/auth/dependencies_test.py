@@ -1041,6 +1041,39 @@ class TestGetUserIdSelfHeal:
         assert ensure.await_count == 1
 
     @pytest.mark.asyncio
+    async def test_a_cancelled_request_does_not_cancel_the_shared_heal(
+        self, mocker: MockerFixture
+    ):
+        """A client that drops its request mid-heal must not take the heal the
+        other requests for that user are waiting on down with it."""
+        self._stub_backend(mocker)
+        release = asyncio.Event()
+
+        async def slow_probe(user_id: str, payload: dict) -> bool:
+            await release.wait()
+            return True
+
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=slow_probe,
+        )
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        first = asyncio.create_task(get_user_id(self._request(), payload))
+        second = asyncio.create_task(get_user_id(self._request(), payload))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        first.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        release.set()
+        assert await second == "user-1"
+        assert ensure.await_count == 1
+        assert first.cancelled()
+
+    @pytest.mark.asyncio
     async def test_cached_confirmation_expires(self, mocker: MockerFixture):
         """Nothing deletes a User row today, but the cache must not turn that
         into a permanent assumption: after the TTL the row is probed again."""
