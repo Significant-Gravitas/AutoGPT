@@ -66,7 +66,7 @@ async def test_scheduled_turn_runs_agent_without_prisma(
     session.metadata.origin = "automation"
     assert session.organization_id is None
 
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
