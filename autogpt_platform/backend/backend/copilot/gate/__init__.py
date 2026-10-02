@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
+from backend.platform_linking.models import Platform
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
@@ -57,6 +58,13 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# A chat driven from these runs in Auto, and its cards are answered in the channel.
+LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
+# Any other linked platform has no buttons to answer a card with, so it runs
+# ungated: a held call would strand the chat.
+CARDLESS_PLATFORMS = (
+    frozenset(p.value.lower() for p in Platform) - LINKED_CHAT_PLATFORMS
+)
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
@@ -92,10 +100,14 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
     is watching stay ungated until they get their own path."""
     if not user_id or session.metadata.origin != "interactive":
         return False
+    if session.metadata.source_platform in CARDLESS_PLATFORMS:
+        return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
 
 
 def resolve_mode(session: ChatSession) -> AutopilotMode:
+    if session.metadata.source_platform in LINKED_CHAT_PLATFORMS:
+        return "auto"
     return session.metadata.autopilot_mode or DEFAULT_MODE
 
 
@@ -275,14 +287,21 @@ def _dollars(microdollars: int) -> str:
 
 
 def _last_user_message(session: ChatSession) -> str:
+    # Deferred: copilot.service imports the tool registry, which imports this gate.
+    from backend.copilot.service import strip_injected_context_for_display
+
     for message in reversed(session.messages):
         if message.role == "user" and message.content:
-            return message.content
+            if held.is_answer_row(message):
+                continue
+            # A first turn's row starts with the server's context blocks.
+            return strip_injected_context_for_display(message.content)
     return ""
 
 
 __all__ = [
     "Decision",
+    "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
     "gate_active",

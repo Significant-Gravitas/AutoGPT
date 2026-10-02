@@ -276,6 +276,15 @@ class NotificationManager(AppService):
         if not event:
             return False
 
+        # Checked before anything else so a switched-off notification claims
+        # no daily-cap slot and a suppressed trial notice is not retried.
+        if not settings.config.enable_user_notifications:
+            logger.info(
+                f"Dropping {event.type} for user {event.user_id}: "
+                "ENABLE_USER_NOTIFICATIONS is off"
+            )
+            return True
+
         if event.type == NotificationType.TRIAL_UPDATE:
             data = TrialUpdateData.model_validate(event.data.model_dump())
             disposition = await trial_notice_disposition(event.user_id, data)
