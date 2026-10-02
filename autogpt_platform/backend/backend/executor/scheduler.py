@@ -35,7 +35,7 @@ from backend.copilot.dream.scheduling import (
     NIGHTLY_BATCH_REGISTRATION_PREFIX,
     clear_registration_marker,
 )
-from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
@@ -570,6 +570,13 @@ async def _execute_copilot_turn(**kwargs):
                 _routine_turn_permissions(routine)
                 if args.routine_id is not None
                 else None
+            ),
+            # Nobody watches a scheduled turn, so the executor alerts when it
+            # fails after this dispatch succeeded (SECRT-2799).
+            scheduled=ScheduledTurnOrigin(
+                schedule_id=args.schedule_id,
+                routine_id=args.routine_id,
+                cron=args.cron,
             ),
         )
         if routine is not None and routine.run_at is not None:

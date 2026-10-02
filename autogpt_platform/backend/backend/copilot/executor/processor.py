@@ -52,6 +52,7 @@ from backend.util.process import set_service_name
 from backend.util.retry import func_retry
 from backend.util.workspace_storage import shutdown_workspace_storage
 
+from .scheduled_turn_alert import ScheduledTurnWatch
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 if TYPE_CHECKING:
@@ -555,6 +556,7 @@ class CoPilotProcessor:
         error_msg = None
         credential_lease = None
         cost_context_stack = AsyncExitStack()
+        scheduled_watch = ScheduledTurnWatch.for_entry(entry)
 
         try:
             from backend.copilot.model import get_chat_session
@@ -773,6 +775,8 @@ class CoPilotProcessor:
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
                         break
+                    if scheduled_watch is not None:
+                        scheduled_watch.observe(chunk)
 
                     current_time = time.monotonic()
                     if current_time - last_refresh >= refresh_interval:
@@ -810,6 +814,9 @@ class CoPilotProcessor:
                     except Exception as release_err:
                         log.error(f"Failed to release chat credential: {release_err}")
             finally:
+                # After the release, which can still fail the turn.
+                if scheduled_watch is not None:
+                    scheduled_watch.report(error_msg)
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id, error_message=error_msg, turn_id=entry.turn_id

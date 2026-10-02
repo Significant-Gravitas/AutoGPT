@@ -17,6 +17,7 @@ from apscheduler.triggers.date import DateTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
@@ -334,6 +335,8 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["message"] == "check CI"
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
+    # Marks the turn as scheduled so the executor alerts if it fails later.
+    assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
 
 
 @pytest.mark.asyncio

@@ -1200,7 +1200,10 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
-    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(get_user_default_team=default_team),
+    )
 
     captured: dict = {}
 
@@ -1311,7 +1314,10 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
-    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(get_user_default_team=default_team),
+    )
 
     captured: dict = {}
 
@@ -1677,8 +1683,10 @@ def _completed_run_mocks(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        AsyncMock(return_value=("org-1", "team-1")),
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
+        ),
     )
     execution = MagicMock()
     execution.id = "exec-1"
