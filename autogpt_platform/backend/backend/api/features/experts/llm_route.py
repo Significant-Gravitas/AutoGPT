@@ -14,6 +14,7 @@ from backend.api.features.experts.models import Expert
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.transports import (
     KNOWN_AUTH_PROVIDERS,
+    ChatTransportResponse,
     get_chat_transports,
     resolve_pinned_chat_route,
     transport_label,
@@ -55,7 +56,9 @@ async def annotate_llm_routes(user_id: str, experts: list[Expert]) -> list[Exper
     return [await _with_route_state(user_id, expert, transports) for expert in experts]
 
 
-async def _with_route_state(user_id: str, expert: Expert, transports) -> Expert:
+async def _with_route_state(
+    user_id: str, expert: Expert, transports: list[ChatTransportResponse]
+) -> Expert:
     if expert.llm_auth_provider is None:
         return expert
     pinned = await resolve_pinned_chat_route(

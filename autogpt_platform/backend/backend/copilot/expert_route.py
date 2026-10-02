@@ -16,6 +16,7 @@ import logging
 
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.transports import (
+    get_chat_transports,
     resolve_default_chat_route,
     resolve_pinned_chat_route,
 )
@@ -34,12 +35,29 @@ async def resolve_expert_chat_route(
     Never raises and never asks, for the same callers and the same reasons.
     """
     auth_provider, credential_id = await expert_pinned_chat_route(user_id, expert_id)
+    if auth_provider is None:
+        return await resolve_default_chat_route(user_id)
+    # One listing serves both the pin check and, when the pin no longer
+    # holds, the account-default fallback.
+    try:
+        transports = await get_chat_transports(user_id)
+    except Exception:
+        logger.warning(
+            "Could not list chat transports for user ...%s; using platform",
+            user_id[-8:],
+            exc_info=True,
+        )
+        return "platform", None
     pinned = await resolve_pinned_chat_route(
-        user_id, auth_provider, credential_id, unattended=True
+        user_id,
+        auth_provider,
+        credential_id,
+        transports=transports,
+        unattended=True,
     )
     if pinned is not None:
         return pinned.auth_provider, pinned.credential_id
-    return await resolve_default_chat_route(user_id)
+    return await resolve_default_chat_route(user_id, transports=transports)
 
 
 async def expert_pinned_chat_route(

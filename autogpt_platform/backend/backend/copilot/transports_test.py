@@ -567,3 +567,19 @@ async def test_validation_is_shared_with_the_account_default() -> None:
             USER_ID, DefaultChatRoute(auth_provider="codex", credential_id="nope")
         )
     transports.set_user_default_chat_route.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unrouted_callers_can_hand_over_a_list_they_already_have(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _connect("cred-codex")
+    _saved("codex", "cred-codex")
+    transport_list = await get_chat_transports(USER_ID)
+    lookup = mocker.patch.object(transports, "get_chat_transports", new=AsyncMock())
+
+    assert await resolve_default_chat_route(USER_ID, transports=transport_list) == (
+        "codex",
+        "cred-codex",
+    )
+    lookup.assert_not_awaited()

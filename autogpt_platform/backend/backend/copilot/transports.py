@@ -137,6 +137,8 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
 
 async def resolve_default_chat_route(
     user_id: str,
+    *,
+    transports: list[ChatTransportResponse] | None = None,
 ) -> tuple[CopilotLlmAuthProvider, str | None]:
     """The route for a chat nobody routed — bot links, schedules, briefings.
 
@@ -144,16 +146,21 @@ async def resolve_default_chat_route(
     with a 409, these callers have no user in front of them, so an
     unresolvable default falls back to ``platform`` — which is exactly what
     every one of them passed before this setting existed.
+
+    ``transports`` lets a caller that has already listed the user's
+    connections avoid a second credential-store and entitlement round-trip.
     """
-    try:
-        transports = await get_chat_transports(user_id)
-    except Exception:
-        logger.warning(
-            "Could not resolve the default chat route for user ...%s; using platform",
-            user_id[-8:],
-            exc_info=True,
-        )
-        return "platform", None
+    if transports is None:
+        try:
+            transports = await get_chat_transports(user_id)
+        except Exception:
+            logger.warning(
+                "Could not resolve the default chat route for user ...%s; "
+                "using platform",
+                user_id[-8:],
+                exc_info=True,
+            )
+            return "platform", None
 
     default = next((transport for transport in transports if transport.default), None)
     if default is None:

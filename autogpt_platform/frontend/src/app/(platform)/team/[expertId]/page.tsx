@@ -36,10 +36,9 @@ import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
-import { ExpertLlmRouteSection } from "./components/ExpertLlmRouteSection/ExpertLlmRouteSection";
 import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
-import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
+import { ExpertSettingsSection } from "./components/ExpertSettingsSection/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
 import { ExpertSummaryCard } from "./components/ExpertSummaryCard";
 import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
@@ -159,7 +158,6 @@ export default function ExpertDetailPage() {
               {expert.tagline}
             </Text>
           ) : null}
-          <ExpertLlmRouteSection expert={expert} />
           <ExpertBudgetSection expert={expert} />
         </div>
 
