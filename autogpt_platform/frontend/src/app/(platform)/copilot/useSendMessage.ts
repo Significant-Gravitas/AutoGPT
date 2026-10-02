@@ -1,6 +1,5 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
-import type { UseChatHelpers } from "@ai-sdk/react";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef } from "react";
 import {
@@ -20,6 +19,7 @@ import {
   type WorkspaceAttachment,
 } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
+import type { SendInput } from "./stream/turnRuntime";
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
@@ -29,7 +29,7 @@ interface UploadedFile {
   mime_type: string;
 }
 
-type SendMessageFn = UseChatHelpers<UIMessage>["sendMessage"];
+type SendMessageFn = (message: SendInput) => Promise<void>;
 
 interface Args {
   sessionId: string | null;

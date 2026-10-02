@@ -44,7 +44,7 @@ import {
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
-import { useCopilotStop } from "./useCopilotStop";
+import { sdkStopStream, useCopilotStop } from "./useCopilotStop";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 import { RESTORE_STALL_TIMEOUT_MS } from "./restoreConstants";
 import { useStreamActivityWatchdog } from "./useStreamActivityWatchdog";
@@ -634,8 +634,7 @@ export function useCopilotStream({
 
   const stop = useCopilotStop({
     sessionId,
-    sdkStop,
-    setMessages,
+    stopStream: sdkStopStream(sdkStop, setMessages),
     isUserStoppingRef,
     setIsUserStopping,
   });
