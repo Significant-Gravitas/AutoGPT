@@ -82,9 +82,10 @@ describe("SignupPage with email verification required", () => {
 
     submitSignupForm();
 
-    expect(
-      await screen.findByRole("heading", { name: "Check your inbox" }),
-    ).toBeDefined();
+    const heading = await screen.findByRole("heading", {
+      name: "Check your inbox",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(screen.getByText(email)).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Resend email in 60s" }),

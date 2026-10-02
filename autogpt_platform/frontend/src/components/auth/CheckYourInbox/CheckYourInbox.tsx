@@ -4,7 +4,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Mail01Icon } from "@hugeicons/core-free-icons";
-import { CHECK_YOUR_INBOX_COPY, type CheckYourInboxReason } from "./helpers";
+import {
+  CHECK_YOUR_INBOX_COPY,
+  CHECK_YOUR_INBOX_HEADING_ID,
+  type CheckYourInboxReason,
+} from "./helpers";
 import { useCheckYourInbox } from "./useCheckYourInbox";
 
 interface Props {
@@ -27,7 +31,13 @@ export function CheckYourInbox({ email, reason, next, onBack }: Props) {
         <Icon icon={Mail01Icon} className="size-7 text-violet-600" />
       </div>
 
-      <Text variant="h3" as="h1" className="!text-slate-950">
+      <Text
+        id={CHECK_YOUR_INBOX_HEADING_ID}
+        tabIndex={-1}
+        variant="h3"
+        as="h1"
+        className="!text-slate-950 outline-none"
+      >
         {copy.title}
       </Text>
 

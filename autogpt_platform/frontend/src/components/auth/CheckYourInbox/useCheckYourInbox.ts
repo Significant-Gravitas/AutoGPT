@@ -2,7 +2,10 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { authClient } from "@/lib/auth/client";
 import { getEmailVerificationCallbackURL } from "@/lib/auth/email-verification";
 import { useEffect, useState } from "react";
-import { RESEND_COOLDOWN_SECONDS } from "./helpers";
+import {
+  CHECK_YOUR_INBOX_HEADING_ID,
+  RESEND_COOLDOWN_SECONDS,
+} from "./helpers";
 
 interface Args {
   email: string;
@@ -13,6 +16,10 @@ export function useCheckYourInbox({ email, next }: Args) {
   const { toast } = useToast();
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const [isResending, setIsResending] = useState(false);
+
+  useEffect(() => {
+    document.getElementById(CHECK_YOUR_INBOX_HEADING_ID)?.focus();
+  }, []);
 
   useEffect(() => {
     if (cooldown <= 0) return;
