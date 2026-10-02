@@ -6,11 +6,11 @@ Creates a Conductor cloud workspace for a project or repository, optionally star
 ## Conductor Create Workspace
 
 ### What it is
-Create a Conductor cloud workspace for a project or repository, optionally start its agent with a prompt and wait for the reply.
+Create a Conductor cloud workspace for a project or repository, optionally start its agent with a prompt and wait for the reply. Set base_branch explicitly when the repository's PR target differs from the Conductor project default; an empty base_branch uses that default, which Conductor does not report back.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `repository_url` (both or neither is an input error). Blank optional fields are omitted so Conductor applies its defaults; `model` is passed through as-is, so use an id Conductor accepts (for example `fable-5-1`, `opus-5-5-1m`, `sonnet-5-1m`, `gpt-6-astra` or `auto`). When `message` is set the agent starts on it immediately and `initial_message_id` is returned, together with `next_after`: the prompt's transcript row ID to pass as `after` to Get Session (the receipt itself while the prompt has no row yet, which Get Session also accepts). With `wait_for_reply` the block then waits the same way as Send Message: it reads the transcript and then `GET /v0/sessions/{id}/status` every `poll_interval_seconds` (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the transcript rows with the prompt's turn (a freshly initializing workspace reports idle until the agent actually starts, and startup events alone are not treated as done), and returns the visible agent text joined into `reply` and the kept-row `message_count` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read). The raw rows are only returned, in `messages`, when `include_messages` is on.
+The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `repository_url` (both or neither is an input error). Blank optional fields are omitted so Conductor applies its defaults. `base_branch` is sent as the API's `branch`: leave it empty and the workspace is cut from the Conductor project's default branch, which can differ from the branch the repository's PRs target (an AutoGPT workspace defaults to `master` while PRs go to `dev`), so set it explicitly for such repositories. Neither the create response nor `GET /v0/workspaces/{id}` reports the branch a workspace was cut from, so the `base_branch` output echoes what was requested and is empty when the default was used; check it against the PR target before opening a PR. `model` is passed through as-is, so use an id Conductor accepts (for example `fable-5-1`, `opus-5-5-1m`, `sonnet-5-1m`, `gpt-6-astra` or `auto`). When `message` is set the agent starts on it immediately and `initial_message_id` is returned, together with `next_after`: the prompt's transcript row ID to pass as `after` to Get Session (the receipt itself while the prompt has no row yet, which Get Session also accepts). With `wait_for_reply` the block then waits the same way as Send Message: it reads the transcript and then `GET /v0/sessions/{id}/status` every `poll_interval_seconds` (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the transcript rows with the prompt's turn (a freshly initializing workspace reports idle until the agent actually starts, and startup events alone are not treated as done), and returns the visible agent text joined into `reply` and the kept-row `message_count` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read). The raw rows are only returned, in `messages`, when `include_messages` is on.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -20,7 +20,7 @@ The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `re
 | project_id | Project (repository) to open the workspace in. Find IDs with Get Account. Use this or repository_url, not both. | str | No |
 | repository_url | Git repository URL to open instead of a project ID | str | No |
 | message | Initial prompt for the agent. Leave empty to create an idle workspace. | str | No |
-| branch | Branch to start from | str | No |
+| base_branch | Branch the workspace branches from. Empty = Conductor project default, which may differ from the repository's PR target branch (for example a project that defaults to master while PRs go to dev). Set it explicitly for repos whose default is not the PR target, otherwise the PR inherits commits from the wrong base. | str | No |
 | name | Workspace name | str | No |
 | session_name | Name of the initial agent session | str | No |
 | agent | Agent for the initial session | "claude" \| "codex" \| "cursor" \| "acp" | No |
@@ -42,6 +42,7 @@ The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `re
 | workspace_id | ID of the new workspace | str |
 | session_id | ID of the initial session | str |
 | deep_link | Link that opens the workspace | str |
+| base_branch | Branch the workspace was asked to branch from, as sent to Conductor. Empty when Conductor's project default was used: the API does not report the resolved branch, so an empty value means the base is unknown. Verify this matches the PR target before opening a PR. | str |
 | initial_message_id | ID of the initial prompt message, empty when none was sent | str |
 | next_after | Transcript row ID of the prompt's row; pass it as `after` to Get Session to read the agent's turn. Falls back to initial_message_id while the prompt has no row yet, which Get Session also accepts | str |
 | session_status | idle, working or error once waiting finished | str |
