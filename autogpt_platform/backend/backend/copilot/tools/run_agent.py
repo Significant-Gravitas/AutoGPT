@@ -21,7 +21,7 @@ from backend.copilot.gate.subject import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
-from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
+from backend.copilot.tracking import track_chat_outcome
 from backend.copilot.tree import charge_credits
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import (
@@ -1037,16 +1037,14 @@ class RunAgentTool(BaseTool):
                 session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
             )
             await charge_credits(user_id, lambda: graph_cost_credits(graph))
-
-        # Track in PostHog
-        track_agent_run_success(
-            user_id=user_id,
-            session_id=session_id,
-            graph_id=library_agent.graph_id,
-            graph_name=library_agent.name,
-            execution_id=execution.id,
-            library_agent_id=library_agent.id,
-        )
+            track_chat_outcome(
+                user_id,
+                session_id,
+                "agent_run_success",
+                graph_id=library_agent.graph_id,
+                execution_id=execution.id,
+                library_agent_id=library_agent.id,
+            )
 
         # If wait_for_result is requested, wait for execution to complete
         if wait_for_result > 0:
@@ -1348,15 +1346,13 @@ class RunAgentTool(BaseTool):
         session.successful_agent_schedules[library_agent.graph_id] = (
             session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
         )
-
-        # Track in PostHog
-        track_agent_scheduled(
-            user_id=user_id,
-            session_id=session_id,
+        track_chat_outcome(
+            user_id,
+            session_id,
+            "schedule_created",
+            target="agent",
             graph_id=library_agent.graph_id,
-            graph_name=library_agent.name,
             schedule_id=result.id,
-            schedule_name=schedule_name,
             cron=cron,
             library_agent_id=library_agent.id,
         )
