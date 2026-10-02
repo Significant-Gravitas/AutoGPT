@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot.tools.manage_schedules import (
     DeleteScheduleTool,
@@ -604,3 +605,69 @@ async def test_a_no_op_toggle_leaves_no_activity_event(
     assert isinstance(result, ScheduleToggledResponse)
     assert result.changed is changed
     assert (tool.activity_event(session, result) is not None) is expect_event
+
+
+# ── Prisma disconnected (the copilot executor) ─────────────────────
+
+
+@pytest.fixture
+def copilot_executor_db(mocker):
+    """Prisma disconnected in-process, the DatabaseManager client answering."""
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    for model in ("LibraryAgent", "Expert"):
+        disconnected = MagicMock()
+        disconnected.find_first = AsyncMock(side_effect=ClientNotConnectedError())
+        disconnected.find_many = AsyncMock(side_effect=ClientNotConnectedError())
+        mocker.patch(f"prisma.models.{model}.prisma", return_value=disconnected)
+
+    db_manager = MagicMock()
+    db_manager.get_library_agent = AsyncMock(
+        return_value=MagicMock(graph_id="graph-1")
+    )
+    db_manager.active_expert_ids = AsyncMock(return_value={"expert-live"})
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client",
+        return_value=db_manager,
+    )
+    return db_manager
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_resolves_the_library_agent_without_prisma(
+    list_tool, session, copilot_executor_db
+):
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=scheduler):
+        result = await list_tool._execute(
+            user_id=_USER, session=session, library_agent_id="lib-agent-1"
+        )
+
+    assert isinstance(result, ScheduleListResponse)
+    copilot_executor_db.get_library_agent.assert_awaited_once_with(
+        id="lib-agent-1", user_id=_USER
+    )
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        graph_id="graph-1", user_id=_USER, include_paused=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_checks_paused_experts_without_prisma(
+    list_tool, session, copilot_executor_db
+):
+    live = _make_graph_info(schedule_id="sched-live", expert_id="expert-live")
+    gone = _make_graph_info(schedule_id="sched-gone", expert_id="expert-gone")
+    live.next_run_time = gone.next_run_time = None
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[live, gone])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=scheduler):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [s.schedule_id for s in result.schedules] == ["sched-live"]
+    copilot_executor_db.active_expert_ids.assert_awaited_once_with(
+        _USER, {"expert-live", "expert-gone"}
+    )
