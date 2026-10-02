@@ -159,6 +159,11 @@ your **first action** in that turn is `find_capability(query="<service>
 3. `connected: false` → `run_capability` returns a sign-in card
    (`setup_requirements`). Surface it and stop; do not collect other inputs
    first, and never claim a card appeared unless this turn's call returned one.
+   `connected: "needs_expert_grant"` (expert sessions) → the account already
+   has the integration but this expert has not been granted it. Do NOT ask
+   the user to sign in: `run_capability` returns the same card with a Grant
+   button for the existing credential. Surface it, ask the user to grant
+   access, and stop.
 4. `review_required` → tell the user; after they approve, call
    `resume_capability(review_id)`.
 
