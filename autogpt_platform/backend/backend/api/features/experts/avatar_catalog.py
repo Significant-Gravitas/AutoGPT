@@ -1,7 +1,18 @@
+"""The managed Expert identity catalog.
+
+One copy of ``avatar_catalog.json`` lives here and one beside the frontend's
+``ExpertAvatar`` molecule; ``avatar_catalog_test.py`` keeps them identical and
+checks every managed file exists. Every built-in Expert owns exactly one
+identity (asset ID + revision, served from a versioned ``/autogpt-characters``
+path). The identity never changes with the Expert's name, role, skills,
+category or the marketplace filter; category only picks the palette hex that
+tints surfaces around the artwork.
+"""
+
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 AvatarCategory = Literal[
     "marketing",
@@ -14,88 +25,64 @@ AvatarCategory = Literal[
     "development",
 ]
 
-
-AvatarColor = Literal[
-    "terracotta",
-    "ochre",
-    "sage",
-    "coral",
-    "slate",
-    "olive",
-    "stone",
-    "charcoal",
-    "rust",
-    "rose",
-    "seaglass",
-    "pine",
-    "denim",
-    "sand",
-    "bluegray",
-    "redclay",
-    "apricot",
-    "moss",
-    "chalk",
-    "copper",
-    "mist",
-    "ink",
-    "umber",
-    "lagoon",
-    "limestone",
-    "fern",
+VisualCategory = Literal[
+    "marketing",
+    "sales",
+    "finance",
+    "support",
+    "operations",
+    "research",
+    "content",
+    "development",
+    "general",
+    "otto",
 ]
 
 
-class AvatarColorOption(BaseModel):
-    id: AvatarColor
+class PaletteEntry(BaseModel):
     label: str
     hex: str
 
 
-class CategoryAvatar(BaseModel):
-    url: str
-    hex: str
-
-
-class BuiltinAvatar(BaseModel):
-    primary_category: AvatarCategory
-    variants: dict[AvatarCategory, CategoryAvatar]
-    previous_urls: list[str] = Field(default_factory=list)
-    previous_url: str
+class ManagedIdentity(BaseModel):
     id: str
     name: str
+    job_title: str
+    # Source roster categories, first one being the visual family.
+    categories: list[str]
+    visual_category: VisualCategory
+    base_url: str
+    revision: str
+    png_max_pixels: int
     url: str
-    color_id: AvatarColor
-
-
-class AvatarPreset(BaseModel):
-    id: AvatarCategory
-    label: str
-    hex: str
-    color: str
-    url: str
-    color_id: AvatarColor
+    previous_urls: list[str]
 
 
 class AvatarCatalog(BaseModel):
-    revision: int
-    avatars: list[AvatarPreset]
+    library: str
+    palette: dict[VisualCategory, PaletteEntry]
+    default_url: str
+    identities: list[ManagedIdentity]
     legacy: dict[str, str]
-    colors: list[AvatarColorOption]
-    identities: list[BuiltinAvatar]
 
 
 CATALOG = AvatarCatalog.model_validate_json(
     Path(__file__).with_suffix(".json").read_text()
 )
-PRESETS = {avatar.id: avatar for avatar in CATALOG.avatars}
-COLORS = {color.id: color for color in CATALOG.colors}
-DEFAULT_AVATAR_URL = PRESETS["content"].url
-# What the picker can put on an expert. Five of these are also an old shared
-# default, so a stored URL in this set may be a choice rather than a leftover.
-PRESET_AVATAR_URLS = frozenset(avatar.url for avatar in CATALOG.avatars)
+PALETTE = CATALOG.palette
+IDENTITIES = {identity.id: identity for identity in CATALOG.identities}
+IDENTITIES_BY_NAME = {identity.name: identity for identity in CATALOG.identities}
+# The warm-stone General fallback: a custom Expert's appearance until it has a
+# reviewed identity of its own, and where unknown legacy defaults land.
+DEFAULT_AVATAR_URL = CATALOG.default_url
+MANAGED_AVATAR_URLS = frozenset(identity.url for identity in CATALOG.identities)
 
 
 def resolve_avatar_url(url: str | None) -> str | None:
+    """Map a stored default that no longer ships to the identity it stood for.
+
+    Uploads, generated images and current managed URLs pass through unchanged.
+    """
     if not url:
         return url
     if url in CATALOG.legacy:
@@ -106,10 +93,24 @@ def resolve_avatar_url(url: str | None) -> str | None:
 
 
 def resolve_builtin_avatar_url(name: str, url: str | None) -> str | None:
-    avatar = next((a for a in CATALOG.identities if a.name == name), None)
-    if avatar and (
-        url in [avatar.previous_url, *avatar.previous_urls]
-        or resolve_avatar_url(url) == avatar.url
+    """A template's (or an unmodified hire's) default resolves by identity.
+
+    Only URLs that were once this identity's default move; a custom upload or
+    a generated image stays exactly as saved.
+    """
+    identity = IDENTITIES_BY_NAME.get(name)
+    if identity and (
+        url in identity.previous_urls or resolve_avatar_url(url) == identity.url
     ):
-        return avatar.url
+        return identity.url
     return url
+
+
+def visual_category_for(url: str | None) -> VisualCategory | None:
+    """The palette family a managed identity belongs to, or None for anything
+    that is not a managed identity."""
+    resolved = resolve_avatar_url(url)
+    for identity in CATALOG.identities:
+        if identity.url == resolved:
+            return identity.visual_category
+    return None

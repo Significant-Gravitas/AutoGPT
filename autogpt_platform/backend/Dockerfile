@@ -99,7 +99,7 @@ COPY docs /docs
 RUN find /docs -type f ! -name '*.md' ! -name '*.mdx' -delete \
     && find /docs -type d -empty -delete
 
-FROM debian:13-slim AS server
+FROM debian:13-slim AS server-base
 
 WORKDIR /app
 
@@ -158,6 +158,10 @@ WORKDIR /app/autogpt_platform/backend
 # The .venv includes the generated Prisma client
 COPY --from=builder /app/autogpt_platform/backend/.venv ./.venv
 ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
+
+# Dependencies end here; AutoGPT code starts below. The single-container
+# image builds on server-base so its own dependencies sit under the code.
+FROM server-base AS server
 
 # Copy dependency files + autogpt_libs (path dependency)
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs

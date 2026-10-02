@@ -7,12 +7,20 @@ it should break these.
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
 
-from backend.copilot.gate import active_mode, chat_rules, check_action, gate_active
+from backend.copilot.gate import (
+    active_mode,
+    chat_rules,
+    check_action,
+    gate_active,
+    held,
+)
+from backend.copilot.gate import review as review_store
+from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
 from backend.copilot.model import (
@@ -26,12 +34,14 @@ from backend.copilot.model import (
 _GATE = "backend.copilot.gate"
 # The fixtures stub the rule lookup; the outage tests need the real one.
 _REAL_RULE_FOR = chat_rules.rule_for
+_REAL_OPEN_REVIEW = review_store.open_review
 _MODES: tuple[AutopilotMode, ...] = ("ask_first", "auto", "unsupervised")
 
 
 def _session(
     mode: AutopilotMode | None = None,
     origin: ChatSessionOrigin | None = "interactive",
+    source_platform: str | None = None,
 ) -> ChatSession:
     return ChatSession(
         session_id="session-1",
@@ -39,7 +49,9 @@ def _session(
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata=ChatSessionMetadata(origin=origin, autopilot_mode=mode),
+        metadata=ChatSessionMetadata(
+            origin=origin, autopilot_mode=mode, source_platform=source_platform
+        ),
         messages=[ChatMessage(role="user", content="do the thing")],
     )
 
@@ -98,6 +110,20 @@ async def test_a_session_nobody_is_watching_is_inert_in_every_mode(
 
 async def test_gate_is_inactive_for_anonymous_turns(gate_on):
     assert not await gate_active(None, _session())
+
+
+@pytest.mark.parametrize(
+    "source_platform, gated",
+    [(None, True), ("discord", True), ("whatsapp", False), ("github", False)],
+)
+async def test_a_linked_chat_is_gated_only_where_its_channel_can_show_a_card(
+    gate_on, clean_session_state, source_platform, gated
+):
+    """Without buttons to answer it in the channel, a held call strands the chat."""
+    session = _session("ask_first", source_platform=source_platform)
+    decision = await check_action("post_to_chat_platform", {"text": "hi"}, "u", session)
+    assert decision.allowed is not gated
+    assert (await active_mode("u", session) is not None) is gated
 
 
 async def test_the_default_mode_is_auto(gate_on):
@@ -321,3 +347,110 @@ async def test_a_rejected_tool_says_the_user_declined_it(gate_on, clean_session_
     ):
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session())
     assert decision.reason == chat_rules.DECLINED
+
+
+@pytest.mark.parametrize("scope", ["chat", "expert", "team"])
+@pytest.mark.parametrize(
+    "mode, tool, rule, judged",
+    [
+        # The supervisor asked in Auto; allow skips it from then on.
+        ("auto", "create_agent", "allow", False),
+        # Ask First asks every time; judge hands the call to the supervisor.
+        ("ask_first", "post_to_chat_platform", "judge", True),
+    ],
+)
+async def test_a_rule_set_on_a_bare_tool_card_decides_its_next_call(
+    gate_on, clean_session_state, scope, mode, tool, rule, judged
+):
+    """Park, answer with a rule on the key the gate stored, call again; a wider
+    scope holds in another chat."""
+    held_calls: dict[str, held.HeldCall] = {}
+
+    async def remember(_session_id: str, call: held.HeldCall) -> bool:
+        held_calls[call.review_id] = call
+        return True
+
+    reviews = MagicMock(get_or_create_human_review=AsyncMock())
+    supervisor = AsyncMock(return_value=Judgement(allowed=False, reason="unsure"))
+    with (
+        patch(f"{_GATE}.held.remember", remember),
+        patch(f"{_GATE}.held._held", AsyncMock(side_effect=lambda _: held_calls)),
+        patch(f"{_GATE}.review_store.open_review", _REAL_OPEN_REVIEW),
+        patch(f"{_GATE}.review.review_db", return_value=reviews),
+        patch(f"{_GATE}.review.resolve_references", AsyncMock(return_value=[])),
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
+        patch(
+            f"{_GATE}.chat_rules.get_chat_session_metadata",
+            AsyncMock(return_value=SimpleNamespace(expert_id=None)),
+        ),
+        patch(f"{_GATE}.supervise", supervisor),
+    ):
+        parked = await check_action(tool, {"n": 1}, "u", _session(mode))
+        assert parked.review_id is not None
+        card = reviews.get_or_create_human_review.await_args.kwargs["input_data"]
+        assert card["chat_rules_allowed"] == ["allow", "judge"]
+
+        answered = {parked.review_id: _row(ReviewStatus.APPROVED)}
+        keys = await held.subject_keys("session-1", [parked.review_id])
+        await chat_rules.set_answer_rules(
+            "session-1",
+            "u",
+            answered,
+            {parked.review_id: rule},
+            keys,
+            {parked.review_id: scope},
+        )
+
+        supervisor.reset_mock()
+        supervisor.return_value = Judgement(allowed=True, reason="fine")
+        chat = _session(mode)
+        if scope != "chat":
+            chat = chat.model_copy(update={"session_id": "session-2"})
+        decision = await check_action(tool, {"n": 2}, "u", chat)
+    assert decision.allowed
+    assert supervisor.await_count == int(judged)
+    assert reviews.get_or_create_human_review.await_count == 1
+
+
+async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
+    gate_on, clean_session_state
+):
+    from backend.copilot.service import inject_user_context
+    from backend.data.understanding import BusinessUnderstanding
+
+    words = "Hey Otto, I need a programmer to work on the AutoGPT platform"
+    session = _session()
+    session.messages = [ChatMessage(role="user", content=words, sequence=None)]
+    understanding = BusinessUnderstanding(
+        id="u-1",
+        user_id="u",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        business_name="AutoGPT",
+        pain_points=["Shipping features fast"],
+    )
+    await inject_user_context(
+        understanding,
+        words,
+        "session-1",
+        session.messages,
+        env_ctx="/home/user",
+        session_ctx="session_id: session-1",
+        skills_ctx="- skill: " + "summarise a document. " * 60,
+    )
+    assert session.messages[-1].content.startswith("<available_skills>")
+
+    provider = AsyncMock(side_effect=RuntimeError("stop after the prompt"))
+    with (
+        patch(f"{_GATE}.classifier.call_provider_openai_compat_sync", provider),
+        patch("backend.copilot.service._get_aux_client", MagicMock()),
+        patch(f"{_GATE}.classifier.jev.enabled", return_value=False),
+    ):
+        await check_action("bash_exec", {"command": "ls"}, "u", session)
+
+    prompt = provider.await_args.kwargs["messages"][1]["content"]
+    request = prompt.split("<<<BEGIN USER REQUEST ")[1].split("<<<END USER REQUEST")[0]
+    assert words in request
+    assert "<available_skills>" not in request
+    assert "<user_context>" not in request

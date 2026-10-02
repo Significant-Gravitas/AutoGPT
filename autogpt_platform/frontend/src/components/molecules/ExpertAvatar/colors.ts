@@ -1,45 +1,36 @@
-import catalog from "./catalog.json";
+import {
+  EXPERT_PALETTE,
+  getExpertVisualCategory,
+  isVisualCategory,
+} from "./helpers";
 
-const TOPIC_PATTERNS: Array<[RegExp, string]> = [
-  [/head of ai/i, "otto"],
-  [/finance|invoic|bookkeep|fundrais|investor/i, "finance"],
-  [/research|intelligence|data|analysis/i, "research"],
-  [/development|code|dependency|security|engineering|qa/i, "development"],
-  [/sales|deal desk|proposal|revops|crm|partnership/i, "sales"],
-  [/support|customer|help desk|retention/i, "support"],
-  [
-    /marketing|social|seo|brand|growth|email|lifecycle|go.to.market|paid ads|performance|communications|\bpr\b/i,
-    "marketing",
-  ],
-  [
-    /ops|operations|recruit|hiring|vendor|procurement|contracts|product|people|privacy|compliance|assistant/i,
-    "operations",
-  ],
-  [/content|writing|editor/i, "content"],
-];
+/** Otto's reserved lavender, the one color no category can take. */
+export const AUTOPILOT_HEX = EXPERT_PALETTE.otto.hex;
 
-/** Category hues stay fixed; generated body colors can vary within the roster. */
+/** The design system's material anchor for a category; `undefined` for a
+ *  value that is not a palette family. */
 export function getCategoryHex(
   category: string | null | undefined,
 ): string | undefined {
-  return catalog.avatars.find((avatar) => avatar.id === category?.toLowerCase())
-    ?.hex;
+  const key = category?.toLowerCase();
+  return key && isVisualCategory(key) ? EXPERT_PALETTE[key].hex : undefined;
 }
 
-export function getExpertTopicHex(
-  role: string | null | undefined,
-  categories?: string[],
-): string {
-  const stored = categories?.find((category) =>
-    catalog.avatars.some((avatar) => avatar.id === category.toLowerCase()),
-  );
-  const category =
-    stored?.toLowerCase() ??
-    TOPIC_PATTERNS.find(([pattern]) => pattern.test(role ?? ""))?.[1];
-  if (category === "otto") return "#B6A4C8";
-  return (
-    catalog.avatars.find((avatar) => avatar.id === category)?.hex ?? "#B5ADA0"
-  );
+interface TopicArgs {
+  avatarUrl?: string | null;
+  categories?: readonly string[] | null;
+  /** Only Otto's role picks a color; a specialist's role never does. */
+  role?: string | null;
+}
+
+/** The hex that tints an Expert's card band, cover and page header. */
+export function getExpertTopicHex({
+  avatarUrl,
+  categories,
+  role,
+}: TopicArgs): string {
+  if (/head of ai/i.test(role ?? "")) return AUTOPILOT_HEX;
+  return EXPERT_PALETTE[getExpertVisualCategory(avatarUrl, categories)].hex;
 }
 
 export function expertPastel(hex: string): string {

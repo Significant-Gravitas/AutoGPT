@@ -2785,74 +2785,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/analytics/log_raw_analytics": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Analytics",
-        "operationId": "postAnalyticsLogRawAnalytics",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postAnalyticsLogRawAnalytics"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/analytics/log_raw_metric": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Metric",
-        "operationId": "postAnalyticsLogRawMetric",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
@@ -5799,6 +5731,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Manage payment methods",
+        "description": "Return a Stripe billing-portal URL for the caller.\n\n``url`` is ``None`` when the user has no Stripe customer yet: this route is\nrequested on every Settings > Billing load, so it must never provision a\ncustomer as a side effect (see ``create_billing_portal_session``).",
         "operationId": "getV1Manage payment methods",
         "responses": {
           "200": {
@@ -5806,7 +5739,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": { "type": "string" },
+                  "additionalProperties": {
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
                   "type": "object",
                   "title": "Response Getv1Manage Payment Methods"
                 }
@@ -7451,6 +7386,49 @@
         }
       }
     },
+    "/api/experts/{expert_id}/onboarding": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Onboarding",
+        "operationId": "get_expert_onboarding",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Get Expert Onboarding"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/pod": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -7609,6 +7587,9 @@
                 "schema": { "$ref": "#/components/schemas/Expert" }
               }
             }
+          },
+          "400": {
+            "description": "A marketplace skill is both attached and removed"
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -12002,7 +11983,8 @@
                 "CAPABILITY_CARDS",
                 "AGENTS_TAB_INTRO",
                 "MARKETPLACE_TAB_INTRO",
-                "BUILD_TAB_INTRO"
+                "BUILD_TAB_INTRO",
+                "WORKFLOWS_MOVED"
               ],
               "type": "string",
               "title": "Step"
@@ -18350,25 +18332,6 @@
         "required": ["is_active"],
         "title": "Body_patchOauthUpdateAppStatus"
       },
-      "Body_postAnalyticsLogRawAnalytics": {
-        "properties": {
-          "type": { "type": "string", "title": "Type" },
-          "data": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Data",
-            "description": "The data to log"
-          },
-          "data_index": {
-            "type": "string",
-            "title": "Data Index",
-            "description": "Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc."
-          }
-        },
-        "type": "object",
-        "required": ["type", "data", "data_index"],
-        "title": "Body_postAnalyticsLogRawAnalytics"
-      },
       "Body_postOauthIntrospect": {
         "properties": {
           "token": {
@@ -19701,6 +19664,14 @@
             "type": "array",
             "title": "Triggers",
             "default": []
+          },
+          "origin": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin"
+          },
+          "update": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Update"
           }
         },
         "type": "object",
@@ -21925,47 +21896,11 @@
               "operations",
               "research",
               "content",
-              "development"
+              "development",
+              "general"
             ],
             "title": "Category",
-            "default": "content"
-          },
-          "color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "terracotta",
-                  "ochre",
-                  "sage",
-                  "coral",
-                  "slate",
-                  "olive",
-                  "stone",
-                  "charcoal",
-                  "rust",
-                  "rose",
-                  "seaglass",
-                  "pine",
-                  "denim",
-                  "sand",
-                  "bluegray",
-                  "redclay",
-                  "apricot",
-                  "moss",
-                  "chalk",
-                  "copper",
-                  "mist",
-                  "ink",
-                  "umber",
-                  "lagoon",
-                  "limestone",
-                  "fern"
-                ]
-              },
-              { "type": "null" }
-            ],
-            "title": "Color"
+            "default": "general"
           },
           "shape": {
             "type": "string",
@@ -22000,28 +21935,17 @@
           },
           "inlay": {
             "type": "string",
-            "enum": ["sweep", "pool", "curl", "patch", "cap", "teardrop"],
+            "enum": [
+              "sweep",
+              "field",
+              "cloud",
+              "bank",
+              "pool",
+              "inlet",
+              "wrap"
+            ],
             "title": "Inlay",
             "default": "sweep"
-          },
-          "accent_placement": {
-            "type": "string",
-            "enum": ["body", "head", "both"],
-            "title": "Accent Placement",
-            "default": "body"
-          },
-          "accent_count": {
-            "type": "string",
-            "enum": ["one", "two", "three"],
-            "title": "Accent Count",
-            "default": "one"
-          },
-          "shade": {
-            "anyOf": [
-              { "type": "string", "enum": ["standard", "light", "dark"] },
-              { "type": "null" }
-            ],
-            "title": "Shade"
           },
           "expression": {
             "type": "string",
@@ -22370,6 +22294,12 @@
             "maxItems": 150,
             "title": "Skills"
           },
+          "remove": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 150,
+            "title": "Remove"
+          },
           "marketplace_listing_ids": {
             "items": { "type": "string" },
             "type": "array",
@@ -22378,9 +22308,8 @@
           }
         },
         "type": "object",
-        "required": ["skills"],
         "title": "ExpertSkillsUpdate",
-        "description": "The full list of skill names an expert should carry. Names new to the\nexpert must be library skills (default or uploaded); names already on\nthe expert are kept as-is so marketplace skills survive a round-trip."
+        "description": "Skills to attach to an expert and skills to remove from it. Names new\nto the expert must be library skills (default or uploaded); names already\non the expert are kept as-is so marketplace skills survive a round-trip.\n\nOnly names listed in ``remove`` are removed. A skill the expert carries\nthat appears in neither list is left alone, so a client holding a stale\nlist can never delete a skill it has not seen (the expert can distil new\nones at any time).\n\nA normalized name must not appear in both ``skills`` and ``remove``;\nsuch a request is rejected with a validation error. A marketplace listing\nwhose name matches a ``remove`` entry is rejected with a 400."
       },
       "ExpertSoulUpdate": {
         "properties": {
@@ -23932,6 +23861,16 @@
               { "type": "null" }
             ],
             "title": "Name"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "expert_page", "copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface"
           }
         },
         "type": "object",
@@ -25416,24 +25355,6 @@
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
       },
-      "LogRawMetricRequest": {
-        "properties": {
-          "metric_name": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Metric Name"
-          },
-          "metric_value": { "type": "number", "title": "Metric Value" },
-          "data_string": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Data String"
-          }
-        },
-        "type": "object",
-        "required": ["metric_name", "metric_value", "data_string"],
-        "title": "LogRawMetricRequest"
-      },
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
@@ -25533,6 +25454,12 @@
             "items": { "$ref": "#/components/schemas/MCPServerURLPreset" },
             "type": "array",
             "title": "Server Url Options"
+          },
+          "allow_custom_url": {
+            "type": "boolean",
+            "title": "Allow Custom Url",
+            "description": "Hosted entries only: server_url stays the default, and users may replace it with their own endpoint, such as a self-hosted instance of the service.",
+            "default": false
           },
           "oauth_server_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -26769,7 +26696,8 @@
           "CAPABILITY_CARDS",
           "AGENTS_TAB_INTRO",
           "MARKETPLACE_TAB_INTRO",
-          "BUILD_TAB_INTRO"
+          "BUILD_TAB_INTRO",
+          "WORKFLOWS_MOVED"
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
@@ -33428,7 +33356,11 @@
       "UserTierResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "warning": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Warning"
+          }
         },
         "type": "object",
         "required": ["user_id", "tier"],

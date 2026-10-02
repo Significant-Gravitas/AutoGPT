@@ -223,7 +223,9 @@ describe("RecentChats — expert groups", () => {
     const avatar = expertGroup.querySelector("img");
     expect(avatar?.getAttribute("width")).toBe("32");
     expect(avatar?.getAttribute("height")).toBe("32");
-    expect(avatar?.getAttribute("src")).toContain("content.png");
+    expect(avatar?.getAttribute("src")).toBe(
+      "/autogpt-characters/v2.1/expert-general-01/neutral/32.webp",
+    );
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {
@@ -290,17 +292,83 @@ describe("RecentChats — expert groups", () => {
     const mariaLink = await screen.findByRole("link", {
       name: "New chat with Maria",
     });
+    // `new=1` is what stops the page adopting Maria's latest thread, which
+    // is exactly the chat the + is meant to step out of.
     expect(mariaLink.getAttribute("href")).toBe(
-      "/copilot?expertId=expert-maria",
+      "/home?expertId=expert-maria&new=1",
     );
     expect(
       screen
         .getByRole("link", { name: "New chat with Otto" })
         .getAttribute("href"),
-    ).toBe("/copilot");
+    ).toBe("/home");
     expect(groupHeader("Max")).toBeDefined();
     expect(
       screen.queryByRole("link", { name: "New chat with Max" }),
     ).toBeNull();
+  });
+
+  it("keeps the + link fresh even when the expert's latest chat is running", async () => {
+    const sessions = [
+      makeSession({
+        id: "maria-running",
+        title: "maria running chat",
+        expertId: mariaExpert.id,
+        isProcessing: true,
+      }),
+      ...makeSessions(1, mariaExpert.id),
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
+    );
+    renderRecentChats();
+
+    const mariaLink = await screen.findByRole("link", {
+      name: "New chat with Maria",
+    });
+    const href = new URL(mariaLink.getAttribute("href") ?? "", "http://x");
+    expect(href.pathname).toBe("/home");
+    expect(href.searchParams.get("expertId")).toBe(mariaExpert.id);
+    expect(href.searchParams.get("new")).toBe("1");
+    expect(href.searchParams.has("sessionId")).toBe(false);
+  });
+
+  it("hides the group chevron at rest on desktop and reveals it on hover or focus", async () => {
+    const sessions = [...makeSessions(1), ...makeSessions(1, mariaExpert.id)];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
+    );
+    renderRecentChats();
+
+    const header = await screen.findByRole("button", { name: "Maria chats" });
+    const chevron = [...header.querySelectorAll("svg")].at(-1);
+    expect(chevron).toBeDefined();
+    const classes = chevron!.classList;
+    // Hidden at rest, but only above the touch breakpoint: a phone has no
+    // hover state to reveal it with.
+    expect(classes.contains("md:opacity-0")).toBe(true);
+    expect(classes.contains("group-hover/expert-header:opacity-100")).toBe(
+      true,
+    );
+    expect(
+      classes.contains("group-focus-within/expert-header:opacity-100"),
+    ).toBe(true);
+    // Hidden via opacity, so the slot stays reserved and the open/closed
+    // rotation still applies: no layout shift on hover.
+    expect(classes.contains("size-5")).toBe(true);
+    expect(
+      classes.contains("group-data-[state=open]/expert-group:rotate-180"),
+    ).toBe(true);
+    expect(classes.contains("hidden")).toBe(false);
+
+    // The Otto group has no reveal-on-hover + link of its own to lean on, so
+    // its chevron must carry the same treatment.
+    const ottoChevron = [...groupHeader("Otto").querySelectorAll("svg")].at(-1);
+    expect(ottoChevron?.classList.contains("md:opacity-0")).toBe(true);
+    expect(
+      ottoChevron?.classList.contains("group-hover/expert-header:opacity-100"),
+    ).toBe(true);
   });
 });

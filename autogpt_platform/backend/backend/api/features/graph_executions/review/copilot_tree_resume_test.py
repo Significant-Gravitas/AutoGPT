@@ -9,11 +9,12 @@ real database; only the queue publish is captured.
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 import pytest_asyncio
+from prisma.errors import ClientNotConnectedError
 from pytest_mock import MockerFixture
 
 from backend.api.features.library.db import create_library_agent
@@ -21,7 +22,15 @@ from backend.api.rest_api import app
 from backend.blocks.autopilot import AutoPilotBlock, _spawner_envelope_from
 from backend.copilot.executor.utils import _admitted_turn_envelope
 from backend.copilot.sdk.session_waiter import SessionResult
-from backend.copilot.tree import MAX_DEPTH, TreeRefusal, TurnEnvelope, get_tree_ledger
+from backend.copilot.tools._test_data import make_session
+from backend.copilot.tools.run_agent import RunAgentTool
+from backend.copilot.tree import (
+    MAX_DEPTH,
+    TreeRefusal,
+    TurnEnvelope,
+    get_tree_ledger,
+    root_envelope,
+)
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -37,6 +46,7 @@ from backend.data.human_review import (
 from backend.data.redis_client import get_redis_async
 from backend.executor.utils import add_graph_execution
 from backend.usecases.sample import create_test_graph
+from backend.util.clients import get_database_manager_async_client
 
 _INPUTS = {"input_1": "a", "input_2": "b"}
 
@@ -167,6 +177,68 @@ async def test_a_resume_cannot_reset_an_exhausted_depth(
 
     with pytest.raises(TreeRefusal):
         await _nested_turn(resumed, test_user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_scheduled_turn_without_prisma_starts_its_run_inside_its_tree(
+    mocker: MockerFixture,
+    published: list[GraphExecutionEntry],
+    setup_test_user,
+    test_user_id: str,
+) -> None:
+    """The copilot executor has no Prisma, so a scheduled turn's run_agent must
+    reach both the org fallback and the run's tree row through the
+    DatabaseManager, which here runs in its own process on the real database."""
+    graph = await create_graph(create_test_graph(), test_user_id)
+    library_agent = (await create_library_agent(graph, test_user_id))[0]
+    session = make_session(user_id=test_user_id)
+    session.metadata.origin = "automation"
+    assert session.organization_id is None
+    turn = root_envelope(f"turn-{uuid.uuid4()}", session_id=session.session_id)
+
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    mocker.patch(
+        "backend.executor.utils.prisma",
+        MagicMock(is_connected=MagicMock(return_value=False)),
+    )
+    orgs_prisma = MagicMock()
+    orgs_prisma.orgmember.find_first = AsyncMock(side_effect=ClientNotConnectedError())
+    orgs_prisma.team.find_first = AsyncMock(side_effect=ClientNotConnectedError())
+    mocker.patch("backend.api.features.orgs.db.prisma", orgs_prisma)
+    mocker.patch(
+        "backend.data.execution.AgentGraphExecution.prisma",
+        side_effect=ClientNotConnectedError(),
+    )
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=library_agent),
+    )
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_current_envelope", return_value=turn
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    database_manager = get_database_manager_async_client()
+    await database_manager.health_check_async()
+
+    await RunAgentTool()._run_agent(
+        user_id=test_user_id,
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs=_INPUTS,
+        dry_run=False,
+    )
+
+    queued = published[-1]
+    stored = await database_manager.get_graph_execution_copilot_tree(
+        test_user_id, queued.graph_exec_id
+    )
+    assert stored is not None
+    assert TurnEnvelope.model_validate(stored) == turn
+    assert _spawner_envelope_from(queued.execution_context) == turn
 
 
 async def _park_a_run(

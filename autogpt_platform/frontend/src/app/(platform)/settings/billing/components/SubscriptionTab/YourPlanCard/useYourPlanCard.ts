@@ -23,10 +23,17 @@ import { formatCents, formatShortDate } from "../../../helpers";
 
 const PLAN_LABEL: Record<string, string> = {
   NO_TIER: "No active subscription",
+  BASIC: "Basic",
   PRO: "Pro",
   MAX: "Max",
   BUSINESS: "Team",
+  ENTERPRISE: "Enterprise",
 };
+
+// ENTERPRISE seats are provisioned by an administrator and the backend
+// rejects every self-service change from them with 403, so the card must
+// not offer any plan controls — point these users at the account team.
+export const ENTERPRISE_CONTACT_URL = "mailto:contact@agpt.co";
 
 // Team upgrade is contact-sales — open the Tally intake form rather than
 // firing a Stripe Checkout from the BUSINESS tier.
@@ -79,6 +86,7 @@ export function useYourPlanCard() {
 
   const effectiveTier = subscription.data?.tier ?? null;
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
+  const isAdminManaged = effectiveTier === "ENTERPRISE";
 
   const serverCycle: SubscriptionTierRequestBillingCycle =
     subscription.data?.billing_cycle === "yearly" ? "yearly" : "monthly";
@@ -104,10 +112,19 @@ export function useYourPlanCard() {
     setSelectedCycle(serverCycle);
   }, [serverCycle]);
 
-  const nextTierKey = effectiveTier ? getNextTier(effectiveTier) : null;
-  const previousTierKey = effectiveTier ? getPreviousTier(effectiveTier) : null;
+  // ENTERPRISE sits above every self-serve tier, so it has no upgrade target
+  // and no self-serve downgrade (getNextTier would otherwise fall back to
+  // PRO and offer a downgrade labelled "Upgrade").
+  const nextTierKey =
+    effectiveTier && !isAdminManaged ? getNextTier(effectiveTier) : null;
+  const previousTierKey =
+    effectiveTier && !isAdminManaged ? getPreviousTier(effectiveTier) : null;
 
-  const pendingTier = subscription.data?.pending_tier ?? null;
+  // Any Stripe schedule attached to an ENTERPRISE account is admin business;
+  // surfacing it would offer a "Resume" the backend rejects.
+  const pendingTier = isAdminManaged
+    ? null
+    : (subscription.data?.pending_tier ?? null);
   const pendingEffectiveAt =
     subscription.data?.pending_tier_effective_at ?? null;
   const pendingBillingCycle = subscription.data?.pending_billing_cycle ?? null;
@@ -176,6 +193,7 @@ export function useYourPlanCard() {
         isPendingDowngrade,
         isPendingCycleSwitch,
         billingCycle: serverCycle,
+        isAdminManaged,
       }
     : undefined;
 
@@ -184,7 +202,7 @@ export function useYourPlanCard() {
   // user-manageable cycle to switch — the toggle would be dead UI.
   const isCycleToggleVisible =
     effectiveTier !== null &&
-    effectiveTier !== "ENTERPRISE" &&
+    !isAdminManaged &&
     effectiveTier !== "BASIC" &&
     effectiveTier !== "NO_TIER";
 
@@ -520,7 +538,9 @@ export function useYourPlanCard() {
     plan,
     isLoading: subscription.isLoading,
     isUpdatingTier,
-    canManagePortal: Boolean(paymentPortal.data),
+    // ENTERPRISE has no Stripe subscription to manage; the Payment method
+    // card still exposes the portal for cards and invoices.
+    canManagePortal: Boolean(paymentPortal.data) && !isAdminManaged,
     // Don't offer upgrade alongside Resume — pending cancel/downgrade should
     // be released first via resumeSubscription, not stacked with a new tier.
     canUpgrade: Boolean(

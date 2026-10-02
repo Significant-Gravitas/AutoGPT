@@ -16,6 +16,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
@@ -48,6 +49,7 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     UserPaywalledError,
 )
+from backend.util.service import EXPOSED_FLAG
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -332,6 +334,8 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["message"] == "check CI"
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
+    # Marks the turn as scheduled so the executor alerts if it fails later.
+    assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
 
 
 @pytest.mark.asyncio
@@ -2241,3 +2245,40 @@ def test_graph_schedule_rejects_blank_names_before_validation_or_persistence(nam
         )
     run.assert_not_called()
     persist.assert_not_called()
+
+
+class TestPostHogLifecycleSweepRegistration:
+    """An unchanged daily sweep job is left alone, so a restart after 04:15
+    can't push that day's overdue run to tomorrow."""
+
+    def _register(self, existing=None) -> MagicMock:
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        sched.scheduler.get_job.return_value = existing
+        Scheduler._register_posthog_lifecycle_sweep(sched)
+        return sched.scheduler.add_job
+
+    def test_registers_the_daily_cron_when_missing(self):
+        add_job = self._register()
+
+        add_job.assert_called_once()
+        assert add_job.call_args.kwargs["id"] == "sync_posthog_lifecycles"
+        assert "hour='4', minute='15'" in str(add_job.call_args.args[1])
+
+    def test_leaves_an_unchanged_job_alone(self):
+        existing = MagicMock(trigger=CronTrigger.from_crontab("15 4 * * *"))
+
+        self._register(existing=existing).assert_not_called()
+
+    def test_replaces_a_job_whose_schedule_changed(self):
+        existing = MagicMock(trigger=CronTrigger.from_crontab("0 3 * * *"))
+
+        self._register(existing=existing).assert_called_once()
+
+    def test_morning_briefing_stays_an_rpc_endpoint(self):
+        # The sweep registrar sits next to it; the @expose must stay on the
+        # RPC method, not slide onto the private helper.
+        assert getattr(Scheduler.add_morning_briefing_schedule, EXPOSED_FLAG, False)
+        assert not getattr(
+            Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
+        )
