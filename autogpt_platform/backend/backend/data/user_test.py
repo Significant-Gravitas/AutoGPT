@@ -358,12 +358,11 @@ class TestGetOrCreateUserStatus:
                 new_callable=AsyncMock,
                 return_value=False,
             ) as ensure_org,
-            patch.object(user_module, "_sync_signup") as sync_signup,
             patch.object(
                 user_module, "schedule_posthog_lifecycle_sync"
             ) as posthog_sync,
         ):
-            yield ensure_org, sync_signup, posthog_sync
+            yield ensure_org, posthog_sync
 
     @pytest.mark.asyncio
     async def test_reports_newly_created_user(self):
@@ -414,8 +413,8 @@ class TestGetOrCreateUserStatus:
         """The auth hook writes the User row before the client's
         ``POST /auth/user``, which then finds it. The first call to bootstrap
         that row's personal org is still the account's creation: it drives the
-        sign-up conversion header, MailerLite and PostHog, exactly once."""
-        ensure_org, sync_signup, posthog_sync = stub_user_provisioning
+        sign-up conversion header and PostHog, exactly once."""
+        ensure_org, posthog_sync = stub_user_provisioning
         ensure_org.return_value = True
         db_user = MagicMock(id="user-hooked", email="hook@example.com", name=None)
 
@@ -435,7 +434,6 @@ class TestGetOrCreateUserStatus:
 
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
-        sync_signup.assert_called_once_with(db_user)
         posthog_sync.assert_called_once_with("user-hooked")
 
     @pytest.mark.asyncio
@@ -475,7 +473,7 @@ class TestGetOrCreateUserStatus:
 
     @pytest.mark.asyncio
     async def test_existing_account_syncs_nothing(self, stub_user_provisioning):
-        _, sync_signup, posthog_sync = stub_user_provisioning
+        _, posthog_sync = stub_user_provisioning
         db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
 
         with (
@@ -492,7 +490,6 @@ class TestGetOrCreateUserStatus:
                 {"sub": "user-existing", "email": "bob@example.com"}
             )
 
-        sync_signup.assert_not_called()
         posthog_sync.assert_not_called()
 
 

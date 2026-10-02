@@ -296,7 +296,7 @@ async def _finish_account_bootstrap(jwt_payload: dict) -> None:
     The auth hook inserts a bare ``User`` row when the identity is created. If
     that session never reaches ``POST /auth/user`` (the OAuth flow lost its
     redirect), the org bootstrap below would leave the account without its
-    marketplace Profile, and without the MailerLite and PostHog sign-up sync.
+    marketplace Profile, and without the PostHog lifecycle sync.
     Only reached once ``_ensure_platform_user`` has confirmed the row for the
     token's own subject, and best-effort: the org bootstrap still runs after it.
     """

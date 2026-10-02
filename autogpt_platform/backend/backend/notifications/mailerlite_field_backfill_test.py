@@ -277,3 +277,18 @@ async def test_read_current_stops_on_a_repeated_cursor(configured, monkeypatch):
     with pytest.raises(mailerlite.MailerLiteError, match="repeated"):
         await backfill.read_current()
     assert client.get.await_count == 2
+
+
+def test_without_create_only_existing_subscribers_are_planned():
+    """A Stripe customer is not proof of a checkout: the billing portal makes
+    one too. So `mailerlite-backfill` never creates anyone, and someone
+    MailerLite does not hold gets no change at all."""
+    portal_only = _person("portal@x.io")
+    existing = _person("held@x.io", _paid("active"))
+    plan = backfill.plan(
+        [portal_only, existing],
+        {"held@x.io": {"subscription_status": "signed"}},
+        create=False,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert not any(c.new for c in plan.changes)

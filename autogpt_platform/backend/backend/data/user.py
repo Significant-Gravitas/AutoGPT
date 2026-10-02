@@ -36,7 +36,6 @@ from backend.data.notifications import NotificationPreference, NotificationPrefe
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.subscription_trial import get_subscription_trial
-from backend.notifications.subscriber_fields import queue_signup
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError, NotFoundError
@@ -60,7 +59,7 @@ class UserCreationResult(BaseModel):
     # True for the one call that set the account up: it created the ``User``
     # row, or bootstrapped the personal org for a row the auth hook inserted
     # bare at sign-up. Drives the sign-up conversion (via the route's
-    # ``X-AutoGPT-User-Created`` header), the MailerLite sync and PostHog.
+    # ``X-AutoGPT-User-Created`` header) and the PostHog lifecycle sync.
     was_created: bool
 
 
@@ -128,7 +127,6 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # new account: the org this call bootstrapped for it does.
         was_created = row_created or org_created
         if was_created:
-            _sync_signup(user)
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
@@ -140,21 +138,6 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         raise DatabaseError(
             f"Failed to get or create user {user_data.get('sub')}: {e}"
         ) from e
-
-
-_signup_sync_tasks: set[asyncio.Task] = set()
-
-
-def _sync_signup(user: PrismaUser) -> None:
-    """Queue the new account for MailerLite in the background, so signup never
-    waits on the broker, and never fails because of it: the backfill catches
-    anyone this misses."""
-    try:
-        task = asyncio.create_task(queue_signup(user.id, user.email, user.createdAt))
-        _signup_sync_tasks.add(task)
-        task.add_done_callback(_signup_sync_tasks.discard)
-    except Exception:
-        logger.warning(f"Could not queue the MailerLite signup for {user.id}")
 
 
 # Word lists mirror the legacy generate_username() SQL function so that app-
