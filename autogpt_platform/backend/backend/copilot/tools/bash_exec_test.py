@@ -419,7 +419,7 @@ class _FakeHandle:
 
     async def _stream(self) -> CommandResult:
         loop = asyncio.get_running_loop()
-        opened = loop.time()
+        opened = last = loop.time()
         proc = self._proc
         while True:
             await asyncio.sleep(_TICK)
@@ -427,7 +427,10 @@ class _FakeHandle:
                 raise self._box.limit_error()
             if proc.killed:
                 raise _sdk_error(Code.UNKNOWN, "process killed")
-            proc.ran += _TICK
+            # Runs on the same clock as the deadlines, however late the sleep.
+            now = loop.time()
+            proc.ran += now - last
+            last = now
             while (
                 proc.printed < len(proc.output)
                 and proc.output[proc.printed][0] <= proc.ran
