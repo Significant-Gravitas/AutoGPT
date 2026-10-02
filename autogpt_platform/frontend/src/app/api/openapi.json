@@ -19756,6 +19756,15 @@
           "update": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Update"
+          },
+          "argument_hint": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Argument Hint"
+          },
+          "user_invocable": {
+            "type": "boolean",
+            "title": "User Invocable",
+            "default": true
           }
         },
         "type": "object",

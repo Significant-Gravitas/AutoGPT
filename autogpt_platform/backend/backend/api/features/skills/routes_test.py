@@ -126,6 +126,38 @@ def test_list_copilot_skills_returns_user_skills(
     assert body[1]["triggers"] == []
 
 
+def test_list_copilot_skills_reports_slash_command_settings(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """GET /skills carries what the chat's "/" picker lists: the argument
+    hint, and whether the skill can be run as a command at all."""
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skills",
+        AsyncMock(
+            return_value=[
+                ParsedSkill(
+                    name="fix_issue",
+                    description="Fix a GitHub issue",
+                    body="",
+                    extra={"argument-hint": "[issue-number]"},
+                ),
+                ParsedSkill(
+                    name="house_style",
+                    description="Background knowledge",
+                    body="",
+                    extra={"user-invocable": False},
+                ),
+            ]
+        ),
+    )
+
+    body = client.get("/skills").json()
+    assert body[0]["argument_hint"] == "[issue-number]"
+    assert body[0]["user_invocable"] is True
+    assert body[1]["argument_hint"] is None
+    assert body[1]["user_invocable"] is False
+
+
 def test_delete_copilot_skill_returns_name_on_success(
     mocker: pytest_mock.MockFixture,
 ) -> None:

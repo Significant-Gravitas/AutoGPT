@@ -183,6 +183,9 @@ _META_PACKAGE_SHA256 = "package_sha256"
 # both sides had changed and the owner's side was kept.
 _META_MERGED_FROM = "merged_from"
 _META_MERGE_CONFLICTS = "merge_conflicts"
+# The slash-command frontmatter the chat's "/" picker lists: see
+# :data:`INVOCATION_FRONTMATTER_KEYS`.
+_META_INVOCATION = "invocation"
 
 # What the index says about a marketplace copy relative to the marketplace.
 UPDATE_AVAILABLE = "available"
@@ -279,7 +282,33 @@ _CARRIED_FRONTMATTER_KEYS = (
     "metadata",
     "source",
     "source_url",
+    "arguments",
+    "argument-hint",
+    "user-invocable",
+    "disable-model-invocation",
 )
+
+# The frontmatter a skill index entry keeps so the chat can list slash
+# commands without reading every SKILL.md: the argument hint the "/" picker
+# shows, and whether the skill may be run as a command at all.
+INVOCATION_FRONTMATTER_KEYS = ("argument-hint", "user-invocable")
+
+
+def invocation_frontmatter(extra: Mapping[str, Any]) -> dict[str, Any]:
+    """The slash-command subset of a skill's frontmatter, normalised.
+
+    An unquoted ``argument-hint: [issue-number]`` parses as a YAML list, so a
+    list is rendered back into the bracketed form the author wrote.
+    """
+    subset: dict[str, Any] = {}
+    hint = extra.get("argument-hint")
+    if isinstance(hint, (list, tuple)):
+        hint = " ".join(f"[{item}]" for item in hint if str(item).strip())
+    if isinstance(hint, str) and hint.strip():
+        subset["argument-hint"] = hint.strip()
+    if extra.get("user-invocable") is False:
+        subset["user-invocable"] = False
+    return subset
 
 
 class SkillBaseline(NamedTuple):
@@ -1100,6 +1129,8 @@ async def _write_skill(
     }
     if skill.parsed.version:
         metadata[_META_VERSION] = skill.parsed.version
+    if invocation := invocation_frontmatter(skill.parsed.extra):
+        metadata[_META_INVOCATION] = invocation
     if baseline is not None:
         metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
@@ -1242,12 +1273,16 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
         raw_triggers = ()
     triggers = tuple(str(t) for t in raw_triggers if isinstance(t, str) and t)
     version = meta.get(_META_VERSION)
+    invocation = meta.get(_META_INVOCATION)
     return ParsedSkill(
         name=slug,
         description=description,
         body="",
         triggers=triggers,
         version=str(version) if version else None,
+        extra=invocation_frontmatter(
+            invocation if isinstance(invocation, dict) else {}
+        ),
         origin=_skill_origin(meta),
         baseline=_baseline_from_metadata(meta),
     )
@@ -1347,6 +1382,7 @@ async def _list_user_skills_from_workspace(
                     body="",
                     triggers=p.triggers,
                     version=p.version,
+                    extra=invocation_frontmatter(p.extra),
                     origin=_skill_origin(meta),
                 )
             )
@@ -1382,6 +1418,7 @@ async def _read_skills_cache(
                 body="",
                 triggers=tuple(str(t) for t in item.get("triggers", [])),
                 version=item.get("version"),
+                extra=invocation_frontmatter(item.get("invocation") or {}),
                 origin=_normalize_origin(item.get("origin")),
                 baseline=_baseline_from_metadata(item.get("baseline") or {}),
                 update=_normalize_update(item.get("update")),
@@ -1406,6 +1443,7 @@ async def _write_skills_cache(
                     "description": s.description,
                     "triggers": list(s.triggers),
                     "version": s.version,
+                    "invocation": invocation_frontmatter(s.extra),
                     "origin": s.origin,
                     "baseline": (
                         _baseline_metadata(s.baseline) if s.baseline else None

@@ -13,11 +13,13 @@ import {
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import type { IntegrationMention } from "../helpers";
-import type { MentionOption } from "../useChatMentions";
+import type { IntegrationMention, SkillCommand } from "../helpers";
+import type { MentionOption, MentionTrigger } from "../useChatMentions";
 
 interface Props {
-  /** Integrations first, then folders and files — indices match the
+  /** "/" lists skills; "@" lists integrations, folders and files. */
+  trigger?: MentionTrigger;
+  /** Skills, or integrations then folders and files — indices match the
    *  highlight cursor. */
   options: MentionOption[];
   /** Whether workspace files are part of this picker; drives the file
@@ -34,6 +36,7 @@ interface Props {
 }
 
 export function MentionDropdown({
+  trigger = "@",
   options,
   showFiles,
   hasIntegrations,
@@ -83,6 +86,39 @@ export function MentionDropdown({
       >
         {children}
       </button>
+    );
+  }
+
+  if (trigger === "/") {
+    return (
+      <div
+        role="listbox"
+        aria-label="Skill commands"
+        onMouseDown={(e) => e.preventDefault()}
+        className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
+      >
+        {options.map((option, index) =>
+          option.kind === "skill"
+            ? renderOption(
+                option,
+                index,
+                <SkillOption skill={option.skill} />,
+                `/${option.skill.name}: ${option.skill.description}`,
+              )
+            : null,
+        )}
+        {isLoading ? (
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500">
+            <Icon
+              icon={Loading03Icon}
+              className="h-4 w-4 shrink-0 animate-spin"
+            />
+            Loading skills…
+          </p>
+        ) : options.length === 0 ? (
+          <p className="px-3 py-2 text-sm text-zinc-500">No matching skills.</p>
+        ) : null}
+      </div>
     );
   }
 
@@ -176,6 +212,27 @@ function IntegrationOption({
   );
 }
 
+function SkillOption({ skill }: { skill: SkillCommand }) {
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="truncate font-medium">/{skill.name}</span>
+        {skill.argumentHint && (
+          <span className="shrink-0 text-xs text-zinc-400">
+            {skill.argumentHint}
+          </span>
+        )}
+      </span>
+      <span
+        className="block truncate text-xs text-zinc-500"
+        title={skill.description}
+      >
+        {skill.description}
+      </span>
+    </span>
+  );
+}
+
 function FolderOption({
   folder,
   count,
@@ -218,6 +275,7 @@ function SectionHeading({ label }: { label: string }) {
 function mentionOptionKey(option: MentionOption): string {
   if (option.kind === "file") return `file:${option.file.id}`;
   if (option.kind === "folder") return `folder:${option.folder.id}`;
+  if (option.kind === "skill") return `skill:${option.skill.name}`;
   return `integration:${option.integration.credentialId}`;
 }
 
