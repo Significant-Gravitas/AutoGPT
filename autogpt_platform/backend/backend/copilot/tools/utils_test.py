@@ -286,3 +286,126 @@ def test_a_system_credential_is_used_when_the_user_has_none_of_their_own():
     assert _find([openai_credentials], ask=True, field=field) is openai_credentials
     own = _key_cred("own-openai", provider="openai")
     assert _find([own, openai_credentials], ask=True, field=field) is own
+
+
+# ---------------------------------------------------------------------------
+# A scheduled turn keeps to the account its schedule pinned (SECRT-2804)
+# ---------------------------------------------------------------------------
+
+
+def _github_oauth(cred_id: str, scopes: list[str]):
+    from backend.data.model import OAuth2Credentials
+
+    return OAuth2Credentials(
+        id=cred_id,
+        provider="github",
+        title=cred_id,
+        access_token=SecretStr("t"),
+        scopes=scopes,
+    )
+
+
+async def _match_with_pins(saved: list, requirements: dict, pins: dict):
+    """Match in a turn fired by a schedule with *pins*, as its own task so the
+    pins stay inside it."""
+    import asyncio
+
+    from backend.copilot.credential_selection import set_turn_credential_pins
+    from backend.copilot.tools.utils import match_credentials_to_requirements
+
+    async def turn():
+        set_turn_credential_pins(pins)
+        with (
+            patch(
+                "backend.copilot.tools.utils.IntegrationCredentialsManager"
+            ) as creds_mgr,
+            patch(
+                "backend.copilot.credential_selection.get_redis_async",
+                AsyncMock(return_value=MagicMock(hgetall=AsyncMock(return_value={}))),
+            ),
+        ):
+            creds_mgr.return_value.store = AsyncMock()
+            creds_mgr.return_value.store.get_all_creds.return_value = saved
+            return await match_credentials_to_requirements(
+                "test-user", requirements, session_id="s1"
+            )
+
+    return await asyncio.create_task(turn())
+
+
+async def test_a_pinned_account_without_the_scope_does_not_switch_accounts():
+    # The schedule runs on "work". A step needing `repo` must not quietly run
+    # on "personal", which has it: that is the switch the pin exists to stop.
+    from backend.copilot.credential_selection import CredentialPin
+
+    field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["oauth2"],
+            "credentials_scopes": ["repo"],
+        },
+        by_alias=True,
+    )
+    matched, missing = await _match_with_pins(
+        [_github_oauth("personal", ["repo"]), _github_oauth("work", ["read:user"])],
+        {"credentials": field},
+        {"github": CredentialPin(id="work", title="Work")},
+    )
+    assert matched == {}
+    assert len(missing) == 1
+
+
+async def test_a_pin_for_one_host_leaves_the_credentials_for_other_hosts():
+    from backend.copilot.credential_selection import CredentialPin
+
+    other_host = HostScopedCredentials(
+        id="other-host",
+        provider="http",
+        host="api.other.com",
+        headers={"Authorization": SecretStr("Bearer token")},
+        title="other-host",
+    )
+    field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["http"],
+            "credentials_types": ["host_scoped"],
+            "discriminator": "url",
+            "discriminator_values": ["https://api.other.com/v1"],
+        },
+        by_alias=True,
+    )
+    matched, _ = await _match_with_pins(
+        [_host_cred("example-host"), other_host],
+        {"credentials": field},
+        {"http": CredentialPin(id="example-host", title="example-host")},
+    )
+    assert matched["credentials"].id == "other-host"
+
+
+async def test_the_error_names_a_pinned_account_that_cannot_do_the_step():
+    import asyncio
+
+    from backend.copilot.credential_selection import (
+        CredentialPin,
+        set_turn_credential_pins,
+    )
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+
+    async def turn():
+        set_turn_credential_pins({"github": CredentialPin(id="work", title="Work")})
+        with patch(
+            "backend.copilot.tools.helpers.get_user_credentials",
+            AsyncMock(return_value=[_github_oauth("work", ["read:user"])]),
+        ):
+            return await unattended_missing_credentials_error(
+                "Block 'Create PR'",
+                {"credentials": {"provider": "github", "types": ["oauth2"]}},
+                "s1",
+                "test-user",
+                None,
+            )
+
+    result = await asyncio.create_task(turn())
+    assert result.error == "pinned_credential_unusable"
+    assert "'Work'" in result.message
+    assert "did not switch" in result.message
