@@ -15,7 +15,6 @@ from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.blocks.google.sheets import GoogleSheetsUpdateRowBlock
 from backend.blocks.http import SendWebRequestBlock
-from backend.copilot.gate.classifier import _TOO_LONG_REASON
 from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.review import payload_headline, review_id_for, review_payload
 from backend.copilot.gate.subject import block_subject, workflow_subject
@@ -142,6 +141,7 @@ def test_the_frontend_card_fixture_is_what_the_builder_makes():
 # What the supervisor might say of the code block's step; the builder cannot
 # call the model, so this stands in for its verdict.
 _SUPERVISOR = "it reads a local file of invoices and prints what it finds."
+_SUPERVISOR_WRITE = "it overwrites a file in the blog folder if one exists."
 
 
 def _block_card(story: str, block: Any, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -192,7 +192,7 @@ def _workflow_card() -> dict[str, Any]:
 
 def _sandbox_command_card() -> dict[str, Any]:
     args = {"command": _COMMAND, "timeout": 60}
-    row = _row("bash_exec", args, None, _TOO_LONG_REASON, "supervisor")
+    row = _row("bash_exec", args, None, _SUPERVISOR_WRITE, "supervisor")
     return {"story": "Sandbox Command", "review": row, "schema": None}
 
 

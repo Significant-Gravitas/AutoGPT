@@ -28,42 +28,33 @@ const LIVE_EVENT_NAMES = [
   "credential_oauth_popup_blocked",
   "credential_proceed_stuck_after_connect",
   "credential_scope_shortfall_blocked_selection",
-  "experiment_exposed",
   "expert_profile_opened",
   "expert_recommendation_clicked",
   "expert_recommended",
   "expert_thread_created",
   "experts_section_viewed",
-  "feature_flag_mismatch",
-  "finalize_latency_ms",
+  "feature_flag_mismatched",
   "hire_flow_abandoned",
-  "hire_flow_completed",
   "hire_started",
   "hire_step_continued",
   "home_attention_actioned",
   "home_team_member_clicked",
   "home_viewed",
-  "intro_card_dismissed",
   "intro_followup_sent",
   "intro_path",
-  "intro_start_with_autopilot",
   "later_dump_completed",
-  "onboarding_expert_hired",
-  "raise_door_clicked",
   "subscription_trial_checkout_started",
-  "subscription_trial_offer_viewed",
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",
   "tab_intro_shown",
   "transcription_failed",
-  "voice_first_sound_latency_ms",
+  "trial_offer_viewed",
   "voice_mode_error",
   "voice_mode_permission_denied",
   "voice_mode_started",
   "voice_mode_stopped",
   "voice_mode_timed_out",
   "voice_recording_downloaded",
-  "voice_transcribe_latency_ms",
   "voice_transcribe_retried",
   "voice_turn_completed",
   "voice_turn_dropped",
@@ -83,6 +74,24 @@ const PLANNED_EVENT_NAMES = [
   "tour_started",
 ];
 
+// No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
+// splice a different action onto the history PostHog already holds for it.
+const RETIRED_EVENT_NAMES = [
+  "experiment_exposed",
+  // Renamed to feature_flag_mismatched before it reached production.
+  "feature_flag_mismatch",
+  "finalize_latency_ms",
+  "hire_flow_completed",
+  "intro_card_dismissed",
+  "intro_start_with_autopilot",
+  "onboarding_expert_hired",
+  "raise_door_clicked",
+  // Renamed to the analytics plan's trial_offer_viewed.
+  "subscription_trial_offer_viewed",
+  "voice_first_sound_latency_ms",
+  "voice_transcribe_latency_ms",
+];
+
 describe("PostHog event names", () => {
   it("keeps every live name exactly as PostHog already stores it", () => {
     expect(Object.values(PostHogEvent).sort()).toEqual(LIVE_EVENT_NAMES);
@@ -92,6 +101,14 @@ describe("PostHog event names", () => {
     expect(Object.values(PlannedPostHogEvent).sort()).toEqual(
       PLANNED_EVENT_NAMES,
     );
+  });
+
+  it("never reuses a retired name", () => {
+    const names = new Set<string>([
+      ...Object.values(PostHogEvent),
+      ...Object.values(PlannedPostHogEvent),
+    ]);
+    expect(RETIRED_EVENT_NAMES.filter((name) => names.has(name))).toEqual([]);
   });
 
   it("never lists a planned name as live", () => {
