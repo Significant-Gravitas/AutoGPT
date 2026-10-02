@@ -402,7 +402,6 @@ test("library happy path: user can edit a saved agent from Library and keep chan
   await page.goto("/library");
   await libraryPage.waitForAgentsToLoad();
   await libraryPage.searchAgents(agentName);
-  await libraryPage.waitForAgentsToLoad();
 
   const agentCard = page
     .getByTestId("library-agent-card")
