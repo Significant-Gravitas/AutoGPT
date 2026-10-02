@@ -18,6 +18,7 @@ from backend.api.features.store.model import StoreAgentDetails
 from backend.data import graph as graph_db
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 
@@ -116,6 +117,9 @@ async def create_graph(
     graph = graph_db.make_graph_model(internal_graph, auth.user_id)
     graph.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
+    # Before the writes: a graph that fails activation must not be saved, and
+    # the credential edits activation makes must be.
+    graph = await before_graph_activate(graph, user_id=auth.user_id)
 
     await graph_db.create_graph(
         graph,
@@ -129,9 +133,8 @@ async def create_graph(
         organization_id=auth.organization_id,
         team_id=auth.team_id,
     )
-    activated_graph = await before_graph_activate(graph, user_id=auth.user_id)
 
-    return Graph.from_internal(activated_graph)
+    return Graph.from_internal(graph)
 
 
 @graphs_router.put(
@@ -172,6 +175,11 @@ async def update_graph(
     graph = graph_db.make_graph_model(internal_graph, auth.user_id)
     graph.reassign_ids(user_id=auth.user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
+    # Before the write, for the same reason as in create_graph.
+    if graph.is_active:
+        graph = await before_graph_activate(graph, user_id=auth.user_id)
+    else:
+        await clear_unowned_auto_credentials(graph, auth.user_id)
 
     new_graph_version = await graph_db.create_graph(
         graph,
@@ -183,9 +191,6 @@ async def update_graph(
     if new_graph_version.is_active:
         await library_db.update_agent_version_in_library(
             auth.user_id, new_graph_version.id, new_graph_version.version
-        )
-        new_graph_version = await before_graph_activate(
-            new_graph_version, user_id=auth.user_id
         )
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=auth.user_id
