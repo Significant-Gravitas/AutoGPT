@@ -203,6 +203,29 @@ def test_exclude_de_at_is_never_released():
     assert SubscriberField.EXCLUDE_DE_AT not in merged
 
 
+@pytest.mark.parametrize(
+    "held",
+    [
+        # Ours, from Stripe, written before the exclusion ever was.
+        {"country": "Germany", "country_code": "DE", "country_source": "stripe"},
+        {"country_code": "at"},
+        # Typed by hand into MailerLite's built-in field.
+        {"country": "Deutschland"},
+        {"country": " Austria "},
+    ],
+)
+def test_a_held_german_or_austrian_country_excludes(held):
+    """The live guess (India by timezone) says no, but MailerLite already
+    holds a German or Austrian country: that is a signal, so it excludes."""
+    merged = enrichment.merge_with_held(_fields(), held)
+    assert merged[SubscriberField.EXCLUDE_DE_AT] == "yes"
+
+
+def test_a_held_country_elsewhere_does_not_exclude():
+    merged = enrichment.merge_with_held(_fields(), {"country": "United States"})
+    assert merged[SubscriberField.EXCLUDE_DE_AT] == "no"
+
+
 def test_a_weaker_country_never_replaces_a_stronger_one():
     held = _held(country="Germany", country_code="DE", country_source="stripe")
     merged = enrichment.merge_with_held(_fields(ip_country="GB"), held)

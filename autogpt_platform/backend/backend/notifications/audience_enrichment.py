@@ -249,6 +249,17 @@ _COUNTRY_FIELDS = (
     SubscriberField.COUNTRY_SOURCE,
 )
 
+# A hand-typed built-in country that names Germany or Austria.
+_DE_AT_NAMES = frozenset({"germany", "deutschland", "austria", "österreich"})
+
+
+def _held_points_at_de_at(held: Mapping[str, object]) -> bool:
+    """A country MailerLite already holds is a signal too, whether ours or
+    typed by hand, and the exclusion holds for any signal."""
+    code = str(held.get(SubscriberField.COUNTRY_CODE.value) or "").strip().upper()
+    name = str(held.get(SubscriberField.COUNTRY.value) or "").strip().lower()
+    return code in DE_AT or name in _DE_AT_NAMES
+
 
 def merge_with_held(
     fields: Mapping[SubscriberField, str | None],
@@ -261,7 +272,8 @@ def merge_with_held(
     - a status it already holds (unless the caller knows the true one), since
       `signed` is only where everyone starts;
     - a later checkout_opened_date than the one it holds;
-    - exclude_de_at "no" over "yes";
+    - exclude_de_at "no" over "yes", or over a German or Austrian country it
+      holds;
     - a country from a weaker source than the one it holds.
     """
     merged = dict(fields)
@@ -273,6 +285,8 @@ def merge_with_held(
         merged.pop(SubscriberField.CHECKOUT_OPENED)
     if held.get(SubscriberField.EXCLUDE_DE_AT.value) == YES:
         merged.pop(SubscriberField.EXCLUDE_DE_AT, None)
+    elif _held_points_at_de_at(held):
+        merged[SubscriberField.EXCLUDE_DE_AT] = YES
     held_rank = _SOURCE_RANK.get(str(held.get(SubscriberField.COUNTRY_SOURCE.value)), 0)
     ours_rank = _SOURCE_RANK.get(str(merged.get(SubscriberField.COUNTRY_SOURCE)), 0)
     if held_rank > ours_rank:
