@@ -41,7 +41,7 @@ def idempotency_key(
         description=(
             "Retry-safety token. Repeating a request with the same value returns "
             "the run the first one started instead of starting another. Scoped to "
-            "the caller; expires after 24 hours."
+            "the caller and its organization; expires after 24 hours."
         ),
     ),
 ) -> Optional[str]:
@@ -49,13 +49,17 @@ def idempotency_key(
 
 
 @asynccontextmanager
-async def idempotent_run(key: Optional[str], user_id: str) -> AsyncIterator["RunClaim"]:
+async def idempotent_run(
+    key: Optional[str], auth: TenantContext
+) -> AsyncIterator["RunClaim"]:
     """Claim `key` for this request, or report the run it already produced.
 
     An unreachable key store degrades to no idempotency rather than to a refusal:
     the caller loses retry safety, which is where a caller without a key already is.
     """
-    claim = RunClaim(key=key, user_id=user_id)
+    claim = RunClaim(
+        key=key, user_id=auth.user_id, organization_id=auth.organization_id
+    )
     if key is None:
         yield claim
         return
@@ -102,16 +106,19 @@ async def replayed_run(claim: "RunClaim", auth: TenantContext) -> AgentGraphRun:
 class RunClaim:
     """One request's hold on an idempotency key."""
 
-    def __init__(self, key: Optional[str], user_id: str) -> None:
+    def __init__(self, key: Optional[str], user_id: str, organization_id: str) -> None:
         self.key = key
         self.user_id = user_id
+        self.organization_id = organization_id
         self.holds_key = False
         self.recorded = False
         self.existing_run_id: Optional[str] = None
 
     @property
     def redis_key(self) -> str:
-        return f"v2:idem:{self.user_id}:{self.key}"
+        # Per organization: a run in one org is invisible to the same user's
+        # requests from another, so a shared key there must start its own run.
+        return f"v2:idem:{self.user_id}:{self.organization_id}:{self.key}"
 
     async def resolve_existing(self) -> str:
         """The run id the first request recorded, or 409 while it is still running."""
