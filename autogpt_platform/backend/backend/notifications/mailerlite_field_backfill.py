@@ -1,9 +1,10 @@
-"""Give every account the MailerLite status and dates the live code would have.
+"""Give accounts the MailerLite status and dates the live code would have.
 
 Signups were never synced and the lifecycle handlers only react to new
 events, so this works out each account's fields from scratch: the signup date
 from our database, the rest from Stripe, by the rules in `subscriber_fields.py`.
-Accounts with no Stripe customer are `signed`.
+Only accounts with a Stripe customer are given (see `cli/mailerlite_backfill`):
+MailerLite holds checkout openers, not every signup.
 
 Resumable by construction: the fields MailerLite already holds are read first
 and only the difference is written, so an interrupted or repeated run picks up
@@ -21,12 +22,11 @@ from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 from backend.data.notifications import SubscriberField, SubscriptionStatus
 from backend.notifications.mailerlite import (
     API_BASE,
-    FIELD_TYPES,
     MailerLiteError,
     _client,
     _headers,
-    _pseudonym,
     _require_token,
+    field_type,
 )
 from backend.notifications.mailerlite_backfill import (
     BATCH_SIZE,
@@ -34,6 +34,7 @@ from backend.notifications.mailerlite_backfill import (
     PAGE_SIZE,
     UPSERT_BATCH_INTERVAL_SECONDS,
     Subscription,
+    _refusal,
     _send_batch,
     next_cursor,
 )
@@ -55,6 +56,9 @@ class Person(BaseModel):
     email: str
     created_at: datetime
     subscriptions: list[Subscription] = []
+    stripe_customer_id: str | None = None
+    # The browser's IANA timezone, for the checkout opener's country.
+    timezone: str | None = None
 
 
 class FieldChange(BaseModel):
@@ -121,7 +125,11 @@ def desired(person: Person) -> tuple[SubscriptionStatus, Fields]:
     }
 
 
-def plan(people: list[Person], current: Current) -> FieldPlan:
+def plan(people: list[Person], current: Current, *, create: bool = True) -> FieldPlan:
+    """Each person's fields that differ from MailerLite's. With create=False,
+    someone MailerLite does not hold is left out: only the checkout openers
+    backfill brings new people in, since a Stripe customer alone does not
+    mean they opened checkout (the billing portal creates one too)."""
     result = FieldPlan(
         statuses={s: 0 for s in SubscriptionStatus}, changes=[], invalid=0
     )
@@ -132,6 +140,8 @@ def plan(people: list[Person], current: Current) -> FieldPlan:
         status, fields = desired(person)
         result.statuses[status] += 1
         held = current.get(person.email.strip().lower())
+        if held is None and not create:
+            continue
         differ = {
             key: value
             for key, value in fields.items()
@@ -183,15 +193,15 @@ async def apply(
         if start:
             await asyncio.sleep(UPSERT_BATCH_INTERVAL_SECONDS)
         chunk = changes[start : start + BATCH_SIZE]
-        codes = await _send_batch([_upsert(c) for c in chunk])
-        for change, code in zip(chunk, codes):
-            if code in (200, 201, 202, 204):
+        answers = await _send_batch([_upsert(c) for c in chunk])
+        for change, answer in zip(chunk, answers):
+            if answer.code in (200, 201, 202, 204):
                 succeeded += 1
                 continue
             failed += 1
             logger.warning(
-                f"Field update failed for {_pseudonym(change.person.email)} "
-                f"with {code}; the next run retries it"
+                f"Field update failed for {_refusal(change.person.email, answer)}; "
+                "the next run retries it"
             )
         if on_progress:
             on_progress(start + len(chunk), len(changes))
@@ -237,7 +247,7 @@ def _normalise(field: SubscriberField, value: object) -> str | None:
         return None
     text = str(value)
     # A date may come back with a time part.
-    return text[:10] if FIELD_TYPES[field] == "date" else text
+    return text[:10] if field_type(field) == "date" else text
 
 
 def _valid(email: str) -> bool:
