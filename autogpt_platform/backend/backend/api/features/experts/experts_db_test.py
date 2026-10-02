@@ -82,11 +82,14 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
 # domains at all -- every one of the 17 store listings is sales, marketing or
 # content, so there is nothing for recruiting, finance, product or ops to
 # preload. That last group should leave this set once such listings exist.
-# Note this set now exempts 23 of the 32 roster entries, so the bound below is
+# Clip joined the roster from an expert raised on the platform, which had one
+# skill and no workflows, and ships the same way.
+# Note this set now exempts 24 of the 33 roster entries, so the bound below is
 # only really checking the remaining nine.
 PERSONAS_WITHOUT_WORKFLOWS = {
     "Alex",
     "Casey",
+    "Clip",
     "Daniel",
     "Devon",
     "Ellis",
@@ -3846,9 +3849,9 @@ def test_the_roster_is_the_expected_size_with_unique_names(
     side edits the test about the roster rather than the one about dev's nine.
     Names must be unique: two entries sharing one is what forced the rename of
     this branch's Casey, Priya and Sasha when dev's wave three landed."""
-    # 24 from dev's waves plus the eight generalists added on top; the senior
-    # sales package was folded into Max rather than shipped as its own entry.
-    assert len(real_roster) == 32
+    # 24 from dev's waves, the eight generalists added on top, and Clip; the
+    # senior sales package was folded into Max rather than shipped as its own entry.
+    assert len(real_roster) == 33
     names = [entry["name"] for entry in real_roster]
     assert len(names) == len(set(names))
 
