@@ -255,6 +255,35 @@ test("library happy path: user can import an agent file into Library", async ({
   expect(importedAgent.name).toContain("E2E Import Agent");
 });
 
+test("library happy path: searching narrows the list to the matching agent", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+
+  const agentName = createUniqueAgentName("E2E Search Agent");
+  const otherAgentName = createUniqueAgentName("E2E Search Other Agent");
+  await createDeterministicCalculatorSavedAgent(page, otherAgentName, "other");
+  await createDeterministicCalculatorSavedAgent(page, agentName, "result");
+
+  const libraryPage = new LibraryPage(page);
+  await page.goto("/library");
+  const cards = page.getByTestId("library-agent-card");
+  await expect(cards.filter({ hasText: otherAgentName })).toBeVisible({
+    timeout: 15000,
+  });
+
+  await libraryPage.searchAgents(agentName);
+
+  // Read once, without retrying: every spec clicks a card right after
+  // searchAgents returns, so the unfiltered list must already be gone.
+  const cardNames = await page
+    .getByTestId("library-agent-card-name")
+    .allTextContents();
+  expect(cardNames.filter((name) => !name.includes(agentName))).toEqual([]);
+  await expect(cards).toHaveCount(1);
+  await expect(cards.filter({ hasText: agentName })).toBeVisible();
+});
+
 test("library happy path: user can open the imported or saved agent from Library in builder", async ({
   page,
 }) => {
