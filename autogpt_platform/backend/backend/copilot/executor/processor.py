@@ -798,8 +798,6 @@ class CoPilotProcessor:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
-            if scheduled_watch is not None:
-                scheduled_watch.report(error_msg)
             try:
                 if credential_lease is not None:
                     try:
@@ -812,6 +810,9 @@ class CoPilotProcessor:
                     except Exception as release_err:
                         log.error(f"Failed to release chat credential: {release_err}")
             finally:
+                # After the release, which can still fail the turn.
+                if scheduled_watch is not None:
+                    scheduled_watch.report(error_msg)
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id, error_message=error_msg, turn_id=entry.turn_id

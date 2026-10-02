@@ -1,5 +1,6 @@
 import logging
 import threading
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +20,7 @@ from backend.copilot.executor.utils import (
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamTextDelta, StreamToolOutputAvailable
 from backend.copilot.tools.models import ErrorResponse, ExecutionStartedResponse
+from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
 
 _ALERT = "backend.copilot.executor.scheduled_turn_alert"
@@ -288,3 +290,67 @@ async def test_executor_does_not_alert_for_an_interactive_turn():
     sentry = await _run_turn(_entry(None), [_run_agent_failure()])
 
     sentry.capture_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_executor_alerts_when_the_codex_checkpoint_fails_after_a_scheduled_turn():
+    session = ChatSession.new(
+        "user-1", dry_run=False, llm_auth_provider="codex", llm_credential_id="cred-1"
+    )
+    lease = MagicMock()
+    lease.credentials = SimpleNamespace(type="oauth2", id="cred-1")
+    lease.release = AsyncMock(
+        side_effect=CodexCredentialIntegrityError("codex_credential_checkpoint_failed")
+    )
+    transport = MagicMock()
+    transport.acquire_runtime_lease = AsyncMock(return_value=lease)
+    mark_completed = AsyncMock()
+    entry = _entry(_weekly()).model_copy(
+        update={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"}
+    )
+    before = _failures("turn_error", "")
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.integrations.codex.transport.get_codex_transport",
+            return_value=transport,
+        ),
+        patch("backend.integrations.codex.credential_codec.bundle_from_credentials"),
+        patch(
+            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=_Stream([_run_agent_success()]),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            mark_completed,
+        ),
+        patch(f"{_ALERT}.sentry_sdk") as sentry,
+    ):
+        await CoPilotProcessor()._execute_async(
+            entry,
+            threading.Event(),
+            MagicMock(),
+            CoPilotLogMetadata(logger=logging.getLogger("test-copilot")),
+        )
+
+    mark_completed.assert_awaited_once_with(
+        entry.session_id,
+        error_message="codex_credential_checkpoint_failed",
+        turn_id=entry.turn_id,
+    )
+    sentry.capture_message.assert_called_once_with(
+        "Scheduled copilot turn failed: the turn errored", level="error"
+    )
+    assert _failures("turn_error", "") == before + 1
