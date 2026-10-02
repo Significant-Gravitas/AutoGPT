@@ -142,10 +142,10 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     same user are intentionally excluded — the model would have no
     handle to act on them mid-turn anyway).
 
-    On any scheduler error the block degrades to the bare
-    ``session_id`` line — the model still benefits from knowing the
-    session it is in, and the turn never fails because of a transient
-    scheduler RPC issue.
+    On any scheduler error the block lists no pending follow-ups (still
+    with any undelivered ones, and at least the bare ``session_id`` line)
+    — the model still benefits from knowing the session it is in, and the
+    turn never fails because of a transient scheduler RPC issue.
 
     The return value is the **body** of the block (no surrounding
     ``<session_context>`` tags); the caller wraps it.
@@ -169,19 +169,23 @@ async def build_session_context(session_id: str, user_id: str) -> str:
         _undelivered_followups(session_id, user_id),
         return_exceptions=True,
     )
-    if isinstance(undelivered, BaseException):
-        undelivered = []
+    # Cancellation is not a failed read: it propagates rather than degrading.
     if isinstance(raw_jobs, BaseException):
+        if not isinstance(raw_jobs, Exception):
+            raise raw_jobs
         # Graceful degradation: scheduler RPC issues must never fail the
-        # turn — we still emit the session_id so the model knows which
-        # session it is in.
+        # turn, nor hide the undelivered follow-ups that were read fine.
         logger.warning(
             "build_session_context: scheduler RPC failed for session %s (%s); "
-            "falling back to session_id-only block",
+            "listing no pending follow-ups",
             session_id,
             raw_jobs,
         )
-        return f"session_id: {session_id}; pending_followups: 0"
+        raw_jobs = []
+    if isinstance(undelivered, BaseException):
+        if not isinstance(undelivered, Exception):
+            raise undelivered
+        undelivered = []
 
     # The endpoint already narrows by ``kind`` server-side; the isinstance
     # filter is a belt-and-braces guard against a legacy untyped row that

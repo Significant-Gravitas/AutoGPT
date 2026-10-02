@@ -392,13 +392,53 @@ async def test_outcome_reader_crash_still_renders_pending_list():
         _patch_scheduler(jobs),
         patch(
             f"{_CTX_PATH}._undelivered_followups",
-            new=AsyncMock(side_effect=asyncio.CancelledError()),
+            new=AsyncMock(side_effect=RuntimeError("unexpected")),
         ),
     ):
         ctx = await build_session_context(_SESSION, _USER)
 
     assert "pending_followups: 1" in ctx
     assert "undelivered_followups" not in ctx
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled_read", ["scheduler", "outcomes"])
+async def test_cancelled_read_propagates_instead_of_degrading(
+    cancelled_read, outcome_events
+):
+    """Cancellation is not a failed read: it must stop the turn rather than
+    be rendered as an empty list."""
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        side_effect=asyncio.CancelledError() if cancelled_read == "scheduler" else None,
+        return_value=[],
+    )
+    if cancelled_read == "outcomes":
+        outcome_events.list_activity_events_by_type.side_effect = (
+            asyncio.CancelledError()
+        )
+    with patch(f"{_CTX_PATH}.get_scheduler_client", return_value=mock_client):
+        with pytest.raises(asyncio.CancelledError):
+            await build_session_context(_SESSION, _USER)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_rpc_failure_keeps_undelivered_followups(outcome_events):
+    """The two reads degrade independently: a scheduler outage drops only the
+    pending list, not the undelivered follow-ups that were read fine."""
+    outcome_events.list_activity_events_by_type.return_value = [_undelivered()]
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        side_effect=RuntimeError("scheduler unreachable")
+    )
+    with patch(f"{_CTX_PATH}.get_scheduler_client", return_value=mock_client):
+        ctx = await build_session_context(_SESSION, _USER)
+
+    assert ctx.split("\n")[:3] == [
+        f"session_id: {_SESSION}",
+        "pending_followups: 0",
+        "undelivered_followups: 1",
+    ]
 
 
 @pytest.mark.asyncio
