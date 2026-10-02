@@ -39,10 +39,11 @@ def mailerlite_backfill_command(
     MAILERLITE_TRIAL_GROUP_ID is set, the trial group ends up holding exactly
     the customers on a trial that is not set to cancel.
 
-    Fields: every account with a Stripe customer gets its subscription_status
-    and dates. One MailerLite does not have yet is created as a subscriber.
-    Accounts without a Stripe customer are never read or written: MailerLite
-    holds checkout openers, not every signup.
+    Fields: every account with a Stripe customer that MailerLite already holds
+    gets its subscription_status and dates. Nobody is created here: a Stripe
+    customer alone does not mean they opened checkout (the billing portal
+    makes one too), so new people come only from mailerlite-checkout-backfill.
+    Accounts without a Stripe customer are never read.
 
     Dry run by default: prints counts and one pseudonymised line per customer,
     and writes nothing. Idempotent, so a partial or repeated --apply is safe,
@@ -69,7 +70,9 @@ def mailerlite_checkout_backfill_command(apply: bool, yes: bool):
     country and country_code (the Stripe billing address, else the browser's
     timezone), country_source and exclude_de_at, plus their status and dates.
 
-    Writes one subscriber at a time, about 60 a minute. Dry run by default,
+    Visits one person every two seconds, re-reading each just before the
+    write so nothing the live checkout event wrote meanwhile is overwritten.
+    Dry run by default,
     with counts only. Idempotent, so a repeated --apply resumes an interrupted
     one; run the dry run again afterwards to confirm nothing is left.
     """
@@ -143,7 +146,7 @@ async def _run(
         customers = [_customer(p) for p in people if p.subscriptions]
         changes = mailerlite_backfill.plan(customers, audience)
         _report(changes, len(subscriptions) - len(customers))
-    fields = field_backfill.plan([] if groups_only else people, current)
+    fields = field_backfill.plan([] if groups_only else people, current, create=False)
     if not groups_only:
         _report_fields(fields, len(people))
 
@@ -203,9 +206,10 @@ async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
 
 async def _people(subscriptions: "dict[str, list[Subscription]]") -> "list[Person]":
     """Every account with a Stripe customer, paged, with its Stripe
-    subscriptions. The rest never reached checkout, so they stay out of
-    MailerLite. The account's email is used, as the live handlers do, never
-    Stripe's."""
+    subscriptions. Accounts without one never reached checkout, so they are
+    not read at all. Having one is not proof of a checkout either: callers
+    that create MailerLite subscribers must also check for a Checkout Session.
+    The account's email is used, as the live handlers do, never Stripe's."""
     import prisma.models
 
     from backend.notifications.mailerlite_field_backfill import Person
@@ -283,10 +287,9 @@ def _report_fields(plan: "FieldPlan", accounts: int) -> None:
     for status, count in plan.statuses.items():
         click.echo(f"  {status.value}: {count}")
     click.echo(f"  invalid email (skipped): {plan.invalid}")
-    new = sum(c.new for c in plan.changes)
     click.echo(
-        f"{len(plan.changes)} to write: {new} new MailerLite subscribers, "
-        f"{len(plan.changes) - new} existing ones updated"
+        f"{len(plan.changes)} existing MailerLite subscribers to update "
+        "(nobody is created here; see mailerlite-checkout-backfill)"
     )
     batches = -(-len(plan.changes) // BATCH_SIZE)
     minutes = batches * UPSERT_BATCH_INTERVAL_SECONDS / 60
@@ -374,10 +377,12 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             f"\nWrite {len(plan.changes)} checkout openers to MailerLite?", abort=True
         )
     await mailerlite.ensure_fields()
-    ok, failed = await checkout_backfill.apply(
+    ok, failed, skipped = await checkout_backfill.apply(
         plan.changes, group_id, _checkout_progress
     )
-    click.echo(f"checkout openers: {ok} ok, {failed} failed")
+    click.echo(
+        f"checkout openers: {ok} ok, {failed} failed, " f"{skipped} already up to date"
+    )
     click.echo("Run the dry run again to confirm nothing is left.")
 
 
@@ -427,7 +432,7 @@ def _report_checkout(
         f"{len(plan.changes) - new} existing ones updated, {joins} joining the group"
     )
     minutes = len(plan.changes) * WRITE_INTERVAL_SECONDS / 60
-    click.echo(f"About {minutes:.0f} minutes at one write a second")
+    click.echo(f"About {minutes:.0f} minutes at one person every two seconds")
 
 
 def _checkout_progress(done: int, total: int) -> None:

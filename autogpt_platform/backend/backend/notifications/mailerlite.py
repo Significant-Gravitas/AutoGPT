@@ -196,7 +196,7 @@ async def record_checkout_opened(email: str, fields: Fields | None = None) -> No
     if not group_id:
         global _checkout_off_logged
         if not _checkout_off_logged:
-            logger.info(
+            logger.warning(
                 "MAILERLITE_CHECKOUT_GROUP_ID is not set; dropping checkout openers"
             )
             _checkout_off_logged = True

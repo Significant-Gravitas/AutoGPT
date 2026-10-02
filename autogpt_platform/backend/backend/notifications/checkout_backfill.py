@@ -11,9 +11,12 @@ never a /batch: MailerLite processes an upsert-only batch as an import, and
 imports were seen to answer OK for existing subscribers without storing their
 fields. The pace leaves MailerLite's per-account limit for the live consumer.
 
-Resumable by construction: what MailerLite holds is read first, merged by the
-same rules as the live event, and only the difference is written, so an
-interrupted or repeated run picks up where the last one stopped.
+The live consumer keeps writing while a run lasts its hours, so the plan is
+only a list of who to visit: each person is read again just before their
+write and merged by the same rules as the live event, so a German IP the
+live event recorded mid-run is never overwritten by the plan's older guess.
+That also makes a run resumable: an interrupted or repeated one picks up
+where the last one stopped.
 """
 
 import asyncio
@@ -25,7 +28,13 @@ from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
 from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
-from backend.notifications.mailerlite import API_BASE, _client, _headers, _payload
+from backend.notifications.mailerlite import (
+    API_BASE,
+    _client,
+    _find_subscriber,
+    _headers,
+    _payload,
+)
 from backend.notifications.mailerlite_backfill import BatchAnswer, _refusal
 from backend.notifications.mailerlite_field_backfill import (
     Current,
@@ -38,9 +47,9 @@ from backend.notifications.subscriber_fields import Fields
 
 logger = logging.getLogger(__name__)
 
-# One write a second: half MailerLite's 120 a minute, so the live consumer
-# keeps the rest.
-WRITE_INTERVAL_SECONDS = 1.0
+# One person every two seconds, a read and a write each: half MailerLite's
+# 120 calls a minute, so the live consumer keeps the rest.
+WRITE_INTERVAL_SECONDS = 2.0
 
 
 class Opener(BaseModel):
@@ -141,22 +150,49 @@ def plan(
     )
 
 
+def _difference(opener: Opener, held: Mapping[str, object] | None) -> Fields:
+    """What the opener still needs over what MailerLite holds."""
+    fields = merge_with_held(wanted(opener), held or {}, keep_held_status=False)
+    return {
+        field: value
+        for field, value in fields.items()
+        if held is None or _normalise(field, held.get(field.value)) != value
+    }
+
+
 async def apply(
     changes: list[OpenerChange],
     group_id: str,
     on_progress: Callable[[int, int], None] | None = None,
-) -> tuple[int, int]:
-    """Write each change as one subscriber upsert into the group. Returns
-    (succeeded, failed); a failure is logged with MailerLite's reason and left
-    for the next run."""
-    succeeded = failed = 0
+) -> tuple[int, int, int]:
+    """Visit each planned opener: read them again, and write what they still
+    need as one subscriber upsert into the group. Returns (succeeded, failed,
+    skipped); a failure is logged with MailerLite's reason and left for the
+    next run, and someone who needs nothing any more is skipped."""
+    succeeded = failed = skipped = 0
     for index, change in enumerate(changes):
         if index:
             await asyncio.sleep(WRITE_INTERVAL_SECONDS)
+        if on_progress and index and index % 100 == 0:
+            on_progress(index, len(changes))
         email = change.opener.person.email
+        try:
+            subscriber = await _find_subscriber(email)
+        except Exception:
+            failed += 1
+            logger.warning(
+                "Re-reading checkout opener %s failed; the next run retries it",
+                _refusal(email, BatchAnswer(code=0)),
+            )
+            continue
+        held = None if subscriber is None else (subscriber.get("fields") or {})
+        fields = _difference(change.opener, held)
+        if not fields and not change.joins:
+            skipped += 1
+            continue
         body: dict = {"email": email, "groups": [group_id]}
-        if change.fields:
-            body["fields"] = _payload(change.fields)
+        if fields:
+            body["fields"] = _payload(fields)
         response = await _client().post(
             f"{API_BASE}/subscribers", headers=_headers(), json=body
         )
@@ -172,6 +208,6 @@ async def apply(
                 "Checkout opener write failed for %s; the next run retries it",
                 _refusal(email, BatchAnswer(code=response.status, body=answer_body)),
             )
-        if on_progress and ((index + 1) % 100 == 0 or index + 1 == len(changes)):
-            on_progress(index + 1, len(changes))
-    return succeeded, failed
+    if on_progress:
+        on_progress(len(changes), len(changes))
+    return succeeded, failed, skipped

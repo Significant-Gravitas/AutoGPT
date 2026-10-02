@@ -2,6 +2,7 @@
 MailerLite outage nor an address it refuses ever costs the checkout or the
 billing email the update rides along with. A signup alone queues nothing."""
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -117,6 +118,14 @@ def _prisma(existing):
 
 async def _get_or_create(existing):
     prisma, created = _prisma(existing)
+    scheduled: list[asyncio.Task] = []
+    create_task = asyncio.create_task
+
+    def recording(coro, **kwargs):
+        task = create_task(coro, **kwargs)
+        scheduled.append(task)
+        return task
+
     with (
         patch.object(user_data, "prisma", prisma),
         patch.object(user_data, "_ensure_user_profile", AsyncMock()),
@@ -124,10 +133,14 @@ async def _get_or_create(existing):
         patch.object(user_data, "schedule_posthog_lifecycle_sync", MagicMock()),
         patch.object(user_data.User, "from_db", MagicMock()),
         patch.object(user_data, "UserCreationResult", MagicMock()),
+        patch("asyncio.create_task", recording),
     ):
         await user_data.get_or_create_user_with_status(
             {"sub": "user-1", "email": EMAIL}
         )
+        # Whatever signup scheduled in the background runs before the patches
+        # go, so a MailerLite queue it reached would be seen.
+        await asyncio.gather(*scheduled, return_exceptions=True)
     return created
 
 
@@ -137,6 +150,8 @@ async def test_a_new_account_is_not_sent_to_mailerlite(fields_on):
     nothing, so it can never create a subscriber."""
     await _get_or_create(None)
     fields_on.assert_not_awaited()
+    for name in ("_sync_signup", "queue_signup", "queue_fields", "_signup_sync_tasks"):
+        assert not hasattr(user_data, name)
 
 
 # ── the MailerLite client ──────────────────────────────────────────────────
