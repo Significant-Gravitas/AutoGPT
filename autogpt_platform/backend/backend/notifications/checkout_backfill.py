@@ -119,18 +119,14 @@ def plan(
             continue
         key = email.strip().lower()
         held = current.get(key)
-        fields = merge_with_held(wanted(opener), held or {}, keep_held_status=False)
+        fields = _merged(opener, held)
         final = {**(held or {}), **{k.value: v for k, v in fields.items()}}
         sources[str(final.get(SubscriberField.COUNTRY_SOURCE.value) or "unknown")] += 1
         countries[str(final.get(SubscriberField.COUNTRY_CODE.value) or "unknown")] += 1
         email_types[str(final.get(SubscriberField.EMAIL_TYPE.value))] += 1
         methods[str(final.get(SubscriberField.SIGNIN_METHOD.value) or "unknown")] += 1
         exclude += final.get(SubscriberField.EXCLUDE_DE_AT.value) == "yes"
-        differ = {
-            field: value
-            for field, value in fields.items()
-            if held is None or _normalise(field, held.get(field.value)) != value
-        }
+        differ = _changed(fields, held)
         joins = key not in members
         if differ or joins:
             changes.append(
@@ -150,9 +146,15 @@ def plan(
     )
 
 
-def _difference(opener: Opener, held: Mapping[str, object] | None) -> Fields:
-    """What the opener still needs over what MailerLite holds."""
-    fields = merge_with_held(wanted(opener), held or {}, keep_held_status=False)
+def _merged(opener: Opener, held: Mapping[str, object] | None) -> Fields:
+    """Everything the opener should hold, by the live event's rules against
+    what MailerLite holds; the status is Stripe's, so it always wins."""
+    return merge_with_held(wanted(opener), held or {}, keep_held_status=False)
+
+
+def _changed(fields: Fields, held: Mapping[str, object] | None) -> Fields:
+    """The fields MailerLite does not already hold: all of them for someone
+    it does not hold at all."""
     return {
         field: value
         for field, value in fields.items()
@@ -186,16 +188,25 @@ async def apply(
             )
             continue
         held = None if subscriber is None else (subscriber.get("fields") or {})
-        fields = _difference(change.opener, held)
+        fields = _changed(_merged(change.opener, held), held)
         if not fields and not change.joins:
             skipped += 1
             continue
         body: dict = {"email": email, "groups": [group_id]}
         if fields:
             body["fields"] = _payload(fields)
-        response = await _client().post(
-            f"{API_BASE}/subscribers", headers=_headers(), json=body
-        )
+        try:
+            response = await _client().post(
+                f"{API_BASE}/subscribers", headers=_headers(), json=body
+            )
+        except Exception:
+            # One person's network failure must not end a run of thousands.
+            failed += 1
+            logger.warning(
+                "Checkout opener write failed for %s; the next run retries it",
+                _refusal(email, BatchAnswer(code=0)),
+            )
+            continue
         if response.status in (200, 201, 202, 204):
             succeeded += 1
         else:
