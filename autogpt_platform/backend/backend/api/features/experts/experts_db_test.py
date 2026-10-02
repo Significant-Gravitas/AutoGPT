@@ -3849,8 +3849,8 @@ def test_the_roster_is_the_expected_size_with_unique_names(
     side edits the test about the roster rather than the one about dev's nine.
     Names must be unique: two entries sharing one is what forced the rename of
     this branch's Casey, Priya and Sasha when dev's wave three landed."""
-    # 24 from dev's waves plus the eight generalists added on top; the senior
-    # sales package was folded into Max rather than shipped as its own entry.
+    # 24 from dev's waves, the eight generalists added on top, and Clip; the
+    # senior sales package was folded into Max rather than shipped as its own entry.
     assert len(real_roster) == 33
     names = [entry["name"] for entry in real_roster]
     assert len(names) == len(set(names))
