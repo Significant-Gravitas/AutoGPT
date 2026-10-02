@@ -57,12 +57,11 @@ def _remember_heal(user_id: str, ttl: float) -> None:
 async def _heal_platform_user(jwt_payload: dict) -> None:
     """Best-effort ``_ensure_platform_user`` for every authenticated request.
 
-    ``get_request_context`` only heals in its no-personal-org branch, so the
-    routes that authenticate through ``get_user_id`` alone -- the onboarding
-    reads on every page load, push subscriptions, experiment assignments --
-    kept failing with a foreign-key violation for a session whose ``User``
-    row did not exist yet, until an org-scoped request happened to win the
-    race and heal it. Running the same heal here closes that gap.
+    Routes that authenticate through ``get_user_id`` alone (the onboarding
+    reads on every page load, push subscriptions, experiment assignments)
+    write rows with a foreign key to ``User``, and a session can exist before
+    that row does. ``get_request_context`` heals only when there is no
+    personal org, so this dependency runs the same heal for its own callers.
 
     Never raises, and never runs without a live database: ``autogpt_libs`` is
     also imported without the backend package, and the backend's route unit
