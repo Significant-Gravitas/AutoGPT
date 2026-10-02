@@ -10,7 +10,11 @@ account.
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.features.experts.routine_jobs import spread_cron
-from backend.api.features.experts.routines import _credential_pins, _session_mode
+from backend.api.features.experts.routines import (
+    UNREADABLE_PIN,
+    _credential_pins,
+    _session_mode,
+)
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
@@ -257,9 +261,53 @@ def test_an_unknown_session_mode_falls_back_to_thread():
     assert _session_mode("here").value == "THREAD"
 
 
-def test_a_routines_stored_pins_load_and_an_unreadable_one_is_dropped():
+def test_a_routines_stored_pins_load_and_an_unreadable_one_still_pins():
     pins = _credential_pins(
         {"exa": {"id": "exa-new", "title": "Work"}, "github": "not a pin"}
     )
-    assert pins == {"exa": CredentialPin(id="exa-new", title="Work")}
+    assert pins == {
+        "exa": CredentialPin(id="exa-new", title="Work"),
+        "github": UNREADABLE_PIN,
+    }
     assert _credential_pins(None) == {}
+
+
+async def test_an_unreadable_pin_stops_the_step_instead_of_switching_accounts():
+    # Dropping the pin would run the step on whichever GitHub account came
+    # first, the silent switch a pin exists to prevent.
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from pydantic import SecretStr
+
+    from backend.copilot.credential_selection import set_turn_credential_pins
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+    from backend.copilot.tools.utils import keep_to_pins
+    from backend.data.model import APIKeyCredentials
+
+    saved = [
+        APIKeyCredentials(
+            id=name, provider="github", title=name, api_key=SecretStr("k")
+        )
+        for name in ("personal", "work")
+    ]
+
+    async def turn():
+        set_turn_credential_pins(_credential_pins({"github": {"title": "no id"}}))
+        with patch(
+            "backend.copilot.tools.helpers.get_user_credentials",
+            AsyncMock(return_value=saved),
+        ):
+            error = await unattended_missing_credentials_error(
+                "Block 'Create PR'",
+                {"credentials": {"provider": "github", "types": ["api_key"]}},
+                "s1",
+                "test-user",
+                None,
+            )
+        return keep_to_pins(saved), error
+
+    usable, error = await asyncio.create_task(turn())
+    assert usable == []
+    assert error.error == "pinned_credential_missing"
+    assert UNREADABLE_PIN.title in error.message

@@ -367,11 +367,13 @@ async def execute_block(
                 except HTTPClientError as e:
                     # The provider refused the refresh (revoked grant, expired
                     # refresh token). The user can only fix that by
-                    # reconnecting, so hand them the card rather than an error.
+                    # reconnecting, so hand them the card (or, with nobody
+                    # watching, an error naming the account) rather than a
+                    # bare failure.
                     # Anything else (store, config, handler setup) is not
                     # theirs to fix and takes the usual error path below.
                     await _release_credential_leases(credential_leases)
-                    return _build_credential_rejected_card(
+                    return _credential_rejected_response(
                         block=block,
                         block_id=block_id,
                         input_data=input_data,
@@ -608,7 +610,7 @@ async def execute_block(
                 f"Provider rejected a stored credential for block {block.name} "
                 f"with HTTP {status_code}"
             )
-            return _build_credential_rejected_card(
+            return _credential_rejected_response(
                 block=block,
                 block_id=block_id,
                 input_data=input_data,
@@ -632,6 +634,78 @@ async def execute_block(
         )
 
 
+def _credential_rejected_response(
+    *,
+    block: AnyBlockSchema,
+    block_id: str,
+    input_data: dict[str, Any],
+    matched_credentials: dict[str, CredentialsMetaInput],
+    session_id: str,
+    status_code: int | None,
+    exc: BaseException,
+) -> SetupRequirementsResponse | ErrorResponse:
+    """The answer when the provider refused a stored credential.
+
+    A watched turn gets the reconnect card. A scheduled turn's card would go
+    unanswered (SECRT-2804), so it gets an error naming the account instead,
+    which the turn's reply passes on to the user.
+    """
+    if not is_unattended_turn():
+        return _build_credential_rejected_card(
+            block=block,
+            block_id=block_id,
+            input_data=input_data,
+            matched_credentials=matched_credentials,
+            session_id=session_id,
+            status_code=status_code,
+            exc=exc,
+        )
+    rejected, provider = _rejected_credential(block, matched_credentials)
+    provider_name = provider.replace("_", " ").title() or "The provider"
+    named = f" '{rejected.title}'" if rejected and rejected.title else ""
+    refused = (
+        f"{provider_name} rejected the saved credential{named} (HTTP {status_code})"
+        if status_code is not None
+        else f"The saved {provider_name} credential{named} could not be refreshed"
+    )
+    logger.warning(
+        "Unattended copilot turn in session %s: block %s did not run, %s",
+        session_id,
+        block.name,
+        refused,
+    )
+    return ErrorResponse(
+        message=(
+            f"{refused}, so block '{block.name}' did not run. Nobody is "
+            "watching this turn (it was scheduled), so there is no one to "
+            "reconnect it now, and it did not switch to a different account. "
+            "Say plainly in your reply that this step was skipped, name that "
+            "credential, and tell the user to reconnect it or choose another "
+            "before the next run."
+        ),
+        error="credential_rejected",
+        session_id=session_id,
+    )
+
+
+def _rejected_credential(
+    block: AnyBlockSchema, matched_credentials: dict[str, CredentialsMetaInput]
+) -> tuple[CredentialsMetaInput | None, str]:
+    """The refused credential, when only one was in play, and its provider."""
+    rejected = (
+        next(iter(matched_credentials.values()))
+        if len(matched_credentials) == 1
+        else None
+    )
+    provider = (
+        # ProviderName is a str-Enum: str() would render "ProviderName.X".
+        str(getattr(rejected.provider, "value", rejected.provider))
+        if rejected
+        else get_block_provider(block) or ""
+    )
+    return rejected, provider
+
+
 def _build_credential_rejected_card(
     *,
     block: AnyBlockSchema,
@@ -650,17 +724,7 @@ def _build_credential_rejected_card(
     missing_creds_dict = build_missing_credentials_from_field_info(
         _resolve_discriminated_credentials(block, input_data), matched_keys=set()
     )
-    rejected = (
-        next(iter(matched_credentials.values()))
-        if len(matched_credentials) == 1
-        else None
-    )
-    provider = (
-        # ProviderName is a str-Enum: str() would render "ProviderName.X".
-        str(getattr(rejected.provider, "value", rejected.provider))
-        if rejected
-        else get_block_provider(block) or ""
-    )
+    rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
     return SetupRequirementsResponse(

@@ -79,18 +79,31 @@ def to_model(row: prisma.models.ExpertRoutine) -> ExpertRoutine:
     )
 
 
+UNREADABLE_PIN = CredentialPin(
+    id="unreadable-pin", title="a saved account choice that could not be read"
+)
+"""Stands in for a stored pin that no longer parses. No account has its id, so
+the provider's steps fail naming the lost pin instead of running unpinned on
+whichever account comes first, the silent switch a pin exists to prevent."""
+
+
 def _credential_pins(raw: object) -> CredentialPins:
-    """Read the stored pins, dropping any entry that no longer parses: a lost
-    pin means a step that cannot choose an account says so, never a routine
-    that cannot load at all."""
+    """Read the stored pins. An entry that no longer parses still pins its
+    provider, to ``UNREADABLE_PIN``: the routine loads and its other steps
+    run, while that provider's steps stop until the owner picks an account
+    again."""
+    if raw is None:
+        return {}
     if not isinstance(raw, dict):
+        logger.error("Ignoring unreadable credential pins %r", type(raw).__name__)
         return {}
     pins: CredentialPins = {}
     for provider, value in raw.items():
         try:
             pins[str(provider)] = CredentialPin.model_validate(value)
         except ValidationError:
-            logger.warning("Dropping unreadable credential pin for %s", provider)
+            logger.warning("Unreadable credential pin for %s; its steps stop", provider)
+            pins[str(provider)] = UNREADABLE_PIN
     return pins
 
 
