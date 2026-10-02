@@ -277,8 +277,8 @@ async def _resume_if_nothing_pending(
         return
 
     first_review = next(iter(updated_reviews.values()))
-    assert first_review.graph_id and first_review.graph_version is not None
     try:
+        assert first_review.graph_id and first_review.graph_version is not None
         user = await get_user_by_id(user_id)
         settings = await get_graph_settings(
             user_id=user_id,
