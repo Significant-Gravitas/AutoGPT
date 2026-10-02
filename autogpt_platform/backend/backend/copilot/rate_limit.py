@@ -55,6 +55,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
@@ -70,6 +71,9 @@ from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.exceptions import UserPaywalledError
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+
+if TYPE_CHECKING:
+    import stripe
 
 logger = logging.getLogger(__name__)
 
@@ -1183,39 +1187,81 @@ async def get_stripe_sweep_revert_warning(
 
     The sweep treats every user who has a Stripe customer (other than
     ENTERPRISE) as Stripe-billed and sets their tier from the live
-    subscription, NO_TIER when there is none. Granting a paid tier to a user
-    who already has a customer but no active subscription (an old top-up, a
-    canceled plan) is therefore reverted on the next sweep, silently. Returns
-    a message for the admin in that case, None when the grant is safe.
+    subscription: the tier of the subscription's price, NO_TIER when there is
+    no active or trialing subscription. Two admin grants are therefore
+    reverted on the next sweep, silently:
+
+    - a paid tier on a user with a customer but no subscription (an old
+      top-up, a canceled plan) goes back to NO_TIER;
+    - a tier that differs from the user's live subscription (MAX granted to a
+      PRO payer) goes back to the subscription's tier.
+
+    Returns a message for the admin in either case, None when the grant is
+    safe. A subscription whose price is not in the configured tier map (a
+    trial enrollment, an unknown price) yields None: what the sweep does with
+    it depends on state this check cannot see, so it stays quiet rather than
+    guess.
 
     Raises on Stripe/DB failure; the caller decides how to degrade.
     """
     if tier in (SubscriptionTier.NO_TIER, SubscriptionTier.ENTERPRISE):
         return None
     # Local import: breaks a credit <-> rate_limit circular at module load.
-    from backend.data.credit import _get_active_subscription
-    from backend.util.settings import Config
+    from backend.data.credit import _get_active_subscription, build_price_to_tier_map
 
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return None
-    if await _get_active_subscription(user.stripe_customer_id) is not None:
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        logger.warning(
+            "Admin tier grant will be reverted by the Stripe sweep: user=%s"
+            " admin_tier=%s stripe_customer=%s has no active subscription",
+            user_id,
+            tier.value,
+            user.stripe_customer_id,
+        )
+        return (
+            "This user already has a Stripe customer with no active subscription. "
+            "The Stripe reconciliation sweep treats such accounts as Stripe-billed "
+            f"and will revert this {tier.value} grant to NO_TIER within "
+            f"{_sweep_interval_text()}. Use ENTERPRISE for a plan Stripe must not "
+            "manage, or give the user a real Stripe subscription."
+        )
+    stripe_tier = (await build_price_to_tier_map()).get(_subscription_price_id(sub))
+    if stripe_tier is None or stripe_tier == tier:
         return None
-    hours = Config().stripe_tier_reconcile_interval_hours
     logger.warning(
         "Admin tier grant will be reverted by the Stripe sweep: user=%s"
-        " admin_tier=%s stripe_customer=%s has no active subscription",
+        " admin_tier=%s stripe_customer=%s stripe_sub=%s is on %s",
         user_id,
         tier.value,
         user.stripe_customer_id,
+        sub.id,
+        stripe_tier.value,
     )
     return (
-        f"This user already has a Stripe customer with no active subscription. "
-        f"The Stripe reconciliation sweep treats such accounts as Stripe-billed "
-        f"and will revert this {tier.value} grant to NO_TIER within {hours} "
-        f"hour{'s' if hours != 1 else ''}. Use ENTERPRISE for a plan Stripe must "
-        f"not manage, or give the user a real Stripe subscription."
+        f"This user has an active Stripe subscription on {stripe_tier.value}. "
+        "The Stripe reconciliation sweep sets the tier from that subscription "
+        f"and will revert this {tier.value} grant to {stripe_tier.value} within "
+        f"{_sweep_interval_text()}. Use ENTERPRISE for a plan Stripe must not "
+        "manage, or change the user's Stripe subscription instead."
     )
+
+
+def _subscription_price_id(sub: "stripe.Subscription") -> str:
+    items = sub["items"].data
+    if not items:
+        return ""
+    price = items[0].price
+    return price if isinstance(price, str) else price.id
+
+
+def _sweep_interval_text() -> str:
+    from backend.util.settings import Config
+
+    hours = Config().stripe_tier_reconcile_interval_hours
+    return f"{hours} hour{'s' if hours != 1 else ''}"
 
 
 async def get_global_rate_limits(
