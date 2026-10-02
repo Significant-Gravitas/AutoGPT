@@ -582,7 +582,7 @@ async def test_fresh_expert_one_shot_retries_when_workspace_is_unavailable():
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_schedule_turn.assert_not_awaited()
-    mock_reschedule.assert_awaited_once_with(args)
+    mock_reschedule.assert_awaited_once_with(args, session_id=None)
 
 
 @pytest.mark.asyncio
@@ -966,6 +966,33 @@ async def test_cap_rejection_with_retries_exhausted_records_a_drop(
     content = outcome_sinks.notice.call_args.kwargs["content"]
     assert "did not run" in content
     assert "schedule it again" in content
+
+
+@pytest.mark.asyncio
+async def test_fresh_chat_drop_is_recorded_and_noticed_in_the_minted_session(
+    outcome_sinks: OutcomeSinks,
+):
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
+    args = _args(session_id=None, cap_retry_count=_MAX_CAP_RETRIES)
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("cap")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=AsyncMock(return_value=MagicMock(session_id="fresh-1", expert_id=None)),
+        ),
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=AsyncMock()),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    record = _fired_record(outcome_sinks)
+    assert record.status == "dropped"
+    assert record.session_id == "fresh-1"
+    outcome_sinks.notice.assert_awaited_once()
+    assert outcome_sinks.notice.call_args.kwargs["session_id"] == "fresh-1"
 
 
 @pytest.mark.asyncio

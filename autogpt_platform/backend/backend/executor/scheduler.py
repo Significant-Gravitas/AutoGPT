@@ -672,7 +672,9 @@ async def _execute_copilot_turn(**kwargs):
                 session_id=target_session_id,
             )
         else:
-            retry = await _reschedule_one_shot_after_expert_unavailable(args)
+            retry = await _reschedule_one_shot_after_expert_unavailable(
+                args, session_id=target_session_id
+            )
             if retry is not None:
                 await _record_copilot_turn_outcome(
                     args,
@@ -699,7 +701,9 @@ async def _execute_copilot_turn(**kwargs):
                 session_id=target_session_id,
             )
         else:
-            retry = await _reschedule_one_shot_after_cap(args)
+            retry = await _reschedule_one_shot_after_cap(
+                args, session_id=target_session_id
+            )
             if retry is not None:
                 await _record_copilot_turn_outcome(
                     args,
@@ -925,23 +929,29 @@ _MAX_EXPERT_LOOKUP_RETRIES = 1
 
 async def _reschedule_one_shot_after_cap(
     args: "CopilotTurnJobArgs",
+    *,
+    session_id: str | None = None,
 ) -> "CopilotTurnJobInfo | None":
     return await _reschedule_one_shot(
         args,
         reason="concurrency cap",
         name_suffix="cap-retry",
         retry_kind="cap",
+        session_id=session_id,
     )
 
 
 async def _reschedule_one_shot_after_expert_unavailable(
     args: "CopilotTurnJobArgs",
+    *,
+    session_id: str | None = None,
 ) -> "CopilotTurnJobInfo | None":
     return await _reschedule_one_shot(
         args,
         reason="transient expert lookup failure",
         name_suffix="expert-lookup-retry",
         retry_kind="expert_lookup",
+        session_id=session_id,
     )
 
 
@@ -951,6 +961,7 @@ async def _reschedule_one_shot(
     reason: str,
     name_suffix: str,
     retry_kind: Literal["cap", "expert_lookup"],
+    session_id: str | None = None,
 ) -> "CopilotTurnJobInfo | None":
     """Re-create a one-shot copilot-turn schedule after a transient failure.
 
@@ -961,6 +972,9 @@ async def _reschedule_one_shot(
     one the user most needs to hear about. Retry depths round-trip
     independently through APScheduler's persisted kwargs so a transient
     expert lookup does not consume the concurrency-cap budget.
+
+    ``session_id`` is the chat the turn targeted, so a fresh-chat job's drop
+    is recorded (and noticed) against the session it minted this fire.
     """
     if retry_kind == "cap":
         retry_count = args.cap_retry_count
@@ -986,6 +1000,7 @@ async def _reschedule_one_shot(
                 f"still blocked by the {reason} after "
                 f"{max_retries} {'retry' if max_retries == 1 else 'retries'}"
             ),
+            session_id=session_id,
         )
         return None
     try:
@@ -1035,6 +1050,7 @@ async def _reschedule_one_shot(
             status="dropped",
             reason=f"{reason}, and the retry could not be scheduled",
             error=e,
+            session_id=session_id,
         )
         return None
 
