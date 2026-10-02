@@ -33,17 +33,23 @@ vi.mock("../../helpers", async (importActual) => {
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
+const { shadowFlag } = vi.hoisted(() => ({ shadowFlag: { rate: 1 } }));
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return { ...actual, useGetFlag: () => false };
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.COPILOT_STREAM_SHADOW ? shadowFlag.rate : false,
+  };
 });
 
 beforeEach(() => {
   resetChatState();
   resetShadows();
+  shadowFlag.rate = 1;
   vi.mocked(Sentry.captureMessage).mockClear();
 });
 
@@ -77,6 +83,22 @@ describe("the stream shadow inside the chat", () => {
         turn.rows.slice(1).map((r) => r.content ?? ""),
       );
       expect(driftKinds()).toEqual([]);
+    },
+  );
+
+  it(
+    "leaves the stream alone while copilot-stream-shadow is 0",
+    { timeout: 60_000 },
+    async () => {
+      shadowFlag.rate = 0;
+      const turn = loadRecordedTurn("dummy-text-turn");
+      const sim = createBackendSim([{ turn }]);
+      renderAgainst(sim);
+      await sendPrompt(sim, turn);
+      sim.publish();
+      await waitForStableTranscript(1500);
+
+      expect(getShadowLog(TEST_SESSION_ID)).toBeNull();
     },
   );
 

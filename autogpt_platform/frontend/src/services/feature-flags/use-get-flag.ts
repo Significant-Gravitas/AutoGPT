@@ -61,6 +61,9 @@ export enum Flag {
   // The chat's approval mode selector. Mirror of the backend ``Flag`` enum,
   // which ignores a sent mode when off. Fail-closed.
   COPILOT_AUTO_MODE = "copilot-auto-mode",
+  // The share of chat sessions whose stream the converter shadows and checks
+  // against the server, 0 to 1 (a PostHog payload). 0 is off.
+  COPILOT_STREAM_SHADOW = "copilot-stream-shadow",
   // The chat's own stream runtime in place of the AI SDK's: resume at a
   // cursor, render from the persisted rows. Frontend only; fail-closed.
   COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
@@ -98,6 +101,7 @@ const defaultFlags = {
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
   [Flag.COPILOT_AUTO_MODE]: false,
+  [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
 };
 
@@ -169,6 +173,7 @@ function readEnvOverride(flag: Flag): string | undefined {
     case Flag.COPILOT_STREAM_RUNTIME:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
     case Flag.COPILOT_BOT_PLATFORMS:
+    case Flag.COPILOT_STREAM_SHADOW:
       return undefined;
   }
 }
@@ -181,6 +186,7 @@ function readEnvOverride(flag: Flag): string | undefined {
 const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.MARKETPLACE_SEARCH_TERMS,
   Flag.COPILOT_BOT_PLATFORMS,
+  Flag.COPILOT_STREAM_SHADOW,
 ]);
 
 // Master local-dev switch: ``NEXT_PUBLIC_FORCE_ALL_FLAGS=true`` turns every
