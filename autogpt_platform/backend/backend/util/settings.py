@@ -1247,10 +1247,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
-    posthog_personal_api_key: str = Field(
+    posthog_secret_key: str = Field(
         default="",
-        description="PostHog personal API key. Only used for local feature-flag "
-        "evaluation; without it flag reads fall back to a remote /flags call.",
+        description="PostHog Feature Flags Secure API Key (project settings > "
+        "Feature Flags), for local flag evaluation; without it flag reads fall back "
+        "to a remote /flags call. A personal API key also works, but PostHog is "
+        "deprecating that use.",
     )
 
     # Add more secret fields as needed

@@ -18,11 +18,9 @@ def fresh_client(mocker):
     mocker.patch.object(ph, "_shut_down", False)
 
 
-def configure(mocker, *, api_key="phc_test", personal_api_key=""):
+def configure(mocker, *, api_key="phc_test", secret_key=""):
     mocker.patch.object(ph.settings.secrets, "posthog_api_key", api_key)
-    mocker.patch.object(
-        ph.settings.secrets, "posthog_personal_api_key", personal_api_key
-    )
+    mocker.patch.object(ph.settings.secrets, "posthog_secret_key", secret_key)
 
 
 def snapshot(mocker, *, value, payload=None):
@@ -37,8 +35,8 @@ class TestClientConstruction:
         configure(mocker, api_key="")
         assert ph.get_flag_client() is None
 
-    def test_the_personal_key_turns_on_local_evaluation(self, mocker):
-        configure(mocker, personal_api_key="phx_personal")
+    def test_the_secret_key_turns_on_local_evaluation(self, mocker):
+        configure(mocker, secret_key="phx_personal")
         posthog = mocker.patch.object(ph, "Posthog")
 
         ph.get_flag_client()

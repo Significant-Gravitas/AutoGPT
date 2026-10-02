@@ -366,9 +366,7 @@ class TestClientWiring:
         mocker.patch.object(ph, "_client", None)
         mocker.patch.object(ph, "_init_attempted", False)
         mocker.patch.object(ph.settings.secrets, "posthog_api_key", "phc_test")
-        mocker.patch.object(
-            ph.settings.secrets, "posthog_personal_api_key", "phx_personal"
-        )
+        mocker.patch.object(ph.settings.secrets, "posthog_secret_key", "phx_personal")
 
     def test_the_client_shares_its_definitions_through_the_cache(self, mocker):
         posthog = mocker.patch.object(ph, "Posthog")
@@ -381,8 +379,8 @@ class TestClientWiring:
         )
         assert kwargs["poll_interval"] == REFRESH
 
-    def test_no_personal_key_means_no_poller_to_share(self, mocker):
-        mocker.patch.object(ph.settings.secrets, "posthog_personal_api_key", "")
+    def test_no_secret_key_means_no_poller_to_share(self, mocker):
+        mocker.patch.object(ph.settings.secrets, "posthog_secret_key", "")
         posthog = mocker.patch.object(ph, "Posthog")
 
         ph.get_flag_client()
