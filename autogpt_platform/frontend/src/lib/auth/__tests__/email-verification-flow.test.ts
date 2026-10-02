@@ -232,6 +232,27 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     ]);
   });
 
+  it("answers a repeat sign-up like a new one even when its email fails", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    await signUp(handler, "again@example.com");
+    const { sendAuthEmail } = await import("../email");
+    vi.mocked(sendAuthEmail).mockRejectedValueOnce(new Error("mailer down"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const response = await signUp(handler, "again@example.com");
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).token).toBeNull();
+    expect(db.UserAuthIdentity).toHaveLength(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      "Failed to email a repeat sign-up its verification link",
+      { error: "mailer down" },
+    );
+    consoleError.mockRestore();
+  });
+
   it("sends nothing when a verified address signs up again", async () => {
     const { handler } = await createAuthHandler(true);
     await signUp(handler, "taken@example.com");
