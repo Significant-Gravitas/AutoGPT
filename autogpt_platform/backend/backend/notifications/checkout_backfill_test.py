@@ -241,3 +241,71 @@ async def test_a_failed_write_is_counted_and_the_run_goes_on(monkeypatch, caplog
     assert result == (1, 1, 0)
     assert client.post.await_count == 2
     assert "a@acme.com" not in caplog.text
+
+
+ACTIVE = [Subscription(id="sub_1", status="active", start_date=OPENED)]
+
+
+async def _apply_with(monkeypatch, plan, *, held, refresh):
+    monkeypatch.setattr(checkout_backfill.asyncio, "sleep", AsyncMock())
+    client = MagicMock(post=AsyncMock(return_value=MagicMock(status=200)))
+    with (
+        patch.object(checkout_backfill, "_client", return_value=client),
+        patch.object(
+            checkout_backfill, "_find_subscriber", AsyncMock(return_value=held)
+        ),
+    ):
+        result = await checkout_backfill.apply(
+            plan.changes, "grp_checkout", refresh=refresh
+        )
+    return result, client
+
+
+@pytest.mark.asyncio
+async def test_the_status_written_is_stripes_now_not_the_plans(monkeypatch):
+    """Planned hours earlier as a signup; the trial converted since. The
+    write re-reads Stripe, so it says subscribed, not the snapshot's signed."""
+    plan = checkout_backfill.plan([_opener()], current={}, members={})
+    assert plan.changes[0].fields[SubscriberField.STATUS] == "signed"
+    refresh = AsyncMock(return_value=ACTIVE)
+    result, client = await _apply_with(monkeypatch, plan, held=None, refresh=refresh)
+    assert result == (1, 0, 0)
+    refresh.assert_awaited_once_with("cus_1")
+    fields = client.post.await_args.kwargs["json"]["fields"]
+    assert fields["subscription_status"] == "subscribed"
+    assert fields["subscription_started_date"] == "2026-07-15"
+
+
+@pytest.mark.asyncio
+async def test_a_newer_status_the_live_event_wrote_is_not_overwritten(monkeypatch):
+    """The live lifecycle event already wrote subscribed during the run; the
+    snapshot still said signed. Stripe now agrees with the live write, so
+    nothing is left to write."""
+    # Not in MailerLite when planned (already in the group by the time it
+    # runs, joined by the live event), so the plan wants the snapshot's signed.
+    plan = checkout_backfill.plan(
+        [_opener()], current={}, members={"sam@acme.com": "1"}
+    )
+    assert plan.changes[0].fields[SubscriberField.STATUS] == "signed"
+    live = _held(_opener(subscriptions=ACTIVE))
+    result, client = await _apply_with(
+        monkeypatch,
+        plan,
+        held={"fields": live},
+        refresh=AsyncMock(return_value=ACTIVE),
+    )
+    assert result == (0, 0, 1)
+    client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_stripe_refresh_is_counted_and_retried_later(monkeypatch):
+    plan = checkout_backfill.plan([_opener()], current={}, members={})
+    result, client = await _apply_with(
+        monkeypatch,
+        plan,
+        held=None,
+        refresh=AsyncMock(side_effect=RuntimeError("Stripe down")),
+    )
+    assert result == (0, 1, 0)
+    client.post.assert_not_awaited()
