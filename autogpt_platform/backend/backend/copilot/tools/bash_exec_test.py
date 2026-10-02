@@ -704,6 +704,28 @@ class TestBashExecE2BTimeouts:
         assert "may still be running" in result.message
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_box_pausing_past_the_reconnect_cap_gives_up_following(self):
+        # Every reattach works, but the box pauses again 0.2s later, so the
+        # 2s command is still running when the reattaches run out.
+        from .bash_exec import _MAX_RECONNECTS
+
+        proc = _counting(2.0)
+        box = _FakeBox(limit=0.2, process=proc)
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+        box.commands.connect = AsyncMock(wraps=box.commands.connect)
+
+        result = await _run(box, timeout=30)
+
+        assert isinstance(result, BashExecResponse)
+        assert box.commands.connect.await_count == _MAX_RECONNECTS
+        assert result.timed_out is False
+        assert result.exit_code == -1
+        assert result.stdout.startswith("1\n2\n")
+        assert "Timed out" not in result.stderr
+        assert "may still be running" in result.message
+        assert proc.killed is False
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_real_timeout_keeps_partial_output_and_kills_the_command(self):
         proc = _FakeProcess(
             [(0.1, "stdout", "partial\n"), (0.2, "stderr", "warning: slow\n")],
