@@ -74,14 +74,18 @@ export function ExpertChatGroup({
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium text-zinc-900"
         >
           {isAutopilot ? (
-            <AutopilotAvatar size={32} transparent />
+            <AutopilotAvatar
+              size={32}
+              transparent
+              className="rounded-full border border-[#e3e3e3]"
+            />
           ) : (
             <ExpertAvatar
               name={label}
               avatarUrl={avatarUrl}
               color={color}
               size={32}
-              className="border-0"
+              className="rounded-full border border-[#e3e3e3]"
             />
           )}
           <ExpertIdentityDetails
@@ -97,10 +101,14 @@ export function ExpertChatGroup({
               className={cn("ml-auto shrink-0", CHEVRON_SIZE_CLASS)}
             />
           )}
+          {/* Hidden at rest on desktop like the new-chat link, and revealed
+              by the same header hover / focus-within so keyboard users see
+              it the moment the trigger takes focus. Opacity keeps its slot,
+              so nothing shifts. On touch widths it stays visible. */}
           <Icon
             icon={ArrowDown01Icon}
             className={cn(
-              "ease-[cubic-bezier(0.33,1,0.68,1)] shrink-0 text-zinc-400 transition-transform duration-200 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none",
+              "ease-[cubic-bezier(0.33,1,0.68,1)] shrink-0 text-zinc-400 transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
               CHEVRON_SIZE_CLASS,
               !newChatHref && "ml-auto",
             )}

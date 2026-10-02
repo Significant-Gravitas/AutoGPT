@@ -1,7 +1,8 @@
+import { CredentialMentionEditor } from "../CredentialMention/CredentialMentionEditor";
+import type { MentionInput } from "./useChatMentions";
 import {
   PromptInputButton,
   PromptInputSubmit,
-  PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -14,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  ChangeEvent,
   ClipboardEvent,
   KeyboardEvent,
   ReactNode,
@@ -55,6 +55,7 @@ import {
 } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
+import { useConnectedIntegrations } from "./useConnectedIntegrations";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
@@ -92,6 +93,8 @@ interface Props {
   stacked?: boolean;
   /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
   voiceToggle?: ReactNode;
+  /** The chat's approval-mode selector. Absent when the flag is off. */
+  modeSelector?: ReactNode;
   /**
    * Replaces the composer's controls while voice mode is on: typing,
    * attachments and send do nothing hands-free, and a bar of its own above
@@ -126,6 +129,7 @@ export function ChatInput({
   recipientPicker,
   stacked = false,
   voiceToggle,
+  modeSelector,
   voiceBar,
   variant = "default",
   expertId = null,
@@ -173,48 +177,51 @@ export function ChatInput({
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
 
-  const {
-    value,
-    setValue,
-    handleSubmit,
-    handleChange: baseHandleChange,
-  } = useChatInput({
-    onSend: async (message: string) => {
-      const { localFiles, workspaceAttachments } =
-        partitionAttachments(attachments);
-      // Chips clear eagerly for the same reason the text does (see
-      // useChatInput.handleSend); a failed send restores them unless the
-      // user already attached new ones in the meantime.
-      const sent = attachments;
-      setAttachments([]);
-      setRefusedCount(0);
-      try {
-        await onSend(
-          message,
-          localFiles.length > 0 ? localFiles : undefined,
-          workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
-        );
-      } catch (error) {
-        setAttachments((prev) => (prev.length > 0 ? prev : sent));
-        throw error;
-      }
-    },
-    disabled: isTextareaDisabled,
-    canSendEmpty: hasAttachments,
-    inputId,
-  });
+  const { value, setValue, handleSubmit, handleEnqueue, isEnqueueing } =
+    useChatInput({
+      onSend: async (message: string) => {
+        const { localFiles, workspaceAttachments } =
+          partitionAttachments(attachments);
+        // Chips clear eagerly for the same reason the text does (see
+        // useChatInput.handleSend); a failed send restores them unless the
+        // user already attached new ones in the meantime.
+        const sent = attachments;
+        setAttachments([]);
+        setRefusedCount(0);
+        try {
+          await onSend(
+            message,
+            localFiles.length > 0 ? localFiles : undefined,
+            workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
+          );
+        } catch (error) {
+          setAttachments((prev) => (prev.length > 0 ? prev : sent));
+          throw error;
+        }
+      },
+      onEnqueue,
+      isStreaming,
+      hasAttachments,
+      disabled: isTextareaDisabled,
+      canSendEmpty: hasAttachments,
+      inputId,
+    });
+
+  const integrations = useConnectedIntegrations(expertId);
 
   const mentions = useChatMentions({
-    enabled: showWorkspaceFiles && !isBusy && !isAtCap,
+    enabled: !isBusy,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
     addWorkspaceFolder: (folder, subfolderCount) =>
       addAttachments([workspaceFolderToAttachment(folder, subfolderCount)]),
     expertId,
+    // Files and folders become attachments, so the cap closes them off;
+    // integrations only edit the text and stay available.
+    includeWorkspaceFiles: showWorkspaceFiles && !isAtCap,
+    integrations,
   });
-
-  const [isEnqueueing, setIsEnqueueing] = useState(false);
 
   const {
     isRecording,
@@ -242,18 +249,18 @@ export function ChatInput({
     isTranscribing,
   });
 
-  function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
+  function handleChange(nextValue: string, input: MentionInput) {
     if (isRecording) return;
-    baseHandleChange(e);
-    mentions.detect(e.currentTarget);
+    setValue(nextValue);
+    mentions.detect(input);
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (mentions.onKeyDown(e)) return;
     voiceHandleKeyDown(e);
   }
 
-  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+  function handlePaste(e: ClipboardEvent<HTMLElement>) {
     if (isBusy) return;
     const files = getFilesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
@@ -339,6 +346,8 @@ export function ChatInput({
       {mentions.isOpen && (
         <MentionDropdown
           options={mentions.options}
+          showFiles={mentions.showFiles}
+          hasIntegrations={mentions.hasIntegrations}
           isLoading={mentions.isLoading}
           isError={mentions.isError}
           highlightedIndex={mentions.highlightedIndex}
@@ -429,10 +438,10 @@ export function ChatInput({
               stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
           >
-            <PromptInputTextarea
+            <CredentialMentionEditor
               id={inputId}
-              aria-label="Chat message input"
               value={value}
+              onInputReady={mentions.bindInput}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
@@ -468,6 +477,7 @@ export function ChatInput({
             {!stacked && !isCompact && (!hasSession || !isStreaming) && (
               <ConnectionPicker connectionLocked={hasSession} />
             )}
+            {modeSelector}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
@@ -492,25 +502,13 @@ export function ChatInput({
                 }}
               />
             )}
-            {isStreaming && canSend && onEnqueue && (
+            {isStreaming && canSend && onEnqueue && !hasAttachments && (
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
                 variant="default"
                 disabled={isEnqueueing}
-                onClick={async () => {
-                  if (isEnqueueing) return;
-                  const trimmed = value.trim();
-                  if (trimmed) {
-                    setIsEnqueueing(true);
-                    try {
-                      await onEnqueue(trimmed);
-                      setValue("");
-                    } finally {
-                      setIsEnqueueing(false);
-                    }
-                  }
-                }}
+                onClick={() => void handleEnqueue()}
                 className={cn(
                   "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
                   sendButtonClass,

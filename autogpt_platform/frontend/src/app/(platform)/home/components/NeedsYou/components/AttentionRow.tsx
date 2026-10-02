@@ -10,8 +10,10 @@ import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AttentionRowActions } from "./AttentionRowActions";
+import { HeldPassageQuote } from "./HeldPassageQuote";
 
 interface Props {
   item: HomeAttentionItem;
@@ -29,6 +31,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
 
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
+  const reason = attentionReason(item.review);
 
   function handleDecline() {
     if (!confirmDecline) {
@@ -56,7 +59,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Text variant="body-medium" tone="primary" className="text-pretty">
-              {item.title}
+              <AttentionTitle item={item} />
             </Text>
             {item.priority === "high" ? (
               <Text
@@ -73,8 +76,11 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             tone="secondary"
             className="text-pretty break-words"
           >
-            {item.description}
+            {reason?.line ?? item.description}
           </Text>
+          {reason?.passage ? (
+            <HeldPassageQuote passage={reason.passage} />
+          ) : null}
         </div>
       </div>
 
@@ -92,5 +98,19 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         {confirmDecline ? `Press again to decline ${item.title}` : ""}
       </span>
     </article>
+  );
+}
+
+// A held call's object is set in semibold, as on its card in the chat.
+function AttentionTitle({ item }: { item: HomeAttentionItem }) {
+  const headline = item.headline;
+  if (!headline?.object) return <>{item.title}</>;
+  return (
+    <>
+      {headline.ask}{" "}
+      <b className="font-semibold" translate="no">
+        {headline.object}
+      </b>
+    </>
   );
 }

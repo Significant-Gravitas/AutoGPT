@@ -141,7 +141,7 @@ async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
     return await _check_paywall(user_id) or await _check_usage_limits(user_id)
 
 
-async def _resolve_owner(
+async def resolve_owner(
     platform: str, platform_server_id: str | None, platform_user_id: str
 ) -> str:
     """Resolve the AutoGPT user that owns a platform conversation.
@@ -164,7 +164,7 @@ async def _resolve_owner(
 
 async def resolve_chat_owner(request: BotChatRequest) -> str:
     """Return the AutoGPT user ID that owns the platform conversation."""
-    return await _resolve_owner(
+    return await resolve_owner(
         request.platform.value,
         request.platform_server_id,
         request.platform_user_id,
@@ -181,7 +181,7 @@ async def upload_workspace_file(
     read the file during the turn. Failures map to a stable ``error`` code
     rather than raising, so one bad file doesn't sink the whole message.
     """
-    owner_user_id = await _resolve_owner(
+    owner_user_id = await resolve_owner(
         request.platform.value,
         request.platform_server_id,
         request.platform_user_id,
@@ -296,7 +296,7 @@ async def ensure_chat_session(
     authoritative enforcement point; this early check exists purely to spare
     the wasted upload.
     """
-    owner_user_id = await _resolve_owner(
+    owner_user_id = await resolve_owner(
         platform.value, platform_server_id, platform_user_id
     )
     denial = await evaluate_turn_gate(owner_user_id)
@@ -399,7 +399,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         # Roots its own tree, and born tainted: the message was written on a
         # chat platform by someone who need not be the account owner, so
         # anything this turn spawns inherits the bit.
-        envelope=root_envelope(turn_id, tainted=True),
+        envelope=root_envelope(turn_id, tainted=True, session_id=session_id),
     )
 
     logger.info(

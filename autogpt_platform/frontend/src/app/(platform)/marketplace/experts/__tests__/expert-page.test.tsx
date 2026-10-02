@@ -186,7 +186,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
     );
 
     renderPage();
@@ -194,7 +194,7 @@ describe("Marketplace expert page", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Maria" }),
     ).toBeDefined();
-    expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    expect(screen.getByText(/Marketing Strategist/)).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
     expect(
       within(screen.getByRole("region", { name: /^Workflows/ })).getByText(
@@ -219,7 +219,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
     );
 
     renderPage();
@@ -238,7 +238,7 @@ describe("Marketplace expert page", () => {
     await waitFor(() =>
       expect(
         funnelCalls().find((body) => body.type === "hire_started")?.data,
-      ).toEqual({ template_id: mariaTemplate.id }),
+      ).toEqual({ template_id: mariaTemplate.id, surface: "expert_page" }),
     );
   });
 
@@ -505,7 +505,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
       getUpdateExpertSoulMockHandler(async (info) => {
         const body = (await info.request.json()) as {
           voice_preferences: string;
@@ -537,7 +537,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
       getUpdateExpertSoulMockHandler(() => {
         soulPatched = true;
         return hiredMaria;
@@ -563,7 +563,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
       http.patch("/api/proxy/api/experts/:expertId/soul", () => {
         patchAttempts += 1;
         return patchAttempts === 1
@@ -601,7 +601,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
     );
 
     renderPage();

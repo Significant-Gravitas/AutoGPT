@@ -87,7 +87,9 @@ function PresetMethod({
         server.server_url ??
         ""
       }
-      lockServerURL={server.connection_mode === "hosted"}
+      lockServerURL={
+        server.connection_mode === "hosted" && !server.allow_custom_url
+      }
       allowedAuthMethods={[method]}
       oauthScopes={server.oauth_scopes}
       oauthWriteScopes={server.oauth_write_scopes}

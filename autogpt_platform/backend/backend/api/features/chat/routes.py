@@ -44,6 +44,7 @@ from backend.copilot.expert_kickoff import (
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
+    AutopilotMode,
     ChatSessionInfo,
     ChatSessionMetadata,
     create_chat_session,
@@ -52,6 +53,7 @@ from backend.copilot.model import (
     get_or_create_builder_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
+    update_session_autopilot_mode,
     update_session_llm_route,
     update_session_pinned,
     update_session_title,
@@ -163,6 +165,7 @@ from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -324,6 +327,11 @@ class StreamChatRequest(BaseModel):
             "Marks the hidden, once-per-expert day-one kickoff. The server "
             "derives its owner-scoped message ID and persistence metadata."
         ),
+    )
+    autopilot_mode: AutopilotMode | None = Field(
+        default=None,
+        description="The chat's approval mode from this turn on; None keeps "
+        "the mode it already has.",
     )
 
 
@@ -1609,6 +1617,10 @@ async def cancel_session_task(
         await asyncio.sleep(_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS)
         waited += _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS
         session_state = await stream_registry.get_session(session_id)
+        # A turn the cancelled one's end woke is not the one the user stopped,
+        # and its queued follow-ups are its own.
+        if session_state and session_state.turn_id != active_session.turn_id:
+            return CancelSessionResponse(cancelled=True)
         if session_state is None or session_state.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
@@ -1628,8 +1640,9 @@ async def cancel_session_task(
     # the "assistant encountered an error" banner over their own cancel.
     await stream_registry.mark_session_completed(
         session_id,
-        error_message="Operation cancelled",
+        error_message=stream_registry.CANCELLED_MESSAGE,
         skip_error_publish=True,
+        turn_id=active_session.turn_id,
     )
     # Status is now force-flipped out of "running"; re-clear to drop any
     # follow-up that landed during the poll window.
@@ -1637,6 +1650,18 @@ async def cancel_session_task(
     return CancelSessionResponse(
         cancelled=True, reason="cancel_published_not_confirmed"
     )
+
+
+async def _apply_autopilot_mode(
+    session: ChatSessionInfo, user_id: str, mode: AutopilotMode | None
+) -> None:
+    """Persist a changed mode before the turn is scheduled, so the turn runs on it."""
+    if mode is None or mode == session.metadata.autopilot_mode:
+        return
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return
+    await update_session_autopilot_mode(session.session_id, user_id, mode)
+    session.metadata.autopilot_mode = mode
 
 
 def _ui_message_stream_headers() -> dict[str, str]:
@@ -1731,6 +1756,7 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+    await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
     # Every other route can spend platform-gated premium inference, so a client
@@ -1948,6 +1974,7 @@ async def stream_chat_post(
             is_user_message=request.is_user_message,
             expert_id=session.expert_id,
             session_origin=session.metadata.origin,
+            session_source_platform=session.metadata.source_platform,
             context=request.context,
             voice=request.voice,
             file_ids=sanitized_file_ids,

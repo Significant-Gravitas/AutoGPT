@@ -4,6 +4,7 @@ import importlib
 
 import pytest
 
+from backend.blocks.desktop._api import DISPLAY
 from backend.copilot import prompting
 
 
@@ -34,6 +35,49 @@ class TestGetSdkSupplementStaticPlaceholder:
         assert "<session-id>" not in result
 
 
+class TestComputerNote:
+    """A plain chat on E2B is told it has a screen; an expert session is told
+    by its own ``<expert_computer>`` block instead, and a local session has no
+    computer at all."""
+
+    def test_plain_e2b_session_learns_about_the_screen(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert result.count("### Your computer") == 1
+        assert "`start_desktop`" in result
+        assert "lost when the session expires" in result
+        assert "sign into personal accounts" in result
+
+    def test_screen_shows_only_what_runs_in_the_sandbox(self):
+        """``browser_*`` drives a browser outside the sandbox, so the model
+        must not offer the user a takeover of something the screen never
+        shows."""
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert f"DISPLAY={DISPLAY}" in result
+        assert "`browser_*` tools run elsewhere" in result
+
+    def test_no_computer_note_without_e2b(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Your computer" not in result
+        assert "start_desktop" not in result
+        assert (
+            prompting.get_sdk_supplement(use_e2b=False, expert_session=True) == result
+        )
+
+    def test_expert_session_differs_only_by_the_computer_note(self):
+        plain = prompting.get_sdk_supplement(use_e2b=True)
+        expert = prompting.get_sdk_supplement(use_e2b=True, expert_session=True)
+        assert "### Your computer" not in expert
+        assert plain.replace(prompting._COMPUTER_NOTE, "") == expert
+
+    def test_note_sits_inside_the_tool_notes_before_the_follow_up_rules(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert (
+            result.index("## Tool notes")
+            < result.index("### Your computer")
+            < result.index("# `<user_follow_up>` blocks")
+        )
+
+
 class TestCredentialsSurfacingGuardrails:
     """The system prompt must instruct the model to (a) surface sign-in cards
     eagerly via tool calls and (b) never claim a card has appeared unless one
@@ -53,6 +97,17 @@ class TestCredentialsSurfacingGuardrails:
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
+
+    def test_prompt_distinguishes_an_expert_grant_from_a_sign_in(self):
+        """An expert session's ``find_capability`` reports an account-owned
+        credential the expert lacks as ``needs_expert_grant``; the model must
+        ask for a grant, not send the user back through sign-in."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index('`connected: "needs_expert_grant"`') :]
+        step = " ".join(step[: step.index("4. `review_required`")].split())
+        assert "Do NOT ask the user to sign in" in step
+        assert "Grant button" in step
+        assert "ask the user to grant access" in step
 
     def test_prompt_contains_rejection_rule(self):
         """This section collects rules from several PRs at once, so a merge

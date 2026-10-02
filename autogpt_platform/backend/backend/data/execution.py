@@ -1363,6 +1363,13 @@ async def update_node_execution_status(
     if res := await AgentNodeExecution.prisma().find_unique(
         where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
     ):
+        if res.executionStatus != status:
+            # VALID_STATUS_TRANSITIONS rejected the write. Say so: callers get
+            # the unchanged row back and can't tell the update didn't happen.
+            logger.warning(
+                f"Node execution #{node_exec_id} can't go from "
+                f"{res.executionStatus} to {status}; it stays {res.executionStatus}"
+            )
         return NodeExecutionResult.from_db(res)
 
     raise ValueError(f"Execution {node_exec_id} not found.")

@@ -177,10 +177,12 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
+    CLAUDE_4_8_OPUS = "claude-opus-4-8"
     CLAUDE_5_OPUS = "claude-opus-5"
     CLAUDE_5_5_OPUS = "claude-opus-5-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
+    CLAUDE_5_5_SONNET = "claude-sonnet-5-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -238,6 +240,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
     GROK_4_20 = "x-ai/grok-4.20"
+    GROK_4_7 = "x-ai/grok-4.7"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
@@ -248,6 +251,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
     QWEN3_8_FLASH = "qwen/qwen3.8-flash"
+    # Xiaomi models
+    MIMO_V2_6_PRO = "xiaomi/mimo-v2.6-pro"
+    MIMO_V2_6_FLASH = "xiaomi/mimo-v2.6-flash"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
@@ -256,6 +262,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5 = "z-ai/glm-5"
     ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
+    ZAI_GLM_5_3 = "z-ai/glm-5.3"
     # Sakana AI models
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
     # Inception Labs models
@@ -321,9 +328,12 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
 # (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``). The
 # generic provider-prefix strip in ``_missing_`` can't reverse the date
 # truncation, so map the OpenRouter slugs to ``LLMModel`` members here.
-# Only models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
-# suffix need entries; values without a snapshot (4.6/4.7+) are already
-# covered by the prefix-strip path alone. Stored as ``LLMModel`` instances
+# Models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
+# suffix need entries, as do the dot-versioned point releases
+# (``anthropic/claude-sonnet-5.5`` → ``claude-sonnet-5-5``) — ``_missing_``
+# strips the vendor prefix but does not rewrite dots. Plain values without
+# either (4.6/4.7+, ``claude-sonnet-5``) are covered by the prefix-strip
+# path alone. Stored as ``LLMModel`` instances
 # (not strings) so a rename or snapshot rotation on the enum follows the
 # alias automatically — a stale entry becomes a load-time ``AttributeError``
 # rather than a silent ``_missing_`` miss at runtime.
@@ -331,6 +341,7 @@ _OPENROUTER_ALIASES: Mapping[str, LLMModel] = {
     "anthropic/claude-haiku-4-5": LLMModel.CLAUDE_4_5_HAIKU,
     "anthropic/claude-opus-4-5": LLMModel.CLAUDE_4_5_OPUS,
     "anthropic/claude-sonnet-4-5": LLMModel.CLAUDE_4_5_SONNET,
+    "anthropic/claude-sonnet-5.5": LLMModel.CLAUDE_5_5_SONNET,
     "openai/gpt-5.4": LLMModel.GPT5_4,
     "openai/gpt-5.4-mini": LLMModel.GPT5_4_MINI,
     "openai/gpt-5.4-nano": LLMModel.GPT5_4_NANO,
