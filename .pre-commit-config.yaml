@@ -11,7 +11,7 @@ repos:
     hooks:
       - id: check-added-large-files
         args: ["--maxkb=500"]
-        exclude: ^autogpt_platform/frontend/public/autogpt-characters/v1\.1/expert-(maria|mina)/neutral/1024\.png$
+        exclude: ^autogpt_platform/frontend/public/(autogpt-characters/v1\.1/expert-(maria|mina)/neutral/1024\.png|videos/workflows-moved\.mp4)$
       - id: fix-byte-order-marker
       - id: check-case-conflict
       - id: check-merge-conflict

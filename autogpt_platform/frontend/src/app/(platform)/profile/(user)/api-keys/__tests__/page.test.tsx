@@ -114,6 +114,9 @@ describe("ApiKeysPage", () => {
     await waitFor(() => {
       expect(apiKeys[0]?.name).toBe("CLI Key");
     });
+    expect(
+      screen.getByText("plain-text-key").closest(".ph-no-capture"),
+    ).not.toBeNull();
   });
 
   test("sends exactly the permissions left checked", async () => {

@@ -31,8 +31,10 @@ def _interaction(
     interaction.user.id = user_id
     interaction.user.display_name = "Bently"
     interaction.response = MagicMock()
-    interaction.response.send_message = AsyncMock()
-    interaction.response.edit_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup = MagicMock()
+    interaction.followup.send = AsyncMock()
+    interaction.edit_original_response = AsyncMock()
     return interaction
 
 
@@ -46,10 +48,11 @@ def handler():
     """
     adapter = MagicMock()
     on_message = AsyncMock()
-    choice_ui.register_choice_handler(MagicMock(), adapter, on_message)
+    choice_ui.register_choice_handler(MagicMock(), adapter, on_message, MagicMock())
     yield adapter, on_message
     choice_ui._adapter = None
     choice_ui._on_message = None
+    choice_ui._api = None
 
 
 class TestBuildChoiceView:
@@ -92,7 +95,7 @@ class TestChoiceButtonCallback:
             view = build_choice_view("tok", ["US", "EU"])
             await view.children[1].callback(interaction)
 
-        interaction.response.edit_message.assert_awaited_once_with(
+        interaction.edit_original_response.assert_awaited_once_with(
             content="✅ You answered: EU", view=None
         )
         on_message.assert_awaited_once()
@@ -136,9 +139,9 @@ class TestChoiceButtonCallback:
             view = build_choice_view("tok", ["US", "EU"])
             await view.children[0].callback(interaction)
 
-        interaction.response.send_message.assert_awaited_once()
-        assert "expired" in interaction.response.send_message.await_args.args[0]
-        interaction.response.edit_message.assert_not_awaited()
+        interaction.followup.send.assert_awaited_once()
+        assert "expired" in interaction.followup.send.await_args.args[0]
+        interaction.edit_original_response.assert_not_awaited()
         on_message.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -148,7 +151,7 @@ class TestChoiceButtonCallback:
         # double-click) must not cost the user their turn.
         _, on_message = handler
         interaction = _interaction()
-        interaction.response.edit_message = AsyncMock(
+        interaction.edit_original_response = AsyncMock(
             side_effect=discord.HTTPException(MagicMock(status=404), "gone")
         )
 

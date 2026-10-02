@@ -24,6 +24,11 @@ from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import format_amount
 from backend.notifications.queue import queue_notification_async
+from backend.notifications.trial_audience import (
+    join_paying_audience,
+    queue_trial_audience_change,
+)
+from backend.util.posthog_events import PostHogEvent
 
 logger = logging.getLogger(__name__)
 TRIAL_REMINDER_WINDOW = timedelta(days=3)
@@ -31,6 +36,16 @@ TRIAL_REMINDER_WINDOW = timedelta(days=3)
 TrialNoticeKind = Literal[
     "started", "ending", "canceled", "resumed", "ended", "converted", "payment_failed"
 ]
+
+TRIAL_NOTICE_EVENTS: dict[TrialNoticeKind, PostHogEvent] = {
+    "started": PostHogEvent.TRIAL_STARTED,
+    "ending": PostHogEvent.TRIAL_ENDING,
+    "canceled": PostHogEvent.TRIAL_CANCELED,
+    "resumed": PostHogEvent.TRIAL_RESUMED,
+    "ended": PostHogEvent.TRIAL_ENDED,
+    "converted": PostHogEvent.TRIAL_CONVERTED,
+    "payment_failed": PostHogEvent.PAYMENT_FAILED,
+}
 
 
 async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
@@ -73,6 +88,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if not await claim_once(claim):
         return True
     try:
+        await queue_trial_audience_change(kind, user_id, user.email, current)
         result = await queue_notification_async(
             NotificationEventModel[TrialUpdateData](
                 user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
@@ -83,8 +99,10 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     except Exception:
         await release_claim(claim)
         raise
+    if kind == "converted":
+        await join_paying_audience(user_id, user.email)
     _track_billing_event(
-        f"subscription_trial_{kind}",
+        TRIAL_NOTICE_EVENTS[kind],
         user_id,
         {
             "trial_id": trial.id,
