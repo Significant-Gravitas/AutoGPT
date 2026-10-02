@@ -32,7 +32,10 @@ vi.mock("../../../useExpertMap", () => ({
   }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+});
 
 function onboardingPart(overrides: Record<string, unknown> = {}): ToolUIPart {
   return {
@@ -67,19 +70,33 @@ function createSendMock() {
   return vi.fn<(message: string) => Promise<void>>();
 }
 
+function cardTree(
+  part: ToolUIPart,
+  pendingCallId: string | null,
+  onSend: ReturnType<typeof createSendMock>,
+  rowKey: string,
+) {
+  return (
+    <CopilotChatActionsProvider onSend={onSend}>
+      <PendingOnboardingContext.Provider value={pendingCallId}>
+        <ExpertOnboardingCard key={rowKey} part={part} />
+      </PendingOnboardingContext.Provider>
+    </CopilotChatActionsProvider>
+  );
+}
+
 function renderCard(
   part: ToolUIPart,
   pendingCallId: string | null = CALL_ID,
   onSend = createSendMock(),
 ) {
-  render(
-    <CopilotChatActionsProvider onSend={onSend}>
-      <PendingOnboardingContext.Provider value={pendingCallId}>
-        <ExpertOnboardingCard part={part} />
-      </PendingOnboardingContext.Provider>
-    </CopilotChatActionsProvider>,
-  );
-  return { onSend };
+  const { rerender } = render(cardTree(part, pendingCallId, onSend, "stream"));
+  // The settled turn swaps the streamed message for its saved copy, which
+  // carries a different id — React sees a new key and remounts the card.
+  function rekeyRow() {
+    rerender(cardTree(part, pendingCallId, onSend, "session-1-seq-2"));
+  }
+  return { onSend, rekeyRow };
 }
 
 function actionButton(label: string): HTMLButtonElement {
@@ -245,6 +262,77 @@ describe("ExpertOnboardingCard", () => {
     expect(screen.queryByText("Ada")).toBeNull();
     // The call is over, so this must not sit on the loading line forever.
     expect(screen.getByText(/Couldn.t open the setup questions/)).toBeDefined();
+  });
+
+  it("keeps its place when the settled turn re-keys its message", () => {
+    const { rekeyRow } = renderCard(onboardingPart());
+
+    fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
+    expect(screen.getByText("2 of 2")).toBeDefined();
+
+    rekeyRow();
+
+    expect(screen.getByText("2 of 2")).toBeDefined();
+    expect(
+      screen.getByText("Which service should I be connected to?"),
+    ).toBeDefined();
+    fireEvent.click(actionButton("Previous question"));
+    expect(
+      screen
+        .getByRole("radio", { name: /Social listening/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("restores the answers given so far after a reload", () => {
+    renderCard(onboardingPart());
+    fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
+    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+    cleanup();
+
+    renderCard(onboardingPart());
+
+    expect(screen.getByText("2 of 2")).toBeDefined();
+    expect(
+      screen
+        .getByRole("radio", { name: /Linear/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("starts a different card from the beginning", () => {
+    renderCard(onboardingPart());
+    fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
+    cleanup();
+
+    const other = { ...onboardingPart(), toolCallId: "call-onboarding-2" };
+    renderCard(other as ToolUIPart, "call-onboarding-2");
+
+    expect(screen.getByText("1 of 2")).toBeDefined();
+    expect(screen.queryByRole("radio", { checked: true })).toBeNull();
+  });
+
+  it("forgets its saved place once the answers have gone out", async () => {
+    const onSend = createSendMock();
+    onSend.mockResolvedValue(undefined);
+    renderCard(onboardingPart(), CALL_ID, onSend);
+
+    fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
+    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+    fireEvent.click(actionButton("Send answers"));
+    await waitFor(() =>
+      expect(screen.getByText(/Setup questions from/)).toBeDefined(),
+    );
+    cleanup();
+
+    renderCard(onboardingPart());
+
+    expect(screen.getByText("1 of 2")).toBeDefined();
+    expect(screen.queryByRole("radio", { checked: true })).toBeNull();
   });
 
   it("keeps the answers on screen when the send fails", async () => {
