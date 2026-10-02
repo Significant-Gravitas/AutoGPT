@@ -3,6 +3,8 @@
 import asyncio
 import itertools
 import re
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,11 +32,28 @@ def picked_credentials():
         yield
 
 
+class _FakeRedisLock:
+    """redis-py's ``Lock``, held in-process: one holder per name at a time."""
+
+    _held: dict[str, asyncio.Lock] = {}
+
+    def __init__(self, name: str, **kwargs):
+        self._lock = self._held.setdefault(name, asyncio.Lock())
+
+    async def acquire(self) -> bool:
+        await self._lock.acquire()
+        return True
+
+    async def release(self) -> None:
+        self._lock.release()
+
+
 @pytest.fixture(autouse=True)
 def stream_password_store():
     """Where the screen's stream password expiry lives, Redis in production."""
     redis = MagicMock()
     redis.expire = AsyncMock()
+    redis.lock = MagicMock(side_effect=_FakeRedisLock)
     with patch(
         "backend.copilot.tools.e2b_sandbox.get_redis_async",
         new=AsyncMock(return_value=redis),
@@ -501,10 +520,20 @@ class _FakeBox:
         self.processes: dict[int, _FakeProcess] = {}
         self.sandbox_id = "box-under-test"
         self.set_timeout = AsyncMock(side_effect=self._set_timeout)
+        self.get_info = AsyncMock(side_effect=self._get_info)
         self.commands = _FakeCommands(self)
 
     async def _set_timeout(self, seconds: int) -> None:
         self.end_at = self._loop.time() + seconds
+
+    async def _get_info(self) -> SimpleNamespace:
+        left = self.end_at - self._loop.time()
+        return SimpleNamespace(
+            end_at=datetime.now(timezone.utc) + timedelta(seconds=left)
+        )
+
+    def seconds_left(self) -> float:
+        return self.end_at - self._loop.time()
 
     def reached_limit(self) -> bool:
         if self._loop.time() >= self.end_at:
@@ -575,6 +604,55 @@ class TestBashExecE2BTimeouts:
         await _run(box, timeout=3600)
 
         box.set_timeout.assert_awaited_once_with(3660)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_short_command_leaves_a_longer_limit_alone(self):
+        # Another command on the box (a parallel call, or another session of
+        # the same expert) already pushed the limit out to an hour.
+        box = _FakeBox(limit=3660, process=_counting(0.1))
+
+        result = await _run(box, timeout=30)
+
+        assert isinstance(result, BashExecResponse)
+        box.set_timeout.assert_not_awaited()
+        assert box.seconds_left() > 3600
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_commands_started_together_cannot_shorten_the_limit(self):
+        from .e2b_sandbox import keep_sandbox_running
+
+        box = _FakeBox(limit=30, process=_counting(0.1))
+        set_limit = box._set_timeout
+
+        async def slow_read():
+            await asyncio.sleep(0.01)
+            return await box._get_info()
+
+        async def short_lands_last(seconds: int) -> None:
+            # Both read the old limit; the short call's set reaches E2B last.
+            await asyncio.sleep(0.05 if seconds < 1000 else 0)
+            await set_limit(seconds)
+
+        box.get_info = AsyncMock(side_effect=slow_read)
+        box.set_timeout = AsyncMock(side_effect=short_lands_last)
+
+        assert await asyncio.gather(
+            keep_sandbox_running(box, 3660),  # type: ignore[arg-type]
+            keep_sandbox_running(box, 420),  # type: ignore[arg-type]
+        ) == [True, True]
+
+        assert box.seconds_left() > 3600
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_unreadable_limit_is_still_extended(self):
+        from .e2b_sandbox import keep_sandbox_running
+
+        box = _FakeBox(limit=30, process=_counting(0.1))
+        box.get_info = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        assert await keep_sandbox_running(box, 900) is True  # type: ignore[arg-type]
+
+        box.set_timeout.assert_awaited_once_with(900)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_box_paused_mid_command_is_reattached(self):
