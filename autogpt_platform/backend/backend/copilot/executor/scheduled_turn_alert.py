@@ -93,10 +93,13 @@ class ScheduledTurnWatch:
             "turn_error": turn_error,
             "tool_failures": [f.model_dump() for f in self.tool_failures],
         }
+        # Error text stays in the Sentry context: a tool's error can quote the
+        # user's data, and the log sinks are not redacted.
+        failed_tools = ", ".join(f.tool for f in self.tool_failures)
         logger.warning(
             f"Scheduled copilot turn failed: {summary} "
             f"(schedule {self._origin.schedule_id}, session "
-            f"{self._entry.session_id[:12]}): {turn_error or self.tool_failures}"
+            f"{self._entry.session_id[:12]}, failed tools: {failed_tools or 'none'})"
         )
         with sentry_sdk.new_scope() as scope:
             scope.set_tag("copilot_scheduled_turn_failure", reason)

@@ -107,6 +107,27 @@ def test_scheduled_turn_whose_tool_errors_raises_one_alert():
     assert _failures("tool_error", "run_agent") == before + 1
 
 
+def test_the_failure_log_line_carries_no_error_text(caplog):
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    private = "Customer list for jane@example.com could not be read"
+
+    with patch(f"{_ALERT}.sentry_sdk"), caplog.at_level(logging.WARNING, _ALERT):
+        watch.observe(
+            StreamToolOutputAvailable(
+                toolCallId="call-1",
+                toolName="run_agent",
+                output=ErrorResponse(message=private, error=private).model_dump_json(),
+            )
+        )
+        watch.report(None)
+        watch.report(private)
+
+    assert "Scheduled copilot turn failed" in caplog.text
+    assert "failed tools: run_agent" in caplog.text
+    assert "jane@example.com" not in caplog.text
+
+
 def test_scheduled_turn_that_errors_raises_an_alert():
     watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
     assert watch is not None
