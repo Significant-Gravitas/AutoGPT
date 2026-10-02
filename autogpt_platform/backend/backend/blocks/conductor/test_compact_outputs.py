@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 
-from backend.blocks.conductor._transcript import wait_for_reply
 from backend.blocks.conductor.create_session import ConductorCreateSessionBlock
 from backend.blocks.conductor.create_workspace import ConductorCreateWorkspaceBlock
 from backend.blocks.conductor.get_session import ConductorGetSessionBlock
@@ -20,14 +19,11 @@ from backend.blocks.conductor.test_fixtures import (
     CLAUDE_TOOL_USE,
     RECEIPT,
     TEST_CREDENTIALS_INPUT,
-    FakeTranscript,
     agent_row,
     claude_text,
     collect,
     mock_block,
     user_row,
-    wait_client,
-    wait_clock,
 )
 from backend.copilot.tools.base import _DIGEST_THRESHOLD
 
@@ -60,7 +56,7 @@ def waited_with(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "reply": "Done.",
         "timed_out": False,
         "truncated": False,
-        "next_after": rows[-1]["id"],
+        "prompt_row_id": rows[0]["id"],
     }
 
 
@@ -127,7 +123,7 @@ async def test_waiting_blocks_omit_raw_rows_by_default():
         assert "messages" not in outputs, type(block).__name__
         assert COMPACT_WAIT_OUTPUTS <= set(outputs), type(block).__name__
         assert outputs["reply"] == "Done."
-        assert outputs["next_after"] == "row-4"
+        assert outputs["next_after"] == "row-0"
         assert outputs["message_count"] == 5
 
 
@@ -198,29 +194,3 @@ async def test_get_session_returns_raw_rows_on_request():
 
     assert outputs["messages"] == rows
     assert outputs["message_count"] == 3
-
-
-@pytest.mark.asyncio
-async def test_wait_reports_the_newest_row_read_as_next_after():
-    rows = [
-        user_row("prompt", RECEIPT, 1),
-        agent_row("answer", RECEIPT, 2, claude_text("Correct answer")),
-        agent_row("other-turn", "unrelated", 3, claude_text("Other turn")),
-    ]
-    client = wait_client(FakeTranscript(rows), [{"status": "idle"}])
-    with wait_clock():
-        result = await wait_for_reply(client, "s1", RECEIPT, 60, 1)
-
-    assert result["reply"] == "Correct answer"
-    assert [row["id"] for row in result["messages"]] == ["prompt", "answer"]
-    assert result["next_after"] == "other-turn"
-
-
-@pytest.mark.asyncio
-async def test_wait_without_any_row_has_no_cursor():
-    client = wait_client(FakeTranscript([]), [{"status": "idle"}])
-    with wait_clock():
-        result = await wait_for_reply(client, "s1", RECEIPT, 5, 1)
-
-    assert result["timed_out"] is True
-    assert result["next_after"] == ""

@@ -10,7 +10,7 @@ Start a new agent session (chat) in an existing Conductor workspace, optionally 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt; with `wait_for_reply` the block waits the same way as Send Message: it reads the transcript and then the session status on every poll (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the rows with the prompt's turn, treats the session as done only once it is idle after the turn progressed past its startup events, and returns the visible agent text joined into `reply`, the kept-row `message_count` and `next_after`, the ID of the newest transcript row read, for Get Session to continue from (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read). The raw rows are only returned, in `messages`, when `include_messages` is on.
+The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt and `next_after` is the prompt's transcript row ID to pass as `after` to Get Session (the receipt itself while the prompt is still queued, which Get Session also accepts); with `wait_for_reply` the block waits the same way as Send Message: it reads the transcript and then the session status on every poll (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the rows with the prompt's turn, treats the session as done only once it is idle after the turn progressed past its startup events, and returns the visible agent text joined into `reply` and the kept-row `message_count` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read). The raw rows are only returned, in `messages`, when `include_messages` is on.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,9 +37,9 @@ The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-b
 | session_id | ID of the new session | str |
 | deep_link | Link that opens the session | str |
 | initial_message_id | ID of the initial prompt message, empty when none was sent | str |
+| next_after | Transcript row ID of the prompt's row; pass it as `after` to Get Session to read the agent's turn. Falls back to initial_message_id while the prompt has no row yet, which Get Session also accepts | str |
 | session_status | idle, working or error once waiting finished | str |
 | reply | Text the agent produced in response | str |
-| next_after | ID of the newest transcript row read while waiting; pass it as after to Get Session to read what follows | str |
 | message_count | Number of transcript rows of the turn that were kept | int |
 | messages | Raw transcript rows of the turn, oldest first; only emitted when include_messages is on | List[Dict[str, Any]] |
 | timed_out | True when the wait ended before the agent went idle | bool |

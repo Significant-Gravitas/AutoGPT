@@ -5,17 +5,22 @@ sessions use two row types: `userMessage`, whose `content.id` is the receipt
 id returned when the prompt was sent, and `agent`, whose `content.rawPayload`
 is the harness's own event (Claude Code stream-json or Codex app-server
 events) tagged with the `turnId`/`userMessageId` it belongs to. Row ids and
-receipt ids are different namespaces: only row ids work as `after` cursors.
+receipt ids are different namespaces: only row ids work as `after` cursors
+on the API, so `find_prompt_row` maps a receipt to its row and `read_after`
+accepts either.
 """
 
 import asyncio
+import logging
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from typing import Any
 
-from ._api import PAGE_SIZE, ConductorClient
+from ._api import PAGE_SIZE, ConductorAPIError, ConductorClient
 from ._paging import (
     Remaining,
+    Rows,
     bounded,
     expired,
     fetch_after,
@@ -42,6 +47,8 @@ NON_AGENT_TYPES = USER_TYPES | {"system"}
 STARTUP_RAW_TYPES = frozenset({"system", "command_lifecycle"})
 STARTUP_CODEX_EVENTS = frozenset({"thread.started", "turn.started"})
 
+logger = logging.getLogger(__name__)
+
 
 async def wait_for_reply(
     client: ConductorClient,
@@ -61,10 +68,6 @@ async def wait_for_reply(
     for rows written just before the status changed. Sleeps and requests
     never outlive `timeout_seconds`: nothing is started once it has elapsed,
     and a reply that completes after it is reported as timed out.
-
-    `next_after` is the id of the newest transcript row the wait read (not
-    only of the turn), so a caller can keep polling from there with
-    Get Session without re-reading anything.
     """
     deadline = time.monotonic() + timeout_seconds
 
@@ -105,8 +108,75 @@ async def wait_for_reply(
         "reply": reply_text(messages),
         "timed_out": timed_out,
         "truncated": turn.truncated,
-        "next_after": turn.cursor,
+        "prompt_row_id": turn.prompt_row_id,
     }
+
+
+async def find_prompt_row(
+    client: ConductorClient,
+    session_id: str,
+    receipt_id: str,
+    remaining: Remaining = None,
+    search_history: bool = True,
+) -> str:
+    """Row id of the transcript row recording the prompt `receipt_id`.
+
+    Looks through the newest rows the same way the wait loop does, and by
+    default through bounded older pages after that; returns "" when the
+    prompt has no row yet (it is still queued) or is older than the search.
+    With `search_history` off only the newest rows are read, which is enough
+    right after sending.
+    """
+
+    def is_prompt(row: dict[str, Any]) -> bool:
+        return _is_prompt_row(row, receipt_id)
+
+    rows = await _search(
+        client, session_id, is_prompt, remaining, search_history=search_history
+    )
+    return next(
+        (str(row["id"]) for row in rows if is_prompt(row) and row.get("id")), ""
+    )
+
+
+async def prompt_cursor(lookup: Awaitable[str], receipt_id: str) -> str:
+    """The `after` cursor to hand out for a just-sent prompt: its row id when
+    `lookup` finds one, otherwise the receipt itself, which `read_after`
+    resolves later. A failed lookup is logged rather than raised, since the
+    prompt was already sent."""
+    try:
+        return await lookup or receipt_id
+    except Exception as e:
+        logger.warning(
+            "Could not resolve prompt %s to a transcript row: %s", receipt_id, e
+        )
+        return receipt_id
+
+
+async def read_after(
+    client: ConductorClient, session_id: str, cursor: str, count: int
+) -> tuple[Rows, bool, str]:
+    """`fetch_after` for a cursor that is either a row id or a prompt receipt.
+
+    A row id is paged directly. When the API rejects the cursor as not a row
+    of the session (404) it is taken to be the receipt returned when a prompt
+    was sent and resolved to that prompt's row; the row id actually used is
+    returned so callers can continue from it without resolving again.
+    """
+    try:
+        rows, has_more = await fetch_after(client, session_id, cursor, count)
+        return rows, has_more, cursor
+    except ConductorAPIError as e:
+        if e.status != 404:
+            raise
+        row_id = await find_prompt_row(client, session_id, cursor)
+        if not row_id:
+            raise ValueError(
+                f"after={cursor!r} is neither a transcript row ID of session "
+                f"{session_id} nor the ID of a prompt recorded in it ({e})"
+            ) from e
+    rows, has_more = await fetch_after(client, session_id, row_id, count)
+    return rows, has_more, row_id
 
 
 def reply_text(messages: list[dict[str, Any]]) -> str:
@@ -150,6 +220,7 @@ class _TurnCollector:
     def __init__(self, receipt_id: str):
         self.receipt_id = receipt_id
         self.turn_id = ""
+        self.prompt_row_id = ""
         self.resolved = False
         self.progressed = False
         self.truncated = False
@@ -178,19 +249,7 @@ class _TurnCollector:
         """First read: the newest rows, then bounded older pages until one
         belongs to the turn. Rows are consumed oldest first only once the
         search stops, so unresolved history is never skipped past."""
-        rows, start = await fetch_tail_at(
-            client, session_id, PROMPT_SCAN_MESSAGES, remaining
-        )
-        found = any(self._belongs(row) for row in rows)
-        budget = PROMPT_SEARCH_MESSAGES
-        while not found and start > 0 and budget > 0 and not expired(remaining):
-            page, start = await fetch_before(
-                client, session_id, start, min(PAGE_SIZE, budget), remaining
-            )
-            budget -= max(len(page), 1)
-            found = any(self._belongs(row) for row in page)
-            rows = page + rows
-        self._consume_all(rows)
+        self._consume_all(await _search(client, session_id, self._belongs, remaining))
 
     def _consume_all(self, rows: list[dict[str, Any]]) -> None:
         for row in rows:
@@ -202,6 +261,7 @@ class _TurnCollector:
         if not self.resolved:
             if self._is_prompt(row):
                 self.turn_id = _turn_of(row)
+                self.prompt_row_id = str(row.get("id") or "")
             elif self.receipt_id in _tags(row):
                 # The prompt row is older than anything read: the turn's
                 # start is not in `rows`.
@@ -220,10 +280,7 @@ class _TurnCollector:
         return self._is_prompt(row) or self.receipt_id in _tags(row)
 
     def _is_prompt(self, row: dict[str, Any]) -> bool:
-        return (
-            _content(row).get("id") == self.receipt_id
-            or row.get("id") == self.receipt_id
-        )
+        return _is_prompt_row(row, self.receipt_id)
 
     def _same_turn(self, row: dict[str, Any]) -> bool:
         tags = _tags(row)
@@ -237,6 +294,37 @@ class _TurnCollector:
         if len(self.rows) == self.rows.maxlen:
             self.truncated = True
         self.rows.append(row)
+
+
+async def _search(
+    client: ConductorClient,
+    session_id: str,
+    belongs: Callable[[dict[str, Any]], bool],
+    remaining: Remaining,
+    search_history: bool = True,
+) -> Rows:
+    """The newest PROMPT_SCAN_MESSAGES rows and, when none of them satisfies
+    `belongs` and `search_history` is on, up to PROMPT_SEARCH_MESSAGES older
+    rows read page by page until one does. Oldest first."""
+    rows, start = await fetch_tail_at(
+        client, session_id, PROMPT_SCAN_MESSAGES, remaining
+    )
+    found = any(belongs(row) for row in rows)
+    budget = PROMPT_SEARCH_MESSAGES if search_history else 0
+    while not found and start > 0 and budget > 0 and not expired(remaining):
+        page, start = await fetch_before(
+            client, session_id, start, min(PAGE_SIZE, budget), remaining
+        )
+        budget -= max(len(page), 1)
+        found = any(belongs(row) for row in page)
+        rows = page + rows
+    return rows
+
+
+def _is_prompt_row(row: dict[str, Any], receipt_id: str) -> bool:
+    """Whether `row` records the prompt whose receipt is `receipt_id`: live
+    rows carry it as `content.id`, plain rows as the row id itself."""
+    return _content(row).get("id") == receipt_id or row.get("id") == receipt_id
 
 
 def _content(row: dict[str, Any]) -> dict[str, Any]:
