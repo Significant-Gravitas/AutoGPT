@@ -3,6 +3,7 @@ Comprehensive integration tests for authentication dependencies.
 Tests the full authentication flow from HTTP requests to user validation.
 """
 
+import asyncio
 import os
 from unittest.mock import AsyncMock, Mock
 
@@ -951,8 +952,10 @@ class TestGetUserIdSelfHeal:
         from autogpt_libs.auth import dependencies
 
         dependencies._PROVISIONED_USER_IDS.clear()
+        dependencies._HEALS_IN_FLIGHT.clear()
         yield
         dependencies._PROVISIONED_USER_IDS.clear()
+        dependencies._HEALS_IN_FLIGHT.clear()
 
     @staticmethod
     def _stub_backend(mocker: MockerFixture, *, connected: bool = True):
@@ -1004,6 +1007,38 @@ class TestGetUserIdSelfHeal:
 
         assert ensure.await_count == 2
         assert [c.args[0] for c in ensure.await_args_list] == ["user-1", "user-2"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_first_requests_share_one_probe(
+        self, mocker: MockerFixture
+    ):
+        """A first page load's requests arrive together, before any heal has
+        settled: they wait on the one probe in flight instead of each running
+        their own, and none goes ahead before it confirms the row."""
+        self._stub_backend(mocker)
+        release = asyncio.Event()
+
+        async def slow_probe(user_id: str, payload: dict) -> bool:
+            await release.wait()
+            return True
+
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=slow_probe,
+        )
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        requests = [
+            asyncio.create_task(get_user_id(self._request(), payload)) for _ in range(5)
+        ]
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not any(r.done() for r in requests)
+
+        release.set()
+        assert await asyncio.gather(*requests) == ["user-1"] * 5
+        assert ensure.await_count == 1
 
     @pytest.mark.asyncio
     async def test_cached_confirmation_expires(self, mocker: MockerFixture):

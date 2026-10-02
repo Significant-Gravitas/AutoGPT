@@ -4,6 +4,7 @@ FastAPI dependency functions for JWT-based authentication and authorization.
 These are the high-level dependency functions used in route definitions.
 """
 
+import asyncio
 import logging
 import time
 from collections import OrderedDict
@@ -34,6 +35,9 @@ _PROVISIONED_USER_IDS: "OrderedDict[str, float]" = OrderedDict()
 _PROVISIONED_USER_IDS_MAX = 10_000
 _PROVISIONED_USER_TTL_SECS = 15 * 60
 _FAILED_HEAL_BACKOFF_SECS = 60
+# Heals still running, id -> task: concurrent first requests for one user wait
+# on the same probe instead of each running their own.
+_HEALS_IN_FLIGHT: "dict[str, asyncio.Task[None]]" = {}
 
 
 def _is_heal_settled(user_id: str) -> bool:
@@ -71,13 +75,30 @@ async def _heal_platform_user(jwt_payload: dict) -> None:
     if not user_id or _is_heal_settled(user_id):
         return
 
-    try:
-        from backend.data.db import prisma  # deferred -- only needed at runtime
-    except ImportError:
-        return
-    if not prisma.is_connected():
-        return
+    heal = _HEALS_IN_FLIGHT.get(user_id)
+    # A heal left behind by another event loop can't be awaited from this one.
+    if heal is None or heal.get_loop() is not asyncio.get_running_loop():
+        try:
+            from backend.data.db import prisma  # deferred -- only needed at runtime
+        except ImportError:
+            return
+        if not prisma.is_connected():
+            return
 
+        heal = asyncio.ensure_future(_settle_heal(user_id, jwt_payload))
+        _HEALS_IN_FLIGHT[user_id] = heal
+        heal.add_done_callback(lambda done: _forget_heal(user_id, done))
+    # Shielded: a request that is cancelled must not cancel the heal that the
+    # other requests for this user are waiting on.
+    await asyncio.shield(heal)
+
+
+def _forget_heal(user_id: str, heal: "asyncio.Future[None]") -> None:
+    if _HEALS_IN_FLIGHT.get(user_id) is heal:
+        del _HEALS_IN_FLIGHT[user_id]
+
+
+async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
     try:
         provisioned = await _ensure_platform_user(user_id, jwt_payload)
     except Exception:
