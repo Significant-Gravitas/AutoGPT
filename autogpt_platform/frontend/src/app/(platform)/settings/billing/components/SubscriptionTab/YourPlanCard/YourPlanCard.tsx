@@ -14,7 +14,7 @@ import {
 import { CycleToggle } from "./CycleToggle";
 import { SwitchCycleDialog } from "./SwitchCycleDialog";
 import { SwitchTierDialog } from "./SwitchTierDialog";
-import { useYourPlanCard } from "./useYourPlanCard";
+import { ENTERPRISE_CONTACT_URL, useYourPlanCard } from "./useYourPlanCard";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -111,7 +111,18 @@ export function YourPlanCard({ index = 0 }: Props) {
               />
             ) : null}
           </div>
-          {plan.isPaidPlan ? (
+          {plan.isAdminManaged ? (
+            <Text variant="body" as="span" className="text-zinc-700">
+              Managed by your AutoGPT account team.{" "}
+              <a
+                href={ENTERPRISE_CONTACT_URL}
+                className="font-medium text-purple-500 no-underline hover:text-purple-600"
+              >
+                Contact us
+              </a>{" "}
+              for changes.
+            </Text>
+          ) : plan.isPaidPlan ? (
             <Text variant="body" as="span" className="text-zinc-700">
               {formatCents(plan.monthlyCostCents)}
               {plan.billingCycle === "yearly" ? " / year" : " / month"}
@@ -168,7 +179,7 @@ export function YourPlanCard({ index = 0 }: Props) {
               Downgrade to {plan.previousTierLabel}
             </Button>
           ) : null}
-          {plan.isPaidPlan ? (
+          {plan.isPaidPlan && !plan.isAdminManaged ? (
             <Button
               variant="secondary"
               size="small"

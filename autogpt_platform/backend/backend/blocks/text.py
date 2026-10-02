@@ -20,6 +20,10 @@ from backend.util.type import MediaFileType
 
 formatter = text.TextFormatter()
 
+MAX_REGEX_PATTERN_LENGTH = 10_000
+MAX_REGEX_TEXT_LENGTH = 1_000_000
+REGEX_TIMEOUT_SECONDS = 1.0
+
 
 class MatchTextPatternBlock(Block):
     class Input(BlockSchemaInput):
@@ -70,7 +74,29 @@ class MatchTextPatternBlock(Block):
         else:
             text = json.dumps(input_data.text)
 
-        if re.search(input_data.match, text, flags=flags):
+        if len(input_data.match) > MAX_REGEX_PATTERN_LENGTH:
+            raise ValueError(
+                f"Regex pattern is too large to evaluate safely "
+                f"({len(input_data.match)} characters; "
+                f"maximum {MAX_REGEX_PATTERN_LENGTH})."
+            )
+
+        if len(text) > MAX_REGEX_TEXT_LENGTH:
+            raise ValueError(
+                f"Text is too large to match safely ({len(text)} characters; "
+                f"maximum {MAX_REGEX_TEXT_LENGTH})."
+            )
+
+        try:
+            matched = regex.search(
+                input_data.match, text, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
+            )
+        except TimeoutError as error:
+            raise ValueError("Regex evaluation timed out.") from error
+        except regex.error as error:
+            raise ValueError(f"Invalid regex pattern: {error}") from error
+
+        if matched:
             yield "positive", output
         else:
             yield "negative", output

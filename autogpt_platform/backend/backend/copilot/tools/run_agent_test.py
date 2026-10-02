@@ -1196,7 +1196,6 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
@@ -1265,7 +1264,7 @@ async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
@@ -1308,7 +1307,6 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
@@ -1506,7 +1504,6 @@ async def test_run_preset_executes_with_merged_inputs():
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             new=AsyncMock(),
         ),
-        patch("backend.copilot.tools.run_agent.track_agent_run_success"),
     ):
         result = await tool._handle_preset_run(
             "preset-user", session, RunAgentInput(preset_id="p1", inputs={"b": 99})
@@ -1676,7 +1673,6 @@ def _completed_run_mocks(
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
@@ -1802,6 +1798,28 @@ async def test_wet_run_omits_node_trace_dry_run_inlines_it(mocker):
     dry = await _run_waited(mocker, dry_run=True)
     assert dry.execution.node_executions is not None
     assert dry.execution.node_executions[0]["status"] == "FAILED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_only_a_real_run_reports_agent_run_success(mocker, dry_run):
+    _completed_run_mocks(mocker, outputs={"result": ["ok"]}, node_executions=[])
+    mocker.patch("backend.copilot.tools.run_agent.charge_credits", AsyncMock())
+    tracked = mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+
+    await _run_waited(mocker, dry_run=dry_run)
+
+    if dry_run:
+        tracked.assert_not_called()
+    else:
+        tracked.assert_called_once_with(
+            "user-1",
+            mocker.ANY,
+            "agent_run_success",
+            graph_id="graph-1",
+            execution_id="exec-1",
+            library_agent_id="lib-1",
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
