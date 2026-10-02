@@ -11,12 +11,11 @@ interface Props {
   name: string;
   category: ExpertAvatarRequestCategory;
   avatarUrl?: string | null;
-  autoGenerate?: boolean;
   onPick: (url: string) => void;
 }
 
 export function ExpertAvatarPicker({ name, ...props }: Props) {
-  const picker = useExpertAvatarPicker(props);
+  const picker = useExpertAvatarPicker({ name, ...props });
   return (
     <div className="flex w-full flex-col items-center gap-4 rounded-2xl border border-border bg-background p-5">
       <ExpertAvatar
@@ -27,7 +26,8 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
       />
       {picker.isGenerating && (
         <p role="status" className="text-sm text-muted-foreground">
-          Sculpting your avatar. This takes a couple of minutes.
+          Creating another avatar. You can keep this one or upload a picture
+          while you wait.
         </p>
       )}
       {picker.error && (
@@ -38,7 +38,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
       <input
         ref={picker.fileInputRef}
         type="file"
-        disabled={picker.isBusy}
+        disabled={picker.isUploading}
         accept={ACCEPTED_AVATAR_TYPES}
         aria-label="Upload avatar"
         className="sr-only"
@@ -54,7 +54,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
           variant="ghost"
           size="small"
           onClick={picker.openFilePicker}
-          disabled={picker.isBusy}
+          disabled={picker.isUploading}
         >
           Upload a picture
         </Button>
@@ -68,7 +68,11 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         >
           Regenerate
         </Button>
-        <Button size="small" onClick={picker.confirm} disabled={picker.isBusy}>
+        <Button
+          size="small"
+          onClick={picker.confirm}
+          disabled={picker.isUploading}
+        >
           Use this avatar
         </Button>
       </div>

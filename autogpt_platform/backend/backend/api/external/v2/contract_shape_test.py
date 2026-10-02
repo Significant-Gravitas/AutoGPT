@@ -288,3 +288,36 @@ def test_a_submission_edit_cannot_silently_blank_what_it_omits() -> None:
         "categories",
     }
     assert written_by_the_route <= set(edit.get("required", []))
+
+
+# ============================================================================
+# An absent value is null, not an empty string
+# ============================================================================
+
+
+def test_a_listed_agent_without_an_image_reports_null() -> None:
+    """The store fills a missing image with `""`; the field is `Optional[str]`,
+    and the details endpoint already answers `None` for the same agent."""
+    from types import SimpleNamespace
+
+    from backend.api.features.store.model import StoreAgent
+
+    from .models import MarketplaceAgent
+
+    def listed(images: list[str]) -> MarketplaceAgent:
+        row = SimpleNamespace(
+            slug="agent",
+            agent_name="Agent",
+            agent_image=images,
+            creator_username="creator",
+            creator_avatar=None,
+            sub_heading="",
+            description="",
+            runs=0,
+            rating=0.0,
+            graph_id="graph-1",
+        )
+        return MarketplaceAgent.from_internal(StoreAgent.from_db(row))  # type: ignore[arg-type]
+
+    assert listed([]).image_url is None
+    assert listed(["https://img/1.png"]).image_url == "https://img/1.png"

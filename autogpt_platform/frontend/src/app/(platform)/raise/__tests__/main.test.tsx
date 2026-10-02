@@ -49,6 +49,14 @@ const { pushMock, notFoundMock } = vi.hoisted(() => ({
   notFoundMock: vi.fn(),
 }));
 
+const { invalidateRosterMock } = vi.hoisted(() => ({
+  invalidateRosterMock: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock("@/services/experts/invalidate-experts", () => ({
+  invalidateExpertRosterQueries: invalidateRosterMock,
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => "/raise",
@@ -251,6 +259,26 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
     expect(pushMock).toHaveBeenCalledWith(
       "/copilot?expertId=raised-1&kickoff=1",
     ),
+  );
+});
+
+test("refreshes the expert roster before opening the kickoff thread", async () => {
+  server.use(getCreateRaisedExpertMockHandler(raiseResult()));
+  seedAtSkills();
+  renderRaise();
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+  );
+
+  await waitFor(() =>
+    expect(pushMock).toHaveBeenCalledWith(
+      "/copilot?expertId=raised-1&kickoff=1",
+    ),
+  );
+  expect(invalidateRosterMock).toHaveBeenCalledTimes(1);
+  expect(invalidateRosterMock.mock.invocationCallOrder[0]).toBeLessThan(
+    pushMock.mock.invocationCallOrder[0],
   );
 });
 

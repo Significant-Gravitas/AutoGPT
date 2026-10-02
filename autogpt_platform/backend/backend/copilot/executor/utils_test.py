@@ -245,6 +245,42 @@ async def test_schedule_chat_turn_leaves_a_typed_message_alone() -> None:
 
 
 @pytest.mark.asyncio
+async def test_schedule_chat_turn_tracks_the_session_channel() -> None:
+    # A web message in a session opened from Discord still counts as Discord,
+    # the same as the engines report it for turns they save themselves.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    tracked = MagicMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=AsyncMock()),
+        patch("backend.copilot.tracking.track_user_message", new=tracked),
+        patch.object(utils, "dispatch_turn", new=AsyncMock()),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="hello",
+            expert_id="expert-1",
+            session_origin="interactive",
+            session_source_platform="discord",
+        )
+
+    tracked.assert_called_once_with(
+        user_id="u1",
+        session_id="s1",
+        message_length=5,
+        expert_id="expert-1",
+        origin="interactive",
+        source_platform="discord",
+    )
+
+
+@pytest.mark.asyncio
 async def test_schedule_chat_turn_leaves_an_already_saved_message_alone() -> None:
     # The row was saved by an earlier call; prefixing now would put the two
     # out of step again, which is the duplicate this guard exists to prevent.

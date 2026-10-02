@@ -102,7 +102,7 @@ jobs:
             image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
       - name: Authenticate to GHCR build cache
-        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io

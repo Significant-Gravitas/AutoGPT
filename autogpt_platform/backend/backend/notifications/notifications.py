@@ -63,6 +63,8 @@ from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()
+# The missing MailerLite token is logged once per process, not per message.
+_mailerlite_off_logged = False
 
 
 def _utc_today() -> date:
@@ -274,6 +276,15 @@ class NotificationManager(AppService):
         if not event:
             return False
 
+        # Checked before anything else so a switched-off notification claims
+        # no daily-cap slot and a suppressed trial notice is not retried.
+        if not settings.config.enable_user_notifications:
+            logger.info(
+                f"Dropping {event.type} for user {event.user_id}: "
+                "ENABLE_USER_NOTIFICATIONS is off"
+            )
+            return True
+
         if event.type == NotificationType.TRIAL_UPDATE:
             data = TrialUpdateData.model_validate(event.data.model_dump())
             disposition = await trial_notice_disposition(event.user_id, data)
@@ -364,13 +375,32 @@ class NotificationManager(AppService):
         except ValueError as e:
             logger.warning(f"Unparseable audience change (sending to DLQ): {e}")
             return False
+        if not mailerlite.configured():
+            global _mailerlite_off_logged
+            if not _mailerlite_off_logged:
+                logger.info(
+                    "MAILERLITE_API_TOKEN is not set; dropping audience changes"
+                )
+                _mailerlite_off_logged = True
+            return True
 
         handler = {
             AudienceAction.ENROLL_TOUR: mailerlite.enroll_in_onboarding,
             AudienceAction.ADD_CHANGELOG: mailerlite.add_to_changelog,
             AudienceAction.REMOVE_CHANGELOG: mailerlite.remove_from_changelog,
+            AudienceAction.ADD_TRIAL: mailerlite.add_to_trial,
+            AudienceAction.REMOVE_TRIAL: mailerlite.remove_from_trial,
+            AudienceAction.UPDATE_FIELDS: mailerlite.update_fields,
+            AudienceAction.SIGNUP: mailerlite.record_signup,
+            AudienceAction.CHECKOUT_OPENED: mailerlite.record_checkout_opened,
         }[event.action]
-        await handler(event.email)
+        try:
+            await handler(event.email, event.fields or None)
+        except mailerlite.MailerLiteNotConfigured as e:
+            # A group this change needs has no ID. No retry makes a setting
+            # appear, so it is dead-lettered now, to be replayed once it is set.
+            logger.error(f"{e}; sending {event.action.value} to the DLQ")
+            return False
         return True
 
     def _parse_message(self, message: str) -> NotificationEventModel | None:
