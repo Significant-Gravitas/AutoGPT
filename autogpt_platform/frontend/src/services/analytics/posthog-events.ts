@@ -23,6 +23,15 @@ export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
+// Signup page interactions. The account itself is the backend's
+// `signup_completed`.
+export const SignupEvent = {
+  // "opt out" in the legal line under the signup buttons was clicked (not
+  // Undo). No properties: there is no user yet, and it only measures the
+  // opt-out rate. The refusal itself is stored on the user at signup.
+  SIGNUP_MARKETING_OPT_OUT: "signup_marketing_opt_out",
+} as const;
+
 export const ExpertsFunnelEvent = {
   EXPERTS_SECTION_VIEWED: "experts_section_viewed",
   HOME_VIEWED: "home_viewed",
@@ -146,6 +155,7 @@ export const TrialEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...SignupEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,

@@ -1,9 +1,13 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { TERMS_VERSION } from "@/lib/legal";
 import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const signUpEmailMock = vi.fn();
 const rollbackSessionMock = vi.fn();
 const postV1GetOrCreateUserMock = vi.fn();
+const postV1RecordUserConsentMock = vi.fn();
+const wasAccountCreatedMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const isWaitlistErrorMock = vi.fn();
 const logWaitlistErrorMock = vi.fn();
@@ -24,13 +28,19 @@ vi.mock("@/lib/auth/server/rollbackSession", () => ({
 vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
   postV1GetOrCreateUser: (...args: unknown[]) =>
     postV1GetOrCreateUserMock(...args),
+  postV1RecordUserConsent: (...args: unknown[]) =>
+    postV1RecordUserConsentMock(...args),
 }));
 
 // DataFast account tracking is exercised by actions.test.ts; stub it here so
 // wasAccountCreated doesn't read .headers off the minimal mocked response.
 vi.mock("@/services/analytics/datafast-server", () => ({
-  wasAccountCreated: () => false,
+  wasAccountCreated: (...args: unknown[]) => wasAccountCreatedMock(...args),
   scheduleAccountCreatedGoal: vi.fn(),
+}));
+
+vi.mock("@/services/analytics/account-created-server", () => ({
+  markAccountCreated: vi.fn(),
 }));
 
 vi.mock("@/app/api/helpers", async (importActual) => {
@@ -60,13 +70,15 @@ const email = "new.user@example.com";
 const validPassword = "a-long-enough-password";
 
 function signupWithValidPayload() {
-  return signup(email, validPassword, validPassword, true);
+  return signup(email, validPassword, validPassword, false);
 }
 
 beforeEach(() => {
   signUpEmailMock.mockReset();
   rollbackSessionMock.mockReset();
   postV1GetOrCreateUserMock.mockReset();
+  postV1RecordUserConsentMock.mockReset().mockResolvedValue({ status: 200 });
+  wasAccountCreatedMock.mockReset().mockReturnValue(false);
   getOnboardingStatusMock.mockReset();
   isWaitlistErrorMock.mockReset().mockReturnValue(false);
   logWaitlistErrorMock.mockReset();
@@ -94,6 +106,53 @@ describe("signup", () => {
       headers: expect.any(Headers),
     });
     expect(postV1GetOrCreateUserMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ success: true, next: "/onboarding" });
+  });
+
+  it("records terms acceptance on the account it just created", async () => {
+    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue({ status: 200, data: {} });
+    wasAccountCreatedMock.mockReturnValue(true);
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const result = await signup(email, validPassword, validPassword, true);
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledTimes(1);
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+    expect(result).toEqual({ success: true, next: "/onboarding" });
+  });
+
+  it("does not record consent when signing up into an existing account", async () => {
+    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue({ status: 200, data: {} });
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
+
+    const result = await signup(email, validPassword, validPassword, true);
+
+    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, next: "/copilot" });
+  });
+
+  it("keeps the new account signed in when the consent write fails", async () => {
+    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue({ status: 200, data: {} });
+    wasAccountCreatedMock.mockReturnValue(true);
+    postV1RecordUserConsentMock.mockRejectedValue(
+      new ApiError("Unprocessable Entity", 422, {}),
+    );
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const result = await signupWithValidPayload();
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: false,
+    });
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ success: true, next: "/onboarding" });
   });
 
@@ -164,6 +223,7 @@ describe("signup", () => {
 
     expect(captureExceptionMock).toHaveBeenCalledTimes(1);
     expect(rollbackSessionMock).toHaveBeenCalledTimes(1);
+    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
     expect(result).toEqual({
       success: false,
       error: "Failed to complete account setup. Please try again.",
@@ -171,7 +231,7 @@ describe("signup", () => {
   });
 
   it("rejects a password shorter than 12 characters without calling Better Auth", async () => {
-    const result = await signup(email, "short-pass", "short-pass", true);
+    const result = await signup(email, "short-pass", "short-pass", false);
 
     expect(result).toEqual({ success: false, error: "Invalid signup payload" });
     expect(signUpEmailMock).not.toHaveBeenCalled();

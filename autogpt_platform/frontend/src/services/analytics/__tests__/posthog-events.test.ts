@@ -43,6 +43,7 @@ const LIVE_EVENT_NAMES = [
   "intro_followup_sent",
   "intro_path",
   "later_dump_completed",
+  "signup_marketing_opt_out",
   "subscription_trial_checkout_started",
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",

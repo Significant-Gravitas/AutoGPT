@@ -1,11 +1,17 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { TERMS_VERSION } from "@/lib/legal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getServerSessionMock = vi.fn();
 const postV1GetOrCreateUserMock = vi.fn();
+const postV1RecordUserConsentMock = vi.fn();
+const rollbackSessionMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const revalidatePathMock = vi.fn();
 const scheduleAccountCreatedGoalMock = vi.fn();
 const cookieSetMock = vi.fn();
+const cookieGetMock = vi.fn();
+const cookieDeleteMock = vi.fn();
 
 vi.mock("@/lib/auth/server/getServerSession", () => ({
   getServerSession: () => getServerSessionMock(),
@@ -14,6 +20,12 @@ vi.mock("@/lib/auth/server/getServerSession", () => ({
 vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
   postV1GetOrCreateUser: (...args: unknown[]) =>
     postV1GetOrCreateUserMock(...args),
+  postV1RecordUserConsent: (...args: unknown[]) =>
+    postV1RecordUserConsentMock(...args),
+}));
+
+vi.mock("@/lib/auth/server/rollbackSession", () => ({
+  rollbackSession: () => rollbackSessionMock(),
 }));
 
 // Keep the real wasAccountCreated (it reads the provisioning response header);
@@ -31,7 +43,12 @@ vi.mock("@/app/api/helpers", () => ({
 }));
 
 vi.mock("next/headers", () => ({
-  cookies: () => Promise.resolve({ set: cookieSetMock }),
+  cookies: () =>
+    Promise.resolve({
+      set: cookieSetMock,
+      get: cookieGetMock,
+      delete: cookieDeleteMock,
+    }),
   headers: () => new Headers(),
 }));
 
@@ -83,7 +100,11 @@ beforeEach(() => {
   getOnboardingStatusMock.mockReset();
   revalidatePathMock.mockReset();
   scheduleAccountCreatedGoalMock.mockReset();
+  postV1RecordUserConsentMock.mockReset().mockResolvedValue({ status: 200 });
+  rollbackSessionMock.mockReset();
   cookieSetMock.mockReset();
+  cookieGetMock.mockReset();
+  cookieDeleteMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -160,6 +181,86 @@ describe("auth callback GET — account creation tracking", () => {
 
     expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
     expect(cookieSetMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("auth callback GET — signup consent", () => {
+  const optOutCookie = { name: "agpt_marketing_opt_out", value: "1" };
+
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+  });
+
+  function withOptOutCookie() {
+    cookieGetMock.mockImplementation((name: string) =>
+      name === optOutCookie.name ? optOutCookie : undefined,
+    );
+  }
+
+  it("records a marketing refusal carried by the cookie and clears it", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+
+    const response = await GET(makeCallbackRequest());
+
+    expect(response.headers.get("location")).toBe(`${origin}/onboarding`);
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+  });
+
+  it("records terms acceptance without a refusal when there is no cookie", async () => {
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+
+    await GET(makeCallbackRequest());
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: false,
+    });
+    expect(cookieDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it("records nothing for a returning user but still clears a stale refusal", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
+
+    await GET(makeCallbackRequest());
+
+    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
+    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+  });
+
+  it("clears the refusal even when provisioning fails", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockRejectedValue(new Error("backend down"));
+
+    await GET(makeCallbackRequest());
+
+    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
+  });
+
+  it("still lands the user on the normal next page when the consent write fails", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    postV1RecordUserConsentMock.mockRejectedValue(
+      new ApiError("Internal Server Error", 500, {}),
+    );
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?next=/marketplace"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/marketplace", "layout");
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
   });
 });
 
@@ -272,6 +373,7 @@ describe("auth callback GET — user creation failures", () => {
       `${origin}/error?message=server-error`,
     );
     expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+    expect(rollbackSessionMock).toHaveBeenCalledOnce();
   });
 
   it("redirects to rate-limited when the backend rejects with 429", async () => {

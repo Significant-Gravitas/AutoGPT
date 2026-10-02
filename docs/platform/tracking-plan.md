@@ -138,6 +138,7 @@ what replaced them.
 | `tour_scenario_started` | browser | add | `scenario` | A tour scenario starts playing. |
 | `tour_scenario_completed` | browser | add | `scenario` | A tour scenario reaches its end. |
 | `tour_cta_clicked` | browser | add | `label` (`pricing`, `another-scenario`, `self-host`, `share`) | A tour call to action is clicked. |
+| `signup_marketing_opt_out` | browser | live | — | "opt out" is clicked in the legal line under the signup buttons (not "Undo"). No properties: there is no user yet, so it only gives the opt-out rate. The refusal itself is stored on the user (`marketingOptOutAt`) when the account is created. |
 | `signup_completed` | backend | add | `signup_method` | The user row is created. |
 
 The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
@@ -386,9 +387,10 @@ line:
   families, ...) come with the plan's phases, not with this list.
 - **Events the plan has no name for keep their own**, e.g.
   `integration_connected`, `schedule_created`, `hire_started`,
-  `billing_portal_opened`, `tour_*`, `tab_intro_*`, `voice_*` and
-  `credential_*`. `briefing_opened` is the briefing shown on home, a
-  different action from the plan's `briefing_opened_in_chat`.
+  `billing_portal_opened`, `signup_marketing_opt_out`, `tour_*`,
+  `tab_intro_*`, `voice_*` and `credential_*`. `briefing_opened` is the
+  briefing shown on home, a different action from the plan's
+  `briefing_opened_in_chat`.
 
 ## Events not in the constants modules
 
