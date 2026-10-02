@@ -10,7 +10,7 @@ Create a Conductor cloud workspace for a project or repository, optionally start
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `repository_url` (both or neither is an input error). Blank optional fields are omitted so Conductor applies its defaults; `model` is passed through as-is, so use an id Conductor accepts (for example `fable-5-1`, `opus-5-5-1m`, `sonnet-5-1m`, `gpt-6-astra` or `auto`). When `message` is set the agent starts on it immediately and `initial_message_id` is returned. With `wait_for_reply` the block then waits the same way as Send Message: it reads the transcript and then `GET /v0/sessions/{id}/status` every `poll_interval_seconds` (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the transcript rows with the prompt's turn (a freshly initializing workspace reports idle until the agent actually starts, and startup events alone are not treated as done), and returns those rows with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read).
+The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `repository_url` (both or neither is an input error). Blank optional fields are omitted so Conductor applies its defaults; `model` is passed through as-is, so use an id Conductor accepts (for example `fable-5-1`, `opus-5-5-1m`, `sonnet-5-1m`, `gpt-6-astra` or `auto`). When `message` is set the agent starts on it immediately and `initial_message_id` is returned, together with `next_after`: the prompt's transcript row ID to pass as `after` to Get Session (the receipt itself while the prompt has no row yet, which Get Session also accepts). With `wait_for_reply` the block then waits the same way as Send Message: it reads the transcript and then `GET /v0/sessions/{id}/status` every `poll_interval_seconds` (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the transcript rows with the prompt's turn (a freshly initializing workspace reports idle until the agent actually starts, and startup events alone are not treated as done), and returns those rows with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -42,6 +42,7 @@ The block posts to `POST /v0/workspaces` with exactly one of `project_id` or `re
 | session_id | ID of the initial session | str |
 | deep_link | Link that opens the workspace | str |
 | initial_message_id | ID of the initial prompt message, empty when none was sent | str |
+| next_after | Transcript row ID of the prompt's row; pass it as `after` to Get Session to read the agent's turn. Falls back to initial_message_id while the prompt has no row yet, which Get Session also accepts | str |
 | session_status | idle, working or error once waiting finished | str |
 | reply | Text the agent produced in response | str |
 | messages | Raw transcript messages after the prompt | List[Dict[str, Any]] |
