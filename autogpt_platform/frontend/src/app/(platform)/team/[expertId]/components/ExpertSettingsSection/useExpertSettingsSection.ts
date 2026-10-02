@@ -5,7 +5,7 @@ import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspa
 import { okData } from "@/app/api/helpers";
 import { isInternalToolOutput } from "@/app/(platform)/copilot/components/ContextPanel/components/FilesTab/helpers";
 import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
-import { getPauseItems } from "../../components/FireExpertDialog/helpers";
+import { getPauseItems } from "../../../components/FireExpertDialog/helpers";
 
 const FILES_LIMIT = 200;
 

@@ -19,6 +19,7 @@ import {
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ExpertDetailPage from "../page";
@@ -141,6 +142,10 @@ beforeEach(() => {
   );
 });
 
+async function openTab(name: string) {
+  await userEvent.click(await screen.findByRole("tab", { name }));
+}
+
 async function findRouteSection() {
   return screen.findByRole("region", { name: "Maria AI connection" });
 }
@@ -158,6 +163,7 @@ describe("an expert's AI connection", () => {
   it("follows the account default until the owner pins one", async () => {
     render(<ExpertDetailPage />);
 
+    await openTab("Settings");
     const select = await findRouteSelect();
     expect(select.textContent).toContain("Account default");
     expect(
@@ -167,7 +173,7 @@ describe("an expert's AI connection", () => {
     ).toBeDefined();
     expect(
       within(await findRouteSection()).getByRole("link", {
-        name: "Manage connections",
+        name: "Open Settings",
       }),
     ).toHaveProperty("href", expect.stringContaining("/settings/integrations"));
   });
@@ -183,6 +189,7 @@ describe("an expert's AI connection", () => {
     );
     render(<ExpertDetailPage />);
 
+    await openTab("Settings");
     fireEvent.click(await findRouteSelect());
     fireEvent.click(
       await screen.findByRole("option", {
@@ -221,6 +228,7 @@ describe("an expert's AI connection", () => {
     );
     render(<ExpertDetailPage />);
 
+    await openTab("Settings");
     fireEvent.click(await findRouteSelect());
     fireEvent.click(
       await screen.findByRole("option", { name: "Account default" }),
@@ -243,6 +251,23 @@ describe("an expert's AI connection", () => {
     render(<ExpertDetailPage />);
 
     const budget = await screen.findByRole("region", { name: "Maria budget" });
+    await openTab("Settings");
+    await findRouteSelect();
+    expect(within(budget).queryByText(/not metered/)).toBeNull();
+  });
+
+  it("keeps the budget quiet about metering when the pinned connection is gone", async () => {
+    server.use(
+      getGetExpertMockHandler({
+        ...mariaOnChatGPT,
+        llm_credential_id: "cred-gone",
+        llm_route_available: false,
+      }),
+    );
+    render(<ExpertDetailPage />);
+
+    const budget = await screen.findByRole("region", { name: "Maria budget" });
+    await openTab("Settings");
     await findRouteSelect();
     expect(within(budget).queryByText(/not metered/)).toBeNull();
   });
@@ -257,6 +282,7 @@ describe("an expert's AI connection", () => {
     );
     render(<ExpertDetailPage />);
 
+    await openTab("Settings");
     const section = await findRouteSection();
     expect(
       await within(section).findByText(/ChatGPT connection missing/),
@@ -277,7 +303,25 @@ describe("an expert's AI connection", () => {
     );
     render(<ExpertDetailPage />);
 
+    await openTab("Settings");
     const section = await findRouteSection();
     expect(await within(section).findByText(/cannot run tools/)).toBeDefined();
+  });
+
+  it("lives in the Settings tab rather than Basics", async () => {
+    render(<ExpertDetailPage />);
+
+    const basics = await screen.findByRole("tabpanel", { name: "Basics" });
+    expect(
+      within(basics).queryByRole("region", { name: "Maria AI connection" }),
+    ).toBeNull();
+
+    await openTab("Settings");
+    const settings = await screen.findByRole("tabpanel", { name: "Settings" });
+    expect(
+      await within(settings).findByRole("region", {
+        name: "Maria AI connection",
+      }),
+    ).toBeDefined();
   });
 });

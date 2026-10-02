@@ -69,7 +69,7 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
         muted={!weeklySpend}
         color={color}
       />
-      {isOnSubscription(expert) ? (
+      {isOnSubscription(expert) && expert.llm_route_available !== false ? (
         <Text variant="small" tone="muted">
           Chat is not metered on {expert.llm_route_label}. Only workflow runs on
           platform credits count here.

@@ -34,8 +34,16 @@ def expert(mocker: pytest_mock.MockerFixture) -> MagicMock:
     return row
 
 
+TRANSPORTS = [_transport("platform", None), _transport("codex", "cred-expert")]
+
+
 @pytest.fixture
 def routes(mocker: pytest_mock.MockerFixture):
+    mocker.patch.object(
+        expert_route,
+        "get_chat_transports",
+        new=AsyncMock(return_value=TRANSPORTS),
+    )
     pinned = mocker.patch.object(
         expert_route,
         "resolve_pinned_chat_route",
@@ -57,7 +65,9 @@ async def test_an_experts_pin_wins_over_the_account_default(expert, routes) -> N
         "codex",
         "cred-expert",
     )
-    pinned.assert_awaited_once_with(USER_ID, "codex", "cred-expert", unattended=True)
+    pinned.assert_awaited_once_with(
+        USER_ID, "codex", "cred-expert", transports=TRANSPORTS, unattended=True
+    )
     default.assert_not_awaited()
 
 
@@ -73,7 +83,8 @@ async def test_a_pin_that_no_longer_resolves_falls_back_to_the_account_default(
         "codex",
         "cred-account",
     )
-    default.assert_awaited_once_with(USER_ID)
+    # The list fetched for the pin check is reused for the fallback.
+    default.assert_awaited_once_with(USER_ID, transports=TRANSPORTS)
 
 
 @pytest.mark.asyncio
@@ -84,7 +95,9 @@ async def test_an_unpinned_expert_follows_the_account_default(expert, routes) ->
     pinned.return_value = None
 
     assert await resolve_expert_chat_route(USER_ID, "expert-1") == ("platform", None)
-    pinned.assert_awaited_once_with(USER_ID, None, None, unattended=True)
+    # Nothing pinned means nothing to check: straight to the account default.
+    pinned.assert_not_awaited()
+    default.assert_awaited_once_with(USER_ID)
 
 
 @pytest.mark.asyncio
@@ -101,7 +114,8 @@ async def test_a_missing_expert_follows_the_account_default(
         "platform",
         None,
     )
-    pinned.assert_awaited_once_with(USER_ID, None, None, unattended=True)
+    pinned.assert_not_awaited()
+    default.assert_awaited_once_with(USER_ID)
 
 
 @pytest.mark.asyncio
@@ -115,3 +129,19 @@ async def test_a_broken_expert_lookup_never_fails_the_turn(
     pinned.return_value = None
 
     assert await resolve_expert_chat_route(USER_ID, "expert-1") == ("platform", None)
+
+
+@pytest.mark.asyncio
+async def test_a_broken_transport_listing_never_fails_the_turn(
+    expert, routes, mocker: pytest_mock.MockerFixture
+) -> None:
+    mocker.patch.object(
+        expert_route,
+        "get_chat_transports",
+        new=AsyncMock(side_effect=RuntimeError("credential store down")),
+    )
+    pinned, default = routes
+
+    assert await resolve_expert_chat_route(USER_ID, "expert-1") == ("platform", None)
+    pinned.assert_not_awaited()
+    default.assert_not_awaited()
