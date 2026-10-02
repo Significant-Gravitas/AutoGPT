@@ -317,8 +317,7 @@ class ScheduleFollowupTool(BaseTool):
             else f"once at {info.next_run_time}"
         )
         return ScheduleCreatedResponse(
-            message=f"Follow-up scheduled {when_str}{target_note}."
-            + _pins_note(pins),
+            message=f"Follow-up scheduled {when_str}{target_note}." + _pins_note(pins),
             schedule_id=info.id,
             next_run_time=info.next_run_time,
             is_recurring=is_recurring,

@@ -12,10 +12,7 @@ from backend.blocks._base import BlockType
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
 from backend.copilot.context import set_turn_unattended
-from backend.copilot.credential_selection import (
-    CredentialPin,
-    set_turn_credential_pins,
-)
+from backend.copilot.credential_selection import CredentialPin, set_turn_credential_pins
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (

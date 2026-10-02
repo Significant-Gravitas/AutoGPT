@@ -40,12 +40,12 @@ from apscheduler.triggers.cron import CronTrigger
 from pydantic import ValidationError
 
 from backend.api.features.experts.models import ExpertRoutine
-from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.api.features.experts.routine_jobs import (
     create_routine_schedules,
     delete_routine_schedules,
     spread_cron,
 )
+from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -316,9 +316,7 @@ async def enable_routine(
 
 
 def _pins_json(pins: CredentialPins) -> prisma.Json:
-    return prisma.Json(
-        {provider: pin.model_dump() for provider, pin in pins.items()}
-    )
+    return prisma.Json({provider: pin.model_dump() for provider, pin in pins.items()})
 
 
 def _session_mode(value: str) -> prisma.enums.ExpertRoutineSession:

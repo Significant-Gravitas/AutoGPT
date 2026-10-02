@@ -129,11 +129,10 @@ def _choice_card(
     session_id: str, choices: dict[str, list[Credentials]]
 ) -> SetupRequirementsResponse:
     fields = {
-        f"{provider}_credentials": CredentialsFieldInfo[
-            ProviderName, CredentialsType
-        ](
+        f"{provider}_credentials": CredentialsFieldInfo[ProviderName, CredentialsType](
             credentials_provider=frozenset([ProviderName(provider)]),
             credentials_types=frozenset(c.type for c in fits),
+            credentials_scopes=None,
         )
         for provider, fits in choices.items()
     }

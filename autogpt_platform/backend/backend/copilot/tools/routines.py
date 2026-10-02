@@ -500,8 +500,12 @@ def _confirmation(routine: ExpertRoutine) -> str:
         when = "at no time it can name"
     accounts = ""
     if routine.grants_credentials and routine.credential_pins:
-        accounts = " Every run uses these accounts: " + ", ".join(
-            f"{provider}: '{pin.title or pin.id}'"
-            for provider, pin in sorted(routine.credential_pins.items())
-        ) + "."
+        accounts = (
+            " Every run uses these accounts: "
+            + ", ".join(
+                f"{provider}: '{pin.title or pin.id}'"
+                for provider, pin in sorted(routine.credential_pins.items())
+            )
+            + "."
+        )
     return f"'{routine.title}' is on: {when}, {where}. {reach}{accounts}"
