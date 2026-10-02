@@ -44,7 +44,7 @@ class TestClientConstruction:
         ph.get_flag_client()
 
         _, kwargs = posthog.call_args
-        assert kwargs["personal_api_key"] == "phx_personal"
+        assert kwargs["secret_key"] == "phx_personal"
         assert kwargs["enable_local_evaluation"] is True
 
     def test_without_it_evaluation_stays_remote(self, mocker):
@@ -54,7 +54,7 @@ class TestClientConstruction:
         ph.get_flag_client()
 
         _, kwargs = posthog.call_args
-        assert kwargs["personal_api_key"] is None
+        assert kwargs["secret_key"] is None
         assert kwargs["enable_local_evaluation"] is False
 
     def test_the_client_is_built_once(self, mocker):

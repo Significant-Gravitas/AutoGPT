@@ -151,7 +151,7 @@ def _build_client() -> Posthog | None:
     _client = Posthog(
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
-        personal_api_key=personal_api_key or None,
+        secret_key=personal_api_key or None,
         enable_local_evaluation=bool(personal_api_key),
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,

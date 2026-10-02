@@ -440,7 +440,7 @@ class TestAgainstTheRealSDK:
     def client(self, provider_impl) -> Posthog:
         return Posthog(
             "phc_test",
-            personal_api_key="phx_personal",
+            secret_key="phx_personal",
             enable_local_evaluation=True,
             sync_mode=True,
             poll_interval=REFRESH,
