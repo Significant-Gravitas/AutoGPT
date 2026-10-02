@@ -925,10 +925,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=262144,
                 max_output_tokens=262144,
                 price_tier=2,
+                # Live OpenRouter rate as of 2026-10-02: $0.43415/$1.828 per
+                # 1M (cheapest route, Baidu), down from $0.65/$3.41.
+                # Flagged by scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=97.5,
-                    output_credits_per_1m=511.5,
+                    input_credits_per_1m=65.1225,
+                    output_credits_per_1m=274.2,
                 ),
             ),
             CatalogModel(
