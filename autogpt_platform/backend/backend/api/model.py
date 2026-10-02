@@ -1,4 +1,5 @@
 import enum
+from datetime import datetime
 from typing import Any, Literal, Optional
 
 import pydantic
@@ -67,6 +68,19 @@ class TimezoneResponse(pydantic.BaseModel):
 
 class UpdateTimezoneRequest(pydantic.BaseModel):
     timezone: TimeZoneName
+
+
+class RecordUserConsentRequest(pydantic.BaseModel):
+    # The frontend's TERMS_VERSION, e.g. "2026-10".
+    terms_version: str = pydantic.Field(min_length=1, max_length=32)
+    marketing_opt_out: bool
+
+
+class UserConsentResponse(pydantic.BaseModel):
+    terms_accepted_at: Optional[datetime] = None
+    terms_version: Optional[str] = None
+    marketing_opt_out_at: Optional[datetime] = None
+    marketing_opt_out_source: Optional[str] = None
 
 
 class NotificationPayload(pydantic.BaseModel):

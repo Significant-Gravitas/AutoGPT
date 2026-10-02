@@ -3071,6 +3071,46 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/auth/user/consent": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Record user consent",
+        "description": "Record the terms version accepted at signup and, if the user refused\nmarketing email, the opt-out. Idempotent; never clears an opt-out.",
+        "operationId": "postV1Record user consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUserConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/user/email": {
       "post": {
         "tags": ["v1", "auth"],
@@ -28367,6 +28407,23 @@
         "required": ["experiment_key", "variant"],
         "title": "RecordAssignmentRequest"
       },
+      "RecordUserConsentRequest": {
+        "properties": {
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Terms Version"
+          },
+          "marketing_opt_out": {
+            "type": "boolean",
+            "title": "Marketing Opt Out"
+          }
+        },
+        "type": "object",
+        "required": ["terms_version", "marketing_opt_out"],
+        "title": "RecordUserConsentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -32937,6 +32994,34 @@
         },
         "type": "object",
         "title": "UserAttributionInput"
+      },
+      "UserConsentResponse": {
+        "properties": {
+          "terms_accepted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Version"
+          },
+          "marketing_opt_out_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Marketing Opt Out At"
+          },
+          "marketing_opt_out_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Marketing Opt Out Source"
+          }
+        },
+        "type": "object",
+        "title": "UserConsentResponse"
       },
       "UserCostSummary": {
         "properties": {

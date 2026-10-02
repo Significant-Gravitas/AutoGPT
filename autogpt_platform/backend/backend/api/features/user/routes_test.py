@@ -158,6 +158,7 @@ AUTHENTICATED = {
     ("post", "/api/auth/user/email"),
     ("get", "/api/auth/user/timezone"),
     ("post", "/api/auth/user/timezone"),
+    ("post", "/api/auth/user/consent"),
     ("get", "/api/auth/user/preferences"),
     ("post", "/api/auth/user/preferences"),
 }
