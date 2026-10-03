@@ -235,7 +235,7 @@
           "irreversible": false,
           "block_id": "b8a934d5-fca0-4be3-9fc2-a99bf63bd385"
         },
-        "reason": "Otto does not know what Google Sheets Update Row does, so he asks.",
+        "reason": "Runs Google Sheets Update Row, which reaches outside the platform.",
         "reason_kind": "subject",
         "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],

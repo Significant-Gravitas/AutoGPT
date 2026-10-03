@@ -661,6 +661,7 @@ class AgentMailUpdateMessageBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

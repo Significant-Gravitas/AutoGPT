@@ -141,6 +141,7 @@ _INPUT_DECIDED: dict[
 UNREADABLE_BLOCKS = frozenset(
     {
         "AutoPilotBlock",
+        "BlockInstallationBlock",
         "ClaudeCodeBlock",
         "CodeGenerationBlock",
         "ExecuteCodeBlock",

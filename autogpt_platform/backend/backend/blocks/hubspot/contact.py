@@ -1,6 +1,7 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -39,6 +40,7 @@ class HubSpotContactBlock(Block):
             categories={BlockCategory.CRM},
             input_schema=HubSpotContactBlock.Input,
             output_schema=HubSpotContactBlock.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

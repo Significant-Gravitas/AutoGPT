@@ -140,6 +140,7 @@ class RMFGCreateQuoteBlock(Block):
                 ("dfm_issues", [TEST_DFM_ISSUE]),
             ],
             test_mock={"create_quote": lambda *args, **kwargs: TEST_QUOTE},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
