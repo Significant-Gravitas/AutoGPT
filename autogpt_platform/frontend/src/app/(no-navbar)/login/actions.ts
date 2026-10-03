@@ -52,7 +52,7 @@ export async function login(email: string, password: string) {
 
     return {
       success: true,
-      next: shouldShowOnboarding ? "/onboarding" : "/copilot",
+      next: shouldShowOnboarding ? "/onboarding" : "/home",
     };
   } catch (err) {
     Sentry.captureException(err);

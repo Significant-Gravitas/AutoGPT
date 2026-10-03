@@ -68,10 +68,12 @@ export function decideOnboardingRedirect({
   isOnOnboardingRoute: boolean;
   isOnAuthRoute: boolean;
   hasPendingAuthDeepLink: boolean;
-}): "/onboarding" | "/copilot" | null {
+}): "/onboarding" | "/home" | null {
   if (hasPendingAuthDeepLink) return null;
   if (!isCompleted && !isOnOnboardingRoute) return "/onboarding";
-  if (isCompleted && (isOnOnboardingRoute || isOnAuthRoute)) return "/copilot";
+  // Never /copilot: entering its server redirect from an auth or onboarding
+  // page crashes Next's router with React #310 above every error boundary.
+  if (isCompleted && (isOnOnboardingRoute || isOnAuthRoute)) return "/home";
   return null;
 }
 
