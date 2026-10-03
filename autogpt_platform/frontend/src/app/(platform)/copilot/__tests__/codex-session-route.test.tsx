@@ -149,7 +149,10 @@ describe("useChatSession transport route", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
 
     await waitFor(() => {
-      expect(getRequestBody()).toEqual({ llm_auth_provider: "platform" });
+      expect(getRequestBody()).toEqual({
+        llm_auth_provider: "platform",
+        session_id: expect.any(String),
+      });
     });
   });
 
@@ -168,6 +171,7 @@ describe("useChatSession transport route", () => {
       expect(getRequestBody()).toEqual({
         llm_auth_provider: "codex",
         llm_credential_id: "codex-credential-1",
+        session_id: expect.any(String),
       });
     });
   });
@@ -180,7 +184,10 @@ describe("useChatSession transport route", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
 
     await waitFor(() => {
-      expect(getRequestBody()).toEqual({ llm_auth_provider: "platform" });
+      expect(getRequestBody()).toEqual({
+        llm_auth_provider: "platform",
+        session_id: expect.any(String),
+      });
     });
   });
 
@@ -198,6 +205,7 @@ describe("useChatSession transport route", () => {
       expect(getRequestBody()).toEqual({
         llm_auth_provider: "codex",
         llm_credential_id: "codex-credential-1",
+        session_id: expect.any(String),
       });
     });
   });
