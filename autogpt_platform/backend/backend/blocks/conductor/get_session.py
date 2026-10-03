@@ -13,16 +13,24 @@ from backend.sdk import (
 )
 from backend.util.exceptions import BlockExecutionError
 
-from ._api import ConductorClient
+from ._api import (
+    DEFAULT_WAIT_SECONDS,
+    MAX_WAIT_SECONDS,
+    POLL_INTERVAL_DESCRIPTION,
+    ConductorClient,
+    poll_interval_for,
+)
 from ._config import conductor
 from ._mocks import MOCK_PROMPT_MESSAGE, MOCK_REPLY_MESSAGE
 from ._paging import fetch_tail
-from ._transcript import latest_reply, read_after
+from ._transcript import latest_reply, read_after, wait_until_idle
 
 CREDENTIALS_DESCRIPTION = "Conductor API key from app.conductor.build/users/api-keys"
 
 
 class ConductorGetSessionBlock(Block):
+    execution_timeout_seconds: int | None = MAX_WAIT_SECONDS + 300
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = conductor.credentials_field(
             description=CREDENTIALS_DESCRIPTION
@@ -50,6 +58,41 @@ class ConductorGetSessionBlock(Block):
             "(not a prompt ID returned by Send Message)",
             default="",
         )
+        wait_until_idle: bool = SchemaField(
+            description="Block until the session is idle or errored before "
+            "reading it, instead of polling from outside. Use this to keep "
+            "waiting after a Send Message or Create Session wait timed out: "
+            "pass its next_after as after (the newest messages following it "
+            "are returned) and the prompt's message id as prompt_message_id. "
+            "Returns at once when the session is already idle.",
+            default=False,
+            advanced=False,
+        )
+        prompt_message_id: str = SchemaField(
+            description="With wait_until_idle: the message_id (or "
+            "initial_message_id) of the prompt being waited for. Idle is then "
+            "accepted only once that prompt's turn has produced agent output, "
+            "so a session that is idle because the prompt is still queued keeps "
+            "being waited on.",
+            default="",
+            advanced=False,
+        )
+        timeout_seconds: int = SchemaField(
+            description="How long wait_until_idle waits, in seconds (max "
+            f"{MAX_WAIT_SECONDS}). Coding agents typically run 5-30 minutes: "
+            "prefer a single long wait over repeated short polls or scheduled "
+            "follow-ups; if timed_out is true, call again with after=next_after "
+            "to keep waiting.",
+            default=DEFAULT_WAIT_SECONDS,
+            ge=1,
+            le=MAX_WAIT_SECONDS,
+        )
+        poll_interval_seconds: int = SchemaField(
+            description=POLL_INTERVAL_DESCRIPTION,
+            default=0,
+            ge=0,
+            le=300,
+        )
 
     class Output(BlockSchemaOutput):
         session: dict = SchemaField(
@@ -68,12 +111,18 @@ class ConductorGetSessionBlock(Block):
         )
         has_more: bool = SchemaField(
             description="True when the transcript has messages beyond the returned "
-            "slice: older ones by default, newer ones when after is set"
+            "slice: older ones by default, newer ones when after is set, and "
+            "with wait_until_idle older ones following after"
         )
         next_after: str = SchemaField(
             description="Transcript row ID of the last returned message (or the "
             "row `after` resolved to when nothing followed it); pass it as "
-            "after to read what follows"
+            "after to read what follows, or to continue a wait that timed out"
+        )
+        timed_out: bool = SchemaField(
+            description="True when wait_until_idle was set and the session was "
+            "still working when timeout_seconds elapsed; call again with "
+            "after=next_after to keep waiting"
         )
         message: dict = SchemaField(
             description="The single message requested by message_id"
@@ -84,7 +133,11 @@ class ConductorGetSessionBlock(Block):
         super().__init__(
             id="fabe3db0-fb32-4b05-8e68-b169477b02ec",
             description="Get a Conductor agent session: its details, whether the "
-            "agent is idle, working or errored, and recent transcript messages.",
+            "agent is idle, working or errored, and recent transcript messages. "
+            "With wait_until_idle it blocks in-tool until the agent finishes, "
+            "which is how to keep waiting after a Send Message or Create "
+            "Session wait timed out (after=next_after, prompt_message_id=the "
+            "prompt's message id).",
             categories={BlockCategory.DEVELOPER_TOOLS},
             effect=BlockEffect.READ,
             input_schema=self.Input,
@@ -102,6 +155,7 @@ class ConductorGetSessionBlock(Block):
                 ("latest_reply", "All tests pass now."),
                 ("has_more", False),
                 ("next_after", "row_2"),
+                ("timed_out", False),
                 ("deep_link", "conductor://s/1"),
             ],
             test_mock={
@@ -125,10 +179,20 @@ class ConductorGetSessionBlock(Block):
         self, credentials: APIKeyCredentials, input_data: Input
     ) -> dict[str, Any]:
         client = ConductorClient(credentials)
-        result: dict[str, Any] = {
-            "session": await client.get_session(input_data.session_id),
-            "status": await client.session_status(input_data.session_id),
-        }
+        result: dict[str, Any] = {}
+        if input_data.wait_until_idle:
+            result["status"], result["timed_out"] = await wait_until_idle(
+                client,
+                input_data.session_id,
+                input_data.timeout_seconds,
+                poll_interval_for(
+                    input_data.timeout_seconds, input_data.poll_interval_seconds
+                ),
+                input_data.prompt_message_id,
+            )
+        else:
+            result["status"] = await client.session_status(input_data.session_id)
+        result["session"] = await client.get_session(input_data.session_id)
         if input_data.message_limit > 0:
             if input_data.after:
                 rows, has_more, cursor = await read_after(
@@ -136,6 +200,7 @@ class ConductorGetSessionBlock(Block):
                     input_data.session_id,
                     input_data.after,
                     input_data.message_limit,
+                    latest=input_data.wait_until_idle,
                 )
                 result["cursor"] = cursor
             else:
@@ -175,6 +240,7 @@ class ConductorGetSessionBlock(Block):
         yield "next_after", (
             str(messages[-1].get("id") or cursor) if messages else cursor
         )
+        yield "timed_out", bool(data.get("timed_out", False))
         if data.get("message"):
             yield "message", data["message"]
         yield "deep_link", str(session.get("deepLink") or "")

@@ -6,11 +6,11 @@ Reads a Conductor agent session: details, whether the agent is idle, working or 
 ## Conductor Get Session
 
 ### What it is
-Get a Conductor agent session: its details, whether the agent is idle, working or errored, and recent transcript messages.
+Get a Conductor agent session: its details, whether the agent is idle, working or errored, and recent transcript messages. With wait_until_idle it blocks in-tool until the agent finishes, which is how to keep waiting after a Send Message or Create Session wait timed out (after=next_after, prompt_message_id=the prompt's message id).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block calls `GET /v0/sessions/{id}` and `GET /v0/sessions/{id}/status`, then reads the transcript through `GET /v0/sessions/{id}/messages`. The API only pages from the start in ascending order (100 rows per request at most), so by default the block locates the end of the transcript with cheap one-row probes and returns the newest `message_limit` messages; with `after` it instead reads the next `message_limit` messages following that message, which is how to poll incrementally (`next_after` is the row ID to pass on the next call). `after` takes a transcript row ID, such as `next_after` from Send Message, Create Session, Create Workspace or a previous Get Session call; the prompt ID those blocks return as `message_id` / `initial_message_id` is a different namespace that the API rejects with 404, so when it is passed the block locates the prompt's row itself (newest 300 rows, then up to 1000 older ones) and pages from there, reporting that row ID through `next_after` when nothing follows it yet. `has_more` reports whether older (default) or newer (`after`) messages exist beyond the slice; set `message_limit` to 0 to skip the transcript. `latest_reply` is the newest message with visible agent text, so trailing tool, lifecycle or status events do not hide the answer. Live rows are `userMessage` prompts and `agent` events wrapping the harness's raw payload; only Claude `assistant` text parts and completed Codex `agentMessage` items count as visible text. Pass `message_id` to also fetch one message via `GET /v0/messages/{id}` (a transcript row ID, not a send receipt).
+The block calls `GET /v0/sessions/{id}` and `GET /v0/sessions/{id}/status`, then reads the transcript through `GET /v0/sessions/{id}/messages`. The API only pages from the start in ascending order (100 rows per request at most), so by default the block locates the end of the transcript with cheap one-row probes and returns the newest `message_limit` messages; with `after` it instead reads the next `message_limit` messages following that message, which is how to poll incrementally (`next_after` is the row ID to pass on the next call). `after` takes a transcript row ID, such as `next_after` from Send Message, Create Session, Create Workspace or a previous Get Session call; the prompt ID those blocks return as `message_id` / `initial_message_id` is a different namespace that the API rejects with 404, so when it is passed the block locates the prompt's row itself (newest 300 rows, then up to 1000 older ones) and pages from there, reporting that row ID through `next_after` when nothing follows it yet. `has_more` reports whether older (default) or newer (`after`) messages exist beyond the slice; set `message_limit` to 0 to skip the transcript. `latest_reply` is the newest message with visible agent text, so trailing tool, lifecycle or status events do not hide the answer. Live rows are `userMessage` prompts and `agent` events wrapping the harness's raw payload; only Claude `assistant` text parts and completed Codex `agentMessage` items count as visible text. Pass `message_id` to also fetch one message via `GET /v0/messages/{id}` (a transcript row ID, not a send receipt). With `wait_until_idle` the block first polls `GET /v0/sessions/{id}/status` every `poll_interval_seconds` (0 scales it with the timeout) until the session is `idle` or `error`, for at most `timeout_seconds` (default 30 minutes, max 7200); a session that is already idle costs one request, and `timed_out` is set when the deadline passed first. With `prompt_message_id` (the `message_id` or `initial_message_id` of the prompt being waited for) `idle` is accepted only once that prompt's turn has produced an agent event beyond its startup ones, judged the same way Send Message does, so a session that is idle because the prompt is still queued keeps being waited on; without it an idle session is taken at its word. It then reads the transcript as usual, except that with `after` it returns the newest `message_limit` messages following that row (or the row a prompt ID resolves to) rather than the first ones, so `latest_reply` holds the answer of a long turn without paging (`has_more` then means older rows after `after` were skipped; if more than 1000 rows follow `after`, the end of the transcript is located directly). This is how to continue a Send Message or Create Session wait that timed out: pass its `next_after` as `after` and the prompt's message id as `prompt_message_id`. If this wait times out too, call again with the same inputs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -21,6 +21,10 @@ The block calls `GET /v0/sessions/{id}` and `GET /v0/sessions/{id}/status`, then
 | message_limit | How many transcript messages to return: the most recent ones, or the ones following `after` when it is set; 0 skips the transcript | int | No |
 | after | Read forward from this message (exclusive) instead of returning the most recent messages. Accepts a transcript row ID (next_after from a previous call or from Send Message / Create Session) or the prompt ID those blocks return as message_id / initial_message_id, which is resolved to the prompt's row | str | No |
 | message_id | Also fetch this single message by its transcript row ID (not a prompt ID returned by Send Message) | str | No |
+| wait_until_idle | Block until the session is idle or errored before reading it, instead of polling from outside. Use this to keep waiting after a Send Message or Create Session wait timed out: pass its next_after as after (the newest messages following it are returned) and the prompt's message id as prompt_message_id. Returns at once when the session is already idle. | bool | No |
+| prompt_message_id | With wait_until_idle: the message_id (or initial_message_id) of the prompt being waited for. Idle is then accepted only once that prompt's turn has produced agent output, so a session that is idle because the prompt is still queued keeps being waited on. | str | No |
+| timeout_seconds | How long wait_until_idle waits, in seconds (max 7200). Coding agents typically run 5-30 minutes: prefer a single long wait over repeated short polls or scheduled follow-ups; if timed_out is true, call again with after=next_after to keep waiting. | int | No |
+| poll_interval_seconds | Seconds between status checks while waiting; 0 scales it with timeout_seconds (10-60s) | int | No |
 
 ### Outputs
 
@@ -32,14 +36,17 @@ The block calls `GET /v0/sessions/{id}` and `GET /v0/sessions/{id}/status`, then
 | error_message | Last session error, if any | str |
 | messages | Transcript messages, oldest first: id, sessionIndex, type, content, receivedAt | List[Dict[str, Any]] |
 | latest_reply | Text of the newest agent message with visible text in the returned transcript slice | str |
-| has_more | True when the transcript has messages beyond the returned slice: older ones by default, newer ones when after is set | bool |
-| next_after | Transcript row ID of the last returned message (or the row `after` resolved to when nothing followed it); pass it as after to read what follows | str |
+| has_more | True when the transcript has messages beyond the returned slice: older ones by default, newer ones when after is set, and with wait_until_idle older ones following after | bool |
+| next_after | Transcript row ID of the last returned message (or the row `after` resolved to when nothing followed it); pass it as after to read what follows, or to continue a wait that timed out | str |
+| timed_out | True when wait_until_idle was set and the session was still working when timeout_seconds elapsed; call again with after=next_after to keep waiting | bool |
 | message | The single message requested by message_id | Dict[str, Any] |
 | deep_link | Link that opens the session | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Poll a long task**: Check `status` on a schedule and read `latest_reply` once it turns `idle`.
+**Wait for a long task**: Turn on `wait_until_idle` with a `timeout_seconds` that covers the task and read `latest_reply` when it returns; coding agents typically run 5-30 minutes, so one wait beats a schedule of short checks.
+
+**Continue a timed-out wait**: Pass the `next_after` from a timed-out Send Message or Create Session as `after`, its prompt's message id as `prompt_message_id`, and turn `wait_until_idle` on to pick the turn up where that block stopped.
 
 **Incremental transcript**: Keep the last message id and pass it as `after` to fetch only what is new.
 <!-- END MANUAL -->
