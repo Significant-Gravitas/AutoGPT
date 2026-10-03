@@ -1723,7 +1723,7 @@ async def _send_submission_review_notification(
 
     reviewer_name = reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
     reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
-    reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%B')}"
+    reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%b %Y')}"
 
     if is_approved:
         store_agent = await prisma.models.StoreAgent.prisma().find_first_or_raise(
