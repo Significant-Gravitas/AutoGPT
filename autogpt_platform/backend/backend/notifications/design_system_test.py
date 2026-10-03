@@ -61,7 +61,7 @@ def test_masthead_and_otto_survive_email_image_restrictions(rendered):
     for image in images:
         assert image["src"].startswith("https://")
         assert re.search(r"\.(png|jpe?g)$", image["src"], re.I)
-    assert "https://agpt.co" in document.links
+    assert any(link == "https://agpt.co" for link in document.links)
     assert document.text.strip()
 
 
