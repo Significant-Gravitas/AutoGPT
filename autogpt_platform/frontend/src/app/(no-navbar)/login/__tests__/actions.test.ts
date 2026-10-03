@@ -71,14 +71,14 @@ describe("login", () => {
     expect(result).toEqual({ success: true, next: "/onboarding" });
   });
 
-  it("sends returning users to copilot when onboarding is already complete", async () => {
+  it("sends returning users to /home when onboarding is already complete", async () => {
     signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
     createUserMock.mockResolvedValue({ id: "user-1" });
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 
     const result = await login("user@example.com", "hunter2-password");
 
-    expect(result).toEqual({ success: true, next: "/copilot" });
+    expect(result).toEqual({ success: true, next: "/home" });
   });
 
   it("returns the Better Auth error message when sign-in fails with an APIError", async () => {
@@ -138,6 +138,6 @@ describe("login", () => {
     const result = await login("user@example.com", "hunter2-password");
 
     expect(rollbackSessionMock).not.toHaveBeenCalled();
-    expect(result).toEqual({ success: true, next: "/copilot" });
+    expect(result).toEqual({ success: true, next: "/home" });
   });
 });
