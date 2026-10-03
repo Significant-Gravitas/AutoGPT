@@ -121,6 +121,7 @@ function enabledBlock(overrides: Partial<BlockInfo> = {}): BlockInfo {
 }
 
 test("disables unavailable blocks and explains why on hover", async () => {
+  const { fireEvent } = await import("@testing-library/react");
   const user = userEvent.setup();
   render(
     <TooltipProvider>
@@ -130,6 +131,13 @@ test("disables unavailable blocks and explains why on hover", async () => {
 
   const button = screen.getByRole("button", { name: /disabled/i });
   expect(button).toHaveProperty("disabled", true);
+
+  // A disabled button never fires userEvent clicks; force one to cover the
+  // early return in handleClick/handleDragStart.
+  fireEvent.click(button);
+  fireEvent.dragStart(button, { dataTransfer: {} });
+
+  expect(addBlockWithPlacement).not.toHaveBeenCalled();
 
   await user.hover(button.parentElement!);
 
