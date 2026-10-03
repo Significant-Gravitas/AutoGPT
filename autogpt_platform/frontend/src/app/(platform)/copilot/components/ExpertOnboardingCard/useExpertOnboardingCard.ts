@@ -1,23 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   buildOnboardingAnswersMessage,
   type ExpertOnboardingStep,
 } from "./helpers";
+import {
+  clearOnboardingProgress,
+  readOnboardingProgress,
+  writeOnboardingProgress,
+} from "./onboardingProgress";
 
 const SKIP_MESSAGE = "Let's skip the setup questions for now.";
 
 interface Args {
+  callId: string;
   steps: ExpertOnboardingStep[];
   isLive: boolean;
 }
 
-export function useExpertOnboardingCard({ steps, isLive }: Args) {
+export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
   const { onSend } = useCopilotChatActions();
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  // Seeded from sessionStorage: the card is remounted when the kickoff turn
+  // settles and its row is re-keyed, and again on a reload. Either would
+  // otherwise throw away the answers given so far.
+  const [step, setStep] = useState(
+    () => readOnboardingProgress(callId)?.step ?? 0,
+  );
+  const [answers, setAnswers] = useState<Record<string, string>>(
+    () => readOnboardingProgress(callId)?.answers ?? {},
+  );
   const [isSent, setIsSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
@@ -29,6 +42,11 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
   // A card the thread has moved past renders as history, whether the answers
   // went out from this tab or from another one.
   const isDone = isSent || !isLive;
+
+  useEffect(() => {
+    if (isDone) return;
+    writeOnboardingProgress(callId, { step, answers });
+  }, [callId, step, answers, isDone]);
 
   function setAnswer(next: string) {
     setAnswers((previous) => ({ ...previous, [currentStep.keyword]: next }));
@@ -46,6 +64,7 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
     setIsSending(true);
     try {
       await onSend(message);
+      clearOnboardingProgress(callId);
       setIsSent(true);
     } catch {
       setIsSent(false);
