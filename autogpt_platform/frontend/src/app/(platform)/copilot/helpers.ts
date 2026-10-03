@@ -1,9 +1,10 @@
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/auth/actions";
-import type { UIMessage } from "ai";
+import type { ChatStatus, UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
+import { parseSpecialMarkers } from "./components/ChatMessagesContainer/helpers";
 
 export const ORIGINAL_TITLE = "AutoGPT";
 
@@ -229,6 +230,7 @@ interface SuppressDuplicateArgs {
   isReconnectScheduled: boolean;
   lastSubmittedText: string | null;
   messages: UIMessage[];
+  status?: ChatStatus;
 }
 
 /**
@@ -253,8 +255,20 @@ export function getSendSuppressionReason({
   isReconnectScheduled,
   lastSubmittedText,
   messages,
+  status,
 }: SuppressDuplicateArgs): SuppressReason {
   if (isReconnectScheduled) return "reconnecting";
+
+  const lastMessage = messages.at(-1);
+  const hasRetryableError =
+    status === "ready" &&
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts.some(
+      (part) =>
+        part.type === "text" &&
+        parseSpecialMarkers(part.text).markerType === "retryable_error",
+    );
+  if (status === "error" || hasRetryableError) return null;
 
   if (text && lastSubmittedText === text) {
     const lastUserMsg = messages.filter((m) => m.role === "user").pop();
