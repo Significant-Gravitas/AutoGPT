@@ -11,7 +11,9 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
 
+from backend.api.features.billing.client_country import ClientCountry
 from backend.api.model import RequestTopUp
+from backend.data.checkout_audience import schedule_checkout_opened
 from backend.data.credit import (
     AutoTopUpConfig,
     InvoiceListItem,
@@ -68,6 +70,7 @@ async def request_top_up(
     x_datafast_session_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
+    country: ClientCountry = None,
 ):
     credit_model = await get_credit_model(user_id, ctx.org_id)
     checkout_url = await credit_model.top_up_intent(
@@ -79,6 +82,8 @@ async def request_top_up(
     await track_checkout_started(
         user_id=user_id, checkout_kind="top_up", surface=request.surface
     )
+    if checkout_url:
+        schedule_checkout_opened(user_id, ip_country=country)
     return {"checkout_url": checkout_url}
 
 

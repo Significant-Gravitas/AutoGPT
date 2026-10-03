@@ -36,7 +36,6 @@ from backend.data.notifications import NotificationPreference, NotificationPrefe
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.subscription_trial import get_subscription_trial
-from backend.notifications.subscriber_fields import queue_signup
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError, NotFoundError
@@ -93,7 +92,6 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
             track_signup_completed(
                 user_id=user.id, signup_method=await _signup_method(user.id, user_data)
             )
-            _sync_signup(user)
         else:
             was_created = False
 
@@ -165,21 +163,6 @@ def _legacy_signup_method(user_data: dict) -> str | None:
         return None
     provider = app_metadata.get("provider")
     return provider if isinstance(provider, str) and provider else None
-
-
-_signup_sync_tasks: set[asyncio.Task] = set()
-
-
-def _sync_signup(user: PrismaUser) -> None:
-    """Queue the new account for MailerLite in the background, so signup never
-    waits on the broker, and never fails because of it: the backfill catches
-    anyone this misses."""
-    try:
-        task = asyncio.create_task(queue_signup(user.id, user.email, user.createdAt))
-        _signup_sync_tasks.add(task)
-        task.add_done_callback(_signup_sync_tasks.discard)
-    except Exception:
-        logger.warning(f"Could not queue the MailerLite signup for {user.id}")
 
 
 # Word lists mirror the legacy generate_username() SQL function so that app-

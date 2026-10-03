@@ -23,7 +23,13 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_chat_outcome
 from backend.copilot.tree import charge_credits
-from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
+from backend.data.db_accessors import (
+    execution_db,
+    graph_db,
+    library_db,
+    orgs_db,
+    user_db,
+)
 from backend.data.execution import (
     ExecutionStatus,
     ExecutionTrigger,
@@ -977,9 +983,7 @@ class RunAgentTool(BaseTool):
         # only the fallback for sessions predating org tagging.
         org_id, team_id = session.organization_id, session.team_id
         if org_id is None:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, team_id = await get_user_default_team(user_id)
+            org_id, team_id = await orgs_db().get_user_default_team(user_id)
 
         try:
             execution = await execution_utils.add_graph_execution(
@@ -1307,9 +1311,7 @@ class RunAgentTool(BaseTool):
         # and is cleaned up when she is archived.
         org_id, team_id = session.organization_id, session.team_id
         if org_id is None:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, team_id = await get_user_default_team(user_id)
+            org_id, team_id = await orgs_db().get_user_default_team(user_id)
 
         try:
             result = await get_scheduler_client().add_execution_schedule(

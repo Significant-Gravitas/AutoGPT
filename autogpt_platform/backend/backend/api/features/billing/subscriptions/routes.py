@@ -20,10 +20,12 @@ from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 from typing_extensions import Optional
 
+from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.copilot.rate_limit import get_tier_multipliers
+from backend.data import checkout_audience
 from backend.data.credit import (
     PendingChangeUnknown,
     UserCredit,
@@ -350,6 +352,7 @@ async def update_subscription_tier(
     x_datafast_session_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
+    country: ClientCountry = None,
 ) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
@@ -652,6 +655,8 @@ async def update_subscription_tier(
         billing_cycle=request.billing_cycle,
     )
 
+    if url:
+        checkout_audience.schedule_checkout_opened(user_id, ip_country=country)
     status = await get_subscription_status(user_id)
     status.url = url
     return status
@@ -837,6 +842,9 @@ async def stripe_webhook(request: Request):
             # both would double-send.
             if event_type == "checkout.session.completed":
                 await _notify_checkout_completed(data_object)
+                # The billing address is the strongest country signal, and
+                # it only exists once checkout completes. Never raises.
+                await checkout_audience.record_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",

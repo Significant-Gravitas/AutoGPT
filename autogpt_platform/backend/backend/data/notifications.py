@@ -421,14 +421,20 @@ class AudienceAction(Enum):
     REMOVE_TRIAL = "remove_trial"
     # No group change: only the subscriber's fields.
     UPDATE_FIELDS = "update_fields"
-    # A new account's fields. Its `signed` never replaces a status already
-    # held (see `mailerlite.record_signup`).
+    # Nothing queues this: a signup stays out of MailerLite until it opens
+    # checkout. It exists so an older queued or dead-lettered message still
+    # parses, and only updates someone MailerLite already has (see
+    # `mailerlite.record_signup`).
     SIGNUP = "signup"
+    # Someone opened Stripe checkout: into the checkout openers group, with
+    # the fields GTM segments them on (see `mailerlite.record_checkout_opened`).
+    CHECKOUT_OPENED = "checkout_opened"
 
 
 class SubscriberField(str, Enum):
-    """MailerLite custom field keys the backend writes. GTM segments on these,
-    so a key is renamed only together with MailerLite."""
+    """MailerLite field keys the backend writes: our custom fields, and
+    MailerLite's built-in `country`. GTM segments on these, so a key is renamed
+    only together with MailerLite."""
 
     STATUS = "subscription_status"
     SIGNUP = "signup_date"
@@ -436,6 +442,15 @@ class SubscriberField(str, Enum):
     SUBSCRIPTION_STARTED = "subscription_started_date"
     SUBSCRIPTION_CANCELED = "subscription_canceled_date"
     SUBSCRIPTION_ENDED = "subscription_ended_date"
+    # The checkout opener's segmentation (see `audience_enrichment`).
+    CHECKOUT_OPENED = "checkout_opened_date"
+    EMAIL_TYPE = "email_type"
+    SIGNIN_METHOD = "signin_method"
+    # Built into MailerLite, so never created: the full English name.
+    COUNTRY = "country"
+    COUNTRY_CODE = "country_code"
+    COUNTRY_SOURCE = "country_source"
+    EXCLUDE_DE_AT = "exclude_de_at"
 
 
 class SubscriptionStatus(str, Enum):
@@ -458,7 +473,7 @@ class AudienceEventModel(BaseModel):
     user_id: str
     # Written with the group change, or alone for UPDATE_FIELDS and SIGNUP. A
     # date is YYYY-MM-DD; None clears the field, and a field left out is
-    # untouched.
+    # untouched. CHECKOUT_OPENED's are merged with what MailerLite holds first.
     fields: dict[SubscriberField, str | None] = Field(default_factory=dict)
 
 
