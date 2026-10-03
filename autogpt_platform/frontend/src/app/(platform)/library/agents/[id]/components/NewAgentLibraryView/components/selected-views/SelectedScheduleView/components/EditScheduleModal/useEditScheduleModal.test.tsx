@@ -26,7 +26,6 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
 });
 
 const fetchMock = vi.fn();
-const originalFetch = globalThis.fetch;
 
 const schedule = {
   id: "sched-1",
@@ -37,12 +36,12 @@ const schedule = {
 beforeEach(() => {
   fetchMock.mockReset();
   toastMock.mockClear();
-  globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
-  globalThis.fetch = originalFetch;
+  vi.unstubAllGlobals();
 });
 
 describe("useEditScheduleModal", () => {

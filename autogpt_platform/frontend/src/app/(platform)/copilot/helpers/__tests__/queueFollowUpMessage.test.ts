@@ -16,14 +16,12 @@ vi.mock("../../helpers", () => ({
 }));
 
 describe("queueFollowUpMessage", () => {
-  const originalFetch = global.fetch;
-
   beforeEach(() => {
-    global.fetch = vi.fn();
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
