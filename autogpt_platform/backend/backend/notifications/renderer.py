@@ -14,6 +14,7 @@ preheader); both are then passed into the body template.
 """
 
 import pathlib
+from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader
 from prisma.enums import NotificationType
@@ -103,10 +104,12 @@ def render(
     data: BaseNotificationData,
     user_email: str,
     urls: EmailUrls,
+    first_name: str | None = None,
 ) -> RenderedEmail:
     """Render one notification into subject, preheader, HTML and plain text."""
     family = get_template_family(notification_type)
     context = _build_context(notification_type, data, user_email, urls)
+    context["first_name"] = first_name or "there"
 
     subject, preheader = _render_subject(family, context)
     html = _html_env.get_template(f"{family}.html.j2").render(
@@ -139,11 +142,19 @@ def _build_context(
     # undefined, not on None. Only the top level, so `totals.usd_estimate`
     # survives for its `is not none` test.
     context = {k: v for k, v in data.model_dump().items() if v is not None}
-    context["user_email"] = user_email
+    context.setdefault("user_email", user_email)
     context["urls"] = urls.model_dump()
     # Hero art is hosted, not inline: Outlook does not render inline SVG, and
     # Gmail does not display data-URI images.
     context["assets"] = settings.config.email_asset_base_url.rstrip("/")
+    asset_url = urlsplit(context["assets"])
+    context["otto_asset_url"] = (
+        f"{asset_url.scheme}://{asset_url.netloc}"
+        "/autogpt-characters/v1.1/otto/neutral/256.png"
+    )
+    if "plan" in context:
+        plan = context["plan"]
+        plan["label"] = f"{plan['name']} · {plan['cycle']}"
     if kind := get_lifecycle_kind(notification_type):
         context["kind"] = kind
     return context

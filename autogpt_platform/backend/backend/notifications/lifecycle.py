@@ -41,6 +41,7 @@ from backend.notifications.queue import queue_audience_change, queue_notificatio
 from backend.notifications.subscriber_fields import audience_event
 from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger
 from backend.util.product_analytics import track_subscription_ended
 from backend.util.settings import Settings
@@ -134,6 +135,9 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
                     user_name=_greeting_name(user),
                     plan=plan,
                     renews_label=format_date(subscription.get("current_period_end")),
+                    experts_enabled=await is_feature_enabled(
+                        Flag.HIRE_EXPERTS, user.id
+                    ),
                 ),
             )
         )

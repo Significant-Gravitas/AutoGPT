@@ -303,3 +303,41 @@ def test_onboarding_template_names_otto_and_links_to_chat(part, cta):
     assert "AutoPilot" not in html
     assert cta in html
     assert 'href="https://p.example/copilot"' in html
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_welcome_uses_an_available_marketplace_action(enabled):
+    data = WELCOME.model_copy(update={"experts_enabled": enabled})
+    email = render(NotificationType.SUBSCRIPTION_WELCOME, data, "sam@example.com", URLS)
+    expected = "Hire your first Expert" if enabled else "Install your first workflow"
+    assert expected in email.html
+    assert expected in email.text
+    assert "Pro · monthly" in email.html
+    if not enabled:
+        assert "Hire your first Expert" not in email.html
+
+
+def test_otto_uses_the_configured_image_host(monkeypatch):
+    from backend.notifications import renderer
+
+    monkeypatch.setattr(
+        renderer.settings.config,
+        "email_asset_base_url",
+        "https://assets.example/email/",
+    )
+    email = render(
+        NotificationType.SUBSCRIPTION_WELCOME, WELCOME, "sam@example.com", URLS
+    )
+    assert 'src="https://assets.example/email/logo-light.png"' in email.html
+    assert (
+        'src="https://assets.example/autogpt-characters/v1.1/otto/neutral/256.png"'
+        in email.html
+    )
+
+
+def test_product_greeting_is_personalized_and_escaped():
+    email = render(
+        NotificationType.ALERT, ALERT, "sam@example.com", URLS, first_name="<Sam>"
+    )
+    assert "Hi &lt;Sam&gt;" in email.html
+    assert "Hi <Sam>" in email.text
