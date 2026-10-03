@@ -28,6 +28,9 @@ from backend.copilot.context import (
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.credential_selection import selected_credentials
+from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.shell_write import workspace_write_target
+from backend.copilot.gate.subject import Subject
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
@@ -66,6 +69,8 @@ def _build_completion_response(
 
 class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
+
+    has_gate_subject = True
 
     @property
     def name(self) -> str:
@@ -107,6 +112,16 @@ class BashExecTool(BaseTool):
         # when user_id is present.  Defense-in-depth: ensures only authenticated
         # users reach the token injection path.
         return True
+
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> Subject | None:
+        """A command that only writes one workspace file is judged as that write."""
+        command = args.get("command")
+        target = workspace_write_target(command) if isinstance(command, str) else None
+        if target is None or not await _resolves_to_itself(target):
+            return None
+        return Subject(key="write_workspace_file", name=target, effect=Effect.WORKSPACE)
 
     async def _execute(
         self,
@@ -256,3 +271,19 @@ class BashExecTool(BaseTool):
                 error="e2b_execution_error",
                 session_id=session_id,
             )
+
+
+async def _resolves_to_itself(path: str) -> bool:
+    """No symlink anywhere on ``path`` in the sandbox, so a shell write to it
+    lands there. Same accepted race as ``_check_sandbox_symlink_escape``."""
+    sandbox = get_current_sandbox()
+    if sandbox is None:
+        return False
+    try:
+        result = await sandbox.commands.run(
+            f"readlink -m -- {shlex.quote(path)}", cwd=E2B_WORKDIR, timeout=5
+        )
+    except Exception:
+        logger.warning("Could not resolve a bash_exec write target", exc_info=True)
+        return False
+    return result.exit_code == 0 and (result.stdout or "").strip() == path
