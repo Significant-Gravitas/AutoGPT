@@ -24,7 +24,7 @@ from prisma.types import (
 )
 from pydantic import BaseModel, ConfigDict
 
-from backend.data.db import prisma
+from backend.data.db import prisma, transaction
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
@@ -854,10 +854,12 @@ async def record_signup_consent(
     """Record what the user agreed to on the signup page.
 
     Idempotent, so a retried call is harmless: the terms are stamped again only
-    when the version differs, and an opt-out keeps its first date and source,
-    including one recorded after this call read the row (a concurrent call, or
-    an unsubscribe). `marketing_opt_out=False` changes nothing: this can refuse
-    marketing but never take a refusal back, which is a settings action.
+    for a newer version (an older one never replaces a newer acceptance), and
+    an opt-out keeps its first date and source, including one recorded after
+    this call read the row (a concurrent call, or an unsubscribe). Both are
+    written in one transaction, so a failure leaves neither half behind.
+    `marketing_opt_out=False` changes nothing: this can refuse marketing but
+    never take a refusal back, which is a settings action.
 
     Returns the row as read after any write, so it shows whichever refusal won.
     """
@@ -866,8 +868,11 @@ async def record_signup_consent(
         if current is None:
             raise NotFoundError(f"User not found with ID: {user_id}")
 
+        # Versions are YYYY-MM or YYYY-MM-DD, so they order as strings.
         stamp_terms = (
-            current.termsAcceptedAt is None or current.termsVersion != terms_version
+            current.termsAcceptedAt is None
+            or current.termsVersion is None
+            or terms_version > current.termsVersion
         )
         opt_out = marketing_opt_out and current.marketingOptOutAt is None
         if not stamp_terms and not opt_out:
@@ -900,28 +905,29 @@ async def _write_signup_consent(
     user_id: str, terms_version: str | None, opt_out: bool
 ) -> bool:
     """Stamp the terms (unless `terms_version` is None) and, when `opt_out`,
-    the opt-out. True when either reached the row.
+    the opt-out, in one transaction. True when either reached the row.
 
     The opt-out is conditional on none being stored, so a refusal recorded
     since the caller read the row keeps its own date and source.
     """
     now = datetime.now(timezone.utc)
     written = False
-    if terms_version is not None:
-        stamped = await PrismaUser.prisma().update(
-            where={"id": user_id},
-            data={"termsAcceptedAt": now, "termsVersion": terms_version},
-        )
-        written = stamped is not None
-    if opt_out:
-        opted_out = await PrismaUser.prisma().update_many(
-            where={"id": user_id, "marketingOptOutAt": None},
-            data={
-                "marketingOptOutAt": now,
-                "marketingOptOutSource": MARKETING_OPT_OUT_SOURCE_SIGNUP,
-            },
-        )
-        written = written or opted_out > 0
+    async with transaction() as tx:
+        if terms_version is not None:
+            stamped = await PrismaUser.prisma(tx).update(
+                where={"id": user_id},
+                data={"termsAcceptedAt": now, "termsVersion": terms_version},
+            )
+            written = stamped is not None
+        if opt_out:
+            opted_out = await PrismaUser.prisma(tx).update_many(
+                where={"id": user_id, "marketingOptOutAt": None},
+                data={
+                    "marketingOptOutAt": now,
+                    "marketingOptOutSource": MARKETING_OPT_OUT_SOURCE_SIGNUP,
+                },
+            )
+            written = written or opted_out > 0
     return written
 
 

@@ -1,7 +1,9 @@
 import json
+import re
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -9,13 +11,20 @@ import httpx
 import pytest
 import pytest_mock
 from fastapi.routing import APIRoute
+from prisma.actions import UserActions
 from prisma.models import User as PrismaUser
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.model import UserConsentResponse
+from backend.api.model import RECOGNIZED_TERMS_VERSIONS, UserConsentResponse
 from backend.api.rest_api import app as real_app
 from backend.data.model import User
-from backend.data.user import get_or_create_user, get_user_by_email, get_user_by_id
+from backend.data.user import (
+    get_or_create_user,
+    get_user_by_email,
+    get_user_by_id,
+    record_signup_consent,
+)
+from backend.util.exceptions import DatabaseError
 
 from .routes import router
 
@@ -191,14 +200,8 @@ def test_record_user_consent_route(
     }
 
 
-@pytest.mark.parametrize(
-    "terms_version",
-    [
-        pytest.param("2026-10", id="year-month"),
-        pytest.param("2026-10-15", id="second-change-in-a-month"),
-    ],
-)
-def test_record_user_consent_route_accepts_a_dated_version(
+@pytest.mark.parametrize("terms_version", sorted(RECOGNIZED_TERMS_VERSIONS))
+def test_record_user_consent_route_accepts_a_recognized_version(
     mocker: pytest_mock.MockFixture,
     test_user_id: str,
     terms_version: str,
@@ -249,6 +252,18 @@ def test_record_user_consent_route_accepts_a_dated_version(
         pytest.param(
             {"terms_version": "v" * 33, "marketing_opt_out": False},
             id="terms-version-over-32-characters",
+        ),
+        pytest.param(
+            {"terms_version": "2026-10-15", "marketing_opt_out": False},
+            id="well-formed-but-never-shown",
+        ),
+        pytest.param(
+            {"terms_version": "9999-99", "marketing_opt_out": False},
+            id="impossible-date",
+        ),
+        pytest.param(
+            {"terms_version": "2020-01", "marketing_opt_out": False},
+            id="older-terms-than-the-page-shows",
         ),
     ],
 )
@@ -329,6 +344,35 @@ async def test_record_user_consent_route_is_idempotent_in_the_database(
     assert retried.json() == first.json()
     assert _stored_consent(after_decline) == stored
     assert declined.json() == first.json()
+
+
+async def test_a_failed_opt_out_write_leaves_neither_half(
+    consent_reset: str, mocker: pytest_mock.MockFixture
+) -> None:
+    """The terms and the opt-out land together or not at all: when the opt-out
+    write fails, the terms stamp made before it in the same transaction is
+    rolled back, so a retry starts from a clean row."""
+    mocker.patch.object(
+        UserActions,
+        "update_many",
+        new=AsyncMock(side_effect=RuntimeError("opt-out write failed")),
+    )
+
+    with pytest.raises(DatabaseError):
+        await record_signup_consent(consent_reset, "2026-10", True)
+
+    row = await PrismaUser.prisma().find_unique_or_raise(where={"id": consent_reset})
+    assert _stored_consent(row) == UserConsentResponse()
+
+
+def test_the_frontend_terms_version_is_recognized() -> None:
+    """The signup page sends lib/legal.ts's TERMS_VERSION. A bump there that
+    the backend does not recognize would fail every consent write."""
+    legal = Path(__file__).parents[5] / "frontend/src/lib/legal.ts"
+    shown = re.search(r'TERMS_VERSION = "([^"]+)"', legal.read_text())
+
+    assert shown is not None
+    assert shown.group(1) in RECOGNIZED_TERMS_VERSIONS
 
 
 # Invalid request tests

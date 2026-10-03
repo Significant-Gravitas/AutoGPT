@@ -1,7 +1,8 @@
 """Unit tests for helpers in backend.data.user."""
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -315,7 +316,27 @@ class TestRecordSignupConsent:
             db.find_unique = AsyncMock(return_value=_consent_row())
             db.update = AsyncMock(return_value=_consent_row())
             db.update_many = AsyncMock(return_value=1)
+            db.clients = mock_prisma_user.prisma
             yield db
+
+    @pytest.fixture(autouse=True)
+    def tx(self) -> Iterator[MagicMock]:
+        """`transaction()`. `exits` records how each block was left: None for
+        a commit, the exception for a rollback."""
+        tx = MagicMock(name="tx")
+        tx.exits = []
+
+        @asynccontextmanager
+        async def fake_transaction() -> AsyncIterator[MagicMock]:
+            try:
+                yield tx
+            except BaseException as e:
+                tx.exits.append(e)
+                raise
+            tx.exits.append(None)
+
+        with patch.object(user_module, "transaction", fake_transaction):
+            yield tx
 
     @pytest.fixture(autouse=True)
     def caches(self) -> Iterator[MagicMock]:
@@ -503,6 +524,46 @@ class TestRecordSignupConsent:
         with pytest.raises(NotFoundError, match="user-1"):
             await record_signup_consent("user-1", TERMS_VERSION, True)
 
+        assert caches.mock_calls == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("marketing_opt_out", [True, False])
+    async def test_an_older_version_never_replaces_a_newer_acceptance(
+        self, db: MagicMock, marketing_opt_out: bool
+    ):
+        db.find_unique.return_value = _accepted(False)
+
+        await record_signup_consent("user-1", EARLIER_TERMS_VERSION, marketing_opt_out)
+
+        db.update.assert_not_called()
+        if marketing_opt_out:
+            assert set(_opt_out_written(db)) == OPT_OUT_FIELDS
+        else:
+            db.update_many.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_both_writes_share_one_committed_transaction(
+        self, db: MagicMock, tx: MagicMock
+    ):
+        await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        assert db.clients.call_args_list.count(call(tx)) == 2
+        _terms_written(db)
+        _opt_out_written(db)
+        assert tx.exits == [None]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_opt_out_write_rolls_back_the_terms(
+        self, db: MagicMock, tx: MagicMock, caches: MagicMock
+    ):
+        failure = RuntimeError("opt-out write failed")
+        db.update_many.side_effect = failure
+
+        with pytest.raises(DatabaseError):
+            await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        _terms_written(db)
+        assert tx.exits == [failure]
         assert caches.mock_calls == []
 
     @pytest.mark.asyncio

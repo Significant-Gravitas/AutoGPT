@@ -675,7 +675,7 @@ async def test_an_opted_out_first_subscription_is_welcomed_but_not_enrolled():
     claimed.assert_awaited_once_with(user)
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
-    calls["audience"].assert_not_awaited()
+    calls["audience"].assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -691,7 +691,7 @@ async def test_an_opted_out_returning_customer_is_not_added_to_the_changelog():
         user,
     )
     calls["notify"].assert_not_awaited()
-    calls["audience"].assert_not_awaited()
+    calls["audience"].assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -719,7 +719,7 @@ async def test_an_opted_out_cancel_or_resume_emails_but_writes_no_fields(
         _User(opted_out_at=OPTED_OUT),
     )
     assert calls["notify"].await_args.args[0].type is sent
-    fields_on.assert_not_awaited()
+    fields_on.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -730,4 +730,4 @@ async def test_an_opted_out_churn_emails_but_leaves_mailerlite_alone():
     )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.SUBSCRIPTION_ENDED
-    calls["audience"].assert_not_awaited()
+    calls["audience"].assert_not_called()
