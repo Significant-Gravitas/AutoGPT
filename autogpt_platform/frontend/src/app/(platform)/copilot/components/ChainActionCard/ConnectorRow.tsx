@@ -357,7 +357,7 @@ export function ConnectorRow({ row }: Props) {
             // the one this sign-in added.
             if (credential) setRenewedIds((ids) => [...ids, credential.id]);
             else setAwaitingNewAccount(true);
-            row.onConnected();
+            row.onConnected(credential?.id);
             return;
           }
           // A flow that does not report its credential leaves the refresh to

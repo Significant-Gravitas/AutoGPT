@@ -78,6 +78,10 @@ export function SetupRequirementsCard({
   >({});
   const [hasSent, setHasSent] = useState(false);
   const [justConnected, setJustConnected] = useState(false);
+  // Credentials a sign-in on the chain's row reported. A renewal keeps the
+  // credential's id, so this is how a renewed refused credential is told
+  // apart from the refused one still being selected.
+  const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
@@ -203,12 +207,14 @@ export function SetupRequirementsCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
   }, [chainActions, canAutoDismiss, hasSent]);
 
-  // A sign-in from the chain's row renews or replaces the refused credential.
-  // A renewal keeps the credential's id, so after one the id still matching
-  // the rejection is no reason to hold the chain back.
+  // Only a sign-in that renewed the refused credential itself lifts the
+  // rejection; any other sign-in leaves it refused.
+  const isRejectionRenewed = renewedIds.includes(
+    rejection?.credential_id ?? "",
+  );
   const canRun =
     checkCanRun(needsCredentials, isAllCredsComplete, isAllInputsDone) &&
-    (justConnected ||
+    (isRejectionRenewed ||
       !isRejectedCredentialSelected(rejection, inputCredentials));
 
   // Inside a tool chain the card's own Proceed is replaced by the chain's
@@ -234,7 +240,10 @@ export function SetupRequirementsCard({
             fields: credentialFields,
             selected: inputCredentials,
             onChange: handleCredentialChange,
-            onConnected: () => setJustConnected(true),
+            onConnected: (credentialId) => {
+              setJustConnected(true);
+              if (credentialId) setRenewedIds((ids) => [...ids, credentialId]);
+            },
             rejectedCredentialId: rejection?.credential_id ?? undefined,
           }
         : undefined,

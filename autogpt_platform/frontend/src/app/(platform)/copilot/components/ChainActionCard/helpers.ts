@@ -68,8 +68,8 @@ export interface ConnectorRequest {
   onChange: (key: string, value?: CredentialsMetaInput) => void;
   /** The user finished a sign-in on this row. Distinct from a credential
    *  merely being present, which is also true of a card re-rendered from
-   *  chat history. */
-  onConnected: () => void;
+   *  chat history. Carries the credential the sign-in reported, if it did. */
+  onConnected: (credentialId?: string) => void;
   /** A saved credential the provider refused when the tool ran. It stays on
    *  file, so without this the row would auto-select it and read Connected
    *  with nothing to click. */
@@ -83,7 +83,7 @@ export interface ConnectorRow {
   schema: CredentialField[1];
   selected?: CredentialsMetaInput;
   select: (value?: CredentialsMetaInput) => void;
-  onConnected: () => void;
+  onConnected: (credentialId?: string) => void;
   /** Set when an expert asked: an account credential only counts once the
    *  expert has been granted it, so the connect dialog offers the account's
    *  existing credentials first and a freshly connected one is granted. */
@@ -166,8 +166,8 @@ export function toConnectorRows(
     ],
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
-    onConnected: () =>
-      row.targets.forEach(({ request }) => request.onConnected()),
+    onConnected: (credentialId?: string) =>
+      row.targets.forEach(({ request }) => request.onConnected(credentialId)),
   }));
 }
 
