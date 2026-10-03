@@ -79,6 +79,7 @@ class TestApplyBuildingModeRestart:
         delegation_supplement: str = "",
         oversight_supplement: str = "",
         team_building_supplement: str = "",
+        role_charter: str = "",
         auto_mode_supplement: str = "",
         use_e2b: bool = False,
         expert_id: str | None = None,
@@ -107,6 +108,7 @@ class TestApplyBuildingModeRestart:
             oversight_supplement=oversight_supplement,
             team_building_supplement=team_building_supplement,
             graphiti_supplement="",
+            role_charter=role_charter,
             auto_mode_supplement=auto_mode_supplement,
             use_e2b=use_e2b,
             session_id="sess-1",
@@ -129,16 +131,26 @@ class TestApplyBuildingModeRestart:
         assert "building mode" in status.message.lower()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("supplement", ["delegation", "oversight"])
-    async def test_supplements_survive_the_restart(self, mocker, supplement):
+    @pytest.mark.parametrize(
+        "section",
+        [
+            "delegation_supplement",
+            "oversight_supplement",
+            "team_building_supplement",
+            "role_charter",
+        ],
+    )
+    async def test_supplements_survive_the_restart(self, mocker, section):
         """The restart rebuilds the system prompt from its own parts.
 
         Tool registration happened once, before it, so both tool groups stay
         callable for the rest of the turn — dropping their disclosure rules
         here is exactly the silent-delegation hole these supplements close.
+        The charter rides along for the same reason: a session that starts
+        the turn as one member of a team must not finish it as a soloist.
         """
-        marker = f"<{supplement}>RULES</{supplement}>"
-        _, state, _, _ = await self._run(mocker, **{f"{supplement}_supplement": marker})
+        marker = f"<{section}>RULES</{section}>"
+        _, state, _, _ = await self._run(mocker, **{section: marker})
 
         prompt = state.options.system_prompt
         text = prompt if isinstance(prompt, str) else prompt["append"]
@@ -229,6 +241,7 @@ class TestApplyBuildingModeRestart:
             oversight_supplement="",
             team_building_supplement="",
             graphiti_supplement="",
+            role_charter="",
             auto_mode_supplement="",
             use_e2b=False,
             session_id="sess-1",
@@ -287,6 +300,7 @@ class TestApplyBuildingModeRestart:
                 oversight_supplement="",
                 team_building_supplement="",
                 graphiti_supplement="",
+                role_charter="",
                 auto_mode_supplement="",
                 use_e2b=False,
                 session_id="sess-1",

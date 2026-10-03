@@ -130,6 +130,14 @@ class Flag(str, Enum):
     # fail-closed (default False).
     ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
 
+    # Child of ``HIRE_EXPERTS``: the role-first harness. Otto is prompted
+    # as the head of the user's team and an expert session as one hired
+    # employee, rather than both getting one undifferentiated prompt.
+    # Effective only when both are on; fail-closed (default False). With it
+    # off every session is prompted as Otto is, so the system prompt is the
+    # one that shipped before the split — the flag leaves nothing behind.
+    EXPERT_TASK_MANAGEMENT = "expert-task-management"
+
     # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
     # browse and install end-to-end: the routes 404 when off, so the dark
     # launch is not reachable by URL with the shelf hidden. Fail-closed.
