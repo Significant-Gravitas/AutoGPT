@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
 import { getSeededTestUser } from "./credentials/accounts";
 import { LoginPage } from "./pages/login.page";
-import { completeOnboardingViaAPI } from "./utils/onboarding";
+import { completeOnboardingWizard } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
 
 test("landing happy path: a signed-in user opening /login lands on /home", async ({
@@ -20,17 +20,19 @@ test("landing happy path: a signed-in user opening /login lands on /home", async
   await expectHomeLanding(page, copilotRequests);
 });
 
-test("landing happy path: a user who has finished onboarding lands on /home", async ({
+test("landing happy path: a user finishing onboarding lands on /home", async ({
   page,
 }) => {
   test.setTimeout(60000);
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
-  await completeOnboardingViaAPI(page);
 
   const copilotRequests = recordCopilotNavigations(page);
-  await page.goto("/onboarding");
+  await completeOnboardingWizard(page, {
+    role: "Engineering",
+    painPoints: ["Research", "Reports & data"],
+  });
 
   await expectHomeLanding(page, copilotRequests);
 });
