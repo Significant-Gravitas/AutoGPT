@@ -198,6 +198,16 @@ class TestBaseToolExecuteLargeOutput:
 
 
 class TestSummarizeBinaryFields:
+    @pytest.mark.parametrize("mime_type", [None, 123, {}])
+    def test_non_string_mime_types_are_summarized(self, mime_type):
+        payload = {"mime_type": mime_type, "content_base64": "A" * 10_000}
+        result = json.loads(_summarize_binary_fields(json.dumps(payload)))
+        assert "<binary" in result["content_base64"]
+
+    def test_image_mime_type_is_case_insensitive(self):
+        payload = {"mime_type": "IMAGE/PNG", "content_base64": "A" * 10_000}
+        assert json.loads(_summarize_binary_fields(json.dumps(payload))) == payload
+
     def test_replaces_large_content_base64(self):
         import json
 
@@ -225,6 +235,34 @@ class TestSummarizeBinaryFields:
         data = {"message": "hello", "type": "info"}
         raw = json.dumps(data)
         assert _summarize_binary_fields(raw) == raw
+
+    def test_preserves_image_content_base64(self):
+        data = {
+            "content_base64": "A" * 10_000,
+            "name": "screenshot.png",
+            "mime_type": "image/png",
+        }
+        result = json.loads(_summarize_binary_fields(json.dumps(data)))
+        assert result["content_base64"] == "A" * 10_000  # unchanged
+        assert result["mime_type"] == "image/png"
+
+    def test_preserves_jpeg_image_content_base64(self):
+        data = {
+            "content_base64": "B" * 20_000,
+            "name": "photo.jpg",
+            "mime_type": "image/jpeg",
+        }
+        result = json.loads(_summarize_binary_fields(json.dumps(data)))
+        assert result["content_base64"] == "B" * 20_000
+
+    def test_summarizes_non_image_with_mime_type(self):
+        data = {
+            "content_base64": "C" * 10_000,
+            "name": "audio.mp3",
+            "mime_type": "audio/mpeg",
+        }
+        result = json.loads(_summarize_binary_fields(json.dumps(data)))
+        assert "<binary" in result["content_base64"]
 
 
 # ---------------------------------------------------------------------------
@@ -268,16 +306,21 @@ class _BinaryOutputTool(_HugeOutputTool):
     """Returns base64 payload: 1K of it tells the model nothing its size doesn't."""
 
     digest_large_output = True
+    mime_type = "application/octet-stream"
 
     async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
         return WorkspaceFileContentResponse(
             file_id="f-1",
             name="shot.png",
             path="tool-outputs/shot.png",
-            mime_type="image/png",
+            mime_type=self.mime_type,
             content_base64="A" * self._output_size,
             message="Screenshot captured.",
         )
+
+
+class _ImageOutputTool(_BinaryOutputTool):
+    mime_type = "image/png"
 
 
 class _RetrievalTool(ReadWorkspaceFileTool):
@@ -320,6 +363,26 @@ async def _execute_with_flag(tool, flag_on: bool, manager=None):
 
 
 class TestDigestThreshold:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "size", [_DIGEST_THRESHOLD * 2, _LARGE_OUTPUT_THRESHOLD + 1]
+    )
+    async def test_inline_image_is_not_replaced_by_a_digest(self, size):
+        result = await _execute_with_flag(
+            _ImageOutputTool(output_size=size), flag_on=True
+        )
+        payload = json.loads(str(result.output))
+        assert payload["content_base64"] == "A" * size
+        assert payload["mime_type"] == "image/png"
+
+    @pytest.mark.asyncio
+    async def test_oversized_image_reports_an_error_instead_of_truncating_base64(self):
+        result = await _execute_with_flag(
+            _ImageOutputTool(output_size=120_000), flag_on=True
+        )
+        assert not result.success
+        assert "request a file URL" in json.loads(str(result.output))["error"]
+
     def test_the_budget_cannot_exceed_its_own_trigger(self):
         """Between 80K and 95K the legacy preview makes the context bigger;
         deriving the budget from the trigger makes that unrepresentable."""
