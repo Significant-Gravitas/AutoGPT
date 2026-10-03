@@ -12,7 +12,7 @@ If you're using the cloud-hosted version at [agpt.co](https://agpt.co), you're r
 ### **Self-Hosted (Docker)**
 If you're running AutoGPT yourself, you'll need to add your own API keys. Where they go depends on how you installed it.
 
-**Docker Hub image** (`significantgravitas/autogpt`): add the keys to the environment file you pass with `--env-file` (or as `-e` flags):
+**Docker Hub image** (`significantgravitas/autogpt`): the backend reads these keys from the container's environment. Put them in an environment file, for example `autogpt.env` (or pass each one with `-e`):
 
 ```bash
 # autogpt.env
@@ -21,10 +21,10 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 # Add other provider keys as needed
 ```
 
-Then replace the container, keeping the same `autogpt-data` volume:
+Then replace the container so it starts with those keys, keeping the same `autogpt-data` volume:
 ```bash
 docker stop autogpt && docker rm autogpt
-# then run your original docker run command again
+# then rerun your original docker run command with --env-file autogpt.env added
 ```
 
 **Docker Compose from source**: add the same keys to `autogpt_platform/backend/.env`, then restart the services from `autogpt_platform/`:
