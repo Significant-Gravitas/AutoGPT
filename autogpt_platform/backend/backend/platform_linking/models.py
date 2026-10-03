@@ -306,6 +306,27 @@ class ChatTurnHandle(BaseModel):
     denial: TurnDenial | None = None
 
 
+class ChannelCard(BaseModel):
+    """A held call's card for the channel: each option's button carries
+    ``token`` and the option's index."""
+
+    token: str
+    text: str
+    options: list[str]
+
+
+class CardAnswer(BaseModel):
+    """What a click on a card's button did.
+
+    ``follow_up`` is set only when the click answered the row: it is the
+    clicker's next message, whose turn carries the result. ``text`` then
+    replaces the buttons; otherwise only the clicker is shown it.
+    """
+
+    text: str
+    follow_up: str | None = None
+
+
 class ChatSessionSummary(BaseModel):
     """Minimal chat-session fields safe to send to a bot client."""
 

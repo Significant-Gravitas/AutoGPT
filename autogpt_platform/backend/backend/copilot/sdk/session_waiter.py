@@ -21,7 +21,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
@@ -144,6 +144,7 @@ async def run_copilot_turn_via_queue(
     tool_name: str,
     spawn: SpawnRequest | None = None,
     allow_queue: bool = True,
+    message_metadata: dict[str, Any] | None = None,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
 
@@ -211,7 +212,9 @@ async def run_copilot_turn_via_queue(
             session_id[:12],
             tool_name,
         )
-        state = await queue_user_message(session_id=session_id, message=message)
+        state = await queue_user_message(
+            session_id=session_id, message=message, metadata=message_metadata
+        )
         if timeout <= 0:
             # Fire-and-forget: caller explicitly asked not to wait.
             return "queued", SessionResult(
@@ -251,6 +254,7 @@ async def run_copilot_turn_via_queue(
             llm_credential_id=session.metadata.llm_credential_id,
             permissions=permissions,
             spawn=spawn,
+            message_metadata=message_metadata,
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)

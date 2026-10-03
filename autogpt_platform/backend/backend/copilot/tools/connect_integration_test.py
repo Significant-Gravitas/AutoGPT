@@ -2,8 +2,10 @@
 
 import pytest
 
+from backend.copilot.model import ChatMessage
+
 from ._test_data import make_session
-from .connect_integration import ConnectIntegrationTool
+from .connect_integration import ConnectIntegrationTool, requested_scopes
 from .models import ErrorResponse, SetupRequirementsResponse
 
 _TEST_USER_ID = "test-user-connect-integration"
@@ -133,3 +135,78 @@ class TestConnectIntegrationTool:
         output = json.loads(raw) if isinstance(raw, str) else raw
         assert output.get("type") == "need_login"
         assert result.success is False
+
+
+def _connect_call(arguments: str, name: str = "connect_integration") -> ChatMessage:
+    return ChatMessage(
+        role="assistant",
+        content="",
+        tool_calls=[
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": name, "arguments": arguments},
+            }
+        ],
+    )
+
+
+class TestRequestedScopes:
+    def test_no_connect_call_asks_for_nothing(self):
+        session = make_session("user-1", guide_read=False, library_check=False)
+        assert requested_scopes(session) == {}
+        assert requested_scopes(None) == {}
+
+    def test_scopes_include_the_provider_defaults(self):
+        # The card is built from defaults + requested, so the sandbox must be too.
+        session = make_session("user-1", guide_read=False, library_check=False)
+        session.messages.append(
+            _connect_call('{"provider": "github", "scopes": ["read:org"]}')
+        )
+        assert requested_scopes(session) == {"github": frozenset({"repo", "read:org"})}
+
+    def test_latest_card_wins(self):
+        session = make_session("user-1", guide_read=False, library_check=False)
+        session.messages.append(
+            _connect_call('{"provider": "github", "scopes": ["workflow"]}')
+        )
+        session.messages.append(
+            _connect_call('{"provider": "GitHub", "scopes": ["read:org"]}')
+        )
+        assert requested_scopes(session) == {"github": frozenset({"repo", "read:org"})}
+
+    def test_sdk_prefixed_tool_name_counts(self):
+        session = make_session("user-1", guide_read=False, library_check=False)
+        session.messages.append(
+            _connect_call(
+                '{"provider": "github", "scopes": ["read:org"]}',
+                name="mcp__copilot__connect_integration",
+            )
+        )
+        assert requested_scopes(session)["github"] == {"repo", "read:org"}
+
+    def test_unreadable_arguments_are_skipped(self):
+        session = make_session("user-1", guide_read=False, library_check=False)
+        session.messages.append(
+            _connect_call('{"provider": "github", "scopes": ["read:org"]}')
+        )
+        session.messages.append(_connect_call("{not json"))
+        assert requested_scopes(session) == {"github": frozenset({"repo", "read:org"})}
+
+    def test_flat_tool_call_shape_counts(self):
+        # Some transcripts keep name and arguments at the top level.
+        session = make_session("user-1", guide_read=False, library_check=False)
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "connect_integration",
+                        "arguments": {"provider": "github", "scopes": ["read:org"]},
+                    }
+                ],
+            )
+        )
+        assert requested_scopes(session) == {"github": frozenset({"repo", "read:org"})}

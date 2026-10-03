@@ -1,3 +1,4 @@
+import { useFieldAccessibility } from "../../../../field-accessibility";
 import {
   enumOptionsIndexForValue,
   enumOptionsValueForIndex,
@@ -62,6 +63,12 @@ export function SelectWidget(props: WidgetProps) {
       : typeof fieldSchema.title === "string"
         ? fieldSchema.title
         : label;
+  const accessibility = useFieldAccessibility(
+    id,
+    resolvedLabel,
+    formContext ?? props.registry?.formContext,
+    props["aria-describedby"],
+  );
   const schemaPlaceholder =
     typeof fieldSchema.placeholder === "string"
       ? fieldSchema.placeholder
@@ -116,6 +123,7 @@ export function SelectWidget(props: WidgetProps) {
 
       return (
         <MultiSelector
+          label={resolvedLabel}
           values={selectedValues}
           onValuesChange={(newValues) => {
             const selectedOptionIndexes: string[] = [];
@@ -132,7 +140,10 @@ export function SelectWidget(props: WidgetProps) {
           className="w-full"
         >
           <MultiSelectorTrigger>
-            <MultiSelectorInput placeholder="Select options..." />
+            <MultiSelectorInput
+              aria-describedby={accessibility["aria-describedby"]}
+              placeholder="Select options..."
+            />
           </MultiSelectorTrigger>
           <MultiSelectorContent>
             <MultiSelectorList>
@@ -156,7 +167,7 @@ export function SelectWidget(props: WidgetProps) {
       <Select
         label={resolvedLabel}
         placeholder={placeholder || schemaPlaceholder || "Select an option"}
-        id={id}
+        {...accessibility}
         hideLabel={true}
         disabled={disabled || readonly}
         size={selectSize}

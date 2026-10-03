@@ -7,6 +7,7 @@ import pytest
 
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
+    COPILOT_CANCEL_EXCHANGE,
     COPILOT_EXECUTION_EXCHANGE,
     COPILOT_EXECUTION_QUEUE_NAME,
     COPILOT_EXECUTION_ROUTING_KEY,
@@ -14,6 +15,7 @@ from backend.copilot.executor.utils import (
     CoPilotExecutionEntry,
     CoPilotLogMetadata,
     create_copilot_queue_config,
+    declare_pod_cancel_queue,
 )
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import VOICE_TURN_TAG
@@ -127,7 +129,7 @@ class TestCreateCopilotQueueConfig:
     def test_returns_valid_config(self):
         config = create_copilot_queue_config()
         assert len(config.exchanges) == 2
-        assert len(config.queues) == 2
+        assert len(config.queues) == 1
 
     def test_execution_queue_properties(self):
         config = create_copilot_queue_config()
@@ -138,13 +140,32 @@ class TestCreateCopilotQueueConfig:
         assert exec_queue.exchange == COPILOT_EXECUTION_EXCHANGE
         assert exec_queue.routing_key == COPILOT_EXECUTION_ROUTING_KEY
 
-    def test_cancel_queue_uses_fanout(self):
+    def test_config_declares_no_shared_cancel_queue(self):
+        """A queue in this config is declared by every holder, the publishing
+        API included, and shared by every consumer — which is what made the
+        fanout deliver each cancel to one pod."""
         config = create_copilot_queue_config()
-        cancel_queue = next(
-            q for q in config.queues if q.name != COPILOT_EXECUTION_QUEUE_NAME
+        assert COPILOT_CANCEL_EXCHANGE in config.exchanges
+        assert all(q.exchange != COPILOT_CANCEL_EXCHANGE for q in config.queues)
+
+
+class TestDeclarePodCancelQueue:
+    def test_queue_is_exclusive_auto_delete_and_bound_to_the_fanout(self):
+        channel = MagicMock()
+        name = declare_pod_cancel_queue(channel, "executor-1")
+        channel.queue_declare.assert_called_once_with(
+            queue=name, durable=False, exclusive=True, auto_delete=True
         )
-        assert cancel_queue.exchange is not None
-        assert cancel_queue.exchange.type.value == "fanout"
+        channel.queue_bind.assert_called_once_with(
+            queue=name, exchange=COPILOT_CANCEL_EXCHANGE.name, routing_key=""
+        )
+
+    def test_each_pod_gets_its_own_queue(self):
+        names = {
+            declare_pod_cancel_queue(MagicMock(), executor_id)
+            for executor_id in ("executor-1", "executor-2", "executor-1")
+        }
+        assert len(names) == 3
 
 
 class TestCoPilotLogMetadata:
@@ -221,6 +242,42 @@ async def test_schedule_chat_turn_leaves_a_typed_message_alone() -> None:
 
     assert append.await_args.args[1].content == "what did I run yesterday"
     assert dispatch.await_args.kwargs["message"] == "what did I run yesterday"
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_tracks_the_session_channel() -> None:
+    # A web message in a session opened from Discord still counts as Discord,
+    # the same as the engines report it for turns they save themselves.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    tracked = MagicMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=AsyncMock()),
+        patch("backend.copilot.tracking.track_user_message", new=tracked),
+        patch.object(utils, "dispatch_turn", new=AsyncMock()),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="hello",
+            expert_id="expert-1",
+            session_origin="interactive",
+            session_source_platform="discord",
+        )
+
+    tracked.assert_called_once_with(
+        user_id="u1",
+        session_id="s1",
+        message_length=5,
+        expert_id="expert-1",
+        origin="interactive",
+        source_platform="discord",
+    )
 
 
 @pytest.mark.asyncio

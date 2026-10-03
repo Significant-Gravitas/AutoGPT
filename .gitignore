@@ -175,6 +175,16 @@ package-lock.json
 pri*
 # ignore
 ig*
+# ...but roster content is source, not local scratch. `pri*`/`ig*` above are
+# broad enough to swallow a whole file (priya.json did not show up in
+# `git status` at all until this was added), so re-include that tree.
+!autogpt_platform/backend/backend/copilot/eval/style/fixtures/*.json
+# Same trap: `pri*` hid Priya's clay avatars, so the catalog shipped pointing
+# at files git never tracked. Expert artwork is named after the expert, so
+# re-include the whole tree rather than one name at a time.
+!autogpt_platform/frontend/public/experts/**
+!autogpt_platform/frontend/public/autogpt-characters/**
+!autogpt_platform/backend/backend/api/features/experts/avatar_references/**
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py

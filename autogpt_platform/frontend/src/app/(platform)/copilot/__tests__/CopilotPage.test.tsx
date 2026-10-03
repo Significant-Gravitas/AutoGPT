@@ -87,16 +87,13 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 vi.mock("@/hooks/useCredits", () => ({
   default: () => ({ credits: null, fetchCredits: vi.fn() }),
 }));
-const flagState = vi.hoisted(() => ({ artifacts: false }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
-    ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
   },
-  useGetFlag: (flag: string) =>
-    flag === "ARTIFACTS" ? flagState.artifacts : false,
+  useGetFlag: () => false,
 }));
 
 // Auth check moved into CopilotPage directly — default to a logged-in
@@ -161,13 +158,11 @@ afterEach(() => {
   }));
   mockSessionIdForQueryState = null;
   viewportState.isMobile = false;
-  flagState.artifacts = false;
 });
 
 describe("CopilotPage context panel reset", () => {
   it("forgets the previous chat's artifact on session entry even on mobile", async () => {
     viewportState.isMobile = true;
-    flagState.artifacts = true;
     mockSessionIdForQueryState = "session-b";
     mockUseCopilotPage.mockReturnValue({
       ...basePageState,

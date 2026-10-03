@@ -34,6 +34,7 @@ from backend.data.model import (
 )
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.org_migration import ensure_personal_org
+from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.subscription_trial import get_subscription_trial
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
@@ -109,6 +110,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # request loudly instead of returning a bricked account. Idempotent and
         # race-safe (see ensure_personal_org).
         await ensure_personal_org(user.id)
+
+        if was_created:
+            schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:

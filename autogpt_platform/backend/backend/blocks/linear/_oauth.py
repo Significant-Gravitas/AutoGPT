@@ -5,7 +5,7 @@ Linear OAuth handler implementation.
 import base64
 import json
 import time
-from typing import Optional
+from typing import ClassVar, Optional
 from urllib.parse import urlencode
 
 from backend.sdk import (
@@ -15,6 +15,7 @@ from backend.sdk import (
     ProviderName,
     Requests,
     SecretStr,
+    parse_granted_scopes,
 )
 
 
@@ -34,6 +35,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
     # Provider name will be set dynamically by the SDK when registered
     # We use a placeholder that will be replaced by AutoRegistry.register_provider()
     PROVIDER_NAME = ProviderName("linear")
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -239,10 +241,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
             title=current_credentials.title if current_credentials else None,
             username=username or "Unknown User",
             access_token=token_data["access_token"],
-            scopes=(
-                token_data["scope"].split(",")
-                if "scope" in token_data
-                else (current_credentials.scopes if current_credentials else [])
+            scopes=parse_granted_scopes(
+                token_data.get("scope"),
+                fallback=current_credentials.scopes if current_credentials else [],
             ),
             refresh_token=token_data.get("refresh_token"),
             access_token_expires_at=access_token_expires_at,

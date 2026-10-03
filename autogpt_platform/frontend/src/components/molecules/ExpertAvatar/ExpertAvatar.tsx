@@ -1,79 +1,93 @@
-import { Robot01Icon } from "@hugeicons/core-free-icons";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-  type AvatarStatus,
-} from "@/components/molecules/BotAvatar/helpers";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
+import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
+import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
+import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
+
+import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
 interface Props {
   name: string | null;
   avatarUrl: string | null;
   color?: string | null;
   status?: AvatarStatus;
-  animated?: boolean;
   size?: number;
   className?: string;
+  /** Pastel wash behind a custom upload or generated image. A managed
+   *  identity ignores it: its opaque studio tile is the artwork. */
+  backgroundColor?: string;
 }
 
-/**
- * Expert avatar shared by the copilot home surfaces (briefing card, team
- * strip, needs-attention list). Uploaded pictures render as-is; everything
- * else gets the generated shape/colour/accessory face.
- */
+/** An Expert's saved appearance. The image never depends on the name, role,
+ *  category or the marketplace filter: a managed identity is served from its
+ *  versioned library path, anything else is shown exactly as saved. */
 export function ExpertAvatar({
   name,
   avatarUrl,
-  color,
   status = "idle",
-  animated = false,
   size = 40,
   className,
+  backgroundColor,
 }: Props) {
-  const style = { width: size, height: size };
-
-  if (!name) {
+  const src = resolveExpertAvatarUrl(avatarUrl);
+  const managed = getManagedAvatar(src, size);
+  if (managed) {
     return (
-      <div
-        style={style}
-        className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-zinc-100",
-          className,
-        )}
-      >
-        <Icon icon={Robot01Icon} size={size / 2} className="text-zinc-500" />
-      </div>
-    );
-  }
-
-  if (!isUploadedAvatar(avatarUrl)) {
-    return (
-      <BotAvatar
-        config={expertAvatarConfig({ name, avatarUrl, color })}
-        status={status}
+      <ManagedExpertImage
+        key={`${managed.base}:${size}`}
+        name={name ?? "Expert"}
+        base={managed.base}
+        pixels={managed.pixels}
+        pngMaxPixels={managed.pngMaxPixels}
         size={size}
-        animated={animated}
-        showBadge={status !== "idle"}
-        title={name}
+        isOtto={managed.assetID === "otto"}
         className={className}
       />
     );
   }
-
   return (
-    <Avatar
-      style={style}
-      className={cn("shrink-0 border border-stone-500", className)}
+    <span
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: backgroundColor
+          ? expertPastel(backgroundColor)
+          : undefined,
+      }}
+      className={cn(
+        "relative inline-flex shrink-0",
+        backgroundColor && "rounded-full",
+        className,
+      )}
     >
-      <AvatarImage src={avatarUrl ?? undefined} alt={name} />
-      <AvatarFallback>{name}</AvatarFallback>
-    </Avatar>
+      <Avatar className="size-full rounded-[inherit]">
+        <AvatarImage
+          src={src}
+          alt={name ?? "Expert"}
+          width={size}
+          height={size}
+          className="object-contain"
+        />
+        <AvatarFallback
+          accessibleLabel={name ? `${name}, AI Expert` : "AI Expert"}
+        >
+          <span className="text-sm">
+            {name?.slice(0, 1).toUpperCase() ?? "?"}
+          </span>
+        </AvatarFallback>
+      </Avatar>
+      {status !== "idle" && (
+        <StatusDot
+          status={status}
+          size={Math.round(size * 0.34)}
+          className="absolute -bottom-0.5 -right-0.5"
+        />
+      )}
+    </span>
   );
 }

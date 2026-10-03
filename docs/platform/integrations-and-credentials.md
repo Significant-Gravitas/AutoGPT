@@ -42,6 +42,16 @@ Depending on the service, you'll be prompted to authenticate in one of three way
 Credentials are reusable, but each block or task retains its selected credential reference.
 {% endhint %}
 
+## Connecting MCP Services
+
+Open **Settings → Integrations**, find a service with the **MCP** badge, and follow its setup instructions. The same services appear in **Connect Service**.
+
+- Choose the offered sign-in or token option for account access, or **No sign-in → Check connection** for public tools.
+- If prompted, select your account's region or enter the official server URL for your tenant or deployment.
+- Review the requested permissions. **Allow changes**, when offered, adds the service's optional actions.
+
+For catalog updates, see [Maintaining MCP Integrations](contributing/hosted-mcp-catalog.md).
+
 ## Managing Credentials
 
 1. Open **Settings**.
@@ -56,4 +66,4 @@ Removing a credential can break agents, workflows, or active webhooks that refer
 
 ## Self-Hosted Credentials
 
-When self-hosting, configure deployment-level provider keys and OAuth application credentials in `autogpt_platform/backend/.env`, then connect end-user accounts from **Settings → Integrations** as needed. See the [Self-Hosting Guide](getting-started.md) for details.
+When self-hosting, configure deployment-level provider keys and OAuth application credentials as environment variables. For the [Docker Hub image](single-container.md), put them in the environment file you pass to `docker run --env-file`; for a Docker Compose or source install, put them in `autogpt_platform/backend/.env`. Register `<your AutoGPT URL>/auth/integrations/oauth_callback` (for example `http://localhost:3000/auth/integrations/oauth_callback`) as each OAuth app's redirect URI, then connect end-user accounts from **Settings → Integrations** as needed. See the [Self-Hosting Guide](getting-started.md) for details.

@@ -6,15 +6,22 @@ from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
 from pydantic import BaseModel, Field
 
-from backend.api.features.credits_rate_limit import (
+from backend.api.features.billing.client_country import (  # noqa: F401 -- re-exported
+    CLIENT_COUNTRY_SCOPE,
+    ClientCountry,
+    attested_country,
+)
+from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
+from backend.data.checkout_audience import schedule_checkout_opened
 from backend.data.credit import _datafast_metadata, sync_subscription_from_stripe
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial import (
     get_subscription_trial,
     has_received_onboarding_credit,
 )
+from backend.data.subscription_trial_capacity import trial_seat_available
 from backend.data.subscription_trial_checkout import (
     TrialUnavailable,
     confirm_trial_checkout,
@@ -72,14 +79,18 @@ class TrialCheckoutResponse(BaseModel):
 
 
 @router.get("")
-async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
+async def get_trial_status(
+    user_id: CurrentUser, country: ClientCountry = None
+) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if trial:
         return TrialStatusResponse(
             eligible=(
                 trial.status == "checkout_pending"
                 and trial.consumed_at is None
-                and await get_trial_offer(user_id) is not None
+                and (offer := await get_trial_offer(user_id, country=country))
+                is not None
+                and await trial_seat_available(offer, trial_id=trial.id)
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
             status=trial.status,
@@ -95,8 +106,8 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
                 100, 100 * trial.cost_microdollars / trial.offer.total_cost_limit
             ),
         )
-    offer = await get_trial_offer(user_id)
-    if offer is None:
+    offer = await get_trial_offer(user_id, country=country)
+    if offer is None or not await trial_seat_available(offer):
         return TrialStatusResponse()
     user = await get_user_by_id(user_id)
     has_history = False
@@ -138,6 +149,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
 async def start_trial_checkout(
     body: TrialCheckoutRequest,
     user_id: CurrentUser,
+    country: ClientCountry = None,
     x_datafast_visitor_id: Annotated[str | None, Header()] = None,
     x_datafast_session_id: Annotated[str | None, Header()] = None,
 ) -> TrialCheckoutResponse:
@@ -156,11 +168,13 @@ async def start_trial_checkout(
             success_url=f"{destination}?trial=success",
             cancel_url=f"{destination}?trial=cancelled",
             metadata=_datafast_metadata(x_datafast_visitor_id, x_datafast_session_id),
+            country=country,
         )
     except TrialUnavailable as exc:
         raise HTTPException(409, str(exc)) from exc
     except stripe.StripeError as exc:
         raise HTTPException(502, "Unable to start checkout. Please try again.") from exc
+    schedule_checkout_opened(user_id, ip_country=country)
     return TrialCheckoutResponse(url=url)
 
 

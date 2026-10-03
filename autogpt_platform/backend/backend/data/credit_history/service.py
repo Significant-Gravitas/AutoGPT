@@ -113,9 +113,7 @@ def _to_item(row: _HistoryRow, user_id: str) -> CreditTransactionItem:
     )
     description = _TRANSACTION_DESCRIPTIONS[row.transaction_type]
     if row.transaction_type == CreditTransactionType.USAGE:
-        if row.usage_execution_id and row.usage_execution_id.startswith(
-            "copilot-session-"
-        ):
+        if row.usage_chat_session_id:
             activity_type, description = "copilot_tools", "Expert tool use"
         elif row.usage_execution_id:
             activity_type, description = "agent_run", "Agent run"

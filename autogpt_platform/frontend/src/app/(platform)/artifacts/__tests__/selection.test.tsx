@@ -228,6 +228,7 @@ describe("ArtifactsPage - row selection", () => {
     fireEvent.click(await screen.findByTestId("artifacts-selection-move"));
     expect(await screen.findByText("Move 2 files to:")).toBeDefined();
     fireEvent.click(await screen.findByTestId("move-to-folder-option"));
+    fireEvent.click(screen.getByTestId("confirm-move-to-folder"));
 
     await waitFor(() =>
       expect(body).toEqual({ file_ids: ["f1", "f2"], folder_id: "fld-1" }),

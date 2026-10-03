@@ -12,6 +12,7 @@ Image/Video URL Domains Used:
 - Videos: youtube.com (for store listing video URLs)
 """
 
+import argparse
 import asyncio
 import json
 import os
@@ -105,6 +106,45 @@ SEEDED_TEST_EMAILS = [
     "e2e.qa.parallel.a@example.com",
     "e2e.qa.parallel.b@example.com",
 ]
+
+
+def make_seed_credential(credential_id: str) -> APIKeyCredentials:
+    return APIKeyCredentials(
+        id=credential_id,
+        provider="github",
+        api_key=SecretStr("ghp_kitchensink_seed"),
+        title="Kitchen-sink GitHub",
+    )
+
+
+async def refresh_seeded_credentials() -> None:
+    users = await prisma.user.find_many(where={"email": {"in": SEEDED_TEST_EMAILS}})
+    owner_ids = {user.id for user in users}
+    if len(owner_ids) != len(SEEDED_TEST_EMAILS):
+        raise ValueError("Seeded credential owners are missing")
+    credentials = await prisma.integrationcredential.find_many(
+        where={
+            "ownerType": prisma_enums.CredentialOwnerType.USER,
+            "ownerId": {"in": sorted(owner_ids)},
+            "provider": "github",
+            "displayName": "Kitchen-sink GitHub",
+        }
+    )
+    if (
+        len(credentials) != len(owner_ids)
+        or {credential.ownerId for credential in credentials} != owner_ids
+    ):
+        raise ValueError("Expected one marked credential per seeded user")
+    cryptor = JSONCryptor()
+    for credential in credentials:
+        payload = make_seed_credential(credential.id).model_dump()
+        updated = await prisma.integrationcredential.update(
+            where={"id": credential.id},
+            data={"encryptedPayload": cryptor.encrypt(payload)},
+        )
+        if updated is None or cryptor.decrypt(updated.encryptedPayload) != payload:
+            raise ValueError("Seeded credential failed encryption verification")
+    print(f"Verified {len(credentials)} seeded credentials with the current run key")
 
 
 def get_video_url():
@@ -1171,12 +1211,7 @@ class TestDataCreator:
             # decrypt/validate read path (get_user_credentials) accepts it.
             # (A raw/plaintext payload is silently rejected and never shows.)
             cred_id = str(uuid.uuid4())
-            gh_cred = APIKeyCredentials(
-                id=cred_id,
-                provider="github",
-                api_key=SecretStr("ghp_kitchensink_seed"),
-                title="Kitchen-sink GitHub",
-            )
+            gh_cred = make_seed_credential(cred_id)
             await _try(
                 "credential",
                 prisma.integrationcredential.create(
@@ -1366,12 +1401,18 @@ def _seconds_left(deadline: float) -> float:
 
 async def main():
     """Main function to run the test data creation."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--refresh-credentials-only", action="store_true")
+    args = parser.parse_args()
     # Connect to database
     await prisma.connect()
 
     try:
-        creator = TestDataCreator()
-        await creator.create_all_test_data()
+        if args.refresh_credentials_only:
+            await refresh_seeded_credentials()
+        else:
+            creator = TestDataCreator()
+            await creator.create_all_test_data()
     finally:
         # Disconnect from database
         await prisma.disconnect()

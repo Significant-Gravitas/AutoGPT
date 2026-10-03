@@ -6,36 +6,26 @@ This guide explains how to download an agent from the AutoGPT marketplace and im
 <center><iframe width="560" height="315" src="https://www.youtube.com/embed/eTg2kbJdBIw?si=v1npcr8HDiInvUPw" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></center>
 
 ## **Prerequisites**
-* A local installation of AutoGPT
-* Access to the marketplace for local hosters
+* A running self-hosted AutoGPT instance
+* Access to the public marketplace at [platform.agpt.co/marketplace](https://platform.agpt.co/marketplace)
 
 ## **Step-by-Step Process**
 
-### **1. Access the Marketplace**
-* Navigate to the marketplace section
-    * Note: The interface will differ from the cloud-hosted platform
+### **1. Download the Agent**
+1. Open the public marketplace and click the agent you want
+2. Under "Want to use this agent locally?", click **Download here**
+3. The agent file (JSON) saves to your computer
 
-### **2. Download the Agent**
-1. Browse and select your desired agent
-2. Click on the agent to view details
-3. Look for and click the "Download Agent" button
-4. The agent file will save to your computer
+### **2. Import the Agent**
+1. In your self-hosted instance, open **Agents**
+2. Click **Import**
+3. On the **AutoGPT agent** tab, select the downloaded agent file
+4. Check the agent name and description
+5. Click **Upload**
 
-### **3. Import the Agent**
-1. Return to the Monitor tab
-2. Locate the dropdown menu next to "Create"
-3. Select "Import from File"
-4. In the file selection dialog:
-    * Navigate to your downloaded agent file
-    * Select the file
-    * Click "Open"
-5. Click "Import and Edit"
-
-### **4. Verify Import**
-* The agent should now appear in your Builder
-* You can begin editing or using the imported agent
+### **3. Verify Import**
+* The agent opens in the Builder
+* It also appears in your **Agents** library
 
 ##  **Important Notes**
-* The marketplace interface differs between local hosting and cloud-hosted versions
-* Ensure you're following the local hosting specific steps
-* The agent will be available in your Builder after successful import
+* Add any credentials the agent's blocks need under **Settings → Integrations** before running it

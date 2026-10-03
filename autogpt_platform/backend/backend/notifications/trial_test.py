@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -53,6 +54,7 @@ def trial() -> TrialState:
 @pytest.fixture
 def urls() -> EmailUrls:
     return EmailUrls(
+        chat="https://example.com/copilot",
         dashboard="https://example.com/library",
         settings="https://example.com/settings",
         unsubscribe="https://example.com/unsubscribe",
@@ -138,7 +140,9 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
             notices,
             "user_db",
             return_value=MagicMock(
-                get_user_by_id=AsyncMock(return_value=SimpleNamespace(name="Sam"))
+                get_user_by_id=AsyncMock(
+                    return_value=SimpleNamespace(name="Sam", email="sam@example.com")
+                )
             ),
         ),
         patch.object(
@@ -166,6 +170,18 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
     else:
         release.assert_not_awaited()
     assert track.call_count == int(outcome == "sent")
+    if outcome == "sent":
+        assert track.call_args.args[0] == "trial_started"
+
+
+def test_every_trial_notice_kind_has_the_analytics_plan_event_name():
+    """Every kind maps to the analytics plan's ``trial_*`` name; a failed
+    conversion charge is the plan's ``payment_failed``."""
+    kinds = get_args(notices.TrialNoticeKind)
+    assert set(notices.TRIAL_NOTICE_EVENTS) == set(kinds)
+    for kind in kinds:
+        expected = "payment_failed" if kind == "payment_failed" else f"trial_{kind}"
+        assert notices.TRIAL_NOTICE_EVENTS[kind].value == expected
 
 
 def test_canceled_trial_suppresses_late_ending_reminder(trial):

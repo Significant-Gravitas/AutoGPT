@@ -239,6 +239,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   discriminator_mapping?: Record<string, CredentialsProviderName>;
   discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
+  credential_free_discriminator_values?: unknown[];
   secret?: boolean;
 };
 
@@ -778,18 +779,6 @@ export enum SpecialBlockID {
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
-export type AnalyticsMetrics = {
-  metric_name: string;
-  metric_value: number;
-  data_string: string;
-};
-
-export type AnalyticsDetails = {
-  type: string;
-  data: Record<string, any>;
-  index: string;
-};
-
 export type Pagination = {
   total_items: number;
   total_pages: number;
@@ -925,7 +914,9 @@ export type OnboardingStep =
   // First-visit intro card for a tab, dismissed however the user chose
   | "AGENTS_TAB_INTRO"
   | "MARKETPLACE_TAB_INTRO"
-  | "BUILD_TAB_INTRO";
+  | "BUILD_TAB_INTRO"
+  // Agents-to-workflows migration notice, dismissed or followed to Otto
+  | "WORKFLOWS_MOVED";
 
 export interface UserOnboarding {
   // Plain string[] so legacy step names from existing rows pass through.
