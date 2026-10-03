@@ -26,17 +26,21 @@ from backend.util.json import loads
 class HTTPClientError(Exception):
     """4xx client errors (400-499)"""
 
-    def __init__(self, message: str, status_code: int):
+    def __init__(self, message: str, status_code: int, body: bytes | None = None):
         super().__init__(message)
         self.status_code = status_code
+        # The raw response body, so a caller can read a structured error code
+        # (e.g. OAuth's ``{"error": "invalid_grant"}``) without parsing the message.
+        self.body = body
 
 
 class HTTPServerError(Exception):
     """5xx server errors (500-599)"""
 
-    def __init__(self, message: str, status_code: int):
+    def __init__(self, message: str, status_code: int, body: bytes | None = None):
         super().__init__(message)
         self.status_code = status_code
+        self.body = body
 
 
 # Default User-Agent for all requests
@@ -406,9 +410,9 @@ def http_status_error(status: int, reason: str | None, body: bytes) -> Exception
     """Build the exception ``Requests`` raises for an HTTP error status."""
     message = f"HTTP {status} Error: {reason}, Body: {body.decode(errors='replace')}"
     if 400 <= status <= 499:
-        return HTTPClientError(message, status)
+        return HTTPClientError(message, status, body)
     if 500 <= status <= 599:
-        return HTTPServerError(message, status)
+        return HTTPServerError(message, status, body)
     return Exception(message)
 
 

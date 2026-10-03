@@ -35,6 +35,7 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
 )
+from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
 from backend.integrations.providers import ProviderName
 from backend.util.retry import continuous_retry
 
@@ -259,6 +260,16 @@ async def get_provider_token(
             try:
                 fresh = await manager.refresh_if_needed(user_id, creds, lock=False)
                 token = fresh.access_token.get_secret_value()
+            except CredentialsNeedReconnectError:
+                # Already reported when the provider refused it; the dead
+                # refresh token is not replayed, the user has to reconnect.
+                logger.info(
+                    "%s credential #%s needs reconnect; not injecting it",
+                    provider,
+                    creds.id,
+                )
+                refresh_failed = True
+                continue
             except Exception:
                 logger.warning(
                     "Failed to refresh %s OAuth token for user %s; "

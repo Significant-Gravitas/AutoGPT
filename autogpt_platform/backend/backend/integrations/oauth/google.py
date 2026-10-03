@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+from google.auth.exceptions import RefreshError
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
 )
@@ -14,8 +15,24 @@ from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
+from .refresh_failure import OAuthTokenRequestError, describe_refresh_failure
 
 logger = logging.getLogger(__name__)
+
+
+class _StatusRecordingRequest(Request):
+    """google-auth's transport, remembering the last HTTP status it saw.
+
+    ``RefreshError`` carries Google's error body but not the status, and the
+    status is half of what a failed refresh has to report.
+    """
+
+    last_status: int | None = None
+
+    def __call__(self, *args, **kwargs):
+        response = super().__call__(*args, **kwargs)
+        self.last_status = response.status
+        return response
 
 
 # --8<-- [start:GoogleOAuthHandlerExample]
@@ -177,7 +194,15 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         assert google_creds.refresh_token
         assert google_creds.scopes
 
-        google_creds.refresh(Request())
+        request = _StatusRecordingRequest()
+        try:
+            google_creds.refresh(request)
+        except RefreshError as e:
+            raise OAuthTokenRequestError(
+                str(self.PROVIDER_NAME),
+                status_code=request.last_status,
+                error_code=describe_refresh_failure(e).error_code,
+            ) from e
         assert google_creds.expiry
 
         return OAuth2Credentials(

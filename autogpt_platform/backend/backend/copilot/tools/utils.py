@@ -18,6 +18,7 @@ from backend.data.model import (
 )
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import reconnect_required
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
@@ -373,6 +374,11 @@ def find_matching_credential(
     the first fit there would run on whichever account was stored first.
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
+    # A credential whose refresh the provider refused for good only yields a
+    # reconnect card; while any other fits, it must not be picked or counted
+    # as a choice. With nothing else, keep it so the card can say why.
+    healthy = [c for c in fits if reconnect_required(c) is None]
+    fits = healthy or fits
     if selected:
         for cred in fits:
             if selected.get(_provider_slug(cred)) == cred.id:

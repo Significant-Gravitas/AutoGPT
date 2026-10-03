@@ -94,11 +94,11 @@ function makeCredentialsReturn(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderCard() {
+function renderCard({ onSelectCredentials = vi.fn() } = {}) {
   render(
     <CredentialsInput
       schema={schema}
-      onSelectCredentials={vi.fn()}
+      onSelectCredentials={onSelectCredentials}
       showTitle
       variant="node"
     />,
@@ -204,6 +204,38 @@ describe("credential connect failures the card reports instead of throwing", () 
           provider: "google",
         },
       ),
+    );
+  });
+
+  it("names the missing scope and does not select a reconnect that came back just as narrow", async () => {
+    const onSelectCredentials = vi.fn();
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        oAuthCallback: vi.fn().mockResolvedValue({
+          id: "same-narrow-cred",
+          type: "oauth2",
+          title: "Connected Google",
+          provider: "google",
+          scopes: ["drive.file"],
+        }),
+      }),
+    );
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: Promise.resolve({ code: "code-1", state: "state-xyz" }),
+      cleanup: { abort: vi.fn() },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+
+    renderCard({ onSelectCredentials });
+
+    expect(
+      await screen.findByText(
+        /the permission drive\.metadata was not granted\. Reconnect and approve it/i,
+      ),
+    ).toBeDefined();
+    expect(onSelectCredentials).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: "same-narrow-cred" }),
     );
   });
 

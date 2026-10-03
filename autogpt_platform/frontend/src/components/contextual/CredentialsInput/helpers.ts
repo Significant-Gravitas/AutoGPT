@@ -212,6 +212,23 @@ export function getRemovedCredentialMessage(
   return `${removedCredentialTitle} was removed — now using ${replacement}.`;
 }
 
+export function getMissingScopes(
+  requiredScopes: string[],
+  grantedScopes: string[] | null | undefined,
+): string[] {
+  const granted = new Set(grantedScopes ?? []);
+  return requiredScopes.filter((scope) => !granted.has(scope));
+}
+
+export function getScopeShortfallMessage(missingScopes: string[]): string {
+  const plural = missingScopes.length > 1;
+  return (
+    `The account connected, but the ${plural ? "permissions" : "permission"} ` +
+    `${missingScopes.join(", ")} ${plural ? "were" : "was"} not granted. ` +
+    `Reconnect and approve ${plural ? "them" : "it"} to use this account here.`
+  );
+}
+
 export const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
 export const MASKED_KEY_LENGTH = 15;
 
