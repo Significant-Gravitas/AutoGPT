@@ -30,14 +30,6 @@ updates:
         # Declared as dev but imported by runtime code.
         exclude-patterns:
           - "httpx*"
-      security-updates:
-        applies-to: "security-updates"
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "pyjwt"
-          - "cryptography"
-          - "httpx*"
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
@@ -88,28 +80,6 @@ updates:
         exclude-patterns:
           - "httpx*"
           - "requests"
-      # Version-update groups don't reach security updates, which the repository
-      # setting otherwise bundles together.
-      security-updates:
-        applies-to: "security-updates"
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "google-auth*"
-          - "google-api-python-client"
-          - "oauthlib"
-          - "requests-oauthlib"
-          - "authlib"
-          - "pyjwt"
-          - "cryptography"
-          - "stripe"
-          - "anthropic"
-          - "openai"
-          - "claude-agent-sdk"
-          - "e2b*"
-          - "httpx*"
-          - "requests"
-          - "aiohttp"
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"
@@ -144,6 +114,66 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # Security updates. The entries above set `target-branch`, so none of their options
+  # reach security updates (those always target the default branch), and the
+  # repository setting would bundle them. These entries cover the same directories on
+  # the default branch with version updates off (limit 0), keeping the critical path
+  # out of the security bundle too.
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/autogpt_libs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(libs/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "pyjwt"
+          - "cryptography"
+          - "httpx*"
+
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(backend/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "google-auth*"
+          - "google-api-python-client"
+          - "oauthlib"
+          - "requests-oauthlib"
+          - "authlib"
+          - "pyjwt"
+          - "cryptography"
+          - "stripe"
+          - "anthropic"
+          - "openai"
+          - "claude-agent-sdk"
+          - "e2b*"
+          - "httpx*"
+          - "requests"
+          - "aiohttp"
+
+  - package-ecosystem: "npm"
+    directory: "autogpt_platform/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(frontend/deps)"
+    groups:
       security-updates:
         applies-to: "security-updates"
         patterns:
