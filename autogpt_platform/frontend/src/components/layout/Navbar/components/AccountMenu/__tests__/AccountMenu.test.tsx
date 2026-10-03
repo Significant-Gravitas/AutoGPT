@@ -211,7 +211,7 @@ describe("AccountMenu", () => {
     );
   });
 
-  test("classic layout does not render org/activity triggers", () => {
+  test("classic layout does not render org, activity or feedback triggers", () => {
     render(
       <AccountMenu
         userName="Ada"
