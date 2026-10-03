@@ -8,14 +8,16 @@ for the site live in docs/engineering instead.
 
 import posixpath
 import re
+import tempfile
 import unittest
 from pathlib import Path
 from urllib.parse import unquote
 
 DOCS = Path(__file__).resolve().parents[3] / "docs"
 PUBLISHED = ("home", "platform", "integrations")
-# A Markdown link target, written bare or as <a path with spaces>.
-SUMMARY_LINK = re.compile(r"\]\((?:<([^>#]+\.md)[^>]*>|([^)#\s]+\.md))")
+# A Markdown link target that is a .md file, written bare or as
+# <a path with spaces>. The target has to end at ".md": "page.md.old" is not one.
+SUMMARY_LINK = re.compile(r"\]\((?:<([^>#]+\.md)(?:#[^>]*)?>|([^)#\s]+\.md)(?=[)#\s]))")
 HAS_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
 
 
@@ -30,19 +32,21 @@ def listed_pages(folder: Path) -> set:
     }
 
 
+def unlisted_pages(folder: Path) -> list:
+    """Markdown files in a folder that its SUMMARY.md does not list."""
+    listed = listed_pages(folder)
+    return sorted(
+        page.relative_to(folder).as_posix()
+        for page in folder.rglob("*.md")
+        if page != folder / "SUMMARY.md"
+        and page.relative_to(folder).as_posix() not in listed
+    )
+
+
 class DocsLayoutTests(unittest.TestCase):
     def test_every_platform_page_is_in_the_summary(self):
-        platform = DOCS / "platform"
-        listed = listed_pages(platform)
-        unlisted = sorted(
-            page.relative_to(platform).as_posix()
-            for page in platform.rglob("*.md")
-            if page.name != "SUMMARY.md"
-            and page.relative_to(platform).as_posix() not in listed
-        )
-
         self.assertEqual(
-            unlisted,
+            unlisted_pages(DOCS / "platform"),
             [],
             "These files are in docs/platform but not in docs/platform/SUMMARY.md. "
             "If a file is a page for the docs site, list it there. "
@@ -63,39 +67,60 @@ class DocsLayoutTests(unittest.TestCase):
                     self.assertTrue(page.is_file(), "The listed page does not exist.")
 
 
-class ListedPagesTests(unittest.TestCase):
-    def listed(self, summary: str) -> set:
-        folder = MagicFolder(summary)
-        return listed_pages(folder)
+class SummaryParsingTests(unittest.TestCase):
+    def folder(self, summary: str, *files: str) -> Path:
+        """A temporary folder with the given SUMMARY.md and empty files."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        folder = Path(directory.name)
+        (folder / "SUMMARY.md").write_text(summary, encoding="utf-8")
+        for name in files:
+            (folder / name).parent.mkdir(parents=True, exist_ok=True)
+            (folder / name).write_text("", encoding="utf-8")
+        return folder
 
     def test_reads_bare_bracketed_and_encoded_links(self):
+        folder = self.folder(
+            "* [A](a.md)\n"
+            "  * [B](./sub/b.md#section)\n"
+            "* [C](<with space.md>)\n"
+            "* [D](with%20percent.md)\n"
+            '* [E](titled.md "A title")\n'
+            "* [F](<bracketed.md#section>)\n"
+        )
+
         self.assertEqual(
-            self.listed(
-                "* [A](a.md)\n"
-                "  * [B](./sub/b.md#section)\n"
-                "* [C](<with space.md>)\n"
-                "* [D](with%20percent.md)\n"
-            ),
-            {"a.md", "sub/b.md", "with space.md", "with percent.md"},
+            listed_pages(folder),
+            {
+                "a.md",
+                "sub/b.md",
+                "with space.md",
+                "with percent.md",
+                "titled.md",
+                "bracketed.md",
+            },
         )
 
     def test_ignores_links_to_other_sites(self):
-        self.assertEqual(
-            self.listed("* [Elsewhere](https://example.com/page.md)\n"), set()
+        folder = self.folder("* [Elsewhere](https://example.com/page.md)\n")
+
+        self.assertEqual(listed_pages(folder), set())
+
+    def test_target_must_end_at_the_md_extension(self):
+        """Listing page.md.old must not count as listing page.md."""
+        folder = self.folder(
+            "* [Old](page.md.old)\n* [Old](<page.md.old>)\n", "page.md"
         )
 
+        self.assertEqual(listed_pages(folder), set())
+        self.assertEqual(unlisted_pages(folder), ["page.md"])
 
-class MagicFolder:
-    """A folder whose SUMMARY.md has the given text."""
+    def test_only_the_folders_own_summary_is_exempt(self):
+        folder = self.folder(
+            "* [A](a.md)\n", "a.md", "b.md", "sub/SUMMARY.md", "sub/c.md"
+        )
 
-    def __init__(self, summary: str) -> None:
-        self.summary = summary
-
-    def __truediv__(self, name: str) -> "MagicFolder":
-        return self
-
-    def read_text(self, encoding: str) -> str:
-        return self.summary
+        self.assertEqual(unlisted_pages(folder), ["b.md", "sub/SUMMARY.md", "sub/c.md"])
 
 
 if __name__ == "__main__":
