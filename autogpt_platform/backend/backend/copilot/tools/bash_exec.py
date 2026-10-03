@@ -14,6 +14,7 @@ OS-level isolation with a whitelist-only filesystem, no network, and resource
 limits.  Requires bubblewrap to be installed (Linux only).
 """
 
+import asyncio
 import logging
 import shlex
 from typing import Any
@@ -28,11 +29,13 @@ from backend.copilot.context import (
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.credential_selection import selected_credentials
+from backend.copilot.gate.executed_files import run_targets
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
 )
 from backend.copilot.model import ChatSession
+from backend.util.sandbox_login import changed_login_files, judged_text, read_capped
 
 from .base import BaseTool
 from .connect_integration import requested_scopes
@@ -107,6 +110,27 @@ class BashExecTool(BaseTool):
         # when user_id is present.  Defense-in-depth: ensures only authenticated
         # users reach the token injection path.
         return True
+
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
+        """What the scripts this command runs contain, and the login files changed
+        since the sandbox was made; None where one could not be read or told."""
+        command = args.get("command")
+        sandbox = get_current_sandbox()
+        if not isinstance(command, str) or sandbox is None:
+            return None
+        targets = run_targets(command)
+        reads = await asyncio.gather(
+            *(read_capped(sandbox, path) for path in targets.paths),
+            return_exceptions=True,
+        )
+        scripts: dict[str, str | None] = {run: None for run in targets.unclear}
+        for path, raw in zip(targets.paths, reads):
+            if isinstance(raw, BaseException):
+                scripts[path] = None
+            elif raw is not None:  # Absent: made by this command, or it fails.
+                scripts[path] = judged_text(raw)
+        # `bash -l` runs these before the command itself.
+        return {**await changed_login_files(sandbox), **scripts}
 
     async def _execute(
         self,
