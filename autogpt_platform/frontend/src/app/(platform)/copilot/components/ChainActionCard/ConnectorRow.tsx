@@ -34,7 +34,9 @@ const GRANT_FAILED_ERROR = "Couldn't grant access. Try again.";
 
 export function ConnectorRow({ row }: Props) {
   const [isDialogOpen, setDialogOpen] = useState(false);
-  const [awaitingGrant, setAwaitingGrant] = useState(false);
+  // A sign-in finished without reporting its credential, so the account it
+  // added is found by diffing the provider list against `knownIds`.
+  const [awaitingNewAccount, setAwaitingNewAccount] = useState(false);
   const [grantError, setGrantError] = useState<string | null>(null);
   // A credential connected from this row while an expert is asking. It stays
   // here until its grant succeeds, so a failed grant is retried from the
@@ -62,14 +64,16 @@ export function ConnectorRow({ row }: Props) {
   const usableProviders = withoutCredentials(allProviders, rejectedIds);
   // Only this provider's own refused account makes the row a Reconnect. A
   // card's rejection reaches every row it asks for, and the account may have
-  // been deleted since. Until the user acts, nothing is picked for them:
-  // quietly running on another of their accounts could post as someone else.
-  const awaitingReconnect =
+  // been deleted since. While one is on file nothing is picked for the user,
+  // not even after a sign-in whose account the list has yet to show: quietly
+  // running on another of their accounts could post as someone else.
+  const onFile = (ids: string[]) =>
     !expertGrant &&
-    renewedIds.length === 0 &&
     (allProviders?.[row.provider]?.savedCredentials ?? []).some((saved) =>
-      rejectedIds.includes(saved.id),
+      ids.includes(saved.id),
     );
+  const hasRefusedAccount = onFile(row.rejectedCredentialIds);
+  const awaitingReconnect = onFile(rejectedIds);
 
   const savedCredential = findSavedUserCredentialByProviderAndType(
     row.schema.credentials_provider ?? [],
@@ -125,17 +129,29 @@ export function ConnectorRow({ row }: Props) {
 
   useEffect(() => {
     if (expertGrant) {
-      if (!awaitingGrant || row.selected || !knownIds.current) return;
+      if (!awaitingNewAccount || row.selected || !knownIds.current) return;
       const fresh = newlyConnectedCredential(
         row,
         allProviders,
         knownIds.current,
       );
       if (!fresh) return;
-      setAwaitingGrant(false);
+      setAwaitingNewAccount(false);
       setConnected(fresh.grantable);
       void grant(fresh.grantable, fresh.account);
       return;
+    }
+    if (awaitingNewAccount && knownIds.current) {
+      const fresh = newlyConnectedCredential(
+        row,
+        allProviders,
+        knownIds.current,
+      );
+      if (fresh) {
+        setAwaitingNewAccount(false);
+        setRenewedIds((ids) => [...ids, fresh.grantable.id]);
+        return;
+      }
     }
     // Cards stream in one commit at a time, so a row's schema can widen after
     // it auto-selected: a selection that no longer satisfies it must go, or
@@ -162,7 +178,7 @@ export function ConnectorRow({ row }: Props) {
       });
       return;
     }
-    if (!savedCredential || awaitingReconnect) return;
+    if (!savedCredential || hasRefusedAccount) return;
     row.select({
       id: savedCredential.id,
       provider: savedCredential.provider,
@@ -174,11 +190,11 @@ export function ConnectorRow({ row }: Props) {
     savedCredential?.id,
     row.selected,
     allProviders,
-    awaitingGrant,
+    awaitingNewAccount,
     expertGrant?.expertId,
     rejectedIds.join(),
     renewedIds.join(),
-    awaitingReconnect,
+    hasRefusedAccount,
   ]);
 
   // Several saved accounts can satisfy one row. Nothing picks between them for
@@ -196,7 +212,7 @@ export function ConnectorRow({ row }: Props) {
   const hasChoice =
     !expertGrant &&
     !row.selected &&
-    pickable.length > (awaitingReconnect ? 0 : 1);
+    pickable.length > (hasRefusedAccount ? 0 : 1);
   // No saved account fits, and there are several that a fresh sign-in could
   // widen. Signing in without naming one requests only this card's scopes,
   // which the backend cannot merge into an account that holds others, so it
@@ -243,7 +259,7 @@ export function ConnectorRow({ row }: Props) {
         )
       : null;
     setGrantError(null);
-    setAwaitingGrant(false);
+    setAwaitingNewAccount(false);
     setDialogOpen(true);
   }
 
@@ -336,19 +352,18 @@ export function ConnectorRow({ row }: Props) {
         onClose={() => setDialogOpen(false)}
         onConnected={(credential) => {
           if (!expertGrant) {
-            // A sign-in that reports no credential cannot say which refused
-            // one it renewed; leaving them all refused would strand the row.
-            setRenewedIds((ids) => [
-              ...ids,
-              ...(credential ? [credential.id] : rejectedIds),
-            ]);
+            // Without a reported credential nothing is known to be renewed,
+            // so every refused account stays refused until the diff finds
+            // the one this sign-in added.
+            if (credential) setRenewedIds((ids) => [...ids, credential.id]);
+            else setAwaitingNewAccount(true);
             row.onConnected();
             return;
           }
           // A flow that does not report its credential leaves the refresh to
           // find the new account.
           if (!credential) {
-            setAwaitingGrant(true);
+            setAwaitingNewAccount(true);
             return;
           }
           // Grant the reported credential directly: a re-auth that upgraded

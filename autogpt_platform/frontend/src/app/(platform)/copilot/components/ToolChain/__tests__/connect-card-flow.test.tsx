@@ -955,6 +955,44 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
     expect(picked).toEqual({ github: "cred-new" });
   });
 
+  it("keeps asking when the sign-in comes back without the access needed", async () => {
+    // A narrower grant is stored beside the refused account, not over it.
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const short = oauthCredential("cred-short", []);
+        savedCredentials = [refused, short];
+        return HttpResponse.json(short);
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(savedCredentials).toHaveLength(2));
+    await screen.findByRole("button", { name: "Reconnect" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("finds the new account when the sign-in does not report it", async () => {
+    // Any 2xx other than 200 reaches the dialog as a success with no
+    // credential, which is how a credential-less approval looks to the row.
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+        savedCredentials = [refused, added];
+        return HttpResponse.json(added, { status: 201 });
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    // Nothing says the refused account was renewed, so it must not be the
+    // one the chat runs on.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-new" });
+  });
+
   describe("when another saved account still works", () => {
     const other = {
       ...oauthCredential("cred-other", [REQUIRED_SCOPE]),
@@ -1001,6 +1039,39 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
       // Both accounts now fit; the one just signed in to is the one meant.
       await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
       expect(picked).toEqual({ github: "cred-refused" });
+    });
+
+    it("waits for a newly added account rather than falling back to the other", async () => {
+      // The first list fetched after the sign-in predates it, as when the
+      // provider list lags the callback.
+      let staleFetches = 0;
+      server.use(
+        http.post("*/api/integrations/github/callback", () => {
+          const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+          savedCredentials = [refused, other, added];
+          staleFetches = 1;
+          return HttpResponse.json(added);
+        }),
+        http.get("*/api/integrations/credentials", () => {
+          if (staleFetches === 0) return HttpResponse.json(savedCredentials);
+          staleFetches -= 1;
+          return HttpResponse.json([refused, other]);
+        }),
+      );
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(await screen.findByText("OAuth"));
+      await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+      // Until the list shows the new account, the other one is the only
+      // usable match; picking it then would run on an account nobody chose.
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-new" });
     });
   });
 });
