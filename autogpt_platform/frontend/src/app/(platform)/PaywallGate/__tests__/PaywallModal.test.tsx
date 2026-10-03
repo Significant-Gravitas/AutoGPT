@@ -430,9 +430,53 @@ describe("PaywallModal — upgrade mutation", () => {
       expect(gtagCalls).toContainEqual([
         "event",
         "conversion",
-        { send_to: "AW-123/BC", value: 50, currency: "USD" },
+        {
+          send_to: "AW-123/BC",
+          value: 50,
+          currency: "USD",
+          event_callback: expect.any(Function),
+        },
       ]);
     });
+    const conversion = gtagCalls.find((call) => call[1] === "conversion");
+    (conversion?.[2] as { event_callback: () => void }).event_callback();
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      );
+    });
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  });
+
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    stubLocation();
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const { mutateFn } = setupMocks({
+      mutateFn: vi.fn().mockResolvedValue({
+        status: 200,
+        data: { url: "https://checkout.stripe.com/pay/cs_test" },
+      }),
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+    const upgrade = screen.getByRole("button", { name: /upgrade to pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      );
+    });
+    expect(mutateFn).toHaveBeenCalledTimes(1);
     removeGtagShim();
     vi.unstubAllEnvs();
   });
