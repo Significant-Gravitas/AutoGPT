@@ -467,6 +467,7 @@ async def subscribe_to_session(
     session_id: str,
     user_id: str | None,
     last_message_id: str = "0-0",
+    turn_id: str | None = None,
 ) -> asyncio.Queue[StreamBaseResponse] | None:
     """Subscribe to a session's stream with replay of missed messages.
 
@@ -476,6 +477,7 @@ async def subscribe_to_session(
         session_id: Session ID to subscribe to
         user_id: User ID for ownership validation
         last_message_id: Last Redis Stream message ID received ("0-0" for full replay)
+        turn_id: The turn to stream; the session's current one when None
 
     Returns:
         An asyncio Queue that will receive stream chunks, or None if session not found
@@ -561,8 +563,10 @@ async def subscribe_to_session(
             return None
 
     session = _parse_session_meta(meta, session_id)
+    # A named turn the session has moved past has ended: replay it, then finish.
+    current = not turn_id or turn_id == session.turn_id
     subscriber_queue: asyncio.Queue[StreamBaseResponse] = asyncio.Queue()
-    stream_key = _get_turn_stream_key(session.turn_id)
+    stream_key = _get_turn_stream_key(turn_id or session.turn_id)
 
     # Replay batch capped by ``stream_replay_count``.
     xread_start = time.perf_counter()
@@ -609,7 +613,7 @@ async def subscribe_to_session(
     )
 
     # Step 2: If session is still running, start stream listener for live updates
-    if session_status == "running":
+    if session_status == "running" and current:
         logger.info(
             "[TIMING] Session still running, starting _stream_listener",
             extra={"json_fields": {**log_meta, "session_status": session_status}},
