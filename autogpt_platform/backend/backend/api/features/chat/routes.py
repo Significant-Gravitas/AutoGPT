@@ -1974,6 +1974,7 @@ async def stream_chat_post(
             is_user_message=request.is_user_message,
             expert_id=session.expert_id,
             session_origin=session.metadata.origin,
+            session_source_platform=session.metadata.source_platform,
             context=request.context,
             voice=request.voice,
             file_ids=sanitized_file_ids,
