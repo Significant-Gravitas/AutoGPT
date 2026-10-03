@@ -19,11 +19,14 @@ PUBLISHED = ("home", "platform", "integrations")
 # <a path with spaces>. The target has to end at ".md": "page.md.old" is not one.
 SUMMARY_LINK = re.compile(r"\]\((?:<([^>#]+\.md)(?:#[^>]*)?>|([^)#\s]+\.md)(?=[)#\s]))")
 HAS_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 def listed_pages(folder: Path) -> set:
     """Paths of the local pages a folder's SUMMARY.md lists, relative to it."""
     summary = (folder / "SUMMARY.md").read_text(encoding="utf-8")
+    # A commented-out entry is not in the navigation, so it lists nothing.
+    summary = HTML_COMMENT.sub("", summary)
     links = (bracketed or bare for bracketed, bare in SUMMARY_LINK.findall(summary))
     return {
         posixpath.normpath(unquote(link))
@@ -114,6 +117,17 @@ class SummaryParsingTests(unittest.TestCase):
 
         self.assertEqual(listed_pages(folder), set())
         self.assertEqual(unlisted_pages(folder), ["page.md"])
+
+    def test_commented_out_entry_lists_nothing(self):
+        folder = self.folder(
+            "* [A](a.md)\n<!-- * [B](b.md) -->\n<!--\n* [C](c.md)\n-->\n",
+            "a.md",
+            "b.md",
+            "c.md",
+        )
+
+        self.assertEqual(listed_pages(folder), {"a.md"})
+        self.assertEqual(unlisted_pages(folder), ["b.md", "c.md"])
 
     def test_only_the_folders_own_summary_is_exempt(self):
         folder = self.folder(
