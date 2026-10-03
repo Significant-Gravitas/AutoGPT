@@ -114,17 +114,8 @@ The hosted Platform is a paid service with usage-based agent runs. [Compare plan
 > [!NOTE]
 > Self-hosting is the free path. You provide the infrastructure and model API keys, and you maintain the deployment. If you want zero setup, use the [managed Platform](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=self_host_note).
 
-The quickest way to self-host is the single-container image on Docker Hub,
-[`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt).
-It bundles the web app, APIs, workers, PostgreSQL, RabbitMQ, Valkey, and
-FalkorDB-backed memory, and keeps all of its data in one volume. The image is
-experimental and meant for local and small installations, not high-availability
-deployments.
-
-You need Docker Engine or Docker Desktop running Linux containers on `amd64` or
-`arm64`. Test installs use about 5–6 GiB of memory, so leave headroom for your
-agents. Docker Desktop caps its VM's memory: raise the limit under
-**Settings → Resources**, or in `.wslconfig` on Windows with the WSL 2 backend.
+The quickest way to self-host is the experimental single-container image on
+Docker Hub, [`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt):
 
 ```bash
 docker run -d \
@@ -141,11 +132,7 @@ docker run -d \
   significantgravitas/autogpt:latest
 ```
 
-`AUTOGPT_PUBLIC_URL` must match the address in your browser, so change both if
-you publish a different port.
-
-The first boot applies database migrations and can take several minutes. Don't
-stop the container until Docker reports it as `healthy`. Then open
+Give the first boot a few minutes, then open
 [http://localhost:3000](http://localhost:3000), create your account, and make it
 the administrator:
 
@@ -153,19 +140,8 @@ the administrator:
 docker exec autogpt autogpt-admin promote you@example.com
 ```
 
-Sign out and back in so your session picks up the administrator role.
-
-Signup stays open to anyone who can reach the app, which is why the command
-above publishes the port on `127.0.0.1` only. To close signup, recreate the
-container with `-e AUTH_ALLOW_NEW_ACCOUNTS=false`. Keep the `autogpt-data`
-volume whenever you replace the container: it holds your accounts, agents,
-memory, and generated secrets.
-
-`latest` tracks the newest verified release. To pin a version, use an immutable
-`vX.Y.Z` tag, or `sha-<git-sha>` for an exact source revision.
-
-Model providers are set with environment variables. The single-container guide
-lists them and covers backups, upgrades, and troubleshooting.
+Requirements, closing signup, ports, model providers, backups, and upgrades are
+covered in the guide:
 
 [Read the single-container guide →](https://docs.agpt.co/platform/self-hosting/single-container)
 
