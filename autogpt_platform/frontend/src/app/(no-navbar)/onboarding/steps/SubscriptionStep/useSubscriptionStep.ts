@@ -3,7 +3,7 @@ import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 import { environment } from "@/services/environment";
 import { useState } from "react";
@@ -116,7 +116,7 @@ export function useSubscriptionStep() {
         // A Checkout URL is the only proof that Stripe Checkout actually
         // starts — reporting earlier would count the in-place and failed
         // paths as conversions.
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: getSubscriptionValue(planKey, cycle),
         });
         // Navigating away — don't refetch (would set state on an
