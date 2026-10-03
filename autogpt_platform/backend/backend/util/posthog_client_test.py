@@ -172,6 +172,15 @@ def test_capture_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED)
 
 
+def test_capture_never_raises_on_a_bad_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture("user-1", "chat_tool_called")  # type: ignore[arg-type]
+
+    client.capture.assert_not_called()
+
+
 def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

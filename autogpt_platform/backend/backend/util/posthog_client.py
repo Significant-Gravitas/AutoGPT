@@ -78,8 +78,9 @@ def capture(
     """
     if not distinct_id:
         return
-    event_name = event.value
+    event_name = "<unknown>"
     try:
+        event_name = event.value
         client = get_posthog_client()
         if client is None:
             return
