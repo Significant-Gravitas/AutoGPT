@@ -2,7 +2,8 @@
 
 One :class:`CapabilityEntry` describes one thing the copilot can do: a
 platform tool, a block, an MCP server from the catalog, a skill of the
-session's owner, or (phase 2) a library agent.  The registry indexes
+session's owner, an expert to hire or already hired, or (phase 2) a library
+agent.  The registry indexes
 entries by name, description and tags; argument schemas are fetched on
 demand and never indexed.
 """
@@ -14,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 CapabilityKindName = Literal[
-    "tool", "block", "mcp_server", "mcp_tool", "agent", "skill"
+    "tool", "block", "mcp_server", "mcp_tool", "agent", "skill", "expert"
 ]
 CapabilityClass = Literal["service", "primitive"]
 CapabilityContext = Literal["direct", "graph", "both"]
@@ -84,6 +85,8 @@ class CapabilityEntry(BaseModel):
     # Blocks the platform hides for a reason (disabled / graph-only) keep an
     # entry for graph context but stay out of direct results.
     sensitive: bool = False
+    # An expert already on the user's team, as opposed to a roster template.
+    hired: bool = False
 
     def listing(self) -> dict[str, object]:
         """Compact form for a search result (about 40-60 tokens)."""
@@ -99,6 +102,8 @@ class CapabilityEntry(BaseModel):
             out["connected"] = self.connection.connected
         if self.eager:
             out["eager"] = True
+        if self.kind == "expert":
+            out["hired"] = self.hired
         return out
 
     def available_in(self, context: CapabilityContext) -> bool:
