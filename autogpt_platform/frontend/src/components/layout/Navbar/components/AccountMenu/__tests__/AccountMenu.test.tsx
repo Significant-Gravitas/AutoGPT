@@ -20,6 +20,14 @@ vi.mock("next/link", () => ({
   useLinkStatus: () => ({ pending: false }),
 }));
 
+vi.mock("@/lib/auth/actions", () => ({
+  getCurrentUser: vi.fn().mockResolvedValue({ user: null }),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  getReplay: vi.fn(),
+}));
+
 vi.mock("@/components/molecules/Popover/Popover", () => {
   function Popover({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;
@@ -184,6 +192,25 @@ describe("AccountMenu", () => {
     expect(screen.getByText("Activity")).toBeDefined();
   });
 
+  test("new layout renders Give feedback right after Activity", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    const activity = screen.getByTestId("account-menu-activity-trigger");
+    const feedback = screen.getByTestId("account-menu-feedback-trigger");
+
+    expect(feedback.getAttribute("data-tally-open")).toBe("3yx2L0");
+    expect(activity.closest("li")?.nextElementSibling).toBe(
+      feedback.closest("li"),
+    );
+  });
+
   test("classic layout does not render org/activity triggers", () => {
     render(
       <AccountMenu
@@ -195,5 +222,6 @@ describe("AccountMenu", () => {
 
     expect(screen.queryByTestId("account-menu-org-trigger")).toBeNull();
     expect(screen.queryByTestId("account-menu-activity-trigger")).toBeNull();
+    expect(screen.queryByTestId("account-menu-feedback-trigger")).toBeNull();
   });
 });
