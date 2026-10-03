@@ -96,6 +96,8 @@ class BashExecTool(BaseTool):
                     "type": "integer",
                     "description": "Timeout in seconds; raise for long-running commands.",
                     "default": 120,
+                    "title": "Time limit",
+                    "format": "seconds",
                 },
             },
             "required": ["command"],
