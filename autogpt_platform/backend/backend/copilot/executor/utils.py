@@ -258,6 +258,15 @@ def reap_legacy_cancel_queue(channel: "BlockingChannel") -> bool:
 # ============ Message Models ============ #
 
 
+class ScheduledTurnOrigin(BaseModel):
+    """The schedule that fired a turn. Its presence on an entry is what lets
+    the executor alert when the turn fails, since nobody is watching it."""
+
+    schedule_id: str | None = None
+    routine_id: str | None = None
+    cron: str | None = None
+
+
 class CoPilotExecutionEntry(BaseModel):
     """Task payload for CoPilot AI generation.
 
@@ -324,6 +333,10 @@ class CoPilotExecutionEntry(BaseModel):
     queue messages written before this field existed (they sort as "all
     pending before current" — the pre-fix behaviour)."""
 
+    scheduled: ScheduledTurnOrigin | None = None
+    """Set when the scheduler fired this turn. ``None`` for every other
+    caller, and for entries queued before the field existed."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -353,6 +366,7 @@ async def enqueue_copilot_turn(
     message_metadata: dict[str, Any] | None = None,
     *,
     envelope: TurnEnvelope,
+    scheduled: ScheduledTurnOrigin | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -396,6 +410,7 @@ async def enqueue_copilot_turn(
         request_arrival_at=request_arrival_at,
         message_metadata=message_metadata,
         envelope=envelope,
+        scheduled=scheduled,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -426,6 +441,7 @@ async def schedule_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    scheduled: ScheduledTurnOrigin | None = None,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -493,6 +509,7 @@ async def schedule_turn(
             request_arrival_at=request_arrival_at,
             spawn=spawn,
             message_metadata=message_metadata,
+            scheduled=scheduled,
         )
 
 
@@ -517,6 +534,7 @@ async def dispatch_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    scheduled: ScheduledTurnOrigin | None = None,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -588,6 +606,7 @@ async def dispatch_turn(
             request_arrival_at=request_arrival_at,
             message_metadata=message_metadata,
             envelope=envelope,
+            scheduled=scheduled,
         )
         slot.keep()
         committed = True
@@ -679,6 +698,7 @@ async def schedule_chat_turn(
     is_user_message: bool = True,
     expert_id: str | None = None,
     session_origin: str | None = None,
+    session_source_platform: str | None = None,
     context: dict[str, str] | None = None,
     voice: bool = False,
     file_ids: list[str] | None = None,
@@ -749,7 +769,7 @@ async def schedule_chat_turn(
                     message_length=raw_message_length,
                     expert_id=expert_id,
                     origin=session_origin,
-                    surface="chat",
+                    source_platform=session_source_platform,
                 )
 
         if is_duplicate:

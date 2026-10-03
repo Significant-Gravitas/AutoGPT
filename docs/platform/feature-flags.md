@@ -33,7 +33,7 @@ Redis.
 | `POSTHOG_FLAG_DEFINITION_CACHE_TTL_SECONDS` | `600` | How long the shared copy stays readable after the last refresh. |
 
 None of them is read unless `FEATURE_FLAG_BACKEND` is `posthog` or `dual` **and**
-`POSTHOG_PERSONAL_API_KEY` is set — without that key the SDK evaluates over the
+`POSTHOG_SECRET_KEY` is set — without that key the SDK evaluates over the
 wire and has no definitions to share.
 
 **Per environment.** Leave the defaults on `dev` and `prod`: both run several
