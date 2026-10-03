@@ -48,14 +48,6 @@ test("a list of ids reads as linked names, the unresolved one as its id", async 
   expect(view.getByText(/\+2 more/)).toBeDefined();
 });
 
-test("a resolved id links to its page", async () => {
-  renderCard(referenceCard("Hire expert"));
-
-  const view = await card();
-  const template = view.getByRole("link", { name: "Ada" });
-  expect(template.getAttribute("href")).toBe("/marketplace/experts/tpl-ada");
-});
-
 test("an id nothing resolved stays the raw id with no link", async () => {
   renderCard(referenceCard("Unresolved id"));
 
@@ -66,13 +58,13 @@ test("an id nothing resolved stays the raw id with no link", async () => {
 });
 
 test("a stored link that leaves the app is dropped, the name kept", async () => {
-  const review = referenceCard("Hire expert");
+  const review = referenceCard("Message chat");
   const payload = review.payload as { references: { href: string }[] };
   payload.references[0].href = "https://evil.example/phish";
   renderCard(review);
 
   const view = await card();
-  expect(view.getByText("Ada", { selector: "span" })).toBeDefined();
+  expect(view.getByText("Q3 planning", { selector: "span" })).toBeDefined();
   expect(view.queryAllByRole("link")).toHaveLength(0);
 });
 
@@ -117,15 +109,15 @@ test("a chat's card says how long ago it was last active", async () => {
   expect(tip.textContent).not.toContain("2026-09-24");
 });
 
-test("a template's card lists its skills, as the marketplace card does", async () => {
-  renderCard(referenceCard("Hire expert"));
+test("a hire's card lists its template's skills, as the marketplace card does", async () => {
+  renderCard(referenceCard("Confirm team change"));
 
   const view = await card();
-  await userEvent.hover(view.getByRole("link", { name: "Ada" }));
+  await userEvent.hover(view.getByText("Grace"));
 
   const tip = within(await screen.findByRole("tooltip"));
   expect(
-    tip.getByText("Month-end close, Receipt matching, Cash forecast +1 more"),
+    tip.getByText("Release notes, Changelog, Incident review +1 more"),
   ).toBeDefined();
 });
 
@@ -138,6 +130,16 @@ test("a card with nothing but its kind shows only the kind, title and ID", async
   const tip = await screen.findByRole("tooltip");
   const lines = [...tip.querySelectorAll("p")].map((p) => p.textContent);
   expect(lines).toEqual(["Expert workflow", "Receipt matcher", "wf-receipts"]);
+});
+
+test("a held team change names who joins, never its one-time id", async () => {
+  renderCard(referenceCard("Confirm team change"));
+
+  const view = await card();
+  expect(
+    view.getByRole("heading", { name: /Confirm the team change.*Grace/ }),
+  ).toBeDefined();
+  expect(view.queryByText("cf-1")).toBeNull();
 });
 
 test("a named thing with no page still shows its card, unlinked", async () => {

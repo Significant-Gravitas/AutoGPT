@@ -64,7 +64,6 @@ _CALLS: list[tuple[str, str, dict[str, Any]]] = [
         },
     ),
     ("Pause schedule", "pause_schedule", {"schedule_id": "sch-digest"}),
-    ("Hire expert", "hire_expert", {"template_id": "tpl-ada", "name": "Ada"}),
     ("Message chat", "message_session", {"session_id": "s-q3", "message": "Done?"}),
     (
         "Grant credential",
@@ -197,11 +196,12 @@ def _preset(id: str, name: str, description: str, webhook_id: str | None) -> Mag
 
 def _experts() -> MagicMock:
     experts = MagicMock()
-    ada = _template("tpl-ada", "Ada", "Keeps the books balanced.", None, "Finance")
     grace = _template(
         "tpl-grace", "Grace", "Ships on Thursdays.", "Release manager", "Engineering"
     )
-    experts.list_templates = AsyncMock(return_value=[ada, grace])
+    experts.get_template = AsyncMock(
+        side_effect=lambda template_id: grace if template_id == grace.id else None
+    )
     experts.with_bundled_skills = AsyncMock(
         side_effect=lambda templates, user_id: templates
     )
@@ -238,8 +238,7 @@ def _template(
 
 
 _SKILLS = {
-    "tpl-ada": ["Month-end close", "Receipt matching", "Cash forecast", "Payroll"],
-    "tpl-grace": ["Release notes", "Changelog"],
+    "tpl-grace": ["Release notes", "Changelog", "Incident review", "Hotfixes"],
 }
 
 

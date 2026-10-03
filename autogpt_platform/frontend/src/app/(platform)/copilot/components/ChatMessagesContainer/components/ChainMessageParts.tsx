@@ -1,5 +1,8 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
 import type { ToolUIPart } from "ai";
+import { useContext } from "react";
+import { HeldOutcomesContext } from "../HeldOutcomesContext";
+import { withHeldOutcome } from "../heldCallRows";
 import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
@@ -32,7 +35,12 @@ export function ChainMessageParts({
   liveCompactionCallId,
   liveCompactionStats,
 }: Props) {
-  const segments = buildChainSegments(parts, isChainableToolPart);
+  const outcomes = useContext(HeldOutcomesContext);
+  // Chain rows keep the held stub: applyHeldOutcome words them from it.
+  const resolved = parts.map((part) =>
+    isChainableToolPart(part) ? part : withHeldOutcome(part, outcomes),
+  );
+  const segments = buildChainSegments(resolved, isChainableToolPart);
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );
