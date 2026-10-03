@@ -10,6 +10,7 @@ import { toChainRow } from "../ToolChain/helpers";
 import { AttentionRow } from "../../../home/components/NeedsYou/components/AttentionRow";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { toApprovalItem } from "./helpers";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import {
   createAgent,
   deleteFolder,
@@ -287,6 +288,25 @@ export const ChainRows: StoryObj = {
   },
 };
 
+// Approve the card: the row above it shows the answer at the click.
+export const RowFlipsAtTheClick: StoryObj = {
+  parameters: { msw: { handlers: [answerAfter(0)] } },
+  render: function Render() {
+    const answers = useHeldAnswersStore((state) => state.answers);
+    const row = applyHeldOutcome(
+      toChainRow(HELD_PART("a", "Q3 reports"), 0)!,
+      new Map(),
+      answers,
+    );
+    return (
+      <div className="flex flex-col gap-4">
+        <ChainRowView row={row} isLast />
+        <ApprovalQueue {...queueOf([folder("a", "Q3 reports")])} />
+      </div>
+    );
+  },
+};
+
 export const HeldRead: Story = {
   args: queueOf([heldRead("r", "docs.northwind.io/billing")]),
 };
@@ -428,3 +448,5 @@ export const RealExecuteCodeStep = realStory("Execute Code Step");
 export const RealSendWebRequest = realStory("Send Web Request");
 export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
+export const RealSandboxCommand = realStory("Sandbox Command");
+export const RealGmailNewsletter = realStory("Gmail Newsletter");

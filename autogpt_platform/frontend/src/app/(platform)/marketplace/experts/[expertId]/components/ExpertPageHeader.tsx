@@ -16,7 +16,7 @@ export function ExpertPageHeader({ expert, actions }: Props) {
 
   return (
     <header>
-      <div className="flex flex-wrap items-center gap-4 sm:gap-5">
+      <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-4 sm:gap-x-5">
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
@@ -27,10 +27,9 @@ export function ExpertPageHeader({ expert, actions }: Props) {
             role: expert.role,
           })}
           size={96}
+          className="border border-black/5"
         />
         <div className="min-w-0 flex-1">
-          {/* The job title trails the name, as it does on the shelf's cards;
-              the chip below belongs to the area the expert works in. */}
           <ExpertIdentityDetails
             name={expert.name}
             role={expert.role}
@@ -42,7 +41,9 @@ export function ExpertPageHeader({ expert, actions }: Props) {
             <CategoryTag category={area} size="default" className="mt-2" />
           ) : null}
         </div>
-        <div className="w-full sm:w-auto">{actions}</div>
+        <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
+          {actions}
+        </div>
       </div>
       <ExpertTagline tagline={expert.tagline} />
     </header>

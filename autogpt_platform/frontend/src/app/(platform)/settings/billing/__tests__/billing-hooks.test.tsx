@@ -789,6 +789,81 @@ describe("useYourPlanCard", () => {
     expect(typeof result.current.onManage).toBe("function");
   });
 
+  it("ENTERPRISE is admin-managed: no upgrade/downgrade/resume and no plan change is ever posted", async () => {
+    let posted = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "ENTERPRISE",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+        // A stray Stripe schedule must not surface as a pending change.
+        pending_tier: "PRO",
+        pending_tier_effective_at: "2026-05-30T00:00:00Z",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        posted = true;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    const { result } = renderHook(() => useYourPlanCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.plan?.label).toBe("Enterprise");
+    expect(result.current.plan?.isAdminManaged).toBe(true);
+    expect(result.current.plan?.nextTier).toBeNull();
+    expect(result.current.plan?.previousTier).toBeNull();
+    expect(result.current.plan?.isPendingDowngrade).toBe(false);
+    expect(result.current.canUpgrade).toBe(false);
+    expect(result.current.canDowngrade).toBe(false);
+    expect(result.current.canResume).toBe(false);
+    expect(result.current.canManagePortal).toBe(false);
+    expect(result.current.isCycleToggleVisible).toBe(false);
+
+    await act(async () => {
+      result.current.onUpgrade();
+      result.current.onDowngrade();
+      result.current.onResume();
+    });
+
+    expect(result.current.pendingTierUpgrade).toBeNull();
+    expect(result.current.pendingTierDowngrade).toBeNull();
+    expect(posted).toBe(false);
+  });
+
+  it("BASIC keeps PRO as its next tier (backend accepts BASIC → PRO)", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BASIC",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    const { result } = renderHook(() => useYourPlanCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.plan?.label).toBe("Basic");
+    expect(result.current.plan?.isAdminManaged).toBe(false);
+    expect(result.current.plan?.nextTier).toBe("PRO");
+    expect(result.current.canUpgrade).toBe(true);
+    expect(result.current.canDowngrade).toBe(false);
+  });
+
   it("falls back to the raw tier string when PLAN_LABEL has no match", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {

@@ -1,7 +1,9 @@
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import ContentType
+from prisma.errors import ClientNotConnectedError
 
 from backend.api.features.workspace import embeddings
 
@@ -9,12 +11,10 @@ from backend.api.features.workspace import embeddings
 @pytest.fixture
 def embedding_calls(mocker):
     embeddings._embedded.clear()
-    mocker.patch.object(
-        embeddings, "get_content_embedding", AsyncMock(return_value=None)
-    )
-    store = mocker.patch.object(
-        embeddings, "store_content_embedding", AsyncMock(return_value=True)
-    )
+    db = MagicMock()
+    db.get_content_embedding = AsyncMock(return_value=None)
+    store = db.store_content_embedding = AsyncMock(return_value=True)
+    mocker.patch.object(embeddings, "embeddings_db", return_value=db)
     generate = mocker.patch.object(
         embeddings, "generate_embedding", AsyncMock(return_value=[0.5, 0.25])
     )
@@ -77,3 +77,58 @@ async def test_a_failed_request_is_retried_rather_than_cached(embedding_calls):
         await embeddings._embed("m", "text")
     # Kills: remembering the failure for a day.
     assert await embeddings._embed("m", "text") == [1.0]
+
+
+@pytest.fixture
+def copilot_executor_db(mocker):
+    """Prisma disconnected in-process, the DatabaseManager client answering.
+
+    Copilot tools write and delete workspace files from the copilot executor,
+    which never connects Prisma (Sentry AUTOGPT-SERVER-9A2).
+    """
+    embeddings._embedded.clear()
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    for raw in ("query_raw_with_schema", "execute_raw_with_schema"):
+        mocker.patch(
+            f"backend.api.features.search.embeddings.{raw}",
+            new=AsyncMock(side_effect=ClientNotConnectedError()),
+        )
+    mocker.patch.object(
+        embeddings, "generate_embedding", AsyncMock(return_value=[0.5, 0.25])
+    )
+
+    db_manager = MagicMock()
+    db_manager.get_content_embedding = AsyncMock(return_value=None)
+    db_manager.store_content_embedding = AsyncMock(return_value=True)
+    db_manager.delete_content_embedding = AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client",
+        return_value=db_manager,
+    )
+    yield db_manager
+    embeddings._embedded.clear()
+
+
+async def test_a_written_file_is_indexed_without_prisma(copilot_executor_db, caplog):
+    await embeddings._run_embedding("file-1", "user-1", "notes.md", "/notes.md")
+
+    assert "Failed to ensure workspace file embedding" not in caplog.text
+    copilot_executor_db.get_content_embedding.assert_awaited_once_with(
+        ContentType.WORKSPACE_FILE, "file-1", "user-1"
+    )
+    kwargs = copilot_executor_db.store_content_embedding.await_args.kwargs
+    assert kwargs["content_type"] == ContentType.WORKSPACE_FILE
+    assert kwargs["content_id"] == "file-1"
+    assert kwargs["user_id"] == "user-1"
+    assert kwargs["embedding"] == [0.5, 0.25]
+
+
+async def test_a_deleted_file_leaves_the_index_without_prisma(
+    copilot_executor_db, caplog
+):
+    await embeddings.delete_workspace_file_embedding("file-1", "user-1")
+
+    assert "Failed to delete embedding" not in caplog.text
+    copilot_executor_db.delete_content_embedding.assert_awaited_once_with(
+        ContentType.WORKSPACE_FILE, "file-1", user_id="user-1"
+    )

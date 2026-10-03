@@ -332,7 +332,9 @@ async def ungranted_credential_hint(
     )
     return (
         "\n\nThe account already has matching credentials that this expert has "
-        f"not been granted:\n{lines}\nAsk the user to grant one on the expert's "
-        "Integrations page, or from personal AutoPilot with "
-        "tool:grant_expert_credential."
+        f"not been granted:\n{lines}\nDo not ask the user to sign in again. Ask "
+        "them to grant one with the Grant button on the setup card, on the "
+        "expert's Integrations page, or from personal AutoPilot with "
+        "tool:grant_expert_credential; tool:request_credential_grant parks the "
+        "ask on Home under 'Needs you'."
     )

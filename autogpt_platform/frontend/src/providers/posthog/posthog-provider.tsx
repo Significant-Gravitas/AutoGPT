@@ -6,6 +6,8 @@ import {
   followAnalyticsConsentForIdentity,
   getAnonymousID,
 } from "@/services/analytics/anonymous-id";
+import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-properties";
+import { PageEvent } from "@/services/analytics/posthog-events";
 import { useConsent } from "@/services/consent/useConsent";
 import { environment } from "@/services/environment";
 import { usesPostHog } from "@/services/feature-flags/flag-backend";
@@ -46,6 +48,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         }),
         ...getConsentGatedConfig(),
       });
+      posthog.register(getPostHogBaseProperties());
       unfollowConsent = followAnalyticsConsent();
     }
     return () => {
@@ -107,7 +110,7 @@ export function PostHogPageViewTracker() {
       if (searchParams && searchParams.toString()) {
         url = url + `?${searchParams.toString()}`;
       }
-      posthog.capture("$pageview", { $current_url: url });
+      posthog.capture(PageEvent.PAGEVIEW, { $current_url: url });
     }
   }, [pathname, searchParams, isPostHogEnabled, analytics]);
 

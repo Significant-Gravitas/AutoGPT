@@ -109,6 +109,7 @@ async def test_rate_limit_and_unavailable_redis_fail_closed(monkeypatch):
         await avatar_jobs.reserve_generation("owner")
     assert error.value.status_code == 429
     assert error.value.headers == {"Retry-After": "120"}
+    assert str(avatar_jobs.DAILY_LIMIT) in error.value.detail
     redis.eval.side_effect = ConnectionError()
     with pytest.raises(HTTPException) as error:
         await avatar_jobs.reserve_generation("owner")
@@ -179,7 +180,7 @@ async def test_provider_edit_round_trip_uses_managed_references_and_returns_vali
         assert b'name="background"\r\n\r\nopaque' in request.content
         assert b'name="output_format"\r\n\r\npng' in request.content
         assert b'name="size"\r\n\r\n1024x1024' in request.content
-        assert b'name="quality"\r\n\r\nhigh' in request.content
+        assert b'name="quality"\r\n\r\nmedium' in request.content
         for peer in peers:
             assert f"{peer}.png".encode() in request.content
             assert (
@@ -263,6 +264,6 @@ def test_reference_set_follows_the_generation_standard():
             assert hashlib.sha256(content).hexdigest() == manifest[asset_id]["sha256"]
             with Image.open(io.BytesIO(content)) as image:
                 assert image.size == (512, 512)
-                assert image.mode == "RGB"
+                assert image.format == "PNG"
     assert reference_ids("content") == ["expert-maria", "expert-mina"]
     assert "hex anchor" in avatar_prompt(ExpertAvatarRequest(category="content"))
