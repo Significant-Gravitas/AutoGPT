@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
-from aiohttp import ClientSession, web
+from aiohttp import ClientSession, ClientTimeout, web
 
 from backend.copilot.sdk import codex_compat_gateway
 from backend.copilot.sdk.codex_compat_gateway import (
@@ -1122,3 +1122,95 @@ def test_replay_cache_evicts_the_oldest_entry_first() -> None:
         _entry(b"x" * (codex_compat_gateway._MAX_REPLAY_BYTES + 1)),
     )
     assert "oversized" not in conversation.replays
+
+
+class _SlowAfterToolSession(_FakeAgentSession):
+    """Answers the tool result only once ``release`` is set, like a huge turn."""
+
+    def __init__(self) -> None:
+        super().__init__(use_tool=True)
+        self.release = asyncio.Event()
+
+    async def invoke(
+        self,
+        request,
+        dynamic_tools,
+        tool_handler,
+        event_handler=None,
+    ) -> CodexInvocationResult:
+        self.requests.append(request)
+        try:
+            self.tool_result = await tool_handler(
+                CodexDynamicToolCall(
+                    thread_id="thread-1",
+                    turn_id="turn-1",
+                    call_id="call-1",
+                    tool=dynamic_tools[0].name,
+                    arguments={"query": "status"},
+                )
+            )
+            await self.release.wait()
+            assert event_handler is not None
+            await event_handler(CodexStreamEvent(type="text_delta", delta="done"))
+            return _result("done")
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+
+
+@pytest.mark.asyncio
+async def test_retry_after_the_client_timed_out_replays_the_streamed_answer() -> None:
+    """SECRT-2673 / AUTOGPT-SERVER-875, still live on prod after #14760.
+
+    The CLI gives up on a slow tool-result request and resends it verbatim.
+    The original's answer then lands on a closed socket; it must still be kept
+    for the resend, not dropped with the model call cancelled, which left the
+    resend a 409 "already accepted".
+    """
+    agent_session = _SlowAfterToolSession()
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+        continuation = _tool_result_request(gateway_call_id, "one result", stream=True)
+
+        async with ClientSession() as impatient:
+            with pytest.raises(asyncio.TimeoutError):
+                await impatient.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                    timeout=ClientTimeout(total=0.2),
+                )
+
+        async with ClientSession() as client:
+            retry = asyncio.create_task(
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                )
+            )
+            await asyncio.sleep(0.1)
+            agent_session.release.set()
+            retried = await retry
+            retried_body = await retried.text()
+
+    assert retried.status == 200, retried_body
+    retried_events = _events(retried_body)
+    assert [event["type"] for event in retried_events][-1] == "message_stop"
+    assert any(
+        cast(dict[str, object], event.get("delta", {})).get("text") == "done"
+        for event in retried_events
+    )
+    assert not agent_session.cancelled.is_set()
+    assert len(agent_session.requests) == 1
