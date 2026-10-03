@@ -14,6 +14,11 @@ import {
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  buildOAuthAccessDeniedRedirect,
+  isRegisteredRedirectUri,
+  isSafeOAuthRedirectUrl,
+} from "./redirect-safety";
 
 // Human-readable scope descriptions
 const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
@@ -76,9 +81,20 @@ export default function AuthorizePage() {
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authorizeError, setAuthorizeError] = useState<string | null>(null);
 
+  // Registered callbacks from authenticated app-info (never trust query alone)
+  const registeredRedirectUris = appInfo?.redirect_uris ?? [];
+
   async function handleApprove() {
     setIsAuthorizing(true);
     setAuthorizeError(null);
+
+    if (!isRegisteredRedirectUri(redirectURI, registeredRedirectUris)) {
+      setAuthorizeError(
+        "Invalid redirect_uri. Cannot authorize this application.",
+      );
+      setIsAuthorizing(false);
+      return;
+    }
 
     try {
       // Call the backend /oauth/authorize POST endpoint
@@ -94,7 +110,18 @@ export default function AuthorizePage() {
       });
 
       if (response.status === 200 && response.data.redirect_url) {
-        window.location.href = response.data.redirect_url;
+        // Defense in depth: only follow redirect_url if it matches the
+        // registered redirect_uri (guards against backend error-path leaks).
+        if (
+          isSafeOAuthRedirectUrl(response.data.redirect_url, redirectURI)
+        ) {
+          window.location.href = response.data.redirect_url;
+        } else {
+          setAuthorizeError(
+            "Authorization failed: unsafe redirect URL rejected",
+          );
+          setIsAuthorizing(false);
+        }
       } else {
         setAuthorizeError("Authorization failed: no redirect URL received");
         setIsAuthorizing(false);
@@ -109,13 +136,17 @@ export default function AuthorizePage() {
   }
 
   function handleDeny() {
-    // Redirect back to client with access_denied error
-    const params = new URLSearchParams({
-      error: "access_denied",
-      error_description: "User denied access",
-      state: state || "",
-    });
-    window.location.href = `${redirectURI}?${params.toString()}`;
+    // Never navigate to raw query redirect_uri unless it is registered
+    if (!isRegisteredRedirectUri(redirectURI, registeredRedirectUris)) {
+      setAuthorizeError(
+        "Invalid redirect_uri. Cannot return to the application.",
+      );
+      return;
+    }
+    window.location.href = buildOAuthAccessDeniedRedirect(
+      redirectURI!,
+      state,
+    );
   }
 
   // Show error if missing required parameters
@@ -169,15 +200,8 @@ export default function AuthorizePage() {
             }
             onRetry={refetch}
           />
-          {redirectURI && (
-            <Button
-              variant="secondary"
-              onClick={handleDeny}
-              className="mt-4 w-full"
-            >
-              Return to Application
-            </Button>
-          )}
+          {/* Do not offer Return when app info is missing — redirect_uri
+              cannot be verified against registered callbacks. */}
         </AuthCard>
       </div>
     );
