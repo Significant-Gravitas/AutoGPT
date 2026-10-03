@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import orjson
 import pytest
 
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data.execution import ExecutionStatus
+from backend.data.graph import Graph, Link, Node
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
@@ -1891,3 +1893,80 @@ async def test_validation_error_card_carries_expert_grants(
     assert all(
         entry["expert_grant"]["expert_id"] == "expert-a" for entry in missing.values()
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_executes_the_validated_graph_version():
+    """#15119: run_agent must execute the graph version it resolved and
+    validated (the user's library version), not whatever version is active
+    at execution time — a newer active version can be invisible to a
+    non-owner and fail permission validation after credentials were already
+    aggregated for the old one. This test is DB-free."""
+    input_node = Node(
+        id=str(uuid.uuid4()),
+        block_id=AgentInputBlock().id,
+        input_default={"name": "test_input", "title": "Test Input", "value": ""},
+        metadata={"position": {"x": 0, "y": 0}},
+    )
+    output_node = Node(
+        id=str(uuid.uuid4()),
+        block_id=AgentOutputBlock().id,
+        input_default={"name": "test_output", "title": "Test Output", "value": ""},
+        metadata={"position": {"x": 200, "y": 0}},
+    )
+    graph = Graph(
+        id=str(uuid.uuid4()),
+        version=1,
+        is_active=True,
+        name="Version Pinning Agent",
+        description="Pins the executed version to the validated one",
+        nodes=[input_node, output_node],
+        links=[
+            Link(
+                source_id=input_node.id,
+                sink_id=output_node.id,
+                source_name="result",
+                sink_name="value",
+                is_static=True,
+            )
+        ],
+    )
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-1"
+    session.team_id = "team-1"
+
+    library_agent = MagicMock()
+    library_agent.id = "library-1"
+    library_agent.graph_id = graph.id
+    library_agent.graph_version = 99  # must NOT be what gets executed
+    library_agent.name = "Version Pinning Agent"
+
+    execution = MagicMock()
+    execution.status = ExecutionStatus.COMPLETED
+    execution.id = "exec-1"
+
+    tool = RunAgentTool()
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.get_or_create_library_agent",
+            new_callable=AsyncMock,
+            return_value=library_agent,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new_callable=AsyncMock,
+            return_value=execution,
+        ) as add_execution,
+        patch("backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()),
+    ):
+        await tool._run_agent(
+            user_id="user-1",
+            session=session,
+            graph=graph,
+            graph_credentials={},
+            inputs={"test_input": "value"},
+            dry_run=True,
+        )
+
+    assert add_execution.call_args.kwargs["graph_id"] == graph.id
+    assert add_execution.call_args.kwargs["graph_version"] == graph.version
