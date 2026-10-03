@@ -32,6 +32,7 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.data.db_accessors import review_db
@@ -355,7 +356,10 @@ async def test_the_owners_approve_runs_the_call_in_the_channels_next_turn(
     assert ctx.text == held.WAKE_MESSAGE
     assert ctx.user_id == linked.owner
     # That turn folds the answered card in, and the call runs as it was held.
-    [result] = await held.resolve_answered(test_user_id, session)
+    results: list[PendingMessage] = []
+    async for _update in held.resolve_answered(test_user_id, session, results.append):
+        pass
+    [result] = results
     assert post_tool.runs == [{"text": "hello"}]
     assert result.metadata["held_call"]["outcome"] == "approved"
 

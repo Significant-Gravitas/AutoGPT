@@ -26,6 +26,7 @@ import orjson
 from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
+from backend.copilot import after_turn
 from backend.copilot.active_turns import release_turn_slot
 from backend.copilot.turn_queue import dispatch_next_for_user
 from backend.data.db_accessors import chat_db
@@ -938,16 +939,6 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
-    # Release the per-user concurrent-turn slot now that this turn is no
-    # longer in flight. ``meta`` may be an empty dict if the session's
-    # Redis key expired between the ``hgetall`` above and the CAS that
-    # just succeeded — read ``user_id`` directly so we don't skip the
-    # release on an empty-but-not-None payload. ``user_id`` is empty for
-    # anonymous sessions; ``release_turn_slot`` is a no-op then.
-    user_id = meta.get("user_id") or ""
-    if user_id:
-        await release_turn_slot(user_id, session_id)
-
     # Force-release the executor's cluster lock so the next enqueued turn can
     # acquire it immediately. The lock holder's on_run_done will also release
     # (idempotent delete); doing it here unblocks cases where the task hangs
@@ -965,6 +956,18 @@ async def mark_session_completed(
         await redis.delete(f"{STREAM_LOCK_PREFIX}{session_id}")
     except RedisError as e:
         logger.warning(f"Failed to release stream lock for session {session_id}: {e}")
+
+    # Release the per-user concurrent-turn slot now that this turn is no
+    # longer in flight, and only after its locks: a turn admitted before then
+    # meets this one's cluster lock on another pod, which drops it unrun.
+    # ``meta`` may be an empty dict if the session's Redis key expired
+    # between the ``hgetall`` above and the CAS that just succeeded — read
+    # ``user_id`` directly so we don't skip the release on an
+    # empty-but-not-None payload. ``user_id`` is empty for anonymous
+    # sessions; ``release_turn_slot`` is a no-op then.
+    user_id = meta.get("user_id") or ""
+    if user_id:
+        await release_turn_slot(user_id, session_id)
 
     # Promote the user's oldest queued turn (if any) AFTER the executor
     # cluster lock and SDK stream lock are cleared — otherwise the
@@ -984,11 +987,14 @@ async def mark_session_completed(
 
     # A card answered while this turn ran has nobody to start its turn but us,
     # an error included; only the user's own Stop leaves it for their next turn.
+    # Not before this turn has left its executor, which would drop it unrun.
     if user_id and error_message != CANCELLED_MESSAGE:
         # Deferred: the gate reaches back here through pending_messages.
         from backend.copilot.gate.held import wake as wake_for_held_calls
 
-        await wake_for_held_calls(user_id, session_id)
+        await after_turn.run_after_turn(
+            turn_id, lambda: wake_for_held_calls(user_id, session_id)
+        )
 
     if error_message and not skip_error_publish:
         try:
