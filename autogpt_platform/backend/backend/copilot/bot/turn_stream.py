@@ -8,6 +8,8 @@ resolution) stays in ``handler``.
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
 from typing import Any
@@ -43,6 +45,18 @@ _NO_CARD = "⏸️ An action is waiting for approval."
 
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
+
+# An identical setup card is not posted to the same conversation again within
+# this window: the earlier one is still on screen and its button opens the
+# same session. Long enough to cover a burst of follow-up turns, short enough
+# that coming back to the thread later re-surfaces it.
+SETUP_CARD_REPOST_SECONDS = 15 * 60
+
+# Delete a setup-card claim only if it still holds this turn's token.
+_RELEASE_SETUP_CARD_SCRIPT = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("del", KEYS[1]) else return 0 end'
+)
 
 # Cadence for live draft previews on platforms that support them — throttled
 # so a fast stream doesn't turn every chunk into an API call.
@@ -189,34 +203,34 @@ class TurnStreamer:
             # buffered workspace artifacts resolve instead of falling back to
             # the "no session" plain-text note.
             active_session_id = session_id
-            # Drain any pending text first so the link button doesn't render
-            # ahead of the message it belongs to.
-            if buffer.strip():
-                if await self._send_text_and_artifacts(
-                    adapter, target_id, buffer, ctx, session_id
-                ):
-                    sent_any_content = True
-                buffer = ""
-            sent_any_content = True
-            session_url = copilot_session_url(session_id)
-            message = _setup_required_message(setup_output)
-            if session_url is None:
-                # No base URL configured — fall back to plain text since
-                # Discord rejects relative URLs on link buttons.
-                logger.warning(
-                    "No frontend/platform base URL configured; "
-                    "sending setup-required prompt without a button"
-                )
-                await adapter.send_message(
-                    target_id, message, mentionable_users=ctx.mentionable_users
-                )
-                return
-            await adapter.send_link(
-                target_id,
-                message,
-                link_label="Open AutoGPT",
-                link_url=session_url,
+            card_key = _setup_card_key(
+                ctx.platform, target_id, session_id, setup_output
             )
+            card_token = uuid4().hex
+            if not await _claim_setup_card(redis, card_key, card_token, target_id):
+                # The same card is already up in this conversation and its
+                # button opens the same session. Count it as shown so a turn
+                # whose only output was the card doesn't report "no response".
+                sent_any_content = True
+                return
+            try:
+                # Drain any pending text first so the link button doesn't
+                # render ahead of the message it belongs to.
+                if buffer.strip():
+                    if await self._send_text_and_artifacts(
+                        adapter, target_id, buffer, ctx, session_id
+                    ):
+                        sent_any_content = True
+                    buffer = ""
+                sent_any_content = True
+                await _send_setup_card(
+                    adapter, target_id, ctx, session_id, setup_output
+                )
+            except BaseException:
+                # The card never reached the channel, so the claim must not
+                # stop the next turn from posting it.
+                await _release_setup_card(redis, card_key, card_token)
+                raise
 
         async def _on_setup_dropped(
             session_id: str,
@@ -564,6 +578,88 @@ class TurnStreamer:
             channel_type=ctx.channel_type,
             error_kind=error_kind,
         )
+
+
+async def _send_setup_card(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    session_id: str,
+    setup_output: dict[str, Any],
+) -> None:
+    session_url = copilot_session_url(session_id)
+    message = _setup_required_message(setup_output)
+    if session_url is None:
+        # No base URL configured — fall back to plain text since
+        # Discord rejects relative URLs on link buttons.
+        logger.warning(
+            "No frontend/platform base URL configured; "
+            "sending setup-required prompt without a button"
+        )
+        await adapter.send_message(
+            target_id, message, mentionable_users=ctx.mentionable_users
+        )
+        return
+    await adapter.send_link(
+        target_id,
+        message,
+        link_label="Open AutoGPT",
+        link_url=session_url,
+    )
+
+
+async def _claim_setup_card(redis: Any, key: str, token: str, target_id: str) -> bool:
+    """Whether this setup card should be posted: True the first time it is
+    seen in this conversation within ``SETUP_CARD_REPOST_SECONDS``.
+
+    The per-turn guard stops a repeat inside one turn, but a follow-up turn
+    that runs the same blocked block again produces the same card, and the
+    thread filled up with identical sign-in prompts. The claim holds this
+    turn's ``token`` so only this turn can release it if the post fails.
+    Fails open: a Redis blip costs a duplicate card, never a missing one.
+    """
+    try:
+        claimed = await redis.set(key, token, nx=True, ex=SETUP_CARD_REPOST_SECONDS)
+    except Exception:
+        logger.warning("Setup-card dedupe unavailable; posting the card anyway")
+        return True
+    if not claimed:
+        logger.info("Setup card already shown in target %s; not reposting", target_id)
+    return bool(claimed)
+
+
+async def _release_setup_card(redis: Any, key: str, token: str) -> None:
+    """Drop this turn's claim after a failed post, leaving alone a claim
+    another turn took once ours expired."""
+    try:
+        await redis.eval(_RELEASE_SETUP_CARD_SCRIPT, 1, key, token)
+    except Exception:
+        logger.warning("Failed to release setup-card claim %s", key, exc_info=True)
+
+
+def _setup_card_key(
+    platform: str,
+    target_id: str,
+    session_id: str,
+    setup_output: dict[str, Any],
+) -> str:
+    """The card's identity is what it asks for (the agent/block and the
+    missing credentials) plus the session its button opens."""
+    info = setup_output.get("setup_info")
+    info = info if isinstance(info, dict) else {}
+    readiness = info.get("user_readiness")
+    readiness = readiness if isinstance(readiness, dict) else {}
+    missing = readiness.get("missing_credentials")
+    identity = json.dumps(
+        [
+            session_id,
+            str(info.get("agent_id") or ""),
+            sorted(missing) if isinstance(missing, dict) else [],
+            str(setup_output.get("message") or ""),
+        ]
+    )
+    digest = hashlib.sha256(identity.encode()).hexdigest()
+    return f"copilot-bot:setup-card:{platform}:{target_id}:{digest}"
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:

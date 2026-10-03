@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.platform_linking.models import (
+    ChannelCard,
     EnsureSessionResult,
     TurnDenial,
     WorkspaceArtifact,
@@ -36,6 +37,7 @@ def _ctx(
     username: str = "Bently",
     text: str = "hello bot",
     bot_mentioned: bool = False,
+    addressed_to_others: bool = False,
     thread_history: tuple[MessageHistoryEntry, ...] = (),
     referenced_conversations: tuple[ReferencedConversation, ...] = (),
     attachments: tuple[InboundAttachment, ...] = (),
@@ -51,6 +53,7 @@ def _ctx(
         username=username,
         text=text,
         bot_mentioned=bot_mentioned,
+        addressed_to_others=addressed_to_others,
         thread_history=thread_history,
         referenced_conversations=referenced_conversations,
         attachments=attachments,
@@ -1600,3 +1603,293 @@ class TestTurnDenied:
         adapter.send_message.assert_awaited_once()
         assert msg in adapter.send_message.await_args.args[1]
         adapter.send_link.assert_not_awaited()
+
+
+class TestMessagesAddressedToOthers:
+    """A message that @-mentions someone else, and not us, is not ours to answer.
+
+    Recorded case (Discord, "File Linear Bugs", 2026-09-15 06:03): in a thread
+    the bot owned, Nick posted only "<@Bently>". The relay ran a turn on it and
+    the bot replied "Looks like that's a mention for Bently, not an
+    instruction for me".
+    """
+
+    @pytest.mark.asyncio
+    async def test_owned_thread_message_mentioning_only_someone_else_runs_no_turn(
+        self,
+    ):
+        api = _api()
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-owned",
+                    text="@Bently",
+                    bot_mentioned=False,
+                    addressed_to_others=True,
+                ),
+                adapter,
+            )
+
+        enqueue.assert_not_awaited()
+        api.resolve_server.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_owned_thread_follow_up_without_mentions_still_runs(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-owned",
+                    text="and correlate them to sentry bugs",
+                ),
+                adapter,
+            )
+
+        enqueue.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_mention_of_us_wins_over_other_mentions(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-other",
+                    text="any idea? @AutoPwuts",
+                    bot_mentioned=True,
+                ),
+                adapter,
+            )
+
+        enqueue.assert_awaited_once()
+
+
+class _FakeRedis:
+    """Just enough of redis for the turn streamer: get, and set with NX."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    async def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    async def set(self, key: str, value: str, ex=None, nx: bool = False):
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        return True
+
+    async def eval(self, script: str, numkeys: int, key: str, token: str):
+        # Stands in for the compare-and-delete release script.
+        if self.store.get(key) != token:
+            return 0
+        del self.store[key]
+        return 1
+
+
+def _linear_card(message: str | None = None) -> dict:
+    return {
+        "type": "setup_requirements",
+        "message": message
+        or (
+            "Block 'LinearCreateIssueBlock' requires credentials that are not "
+            "configured. Please set up the required credentials before running "
+            "this block."
+        ),
+        "session_id": "session-1",
+        "setup_info": {
+            "agent_id": "linear-create-issue-block-id",
+            "agent_name": "LinearCreateIssueBlock",
+            "user_readiness": {
+                "has_all_credentials": False,
+                "missing_credentials": {"credentials": {"provider": "linear"}},
+                "ready_to_run": False,
+            },
+        },
+    }
+
+
+def _stream_with_card(card: dict, text: str):
+    async def stream(*args, **kwargs):
+        await kwargs["on_setup_required"]("session-1", card, "run_block")
+        yield text
+
+    return stream
+
+
+class TestSetupCardIsPostedOncePerThread:
+    """Recorded case (Discord, "File Linear Bugs", 2026-09-15): two turns in a
+    row (06:03:02 and 06:03:24) each ran LinearCreateIssueBlock, each got the
+    same missing-credentials card, and the relay posted both. The first card's
+    button still opens the same session, so the second post is only noise."""
+
+    @staticmethod
+    def _settings() -> MagicMock:
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+        return fake_settings
+
+    async def _run_turns(
+        self,
+        cards: list[dict],
+        redis: _FakeRedis,
+        adapter: MagicMock | None = None,
+    ) -> MagicMock:
+        adapter = adapter or _adapter()
+        for n, card in enumerate(cards):
+            api = _api()
+            api.stream_chat = _stream_with_card(card, f"reply {n}")
+            handler = MessageHandler(api)
+            with (
+                patch(
+                    "backend.copilot.bot.turn_stream.get_redis_async",
+                    new=AsyncMock(return_value=redis),
+                ),
+                patch(
+                    "backend.copilot.bot.turn_stream.Settings",
+                    return_value=self._settings(),
+                ),
+            ):
+                await handler._stream_batch(
+                    [("Nick", "u1", f"message {n}")],
+                    _ctx(channel_type="thread", channel_id="thread-1"),
+                    adapter,
+                    "thread-1",
+                )
+        return adapter
+
+    @pytest.mark.asyncio
+    async def test_same_card_in_the_next_turn_is_not_posted_again(self):
+        adapter = await self._run_turns([_linear_card(), _linear_card()], _FakeRedis())
+
+        adapter.send_link.assert_awaited_once()
+        # The second turn's own reply still goes out.
+        sent = [call.args[1] for call in adapter.send_message.await_args_list]
+        assert sent == ["reply 0", "reply 1"]
+
+    @pytest.mark.asyncio
+    async def test_a_different_card_is_still_posted(self):
+        sentry = _linear_card("To continue, sign in to sentry.dev and approve access.")
+        sentry["setup_info"]["agent_id"] = "https://mcp.sentry.dev/mcp"
+        adapter = await self._run_turns([_linear_card(), sentry], _FakeRedis())
+
+        assert adapter.send_link.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_card_that_failed_to_post_is_posted_by_the_next_turn(self):
+        adapter = _adapter()
+        adapter.send_link = AsyncMock(side_effect=[RuntimeError("discord 503"), None])
+        redis = _FakeRedis()
+        await self._run_turns([_linear_card(), _linear_card()], redis, adapter)
+
+        assert adapter.send_link.await_count == 2
+        # The card that did go out still holds its claim for the turns after.
+        assert len(redis.store) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_post_leaves_another_turns_claim_alone(self):
+        adapter = _adapter()
+        redis = _FakeRedis()
+
+        async def _claim_taken_over_then_fail(*args, **kwargs):
+            # The claim expired and another turn took it while this post was
+            # in flight: releasing ours must not clear theirs.
+            for key in redis.store:
+                redis.store[key] = "another-turn"
+            raise RuntimeError("discord 503")
+
+        adapter.send_link = AsyncMock(side_effect=_claim_taken_over_then_fail)
+        await self._run_turns([_linear_card()], redis, adapter)
+
+        assert list(redis.store.values()) == ["another-turn"]
+
+    @pytest.mark.asyncio
+    async def test_a_repeated_setup_card_does_not_hold_back_an_approval_card(self):
+        """Both cards in one turn: the setup card is deduped across turns, the
+        held call's approval card is not, even though both follow a turn
+        that already showed the setup card."""
+        adapter = _adapter()
+        adapter.supports_choice_buttons = True
+        adapter.send_choice_buttons = AsyncMock(return_value=True)
+        redis = _FakeRedis()
+        for n in range(2):
+            api = _api()
+            api.open_card = AsyncMock(
+                return_value=ChannelCard(
+                    token=f"tok-{n}", text="⏸️ **Run block**", options=["Approve"]
+                )
+            )
+
+            async def stream(*args, _n=n, **kwargs):
+                await kwargs["on_setup_required"](
+                    "session-1", _linear_card(), "run_block"
+                )
+                await kwargs["on_approval_needed"]("session-1", f"review-{_n}")
+                yield f"reply {_n}"
+
+            api.stream_chat = stream
+            with (
+                patch(
+                    "backend.copilot.bot.turn_stream.get_redis_async",
+                    new=AsyncMock(return_value=redis),
+                ),
+                patch(
+                    "backend.copilot.bot.turn_stream.Settings",
+                    return_value=self._settings(),
+                ),
+            ):
+                await MessageHandler(api)._stream_batch(
+                    [("Nick", "u1", f"message {n}")],
+                    _ctx(channel_type="thread", channel_id="thread-1"),
+                    adapter,
+                    "thread-1",
+                )
+
+        adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.kwargs["link_label"] == "Open AutoGPT"
+        tokens = [c.args[3] for c in adapter.send_choice_buttons.await_args_list]
+        assert tokens == ["tok-0", "tok-1"]
+        assert all(
+            c.kwargs["kind"] == "appr"
+            for c in adapter.send_choice_buttons.await_args_list
+        )
+
+    @pytest.mark.asyncio
+    async def test_redis_outage_still_posts_the_card(self):
+        redis = _FakeRedis()
+        redis.set = AsyncMock(side_effect=ConnectionError("redis down"))
+        adapter = await self._run_turns([_linear_card()], redis)
+
+        adapter.send_link.assert_awaited_once()
