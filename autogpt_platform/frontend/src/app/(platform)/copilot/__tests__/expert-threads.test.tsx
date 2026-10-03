@@ -180,7 +180,7 @@ const mariaExpert: Expert = {
   boundaries: "Never invent customer evidence.",
   protected_soul_rules: [
     "The expert discloses that it is AI when acting externally.",
-    "The expert asks for approval before acting externally.",
+    "The expert does the work you give it end to end, and gets your approval before acting externally on anything you did not ask for, unless you turn approvals off.",
   ],
   is_template: false,
   source_template_id: "template-maria",
