@@ -1,6 +1,10 @@
+"use client";
+
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
+import { useNow } from "@/hooks/useNow";
 import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
@@ -15,7 +19,32 @@ type Props = {
   onClearSelectedRun?: () => void;
 };
 
+function formatRunDuration(run: GraphExecution, nowMs: number): string | null {
+  const isLive =
+    run.status === AgentExecutionStatus.RUNNING ||
+    run.status === AgentExecutionStatus.QUEUED;
+
+  // Finished: prefer finalized stats.duration when present.
+  if (!isLive && run.stats?.duration != null) {
+    return formatDistanceStrict(0, run.stats.duration * 1000);
+  }
+
+  // Live (or finished without stats): started_at → ended_at|now.
+  if (!run.started_at) return null;
+  const start = new Date(run.started_at).getTime();
+  if (Number.isNaN(start)) return null;
+  const end = run.ended_at ? new Date(run.ended_at).getTime() : nowMs;
+  if (Number.isNaN(end) || end < start) return null;
+  return formatDistanceStrict(0, end - start);
+}
+
 export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
+  const isLive =
+    run?.status === AgentExecutionStatus.RUNNING ||
+    run?.status === AgentExecutionStatus.QUEUED;
+  const nowMs = useNow(1000, Boolean(isLive && run?.started_at));
+  const durationLabel = run ? formatRunDuration(run, nowMs) : null;
+
   return (
     <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
       <div className="flex w-full items-center justify-between">
@@ -75,12 +104,11 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   </Text>
                 </>
               )}
-              {run.stats?.duration !== undefined && (
+              {durationLabel && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
                   <Text variant="small" className="text-zinc-500">
-                    Duration:{" "}
-                    {formatDistanceStrict(0, run.stats.duration * 1000)}
+                    Duration: {durationLabel}
                   </Text>
                 </>
               )}
