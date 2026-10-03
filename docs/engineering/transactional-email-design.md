@@ -34,7 +34,8 @@ One primary button is the default. Cancellation confirmation uses a billing
 text link. A Briefing without an attention item uses highlight/run-history text
 links; its cadence controls are signed for that recipient. Only the welcome is
 signed by a person. Its Expert CTA is selected using the recipient's
-`HIRE_EXPERTS` flag; older queued messages default to the workflow action.
+`HIRE_EXPERTS` flag; older queued messages and failed flag lookups default to
+the workflow action. Secondary Marketplace copy follows the same selection.
 
 Billing has no unsubscribe promise it cannot honor. Product emails match the
 footer unsubscribe URL to both one-click headers. Auth and internal ops have no
@@ -64,11 +65,13 @@ sender in deployment; the repository must not invent or activate a sender.
 
 During a rolling deployment, upgrade the notification service before the API.
 The new service accepts the old three-argument auth RPC; the new API supplies
-a fourth argument for the plain-text body.
+a fourth argument for the plain-text body. During rollback, roll back the API
+first and wait for its newer instances to stop before rolling back the
+notification service; an older receiver cannot accept the fourth argument.
 
 ## Validation
 
-Local validation: 255 focused tests pass. The browser audit covers 31 scenarios
+Local validation: 258 focused tests pass. The browser audit covers 31 scenarios
 at two widths (62 renders), including images blocked, with 1,548 text contrast
 checks and no failures. Public production logo and Otto endpoints returned
 HTTP 200 with PNG content without authentication.

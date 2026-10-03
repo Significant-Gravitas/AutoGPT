@@ -22,7 +22,7 @@
 {% endif %}
 {{ ui.also_panel('Three good places to start', [
     ('The quick-start guide.', 'Set up your first task, step by step.', 'Open the guide', urls.docs),
-    ('The Marketplace.', 'Find a workflow for the work you need done.', 'Browse workflows', urls.marketplace),
+    ('The Marketplace.', 'Find an AI Expert for the work you need done.' if experts_enabled | default(false) else 'Find a workflow for the work you need done.', 'Browse Experts' if experts_enabled | default(false) else 'Browse workflows', urls.marketplace),
     ('Discord.', 'See what other people are building.', 'Join in', urls.discord),
 ]) }}
 {{ ui.signature('Toran Bruce Richards', 'Founder · AutoGPT', 'contact@agpt.co') }}

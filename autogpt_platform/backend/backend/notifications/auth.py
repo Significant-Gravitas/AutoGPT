@@ -2,26 +2,16 @@
 
 from typing import Literal
 
-from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel
 
-from backend.notifications.renderer import TEMPLATE_DIR, RenderedEmail, build_urls
+from backend.notifications.renderer import RenderedEmail, build_urls
+from backend.notifications.template_env import create_body_environment
 from backend.util.settings import Settings
 
 AuthEmailType = Literal["reset_password", "verify_email", "change_email"]
 settings = Settings()
-_html_env = Environment(
-    loader=FileSystemLoader(TEMPLATE_DIR),
-    autoescape=True,
-    trim_blocks=True,
-    lstrip_blocks=True,
-)
-_text_env = Environment(
-    loader=FileSystemLoader(TEMPLATE_DIR),
-    autoescape=False,
-    trim_blocks=True,
-    lstrip_blocks=True,
-)
+_html_env = create_body_environment(autoescape=True)
+_text_env = create_body_environment(autoescape=False)
 
 
 class AuthEmailContent(BaseModel):

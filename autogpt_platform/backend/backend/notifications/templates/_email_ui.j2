@@ -1,12 +1,8 @@
 {# ============================================================
-   _email_ui.j2 — AutoGPT email design system, Edition 1 (2 Oct 2026)
+   _email_ui.j2: AutoGPT email design system, Edition 1 (2 Oct 2026)
    One component kit for every Postmark family (billing, product,
-   ops, auth). Replaces _lifecycle_ui.j2 and _ui.j2; keeps the
-   _lifecycle_ui.j2 macro names and signatures, and carries the
-   _ui.j2-only macros (btn, btn_small, trunc, attention_card, kv,
-   section_label, ops_band, internal_footer) so the four product
-   templates can switch imports with small edits (see the migration
-   table in the design system page).
+   ops, auth), with shared layout, typography, actions, cards,
+   character assets, and stream-specific footers.
    Tokens (source in the design system page):
      paper #ECEAF6 · sheet #FFFFFF · panel #F5F3FC · hairline #E7E4F4
      ink #171925 · body #2D2A3E · muted #575072
@@ -45,8 +41,7 @@
 </style>
 {%- endmacro -%}
 
-{# Body tag with the system font stack applied. Templates that still open
-   <body> by hand should copy this style attribute. #}
+{# Body tag with the system font stack and paper background applied. #}
 {%- macro body_open() -%}
 <body style="margin:0; padding:0; background-color:#ECEAF6; -webkit-text-size-adjust:100%; font-family:{{ FONT }};">
 {%- endmacro -%}
@@ -73,7 +68,7 @@
       <a href="https://agpt.co" style="display:inline-block;"><img src="{{ assets | default('https://platform.agpt.co/email', true) }}/logo-light.png" width="100" height="45" alt="AutoGPT" style="display:block; border:0;"></a>
     </td></tr>
 {%- endmacro -%}
-{# _ui.j2 alias #}
+{# Header uses the shared masthead. #}
 {%- macro header() -%}{{ masthead() }}{%- endmacro -%}
 
 {# The one character slot: the neutral Otto v1.1 master from the managed
@@ -84,7 +79,7 @@
            style="display:block; width:160px; max-width:100%; height:auto; border:0; outline:none; text-decoration:none;">
     </td></tr>
 {%- endmacro -%}
-{# Compatibility aliases: every old hero call renders the same Otto. #}
+{# Every hero variant renders the same neutral Otto, regardless of its arguments. #}
 {%- macro hero(state) -%}{{ hero_otto() }}{%- endmacro -%}
 {%- macro hero_img(name, bgc, alt) -%}{{ hero_otto() }}{%- endmacro -%}
 {%- macro hero_briefing(state) -%}{{ hero_otto() }}{%- endmacro -%}
@@ -107,7 +102,7 @@
         </td></tr>
 {%- endmacro -%}
 
-{# tone: neutral | confirmed | needs_you | brand. `color` kept for old callers. #}
+{# tone: neutral | confirmed | needs_you | brand. `color` overrides the tone. #}
 {%- macro eyebrow(color=none, top=26, tone='neutral') -%}
 {%- set c = color if color else {'neutral': '#575072', 'confirmed': '#1C7A52', 'needs_you': '#B45309', 'brand': '#6144DF'}[tone] -%}
         <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
@@ -155,8 +150,7 @@
         </td></tr>
 {%- endmacro -%}
 
-{# tone: 'amber' | 'neutral'. Pass `body` (old _ui.j2 style) or use call (old
-   _lifecycle_ui.j2 style). #}
+{# tone: 'amber' | 'neutral'. Content comes from `body` or a call block. #}
 {%- macro note_card(label, body=none, tone='neutral', top=20) -%}
         <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ '#FFF6E8' if tone == 'amber' else '#F5F3FC' }}" style="border-collapse:separate; border-spacing:0; border:1px solid {{ '#F2DCB0' if tone == 'amber' else '#E7E4F4' }}; border-left:4px solid {{ '#E8940A' if tone == 'amber' else '#6144DF' }}; border-radius:10px;">
@@ -209,7 +203,7 @@
 {%- endmacro -%}
 
 {# item: object with title, body, cta_label, cta_url, optional tag. Emits the
-   card only (no <tr>), as _ui.j2 did, so the alert template keeps its layout. #}
+   card without a wrapping row. Primary cards use a button; others use a text link. #}
 {%- macro attention_card(item, primary=true) -%}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6E8" style="border-collapse:separate; border-spacing:0; border:1px solid #F2DCB0; border-left:4px solid {{ '#E8940A' if primary else '#F0CF9A' }}; border-radius:10px;">
             <tr><td style="padding:16px 18px;">
@@ -253,7 +247,7 @@
         </td></tr>
 {%- endmacro -%}
 
-{# Single numbered step (old _ui.j2 signature). #}
+{# Single numbered step, rendered as a table. #}
 {%- macro step(n, text) -%}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ background | default('#FFFFFF') }}">
             <tr>
@@ -263,7 +257,7 @@
           </table>
 {%- endmacro -%}
 
-{# items: list of (title, body) — replaces emoji_cards; no emoji in service mail. #}
+{# items: list of (title, body), rendered without emoji. #}
 {%- macro feature_cards(items, top=20) -%}
         <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
           {%- for title, body in items %}
@@ -276,7 +270,7 @@
           {%- endfor %}
         </td></tr>
 {%- endmacro -%}
-{# Compatibility: old emoji_cards callers pass (emoji, title, body); the emoji is dropped. #}
+{# items: list of (emoji, title, body). Only the title and body are rendered. #}
 {%- macro emoji_cards(items, top=20) -%}
         <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
           {%- for emoji, title, body in items %}
@@ -369,8 +363,7 @@
 <a href="https://agpt.co" style="color:#4D36AD; text-decoration:underline;">AutoGPT</a>, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
 {%- endmacro -%}
 
-{# Service (billing/account): no unsubscribe; preferences + Discord. Old
-   _lifecycle_ui.j2 signature kept. #}
+{# Shared legal footer: registered address, a supplied link, and optional Discord. #}
 {%- macro legal_footer(first_line, link_label, link_url, discord=false) -%}
   <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#ECEAF6" class="sheet" style="width:560px; max-width:560px;">
     <tr><td align="center" style="padding:18px 24px 0; font-size:11px; line-height:18px; color:#575072;">
@@ -382,8 +375,8 @@
   </table>
 {%- endmacro -%}
 
-{# Product (Briefing/Alert/Verdict): one-click unsubscribe link, matches the
-   List-Unsubscribe header. Replaces the old _ui.j2 legal_footer. #}
+{# Product (Briefing/Alert/Verdict): one-click unsubscribe link matching the
+   List-Unsubscribe header. #}
 {%- macro product_footer(first_line, unsubscribe_url, discord=true) -%}
 {{ legal_footer(first_line, 'Unsubscribe', unsubscribe_url, discord=discord) }}
 {%- endmacro -%}

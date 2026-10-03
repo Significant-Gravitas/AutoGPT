@@ -13,7 +13,6 @@ The subject template renders first and produces two lines (subject, then
 preheader); both are then passed into the body template.
 """
 
-import pathlib
 from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader
@@ -25,30 +24,19 @@ from backend.data.notifications import (
     get_lifecycle_kind,
     get_template_family,
 )
+from backend.notifications.template_env import TEMPLATE_DIR, create_body_environment
 from backend.util.settings import Settings
 
 settings = Settings()
 
-TEMPLATE_DIR = pathlib.Path(__file__).parent / "templates"
-
 # Autoescape is the defence for user-supplied values, so it is not optional.
-_html_env = Environment(
-    loader=FileSystemLoader(TEMPLATE_DIR),
-    autoescape=True,
-    trim_blocks=True,
-    lstrip_blocks=True,
-)
+_html_env = create_body_environment(autoescape=True)
 # NB: no trim_blocks here — the subject template's line break between subject
 # and preheader must survive block tags at end-of-line.
 _subject_env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=False)
 # The plain-text part is built from the same context, so a text-only client
 # gets the same facts rather than a tag-stripped approximation of the HTML.
-_text_env = Environment(
-    loader=FileSystemLoader(TEMPLATE_DIR),
-    autoescape=False,
-    trim_blocks=True,
-    lstrip_blocks=True,
-)
+_text_env = create_body_environment(autoescape=False)
 
 
 class RenderedEmail(BaseModel):

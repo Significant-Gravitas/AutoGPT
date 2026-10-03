@@ -19,7 +19,7 @@ Install your first workflow: {{ urls.marketplace }}
 
 Three good places to start
 - Quick-start guide: {{ urls.docs }}
-- Browse workflows in the Marketplace: {{ urls.marketplace }}
+- {{ 'Browse Experts' if experts_enabled | default(false) else 'Browse workflows' }} in the Marketplace: {{ urls.marketplace }}
 - Join Discord: {{ urls.discord }}
 
 Toran Bruce Richards

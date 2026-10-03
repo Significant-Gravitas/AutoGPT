@@ -126,6 +126,11 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         return
 
     plan = await plan_from_subscription(subscription)
+    experts_enabled = False
+    try:
+        experts_enabled = await is_feature_enabled(Flag.HIRE_EXPERTS, user.id)
+    except Exception:
+        logger.warning("Could not check Expert access; using the workflow welcome")
     try:
         await _publish(
             NotificationEventModel[SubscriptionWelcomeData](
@@ -135,9 +140,7 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
                     user_name=_greeting_name(user),
                     plan=plan,
                     renews_label=format_date(subscription.get("current_period_end")),
-                    experts_enabled=await is_feature_enabled(
-                        Flag.HIRE_EXPERTS, user.id
-                    ),
+                    experts_enabled=experts_enabled,
                 ),
             )
         )
