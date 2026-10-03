@@ -8,7 +8,7 @@
 
 **Location:** `classic/original_autogpt/` in the GitHub repo
 
-**Maintance Notice:** AutoGPT Classic is not supported from a security perspective. 
+**Maintenance Notice:** AutoGPT Classic is not supported from a security perspective. 
 Dependencies will not be updated, nor will issues be fixed. If someone wishes to
 contribute to novel development, we will give best effort merging to the changes that
 pass the existing CI.
