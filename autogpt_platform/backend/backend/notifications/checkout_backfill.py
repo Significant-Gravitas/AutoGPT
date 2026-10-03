@@ -4,7 +4,8 @@ fields GTM segments on (`audience_enrichment`).
 
 Only accounts with at least one Stripe Checkout Session are openers. Nobody
 else is written, so the accounts that never reached checkout stay out of
-MailerLite.
+MailerLite. An opener who opted out of marketing stays out too (`consent.py`):
+they are counted, never planned.
 
 Each person is written with one subscriber upsert, one at a time and paced,
 never a /batch: MailerLite processes an upsert-only batch as an import, and
@@ -28,6 +29,7 @@ from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
 from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
+from backend.notifications.consent import marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     _client,
@@ -82,6 +84,8 @@ class OpenerPlan(BaseModel):
     openers: int
     # Addresses MailerLite would refuse, such as a reserved domain.
     invalid: int
+    # Openers who refused marketing, left out of the plan and the tallies.
+    opted_out: int
     # What the openers end up with, for the report.
     country_sources: dict[str, int]
     countries: dict[str, int]
@@ -110,13 +114,16 @@ def plan(
     openers: list[Opener], current: Current, members: Mapping[str, str]
 ) -> OpenerPlan:
     changes: list[OpenerChange] = []
-    invalid = 0
+    invalid = opted_out = 0
     sources: Counter[str] = Counter()
     countries: Counter[str] = Counter()
     email_types: Counter[str] = Counter()
     methods: Counter[str] = Counter()
     exclude = 0
     for opener in openers:
+        if not marketing_allowed(opener.person):
+            opted_out += 1
+            continue
         email = opener.person.email
         if not _valid(email):
             invalid += 1
@@ -142,6 +149,7 @@ def plan(
         changes=changes,
         openers=len(openers),
         invalid=invalid,
+        opted_out=opted_out,
         country_sources=dict(sources),
         countries=dict(countries),
         email_types=dict(email_types),

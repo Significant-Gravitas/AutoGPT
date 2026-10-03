@@ -2,6 +2,8 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
+import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
 import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,15 +49,26 @@ export function useSignupPage() {
     }
   }, [isLoggedIn, isSigningUp, nextUrl, router]);
 
-  const form = useForm<z.infer<typeof signupFormSchema>>({
+  const form = useForm<
+    z.input<typeof signupFormSchema>,
+    unknown,
+    z.output<typeof signupFormSchema>
+  >({
     resolver: zodResolver(signupFormSchema),
     defaultValues: {
       email: "",
       password: "",
       confirmPassword: "",
-      agreeToTerms: false,
+      marketingOptOut: false,
     },
   });
+
+  function handleToggleMarketingOptOut() {
+    if (isSigningUp) return;
+    const optOut = !form.getValues("marketingOptOut");
+    form.setValue("marketingOptOut", optOut, { shouldDirty: true });
+    if (optOut) trackSignupMarketingOptOut();
+  }
 
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
@@ -67,6 +80,8 @@ export function useSignupPage() {
         ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+
+      setMarketingOptOutFlag(form.getValues("marketingOptOut") ?? false);
 
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
@@ -99,7 +114,7 @@ export function useSignupPage() {
     }
   }
 
-  async function handleSignup(data: z.infer<typeof signupFormSchema>) {
+  async function handleSignup(data: z.output<typeof signupFormSchema>) {
     setIsLoading(true);
 
     if (data.email.includes("@agpt.co")) {
@@ -120,7 +135,7 @@ export function useSignupPage() {
         data.email,
         data.password,
         data.confirmPassword,
-        data.agreeToTerms,
+        data.marketingOptOut,
       );
 
       if (!result.success) {
@@ -170,10 +185,13 @@ export function useSignupPage() {
     hasInitializedAuth,
     isLoading,
     isGoogleLoading,
+    isSigningUp,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
+    optedOut: form.watch("marketingOptOut") ?? false,
     handleSubmit: form.handleSubmit(handleSignup),
+    handleToggleMarketingOptOut,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
   };

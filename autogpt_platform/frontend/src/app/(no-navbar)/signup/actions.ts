@@ -3,6 +3,7 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { auth } from "@/lib/auth/auth";
+import { recordSignupConsent } from "@/lib/auth/server/recordSignupConsent";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
@@ -19,14 +20,14 @@ export async function signup(
   email: string,
   password: string,
   confirmPassword: string,
-  agreeToTerms: boolean,
+  marketingOptOut: boolean,
 ) {
   try {
     const parsed = signupFormSchema.safeParse({
       email,
       password,
       confirmPassword,
-      agreeToTerms,
+      marketingOptOut,
     });
 
     if (!parsed.success) {
@@ -79,6 +80,9 @@ export async function signup(
       if (wasAccountCreated(createUserResponse)) {
         await scheduleAccountCreatedGoal("email");
         await markAccountCreated("email");
+        // Never throws, so a failed consent write can't reach the rollback
+        // below: the account exists and the signup still succeeds.
+        await recordSignupConsent(parsed.data.marketingOptOut);
       }
     } catch (createUserError) {
       console.error("Error creating user during signup:", createUserError);

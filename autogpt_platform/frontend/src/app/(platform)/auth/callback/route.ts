@@ -2,12 +2,14 @@ import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/au
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
+import { recordSignupConsent } from "@/lib/auth/server/recordSignupConsent";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
   scheduleAccountCreatedGoal,
   wasAccountCreated,
 } from "@/services/analytics/datafast-server";
+import { takeMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-server";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
@@ -42,9 +44,18 @@ export async function GET(request: Request) {
   if (session?.user) {
     try {
       const createUserResponse = await postV1GetOrCreateUser();
+      // Consumed once the user exists, new or returning, so a refusal left
+      // by an abandoned or returning-user attempt can't leak into a later
+      // signup. Not taken before provisioning succeeds: a failure redirects
+      // to /error and the retry must still carry the refusal. Never throws,
+      // so it can't reach the rollback below.
+      const marketingOptOut = await takeMarketingOptOutFlag();
       if (wasAccountCreated(createUserResponse)) {
         await scheduleAccountCreatedGoal("google");
         await markAccountCreated("google");
+        // Never throws, so a failed consent write can't reach the rollback
+        // below or change where the user lands.
+        await recordSignupConsent(marketingOptOut);
       }
 
       const { shouldShowOnboarding } = await getOnboardingStatus();

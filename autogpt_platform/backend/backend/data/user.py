@@ -24,7 +24,7 @@ from prisma.types import (
 )
 from pydantic import BaseModel, ConfigDict
 
-from backend.data.db import prisma
+from backend.data.db import prisma, transaction
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
@@ -845,6 +845,92 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e
 
 
+MARKETING_OPT_OUT_SOURCE_SIGNUP = "signup"
+
+
+async def record_signup_consent(
+    user_id: str, terms_version: str, marketing_opt_out: bool
+) -> User:
+    """Record what the user agreed to on the signup page.
+
+    Idempotent, so a retried call is harmless: the terms are stamped again only
+    for a newer version (an older one never replaces a newer acceptance), and
+    an opt-out keeps its first date and source, including one recorded after
+    this call read the row (a concurrent call, or an unsubscribe). Both are
+    written in one transaction, so a failure leaves neither half behind.
+    `marketing_opt_out=False` changes nothing: this can refuse marketing but
+    never take a refusal back, which is a settings action.
+
+    Returns the row as read after any write, so it shows whichever refusal won.
+    """
+    try:
+        current = await PrismaUser.prisma().find_unique(where={"id": user_id})
+        if current is None:
+            raise NotFoundError(f"User not found with ID: {user_id}")
+
+        # Versions are YYYY-MM or YYYY-MM-DD, so they order as strings.
+        stamp_terms = (
+            current.termsAcceptedAt is None
+            or current.termsVersion is None
+            or terms_version > current.termsVersion
+        )
+        opt_out = marketing_opt_out and current.marketingOptOutAt is None
+        if not stamp_terms and not opt_out:
+            return User.from_db(current)
+
+        if await _write_signup_consent(
+            user_id, terms_version if stamp_terms else None, opt_out
+        ):
+            # Same invalidation as update_user_timezone: the MailerLite gate
+            # reads the opt-out through get_user_by_id, so a stale cached user
+            # would let a checkout opened right after signup through.
+            get_user_by_id.cache_delete(user_id)
+            if current.email:
+                get_user_by_email.cache_delete(current.email)
+            get_or_create_user.cache_clear()
+
+        user = await PrismaUser.prisma().find_unique(where={"id": user_id})
+        if user is None:
+            raise NotFoundError(f"User not found with ID: {user_id}")
+        return User.from_db(user)
+    except NotFoundError:
+        raise
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to record signup consent for user {user_id}: {e}"
+        ) from e
+
+
+async def _write_signup_consent(
+    user_id: str, terms_version: str | None, opt_out: bool
+) -> bool:
+    """Stamp the terms (unless `terms_version` is None) and, when `opt_out`,
+    the opt-out, in one transaction. True when either reached the row.
+
+    The opt-out is conditional on none being stored, so a refusal recorded
+    since the caller read the row keeps its own date and source.
+    """
+    now = datetime.now(timezone.utc)
+    written = False
+    async with transaction() as tx:
+        if terms_version is not None:
+            stamped = await PrismaUser.prisma(tx).update(
+                where={"id": user_id},
+                data={"termsAcceptedAt": now, "termsVersion": terms_version},
+            )
+            written = stamped is not None
+        if opt_out:
+            opted_out = await PrismaUser.prisma(tx).update_many(
+                where={"id": user_id, "marketingOptOutAt": None},
+                data={
+                    "marketingOptOutAt": now,
+                    "marketingOptOutSource": MARKETING_OPT_OUT_SOURCE_SIGNUP,
+                },
+            )
+            written = written or opted_out > 0
+    return written
+
+
 class BriefingCandidate(BaseModel):
     """The fields the briefing pass needs to decide whether a user is due.
 
@@ -929,7 +1015,7 @@ async def set_last_briefing_at(user_id: str, sent_at: datetime) -> None:
 
 
 class BillingEmailRecipient(BaseModel):
-    """The four fields the billing emails need about a customer.
+    """The fields the billing emails need about a customer.
 
     A narrow model rather than the Prisma `User`, because this crosses the
     DatabaseManager RPC boundary: the lifecycle handlers run in the REST API
@@ -942,6 +1028,9 @@ class BillingEmailRecipient(BaseModel):
     email: str
     name: str | None = None
     welcome_email_sent_at: datetime | None = None
+    # Set when the customer refused marketing: billing emails still go out,
+    # MailerLite never hears of them (notifications/consent.py).
+    marketing_opt_out_at: datetime | None = None
 
 
 async def get_billing_email_recipient(
@@ -960,6 +1049,7 @@ async def get_billing_email_recipient(
             email=row.email,
             name=row.name,
             welcome_email_sent_at=row.welcomeEmailSentAt,
+            marketing_opt_out_at=row.marketingOptOutAt,
         )
     except Exception as e:
         raise DatabaseError(

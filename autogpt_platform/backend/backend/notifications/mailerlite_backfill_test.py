@@ -1,6 +1,7 @@
 """The backfill must put each existing customer where the live handlers would
 have, and never fight MailerLite's own tour → changelog handoff."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +17,7 @@ from backend.notifications.mailerlite_backfill import (
 )
 
 TOUR, CHANGELOG, TRIAL = "grp_tour", "grp_changelog", "grp_trial"
+OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -400,3 +402,69 @@ def _paging_forever(page: dict):
         return _response(200, page)
 
     return get
+
+
+# ── opted out of marketing ─────────────────────────────────────────────────
+
+
+def _opted_out(email: str, *statuses: str) -> Customer:
+    return _customer(email, *statuses).model_copy(
+        update={"marketing_opt_out_at": OPTED_OUT}
+    )
+
+
+@pytest.mark.parametrize(
+    "statuses, audience",
+    [
+        (["active"], _audience()),
+        (["active"], _audience(trial=["a@x.io"])),
+        (["trialing"], _audience()),
+        (["trialing+cancel"], _audience(trial=["a@x.io"])),
+        (["canceled"], _audience(changelog=["a@x.io"])),
+        (["unpaid"], _audience()),
+    ],
+)
+def test_an_opted_out_customer_is_only_ever_skipped(statuses, audience):
+    """Not even a removal: a customer who refused marketing gets no MailerLite
+    call of any kind."""
+    change = mailerlite_backfill.decide(
+        _opted_out("a@x.io", *statuses), audience, trial_enabled=True
+    )
+    assert change.decisions == [Decision.SKIP_OPTED_OUT]
+    assert Decision.SKIP_OPTED_OUT not in mailerlite_backfill.CHANGES
+
+
+@pytest.mark.asyncio
+async def test_apply_never_writes_an_opted_out_customer(
+    configured, no_sleep, monkeypatch
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    audience = _audience(changelog=["gone@x.io"], trial=["trial@x.io"])
+    changes = mailerlite_backfill.plan(
+        [
+            _opted_out("new@x.io", "active"),
+            _opted_out("gone@x.io", "canceled"),
+            _opted_out("trial@x.io", "active"),
+            _customer("paid@x.io", "active"),
+        ],
+        audience,
+    )
+
+    result = await mailerlite_backfill.apply(changes, audience)
+
+    sent = [call.kwargs["json"]["requests"] for call in client.post.await_args_list]
+    assert sent == [
+        [
+            {
+                "method": "POST",
+                "path": "api/subscribers",
+                "body": {"email": "paid@x.io", "groups": [CHANGELOG]},
+            }
+        ]
+    ]
+    assert sum(result.succeeded.values()) == 1
+    assert sum(result.failed.values()) == 0

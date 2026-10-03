@@ -1,3 +1,5 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { TERMS_VERSION } from "@/lib/legal";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { signup } from "../actions";
 
@@ -7,12 +9,14 @@ const mocks = vi.hoisted(() => ({
   signUpEmail: vi.fn(),
   rollbackSession: vi.fn(),
   postV1GetOrCreateUser: vi.fn(),
+  postV1RecordUserConsent: vi.fn(),
   scheduleAccountCreatedGoal: vi.fn(),
   cookieSet: vi.fn(),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
   postV1GetOrCreateUser: mocks.postV1GetOrCreateUser,
+  postV1RecordUserConsent: mocks.postV1RecordUserConsent,
 }));
 vi.mock("@/app/api/helpers", () => ({
   getOnboardingStatus: mocks.getOnboardingStatus,
@@ -63,7 +67,7 @@ describe("email signup account creation tracking", () => {
       "new@example.com",
       "ValidPassword123!",
       "ValidPassword123!",
-      true,
+      false,
     );
 
     expect(result.success).toBe(true);
@@ -89,12 +93,13 @@ describe("email signup account creation tracking", () => {
       "existing@example.com",
       "ValidPassword123!",
       "ValidPassword123!",
-      true,
+      false,
     );
 
     expect(result.success).toBe(true);
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
     expect(mocks.cookieSet).not.toHaveBeenCalled();
+    expect(mocks.postV1RecordUserConsent).not.toHaveBeenCalled();
   });
 
   it("reports a thrown backend error instead of completing signup", async () => {
@@ -106,7 +111,7 @@ describe("email signup account creation tracking", () => {
       "new@example.com",
       "ValidPassword123!",
       "ValidPassword123!",
-      true,
+      false,
     );
 
     expect(result.success).toBe(false);
@@ -116,5 +121,82 @@ describe("email signup account creation tracking", () => {
     // account setup.
     expect(mocks.rollbackSession).toHaveBeenCalledOnce();
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
+    expect(mocks.postV1RecordUserConsent).not.toHaveBeenCalled();
   });
+});
+
+describe("email signup consent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.signUpEmail.mockResolvedValue({});
+    mocks.getOnboardingStatus.mockResolvedValue({
+      shouldShowOnboarding: true,
+    });
+    mocks.postV1RecordUserConsent.mockResolvedValue({ status: 200, data: {} });
+  });
+
+  function provisioningResponse(accountCreated: boolean) {
+    return {
+      status: 200,
+      data: {},
+      headers: new Headers({
+        "X-AutoGPT-User-Created": String(accountCreated),
+      }),
+    };
+  }
+
+  function signupWith(marketingOptOut: boolean) {
+    return signup(
+      "new@example.com",
+      "ValidPassword123!",
+      "ValidPassword123!",
+      marketingOptOut,
+    );
+  }
+
+  it.each([true, false])(
+    "records terms acceptance with marketing_opt_out=%s on a new account",
+    async (marketingOptOut) => {
+      mocks.postV1GetOrCreateUser.mockResolvedValue(provisioningResponse(true));
+
+      const result = await signupWith(marketingOptOut);
+
+      expect(result).toEqual({ success: true, next: "/onboarding" });
+      expect(mocks.postV1RecordUserConsent).toHaveBeenCalledOnce();
+      expect(mocks.postV1RecordUserConsent).toHaveBeenCalledWith({
+        terms_version: TERMS_VERSION,
+        marketing_opt_out: marketingOptOut,
+      });
+    },
+  );
+
+  it("records nothing for an account that already existed", async () => {
+    mocks.postV1GetOrCreateUser.mockResolvedValue(provisioningResponse(false));
+
+    const result = await signupWith(true);
+
+    expect(result).toEqual({ success: true, next: "/onboarding" });
+    expect(mocks.postV1RecordUserConsent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the backend rejects the write", new ApiError("Server error", 500, {})],
+    ["the request never arrives", new TypeError("Failed to fetch")],
+  ])(
+    "still completes signup without a rollback when %s",
+    async (_label, error) => {
+      mocks.postV1GetOrCreateUser.mockResolvedValue(provisioningResponse(true));
+      mocks.postV1RecordUserConsent.mockRejectedValue(error);
+
+      const result = await signupWith(true);
+
+      expect(result).toEqual({ success: true, next: "/onboarding" });
+      expect(mocks.rollbackSession).not.toHaveBeenCalled();
+      expect(mocks.captureException).toHaveBeenCalledOnce();
+      expect(mocks.captureException).toHaveBeenCalledWith(error, {
+        tags: { signup_step: "record_consent" },
+      });
+    },
+  );
 });
