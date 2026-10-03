@@ -984,6 +984,12 @@ class RunAgentTool(BaseTool):
         try:
             execution = await execution_utils.add_graph_execution(
                 graph_id=library_agent.graph_id,
+                # Run the version this tool resolved and validated (the
+                # library copy's), not whatever version happens to be active
+                # now — a newer active version can be invisible to a
+                # non-owner and fail permission validation after credentials
+                # were already aggregated for the old one (#15119).
+                graph_version=graph.version,
                 user_id=user_id,
                 inputs=inputs,
                 graph_credentials_inputs=graph_credentials,
