@@ -81,6 +81,7 @@ function row(overrides: Partial<Row> = {}): Row {
     },
     selected: undefined,
     hasUnansweredTarget: false,
+    rejectedCredentialIds: [],
     select: vi.fn(),
     onConnected: vi.fn(),
     ...overrides,

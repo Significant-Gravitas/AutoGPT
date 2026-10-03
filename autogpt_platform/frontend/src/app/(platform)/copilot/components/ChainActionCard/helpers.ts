@@ -70,6 +70,10 @@ export interface ConnectorRequest {
    *  merely being present, which is also true of a card re-rendered from
    *  chat history. */
   onConnected: () => void;
+  /** A saved credential the provider refused when the tool ran. It stays on
+   *  file, so without this the row would auto-select it and read Connected
+   *  with nothing to click. */
+  rejectedCredentialId?: string;
 }
 
 export interface ConnectorRow {
@@ -88,6 +92,9 @@ export interface ConnectorRow {
    *  reports the FIRST target's value, so without this a second card asking
    *  for the same provider reads as answered while its field is still empty. */
   hasUnansweredTarget: boolean;
+  /** Saved credentials a merged card reported refused. None is usable until
+   *  the user signs in to it again from this row. */
+  rejectedCredentialIds: string[];
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -150,6 +157,13 @@ export function toConnectorRows(
     hasUnansweredTarget: row.targets.some(
       ({ request, key }) => request.selected[key]?.id !== row.selected?.id,
     ),
+    rejectedCredentialIds: [
+      ...new Set(
+        row.targets.flatMap(({ request }) =>
+          request.rejectedCredentialId ? [request.rejectedCredentialId] : [],
+        ),
+      ),
+    ],
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
     onConnected: () =>

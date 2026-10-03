@@ -848,6 +848,147 @@ describe("copilot Connect card, a card that arrives after the first connection",
   });
 });
 
+describe("copilot Connect card, a saved credential the provider refused", () => {
+  // The credential the provider refused. It stays on file and still has every
+  // scope the card asks for, which is what made the row read Connected.
+  const refused = oauthCredential("cred-refused", [REQUIRED_SCOPE]);
+  let picked: Record<string, string> | null = null;
+
+  beforeEach(() => {
+    requestedScopes = null;
+    upgradedCredentialID = null;
+    picked = null;
+    savedCredentials = [refused];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([{ name: "github", description: "Repositories" }]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+      http.get("*/api/integrations/github/login", ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        requestedScopes = query.get("scopes") ?? "";
+        upgradedCredentialID = query.get("credential_id");
+        return HttpResponse.json({
+          login_url: "https://github.com/login/oauth/authorize",
+          state_token: "state-token",
+        });
+      }),
+      // A re-auth aimed at an account updates it in place: same id, new token.
+      http.post("*/api/integrations/github/callback", () =>
+        HttpResponse.json(refused),
+      ),
+      http.put(
+        "*/api/chat/sessions/:sessionId/credential-selection",
+        async ({ request }) => {
+          picked = ((await request.json()) as { selections: typeof picked })
+            .selections;
+          return HttpResponse.json({});
+        },
+      ),
+    );
+  });
+
+  afterEach(resetStores);
+
+  function renderRefusedChain() {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[refusedRequirementsPart("cred-refused")]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    return { onSend };
+  }
+
+  async function reconnect() {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+  }
+
+  it("offers Reconnect instead of calling the refused credential Connected", async () => {
+    const { onSend } = renderRefusedChain();
+
+    // The prod report: the row read Connected and had nothing to click, so
+    // the only way out was deleting the credential in Settings.
+    await screen.findByRole("button", { name: "Reconnect" });
+    expect(screen.queryByText("Connected")).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("renews the refused account in place and continues the chat", async () => {
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-refused"));
+    // The renewal keeps the credential's id, so a card that kept treating that
+    // id as refused would never send.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-refused" });
+    await screen.findByText("Connected. Continuing…");
+  });
+
+  it("runs on the new credential, not the refused one, when the sign-in adds one", async () => {
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+        savedCredentials = [refused, added];
+        return HttpResponse.json(added);
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-new" });
+  });
+
+  it("uses another saved account that still works without asking for a sign-in", async () => {
+    savedCredentials = [
+      refused,
+      oauthCredential("cred-other", [REQUIRED_SCOPE]),
+    ];
+    renderRefusedChain();
+
+    // Two accounts fit, but one was just refused: the other is no choice.
+    await screen.findByText("Connected");
+    expect(screen.queryByRole("button", { name: "Choose account" })).toBeNull();
+  });
+});
+
+function refusedRequirementsPart(credentialID: string): MessagePart {
+  const part = setupRequirementsPart() as unknown as {
+    output: Record<string, unknown>;
+  };
+  return {
+    ...part,
+    output: {
+      ...part.output,
+      message: "The saved Github credential 'GitHub' could not be refreshed.",
+      rejection: {
+        provider: "github",
+        detail: "invalid_grant",
+        status_code: null,
+        credential_id: credentialID,
+        credential_title: "GitHub",
+      },
+    },
+  } as unknown as MessagePart;
+}
+
 function renderChain() {
   const onSend = vi.fn();
   const utils = render(

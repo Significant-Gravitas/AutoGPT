@@ -203,9 +203,13 @@ export function SetupRequirementsCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
   }, [chainActions, canAutoDismiss, hasSent]);
 
+  // A sign-in from the chain's row renews or replaces the refused credential.
+  // A renewal keeps the credential's id, so after one the id still matching
+  // the rejection is no reason to hold the chain back.
   const canRun =
     checkCanRun(needsCredentials, isAllCredsComplete, isAllInputsDone) &&
-    !isRejectedCredentialSelected(rejection, inputCredentials);
+    (justConnected ||
+      !isRejectedCredentialSelected(rejection, inputCredentials));
 
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
@@ -231,6 +235,7 @@ export function SetupRequirementsCard({
             selected: inputCredentials,
             onChange: handleCredentialChange,
             onConnected: () => setJustConnected(true),
+            rejectedCredentialId: rejection?.credential_id ?? undefined,
           }
         : undefined,
       inputs:

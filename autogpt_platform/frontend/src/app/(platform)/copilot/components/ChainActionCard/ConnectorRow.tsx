@@ -45,17 +45,27 @@ export function ConnectorRow({ row }: Props) {
   // `null` while the provider's accounts were still loading, where a diff
   // would call every account the user already had new.
   const knownIds = useRef<Set<string> | null>(null);
+  // Refused credentials the user has since signed in to again from this row.
+  // A re-auth updates the account in place and keeps its id, so the id alone
+  // cannot tell a renewed credential from the one the provider refused.
+  const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const allProviders = useContext(CredentialsProvidersContext);
   const { mutateAsync: grantCredentials, isPending: isGranting } =
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
   const grantedCredentials = useExpertCredentialSelection(row, allProviders);
 
+  const rejectedIds = row.rejectedCredentialIds.filter(
+    (id) => !renewedIds.includes(id),
+  );
+  // Still on file, but refused: never one to select or offer as usable.
+  const usableProviders = withoutCredentials(allProviders, rejectedIds);
+
   const savedCredential = findSavedUserCredentialByProviderAndType(
     row.schema.credentials_provider ?? [],
     row.schema.credentials_types ?? [],
     row.schema.credentials_scopes,
-    allProviders,
+    usableProviders,
     row.schema.discriminator_values,
   );
 
@@ -122,7 +132,8 @@ export function ConnectorRow({ row }: Props) {
     // the row reads Connected while Proceed sends a credential missing the
     // scopes the later card asked for. `null` is the provider context's
     // "still loading" sentinel, where every lookup misses — clearing then
-    // would drop a good selection on every mount.
+    // would drop a good selection on every mount. A refused credential never
+    // fits, which is what turns a row holding one back into a Reconnect.
     if (allProviders && row.selected && !selectedStillFits) {
       row.select(undefined);
       return;
@@ -141,6 +152,7 @@ export function ConnectorRow({ row }: Props) {
     allProviders,
     awaitingGrant,
     expertGrant?.expertId,
+    rejectedIds.join(),
   ]);
 
   // Several saved accounts can satisfy one row. Nothing picks between them for
@@ -148,7 +160,7 @@ export function ConnectorRow({ row }: Props) {
   const pickable = expertGrant
     ? []
     : filterSystemCredentials(
-        allProviders?.[row.provider]?.savedCredentials ?? [],
+        usableProviders?.[row.provider]?.savedCredentials ?? [],
       ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
   // The selected credential itself must still fit: that another account
   // does is no reason to keep this one and call it Connected.
@@ -193,7 +205,7 @@ export function ConnectorRow({ row }: Props) {
     !row.hasUnansweredTarget &&
     (expertGrant
       ? grantedCredentials.isSelectionGranted
-      : Boolean(row.selected));
+      : !!row.selected && !rejectedIds.includes(row.selected.id));
 
   function openDialog() {
     knownIds.current = allProviders
@@ -255,7 +267,9 @@ export function ConnectorRow({ row }: Props) {
             ? "Grant access"
             : hasChoice
               ? "Choose account"
-              : "Connect"}
+              : rejectedIds.length > 0
+                ? "Reconnect"
+                : "Connect"}
         </Button>
       )}
 
@@ -295,6 +309,12 @@ export function ConnectorRow({ row }: Props) {
         onClose={() => setDialogOpen(false)}
         onConnected={(credential) => {
           if (!expertGrant) {
+            // A sign-in that reports no credential cannot say which refused
+            // one it renewed; leaving them all refused would strand the row.
+            setRenewedIds((ids) => [
+              ...ids,
+              ...(credential ? [credential.id] : rejectedIds),
+            ]);
             row.onConnected();
             return;
           }
@@ -344,6 +364,26 @@ function grantableAmong(
   return match
     ? { id: match.id, title: match.title ?? row.displayName, type: match.type }
     : null;
+}
+
+/** `allProviders` without the credentials in `ids`. Keeps the `null` loading
+ *  sentinel, and the list itself when there is nothing to drop. */
+function withoutCredentials(
+  allProviders: CredentialsProvidersContextType | null,
+  ids: string[],
+): CredentialsProvidersContextType | null {
+  if (!allProviders || ids.length === 0) return allProviders;
+  return Object.fromEntries(
+    Object.entries(allProviders).map(([name, data]) => [
+      name,
+      data && {
+        ...data,
+        savedCredentials: data.savedCredentials.filter(
+          (credential) => !ids.includes(credential.id),
+        ),
+      },
+    ]),
+  );
 }
 
 /** The API reports absent fields as null; the provider list omits them. */
