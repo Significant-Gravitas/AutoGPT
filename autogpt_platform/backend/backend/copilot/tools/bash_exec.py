@@ -61,7 +61,7 @@ def _build_completion_response(
         exit_code=exit_code,
         timed_out=False,
         session_id=session_id,
-    )
+    ).from_outside(out, err)
 
 
 class BashExecTool(BaseTool):
@@ -134,7 +134,7 @@ class BashExecTool(BaseTool):
                 message="No command provided.",
                 error="empty_command",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Pre-flight redirect: bash sandbox can't reach host-side SDK
         # tool-result paths. Without this the model burns turns retrying
@@ -144,7 +144,7 @@ class BashExecTool(BaseTool):
                 message=sdk_tool_result_redirect_hint(command),
                 error="sdk_tool_result_path_in_bash_command",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         sandbox = get_current_sandbox()
         if sandbox is not None:
@@ -163,7 +163,7 @@ class BashExecTool(BaseTool):
                 message="bash_exec requires bubblewrap sandbox (Linux only).",
                 error="sandbox_unavailable",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         workspace = get_workspace_dir(session_id or "default")
 
@@ -184,7 +184,7 @@ class BashExecTool(BaseTool):
             exit_code=exit_code,
             timed_out=timed_out,
             session_id=session_id,
-        )
+        ).from_outside(stdout, stderr)
 
     async def _execute_on_e2b(
         self,
@@ -248,11 +248,11 @@ class BashExecTool(BaseTool):
                 exit_code=-1,
                 timed_out=True,
                 session_id=session_id,
-            )
+            ).from_outside()
         except Exception as exc:
             logger.error("[E2B] bash_exec failed: %s", exc, exc_info=True)
             return ErrorResponse(
                 message=f"E2B execution failed: {exc}",
                 error="e2b_execution_error",
                 session_id=session_id,
-            )
+            ).from_outside(str(exc))
