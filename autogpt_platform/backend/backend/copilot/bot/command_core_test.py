@@ -6,7 +6,7 @@ import pytest
 
 from backend.util.exceptions import LinkAlreadyExistsError
 
-from .command_core import setup_reply, unlink_reply
+from .command_core import dm_link_reply, setup_reply, unlink_reply
 
 _CORE = "backend.copilot.bot.command_core"
 
@@ -78,3 +78,62 @@ def test_unlink_without_base_url_falls_back_to_text():
         reply = unlink_reply()
     assert reply.button_url is None
     assert "Settings → Bots" in reply.text
+
+
+def _dm_api(*, linked: bool = False) -> MagicMock:
+    api = MagicMock()
+    api.resolve_user = AsyncMock(return_value=MagicMock(linked=linked))
+    api.create_user_link_token = AsyncMock(
+        return_value=MagicMock(link_url="https://x/link/dm-tok")
+    )
+    return api
+
+
+async def _dm_link(api) -> object:
+    return await dm_link_reply(
+        api,
+        platform="telegram",
+        platform_display="Telegram",
+        platform_user_id="42",
+        platform_username="bently",
+    )
+
+
+@pytest.mark.asyncio
+async def test_dm_link_unlinked_user_gets_link_button():
+    api = _dm_api()
+    reply = await _dm_link(api)
+    assert reply.button_label == "Link Account"
+    assert reply.button_url == "https://x/link/dm-tok"
+    assert "expires in 30 minutes" in reply.text
+    api.resolve_user.assert_awaited_once_with("telegram", "42")
+    api.create_user_link_token.assert_awaited_once_with(
+        platform="telegram", platform_user_id="42", platform_username="bently"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dm_link_linked_user_is_told_to_just_chat():
+    api = _dm_api(linked=True)
+    reply = await _dm_link(api)
+    assert reply.button_url is None
+    assert "Telegram DMs are linked" in reply.text
+    api.create_user_link_token.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_dm_link_race_with_existing_link_reads_as_linked():
+    api = _dm_api()
+    api.create_user_link_token = AsyncMock(side_effect=LinkAlreadyExistsError("dup"))
+    reply = await _dm_link(api)
+    assert reply.button_url is None
+    assert "linked" in reply.text
+
+
+@pytest.mark.asyncio
+async def test_dm_link_failure_returns_generic_message():
+    api = _dm_api()
+    api.resolve_user = AsyncMock(side_effect=RuntimeError("boom"))
+    reply = await _dm_link(api)
+    assert reply.button_url is None
+    assert "went wrong" in reply.text.lower()

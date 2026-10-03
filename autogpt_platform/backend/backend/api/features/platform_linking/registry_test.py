@@ -168,6 +168,9 @@ def test_telegram_appears_with_tme_link_when_username_set():
     assert telegram.display_name == "Telegram"
     assert telegram.icon == "telegram.png"
     assert telegram.add_bot_url == "https://t.me/AutoGPTBot?startgroup=true"
+    # The DM is the first step; ?start= makes Telegram send /start, which
+    # the bot answers with the Link Account button.
+    assert telegram.dm_url == "https://t.me/AutoGPTBot?start=connect"
 
 
 def test_telegram_without_username_has_no_add_bot_url():
@@ -182,6 +185,7 @@ def test_telegram_without_username_has_no_add_bot_url():
 
     assert [p.platform for p in platforms] == ["TELEGRAM"]
     assert platforms[0].add_bot_url is None
+    assert platforms[0].dm_url is None
 
 
 def test_telegram_hidden_without_webhook_secret():
