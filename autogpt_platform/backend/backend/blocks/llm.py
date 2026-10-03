@@ -264,6 +264,7 @@ async def llm_call(
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
     execution_context: "ExecutionContext | None" = None,
+    timeout_seconds: float | None = None,
 ) -> LLMResponse:
     """Block-side LLM entry point. Wraps the provider dispatch in a hard timeout
     so that no single request can park an executor thread indefinitely.
@@ -272,8 +273,14 @@ async def llm_call(
     classified for spend alerting (#14292), including callers that never reach
     the block retry loop. Copilot and dream call the provider layer directly and
     raise no spend alert; they carry no execution context to attribute one to.
+
+    `timeout_seconds` lets retry loops hand each attempt its shrinking share of
+    a total deadline (#14293) instead of a fresh full budget per attempt.
     """
     started = time.monotonic()
+    timeout = (
+        timeout_seconds if timeout_seconds is not None else LLM_REQUEST_TIMEOUT_SECONDS
+    )
     with track_llm_call(
         graph_exec_id=execution_context.graph_exec_id if execution_context else None,
         provider=llm_model.metadata.provider,
@@ -291,11 +298,12 @@ async def llm_call(
                     ollama_host=ollama_host,
                     parallel_tool_calls=parallel_tool_calls,
                     compress_prompt_to_fit=compress_prompt_to_fit,
+                    timeout_seconds=timeout,
                 ),
                 # Same budget as the provider layer, but this one starts before
                 # prompt compression, so it always fires first for block callers;
                 # the provider deadline is there for callers that skip this seam.
-                timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
         # SDK-native timeouts never reach the wait_for, so both are caught here
         # to keep this the single place that reports burned spend.
@@ -325,6 +333,7 @@ async def _llm_call(
     ollama_host: str = "localhost:11434",
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
+    timeout_seconds: float | None = None,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -414,7 +423,11 @@ async def _llm_call(
             llm_model, parallel_tool_calls
         ),
         ollama_host=ollama_host,
-        timeout_seconds=LLM_REQUEST_TIMEOUT_SECONDS,
+        timeout_seconds=(
+            timeout_seconds
+            if timeout_seconds is not None
+            else LLM_REQUEST_TIMEOUT_SECONDS
+        ),
     )
     # Block layer never opts into batch mode (that lives on the
     # orchestrator side for the dream pass and any future async
@@ -577,6 +590,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
         execution_context: "ExecutionContext | None" = None,
+        timeout_seconds: float | None = None,
     ) -> LLMResponse:
         """
         Test mocks work only on class functions, this wraps the llm_call function
@@ -593,6 +607,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             ollama_host=ollama_host,
             compress_prompt_to_fit=compress_prompt_to_fit,
             execution_context=execution_context,
+            timeout_seconds=timeout_seconds,
         )
 
     async def run(
@@ -645,7 +660,25 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         llm_model = input_data.model
         total_provider_cost: float | None = None
 
+        # Shared retry deadline (#14293): every attempt used to get its own full
+        # request timeout, so a retried call could burn retries x timeout and run
+        # into the per-node execution cap. Each attempt now gets the time left on
+        # one total budget instead of a fresh one.
+        retry_deadline = time.monotonic() + LLM_REQUEST_TIMEOUT_SECONDS
+
         for retry_count in range(input_data.retry):
+            remaining = retry_deadline - time.monotonic()
+            if remaining <= 0:
+                logger.warning(
+                    "LLM retry budget exhausted after "
+                    f"{retry_count} attempt(s), not retrying."
+                )
+                error_feedback_message = (
+                    "LLM retry budget exhausted: the retry loop ran out of its "
+                    f"shared {LLM_REQUEST_TIMEOUT_SECONDS}s deadline."
+                )
+                break
+            attempt_timeout = min(remaining, LLM_REQUEST_TIMEOUT_SECONDS)
             logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
@@ -660,6 +693,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
                     execution_context=kwargs.get("execution_context"),
+                    timeout_seconds=attempt_timeout,
                 )
                 response_text = llm_response.response
                 # Accumulate token counts and provider_cost for every attempt
