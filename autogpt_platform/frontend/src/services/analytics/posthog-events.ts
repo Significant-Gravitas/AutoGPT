@@ -1,6 +1,6 @@
 // Every PostHog event name the browser sends, in one place. What each one
 // means, who sends it and which properties it carries is in
-// docs/platform/tracking-plan.md; the backend's list is
+// docs/engineering/tracking-plan.md; the backend's list is
 // backend/util/posthog_events.py.
 //
 // The names follow the product analytics plan ("Every Second Counts"). Never
