@@ -5128,6 +5128,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
             tool_display_bridge=tool_display_bridge,
+            context_after_compaction=functools.partial(
+                _context_after_compaction,
+                session,
+                user_id,
+                message,
+                sdk_cwd=sdk_cwd,
+                use_e2b=use_e2b,
+                graphiti_enabled=graphiti_enabled,
+                log_prefix=log_prefix,
+            ),
         )
 
         if permissions is not None:
@@ -5376,8 +5386,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # a baseline-written one, or one that failed validation) starts a
         # fresh CLI session that has never seen those prefixes, so the same
         # blocks are rebuilt and lead the query instead — see
-        # ``_build_resume_fallback_prefix``.  They ride the query only; the
-        # stored row keeps the user's own words.
+        # ``_rebuild_first_turn_prefix``.  They ride the query only; the
+        # stored row keeps the user's own words.  (The CLI's own compaction
+        # drops them too; the ``SessionStart`` hook wired up with the
+        # security hooks above re-sends them after every compaction.)
         resume_fallback_prefix: str | None = None
         if not has_history:
             env_ctx_content, session_ctx_content, skills_ctx_content = (
@@ -5404,7 +5416,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if prefixed_message is not None:
                 current_message = prefixed_message
         elif not use_resume:
-            resume_fallback_prefix = await _build_resume_fallback_prefix(
+            resume_fallback_prefix = await _rebuild_first_turn_prefix(
                 session,
                 user_id,
                 message,
@@ -5412,6 +5424,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 use_e2b=use_e2b,
                 graphiti_enabled=graphiti_enabled,
                 log_prefix=log_prefix,
+                reason="no-resume fallback",
             )
 
         # Now that ``inject_user_context`` has wrapped + persisted the
@@ -5696,7 +5709,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     and not state.use_resume
                     and resume_fallback_prefix is None
                 ):
-                    resume_fallback_prefix = await _build_resume_fallback_prefix(
+                    resume_fallback_prefix = await _rebuild_first_turn_prefix(
                         session,
                         user_id,
                         message,
@@ -5704,6 +5717,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         use_e2b=use_e2b,
                         graphiti_enabled=graphiti_enabled,
                         log_prefix=log_prefix,
+                        reason="no-resume fallback",
                     )
                 (
                     state.query_message,
@@ -6666,7 +6680,17 @@ async def _first_turn_context_blocks(
     return env_ctx, session_ctx, skills_ctx
 
 
-async def _build_resume_fallback_prefix(
+# Leads the blocks the ``SessionStart`` hook hands back after a compaction, so
+# the model reads them as the first message's blocks, not as something new.
+_AFTER_COMPACTION_LEAD = (
+    "The conversation was just compacted, and the summary does not carry the "
+    "server-injected blocks from the start of its first user message. Here "
+    "they are again, rebuilt now; treat them exactly as that message's blocks:"
+    "\n\n"
+)
+
+
+async def _context_after_compaction(
     session: ChatSession,
     user_id: str | None,
     message: str | None,
@@ -6676,14 +6700,48 @@ async def _build_resume_fallback_prefix(
     graphiti_enabled: bool,
     log_prefix: str,
 ) -> str:
-    """Rebuild the first-turn prefix for a later turn that runs without ``--resume``.
+    """What the ``SessionStart`` hook hands the model after the CLI compacts.
 
-    The first turn's blocks reach later turns only through the resumed CLI
-    session.  Without one, this renders them again with the first turn's own
-    builders — skills index, memory (keyed on this turn's message), expert or
-    team workflows, follow-ups, working directory and user context — for
-    ``_build_query_message`` to put ahead of ``<conversation_history>``.
-    Best effort: any failure is logged and the turn goes on without it.
+    Compaction replaces the session's first user message with a summary, and
+    the first-turn blocks went with it — for the rest of the turn and for
+    every turn that resumes the compacted session.  ``""`` when there is
+    nothing to re-send.
+    """
+    prefix = await _rebuild_first_turn_prefix(
+        session,
+        user_id,
+        message,
+        sdk_cwd=sdk_cwd,
+        use_e2b=use_e2b,
+        graphiti_enabled=graphiti_enabled,
+        log_prefix=log_prefix,
+        reason="compaction",
+    )
+    return _AFTER_COMPACTION_LEAD + prefix if prefix else ""
+
+
+async def _rebuild_first_turn_prefix(
+    session: ChatSession,
+    user_id: str | None,
+    message: str | None,
+    *,
+    sdk_cwd: str,
+    use_e2b: bool,
+    graphiti_enabled: bool,
+    log_prefix: str,
+    reason: str,
+) -> str:
+    """Render the first-turn prefix again for a context that has lost it.
+
+    The first turn's blocks reach later model calls only through the
+    session's first user message.  Two things take that message away: a
+    later turn that cannot ``--resume`` (``_build_query_message`` puts the
+    result ahead of ``<conversation_history>``), and the CLI's own compaction,
+    which replaces it with a summary (``_context_after_compaction``).  This
+    renders the blocks with the first turn's own builders — skills index,
+    memory (keyed on this turn's message), expert or team workflows,
+    follow-ups, working directory and user context.  Best effort: any failure
+    is logged and ``""`` returned, and the turn goes on without them.
     """
     try:
         (env_ctx, session_ctx, skills_ctx), understanding, warm_ctx = (
@@ -6709,15 +6767,16 @@ async def _build_resume_fallback_prefix(
         )
     except Exception:
         logger.exception(
-            "%s Could not rebuild the first-turn context for the no-resume"
-            " fallback — sending the history without it",
+            "%s Could not rebuild the first-turn context (%s) — going on without it",
             log_prefix,
+            reason,
         )
         return ""
     logger.info(
-        "%s No-resume fallback: re-injecting first-turn context"
-        " (%d chars; skills=%s, memory=%s, user_context=%s)",
+        "%s Re-injecting first-turn context (%s): %d chars;"
+        " skills=%s, memory=%s, user_context=%s",
         log_prefix,
+        reason,
         len(prefix),
         bool(skills_ctx),
         bool(warm_ctx),
@@ -6733,8 +6792,8 @@ async def _fallback_warm_context(
     *,
     graphiti_enabled: bool,
 ) -> str:
-    """Graphiti warm context for a no-resume later turn (the first turn's
-    fetch in ``_fetch_graphiti_context`` is skipped once history exists)."""
+    """Graphiti warm context for a re-injected prefix (the first turn's fetch
+    in ``_fetch_graphiti_context`` is skipped once history exists)."""
     if not (graphiti_enabled and user_id):
         return ""
     return (

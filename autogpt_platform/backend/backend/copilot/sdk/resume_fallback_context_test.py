@@ -1,14 +1,17 @@
-"""A later turn that cannot ``--resume`` its CLI session keeps its first-turn context.
+"""Later model calls keep the first-turn context when the first message is gone.
 
 The skills index, memory, expert/team workflows and user context are injected
 into the first user message only; later turns rely on ``--resume`` to carry
-them. When the CLI session cannot be restored the turn falls back to a
-``<conversation_history>`` block, and before SECRT-2801 that block was all the
-model got: the first-turn blocks were either missing or buried inside the
-history, where the system prompt tells the model to ignore them.
+them. Two things take that message away (SECRT-2801):
+
+- A turn that cannot ``--resume`` falls back to a ``<conversation_history>``
+  block. The first-turn blocks were either missing from it or buried inside
+  the history, where the system prompt tells the model to ignore them.
+- The CLI's own compaction replaces the first message with a summary, for the
+  rest of that turn and for every turn that resumes the compacted session.
 
 These tests drive the real ``stream_chat_completion_sdk`` generator with a
-mocked ``ClaudeSDKClient`` and assert on the query the CLI would receive.
+mocked ``ClaudeSDKClient`` and assert on what the CLI would receive.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from claude_agent_sdk import ResultMessage
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import (
+    _AFTER_COMPACTION_LEAD,
     _format_conversation_context,
     stream_chat_completion_sdk,
 )
@@ -137,7 +141,13 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
     return patches
 
 
-async def _run_turn(session: ChatSession, client_factory, *, resume_hit: bool) -> None:
+async def _run_turn(session: ChatSession, client_factory, *, resume_hit: bool) -> str:
+    """Run one turn; return what the CLI would get right after a compaction.
+
+    The turn wires its ``SessionStart`` hook through ``create_security_hooks``;
+    calling the context source it passed there, while the turn's patches are
+    still active, is what the CLI does when it compacts the conversation.
+    """
     transcript = build_test_transcript(
         [("user", _FIRST_TURN_ROW), ("assistant", "Nice to meet you, Sam.")]
     )
@@ -154,8 +164,10 @@ async def _run_turn(session: ChatSession, client_factory, *, resume_hit: bool) -
         if target != f"{_SVC}._build_system_prompt"
     ]
     with contextlib.ExitStack() as stack:
-        for target, kwargs in base + _context_patches(resume_hit=resume_hit):
-            stack.enter_context(patch(target, **kwargs))
+        mocks = {
+            target: stack.enter_context(patch(target, **kwargs))
+            for target, kwargs in base + _context_patches(resume_hit=resume_hit)
+        }
         async for _ in stream_chat_completion_sdk(
             session_id=_SESSION_ID,
             message=_CURRENT_MESSAGE,
@@ -164,6 +176,16 @@ async def _run_turn(session: ChatSession, client_factory, *, resume_hit: bool) -
             session=session,
         ):
             pass
+        hooks_call = mocks[f"{_SVC}.create_security_hooks"].call_args
+        return await hooks_call.kwargs["context_after_compaction"]()
+
+
+_FIRST_TURN_BLOCKS = (
+    _SKILLS_INDEX,
+    f"<memory_context>\n{_MEMORY}\n</memory_context>",
+    "<team_context>\nMax owns the weekly-report workflow.",
+    f"<user_context>\n{_UNDERSTANDING}\nPlan: PRO\n</user_context>",
+)
 
 
 def _assert_first_turn_context_leads(query: str) -> None:
@@ -171,12 +193,7 @@ def _assert_first_turn_context_leads(query: str) -> None:
         "<available_skills>\n"
     ), f"skills index must lead the fallback query, got: {query[:200]!r}"
     history_at = query.index("<conversation_history>")
-    for block in (
-        _SKILLS_INDEX,
-        f"<memory_context>\n{_MEMORY}\n</memory_context>",
-        "<team_context>\nMax owns the weekly-report workflow.",
-        f"<user_context>\n{_UNDERSTANDING}\nPlan: PRO\n</user_context>",
-    ):
+    for block in _FIRST_TURN_BLOCKS:
         assert block in query, f"missing first-turn block: {block!r}"
         assert query.index(block) < history_at, f"{block!r} is not in the prefix"
     history = query[history_at:]
@@ -231,6 +248,41 @@ class TestResumeMissKeepsFirstTurnContext:
         assert "<available_skills>" not in queries[0]
         assert "<memory_context>" not in queries[0]
         assert "<conversation_history>" not in queries[0]
+
+
+class TestCompactionKeepsFirstTurnContext:
+    @pytest.mark.asyncio
+    async def test_compaction_hands_back_first_turn_context(self):
+        session = _session()
+        queries: list[str] = []
+
+        after_compaction = await _run_turn(
+            session, lambda *a, **kw: _client(queries), resume_hit=True
+        )
+
+        assert after_compaction.startswith(_AFTER_COMPACTION_LEAD)
+        blocks = after_compaction[len(_AFTER_COMPACTION_LEAD) :]
+        assert blocks.startswith("<available_skills>\n")
+        for block in _FIRST_TURN_BLOCKS:
+            assert block in blocks, f"missing first-turn block: {block!r}"
+        # Rebuilt now, not copied from the turn-1 row.
+        assert "retired-skill" not in after_compaction
+        assert "stale fact from turn 1" not in after_compaction
+        # It goes to the CLI session only; the stored row keeps the user's
+        # own words.
+        assert session.messages[-1].content == _CURRENT_MESSAGE
+
+    @pytest.mark.asyncio
+    async def test_nothing_to_resend_sends_nothing(self):
+        session = _session()
+        queries: list[str] = []
+
+        with patch(f"{_SVC}._rebuild_first_turn_prefix", AsyncMock(return_value="")):
+            after_compaction = await _run_turn(
+                session, lambda *a, **kw: _client(queries), resume_hit=True
+            )
+
+        assert after_compaction == ""
 
 
 class TestFormatConversationContext:
