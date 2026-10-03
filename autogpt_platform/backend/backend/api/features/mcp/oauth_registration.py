@@ -88,6 +88,18 @@ def check_preregistered_endpoints(server_url: str, metadata: dict[str, object]):
             )
 
 
+def preregistered_revocation_endpoint(
+    server_url: str, revoke_url: str | None
+) -> str | None:
+    """The revocation endpoint to keep for ``server_url``. Revocation also
+    authenticates with the client secret, so for a pre-registered app one that
+    is not HTTPS on the provider's hosts is dropped; revocation is best-effort."""
+    app = _preregistered_app(server_url)
+    if not app or _is_https_on(revoke_url, app.endpoint_hosts):
+        return revoke_url
+    return None
+
+
 def _preregistered_app(server_url: str) -> PreregisteredApp | None:
     try:
         parts = urlsplit(server_url)

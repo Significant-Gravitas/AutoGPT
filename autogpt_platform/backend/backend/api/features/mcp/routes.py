@@ -23,6 +23,7 @@ from backend.api.features.mcp.oauth_registration import (
     MCPClientRegistration,
     check_preregistered_endpoints,
     preregistered_client,
+    preregistered_revocation_endpoint,
     select_client_auth_method,
 )
 from backend.blocks.mcp.client import (
@@ -430,6 +431,13 @@ async def mcp_oauth_login(
         except ValueError as e:
             logger.warning("Refusing pre-registered client sign-in: %s", e)
             raise fastapi.HTTPException(status_code=400, detail=str(e))
+        trusted_revoke_url = preregistered_revocation_endpoint(server_url, revoke_url)
+        if revoke_url and not trusted_revoke_url:
+            logger.warning(
+                "Ignoring off-host revocation endpoint advertised by %s",
+                server_host(server_url),
+            )
+        revoke_url = trusted_revoke_url
         try:
             token_endpoint_auth_method = select_client_auth_method(metadata)
         except ValueError as e:
