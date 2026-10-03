@@ -3,9 +3,11 @@
 // docs/platform/tracking-plan.md; the backend's list is
 // backend/util/posthog_events.py.
 //
-// Never change a value here. PostHog stores the raw string, so a rename
-// orphans every insight and funnel built on the old name and cannot be
-// backfilled. __tests__/posthog-events.test.ts pins the values.
+// The names follow the product analytics plan ("Every Second Counts"). Never
+// change a value here. PostHog stores the raw string, so a rename orphans
+// every insight and funnel built on the old name and cannot be backfilled.
+// __tests__/posthog-events.test.ts pins the values and reserves the names
+// retired or renamed in SECRT-2722.
 //
 // Plain `as const` objects rather than enums so a string literal at a call
 // site still type-checks against the list. Call sites do pass literals, so
@@ -15,14 +17,10 @@ export const PageEvent = {
   PAGEVIEW: "$pageview",
 } as const;
 
-export const ExperimentEvent = {
-  EXPERIMENT_EXPOSED: "experiment_exposed",
-} as const;
-
 // Ops signal from the dual flag backend, not a user action: LaunchDarkly and
 // PostHog resolved the same flag to different values.
 export const FeatureFlagEvent = {
-  FEATURE_FLAG_MISMATCH: "feature_flag_mismatch",
+  FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
 export const ExpertsFunnelEvent = {
@@ -38,12 +36,14 @@ export const ExpertsFunnelEvent = {
 } as const;
 
 export const HireFlowEvent = {
-  HIRE_FLOW_COMPLETED: "hire_flow_completed",
   HIRE_FLOW_ABANDONED: "hire_flow_abandoned",
 } as const;
 
 export const BrainDumpEvent = {
   BRAIN_DUMP_STARTED: "brain_dump_started",
+  // `finalize_latency_ms` on this and on `transcription_failed` is the
+  // wall-clock of the `finalizeBrainDump()` round trip: virus scan, storage,
+  // transcription and extraction. The upload flush finishes before it starts.
   BRAIN_DUMP_COMPLETED: "brain_dump_completed",
   BRAIN_DUMP_CANCELED: "brain_dump_canceled",
   BRAIN_DUMP_SKIPPED: "brain_dump_skipped",
@@ -54,11 +54,6 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_DOWNLOAD: "brain_dump_download",
   BRAIN_DUMP_PERMISSION_DENIED: "brain_dump_permission_denied",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
-  // Wall-clock of the whole finalize round trip — upload flush, virus
-  // scan, storage, transcription and extraction. Named for what it
-  // actually measures: the client cannot see the transcription step on
-  // its own, so calling this "transcription latency" overstated it.
-  FINALIZE_LATENCY_MS: "finalize_latency_ms",
   // The welcome dialog shown on first copilot landing was closed — the
   // greeting fetch and reveal animation start from this moment.
   WELCOME_DIALOG_CLOSED: "welcome_dialog_closed",
@@ -80,16 +75,10 @@ export const BrainDumpEvent = {
   // through, or skip straight to the builder.
   EXPERT_RECOMMENDED: "expert_recommended",
   EXPERT_RECOMMENDATION_CLICKED: "expert_recommendation_clicked",
-  HIRE_STARTED: ExpertsFunnelEvent.HIRE_STARTED,
-  // The wizard's hire step: a hire that landed from a card, and the step
-  // being left — with how many of the proposed experts were hired, so the
-  // funnel can tell "hired a team" from "skipped past it".
-  ONBOARDING_EXPERT_HIRED: "onboarding_expert_hired",
+  // The wizard's hire step was left, with how many of the proposed experts
+  // were hired, so the funnel can tell "hired a team" from "skipped past it".
+  // The hires themselves are the backend's `expert_hired`.
   HIRE_STEP_CONTINUED: "hire_step_continued",
-  // Declared but never sent; the tracking plan marks them for removal.
-  INTRO_CARD_DISMISSED: "intro_card_dismissed",
-  RAISE_DOOR_CLICKED: "raise_door_clicked",
-  INTRO_START_WITH_AUTOPILOT: "intro_start_with_autopilot",
 } as const;
 
 export const TabIntroEvent = {
@@ -112,18 +101,14 @@ export const VoiceModeEvent = {
   VOICE_MODE_TIMED_OUT: "voice_mode_timed_out",
   // A completed turn: heard, transcribed, sent. `turn_index` counts within
   // the session, so a histogram shows whether anyone gets past one.
+  // `transcribe_latency_ms` is speech end to transcript in hand: the number
+  // that decides whether streaming STT is worth building.
   VOICE_TURN_SENT: "voice_turn_sent",
   // Heard something and threw it away — VAD misfire, or filler/hallucination
   // like Whisper's "Thank you." on silence. Splits by `reason`.
   VOICE_TURN_DROPPED: "voice_turn_dropped",
-  // Speech end to transcript in hand. The spike measured 1.05 s on a
-  // streaming session; this route uploads the whole clip, so it is the
-  // number that decides whether streaming STT is worth building.
-  VOICE_TRANSCRIBE_LATENCY_MS: "voice_transcribe_latency_ms",
-  // Speech end to the first spoken word. The click answers "did it hear
-  // me" instantly; this measures how long the answer itself takes.
-  VOICE_FIRST_SOUND_LATENCY_MS: "voice_first_sound_latency_ms",
   // The mic reopened after a reply finished playing: a full loop closed.
+  // `first_sound_latency_ms` is speech end to the first spoken word.
   VOICE_TURN_COMPLETED: "voice_turn_completed",
   // The user asked for a failed transcription to be tried again. Against
   // `voice_turn_dropped{reason:transcribe_failed}` this says how many of those
@@ -154,13 +139,12 @@ export const CredentialConnectionFailureEvent = {
 } as const;
 
 export const TrialEvent = {
-  SUBSCRIPTION_TRIAL_OFFER_VIEWED: "subscription_trial_offer_viewed",
+  TRIAL_OFFER_VIEWED: "trial_offer_viewed",
   SUBSCRIPTION_TRIAL_CHECKOUT_STARTED: "subscription_trial_checkout_started",
 } as const;
 
 export const PostHogEvent = {
   ...PageEvent,
-  ...ExperimentEvent,
   ...FeatureFlagEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
