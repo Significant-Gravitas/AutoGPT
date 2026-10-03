@@ -223,7 +223,7 @@ def _build_graphiti(
     # P-1.4: cross-encoder reranker for warm-context retrieval.
     # Runs concurrent boolean-classifier prompts (one per candidate
     # edge) and uses log-probabilities to rank. Cheap because the
-    # reranker model defaults to gpt-4.1-nano — the cost is one batch
+    # reranker model defaults to gpt-4.1-mini — the cost is one batch
     # of small calls per session-start search. The Compat subclass
     # fixes the stock client's max_tokens=1, which OpenAI-compatible
     # upstreams now reject with a 400 (minimum is 16).
