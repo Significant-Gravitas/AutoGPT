@@ -4,6 +4,7 @@ import logging
 from contextvars import ContextVar
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from backend.api.features.library.model import (
@@ -228,6 +229,10 @@ class RunAgentTool(BaseTool):
             schedules=bool(params.schedule_name or params.cron),
             saves_preset=params.save_as_preset,
         )
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.RUN_AGENT]
 
     @property
     def description(self) -> str:

@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.library import model as library_model
 from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
@@ -87,6 +89,10 @@ class CreateFolderTool(BaseTool):
         return "create_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Create a library folder. Use parent_id to nest inside another folder."
 
@@ -169,6 +175,10 @@ class ListFoldersTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_folders"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -267,6 +277,10 @@ class UpdateFolderTool(BaseTool):
         return "update_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Update a folder's name, icon, or color."
 
@@ -351,6 +365,10 @@ class MoveFolderTool(BaseTool):
         return "move_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Move a folder. Set target_parent_id to null for root."
 
@@ -425,6 +443,10 @@ class DeleteFolderTool(BaseTool):
         return "delete_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Delete a folder. Agents inside move to root (not deleted)."
 
@@ -490,6 +512,10 @@ class MoveAgentsToFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "move_agents_to_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:

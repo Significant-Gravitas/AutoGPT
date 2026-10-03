@@ -10,6 +10,7 @@ copilot worker reuses the exact route logic.
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.library.model import LibraryAgentPreset
@@ -122,6 +123,10 @@ class ListPresetsTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_presets"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -261,6 +266,10 @@ class UpdatePresetTool(BaseTool):
         return "update_preset"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return (
             "Update a preset by preset_id: rename, change description, pause or "
@@ -384,6 +393,10 @@ class DeletePresetTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_preset"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:

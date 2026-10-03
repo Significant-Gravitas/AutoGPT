@@ -33,7 +33,7 @@ from backend.data.model import (
     TransactionHistory,
 )
 from backend.data.model import User as AppUser
-from backend.data.model import UserTransaction
+from backend.data.model import UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, OpsData
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_client import stripe_call, stripe_list_items
@@ -3442,7 +3442,7 @@ async def admin_get_user_history(
         balance, _ = await user_credit_model._get_credits(tx.userId)
 
         history.append(
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 transaction_key=tx.transactionKey,
                 transaction_time=tx.createdAt,
                 transaction_type=tx.type,
@@ -3484,7 +3484,7 @@ async def admin_export_user_history(
     transaction_type: CreditTransactionType | None = None,
     user_id: str | None = None,
     include_inactive: bool = False,
-) -> list[UserTransaction]:
+) -> list[UserCreditTransactionAdminView]:
     """Return all CreditTransactions in the [start, end] window for export.
 
     Caps the window at CREDIT_EXPORT_MAX_DAYS and the row count at
@@ -3546,7 +3546,7 @@ async def admin_export_user_history(
         admin_id_to_email[admin_id] = email
         return email
 
-    history: list[UserTransaction] = []
+    history: list[UserCreditTransactionAdminView] = []
     for tx in transactions:
         metadata: dict = cast(dict, tx.metadata) or {}
         admin_id = metadata.get("admin_id") or ""
@@ -3558,7 +3558,7 @@ async def admin_export_user_history(
             raw_reason = raw_reason.get("reason", "")
         reason = str(raw_reason) if raw_reason is not None else ""
         history.append(
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 transaction_key=tx.transactionKey,
                 transaction_time=tx.createdAt,
                 transaction_type=tx.type,

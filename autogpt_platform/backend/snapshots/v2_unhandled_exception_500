@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "internal_error",
+    "details": null,
+    "message": "Failed to process GET /library/agents/some-id"
+  }
+}
