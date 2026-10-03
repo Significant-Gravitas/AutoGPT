@@ -1,4 +1,3 @@
-from todoist_api_python.api import TodoistAPI
 from typing_extensions import Optional
 
 from backend.blocks._base import (
@@ -9,6 +8,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.todoist._api import flatten_pages, get_api
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -84,23 +84,19 @@ class TodoistListSectionsBlock(Block):
     def get_section_lists(
         credentials: TodoistCredentials, project_id: Optional[str] = None
     ):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            sections = api.get_sections(project_id=project_id)
+        with get_api(credentials) as api:
+            sections = flatten_pages(api.get_sections(project_id=project_id))
 
-            names = []
-            ids = []
-            complete_data = []
+        names = []
+        ids = []
+        complete_data = []
 
-            for section in sections:
-                names.append(section.name)
-                ids.append(section.id)
-                complete_data.append(section.__dict__)
+        for section in sections:
+            names.append(section.name)
+            ids.append(section.id)
+            complete_data.append(section.to_dict())
 
-            return names, ids, complete_data
-
-        except Exception as e:
-            raise e
+        return names, ids, complete_data
 
     async def run(
         self,
@@ -235,13 +231,8 @@ class TodoistGetSectionBlock(Block):
 
     @staticmethod
     def get_section(credentials: TodoistCredentials, section_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            section = api.get_section(section_id=section_id)
-            return section.__dict__
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.get_section(section_id=section_id).to_dict()
 
     async def run(
         self,
@@ -293,13 +284,8 @@ class TodoistDeleteSectionBlock(Block):
 
     @staticmethod
     def delete_section(credentials: TodoistCredentials, section_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            success = api.delete_section(section_id=section_id)
-            return success
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.delete_section(section_id=section_id)
 
     async def run(
         self,

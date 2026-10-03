@@ -1,7 +1,7 @@
 from typing import Literal, Union
 
 from pydantic import BaseModel
-from todoist_api_python.api import TodoistAPI
+from todoist_api_python.models import Attachment
 from typing_extensions import Optional
 
 from backend.blocks._base import (
@@ -12,6 +12,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.todoist._api import flatten_pages, get_api
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -100,18 +101,16 @@ class TodoistCreateCommentBlock(Block):
         project_id: Optional[str] = None,
         attachment: Optional[dict] = None,
     ):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
+        with get_api(credentials) as api:
             comment = api.add_comment(
                 content=content,
                 task_id=task_id,
                 project_id=project_id,
-                attachment=attachment,
+                attachment=(
+                    Attachment.from_dict(attachment) if attachment is not None else None
+                ),
             )
-            return comment.__dict__
-
-        except Exception as e:
-            raise e
+            return comment.to_dict()
 
     async def run(
         self,
@@ -211,13 +210,9 @@ class TodoistGetCommentsBlock(Block):
         task_id: Optional[str] = None,
         project_id: Optional[str] = None,
     ):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
+        with get_api(credentials) as api:
             comments = api.get_comments(task_id=task_id, project_id=project_id)
-            return [comment.__dict__ for comment in comments]
-
-        except Exception as e:
-            raise e
+            return [comment.to_dict() for comment in flatten_pages(comments)]
 
     async def run(
         self,
@@ -301,13 +296,8 @@ class TodoistGetCommentBlock(Block):
 
     @staticmethod
     def get_comment(credentials: TodoistCredentials, comment_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            comment = api.get_comment(comment_id=comment_id)
-            return comment.__dict__
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.get_comment(comment_id=comment_id).to_dict()
 
     async def run(
         self,
@@ -364,13 +354,9 @@ class TodoistUpdateCommentBlock(Block):
 
     @staticmethod
     def update_comment(credentials: TodoistCredentials, comment_id: str, content: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
+        with get_api(credentials) as api:
             api.update_comment(comment_id=comment_id, content=content)
             return True
-
-        except Exception as e:
-            raise e
 
     async def run(
         self,
@@ -423,13 +409,8 @@ class TodoistDeleteCommentBlock(Block):
 
     @staticmethod
     def delete_comment(credentials: TodoistCredentials, comment_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            success = api.delete_comment(comment_id=comment_id)
-            return success
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.delete_comment(comment_id=comment_id)
 
     async def run(
         self,
