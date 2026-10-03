@@ -38,6 +38,9 @@ from .text import format_batch, iter_chunks, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
+# What a channel shows for a held call whose card could not be opened.
+_NO_CARD = "⏸️ An action is waiting for approval."
+
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
 
@@ -257,6 +260,21 @@ class TurnStreamer:
             sent_any_content = True
             await _send_clarification(adapter, target_id, ctx, clarification_output)
 
+        async def _on_approval_needed(session_id: str, review_id: str) -> None:
+            nonlocal active_session_id, buffer, sent_any_content
+            active_session_id = session_id
+            # Drain pending text so the card follows the words that led to it.
+            if buffer.strip():
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
+                buffer = ""
+            if await _send_card(
+                self._api, adapter, target_id, ctx, session_id, review_id
+            ):
+                sent_any_content = True
+
         started_at = time.monotonic()
         reply_chars = 0
         draft = DraftStreamer(adapter, target_id)
@@ -273,6 +291,7 @@ class TurnStreamer:
                 on_setup_required=_on_setup_required,
                 on_setup_dropped=_on_setup_dropped,
                 on_clarification_needed=_on_clarification_needed,
+                on_approval_needed=_on_approval_needed,
             ):
                 buffer += chunk
                 reply_chars += len(chunk)
@@ -625,6 +644,51 @@ async def _send_clarification(
         await adapter.send_message(
             target_id, chunk, mentionable_users=ctx.mentionable_users
         )
+
+
+async def _send_card(
+    api: BotBackend,
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    session_id: str,
+    review_id: str,
+) -> bool:
+    """Post a held call's card as buttons; with no card, or buttons that fail,
+    a link to answer it in AutoGPT. Whether anything went out. Never raises:
+    the turn goes on."""
+    try:
+        card = await api.open_card(
+            ctx.platform, ctx.server_id, ctx.user_id, session_id, review_id
+        )
+    except Exception:
+        logger.exception(f"Could not open a channel card for {review_id}")
+        card = None
+    if card is not None:
+        try:
+            if adapter.supports_choice_buttons and await adapter.send_choice_buttons(
+                target_id,
+                card.text,
+                card.options,
+                card.token,
+                kind=choices.CARD_KIND,
+            ):
+                return True
+        except Exception:
+            logger.exception(f"Card buttons failed on {adapter.platform_name}")
+    text = card.text if card is not None else _NO_CARD
+    session_url = copilot_session_url(session_id)
+    try:
+        if session_url is None:
+            await adapter.send_message(target_id, text)
+        else:
+            await adapter.send_link(
+                target_id, text, link_label="Answer in AutoGPT", link_url=session_url
+            )
+    except Exception:
+        logger.exception(f"Card fallback failed on {adapter.platform_name}")
+        return False
+    return True
 
 
 def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:

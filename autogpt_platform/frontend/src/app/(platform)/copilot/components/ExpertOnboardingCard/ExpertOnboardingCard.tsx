@@ -56,6 +56,7 @@ export function ExpertOnboardingCard({ part }: Props) {
 
   return (
     <OnboardingForm
+      callId={part.toolCallId}
       onboarding={onboarding}
       isLive={pendingCallId === part.toolCallId}
     />
@@ -63,11 +64,12 @@ export function ExpertOnboardingCard({ part }: Props) {
 }
 
 interface FormProps {
+  callId: string;
   onboarding: ExpertOnboardingOutput;
   isLive: boolean;
 }
 
-function OnboardingForm({ onboarding, isLive }: FormProps) {
+function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   const { expertsById } = useExpertMap();
   const sectionId = useId();
   const {
@@ -80,10 +82,13 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
     value,
     advance,
     goBack,
-    pickAnswer,
     setAnswer,
     skip,
-  } = useExpertOnboardingCard({ steps: onboarding.steps, isLive });
+  } = useExpertOnboardingCard({
+    callId,
+    steps: onboarding.steps,
+    isLive,
+  });
 
   const expert = onboarding.expertId
     ? expertsById.get(onboarding.expertId)
@@ -162,7 +167,6 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
             labelId={labelId}
             autoFocus={current > 0}
             onChange={setAnswer}
-            onPick={pickAnswer}
             onSubmit={advance}
           />
         </m.div>
