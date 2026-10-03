@@ -27,6 +27,7 @@ SERVER_URL = "https://mcp.paypal.com/mcp"
 
 @pytest.fixture(autouse=True)
 def clean_context():
+    """Keep the execution context local to each test's session."""
     set_execution_context(USER, make_session(USER))
     yield
     set_execution_context(None, None)
@@ -34,6 +35,7 @@ def clean_context():
 
 @pytest.fixture
 def registry(monkeypatch: pytest.MonkeyPatch) -> CapabilityIndex:
+    """Provide an unrelated catalog without external registry dependencies."""
     index = CapabilityIndex(
         [
             CapabilityEntry(
@@ -67,6 +69,7 @@ def registry(monkeypatch: pytest.MonkeyPatch) -> CapabilityIndex:
 async def test_find_connected_custom_mcp_server(
     query: str, registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
+    """Find a connected custom endpoint by service name, hostname, or URL."""
     load_state = AsyncMock(
         return_value=ConnectionState(server_urls=frozenset({SERVER_URL}))
     )
@@ -93,6 +96,7 @@ async def test_find_connected_custom_mcp_server(
 async def test_custom_servers_are_isolated_and_connections_refresh(
     registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
+    """Refresh per-user connections without mutating the shared registry."""
     connected = ConnectionState(server_urls=frozenset({SERVER_URL}))
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.load_connection_state",
@@ -115,6 +119,7 @@ async def test_custom_servers_are_isolated_and_connections_refresh(
 async def test_catalog_metadata_is_preserved_without_duplicate_results(
     registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
+    """Equivalent host spelling keeps the catalog entry and its metadata."""
     catalog = _catalog_entry()
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.session_registry",
@@ -124,7 +129,7 @@ async def test_catalog_metadata_is_preserved_without_duplicate_results(
         "backend.copilot.tools.find_capability.load_connection_state",
         AsyncMock(
             return_value=ConnectionState(
-                server_urls=frozenset({SERVER_URL.upper() + "/"})
+                server_urls=frozenset({"HTTPS://MCP.PayPal.COM/mcp/"})
             )
         ),
     )
@@ -137,10 +142,12 @@ async def test_catalog_metadata_is_preserved_without_duplicate_results(
     assert result.capabilities == [{**catalog.listing(), "connected": True}]
 
 
+@pytest.mark.parametrize("path", ["TenantMCP", "MCP"])
 async def test_distinct_endpoints_on_one_host_are_not_deduplicated(
-    registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
+    path: str, registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
-    tenant_url = "https://mcp.paypal.com/TenantMCP"
+    """A custom path stays discoverable and runnable beside a catalog endpoint."""
+    tenant_url = f"https://mcp.paypal.com/{path}"
     catalog_index = registry.with_entries([_catalog_entry()])
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.session_registry",
@@ -177,6 +184,7 @@ async def test_distinct_endpoints_on_one_host_are_not_deduplicated(
 async def test_custom_server_connection_respects_expert_grants(
     granted: bool, registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
+    """Distinguish granted credentials from stored credentials needing a grant."""
     connected = ConnectionState(server_urls=frozenset({SERVER_URL}))
     state = (
         connected.model_copy(update={"ungranted": connected})
@@ -205,6 +213,7 @@ async def test_custom_server_connection_respects_expert_grants(
 async def test_custom_servers_respect_search_filters(
     options: dict[str, str], registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
+    """Custom MCP entries obey capability kind and execution-context filters."""
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.load_connection_state",
         AsyncMock(return_value=ConnectionState(server_urls=frozenset({SERVER_URL}))),
@@ -224,6 +233,7 @@ async def test_custom_servers_respect_search_filters(
 async def test_invalid_stored_urls_do_not_break_search(
     url: str, registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
+    """Reject unusable stored endpoints without breaking capability search."""
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.load_connection_state",
         AsyncMock(return_value=ConnectionState(server_urls=frozenset({url}))),
@@ -237,6 +247,7 @@ async def test_invalid_stored_urls_do_not_break_search(
 async def test_discovered_custom_server_id_can_be_described_and_run(
     registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
+    """Use a discovered raw URL throughout the find/describe/run workflow."""
     url = "https://mcp.custom-payments.example.com/mcp"
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.load_connection_state",
@@ -266,6 +277,7 @@ async def test_discovered_custom_server_id_can_be_described_and_run(
 
 
 def _catalog_entry() -> CapabilityEntry:
+    """Build a catalog server with richer metadata than a custom fallback."""
     return CapabilityEntry(
         id="mcp:mcp.paypal.com",
         kind="mcp_server",

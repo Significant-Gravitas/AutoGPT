@@ -98,6 +98,7 @@ class DescribeCapabilityTool(BaseTool):
         expand: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
+        """Describe a capability through its existing permission and discovery gates."""
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(

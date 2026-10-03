@@ -15,6 +15,7 @@ _NON_SERVICE_LABELS = frozenset(
 def connected_mcp_entries(
     index: CapabilityIndex, connections: ConnectionState
 ) -> list[CapabilityEntry]:
+    """Build session-scoped entries for stored MCP endpoints outside the catalog."""
     catalog_urls = {
         normalize_server_url(entry.connection.key)
         for entry in index.entries
@@ -35,6 +36,7 @@ def connected_mcp_entries(
 
 
 def custom_mcp_entry(server_url: str) -> CapabilityEntry | None:
+    """Use an HTTPS endpoint's hostname as metadata and its raw URL as the ID."""
     try:
         parsed = urlsplit(server_url)
     except ValueError:

@@ -22,7 +22,9 @@ def resolve_entry(index: CapabilityIndex, capability_id: str) -> CapabilityEntry
     key = (capability_id or "").strip()
     if not key:
         return None
-    entry = index.get(key) or index.get(key.lower())
+    entry = index.get(key)
+    if entry is None and "://" not in key:
+        entry = index.get(key.lower())
     if entry is not None:
         return entry
     if "://" in key:

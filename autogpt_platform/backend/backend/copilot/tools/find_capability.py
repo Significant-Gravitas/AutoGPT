@@ -102,6 +102,7 @@ class FindCapabilityTool(BaseTool):
         kind: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
+        """Search the session's catalog, skills, and stored custom MCP endpoints."""
         query = (query or "").strip()
         session_id = session.session_id
         if not query:
