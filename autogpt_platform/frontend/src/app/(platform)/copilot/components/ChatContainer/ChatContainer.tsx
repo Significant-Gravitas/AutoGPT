@@ -204,11 +204,13 @@ export const ChatContainer = ({
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
+  // A thread keeps the mode stored on it; a new expert chat starts on the
+  // expert's own default until its first send creates the session.
+  const initialMode = sessionId
+    ? sessionAutopilotMode
+    : (expertIdentity?.autopilotMode ?? null);
   const modeSelector = isAutoModeEnabled ? (
-    <AutopilotModeSelector
-      sessionId={sessionId}
-      persistedMode={sessionAutopilotMode}
-    />
+    <AutopilotModeSelector sessionId={sessionId} persistedMode={initialMode} />
   ) : undefined;
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({

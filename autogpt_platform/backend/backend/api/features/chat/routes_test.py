@@ -15,7 +15,7 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
-from backend.copilot.model import ChatSession
+from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -1224,6 +1224,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ):
         return ChatSession.new(
             user_id,
@@ -1231,6 +1232,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
 
     return mocker.patch(
@@ -3969,11 +3971,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         *,
         organization_id: str | None = None,
         team_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            autopilot_mode=autopilot_mode,
         )
 
     mocker.patch(
@@ -4560,3 +4564,89 @@ def test_credential_selection_rejects_a_provider_named_twice(
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
     remember.assert_not_awaited()
+
+
+def test_create_session_passes_a_picked_mode_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_create_session_without_a_pick_leaves_the_mode_to_the_server(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] is None
+
+
+def test_create_session_rejects_an_unknown_mode(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={"autopilot_mode": "yolo"})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_expert_kickoff_receives_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000002"
+    _mock_get_expert(mocker, _make_expert(expert_id))
+    existing = ChatSession.new(test_user_id, dry_run=False, expert_id=expert_id)
+    mock_get_or_create = mocker.patch.object(
+        chat_routes,
+        "get_or_create_expert_kickoff_session",
+        new=AsyncMock(return_value=existing),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "expert_id": expert_id,
+            "expert_kickoff": True,
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "unsupervised"
+
+
+def test_a_builder_session_keeps_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_get_or_create = mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new=AsyncMock(
+            return_value=ChatSession.new(
+                test_user_id, dry_run=False, builder_graph_id="graph-1"
+            )
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"builder_graph_id": "graph-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"
