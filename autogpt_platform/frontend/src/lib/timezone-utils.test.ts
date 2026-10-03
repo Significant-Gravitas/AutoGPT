@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  formatInTimezone,
   getTimezoneAbbreviation,
   getTimezoneDisplayName,
 } from "./timezone-utils";
@@ -103,5 +104,25 @@ describe("getTimezoneDisplayName", () => {
         /^Berlin \(GMT\+0?2(?::00)?\)$/,
       );
     });
+  });
+});
+
+describe("formatInTimezone", () => {
+  it("returns a placeholder for an undefined date", () => {
+    expect(formatInTimezone(undefined, "UTC")).toBe("Not scheduled");
+  });
+
+  it("returns a placeholder for an unparseable date string", () => {
+    expect(formatInTimezone("not-a-date", "UTC")).toBe("Not scheduled");
+  });
+
+  it("returns a placeholder for an invalid Date object", () => {
+    expect(formatInTimezone(new Date(NaN), "UTC")).toBe("Not scheduled");
+  });
+
+  it("formats a valid ISO string in the given timezone", () => {
+    expect(formatInTimezone("2024-01-15T12:00:00Z", "UTC")).toBe(
+      "Jan 15, 2024, 12:00 PM",
+    );
   });
 });
