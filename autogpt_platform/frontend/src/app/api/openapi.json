@@ -18163,7 +18163,16 @@
             "title": "Contributors"
           },
           "staticOutput": { "type": "boolean", "title": "Staticoutput" },
-          "uiType": { "type": "string", "title": "Uitype" }
+          "uiType": { "type": "string", "title": "Uitype" },
+          "disabled": {
+            "type": "boolean",
+            "title": "Disabled",
+            "default": false
+          },
+          "disabledReason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Disabledreason"
+          }
         },
         "type": "object",
         "required": [

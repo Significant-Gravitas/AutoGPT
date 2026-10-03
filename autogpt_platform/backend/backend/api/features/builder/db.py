@@ -100,8 +100,8 @@ def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
-        # Skip disabled and excluded blocks
-        if block.disabled or block.id in EXCLUDED_BLOCK_IDS:
+        # Skip hidden and excluded blocks
+        if block.hidden or block.id in EXCLUDED_BLOCK_IDS:
             continue
         # Skip blocks that don't have categories (all should have at least one)
         if not block.categories:
@@ -149,8 +149,8 @@ def get_blocks(
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
-        # Skip disabled blocks
-        if block.disabled:
+        # Skip hidden blocks
+        if block.hidden:
             continue
         # Skip excluded blocks
         if block.id in EXCLUDED_BLOCK_IDS:
@@ -501,7 +501,7 @@ def _get_block_search_index() -> tuple[_BlockIndexEntry, ...]:
     entries = [
         _build_block_index_entry(block)
         for block in blocks
-        if not block.disabled and block.id not in EXCLUDED_BLOCK_IDS
+        if not block.hidden and block.id not in EXCLUDED_BLOCK_IDS
     ]
     return tuple(entries)
 
@@ -659,7 +659,7 @@ async def _get_static_counts():
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
-        if block.disabled:
+        if block.hidden:
             continue
         if block.id in EXCLUDED_BLOCK_IDS:
             continue
@@ -801,7 +801,7 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
-        if block.disabled:
+        if block.hidden:
             continue
 
         credentials_info = block.input_schema.get_credentials_fields_info().values()
@@ -833,10 +833,15 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
-        if block.disabled or block.block_type in (
-            BlockType.INPUT,
-            BlockType.OUTPUT,
-            BlockType.AGENT,
+        if (
+            block.hidden
+            or block.disabled
+            or block.block_type
+            in (
+                BlockType.INPUT,
+                BlockType.OUTPUT,
+                BlockType.AGENT,
+            )
         ):
             continue
         if block.id in EXCLUDED_BLOCK_IDS:

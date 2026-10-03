@@ -18,6 +18,8 @@ from backend.util.text import split_camelcase
 
 
 class _EmptyInputSchema:
+    model_fields = {}
+
     def get_credentials_fields_info(self):
         return {}
 
@@ -25,7 +27,13 @@ class _EmptyInputSchema:
         return {}
 
 
-def _block_info(block_id: str, name: str) -> BlockInfo:
+def _block_info(
+    block_id: str,
+    name: str,
+    *,
+    disabled: bool = False,
+    disabled_reason: str | None = None,
+) -> BlockInfo:
     return BlockInfo(
         id=block_id,
         name=name,
@@ -37,28 +45,69 @@ def _block_info(block_id: str, name: str) -> BlockInfo:
         contributors=[],
         staticOutput=False,
         uiType="",
+        disabled=disabled,
+        disabledReason=disabled_reason,
     )
 
 
-def _block(block_id: str, name: str, block_type: BlockType):
+def _block(
+    block_id: str,
+    name: str,
+    block_type: BlockType,
+    *,
+    disabled: bool = False,
+    disabled_reason: str | None = None,
+    hidden: bool = False,
+):
     class FakeBlock:
         id = block_id
         disabled = False
+        hidden = False
         categories = []
         input_schema = _EmptyInputSchema()
 
         def __init__(self):
             self.id = block_id
             self.name = name
+            self.description = ""
             self.block_type = block_type
-            self.disabled = False
+            self.disabled = disabled
+            self.hidden = hidden
             self.categories = []
             self.input_schema = _EmptyInputSchema()
 
         def get_info(self):
-            return _block_info(block_id, name)
+            return _block_info(
+                block_id,
+                name,
+                disabled=disabled,
+                disabled_reason=disabled_reason,
+            )
 
     return FakeBlock
+
+
+def test_get_blocks_includes_disabled_blocks_and_excludes_hidden_blocks(monkeypatch):
+    blocks = {
+        "enabled": _block("enabled", "Enabled", BlockType.STANDARD),
+        "disabled": _block(
+            "disabled",
+            "Disabled",
+            BlockType.STANDARD,
+            disabled=True,
+            disabled_reason="Missing configuration",
+        ),
+        "hidden": _block("hidden", "Hidden", BlockType.STANDARD, hidden=True),
+    }
+    monkeypatch.setattr(db, "load_all_blocks", lambda: blocks)
+
+    response = db.get_blocks()
+
+    assert {block.id for block in response.blocks} == {"enabled", "disabled"}
+    assert response.pagination.total_items == 2
+    disabled = next(block for block in response.blocks if block.id == "disabled")
+    assert disabled.disabled is True
+    assert disabled.disabledReason == "Missing configuration"
 
 
 @pytest.fixture
@@ -271,14 +320,23 @@ def test_llm_model_bonus_adds_twenty():
 # ============================================================================
 
 
-def test_index_excludes_disabled_and_excluded_blocks():
+def test_index_includes_disabled_blocks_and_excludes_hidden_and_excluded_blocks(
+    monkeypatch,
+):
+    excluded_id = next(iter(db.EXCLUDED_BLOCK_IDS))
+    blocks = {
+        "enabled": _block("enabled", "Enabled", BlockType.STANDARD),
+        "disabled": _block("disabled", "Disabled", BlockType.STANDARD, disabled=True),
+        "hidden": _block("hidden", "Hidden", BlockType.STANDARD, hidden=True),
+        "excluded": _block(excluded_id, "Excluded", BlockType.STANDARD),
+    }
+    monkeypatch.setattr(db, "load_all_blocks", lambda: blocks)
     db._get_block_search_index.cache_clear()
     entries = db._get_block_search_index()
     db._get_block_search_index.cache_clear()
 
-    assert len(entries) > 0
     entry_ids = {entry.block_info.id for entry in entries}
-    assert entry_ids.isdisjoint(db.EXCLUDED_BLOCK_IDS)
+    assert entry_ids == {"enabled", "disabled"}
 
     sample = entries[0]
     assert sample.normalized_name
