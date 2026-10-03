@@ -361,7 +361,10 @@ class TestGetOrCreateUserStatus:
             patch.object(
                 user_module, "schedule_posthog_lifecycle_sync"
             ) as posthog_sync,
+            patch.object(user_module, "AuthAccount") as auth_account,
+            patch.object(user_module, "track_signup_completed"),
         ):
+            auth_account.prisma.return_value.find_first = AsyncMock(return_value=None)
             yield ensure_org, posthog_sync
 
     @pytest.mark.asyncio
@@ -425,8 +428,13 @@ class TestGetOrCreateUserStatus:
                 "from_db",
                 return_value=_application_user("user-hooked", "hook@example.com"),
             ),
+            patch.object(user_module, "AuthAccount") as auth_account,
+            patch.object(user_module, "track_signup_completed") as track,
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+            auth_account.prisma.return_value.find_first = AsyncMock(
+                return_value=MagicMock(providerId="credential")
+            )
 
             result = await user_module.get_or_create_user_with_status(
                 {"sub": "user-hooked", "email": "hook@example.com"}
@@ -435,6 +443,7 @@ class TestGetOrCreateUserStatus:
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
+        track.assert_called_once_with(user_id="user-hooked", signup_method="email")
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):
@@ -476,6 +485,77 @@ class TestGetOrCreateUserStatus:
                 )
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "provider_id,expected", [("google", "google"), ("credential", "email")]
+    )
+    async def test_new_user_sends_signup_completed_with_the_better_auth_provider(
+        self, provider_id: str, expected: str
+    ):
+        # A Better Auth token has no app_metadata; the account row has it.
+        db_user = MagicMock(id="user-new", email="alice@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module, "AuthAccount") as auth_account,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
+            patch.object(user_module, "track_signup_completed") as track,
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=None)
+            mock_prisma.user.create = AsyncMock(return_value=db_user)
+            find_first = AsyncMock(return_value=MagicMock(providerId=provider_id))
+            auth_account.prisma.return_value.find_first = find_first
+
+            await user_module.get_or_create_user_with_status(
+                {"sub": "user-new", "email": "alice@example.com"}
+            )
+
+        assert find_first.await_args.kwargs["where"] == {"userId": "user-new"}
+        # The user id only: email and name never go into event properties.
+        track.assert_called_once_with(user_id="user-new", signup_method=expected)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "lookup",
+        [
+            AsyncMock(return_value=None),
+            AsyncMock(side_effect=RuntimeError("auth tables unreachable")),
+        ],
+    )
+    async def test_new_user_without_an_auth_account_falls_back_to_the_token(
+        self, lookup: AsyncMock
+    ):
+        db_user = MagicMock(id="user-new", email="alice@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module, "AuthAccount") as auth_account,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
+            patch.object(user_module, "track_signup_completed") as track,
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=None)
+            mock_prisma.user.create = AsyncMock(return_value=db_user)
+            auth_account.prisma.return_value.find_first = lookup
+
+            result = await user_module.get_or_create_user_with_status(
+                {
+                    "sub": "user-new",
+                    "email": "alice@example.com",
+                    "app_metadata": {"provider": "google", "providers": ["google"]},
+                }
+            )
+
+        assert result.was_created is True
+        track.assert_called_once_with(user_id="user-new", signup_method="google")
+
+    @pytest.mark.asyncio
     async def test_existing_account_syncs_nothing(self, stub_user_provisioning):
         _, posthog_sync = stub_user_provisioning
         db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
@@ -487,6 +567,7 @@ class TestGetOrCreateUserStatus:
                 "from_db",
                 return_value=_application_user("user-existing", "bob@example.com"),
             ),
+            patch.object(user_module, "track_signup_completed") as track,
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
 
@@ -495,6 +576,20 @@ class TestGetOrCreateUserStatus:
             )
 
         posthog_sync.assert_not_called()
+        track.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "user_data,expected",
+    [
+        ({"app_metadata": {"provider": "email"}}, "email"),
+        ({"app_metadata": {"provider": ""}}, None),
+        ({"app_metadata": "not-a-dict"}, None),
+        ({}, None),
+    ],
+)
+def test_legacy_signup_method_reads_the_supabase_provider(user_data: dict, expected):
+    assert user_module._legacy_signup_method(user_data) == expected
 
 
 class TestGetOrCreateUserProfile:

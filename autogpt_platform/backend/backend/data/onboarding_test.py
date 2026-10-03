@@ -7,6 +7,7 @@ import pytest_mock
 from backend.data.onboarding import (
     OnboardingStep,
     _reward_user,
+    complete_onboarding_step,
     ensure_user_onboarding,
     format_onboarding_for_extraction,
     get_user_onboarding,
@@ -214,3 +215,60 @@ async def test_ensure_user_onboarding_creates_the_row(
     assert mock_prisma.return_value.upsert.call_args.kwargs["where"] == {
         "userId": "user-1"
     }
+
+
+@pytest.fixture
+def onboarding_writes(mocker: pytest_mock.MockFixture) -> Mock:
+    mocker.patch("backend.data.onboarding._reward_user", AsyncMock())
+    mocker.patch("backend.data.onboarding._send_onboarding_notification", AsyncMock())
+    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    prisma.return_value.update = AsyncMock()
+    return mocker.patch("backend.data.onboarding.track_onboarding_completed")
+
+
+def _onboarding(completed: list[str]) -> Mock:
+    onboarding = Mock()
+    onboarding.completedSteps = completed
+    return onboarding
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_completing_onboarding_sends_onboarding_completed(
+    mocker: pytest_mock.MockFixture, onboarding_writes: Mock
+):
+    mocker.patch(
+        "backend.data.onboarding.ensure_user_onboarding",
+        AsyncMock(return_value=_onboarding([])),
+    )
+
+    await complete_onboarding_step("user-1", OnboardingStep.ONBOARDING_COMPLETE)
+
+    onboarding_writes.assert_called_once_with(user_id="user-1")
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_onboarding_completed_is_sent_once_per_user(
+    mocker: pytest_mock.MockFixture, onboarding_writes: Mock
+):
+    mocker.patch(
+        "backend.data.onboarding.ensure_user_onboarding",
+        AsyncMock(return_value=_onboarding([OnboardingStep.ONBOARDING_COMPLETE])),
+    )
+
+    await complete_onboarding_step("user-1", OnboardingStep.ONBOARDING_COMPLETE)
+
+    onboarding_writes.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_other_onboarding_steps_send_no_onboarding_completed(
+    mocker: pytest_mock.MockFixture, onboarding_writes: Mock
+):
+    mocker.patch(
+        "backend.data.onboarding.ensure_user_onboarding",
+        AsyncMock(return_value=_onboarding([])),
+    )
+
+    await complete_onboarding_step("user-1", OnboardingStep.MARKETPLACE_ADD_AGENT)
+
+    onboarding_writes.assert_not_called()
