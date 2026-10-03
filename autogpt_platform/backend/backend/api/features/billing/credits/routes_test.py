@@ -216,6 +216,26 @@ def test_request_top_up_sends_checkout_started(
     )
 
 
+def test_request_top_up_without_a_checkout_sends_no_checkout_started(
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    """With credits disabled there is no checkout session, so no checkout started."""
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(return_value="")
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits", json={"credit_amount": 500, "surface": "billing"}
+    )
+
+    assert response.status_code == 200
+    track_checkout_started.assert_not_awaited()
+
+
 def test_request_top_up_forwards_datafast_headers(
     mocker: pytest_mock.MockFixture,
 ) -> None:

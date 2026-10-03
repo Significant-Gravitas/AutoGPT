@@ -79,10 +79,10 @@ async def request_top_up(
         datafast_visitor_id=x_datafast_visitor_id,
         datafast_session_id=x_datafast_session_id,
     )
-    await track_checkout_started(
-        user_id=user_id, checkout_kind="top_up", surface=request.surface
-    )
     if checkout_url:
+        await track_checkout_started(
+            user_id=user_id, checkout_kind="top_up", surface=request.surface
+        )
         schedule_checkout_opened(user_id, ip_country=country)
     return {"checkout_url": checkout_url}
 
