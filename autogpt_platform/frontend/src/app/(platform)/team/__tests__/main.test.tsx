@@ -226,18 +226,39 @@ describe("TeamPage", () => {
     ).toBeTruthy();
   });
 
-  test("header exposes expert actions without pod creation", async () => {
+  test("header exposes creation destinations in one menu", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
-    const raise = await screen.findByRole("link", { name: "Create an Expert" });
-    expect(raise.getAttribute("href")).toBe("/raise");
+    const trigger = await screen.findByRole("button", { name: "Create" });
+    await userEvent.click(trigger);
     expect(
-      screen.getByRole("link", { name: "Hire expert" }).getAttribute("href"),
+      screen
+        .getByRole("menuitem", { name: "Hire an expert" })
+        .getAttribute("href"),
     ).toBe("/marketplace#experts");
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Build an agent" })
+        .getAttribute("href"),
+    ).toBe("/build");
 
     expect(screen.queryByRole("button", { name: "New Pod" })).toBeNull();
+  });
+
+  test("header creation menu opens and dismisses from the keyboard", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
+    render(<TeamPage />);
+    const trigger = await screen.findByRole("button", { name: "Create" });
+    trigger.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(
+      await screen.findByRole("menuitem", { name: "Hire an expert" }),
+    ).toBeDefined();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   test("renders hired experts with a stat strip instead of chips", async () => {
