@@ -920,8 +920,7 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
   it("offers Reconnect instead of calling the refused credential Connected", async () => {
     const { onSend } = renderRefusedChain();
 
-    // The prod report: the row read Connected and had nothing to click, so
-    // the only way out was deleting the credential in Settings.
+    // A Connected row renders no button, so it would leave nothing to click.
     await screen.findByRole("button", { name: "Reconnect" });
     expect(screen.queryByText("Connected")).toBeNull();
     expect(onSend).not.toHaveBeenCalled();
