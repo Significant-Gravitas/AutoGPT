@@ -5,9 +5,11 @@
 - **Published pages** live in `docs/home/`, `docs/platform/` and `docs/integrations/`. GitBook publishes them at agpt.co/docs, and a page appears on the site once that folder's `SUMMARY.md` lists it. Put a page there only if it is written for people outside the team: people using, self-hosting or contributing to AutoGPT.
 - **Engineering notes** live in `docs/engineering/`: the team's working documents, such as analytics and tracking plans, rollout plans, runbooks, internal references, and design and architecture notes. They are not on the docs site. Don't list one in a `SUMMARY.md`.
 
+`docs/engineering/` is not private. The repository is public and AutoPilot's documentation search indexes the folder, so keep secrets and confidential material out of it, as with any file in the repository.
+
 When unsure, write the document in `docs/engineering/`. Listing a page in a `SUMMARY.md` publishes it, so do that only for a page meant for the site.
 
-Every Markdown file under `docs/platform/` must be listed in `docs/platform/SUMMARY.md`, and a `SUMMARY.md` may list only pages inside its own folder. `.github/workflows/scripts/test_docs_layout.py` checks those two things on every pull request. It cannot tell whether a listed page is meant for the public; that is for the author and the reviewer to judge.
+Every Markdown file under `docs/platform/` must be listed in `docs/platform/SUMMARY.md`, except GitBook's own files under a `.gitbook/` directory, and a `SUMMARY.md` may list only pages inside its own folder. `.github/workflows/scripts/test_docs_layout.py` checks those two things on every pull request. It cannot tell whether a listed page is meant for the public; that is for the author and the reviewer to judge.
 
 ## Block Documentation Manual Sections
 
