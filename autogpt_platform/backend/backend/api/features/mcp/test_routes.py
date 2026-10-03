@@ -540,9 +540,7 @@ class TestOAuthLogin:
         mock_cm.store.store_state_token.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_oauth_login_cleartext_slack_url_never_gets_the_secret(
-        self, client
-    ):
+    async def test_oauth_login_cleartext_slack_url_never_gets_the_secret(self, client):
         """Over plain HTTP the discovery answer can be rewritten in transit,
         so the platform's Slack app is not used at all."""
         with (

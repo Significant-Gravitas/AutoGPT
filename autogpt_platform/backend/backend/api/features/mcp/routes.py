@@ -21,6 +21,7 @@ from backend.api.features.integrations.router import (
 )
 from backend.api.features.mcp.oauth_registration import (
     MCPClientRegistration,
+    check_preregistered_endpoints,
     preregistered_client,
     select_client_auth_method,
 )
@@ -424,6 +425,11 @@ async def mcp_oauth_login(
                     "You may need to provide an auth credential manually.",
                 },
             )
+        try:
+            check_preregistered_endpoints(server_url, metadata)
+        except ValueError as e:
+            logger.warning("Refusing pre-registered client sign-in: %s", e)
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
         try:
             token_endpoint_auth_method = select_client_auth_method(metadata)
         except ValueError as e:
