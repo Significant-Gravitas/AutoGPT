@@ -149,7 +149,7 @@ _PROVIDERS: dict[str, ManagedCredentialProvider] = {}
 # Avoids redundant DB checks on every GET /credentials call.
 # maxsize caps memory; TTL re-checks periodically (e.g. when new providers
 # are added).  ~100K entries ≈ 4-8 MB.
-_provisioned_users: TTLCache[str, bool] = TTLCache(maxsize=100_000, ttl=3600)
+_provisioned_users = TTLCache[str, bool](maxsize=100_000, ttl=3600)
 
 
 def register_managed_provider(provider: ManagedCredentialProvider) -> None:

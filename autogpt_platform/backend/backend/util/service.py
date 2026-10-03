@@ -614,24 +614,28 @@ def get_service_client(
         if not request_retry:
             return fn
 
-        # Use preconfigured retry decorator for service communication
-        return create_retry_decorator(
-            max_attempts=api_comm_retry,
-            max_wait=api_comm_max_wait,
-            context="Service communication",
-            exclude_exceptions=(
-                # Don't retry these specific exceptions that won't be fixed by retrying
-                ValueError,  # Invalid input/parameters
-                DataError,  # Prisma data integrity errors (foreign key, unique constraints)
-                UniqueViolationError,  # Unique constraint violations
-                KeyError,  # Missing required data
-                TypeError,  # Wrong data types
-                AttributeError,  # Missing attributes
-                asyncio.CancelledError,  # Task was cancelled
-                concurrent.futures.CancelledError,  # Future was cancelled
-                HTTPClientError,  # HTTP 4xx client errors - don't retry
-            ),
-        )(fn)
+        # Use preconfigured retry decorator for service communication. It keeps
+        # fn's sync/async shape, which its overloads can't express.
+        return cast(
+            Callable[..., R],
+            create_retry_decorator(
+                max_attempts=api_comm_retry,
+                max_wait=api_comm_max_wait,
+                context="Service communication",
+                exclude_exceptions=(
+                    # Don't retry these specific exceptions that won't be fixed by retrying
+                    ValueError,  # Invalid input/parameters
+                    DataError,  # Prisma data integrity errors (foreign key, unique constraints)
+                    UniqueViolationError,  # Unique constraint violations
+                    KeyError,  # Missing required data
+                    TypeError,  # Wrong data types
+                    AttributeError,  # Missing attributes
+                    asyncio.CancelledError,  # Task was cancelled
+                    concurrent.futures.CancelledError,  # Future was cancelled
+                    HTTPClientError,  # HTTP 4xx client errors - don't retry
+                ),
+            )(fn),
+        )
 
     class DynamicClient:
         def __init__(self) -> None:
