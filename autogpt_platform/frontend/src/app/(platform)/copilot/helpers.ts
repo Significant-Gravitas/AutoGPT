@@ -4,7 +4,7 @@ import type { ChatStatus, UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
-import { parseSpecialMarkers } from "./components/ChatMessagesContainer/helpers";
+import { parseSpecialMarkers } from "./helpers/messageMarkers";
 
 export const ORIGINAL_TITLE = "AutoGPT";
 
