@@ -133,6 +133,26 @@ describe("handleStreamError", () => {
     expect(onReconnect).not.toHaveBeenCalled();
   });
 
+  it("names a platform provider outage without routing it to a usage limit", () => {
+    const onRateLimit = vi.fn();
+    handleStreamError({
+      error: new Error(
+        "[code:provider_unavailable] The AI model provider is temporarily unavailable. We've been alerted and are working on it. Please try again shortly.",
+      ),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    const arg = mockToast.mock.calls[0][0] as {
+      title: string;
+      description: string;
+    };
+    expect(arg.title).toBe("AutoPilot is temporarily unavailable");
+    expect(arg.description).toMatch(/try again shortly/i);
+    expect(onRateLimit).not.toHaveBeenCalled();
+  });
+
   it("uses fallbackDescription when the backend message is empty", () => {
     handleStreamError({
       error: new Error("[code:tool_stalled]"),
