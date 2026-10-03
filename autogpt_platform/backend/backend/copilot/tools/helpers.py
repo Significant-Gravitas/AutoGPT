@@ -746,8 +746,18 @@ async def resolve_block_credentials(
     if not requirements:
         return {}, []
 
+    # An optional field runs without a credential, as in the executor. Picker
+    # kwargs are not model fields; discriminated fields were decided above.
+    required_fields = block.input_schema.get_required_fields()
+    optional_fields = {
+        name
+        for name, info in requirements.items()
+        if name not in required_fields
+        and name in block.input_schema.model_fields
+        and not info.discriminator
+    }
     return await match_credentials_to_requirements(
-        user_id, requirements, expert_id, session_id
+        user_id, requirements, expert_id, session_id, optional_fields
     )
 
 
