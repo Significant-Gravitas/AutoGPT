@@ -507,15 +507,9 @@ class TodoistUpdateTaskBlock(Block):
                 duration=duration,
                 duration_unit=parse_duration_unit(duration_unit),
             )
-            # Moving a task is a separate endpoint. Send only the most specific
-            # destination: a parent implies its section and project, and a
-            # section implies its project.
-            if parent_id is not None:
-                api.move_task(task_id, parent_id=parent_id)
-            elif section_id is not None:
-                api.move_task(task_id, section_id=section_id)
-            elif project_id is not None:
-                api.move_task(task_id, project_id=project_id)
+            # project_id/section_id/parent_id are not sent: the update endpoint
+            # never moved tasks (REST v2 ignored them too), and moving is a
+            # separate move_task call this block has not made so far.
             return True
 
     async def run(
