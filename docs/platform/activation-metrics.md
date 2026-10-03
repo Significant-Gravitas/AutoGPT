@@ -65,14 +65,14 @@ Every event carries `environment` and `source: "platform"`.
 
 | GTM asked for | Event | Fires when | Key properties |
 | --- | --- | --- | --- |
-| run_agent | `agent_run_started` without `expert_id` | A person starts an agent run (UI, API key, copilot tool). Not schedules, webhooks, sub-graphs or dry runs. | `trigger`, `trigger_ref`, `graph_id`, `graph_exec_id` |
-| run_autopilot | `chat_message_sent` without `expert_id` | A person sends a message in an Autopilot chat. | `session_id`, `surface` (web chat, slack, telegram, discord) |
+| run_agent | `agent_run_started` without `expert_id` | A person starts an agent run (UI, API key, copilot tool). Not schedules, webhooks, sub-graphs or dry runs. | `via`, `via_ref`, `graph_id`, `graph_exec_id` |
+| run_autopilot | `chat_message_sent` without `expert_id` | A person sends a message in an Autopilot chat. | `chat_session_id`, `origin` (`web`, `slack`, `telegram`, `discord`) |
 | run_expert | `chat_message_sent` / `agent_run_started` with `expert_id` | A person sends a message in an expert chat or starts an expert workflow run (`kind: workflow_run`). | `expert_id`, `kind` |
 | schedule_agent_run / schedule_autopilot_run / schedule_expert_run | `schedule_created` | Any schedule is registered, from any surface. | `target`: `agent` / `autopilot` / `expert`, `cron`, `is_recurring`, `schedule_id` |
-| schedule_agent_ran / schedule_autopilot_ran / schedule_expert_ran | `schedule_fired` | A schedule produced work. | `target`, `schedule_id`, `graph_exec_id` or `session_id` |
+| schedule_agent_ran / schedule_autopilot_ran / schedule_expert_ran | `schedule_fired` | A schedule produced work. | `target`, `schedule_id`, `graph_exec_id` or `chat_session_id` |
 | (trigger) | `trigger_fired` | A webhook produced a run. | `webhook_id`, `graph_exec_id`, `target` |
-| agent_fail | `agent_run_finished` with `status: failed` | A run reaches FAILED. | `trigger`, `failure_reason`, `expert_id` |
-| — | `agent_run_finished` with `status: completed` | A run reaches COMPLETED. | `trigger`, `cost_cents`, `duration_seconds` |
+| agent_fail | `agent_run_finished` with `status: failed` | A run reaches FAILED. | `via`, `failure_reason`, `expert_id` |
+| — | `agent_run_finished` with `status: completed` | A run reaches COMPLETED. | `via`, `cost_cents`, `duration_seconds` |
 | — | `expert_hired` | A user hires an expert from a template, from any surface. | `expert_id`, `template_id`, `surface` |
 | — | `integration_connected` | A user connects a credential, by OAuth or by pasting a key. | `provider`, `credential_type`, `method` |
 | — | `credential_oauth_started` | The backend issues an OAuth login URL (`GET /api/integrations/{provider}/login`). Not Codex, which signs in with a device login. | `provider` |
