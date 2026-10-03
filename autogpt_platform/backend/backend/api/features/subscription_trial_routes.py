@@ -7,11 +7,7 @@ from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
 from pydantic import BaseModel, Field
 
-from backend.api.features.billing.client_country import (  # noqa: F401 -- re-exported
-    CLIENT_COUNTRY_SCOPE,
-    ClientCountry,
-    attested_country,
-)
+from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
