@@ -1,5 +1,12 @@
 # Documentation Guidelines
 
+## Where a Document Goes
+
+- **Published pages** live in `docs/home/`, `docs/platform/` and `docs/integrations/`. GitBook publishes them at agpt.co/docs, and a page appears on the site once that folder's `SUMMARY.md` lists it. Put a page there only if it is written for people using or self-hosting AutoGPT.
+- **Engineering notes** live in `docs/engineering/`: architecture, internal references, analytics and tracking plans, rollout plans, runbooks and maintainer guides. They are never published. Don't list one in a `SUMMARY.md`.
+
+Every Markdown file under `docs/platform/` must be listed in `docs/platform/SUMMARY.md`. A page that isn't meant for the site belongs in `docs/engineering/`. `.github/workflows/scripts/test_docs_layout.py` checks both on every pull request.
+
 ## Block Documentation Manual Sections
 
 When updating manual sections (`<!-- MANUAL: ... -->`) in block documentation files (e.g., `docs/integrations/basic.md`), follow these formats:

@@ -42,7 +42,7 @@ count a copilot-started run through the chat turn that asked for it, so a
 task is ``agent_run_started`` with ``via`` other than ``copilot``, plus
 every ``chat_message_sent``. Event names live in
 ``backend.util.posthog_events``; the full list and the task filter are in
-``docs/platform/tracking-plan.md``.
+``docs/engineering/tracking-plan.md``.
 
 Every emitter is best-effort: tracking can never break the work it describes.
 """
