@@ -955,16 +955,53 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
     expect(picked).toEqual({ github: "cred-new" });
   });
 
-  it("uses another saved account that still works without asking for a sign-in", async () => {
-    savedCredentials = [
-      refused,
-      oauthCredential("cred-other", [REQUIRED_SCOPE]),
-    ];
-    renderRefusedChain();
+  describe("when another saved account still works", () => {
+    const other = {
+      ...oauthCredential("cred-other", [REQUIRED_SCOPE]),
+      title: "Work",
+    };
 
-    // Two accounts fit, but one was just refused: the other is no choice.
-    await screen.findByText("Connected");
-    expect(screen.queryByRole("button", { name: "Choose account" })).toBeNull();
+    beforeEach(() => {
+      savedCredentials = [refused, other];
+    });
+
+    it("asks instead of quietly running on the other account", async () => {
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      // A different account can mean posting as someone else, so the row
+      // waits for the user rather than calling the other one Connected.
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      expect(screen.queryByText("Connected")).toBeNull();
+      // Only the account that still works is offered; the refused one is
+      // renewed through Add new.
+      expect(screen.queryByRole("radio", { name: /GitHub/ })).toBeNull();
+      await user.click(await screen.findByRole("radio", { name: /Work/ }));
+      await user.click(
+        screen.getByRole("button", { name: "Use this account" }),
+      );
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-other" });
+    });
+
+    it("runs on the renewed account once the user signs in to it again", async () => {
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(await screen.findByText("OAuth"));
+      await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+      // Both accounts now fit; the one just signed in to is the one meant.
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-refused" });
+    });
   });
 });
 

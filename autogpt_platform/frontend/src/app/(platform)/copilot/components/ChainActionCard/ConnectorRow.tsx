@@ -45,9 +45,9 @@ export function ConnectorRow({ row }: Props) {
   // `null` while the provider's accounts were still loading, where a diff
   // would call every account the user already had new.
   const knownIds = useRef<Set<string> | null>(null);
-  // Refused credentials the user has since signed in to again from this row.
-  // A re-auth updates the account in place and keeps its id, so the id alone
-  // cannot tell a renewed credential from the one the provider refused.
+  // Credentials the user signed in with from this row, latest last. A re-auth
+  // updates the account in place and keeps its id, so the id alone cannot tell
+  // a renewed credential from the one the provider refused.
   const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const allProviders = useContext(CredentialsProvidersContext);
   const { mutateAsync: grantCredentials, isPending: isGranting } =
@@ -60,6 +60,16 @@ export function ConnectorRow({ row }: Props) {
   );
   // Still on file, but refused: never one to select or offer as usable.
   const usableProviders = withoutCredentials(allProviders, rejectedIds);
+  // Only this provider's own refused account makes the row a Reconnect. A
+  // card's rejection reaches every row it asks for, and the account may have
+  // been deleted since. Until the user acts, nothing is picked for them:
+  // quietly running on another of their accounts could post as someone else.
+  const awaitingReconnect =
+    !expertGrant &&
+    renewedIds.length === 0 &&
+    (allProviders?.[row.provider]?.savedCredentials ?? []).some((saved) =>
+      rejectedIds.includes(saved.id),
+    );
 
   const savedCredential = findSavedUserCredentialByProviderAndType(
     row.schema.credentials_provider ?? [],
@@ -138,7 +148,21 @@ export function ConnectorRow({ row }: Props) {
       row.select(undefined);
       return;
     }
-    if (row.selected || !savedCredential) return;
+    if (row.selected) return;
+    // The account just signed in with wins over the others that also fit.
+    // It is picked once the provider list has it, so it is judged on the
+    // scopes the backend stored rather than on what the sign-in reported.
+    const signedIn = pickable.find((c) => c.id === renewedIds.at(-1));
+    if (signedIn) {
+      row.select({
+        id: signedIn.id,
+        provider: row.provider,
+        type: signedIn.type as CredentialsMetaInput["type"],
+        title: signedIn.title,
+      });
+      return;
+    }
+    if (!savedCredential || awaitingReconnect) return;
     row.select({
       id: savedCredential.id,
       provider: savedCredential.provider,
@@ -153,6 +177,8 @@ export function ConnectorRow({ row }: Props) {
     awaitingGrant,
     expertGrant?.expertId,
     rejectedIds.join(),
+    renewedIds.join(),
+    awaitingReconnect,
   ]);
 
   // Several saved accounts can satisfy one row. Nothing picks between them for
@@ -167,7 +193,10 @@ export function ConnectorRow({ row }: Props) {
   const selectedStillFits = pickable.some(
     (credential) => credential.id === row.selected?.id,
   );
-  const hasChoice = !expertGrant && !row.selected && pickable.length > 1;
+  const hasChoice =
+    !expertGrant &&
+    !row.selected &&
+    pickable.length > (awaitingReconnect ? 0 : 1);
   // No saved account fits, and there are several that a fresh sign-in could
   // widen. Signing in without naming one requests only this card's scopes,
   // which the backend cannot merge into an account that holds others, so it
@@ -263,13 +292,11 @@ export function ConnectorRow({ row }: Props) {
           }
           onClick={openDialog}
         >
-          {grantableOptions.length > 0
-            ? "Grant access"
-            : hasChoice
-              ? "Choose account"
-              : rejectedIds.length > 0
-                ? "Reconnect"
-                : "Connect"}
+          {buttonLabel({
+            canGrant: grantableOptions.length > 0,
+            awaitingReconnect,
+            hasChoice,
+          })}
         </Button>
       )}
 
@@ -364,6 +391,23 @@ function grantableAmong(
   return match
     ? { id: match.id, title: match.title ?? row.displayName, type: match.type }
     : null;
+}
+
+/** A refused account is named as such even when other accounts are offered
+ *  beside it: the dialog lists them and its Add new signs in again. */
+function buttonLabel({
+  canGrant,
+  awaitingReconnect,
+  hasChoice,
+}: {
+  canGrant: boolean;
+  awaitingReconnect: boolean;
+  hasChoice: boolean;
+}) {
+  if (canGrant) return "Grant access";
+  if (awaitingReconnect) return "Reconnect";
+  if (hasChoice) return "Choose account";
+  return "Connect";
 }
 
 /** `allProviders` without the credentials in `ids`. Keeps the `null` loading

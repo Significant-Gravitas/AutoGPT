@@ -160,6 +160,28 @@ describe("ConnectorRow with several saved accounts for one provider", () => {
   });
 });
 
+describe("ConnectorRow with a refused credential", () => {
+  it("says Connect when the refused credential is not among this provider's", () => {
+    // One card's rejection reaches every row it asks for, and the refused
+    // account may since have been deleted: neither is this row's to renew.
+    renderRow(row({ rejectedCredentialIds: ["cred-twitter"] }), []);
+
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDefined();
+  });
+
+  it("offers the other accounts and selects nothing on its own", () => {
+    const current = row({ rejectedCredentialIds: ["cred-work"] });
+    renderRow(current, [work, personal]);
+
+    expect(current.select).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    expect(screen.getByText("purpose-choose")).toBeDefined();
+    expect(screen.getByText("use-personal")).toBeDefined();
+    expect(screen.queryByText("use-work")).toBeNull();
+  });
+});
+
 describe("ConnectorRow when no saved account has the access a card needs", () => {
   const oauthRow = () =>
     row({
