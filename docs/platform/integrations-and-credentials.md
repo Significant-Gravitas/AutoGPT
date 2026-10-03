@@ -50,7 +50,7 @@ Open **Settings → Integrations**, find a service with the **MCP** badge, and f
 - If prompted, select your account's region or enter the official server URL for your tenant or deployment.
 - Review the requested permissions. **Allow changes**, when offered, adds the service's optional actions.
 
-For catalog updates, see [Maintaining MCP Integrations](https://github.com/Significant-Gravitas/AutoGPT/blob/master/docs/engineering/hosted-mcp-catalog.md).
+For catalog updates, see [Maintaining MCP Integrations](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/docs/engineering/hosted-mcp-catalog.md).
 
 ## Managing Credentials
 

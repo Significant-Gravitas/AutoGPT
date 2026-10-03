@@ -36,12 +36,17 @@ def listed_pages(folder: Path) -> set:
 
 
 def unlisted_pages(folder: Path) -> list:
-    """Markdown files in a folder that its SUMMARY.md does not list."""
+    """Markdown files in a folder that its SUMMARY.md does not list.
+
+    Files under .gitbook are GitBook's own (reusable content it includes into
+    pages), not pages, and are never listed.
+    """
     listed = listed_pages(folder)
     return sorted(
         page.relative_to(folder).as_posix()
         for page in folder.rglob("*.md")
         if page != folder / "SUMMARY.md"
+        and ".gitbook" not in page.relative_to(folder).parts
         and page.relative_to(folder).as_posix() not in listed
     )
 
@@ -52,8 +57,9 @@ class DocsLayoutTests(unittest.TestCase):
             unlisted_pages(DOCS / "platform"),
             [],
             "These files are in docs/platform but not in docs/platform/SUMMARY.md. "
-            "If a file is a page for the docs site, list it there. "
-            "If it is an engineering note, move it to docs/engineering.",
+            "docs/platform is the public docs site, so move them to "
+            "docs/engineering. Only list a file in SUMMARY.md, which publishes "
+            "it, if it is a page meant for the site. See docs/AGENTS.md.",
         )
 
     def test_summaries_list_only_pages_in_their_own_folder(self):
@@ -128,6 +134,13 @@ class SummaryParsingTests(unittest.TestCase):
 
         self.assertEqual(listed_pages(folder), {"a.md"})
         self.assertEqual(unlisted_pages(folder), ["b.md", "c.md"])
+
+    def test_gitbook_reusable_content_is_not_a_page(self):
+        folder = self.folder(
+            "* [A](a.md)\n", "a.md", ".gitbook/includes/snippet.md", "sub/b.md"
+        )
+
+        self.assertEqual(unlisted_pages(folder), ["sub/b.md"])
 
     def test_only_the_folders_own_summary_is_exempt(self):
         folder = self.folder(
