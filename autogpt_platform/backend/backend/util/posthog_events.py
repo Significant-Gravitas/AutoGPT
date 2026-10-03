@@ -1,6 +1,6 @@
 """Every PostHog event name the backend sends, in one place.
 
-``docs/platform/tracking-plan.md`` says what each event means, which side
+``docs/engineering/tracking-plan.md`` says what each event means, which side
 sends it and which properties it carries. This module is the code half of
 that plan: emitters take the name from here instead of spelling it out.
 The names follow the product analytics plan ("Every Second Counts"). The
