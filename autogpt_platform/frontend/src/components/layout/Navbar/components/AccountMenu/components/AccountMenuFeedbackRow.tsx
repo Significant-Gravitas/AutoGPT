@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useTallyPopup } from "@/components/molecules/TallyPoup/useTallyPopup";
+import { useOptionalSidebar } from "@/components/ui/sidebar";
 import { HelpCircleIcon } from "@hugeicons/core-free-icons";
 
 const FEEDBACK_TALLY_FORM_ID = "3yx2L0";
@@ -11,11 +12,17 @@ const rowClasses =
 
 export function AccountMenuFeedbackRow() {
   const { state } = useTallyPopup();
+  const sidebar = useOptionalSidebar();
+
+  function handleClick() {
+    if (sidebar?.isMobile) sidebar.setOpenMobile(false);
+  }
 
   return (
     <button
       type="button"
       className={rowClasses}
+      onClick={handleClick}
       data-testid="account-menu-feedback-trigger"
       data-tally-open={FEEDBACK_TALLY_FORM_ID}
       data-tally-emoji-text="👋"
