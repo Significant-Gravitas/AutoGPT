@@ -1,10 +1,7 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import { describe, expect, test } from "vitest";
 import { getAccountMenuIcon } from "../helpers";
-import {
-  getAccountMenuItems,
-  getAccountMenuOptionIcon,
-} from "../../../helpers";
+import { getAccountMenuItems } from "../../../helpers";
 
 function flattenTexts(groups: ReturnType<typeof getAccountMenuItems>) {
   return groups.flatMap((group) => group.items.map((item) => item.text));
@@ -33,8 +30,8 @@ describe("getAccountMenuIcon", () => {
 });
 
 describe("getAccountMenuItems", () => {
-  test("new layout groups profile settings and a footer without Admin for non-admins", () => {
-    const groups = getAccountMenuItems(undefined, true);
+  test("groups profile settings and a footer without Admin for non-admins", () => {
+    const groups = getAccountMenuItems(undefined);
     const texts = flattenTexts(groups);
 
     expect(texts).toEqual(
@@ -50,8 +47,8 @@ describe("getAccountMenuItems", () => {
     expect(texts).not.toContain("Admin");
   });
 
-  test("new layout points What's new at the changelog docs", () => {
-    const items = getAccountMenuItems(undefined, true).flatMap(
+  test("points What's new at the changelog docs", () => {
+    const items = getAccountMenuItems(undefined).flatMap(
       (group) => group.items,
     );
     const whatsNew = items.find((item) => item.text === "What's new");
@@ -62,36 +59,10 @@ describe("getAccountMenuItems", () => {
     expect(whatsNew?.external).toBe(true);
   });
 
-  test("new layout adds an Admin entry for admin users", () => {
-    const texts = flattenTexts(getAccountMenuItems("admin", true));
+  test("adds an Admin entry for admin users", () => {
+    const texts = flattenTexts(getAccountMenuItems("admin"));
 
     expect(texts).toContain("Admin");
     expect(texts).toContain("Log out");
-  });
-
-  test("classic layout differs from the new layout grouping", () => {
-    const classic = flattenTexts(getAccountMenuItems(undefined));
-    const newLayout = flattenTexts(getAccountMenuItems(undefined, true));
-
-    expect(classic).toContain("Profile");
-    expect(newLayout).not.toEqual(classic);
-  });
-});
-
-describe("getAccountMenuOptionIcon", () => {
-  test.each([
-    IconType.Edit,
-    IconType.Settings,
-    IconType.Billing,
-    IconType.Help,
-    IconType.WhatsNew,
-    IconType.Sliders,
-    IconType.LogOut,
-  ])("returns an icon element for %s", (icon) => {
-    expect(getAccountMenuOptionIcon(icon)).not.toBeNull();
-  });
-
-  test("falls back to a default icon for unmapped types", () => {
-    expect(getAccountMenuOptionIcon(IconType.UploadCloud)).not.toBeNull();
   });
 });

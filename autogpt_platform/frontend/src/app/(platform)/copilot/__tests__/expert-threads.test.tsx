@@ -5,7 +5,6 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { server } from "@/mocks/mock-server";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
@@ -24,7 +23,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "../components/EmptySession/useRecipientPicker";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
-import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
 import { getNewChatHref } from "@/components/layout/AppSidebar/components/RecentChats/helpers";
 import { useCopilotUIStore } from "../store";
@@ -68,12 +66,6 @@ vi.mock(
   "../../copilot/components/UsageLimits/UsagePopover/UsagePopover",
   () => ({
     UsagePopover: () => null,
-  }),
-);
-vi.mock(
-  "../components/ChatSidebar/components/NotificationToggle/NotificationToggle",
-  () => ({
-    NotificationToggle: () => null,
   }),
 );
 
@@ -233,6 +225,23 @@ function AutopilotSessionHarness() {
         create
       </button>
     </div>
+  );
+}
+
+/** Mirrors the app sidebar's New Chat link, which lands on /home with neither
+ *  a session nor an expert in the URL. */
+function NewChatButton() {
+  const [, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [, setExpertId] = useQueryState("expertId", parseAsString);
+  return (
+    <button
+      onClick={() => {
+        void setSessionId(null);
+        void setExpertId(null);
+      }}
+    >
+      New Chat
+    </button>
   );
 }
 
@@ -624,10 +633,8 @@ describe("useChatSession — expert sessions", () => {
 
     render(
       <NuqsWrapper>
-        <SidebarProvider>
-          <ChatSidebar />
-          <KeyedSessionHost />
-        </SidebarProvider>
+        <NewChatButton />
+        <KeyedSessionHost />
       </NuqsWrapper>,
     );
 
@@ -637,12 +644,10 @@ describe("useChatSession — expert sessions", () => {
       );
     });
 
-    // Click inside waitFor, re-querying each attempt: the sidebar re-renders
-    // as the adoption lands and the session list arrives, which can replace
-    // the button node between a one-shot query and its click (a click on the
-    // detached node is a no-op). Re-clicking is idempotent (sets null).
+    // Re-clicking is idempotent (sets null), so click inside waitFor in case
+    // the adoption effect bounces the session back once before settling.
     await waitFor(() => {
-      fireEvent.click(screen.getAllByRole("button", { name: "New Chat" })[0]);
+      fireEvent.click(screen.getByRole("button", { name: "New Chat" }));
       expect(screen.getByTestId("session-id").textContent).toBe("none");
     });
     // The remount re-runs the adoption effect against a warm cache, so give it
@@ -674,220 +679,6 @@ describe("groupSessionsByExpert", () => {
     expect(
       groups[0].sessions.map((session: { id: string }) => session.id),
     ).toEqual(["s1"]);
-  });
-});
-
-describe("ChatSidebar — expert groups", () => {
-  it("groups expert threads under expert name headers with Otto as the default group", async () => {
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          makeSession({ id: "s1", title: "Plain chat" }),
-          makeSession({
-            id: "s2",
-            title: "Campaign ideas",
-            expert_id: "expert-maria",
-          }),
-        ],
-        total: 2,
-      }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
-
-    render(
-      <SidebarProvider>
-        <ChatSidebar />
-      </SidebarProvider>,
-    );
-
-    await screen.findByText("Plain chat");
-    const mariaHeader = await screen.findByTestId(
-      "expert-group-header-expert-maria",
-    );
-    expect(within(mariaHeader).getByText("Maria")).toBeDefined();
-    expect(within(mariaHeader).getByText(mariaExpert.role)).toBeDefined();
-    expect(
-      within(screen.getByTestId("expert-group-header-autopilot")).getByText(
-        "Otto",
-      ),
-    ).toBeDefined();
-    expect(screen.getByText("Campaign ideas")).toBeDefined();
-  });
-
-  it("renders no group headers when the user has no expert threads", async () => {
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          makeSession({ id: "s1", title: "Plain chat" }),
-          makeSession({ id: "s2", title: "Another plain chat" }),
-        ],
-        total: 2,
-      }),
-      getListExpertIdentitiesMockHandler([]),
-    );
-
-    render(
-      <SidebarProvider>
-        <ChatSidebar />
-      </SidebarProvider>,
-    );
-
-    await screen.findByText("Plain chat");
-    expect(screen.getByText("Another plain chat")).toBeDefined();
-    expect(screen.queryByTestId("expert-group-header-autopilot")).toBeNull();
-  });
-
-  it("keeps pinned chats above the groups so pinning still floats expert threads", async () => {
-    flagState.values = { "hire-experts": true, "chat-pinning": true };
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          makeSession({
-            id: "s-pinned",
-            title: "Pinned campaign",
-            expert_id: "expert-maria",
-            is_pinned: true,
-          }),
-          makeSession({ id: "s-plain", title: "Plain chat" }),
-          makeSession({
-            id: "s-maria",
-            title: "Campaign ideas",
-            expert_id: "expert-maria",
-          }),
-        ],
-        total: 3,
-      }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
-
-    render(
-      <SidebarProvider>
-        <ChatSidebar />
-      </SidebarProvider>,
-    );
-
-    const pinnedSection = await screen.findByTestId(
-      "expert-group-header-pinned",
-    );
-    expect(pinnedSection.textContent).toBe("Pinned");
-
-    const pinnedGroup = pinnedSection.closest('[role="group"]');
-    expect(pinnedGroup).not.toBeNull();
-    expect(within(pinnedGroup as HTMLElement).getByText("Pinned campaign"));
-
-    // The pinned chat is lifted out of Maria's group, which keeps the rest.
-    const mariaGroup = screen
-      .getByTestId("expert-group-header-expert-maria")
-      .closest('[role="group"]') as HTMLElement;
-    expect(within(mariaGroup).getByText("Campaign ideas")).toBeDefined();
-    expect(within(mariaGroup).queryByText("Pinned campaign")).toBeNull();
-  });
-
-  it("shows the first four chats of an expert and reveals the rest via Load more", async () => {
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          makeSession({ id: "s-plain", title: "Plain chat" }),
-          ...Array.from({ length: 7 }, (_, i) =>
-            makeSession({
-              id: `s-maria-${i + 1}`,
-              title: `Maria chat ${i + 1}`,
-              expert_id: "expert-maria",
-            }),
-          ),
-        ],
-        total: 8,
-      }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
-
-    render(
-      <SidebarProvider>
-        <ChatSidebar />
-      </SidebarProvider>,
-    );
-
-    await screen.findByText("Maria chat 1");
-    expect(screen.getByText("Maria chat 4")).toBeDefined();
-    expect(screen.queryByText("Maria chat 5")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("expert-group-load-more-expert-maria"));
-    expect(screen.getByText("Maria chat 6")).toBeDefined();
-    expect(screen.getByText("Maria chat 7")).toBeDefined();
-    expect(
-      screen.queryByTestId("expert-group-load-more-expert-maria"),
-    ).toBeNull();
-    // Otto's single chat never needs a Load more button.
-    expect(screen.queryByTestId("expert-group-load-more-autopilot")).toBeNull();
-  });
-
-  it("collapses and expands an expert group from its header", async () => {
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          makeSession({ id: "s-plain", title: "Plain chat" }),
-          makeSession({
-            id: "s-maria",
-            title: "Campaign ideas",
-            expert_id: "expert-maria",
-          }),
-        ],
-        total: 2,
-      }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
-
-    render(
-      <SidebarProvider>
-        <ChatSidebar />
-      </SidebarProvider>,
-    );
-
-    await screen.findByText("Campaign ideas");
-    const header = screen.getByTestId("expert-group-header-expert-maria");
-
-    fireEvent.click(header);
-    await waitFor(() => {
-      expect(screen.queryByText("Campaign ideas")).toBeNull();
-    });
-    expect(screen.getByText("Plain chat")).toBeDefined();
-
-    fireEvent.click(header);
-    expect(await screen.findByText("Campaign ideas")).toBeDefined();
-  });
-
-  it("does not fetch experts or group sessions when the flag is off", async () => {
-    flagState.values = { "hire-experts": false };
-    let expertsRequests = 0;
-    server.use(
-      http.get("*/api/experts/identities", () => {
-        expertsRequests += 1;
-        return HttpResponse.json([mariaExpert]);
-      }),
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          makeSession({ id: "s1", title: "Plain chat" }),
-          makeSession({
-            id: "s2",
-            title: "Campaign ideas",
-            expert_id: "expert-maria",
-          }),
-        ],
-        total: 2,
-      }),
-    );
-
-    render(
-      <SidebarProvider>
-        <ChatSidebar />
-      </SidebarProvider>,
-    );
-
-    await screen.findByText("Plain chat");
-    expect(screen.getByText("Campaign ideas")).toBeDefined();
-    expect(screen.queryByTestId("expert-group-header-autopilot")).toBeNull();
-    expect(screen.queryByTestId("expert-group-header-expert-maria")).toBeNull();
-    expect(expertsRequests).toBe(0);
   });
 });
 

@@ -24,7 +24,7 @@ export function SidebarUserActions() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const logoutInProgress = isLogoutInProgress();
-  const dynamicMenuItems = getAccountMenuItems(user?.role, true);
+  const dynamicMenuItems = getAccountMenuItems(user?.role);
 
   const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
     {
@@ -48,7 +48,6 @@ export function SidebarUserActions() {
       avatarSrc={profile?.avatar_url ?? ""}
       menuItemGroups={dynamicMenuItems}
       isLoading={isLoadingProfile}
-      newLayout
       side="top"
       align="start"
     />

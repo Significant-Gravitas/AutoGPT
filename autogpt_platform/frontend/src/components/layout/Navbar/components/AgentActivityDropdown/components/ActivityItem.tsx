@@ -4,7 +4,6 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTimeAgo } from "@/lib/utils/time";
-import { cn } from "@/lib/utils";
 import Link, { useLinkStatus } from "next/link";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
@@ -42,11 +41,9 @@ function ActivityNavIndicator() {
 
 interface Props {
   execution: AgentExecutionWithInfo;
-  // New sidebar layout variant — gated behind the AUTOGPT_NEW_LAYOUT flag.
-  newLayout?: boolean;
 }
 
-export function ActivityItem({ execution, newLayout = false }: Props) {
+export function ActivityItem({ execution }: Props) {
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
@@ -156,7 +153,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
         <Text
-          variant={newLayout ? "small-medium" : "body-medium"}
+          variant="small-medium"
           className="max-w-44 truncate text-gray-900"
         >
           {execution.agent_name}
@@ -179,7 +176,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
   );
 
   if (withExecutionLink) {
-    return newLayout ? (
+    return (
       <Link
         className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
         href={linkUrl}
@@ -188,25 +185,8 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
         <div className="min-w-0 flex-1">{content}</div>
         <ActivityNavIndicator />
       </Link>
-    ) : (
-      <Link
-        className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-bgLightGrey"
-        href={linkUrl}
-        role="button"
-      >
-        {content}
-      </Link>
     );
   }
 
-  return (
-    <div
-      className={cn(
-        "block px-2 py-3",
-        newLayout ? "rounded-xl" : "border-b border-slate-50 last:border-b-0",
-      )}
-    >
-      {content}
-    </div>
-  );
+  return <div className="block rounded-xl px-2 py-3">{content}</div>;
 }
