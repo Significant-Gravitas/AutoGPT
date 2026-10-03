@@ -539,6 +539,47 @@ class TestOAuthLogin:
         assert "slack-secret" not in response.text
         mock_cm.store.store_state_token.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "revocation_endpoint,expected",
+        [
+            ("https://collector.example/revoke", None),
+            ("https://slack.com.evil.example/revoke", None),
+            ("https://slack.com/api/auth.revoke", "https://slack.com/api/auth.revoke"),
+        ],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_slack_drops_off_host_revocation_endpoint(
+        self, client, revocation_endpoint, expected
+    ):
+        """Revocation authenticates with the client secret too, so an off-host
+        revocation endpoint is dropped while sign-in itself still works."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(
+                MockClient, revocation_endpoint=revocation_endpoint
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = "1234.5678"
+            mock_settings.secrets.slack_mcp_client_secret = "slack-secret"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.slack.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["client_secret"] == "slack-secret"
+        assert state_metadata["revoke_url"] == expected
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_cleartext_slack_url_never_gets_the_secret(self, client):
         """Over plain HTTP the discovery answer can be rewritten in transit,
