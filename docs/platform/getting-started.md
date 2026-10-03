@@ -59,6 +59,9 @@ docker run -d \
   significantgravitas/autogpt:latest
 ```
 
+`AUTOGPT_PUBLIC_URL` must match the address in your browser, so change both if
+you publish a different port.
+
 On Windows, put the command on one line in PowerShell, or run it from a WSL 2
 terminal.
 

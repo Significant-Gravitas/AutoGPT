@@ -28,4 +28,5 @@ This guide explains how to download an agent from the AutoGPT marketplace and im
 * It also appears in your **Agents** library
 
 ##  **Important Notes**
-* Add any credentials the agent's blocks need under **Settings → Integrations** before running it
+* Before running it, connect the credentials its blocks need under **Settings → Integrations**
+* Deployment-level provider keys and OAuth app credentials are set as environment variables instead; see [Self-Hosted Credentials](integrations-and-credentials.md#self-hosted-credentials)
