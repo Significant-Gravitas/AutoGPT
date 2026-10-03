@@ -32,6 +32,9 @@
   <a href="https://docs.agpt.co">
     <img src="https://img.shields.io/badge/Docs-read-0A7AFF?logo=gitbook&logoColor=white" alt="Read the docs" />
   </a>
+  <a href="https://hub.docker.com/r/significantgravitas/autogpt">
+    <img src="https://img.shields.io/docker/v/significantgravitas/autogpt?sort=semver&label=Docker%20Hub&color=2496ED&logo=docker&logoColor=white" alt="AutoGPT image on Docker Hub" />
+  </a>
 </p>
 
 ---
@@ -111,17 +114,63 @@ The hosted Platform is a paid service with usage-based agent runs. [Compare plan
 > [!NOTE]
 > Self-hosting is the free path. You provide the infrastructure and model API keys, and you maintain the deployment. If you want zero setup, use the [managed Platform](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=self_host_note).
 
-The Linux and macOS single-container release installer is coming with the next
-appliance release. Until the public installer endpoint and image tags pass the
-[documented release gates](docs/platform/installer.md#maintainer-release-gates),
-use the [manual self-hosting guide](https://docs.agpt.co/platform/self-hosting/getting-started).
+The quickest way to self-host is the single-container image on Docker Hub,
+[`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt).
+It bundles the web app, APIs, workers, PostgreSQL, RabbitMQ, Valkey, and
+FalkorDB-backed memory, and keeps all of its data in one volume. The image is
+experimental and meant for local and small installations, not high-availability
+deployments.
 
-The release installer will require an already-running local Docker daemon using
-Linux containers on `amd64` or `arm64`. It pulls the published appliance and
-runs its immutable digest; it does not install Docker or build from source.
-Windows users should continue with the manual self-hosting guide for now.
+You need Docker Engine or Docker Desktop running Linux containers on `amd64` or
+`arm64`. Test installs use about 5–6 GiB of memory, so leave headroom for your
+agents. Docker Desktop caps its VM's memory: raise the limit under
+**Settings → Resources**, or in `.wslconfig` on Windows with the WSL 2 backend.
 
-[Read the self-hosting guide →](https://docs.agpt.co/platform/self-hosting/getting-started)
+```bash
+docker run -d \
+  --name autogpt \
+  --restart unless-stopped \
+  --shm-size 2g \
+  --ulimit nofile=65536:65536 \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  -p 127.0.0.1:3000:3000 \
+  -e AUTOGPT_PUBLIC_URL=http://localhost:3000 \
+  -v autogpt-data:/data \
+  significantgravitas/autogpt:latest
+```
+
+`AUTOGPT_PUBLIC_URL` must match the address in your browser, so change both if
+you publish a different port.
+
+The first boot applies database migrations and can take several minutes. Don't
+stop the container until Docker reports it as `healthy`. Then open
+[http://localhost:3000](http://localhost:3000), create your account, and make it
+the administrator:
+
+```bash
+docker exec autogpt autogpt-admin promote you@example.com
+```
+
+Sign out and back in so your session picks up the administrator role.
+
+Signup stays open to anyone who can reach the app, which is why the command
+above publishes the port on `127.0.0.1` only. To close signup, recreate the
+container with `-e AUTH_ALLOW_NEW_ACCOUNTS=false`. Keep the `autogpt-data`
+volume whenever you replace the container: it holds your accounts, agents,
+memory, and generated secrets.
+
+`latest` tracks the newest verified release. To pin a version, use an immutable
+`vX.Y.Z` tag, or `sha-<git-sha>` for an exact source revision.
+
+Model providers are set with environment variables. The single-container guide
+lists them and covers backups, upgrades, and troubleshooting.
+
+[Read the single-container guide →](https://docs.agpt.co/platform/self-hosting/single-container)
+
+To run each service in its own container with Docker Compose, or to develop from
+source, use the [manual self-hosting guide](https://docs.agpt.co/platform/self-hosting/getting-started#manual-setup).
 
 ---
 
@@ -129,10 +178,10 @@ Windows users should continue with the manual self-hosting guide for now.
 
 | | **AutoGPT Platform** | **Self-hosted** |
 |---|---|---|
-| Access | Public signup | Operate the published appliance or a development checkout |
+| Access | Public signup | Run the Docker Hub image or a development checkout |
 | Cost | Paid plan plus agent usage | No license fee; pay your own infrastructure and model providers |
 | Setup | Managed | Docker and configuration required |
-| Model access | Built in | Bring your own API keys |
+| Model access | Built in | Bring your own API keys or a local model |
 | Updates and operations | Managed by AutoGPT | Managed by you |
 | Core builder and agent runtime | Included | Included |
 | Data and infrastructure control | Hosted by AutoGPT | Runs on your infrastructure |

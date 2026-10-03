@@ -2,64 +2,145 @@
 
 ## Introduction
 
-This guide will help you setup the server and builder for the project.
+This guide will help you set up AutoGPT on your own machine. There are two ways
+to do it:
 
-<!-- The video is listed in the root Readme.md of the repo -->
+- **[Quick Setup with Docker](#quick-setup-with-docker)** runs the published
+  image from Docker Hub: one container and no source checkout. Start here if
+  you want to use AutoGPT.
+- **[Manual Setup](#manual-setup)** clones the repository and builds every
+  service with Docker Compose. Use it to develop AutoGPT, or to run each
+  service in its own container.
 
-<!--We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT?tab=readme-ov-file#how-to-setup-for-self-hosting). -->
+{% hint style="warning" %}
+**DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
+{% endhint %}
 
-!!! warning
-    **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
+## Quick Setup with Docker
 
-## Prerequisites
+The quickest way to self-host is the single-container image on Docker Hub,
+[`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt).
+It bundles the web app, APIs, workers, PostgreSQL, RabbitMQ, Valkey, and
+FalkorDB-backed memory, and keeps all of its data in one Docker volume. The
+image is experimental: it is meant for local and small installations, not
+high-availability deployments.
 
-The single-container appliance's only product prerequisite is an installed,
-running Docker CLI and daemon. Select a local Docker endpoint using Linux
-containers on `amd64` or `arm64`. The Unix bootstrap also uses Bash, curl, and
-`sha256sum` or `shasum`. Docker Compose, Git, Node.js, and NPM are not required
-for the appliance installer.
+### Prerequisites
+
+You only need Docker: Docker Engine or Docker Desktop running Linux containers
+on `amd64` or `arm64`. Git, Node.js, and Docker Compose are not required. Test
+installations use about 5–6 GiB of memory, so plan for at least 8 GB of RAM
+and about 25 GB of free disk. Docker Desktop caps its VM's memory: raise the
+limit under **Settings → Resources**, or in `.wslconfig` on Windows with the
+WSL 2 backend.
 
 Install Docker from the [official Docker documentation](https://docs.docker.com/get-docker/),
-start it, then verify the selected daemon:
+start it, then verify that it is running:
 
 ```console
 docker -v
 docker info
 ```
 
-## Quick Setup with the Appliance Installer
+### Running the image
 
-The release installer pulls and starts the published single-container
-appliance: one Docker container, one loopback port, no source checkout. It
-needs a running Docker daemon with Linux containers on `amd64` or `arm64`; it
-does not install Docker or build AutoGPT from source. See
-[the installer reference](installer.md) for details.
+```bash
+docker run -d \
+  --name autogpt \
+  --restart unless-stopped \
+  --shm-size 2g \
+  --ulimit nofile=65536:65536 \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  -p 127.0.0.1:3000:3000 \
+  -e AUTOGPT_PUBLIC_URL=http://localhost:3000 \
+  -v autogpt-data:/data \
+  significantgravitas/autogpt:latest
+```
 
-The hosted installer is not live yet: `setup.agpt.co/install.sh` still serves
-the Compose installer, and the appliance image tags are not public until the
-[release gates](installer.md#maintainer-release-gates) pass. This first release
-supports Linux and macOS. Until then, and on Windows, use the
-[from-source setup](#manual-setup) below, which is also the path that supports
-a fully offline install with a local LLM.
+On Windows, put the command on one line in PowerShell, or run it from a WSL 2
+terminal.
 
+The first boot applies database migrations and can take several minutes. Don't
+stop the container until Docker reports it as `healthy`:
+
+```console
+docker inspect --format '{{.State.Health.Status}}' autogpt
+```
+
+Then open [http://localhost:3000](http://localhost:3000), create your account,
+and make it the administrator:
+
+```bash
+docker exec autogpt autogpt-admin promote you@example.com
+```
+
+Sign out and back in so your session picks up the administrator role.
+
+Signup stays open to anyone who can reach the app, which is why the command
+above publishes the port on `127.0.0.1` only. To close signup, remove the
+container:
+
+```bash
+docker stop autogpt
+docker rm autogpt
+```
+
+Then run the `docker run` command again with `-e AUTH_ALLOW_NEW_ACCOUNTS=false`
+added. Keep the `autogpt-data` volume whenever you replace the container: it
+holds your accounts, agents, memory, and generated secrets.
+
+`latest` tracks the newest verified release. To pin a version, use an immutable
+`vX.Y.Z` tag instead.
+
+[Run AutoGPT in One Docker Container](single-container.md) covers model
+providers, another port or a public URL, backups, upgrades, and
+troubleshooting.
+
+### Appliance installer (not live yet)
+
+The [appliance installer](installer.md) will wrap these steps in one command
+for Linux and macOS: it checks your Docker setup, pins the pulled image by
+digest, and keeps its configuration in a private directory. Its hosted command
+is not live yet. `setup.agpt.co/install.sh` still serves the old Compose
+installer, so don't run it; use the `docker run` command above.
 
 ## Manual Setup
 
+The manual setup clones the repository, builds every service from source, and
+runs each one in its own container with Docker Compose. The `setup-autogpt.sh`
+and `setup-autogpt.bat` scripts described in
+[the installer reference](installer.md#installing-from-source-compose) run the
+same steps for you and can also set up a local Ollama model.
+
+{% hint style="warning" %}
+Docker Compose publishes PostgreSQL, Redis, RabbitMQ, and every backend service
+port on all network interfaces. Redis has no password, PostgreSQL and RabbitMQ
+use the default passwords from this repository, and signup is open. Run the
+stack on a machine and network you trust.
+{% endhint %}
+
 ### Development prerequisites
 
-The manual source checkout requires
-[Git](https://git-scm.com/downloads),
-[Node.js and NPM](https://nodejs.org/en/download/), Docker, and
-[Docker Compose](https://docs.docker.com/compose/install/). Verify them before
-continuing:
+The manual setup needs [Git](https://git-scm.com/downloads), Docker with
+[Docker Compose](https://docs.docker.com/compose/install/), `make`, and
+Python 3, which `make init-env` uses to generate your secrets. Node.js is only
+needed to run the frontend outside Docker (see [Development](#development)) or
+to migrate an older Supabase-based install. Verify the rest before continuing:
 
 ```console
 git --version
-node -v
-npm -v
 docker -v
 docker compose version
+make --version
+python3 --version
 ```
+
+On Windows, where `make` is usually not installed, clone the repository as
+below, then run `autogpt_platform\installer\setup-autogpt.bat` instead of the
+remaining steps. It creates the `.env` files, generates the secrets, and starts
+the stack.
 
 ### Cloning the Repository
 The first step is cloning the AutoGPT repository to your computer.
@@ -117,8 +198,8 @@ Inside the `autogpt_platform` directory, you can use:
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
 | `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) and generate the secrets they leave blank |
-| `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
-| `make stop-core`       | Stop the core services                                                        |
+| `make start-core`      | Start the services the backend needs (Postgres, Redis, RabbitMQ, ClamAV, FalkorDB) in background and apply the database migrations |
+| `make stop-core`       | Stop every running service in the stack                                       |
 | `make logs-core`       | Tail the logs for core services                                               |
 | `make format`          | Format & lint backend (Python) and frontend (TypeScript) code                 |
 | `make migrate`         | Run backend database migrations                                               |
@@ -146,7 +227,7 @@ You can always check available Makefile recipes by running:
 ```sh
 make help
 ```
-(or just inspecting the `Makefile` in the repo root).
+(or just inspecting `autogpt_platform/Makefile`).
 
 ---
 
@@ -158,9 +239,9 @@ You can check if the server is running by visiting [http://localhost:3000](http:
 
 By default the application for different services run on the following ports:
 
-Frontend UI Server: 3000
-Backend Websocket Server: 8001
-Execution API Rest Server: 8006
+- Frontend UI Server: 3000
+- Backend Websocket Server: 8001
+- Execution API Rest Server: 8006
 
 ### Upgrading: secrets are generated per install
 
@@ -168,11 +249,14 @@ Execution API Rest Server: 8006
 come with a value in `.env.default`, so every install that did not set its own
 ran on the same three values. They are now blank there and generated for each
 install, and the backend **does not start** without an `ENCRYPTION_KEY` or
-with the one `.env.default` used to contain.
+with the one `.env.default` used to contain. This applies to Docker Compose
+installs; the Docker Hub image generates its own secrets on first boot and
+keeps them in its data volume.
 
-A fresh install needs nothing beyond `make init-env` (or the installer script,
-which does the same). An install that already set its own values needs
-nothing either. Follow the steps below if you are upgrading an install that
+A fresh install needs nothing beyond `make init-env` (or
+`installer/setup-autogpt.sh` / `setup-autogpt.bat`, which do the same). An
+install that already set its own values needs nothing either. Follow the steps
+below if you are upgrading an install that
 
 - has no `autogpt_platform/backend/.env`, or one without an `ENCRYPTION_KEY`
   line — it was running on the value from `.env.default`; or
@@ -235,8 +319,8 @@ move them to the new key instead of losing them. Run everything from
    python3 single-container/runtime_config.py fill-env --path frontend/.env
    ```
 
-   Do not re-run the installer script for this: it also starts the stack,
-   which is step 5.
+   Do not re-run `setup-autogpt.sh` or `setup-autogpt.bat` for this: they also
+   start the stack, which is step 5.
 
 4. Re-encrypt what is stored. Build the new images and bring the database up
    to date first; `migrate` starts the database on its own:
