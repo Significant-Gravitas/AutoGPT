@@ -192,6 +192,23 @@ describe("BackendAPI WebSocket failure logging", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
   });
 
+  it("still reports an abnormal close while connecting when nobody logged out", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const { socket } = await connect();
+
+    socket.onclose!({ code: 1006, reason: "", wasClean: false });
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const [message] = consoleError.mock.calls[0];
+    expect(message).toContain("[BackendAPI] WebSocket failed to connect");
+    expect(message).toContain("1006");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
+  });
+
   it("reports a close on an established connection at warn level", async () => {
     const consoleWarn = vi
       .spyOn(console, "warn")
