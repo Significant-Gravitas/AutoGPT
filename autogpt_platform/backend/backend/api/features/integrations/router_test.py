@@ -9,6 +9,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.api.features.integrations.router import _get_provider_oauth_handler, router
+from backend.api.features.integrations.router import settings as router_settings
 from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
@@ -16,6 +17,8 @@ from backend.data.model import (
     OAuth2Credentials,
     UserPasswordCredentials,
 )
+from backend.integrations.oauth import stripe_link_hosted
+from backend.integrations.oauth.stripe_link_hosted import StripeLinkHostedOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 
@@ -913,6 +916,157 @@ class TestOAuthHandlerResolutionForDeviceProviders:
 
         assert exc.value.status_code == 404
         assert "does not support OAuth" in exc.value.detail
+
+
+class TestStripeLinkClientSelection:
+    """Stripe Link connects by device code unless a confidential client is
+    configured, and each grant is revoked by the client that issued it."""
+
+    def test_without_a_confidential_client_login_points_at_device_auth(self):
+        # Unconfigured, the confidential client is left out of the registry.
+        with (
+            patch("backend.api.features.integrations.router.HANDLERS_BY_NAME", {}),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), ProviderName.STRIPE_LINK)
+
+        assert exc.value.status_code == 400
+        assert "/api/integrations/stripe_link/device-auth/initiate" in (
+            exc.value.detail
+        )
+
+    def test_with_a_confidential_client_login_uses_the_redirect_flow(self, monkeypatch):
+        monkeypatch.setattr(
+            stripe_link_hosted._secrets, "stripe_link_publishable_key", "pk_test"
+        )
+        with (
+            patch(
+                "backend.api.features.integrations.router.HANDLERS_BY_NAME",
+                {"stripe_link": StripeLinkHostedOAuthHandler},
+            ),
+            patch.object(router_settings.secrets, "stripe_link_client_id", "cid"),
+            patch.object(router_settings.secrets, "stripe_link_client_secret", "cs"),
+            patch.object(
+                router_settings.config, "frontend_base_url", "https://app.example"
+            ),
+        ):
+            handler = _get_provider_oauth_handler(MagicMock(), ProviderName.STRIPE_LINK)
+
+        assert isinstance(handler, StripeLinkHostedOAuthHandler)
+        assert handler.redirect_uri == (
+            "https://app.example/auth/integrations/oauth_callback"
+        )
+
+    @pytest.mark.parametrize("hosted", [True, False])
+    def test_delete_revokes_through_the_issuing_client(self, hosted):
+        cred = _make_oauth2_cred("link-cred", "stripe_link")
+        if hosted:
+            cred.metadata = {"link_oauth_flow": "authorization_code"}
+        oauth_handler = MagicMock(revoke_tokens=AsyncMock(return_value=True))
+        device_handler = MagicMock(revoke_tokens=AsyncMock(return_value=True))
+
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            patch(
+                "backend.api.features.integrations.router."
+                "remove_all_webhooks_for_credentials",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.api.features.integrations.router.revocation_handler",
+                return_value=oauth_handler,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {"stripe_link": MagicMock(return_value=device_handler)},
+            ),
+            patch(
+                "backend.api.features.integrations.router.STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                True,
+            ),
+        ):
+            mgr.store.get_creds_by_id = AsyncMock(return_value=cred)
+            mgr.delete = AsyncMock()
+            resp = client.request("DELETE", "/stripe_link/credentials/link-cred")
+
+        assert resp.status_code == 200
+        assert resp.json()["revoked"] is True
+        used, unused = (
+            (oauth_handler, device_handler)
+            if hosted
+            else (device_handler, oauth_handler)
+        )
+        used.revoke_tokens.assert_awaited_once_with(cred)
+        unused.revoke_tokens.assert_not_awaited()
+
+    def test_delete_revokes_a_hosted_grant_without_a_frontend_url(self, monkeypatch):
+        """Revoking sends no redirect URI, so a deployment without a frontend
+        URL must still end the grant rather than leave it live."""
+        cred = _make_oauth2_cred("link-cred", "stripe_link")
+        cred.metadata = {
+            "link_oauth_flow": "authorization_code",
+            "link_client_id": "cid",
+        }
+        monkeypatch.setattr(stripe_link_hosted._secrets, "stripe_link_client_id", "cid")
+        monkeypatch.setattr(
+            stripe_link_hosted._secrets, "stripe_link_client_secret", "cs"
+        )
+        revoke = AsyncMock(return_value=True)
+        monkeypatch.setattr(StripeLinkHostedOAuthHandler, "revoke_tokens", revoke)
+
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            patch(
+                "backend.api.features.integrations.router."
+                "remove_all_webhooks_for_credentials",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.api.features.integrations.router."
+                "STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                True,
+            ),
+            patch.object(router_settings.config, "frontend_base_url", ""),
+        ):
+            mgr.store.get_creds_by_id = AsyncMock(return_value=cred)
+            mgr.delete = AsyncMock()
+            resp = client.request("DELETE", "/stripe_link/credentials/link-cred")
+
+        assert resp.status_code == 200
+        assert resp.json()["revoked"] is True
+        revoke.assert_awaited_once_with(cred)
+
+    def test_delete_succeeds_after_the_confidential_client_is_unconfigured(self):
+        """The grant can no longer be revoked from here, but the disconnect the
+        user asked for has happened and must not come back as an error."""
+        cred = _make_oauth2_cred("link-cred", "stripe_link")
+        cred.metadata = {"link_oauth_flow": "authorization_code"}
+        resolve = MagicMock()
+
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            patch(
+                "backend.api.features.integrations.router."
+                "remove_all_webhooks_for_credentials",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.api.features.integrations.router._get_provider_oauth_handler",
+                resolve,
+            ),
+            patch(
+                "backend.api.features.integrations.router.STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                False,
+            ),
+        ):
+            mgr.store.get_creds_by_id = AsyncMock(return_value=cred)
+            mgr.delete = AsyncMock()
+            resp = client.request("DELETE", "/stripe_link/credentials/link-cred")
+
+        assert resp.status_code == 200
+        assert resp.json()["revoked"] is False
+        mgr.delete.assert_awaited_once()
+        resolve.assert_not_called()
 
 
 class TestDeviceAuthEndpoints:
