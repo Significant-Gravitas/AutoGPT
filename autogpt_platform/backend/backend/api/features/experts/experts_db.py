@@ -95,6 +95,7 @@ from backend.api.features.store import skill_db
 from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
+from backend.copilot.model import AUTOPILOT_MODES, AutopilotMode
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     SkillNotFoundError,
@@ -296,6 +297,7 @@ def _to_model(
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
+        autopilot_mode=autopilot_mode_of(row),
         pod_id=row.podId,
         setup_status=_setup_status(row),
         setup_failures=row.setupFailures or [],
@@ -493,7 +495,12 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     return await query_raw_with_schema(
         """
         SELECT "id", "name", "avatarUrl" AS "avatar_url", "color", "role",
-               "jobTitle" AS "job_title", "isArchived" AS "is_archived"
+               "jobTitle" AS "job_title", "isArchived" AS "is_archived",
+               CASE
+                   WHEN "autopilotMode" IN ('ask_first', 'auto', 'unsupervised')
+                   THEN "autopilotMode"
+                   ELSE NULL
+               END AS "autopilot_mode"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
         """,
@@ -1747,6 +1754,66 @@ async def update_budget(
     )
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+def autopilot_mode_of(row: prisma.models.Expert) -> AutopilotMode | None:
+    """The stored default, or None for anything that is not a known mode."""
+    mode = row.autopilotMode
+    return cast(AutopilotMode, mode) if mode in AUTOPILOT_MODES else None
+
+
+async def get_autopilot_mode(user_id: str, expert_id: str) -> AutopilotMode | None:
+    """The approval mode *expert_id*'s new web chats start on.
+
+    Same ownership predicate as the setters: a shared, template or archived
+    expert reads as None, so a session opened on it falls to the platform
+    default rather than a default somebody else chose.
+    """
+    row = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        }
+    )
+    return autopilot_mode_of(row) if row is not None else None
+
+
+async def update_autopilot_mode(
+    user_id: str, expert_id: str, mode: AutopilotMode | None
+) -> Expert:
+    """Set the approval mode new web chats with the expert start on.
+
+    Only the owner of an active, private hire may change it: an unsupervised
+    default lets every new thread act without approval, so a shared expert
+    must not be flipped by a non-owner. Open threads keep their own mode.
+    """
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
+        data={"autopilotMode": mode},
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    if mode == "unsupervised":
+        emit_funnel_event(
+            user_id,
+            PostHogEvent.EXPERT_MODE_SET_UNSUPERVISED,
+            {"expert_id": expert_id},
+        )
 
     expert = await get_expert(user_id, expert_id)
     if expert is None:

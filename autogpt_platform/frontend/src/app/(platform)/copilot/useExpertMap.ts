@@ -1,6 +1,7 @@
 import { useListExpertIdentities } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
+import type { AutopilotMode } from "./autopilotModeStore";
 
 /**
  * Why a thread is read-only. `fired` is the only reason we can state as fact;
@@ -18,6 +19,8 @@ export interface ExpertIdentity {
   jobTitle?: string | null;
   isArchived: boolean;
   readOnlyReason: ExpertReadOnlyReason | null;
+  /** The approval mode a new chat with this expert starts on. */
+  autopilotMode?: AutopilotMode | null;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
@@ -101,6 +104,7 @@ export function useExpertMap() {
       jobTitle: expert.job_title ?? null,
       isArchived: expert.is_archived,
       readOnlyReason: expert.is_archived ? ("fired" as const) : null,
+      autopilotMode: expert.autopilot_mode ?? null,
     }));
     const activeExperts = identities.filter((expert) => !expert.isArchived);
     return {

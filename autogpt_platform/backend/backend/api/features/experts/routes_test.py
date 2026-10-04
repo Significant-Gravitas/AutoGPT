@@ -932,6 +932,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "role": "Marketing Specialist",
             "job_title": None,
             "is_archived": True,
+            "autopilot_mode": None,
         }
     ]
     mock_list.assert_awaited_once_with(test_user_id)
@@ -2161,3 +2162,109 @@ def test_existing_custom_avatar_can_be_kept_without_review(mocker):
         "/experts/expert-1/avatar", json={"avatar_url": expert.avatar_url}
     )
     assert response.status_code == 200
+
+
+# ─── Approval mode ─────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def auto_mode_on(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    return mocker.patch(
+        "backend.api.features.experts.routes.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+
+def test_update_expert_mode_returns_updated_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    auto_mode_on: AsyncMock,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_autopilot_mode",
+        new_callable=AsyncMock,
+        return_value=_make_expert(autopilot_mode="ask_first"),
+    )
+
+    response = client.patch(
+        "/experts/expert-1/mode", json={"autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["autopilot_mode"] == "ask_first"
+    mock_update.assert_awaited_once_with(test_user_id, "expert-1", "ask_first")
+
+
+def test_update_expert_mode_null_restores_platform_default(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    auto_mode_on: AsyncMock,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_autopilot_mode",
+        new_callable=AsyncMock,
+        return_value=_make_expert(autopilot_mode=None),
+    )
+
+    response = client.patch("/experts/expert-1/mode", json={"autopilot_mode": None})
+
+    assert response.status_code == 200
+    assert response.json()["autopilot_mode"] is None
+    mock_update.assert_awaited_once_with(test_user_id, "expert-1", None)
+
+
+def test_update_expert_mode_rejects_an_unknown_mode(
+    mocker: pytest_mock.MockerFixture,
+    auto_mode_on: AsyncMock,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_autopilot_mode",
+        new_callable=AsyncMock,
+    )
+
+    response = client.patch("/experts/expert-1/mode", json={"autopilot_mode": "yolo"})
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+def test_update_expert_mode_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+    auto_mode_on: AsyncMock,
+) -> None:
+    """Templates, archived and other users' experts all read as missing."""
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_autopilot_mode",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("expert-1"),
+    )
+
+    response = client.patch(
+        "/experts/expert-1/mode", json={"autopilot_mode": "unsupervised"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_update_expert_mode_is_refused_while_the_flag_is_off(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Not a 404: the UI needs to tell the expert apart from the feature."""
+    mocker.patch(
+        "backend.api.features.experts.routes.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_autopilot_mode",
+        new_callable=AsyncMock,
+    )
+
+    response = client.patch(
+        "/experts/expert-1/mode", json={"autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "feature_disabled"
+    mock_update.assert_not_awaited()

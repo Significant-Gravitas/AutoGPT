@@ -36,6 +36,7 @@ import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
+import { ExpertModeSection } from "./components/ExpertModeSection/ExpertModeSection";
 import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
@@ -257,7 +258,10 @@ export default function ExpertDetailPage() {
           </TabsLineContent>
 
           <TabsLineContent value="settings">
-            <ExpertSettingsSection expert={expert} onFire={openFire} />
+            <div className="flex flex-col gap-4">
+              <ExpertModeSection expert={expert} />
+              <ExpertSettingsSection expert={expert} onFire={openFire} />
+            </div>
           </TabsLineContent>
         </TabsLine>
 

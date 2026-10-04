@@ -25,7 +25,10 @@ import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
-import { useAutopilotModeStore } from "./autopilotModeStore";
+import {
+  getAutopilotModeChoice,
+  useAutopilotModeStore,
+} from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
 
@@ -45,6 +48,17 @@ export function useChatSession({
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
+  const clearNewChatChoice = useAutopilotModeStore(
+    (state) => state.clearNewChatChoice,
+  );
+
+  // A mode picked in a new chat belongs to that composer and recipient. Once
+  // the user moves on without sending (another new chat, a different expert)
+  // the pick must not travel with them, or it would override the next
+  // expert's own default.
+  useEffect(() => {
+    if (!sessionId) clearNewChatChoice();
+  }, [sessionId, expertId, clearNewChatChoice]);
 
   const transportQuery = useGetV2ListChatTransports({
     query: {
@@ -299,6 +313,10 @@ export function useChatSession({
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
       if (options?.expertKickoff) sessionData.expert_kickoff = true;
+      // Same rule as the route: only a mode the user picked travels, so a new
+      // expert thread starts on the expert's own default rather than "auto".
+      const pickedMode = getAutopilotModeChoice(null);
+      if (pickedMode) sessionData.autopilot_mode = pickedMode;
       const body =
         Object.keys(sessionData).length > 0
           ? { data: sessionData }
