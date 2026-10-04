@@ -6,10 +6,13 @@ BLOCK_COSTS configuration used by the execution system.
 """
 
 import logging
-from typing import List, Type, TypeVar
+from typing import Iterable, List, Type, TypeVar
 
 from backend.blocks._base import Block, BlockCost
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.model import Credentials
+from backend.integrations.credentials_store import DEFAULT_CREDENTIALS
+from backend.sdk.provider import Provider
 from backend.sdk.registry import AutoRegistry
 
 BlockT = TypeVar("BlockT", bound=Type[Block])
@@ -23,6 +26,11 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
 
     This function checks if the block uses credentials from a provider that has
     base costs defined, and automatically registers those costs for the block.
+
+    Like the rest of BLOCK_COSTS, a priced base cost only applies when the run
+    uses a platform-provided credential: each one is registered with a
+    ``cost_filter`` on that credential's id, so runs with the user's own key
+    stay free. Zero-amount base costs charge nothing and stay unfiltered.
 
     Args:
         block_class: The block class to register costs for
@@ -52,6 +60,8 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
         logger.debug(f"Block {block_class.__name__} has no credentials fields")
         return
 
+    block_costs: List[BlockCost] = []
+
     # Get provider information from credentials fields
     for field_name, field_info in credentials_fields.items():
         # Get the field schema to extract provider information
@@ -63,43 +73,80 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
             continue
 
         # For each provider, check if it has base costs
-        block_costs: List[BlockCost] = []
         for provider_name in providers:
             provider = AutoRegistry.get_provider(provider_name)
             if not provider:
                 logger.debug(f"Provider {provider_name} not found in registry")
                 continue
+            if not provider.base_costs:
+                continue
 
-            # Add provider's base costs to the block
-            if provider.base_costs:
-                logger.debug(
-                    f"Registering {len(provider.base_costs)} base costs from provider {provider_name} for block {block_class.__name__}"
-                )
-                block_costs.extend(provider.base_costs)
-
-        # Register costs if any were found
-        if block_costs:
-            BLOCK_COSTS[block_class] = block_costs
             logger.debug(
-                f"Registered {len(block_costs)} total costs for block {block_class.__name__}"
+                f"Registering {len(provider.base_costs)} base costs from provider {provider_name} for block {block_class.__name__}"
             )
+            block_costs.extend(_platform_priced_costs(provider, field_name))
+
+    # Register costs if any were found
+    if block_costs:
+        BLOCK_COSTS[block_class] = block_costs
+        logger.debug(
+            f"Registered {len(block_costs)} total costs for block {block_class.__name__}"
+        )
 
 
-def sync_all_provider_costs() -> None:
+def _platform_priced_costs(provider: Provider, field_name: str) -> List[BlockCost]:
+    """The provider's base costs, each gated on one of its platform credentials
+    in ``field_name``. Zero-amount costs charge nothing, so they stay unfiltered."""
+    platform_ids = _platform_credential_ids(provider.name, provider.default_credentials)
+    costs: List[BlockCost] = []
+    for base_cost in provider.base_costs:
+        if not base_cost.cost_amount:
+            costs.append(base_cost)
+            continue
+        costs.extend(
+            base_cost.model_copy(
+                update={
+                    "cost_filter": {
+                        **base_cost.cost_filter,
+                        field_name: {"id": cred_id},
+                    }
+                }
+            )
+            for cred_id in platform_ids
+        )
+    return costs
+
+
+def _platform_credential_ids(
+    provider_name: str, provider_creds: List[Credentials]
+) -> List[str]:
+    """IDs of the credentials the platform provides for ``provider_name``: the
+    SDK ``<provider>-default`` key (set from the provider's env var) and any
+    system credential in ``credentials_store`` (e.g. Exa's "Use Credits for Exa
+    search")."""
+    ids = [cred.id for cred in provider_creds]
+    ids += [
+        cred.id
+        for cred in DEFAULT_CREDENTIALS
+        if cred.provider == provider_name and cred.id not in ids
+    ]
+    return ids
+
+
+def sync_all_provider_costs(block_classes: Iterable[Type[Block]]) -> None:
     """
     Sync all provider base costs to blocks that use them.
 
-    This should be called after all providers and blocks are registered,
-    typically during application startup.
+    Called by ``load_all_blocks()`` once every provider and block module is
+    imported, so each process that loads blocks (REST API, executor, copilot
+    executor, ...) prices SDK blocks the same way.
     """
-    from backend.blocks import load_all_blocks
-
     logger.info("Syncing provider costs to blocks...")
 
     blocks_with_costs = 0
     total_costs = 0
 
-    for block_id, block_class in load_all_blocks().items():
+    for block_class in block_classes:
         initial_count = len(BLOCK_COSTS.get(block_class, []))
         register_provider_costs_for_block(block_class)
         final_count = len(BLOCK_COSTS.get(block_class, []))
