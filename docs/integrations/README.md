@@ -124,6 +124,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Calendar Read Events](block-integrations/google/calendar.md#google-calendar-read-events) | Retrieves upcoming events from a Google Calendar with filtering options |
 | [Google Docs Append Markdown](block-integrations/google/docs.md#google-docs-append-markdown) | Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output |
 | [Google Docs Append Plain Text](block-integrations/google/docs.md#google-docs-append-plain-text) | Append plain text to the end of a Google Doc (no formatting applied) |
+| [Google Docs Batch Update](block-integrations/google/docs_batch_update.md#google-docs-batch-update) | Apply any Google Docs API batchUpdate requests to a document in one all-or-nothing call: named ranges, bullets, headers, footnotes, images and anything the other Google Docs blocks don't cover |
 | [Google Docs Create](block-integrations/google/docs.md#google-docs-create) | Create a new Google Doc |
 | [Google Docs Delete Content](block-integrations/google/docs.md#google-docs-delete-content) | Delete a range of content from a Google Doc |
 | [Google Docs Export](block-integrations/google/docs.md#google-docs-export) | Export a Google Doc to PDF, Word, text, or other formats |
@@ -146,6 +147,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Add Note](block-integrations/google/sheets.md#google-sheets-add-note) | Add a note to a cell in a Google Sheet |
 | [Google Sheets Append Row](block-integrations/google/sheets.md#google-sheets-append-row) | Append or Add a single row to the end of a Google Sheet |
 | [Google Sheets Batch Operations](block-integrations/google/sheets.md#google-sheets-batch-operations) | This block performs multiple operations on a Google Sheets spreadsheet in a single batch request |
+| [Google Sheets Batch Update](block-integrations/google/sheets_batch_update.md#google-sheets-batch-update) | Apply any Google Sheets API batchUpdate requests to a spreadsheet in one all-or-nothing call: charts, conditional formatting, merges, filters and anything the other Google Sheets blocks don't cover |
 | [Google Sheets Clear](block-integrations/google/sheets.md#google-sheets-clear) | This block clears data from a specified range in a Google Sheets spreadsheet |
 | [Google Sheets Copy To Spreadsheet](block-integrations/google/sheets.md#google-sheets-copy-to-spreadsheet) | Copy a sheet from one spreadsheet to another |
 | [Google Sheets Create Named Range](block-integrations/google/sheets.md#google-sheets-create-named-range) | Create a named range to reference cells by name instead of A1 notation |
