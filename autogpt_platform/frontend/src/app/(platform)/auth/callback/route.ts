@@ -1,8 +1,13 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import {
+  EMAIL_VERIFICATION_NOTICE_PARAM,
+  type EmailVerificationNotice,
+} from "@/lib/auth/email-verification";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
+import { type SignupMethod } from "@/services/analytics/account-created-cookie";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
   scheduleAccountCreatedGoal,
@@ -16,6 +21,10 @@ import { NextResponse } from "next/server";
 // cookie, then redirects here because this is the `callbackURL` we hand it in
 // /api/auth/login/with-provider. So by the time we run, the session already
 // exists and we only provision the backend user and decide where to send them.
+//
+// An email verification link lands here too (`?method=email`, see
+// lib/auth/email-verification.ts) after /api/auth/verify-email has signed the
+// user in, so a verified email sign-up is provisioned and counted here, once.
 function getPublicOrigin(requestOrigin: string) {
   const configuredURL =
     process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
@@ -31,9 +40,30 @@ function getPublicOrigin(requestOrigin: string) {
   }
 }
 
+function getSignupMethod(searchParams: URLSearchParams): SignupMethod {
+  return searchParams.get("method") === "email" ? "email" : "google";
+}
+
+// Better Auth redirects here without a session when the link is expired,
+// invalid or already used (`?error=`), and when the address was already
+// verified. Either way the user can log in: an unverified account is sent a
+// fresh link from the login form.
+function getEmailVerificationLoginPath(searchParams: URLSearchParams) {
+  const notice: EmailVerificationNotice = searchParams.get("error")
+    ? "expired"
+    : "verified";
+  const params = new URLSearchParams({
+    [EMAIL_VERIFICATION_NOTICE_PARAM]: notice,
+  });
+  const next = sanitizeAuthNext(searchParams.get("next"));
+  if (next) params.set("next", next);
+  return `/login?${params.toString()}`;
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin: requestOrigin } = new URL(request.url);
   const publicOrigin = getPublicOrigin(requestOrigin);
+  const signupMethod = getSignupMethod(searchParams);
 
   let next = "/copilot";
 
@@ -43,8 +73,8 @@ export async function GET(request: Request) {
     try {
       const createUserResponse = await postV1GetOrCreateUser();
       if (wasAccountCreated(createUserResponse)) {
-        await scheduleAccountCreatedGoal("google");
-        await markAccountCreated("google");
+        await scheduleAccountCreatedGoal(signupMethod);
+        await markAccountCreated(signupMethod);
       }
 
       const { shouldShowOnboarding } = await getOnboardingStatus();
@@ -109,6 +139,12 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(`${publicOrigin}${next}`);
+  }
+
+  if (signupMethod === "email") {
+    return NextResponse.redirect(
+      `${publicOrigin}${getEmailVerificationLoginPath(searchParams)}`,
+    );
   }
 
   // return the user to an error page with instructions

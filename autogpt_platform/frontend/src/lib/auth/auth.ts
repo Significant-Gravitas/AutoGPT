@@ -6,13 +6,17 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import { isAwaitingEmailVerification } from "./email-verification";
+import { emailRepeatSignUp } from "./existing-user-sign-up";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
 } from "./password-policy";
+import { provisionPlatformUser } from "./provision-platform-user";
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -62,9 +66,16 @@ if (process.env.NODE_ENV !== "production") {
   globalForAuthDb.__authDbPool = authDbPool;
 }
 
+const requireEmailVerification =
+  process.env.AUTH_REQUIRE_EMAIL_VERIFICATION === "true";
+// 24h, as GoTrue's confirmation links were; Better Auth's default is 1h.
+const emailVerificationExpiresIn = 60 * 60 * 24;
+
+const authSecret = process.env.BETTER_AUTH_SECRET;
+
 export const auth = betterAuth({
   baseURL,
-  secret: process.env.BETTER_AUTH_SECRET,
+  secret: authSecret,
   database: authDbPool,
   telemetry: { enabled: false },
   databaseHooks: {
@@ -75,13 +86,36 @@ export const auth = betterAuth({
         // a user row. Existing users and the SQL data-migration bypass it.
         // The thrown message is phrased so the frontend `isWaitlistError()`
         // maps it to the existing "not allowed" modal.
-        before: async (user: { email: string }) => {
+        before: async (
+          user: { email: string },
+          ctx: { path?: string } | null,
+        ) => {
+          assertTeamEmailUsesGoogle(user.email, ctx);
           const decision = isSignupAllowed(user.email, readSignupGateConfig());
           if (!decision.allowed) {
             throw new APIError("FORBIDDEN", {
               message: decision.reason ?? "Signups are not allowed.",
             });
           }
+        },
+        // Create the platform `User` row the moment the auth identity exists
+        // (email/password sign-up and first OAuth sign-in alike), so a
+        // session can never outrun it. Better Auth runs this after the commit
+        // and awaits it before the sign-up response returns; it must never
+        // throw, see provision-platform-user.ts for why.
+        // With email verification required, an unverified identity gets no
+        // session and no row: /auth/callback?method=email provisions it once
+        // the link is opened.
+        after: async (user: {
+          id: string;
+          email: string;
+          name: string;
+          emailVerified?: boolean | null;
+        }) => {
+          if (isAwaitingEmailVerification(user, requireEmailVerification)) {
+            return;
+          }
+          await provisionPlatformUser(authDbPool, user);
         },
       },
       update: {
@@ -133,8 +167,17 @@ export const auth = betterAuth({
     // flow's signOut({ scope: "global" }) — the standard defense when a
     // user resets their password to evict a stolen session.
     revokeSessionsOnPasswordReset: true,
-    requireEmailVerification:
-      process.env.AUTH_REQUIRE_EMAIL_VERIFICATION === "true",
+    requireEmailVerification,
+    // Only called with requireEmailVerification on, for a sign-up whose
+    // address already has an account: see existing-user-sign-up.ts.
+    onExistingUserSignUp: async ({ user }) => {
+      await emailRepeatSignUp({
+        user,
+        baseURL,
+        secret: authSecret,
+        expiresIn: emailVerificationExpiresIn,
+      });
+    },
     password: {
       // bcrypt instead of Better Auth's default scrypt so password hashes
       // migrated from Supabase GoTrue keep verifying without a reset.
@@ -150,6 +193,15 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
+    // These only come into play with requireEmailVerification on (sign-up
+    // then sends the link and creates no session). An unverified password
+    // user who signs in is sent a fresh link rather than a dead-end 403, so
+    // accounts created before the flag was flipped can still get in.
+    sendOnSignIn: true,
+    // The link signs the user in and redirects to the callbackURL the
+    // sign-up/sign-in action passed, which is /auth/callback?method=email.
+    autoSignInAfterVerification: true,
+    expiresIn: emailVerificationExpiresIn,
     sendVerificationEmail: async ({ user, url }) => {
       await sendAuthEmail({
         to: user.email,

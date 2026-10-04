@@ -1,6 +1,10 @@
 "use server";
 
 import { auth } from "@/lib/auth/auth";
+import {
+  EMAIL_NOT_VERIFIED_CODE,
+  getEmailVerificationCallbackURL,
+} from "@/lib/auth/email-verification";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { loginFormSchema } from "@/types/auth";
@@ -9,7 +13,11 @@ import { APIError } from "better-auth/api";
 import { headers } from "next/headers";
 import { getOnboardingStatus } from "../../api/helpers";
 
-export async function login(email: string, password: string) {
+export async function login(
+  email: string,
+  password: string,
+  next?: string | null,
+) {
   try {
     const parsed = loginFormSchema.safeParse({ email, password });
 
@@ -25,11 +33,22 @@ export async function login(email: string, password: string) {
         body: {
           email: parsed.data.email,
           password: parsed.data.password,
+          // Only used for the link Better Auth emails to an unverified user.
+          callbackURL: getEmailVerificationCallbackURL(next),
         },
         headers: await headers(),
       });
     } catch (error) {
       if (error instanceof APIError) {
+        // Right password, unverified address: Better Auth has just emailed a
+        // fresh verification link (sendOnSignIn).
+        if (error.body?.code === EMAIL_NOT_VERIFIED_CODE) {
+          return {
+            success: false,
+            error: "email_not_verified",
+            email: parsed.data.email,
+          };
+        }
         return {
           success: false,
           error: error.body?.message || "Invalid email or password",

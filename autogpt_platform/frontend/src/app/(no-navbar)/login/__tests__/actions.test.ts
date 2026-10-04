@@ -63,7 +63,11 @@ describe("login", () => {
     const result = await login("user@example.com", "hunter2-password");
 
     expect(signInEmailMock).toHaveBeenCalledWith({
-      body: { email: "user@example.com", password: "hunter2-password" },
+      body: {
+        email: "user@example.com",
+        password: "hunter2-password",
+        callbackURL: "/auth/callback?method=email",
+      },
       headers: expect.any(Headers),
     });
     expect(createUserMock).toHaveBeenCalledTimes(1);
@@ -93,6 +97,34 @@ describe("login", () => {
 
     expect(result).toEqual({ success: false, error: "Invalid credentials" });
     expect(createUserMock).not.toHaveBeenCalled();
+  });
+
+  it("reports email_not_verified so the page can show check-your-inbox", async () => {
+    // Right password, unverified address: with sendOnSignIn Better Auth has
+    // already emailed a fresh link by the time it throws this.
+    signInEmailMock.mockRejectedValue(
+      new APIError("FORBIDDEN", {
+        message: "Email not verified",
+        code: "EMAIL_NOT_VERIFIED",
+      }),
+    );
+
+    const result = await login(
+      "unverified@example.com",
+      "hunter2-password",
+      "/marketplace",
+    );
+
+    expect(result).toEqual({
+      success: false,
+      error: "email_not_verified",
+      email: "unverified@example.com",
+    });
+    expect(signInEmailMock.mock.calls[0][0].body.callbackURL).toBe(
+      "/auth/callback?method=email&next=%2Fmarketplace",
+    );
+    expect(createUserMock).not.toHaveBeenCalled();
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
   });
 
   it("falls back to a generic message when the APIError carries no body message", async () => {
