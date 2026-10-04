@@ -40,6 +40,7 @@ def main(**kwargs):
     from backend.api.ws_api import WebsocketServer
     from backend.copilot.bot.app import CoPilotChatBridge
     from backend.copilot.executor.manager import CoPilotExecutor
+    from backend.copilot.swap_service import SwapCredentialService
     from backend.data.db_manager import DatabaseManager
     from backend.executor import ExecutionManager, Scheduler
     from backend.executor.batch_executor import BatchExecutor
@@ -48,6 +49,7 @@ def main(**kwargs):
 
     run_processes(
         DatabaseManager().set_log_level("warning"),
+        SwapCredentialService().set_log_level("warning"),
         Scheduler(),
         # BatchExecutor polls submitted LLM batches (Anthropic today) and
         # dispatches results to caller-registered namespace handlers.

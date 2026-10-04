@@ -473,12 +473,28 @@ class AppService(BaseAppService, ABC):
         sentry_init()
         super().run()
 
-        self.fastapi_app = FastAPI(lifespan=self.lifespan)
+        self.fastapi_app = self.build_fastapi_app()
+
+        # Start the FastAPI server in a separate thread.
+        api_thread = threading.Thread(
+            target=self.__start_fastapi,
+            daemon=True,
+            name=f"{self.service_name}-http-server",
+        )
+        api_thread.start()
+
+        # Run the main service loop (blocking).
+        self.run_service()
+
+    def build_fastapi_app(self) -> FastAPI:
+        """The service's HTTP app: one POST route per exposed method, the
+        health checks and metrics, and nothing else."""
+        app = FastAPI(lifespan=self.lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
             instrument_fastapi(
-                self.fastapi_app,
+                app,
                 service_name=self.service_name,
                 expose_endpoint=True,
                 endpoint="/metrics",
@@ -497,29 +513,17 @@ class AppService(BaseAppService, ABC):
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
-                self.fastapi_app.add_api_route(
+                app.add_api_route(
                     route_path,
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
                 )
-        self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST", "GET"]
-        )
-        self.fastapi_app.add_api_route(
+        app.add_api_route("/health_check", self.health_check, methods=["POST", "GET"])
+        app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self._register_exception_handlers(self.fastapi_app)
-
-        # Start the FastAPI server in a separate thread.
-        api_thread = threading.Thread(
-            target=self.__start_fastapi,
-            daemon=True,
-            name=f"{self.service_name}-http-server",
-        )
-        api_thread.start()
-
-        # Run the main service loop (blocking).
-        self.run_service()
+        self._register_exception_handlers(app)
+        return app
 
 
 # --------------------------------------------------
