@@ -162,9 +162,9 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         # Same block id — a continuous text stream, no separator inserted.
-        await queue.put(StreamTextDelta(id="1", delta="Hello "))
-        await queue.put(StreamTextDelta(id="1", delta="world"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="Hello ")))
+        await queue.put((None, StreamTextDelta(id="1", delta="world")))
+        await queue.put((None, StreamFinish()))
 
         captured_session_ids: list[str] = []
 
@@ -203,9 +203,9 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamTextDelta(id="1", delta="first thought."))
-        await queue.put(StreamTextDelta(id="2", delta="second thought."))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="first thought.")))
+        await queue.put((None, StreamTextDelta(id="2", delta="second thought.")))
+        await queue.put((None, StreamFinish()))
 
         with (
             patch(
@@ -233,7 +233,7 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamError(errorText="executor crashed"))
+        await queue.put((None, StreamError(errorText="executor crashed")))
 
         with (
             patch(
@@ -261,14 +261,17 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="connect_integration",
-                output='{"type":"setup_requirements","message":"Connect GitHub"}',
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect GitHub"}',
+                ),
             )
         )
-        await queue.put(StreamTextDelta(id="1", delta="After setup"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="After setup")))
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[tuple[str, dict, str | None]] = []
 
@@ -310,13 +313,16 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="connect_integration",
-                output='{"type":"setup_requirements","message":"Connect Goo',
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect Goo',
+                ),
             )
         )
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[tuple[str, dict, str | None]] = []
         dropped_calls: list[tuple[str, str | None]] = []
@@ -365,20 +371,23 @@ class TestStreamChat:
         ]
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="ask_question",
-                output=json.dumps(
-                    {
-                        "type": "agent_builder_clarification_needed",
-                        "message": "Which region?",
-                        "questions": questions,
-                    }
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="ask_question",
+                    output=json.dumps(
+                        {
+                            "type": "agent_builder_clarification_needed",
+                            "message": "Which region?",
+                            "questions": questions,
+                        }
+                    ),
                 ),
             )
         )
-        await queue.put(StreamTextDelta(id="1", delta="After question"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="After question")))
+        await queue.put((None, StreamFinish()))
 
         clarification_calls: list[tuple[str, dict, str | None]] = []
 
