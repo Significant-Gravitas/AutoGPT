@@ -127,6 +127,24 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # Copilot tree attribution. A graph started by an agent turn runs in the
+    # executor process, where the turn's envelope contextvar cannot reach, so
+    # the tree identity travels in the execution payload the same way
+    # ``expert_id`` does. ``AutoPilotBlock`` rebuilds a spawner envelope from
+    # these, which keeps a nested agent turn inside the tree that started it
+    # instead of rooting a fresh, unbounded one. None = not started by a turn.
+    copilot_tree_id: Optional[str] = None
+    copilot_tree_depth: int = 0
+    copilot_tree_tainted: bool = False
+    # The spawning turn's tool ceiling. ``None`` is the root sentinel meaning
+    # unrestricted, so it must stay distinct from an empty list: dropping this
+    # field entirely would reopen the whole registry on the far side, which is
+    # the amplification the envelope exists to prevent.
+    copilot_tree_tools: Optional[list[str]] = None
+    # The chat whose spend ceiling the tree's paid calls count against.
+    copilot_tree_spend_session_id: Optional[str] = None
+    copilot_tree_deadline_at: Optional[datetime] = None
+
 
 # -------------------------- Models -------------------------- #
 
@@ -867,6 +885,19 @@ async def get_graph_execution_meta(
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
+async def get_graph_execution_copilot_tree(
+    user_id: str, execution_id: str
+) -> Optional[dict[str, JsonValue]]:
+    """The serialised TurnEnvelope a copilot turn started this run with, or
+    None for a run no turn started. Kept off the API models on purpose."""
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": user_id, "isDeleted": False}
+    )
+    if execution is None or not isinstance(execution.copilotTree, dict):
+        return None
+    return execution.copilotTree
+
+
 @overload
 async def get_graph_execution(
     user_id: str,
@@ -963,6 +994,7 @@ async def create_graph_execution(
     trigger_ref: Optional[str] = None,
     schedule_id: Optional[str] = None,
     webhook_id: Optional[str] = None,
+    copilot_tree: Optional[dict[str, JsonValue]] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -1021,6 +1053,7 @@ async def create_graph_execution(
             **({"triggerRef": trigger_ref} if trigger_ref else {}),
             **({"scheduleId": schedule_id} if schedule_id else {}),
             **({"webhookId": webhook_id} if webhook_id else {}),
+            **({"copilotTree": SafeJson(copilot_tree)} if copilot_tree else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),
