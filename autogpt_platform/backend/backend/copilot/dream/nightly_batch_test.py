@@ -35,9 +35,7 @@ def _dream_result(
     *,
     error: str | None = None,
     skipped: bool = False,
-    execution_path: Literal[
-        "sync_baseline", "anthropic_batch", "openai_batch"
-    ] = "sync_baseline",
+    execution_path: Literal["sync_baseline", "anthropic_batch"] = "sync_baseline",
 ) -> DreamPassResult:
     return DreamPassResult(
         user_id="u",
