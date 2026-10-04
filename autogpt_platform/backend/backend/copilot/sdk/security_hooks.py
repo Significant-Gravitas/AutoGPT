@@ -464,10 +464,10 @@ def create_security_hooks(
         ) -> SyncHookJSONOutput:
             """Hand the model back the context the compaction summary dropped.
 
-            The first-turn blocks (skills index, memory, workflows, follow-ups,
-            working dir, user context) live in the session's first user
-            message, which compaction replaces with a summary.  The CLI puts
-            this hook's ``additionalContext`` right after the summary.
+            The first-turn blocks (skills index, workflows, follow-ups, working
+            dir, user context) live in the session's first user message,
+            which compaction replaces with a summary.  The CLI puts this
+            hook's ``additionalContext`` right after the summary.
             """
             _ = context, tool_use_id
             source = input_data.get("source")

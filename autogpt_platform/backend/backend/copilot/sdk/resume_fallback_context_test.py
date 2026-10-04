@@ -1,8 +1,8 @@
 """Later model calls keep the first-turn context when the first message is gone.
 
-The skills index, memory, expert/team workflows and user context are injected
-into the first user message only; later turns rely on ``--resume`` to carry
-them. Two things take that message away (SECRT-2801):
+The skills index, expert/team workflows and user context are injected into the
+first user message only; later turns rely on ``--resume`` to carry them. Two
+things take that message away (SECRT-2801):
 
 - A turn that cannot ``--resume`` falls back to a ``<conversation_history>``
   block. The first-turn blocks were either missing from it or buried inside
@@ -182,10 +182,15 @@ async def _run_turn(session: ChatSession, client_factory, *, resume_hit: bool) -
 
 _FIRST_TURN_BLOCKS = (
     _SKILLS_INDEX,
-    f"<memory_context>\n{_MEMORY}\n</memory_context>",
     "<team_context>\nMax owns the weekly-report workflow.",
     f"<user_context>\n{_UNDERSTANDING}\nPlan: PRO\n</user_context>",
 )
+
+
+def _assert_no_memory(resent: str) -> None:
+    """Memory has its own owner: the re-sent first-turn blocks never fetch it."""
+    assert "<memory_context>" not in resent
+    assert _MEMORY not in resent
 
 
 def _assert_first_turn_context_leads(query: str) -> None:
@@ -196,6 +201,7 @@ def _assert_first_turn_context_leads(query: str) -> None:
     for block in _FIRST_TURN_BLOCKS:
         assert block in query, f"missing first-turn block: {block!r}"
         assert query.index(block) < history_at, f"{block!r} is not in the prefix"
+    _assert_no_memory(query[:history_at])
     history = query[history_at:]
     assert "Hi, I'm Sam. I run a bakery." in history
     assert "Nice to meet you, Sam." in history
@@ -265,6 +271,7 @@ class TestCompactionKeepsFirstTurnContext:
         assert blocks.startswith("<available_skills>\n")
         for block in _FIRST_TURN_BLOCKS:
             assert block in blocks, f"missing first-turn block: {block!r}"
+        _assert_no_memory(after_compaction)
         # Rebuilt now, not copied from the turn-1 row.
         assert "retired-skill" not in after_compaction
         assert "stale fact from turn 1" not in after_compaction

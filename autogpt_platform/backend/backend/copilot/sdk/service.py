@@ -5132,10 +5132,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 _context_after_compaction,
                 session,
                 user_id,
-                message,
                 sdk_cwd=sdk_cwd,
                 use_e2b=use_e2b,
-                graphiti_enabled=graphiti_enabled,
                 log_prefix=log_prefix,
             ),
         )
@@ -5385,7 +5383,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # A later turn that could NOT resume (no SDK transcript in storage,
         # a baseline-written one, or one that failed validation) starts a
         # fresh CLI session that has never seen those prefixes, so the same
-        # blocks are rebuilt and lead the query instead — see
+        # blocks, memory aside, are rebuilt and lead the query instead — see
         # ``_rebuild_first_turn_prefix``.  They ride the query only; the
         # stored row keeps the user's own words.  (The CLI's own compaction
         # drops them too; the ``SessionStart`` hook wired up with the
@@ -5419,10 +5417,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             resume_fallback_prefix = await _rebuild_first_turn_prefix(
                 session,
                 user_id,
-                message,
                 sdk_cwd=sdk_cwd,
                 use_e2b=use_e2b,
-                graphiti_enabled=graphiti_enabled,
                 log_prefix=log_prefix,
                 reason="no-resume fallback",
             )
@@ -5712,10 +5708,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     resume_fallback_prefix = await _rebuild_first_turn_prefix(
                         session,
                         user_id,
-                        message,
                         sdk_cwd=sdk_cwd,
                         use_e2b=use_e2b,
-                        graphiti_enabled=graphiti_enabled,
                         log_prefix=log_prefix,
                         reason="no-resume fallback",
                     )
@@ -6693,11 +6687,9 @@ _AFTER_COMPACTION_LEAD = (
 async def _context_after_compaction(
     session: ChatSession,
     user_id: str | None,
-    message: str | None,
     *,
     sdk_cwd: str,
     use_e2b: bool,
-    graphiti_enabled: bool,
     log_prefix: str,
 ) -> str:
     """What the ``SessionStart`` hook hands the model after the CLI compacts.
@@ -6710,10 +6702,8 @@ async def _context_after_compaction(
     prefix = await _rebuild_first_turn_prefix(
         session,
         user_id,
-        message,
         sdk_cwd=sdk_cwd,
         use_e2b=use_e2b,
-        graphiti_enabled=graphiti_enabled,
         log_prefix=log_prefix,
         reason="compaction",
     )
@@ -6723,11 +6713,9 @@ async def _context_after_compaction(
 async def _rebuild_first_turn_prefix(
     session: ChatSession,
     user_id: str | None,
-    message: str | None,
     *,
     sdk_cwd: str,
     use_e2b: bool,
-    graphiti_enabled: bool,
     log_prefix: str,
     reason: str,
 ) -> str:
@@ -6739,25 +6727,20 @@ async def _rebuild_first_turn_prefix(
     result ahead of ``<conversation_history>``), and the CLI's own compaction,
     which replaces it with a summary (``_context_after_compaction``).  This
     renders the blocks with the first turn's own builders — skills index,
-    memory (keyed on this turn's message), expert or team workflows,
-    follow-ups, working directory and user context.  Best effort: any failure
-    is logged and ``""`` returned, and the turn goes on without them.
+    expert or team workflows, follow-ups, working directory and user context.
+    Graphiti memory (``<memory_context>``) is not among them: it has its own
+    owner and is never re-sent here.  Best effort: any failure is logged and
+    ``""`` returned, and the turn goes on without them.
     """
     try:
-        (env_ctx, session_ctx, skills_ctx), understanding, warm_ctx = (
-            await asyncio.gather(
-                _first_turn_context_blocks(
-                    session, user_id, sdk_cwd=sdk_cwd, use_e2b=use_e2b
-                ),
-                fetch_business_understanding(user_id),
-                _fallback_warm_context(
-                    user_id, session, message, graphiti_enabled=graphiti_enabled
-                ),
-            )
+        (env_ctx, session_ctx, skills_ctx), understanding = await asyncio.gather(
+            _first_turn_context_blocks(
+                session, user_id, sdk_cwd=sdk_cwd, use_e2b=use_e2b
+            ),
+            fetch_business_understanding(user_id),
         )
         prefix = await build_injected_context_prefix(
             understanding,
-            warm_ctx=warm_ctx,
             env_ctx=env_ctx,
             session_ctx=session_ctx,
             skills_ctx=skills_ctx,
@@ -6774,32 +6757,14 @@ async def _rebuild_first_turn_prefix(
         return ""
     logger.info(
         "%s Re-injecting first-turn context (%s): %d chars;"
-        " skills=%s, memory=%s, user_context=%s",
+        " skills=%s, user_context=%s",
         log_prefix,
         reason,
         len(prefix),
         bool(skills_ctx),
-        bool(warm_ctx),
         understanding is not None,
     )
     return prefix
-
-
-async def _fallback_warm_context(
-    user_id: str | None,
-    session: ChatSession,
-    message: str | None,
-    *,
-    graphiti_enabled: bool,
-) -> str:
-    """Graphiti warm context for a re-injected prefix (the first turn's fetch
-    in ``_fetch_graphiti_context`` is skipped once history exists)."""
-    if not (graphiti_enabled and user_id):
-        return ""
-    return (
-        await fetch_warm_context(user_id, message or "", expert_id=session.expert_id)
-        or ""
-    )
 
 
 def _graphiti_ingest_allowed(
