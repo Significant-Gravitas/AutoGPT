@@ -1,5 +1,6 @@
 """What the swap proxy is told: a value only for a host it is bound to."""
 
+import contextlib
 import importlib.util
 import re
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 from backend.copilot.integration_creds import ProviderTokenUnavailable
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.swap_credentials import (
+    NoLiveBox,
     SwapCredential,
     _host_is_bound,
     get_swap_bindings,
@@ -21,8 +23,47 @@ _M = "backend.copilot.swap_credentials"
 _GITHUB_HOSTS = ["github.com", "api.github.com", "uploads.github.com"]
 
 
-def _token(value):
-    return patch(f"{_M}.get_provider_token", AsyncMock(return_value=value))
+_BOX = "box-0123456789abcdef"
+_RECORD = {
+    "owner": "session:s-1",
+    "user_id": "user-1",
+    "swaps": True,
+    "sandbox_id": "sb-1",
+}
+
+
+@pytest.fixture(autouse=True)
+def live_box():
+    """The asking box's egress record: a live CoPilot box of user-1's."""
+    record = dict(_RECORD)
+    with patch(
+        f"{_M}.credential_record", AsyncMock(side_effect=lambda box: record)
+    ) as lookup:
+        yield record
+    for call in lookup.await_args_list:
+        assert call.args == (_BOX,)
+
+
+@contextlib.contextmanager
+def _token(tokens, granted=("cred-a",)):
+    """*tokens*: credential id to token (a string is every id's token), and
+    the ids granted to sandbox sb-1."""
+
+    async def token(user_id, name, credential_id=None, strict=False, lock=False):
+        assert lock, "the swap service refreshes under the manager's lock"
+        assert strict, "a failed lookup must reach the proxy as an outage"
+        if isinstance(tokens, dict):
+            return tokens.get(credential_id)
+        return tokens
+
+    async def grants(sandbox_id, name):
+        return set(granted) if sandbox_id == "sb-1" else set()
+
+    with (
+        patch(f"{_M}.get_provider_token", AsyncMock(side_effect=token)) as lookup,
+        patch(f"{_M}.granted_to_box", AsyncMock(side_effect=grants)),
+    ):
+        yield lookup
 
 
 @pytest.mark.asyncio
@@ -32,15 +73,17 @@ async def test_bindings_carry_hosts_and_no_values():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("host", ["api.github.com", "GitHub.com", "github.com:443"])
-async def test_a_bound_host_gets_the_users_token(host):
+async def test_a_bound_host_gets_the_credential_granted_to_the_box(host):
     with _token("ghp_real") as lookup:
-        credential = await resolve_swap_credential("user-1", "github", host)
+        credential = await resolve_swap_credential("user-1", "github", host, _BOX)
     assert credential == SwapCredential(
         name="github",
-        values={"access_token": "ghp_real"},
+        values={"cred-a": "ghp_real"},
         allowed_hosts=_GITHUB_HOSTS,
     )
-    lookup.assert_awaited_once_with("user-1", "github", strict=True)
+    lookup.assert_awaited_once_with(
+        "user-1", "github", credential_id="cred-a", strict=True, lock=True
+    )
 
 
 @pytest.mark.asyncio
@@ -56,31 +99,103 @@ async def test_a_bound_host_gets_the_users_token(host):
 )
 async def test_an_unbound_host_gets_nothing_and_the_token_is_never_fetched(host):
     with _token("ghp_real") as lookup:
-        assert await resolve_swap_credential("user-1", "github", host) is None
+        assert await resolve_swap_credential("user-1", "github", host, _BOX) is None
     lookup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_an_unknown_name_gets_nothing():
     with _token("ghp_real") as lookup:
-        assert await resolve_swap_credential("user-1", "gitlab", "gitlab.com") is None
+        assert (
+            await resolve_swap_credential("user-1", "gitlab", "gitlab.com", _BOX)
+            is None
+        )
     lookup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_user_who_has_not_connected_the_provider_gets_nothing():
+async def test_a_granted_credential_that_yields_no_token_gets_nothing():
     with _token(None):
-        assert await resolve_swap_credential("user-1", "github", "github.com") is None
+        assert (
+            await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+            is None
+        )
 
 
 @pytest.mark.asyncio
 async def test_a_lookup_that_fails_is_an_error_not_a_user_without_a_token():
     """The proxy scrubs responses against this answer, and refuses what it
     cannot scrub only when the backend says it cannot answer."""
-    failing = AsyncMock(side_effect=ProviderTokenUnavailable("github"))
-    with patch(f"{_M}.get_provider_token", failing):
-        with pytest.raises(ProviderTokenUnavailable):
-            await resolve_swap_credential("user-1", "github", "github.com")
+    with _token("ghp_real"):
+        with (
+            patch(
+                f"{_M}.get_provider_token",
+                AsyncMock(side_effect=ProviderTokenUnavailable("github")),
+            ),
+            pytest.raises(ProviderTokenUnavailable),
+        ):
+            await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+
+
+@pytest.mark.asyncio
+async def test_grants_that_cannot_be_read_are_an_error_too():
+    with (
+        patch(f"{_M}.granted_to_box", AsyncMock(side_effect=ConnectionError())),
+        pytest.raises(ConnectionError),
+    ):
+        await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+
+
+@pytest.mark.asyncio
+async def test_only_what_was_granted_to_the_box_resolves():
+    """The user has accounts A and B; the chat picked B.  Typing A's id, or a
+    bare ``hsurr:github``, gets nothing: A was never granted to this box."""
+    with _token({"cred-a": "ghp_a", "cred-b": "ghp_b"}, granted=["cred-b"]) as lookup:
+        credential = await resolve_swap_credential(
+            "user-1", "github", "github.com", _BOX
+        )
+    assert credential is not None
+    assert credential.values == {"cred-b": "ghp_b"}
+    # Only the granted credential is looked up, not every stored one.
+    lookup.assert_awaited_once_with(
+        "user-1", "github", credential_id="cred-b", strict=True, lock=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_box_granted_nothing_gets_nothing(live_box):
+    live_box["sandbox_id"] = "sb-other"
+    with _token("ghp_real") as lookup:
+        assert (
+            await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+            is None
+        )
+    lookup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "record",
+    [
+        None,  # revoked, rotated, or never minted
+        {**_RECORD, "user_id": "user-2"},
+        {**_RECORD, "swaps": False},  # a block's box
+        {**_RECORD, "swaps": "true"},
+    ],
+    ids=["no record", "another user", "does not swap", "not an explicit true"],
+)
+async def test_only_a_live_box_of_the_users_that_swaps_gets_a_value(record):
+    """The proxy names the box; the backend's own record decides.  A proxy
+    that asks for a user with no live box of theirs gets nothing, and an
+    error rather than "not connected", so that it refuses that connection's
+    responses instead of passing them on unscrubbed."""
+    with (
+        patch(f"{_M}.credential_record", AsyncMock(return_value=record)),
+        _token("ghp_real") as lookup,
+        pytest.raises(NoLiveBox),
+    ):
+        await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+    lookup.assert_not_awaited()
 
 
 def test_every_provider_says_where_its_token_may_go():

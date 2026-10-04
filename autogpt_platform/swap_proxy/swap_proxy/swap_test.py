@@ -495,6 +495,27 @@ class TestAuthorizationOnly:
         s = swap(r, self.PLAIN, host="evil.test")
         assert [e.reason for e in s.events] == ["unbound-host"]
 
+    def test_a_credential_named_by_its_id_is_swapped_as_the_backend_sends_it(
+        self,
+    ):
+        """The backend hands a box ``hsurr:github:<credential id>`` for the
+        account the chat picked, and lists every stored credential under its
+        id; git sends it as Basic through its credential helper."""
+        cid = "0b7c2f5e-6c1d-4a8e-9f3a-2d4e6f8a0b1c"
+        picked = Credential(
+            "github", {"access_token": "ghp_default", cid: TOKEN}, (HOST,)
+        )
+        r = make_request(headers={"Authorization": f"token hsurr:github:{cid}"})
+        swap(r, picked)
+        assert r.headers["Authorization"] == f"token {TOKEN}"
+
+        pair = base64.b64encode(f"x-access-token:hsurr:github:{cid}".encode())
+        r = make_request(headers={"Authorization": f"Basic {pair.decode()}"})
+        swap(r, picked)
+        decoded = base64.b64decode(r.headers["Authorization"].split()[1]).decode()
+        assert decoded == f"x-access-token:{TOKEN}"
+        assert scrub_text(f"t={TOKEN}", [picked]) == f"t=hsurr:github:{cid}"
+
     def test_an_echoed_basic_header_goes_back_to_what_the_box_sent(self):
         """A server that echoes the header returns the base64 of the real pair,
         which no value matches; the swap remembers exactly that string."""
