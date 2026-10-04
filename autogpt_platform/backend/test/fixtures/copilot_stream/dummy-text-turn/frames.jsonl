@@ -1,0 +1,15 @@
+{"id": "1-0", "sse": "data: {\"type\": \"data-status\", \"data\": {\"message\": \"Message received\\u2026\"}}\n\n"}
+{"id": "2-0", "sse": "data: {\"type\": \"data-status\", \"data\": {\"message\": \"Setting up your environment\\u2026\"}}\n\n"}
+{"id": "3-0", "sse": "data: {\"type\": \"start\", \"messageId\": \"00000000-0000-4000-8000-000000000001\"}\n\n"}
+{"id": "4-0", "sse": "data: {\"type\":\"start-step\"}\n\n"}
+{"id": "5-0", "sse": "data: {\"type\":\"text-start\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "6-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"I \"}\n\n"}
+{"id": "7-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"counted: \"}\n\n"}
+{"id": "8-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"1... \"}\n\n"}
+{"id": "9-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"2... \"}\n\n"}
+{"id": "10-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"3. \"}\n\n"}
+{"id": "11-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"All \"}\n\n"}
+{"id": "12-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"done!\"}\n\n"}
+{"id": "13-0", "sse": "data: {\"type\":\"text-end\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "14-0", "sse": "data: {\"type\":\"finish-step\"}\n\n"}
+{"id": "15-0", "sse": "data: {\"type\":\"finish\"}\n\n"}
