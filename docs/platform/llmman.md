@@ -73,8 +73,8 @@ docker compose up -d --build
 ### 3. Using llmman with AutoGPT
 
 1. Open [http://localhost:3000/build](http://localhost:3000/build) and add an AI Text Generator block (any AI LLM block works).
-2. **API Key**: enter any value (e.g. `not-needed`) — llmman does not require authentication.
-3. **LLM Model**: pick an **Ollama** model. The name AutoGPT sends must match a model llmman has pulled, so either pull a model under one of the built-in Ollama slugs (`llama3.2`, `llama3`, `llama3.1:405b`, `dolphin-mistral:latest`) or add your own — see below.
+2. **API Key**: enter any value (e.g. `not-needed`). llmman does not require authentication here.
+3. **LLM Model**: pick an **Ollama** model. The name AutoGPT sends must match a model llmman has pulled, so either pull a model under one of the built-in Ollama slugs (`llama3.2`, `llama3`, `llama3.1:405b`, `dolphin-mistral:latest`) or add your own (see below).
 4. **Ollama Host**: enter the same value you put in `OLLAMA_HOST`, e.g. `192.168.0.39:17434`.
 5. Add a prompt, save the graph, and run it.
 
