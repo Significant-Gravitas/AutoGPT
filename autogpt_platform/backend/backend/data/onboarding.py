@@ -23,6 +23,7 @@ from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.json import SafeJson
+from backend.util.product_analytics import track_onboarding_completed
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -185,6 +186,8 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
                 "completedSteps": list(set(onboarding.completedSteps + [str(step)])),
             },
         )
+        if step == OnboardingStep.ONBOARDING_COMPLETE:
+            track_onboarding_completed(user_id=user_id)
         await _reward_user(user_id, onboarding, step)
         await _send_onboarding_notification(user_id, step)
 
