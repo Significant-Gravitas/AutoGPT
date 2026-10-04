@@ -183,6 +183,12 @@ three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a
 vendor API directly with the user's host-scoped credentials when nothing else
 covers the service.
 
+When more than one capability covers the job, prefer the one the user has
+already connected (`connected: true`), and prefer a platform tool
+(`tool:<name>`) over a block that wraps the same service: the tool runs
+through the account link the user already has. A block is the right answer
+when it is the only thing that covers the job, or when the user asked for it.
+
 If `find_capability` returns nothing for a named service, `web_search` for
 "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,

@@ -3,8 +3,9 @@
 A search returns ranked entries filtered by context, kind and the turn's
 permissions, with primitives weighted below matching services.  When the
 query names a service ("linear", "gmail", "mcp.sentry.dev") the main list
-is restricted to that service and up to three primitives are returned
-separately as ``fallback`` so the model can still build the request by hand.
+is restricted to that service plus the platform's own tools, and up to three
+primitives are returned separately as ``fallback`` so the model can still
+build the request by hand.
 """
 
 from __future__ import annotations
@@ -34,15 +35,18 @@ _NAME_WEIGHT = 2  # repeat name tokens so the name outweighs the purpose text
 
 DEFAULT_LIMIT = 8
 DEFAULT_FALLBACK_LIMIT = 3
+# How far below the best coverage a connected MCP server the query names
+# still counts as covering the query; one whole concept.
+CONNECTED_COVERAGE_MARGIN = 1.0
 
 
 class SearchHit(BaseModel):
     entry: CapabilityEntry
     score: float
     # Query concepts the entry matched: 1 per token matched as written, 0.5
-    # when only a synonym matched.  Ranking is coverage first, then
-    # connection, then BM25: two entries that both match "create" and
-    # "issue" are ordered by whether the user has connected them, not by
+    # when only a synonym matched.  Ranking is coverage first, then platform
+    # tools, then connection, then BM25: two entries that both match "create"
+    # and "issue" are ordered by whether the user has connected them, not by
     # which description happens to be shorter.
     coverage: float = 0.0
     connected: bool | None = None
@@ -161,18 +165,28 @@ class CapabilityIndex:
             to_hit(idx, "exact_id" if _UUID_RE.match(query) else "exact_name")
             for idx in exact
         ]
-        service, service_indices = self._service_query(query)
+        service, service_indices, service_names = self._service_query(query)
         rest = [idx for idx in scores if idx not in exact]
         fallback: list[SearchHit] = []
         if service_indices is not None:
-            # A skill is not a service, but the one written for the named
-            # service is the best answer there is, so skills stay in.
+            # A platform tool is first-party and belongs to no single service,
+            # so it carries no service tag and the restriction dropped it:
+            # "post a message to discord" could not return
+            # post_to_chat_platform at all, only the Discord blocks.  A tool
+            # that names the service in its own text is about that service and
+            # belongs here; one that merely shares a verb ("read a notion
+            # page" matching read_workspace_file) does not.  A skill is not a
+            # service either, but the one written for the named service is
+            # the best answer there is, so skills stay in.
             main = [
                 idx
                 for idx in rest
-                if idx in service_indices or self.entries[idx].kind == "skill"
+                if idx in service_indices
+                or self.entries[idx].kind == "skill"
+                or self._tool_names(idx, service_names)
             ]
-            others = [idx for idx in rest if idx not in main]
+            chosen = set(main)
+            others = [idx for idx in rest if idx not in chosen]
             fallback = _ranked(
                 [
                     to_hit(idx, "search")
@@ -180,9 +194,18 @@ class CapabilityIndex:
                     if self.entries[idx].klass == "primitive"
                 ]
             )[:fallback_limit]
+            unpinned = self._unpinned_exact(query, exact, main, connections)
+            if unpinned:
+                hits = [
+                    to_hit(idx, "exact_name") for idx in exact if idx not in unpinned
+                ]
+                main += unpinned
         else:
             main = rest
-        hits += _ranked([to_hit(idx, "search") for idx in main])
+        hits += _ranked(
+            [to_hit(idx, "search") for idx in main],
+            lift=service_indices is not None,
+        )
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service
         )
@@ -261,7 +284,60 @@ class CapabilityIndex:
             indices += self._by_name.get(key[: -len("block")], [])
         return [idx for idx in dict.fromkeys(indices) if idx in allowed]
 
-    def _service_query(self, query: str) -> tuple[str | None, set[int] | None]:
+    def _tool_names(self, idx: int, service_names: list[str]) -> bool:
+        """Whether entry *idx* is a platform tool whose own text names one of
+        the services the query asked for."""
+        if self.entries[idx].kind != "tool":
+            return False
+        document = self._token_sets[idx]
+        for name in service_names:
+            tokens = tokenize(name.replace("_", " "))
+            if tokens and all(token in document for token in tokens):
+                return True
+        return False
+
+    def _unpinned_exact(
+        self,
+        query: str,
+        exact: list[int],
+        main: list[int],
+        connections: ConnectionState | None,
+    ) -> list[int]:
+        """Exact-name hits that rank with the rest instead of leading.
+
+        An exact name normally leads the list, but "Linear create issue" is
+        how AutoPilot phrases a job, not a request for the block that happens
+        to be called that, and the pin put ``LinearCreateIssueBlock`` over
+        the user's connected Linear MCP server.  So a block the user holds no
+        credential for is ranked like any other hit when the service query
+        also found a connected server or a platform tool.  A query that
+        spells the class name ("LinearCreateIssueBlock", "linear create
+        issue block") still asks for the block and keeps the pin, and so does
+        a block the user has connected.
+        """
+        words = query.lower().split()
+        if len(words) < 2 or words[-1] == "block":
+            return []
+        alternative = any(
+            self.entries[idx].kind == "tool"
+            or (
+                self.entries[idx].kind == "mcp_server"
+                and resolve_connected(self.entries[idx], connections)
+            )
+            for idx in main
+        )
+        if not alternative:
+            return []
+        return [
+            idx
+            for idx in exact
+            if self.entries[idx].kind == "block"
+            and resolve_connected(self.entries[idx], connections) is False
+        ]
+
+    def _service_query(
+        self, query: str
+    ) -> tuple[str | None, set[int] | None, list[str]]:
         """Services named in the query restrict the main list to them.
 
         Every named service counts, not just the first: "send a linear issue
@@ -299,8 +375,8 @@ class CapabilityIndex:
             if token in self._service_tags:
                 take(token)
         if not named:
-            return None, None
-        return " ".join(named), indices
+            return None, None, []
+        return " ".join(named), indices, named
 
 
 def _coverage(groups: list[list[str]], doc: frozenset[str]) -> float:
@@ -340,17 +416,51 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
         yield from (tag.lower() for tag in entry.tags[marker + 1 :])
 
 
-def _ranked(hits: list[SearchHit]) -> list[SearchHit]:
-    """Coverage first; among equals a connected capability, then a platform
-    tool (first-party, no credentials, already trusted by the model), then
-    the class-weighted BM25 score (``score`` already carries the weight)."""
-    return sorted(
-        hits,
-        key=lambda h: (
-            -h.coverage,
-            tier(h.entry, h.connected),
-            h.entry.kind != "tool",
-            -h.score,
-            h.entry.name.lower(),
-        ),
-    )
+def _ranked(hits: list[SearchHit], *, lift: bool = False) -> list[SearchHit]:
+    """Coverage first, then a platform tool, then a connected capability,
+    then the class-weighted BM25 score (``score`` already carries the weight).
+
+    With *lift*, a connected MCP server within
+    :data:`CONNECTED_COVERAGE_MARGIN` of the best coverage is read as covering
+    the query as well as the best match.  One catalog entry stands for a whole
+    server, so its text describes the service rather than each action it
+    offers, and it can never match an action verb the way a block named for
+    that one action does — "LinearCreateIssueBlock" tokenises to the whole of
+    "create linear issue".  Without the lift the block always won on coverage
+    and the connection signal was never reached.
+
+    The caller lifts only on a query that names a service.  The main list is
+    then restricted to that service, so the server has already matched the
+    service's name and the concept it lacks is the action.  On a query that
+    names no service the server matched some other word — "updates" in
+    Linear's description for "update spreadsheet" — and lifting it put Linear
+    over the Sheets block that matched both words, for any server the user
+    happened to have connected.
+
+    Only MCP servers are lifted, because only they have that problem: a block
+    is named for its action and competes on coverage honestly. Lifting every
+    connected entry carried whole families of connected blocks over a
+    first-party tool that matched the query better. Nothing is pushed down, so
+    a job with no connected server ranks exactly as it did before.
+    """
+    best = max((h.coverage for h in hits), default=0.0)
+
+    def key(hit: SearchHit) -> tuple[float, bool, int, float, str]:
+        rank = tier(hit.entry, hit.connected)
+        coverage = hit.coverage
+        if (
+            lift
+            and hit.entry.kind == "mcp_server"
+            and rank == 0
+            and coverage >= best - CONNECTED_COVERAGE_MARGIN
+        ):
+            coverage = best
+        return (
+            -coverage,
+            hit.entry.kind != "tool",
+            rank,
+            -hit.score,
+            hit.entry.name.lower(),
+        )
+
+    return sorted(hits, key=key)
