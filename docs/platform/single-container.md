@@ -39,8 +39,9 @@ tag or manifest digest. Docker image tags map to source releases as follows:
 - `latest` points to the newest stable AutoGPT Platform release.
 - `vX.Y.Z` is the immutable image for GitHub release
   `autogpt-platform-beta-vX.Y.Z`.
-- `sha-<git-sha>` is the immutable image for an exact `dev` or release source
-  revision.
+- `sha-<git-sha>` is the immutable image for the exact source revision of a
+  release. Each release publishes one for the commit it was built from; `dev`
+  commits are built and tested in CI but not published.
 
 Older `canary-sha-*` tags are legacy pre-release validation artifacts, not a
 currently published or supported tag family.
@@ -129,11 +130,11 @@ docker run --detach --name autogpt \
   "${IMAGE}"
 ```
 
-The `--shm-size 2g` allocation keeps temporary ChatGPT/Codex authentication
-homes in memory instead of the container's writable layer. The `nofile` limit
-sets a predictable per-process file-descriptor ceiling for the bundled services.
-The JSON log options retain about five 50 MB files instead of allowing container
-logs to grow without a bound.
+The `--shm-size 2g` allocation raises the container's `/dev/shm` above Docker's
+64 MB default; the bundled PostgreSQL and browser tooling both use shared
+memory. The `nofile` limit sets a predictable per-process file-descriptor
+ceiling for the bundled services. The JSON log options retain about five 50 MB
+files instead of allowing container logs to grow without a bound.
 
 Wait for the complete appliance to become healthy:
 
@@ -167,8 +168,11 @@ inspecting whether the migration's database changes completed.
 Test installations used about 5–6 GiB of memory during startup and steady-state
 health checks. This is measured guidance, not a guaranteed minimum; allow
 headroom for enabled services, agents, local models, and workload growth. On
-Docker Desktop, make sure the VM's memory allocation in **Settings → Resources**
-exceeds that observed use and leaves the same headroom.
+Docker Desktop for macOS or Linux, or Windows in Hyper-V mode, make sure the
+VM's memory allocation in **Settings → Resources** exceeds that observed use and
+leaves the same headroom. With the default WSL 2 backend on Windows, set the
+limit with `memory=` under `[wsl2]` in `%UserProfile%\.wslconfig` instead, then
+run `wsl --shutdown`.
 
 Open `http://localhost:3000`, create the intended account, and promote it:
 
@@ -213,8 +217,16 @@ Agent runs still executing when the container stops are abandoned. Their queue
 messages can be dropped and their execution rows can remain `RUNNING`, but they
 do not resume. Start a new run after restart.
 
-Supervisor process names are group-qualified. Use `supervisorctl status` to see
-names such as `runtime:rest` and `state:postgres`.
+Supervisor process names are group-qualified. Pass the appliance's Supervisor
+configuration to see names such as `runtime:rest` and `state:postgres`:
+
+```bash
+docker exec autogpt supervisorctl \
+  -c /opt/autogpt/single-container/supervisor/supervisord.conf status
+```
+
+`runtime:bootstrap` runs once per boot, so it shows `EXITED` after a successful
+start.
 
 ## Port and public URL
 
@@ -407,23 +419,36 @@ CHAT_USE_LOCAL=true
 CHAT_BASE_URL=http://host.docker.internal:11434/v1
 CHAT_API_KEY=ollama
 CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+GRAPHITI_LLM_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+GRAPHITI_RERANKER_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ```
 
 `CHAT_API_KEY` must be non-empty even if the local server ignores it. The
-local transport makes Graphiti inherit the same base URL and API key. With the
-default profile above, Graphiti rewrites its extraction and reranker models to
-`hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` and uses `nomic-embed-text` for
-embeddings. If you choose another chat model, also set `GRAPHITI_LLM_MODEL`
+local transport points Graphiti at the same base URL, and its extraction client
+uses `CHAT_API_KEY`. Graphiti's own local default is
+`hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M`, so the two `GRAPHITI_*` lines keep
+extraction and reranking on the 4B chat model; embeddings use
+`nomic-embed-text`. If you choose another chat model, set `GRAPHITI_LLM_MODEL`
 and `GRAPHITI_RERANKER_MODEL` to a model that the endpoint serves. Set
 `GRAPHITI_EMBEDDER_MODEL` too when its embedding model uses another slug.
 
+Graphiti's embedder prefers `CHAT_OPENAI_API_KEY` or `OPENAI_API_KEY` when
+either is set, and sends that key to this endpoint. If you keep
+`OPENAI_API_KEY` for blocks or transcription, also set
+`GRAPHITI_EMBEDDER_API_KEY` to the value of `CHAT_API_KEY`.
+
 On Docker Engine, add `--add-host host.docker.internal:host-gateway` to the run
-command for this local-model profile. Docker Desktop provides that hostname
-without the extra option. To apply the flag to an existing container, stop and
-remove the container, then repeat the Quick start command with the same named
-volume and the added flag. Small quantized models reduce memory requirements,
-but latency and answer quality remain hardware-, model-, and workload-dependent;
-select another compatible model when the default does not meet your needs.
+command for this local-model profile. Ollama must then also listen on an
+address the container can reach, because it binds only to `127.0.0.1` by
+default: set `OLLAMA_HOST=0.0.0.0:11434` in the same service configuration as
+`OLLAMA_CONTEXT_LENGTH`, and limit port `11434` with the host firewall to the
+Docker bridge and other hosts you trust. Docker Desktop provides that hostname
+and reaches the host's loopback without either change. To apply the flag to an
+existing container, stop and remove the container, then repeat the Quick start
+command with the same named volume and the added flag. Small quantized models
+reduce memory requirements, but latency and answer quality remain hardware-,
+model-, and workload-dependent; select another compatible model when the
+default does not meet your needs.
 
 Check connectivity from the running appliance:
 
@@ -1099,9 +1124,16 @@ docker logs --follow --tail 100 autogpt
 ```
 
 `GET /healthz` checks nginx only; it is not proof that the whole appliance is
-ready. The watchdog allows 600 seconds for initial full health; if that deadline
-expires, it stops the container and `--restart unless-stopped` begins another
-startup attempt.
+ready. Once bootstrap has applied migrations and published readiness, the
+watchdog allows 600 seconds for initial full health; if that deadline expires,
+it stops the container and `--restart unless-stopped` begins another startup
+attempt.
+
+After migrations, each boot also publishes the public skills catalog from
+GitHub; it supplies the Skills Hub skills and the expert roster. The step is
+best-effort: if GitHub is unreachable it gives up after at most 10 minutes,
+logs a warning, and startup continues without the catalog. Set
+`AUTOGPT_PUBLISH_SKILLS=0` to skip it, for example on an egress-filtered host.
 
 | Symptom | What to check |
 | --- | --- |
@@ -1109,14 +1141,14 @@ startup attempt.
 | Port `3300` opens but auth actions fail | Use `--publish 127.0.0.1:3300:3000` and set `AUTOGPT_PUBLIC_URL=http://localhost:3300`, then replace the container. |
 | Signup shows **Email Not Allowed** | Inspect the API response or container logs to distinguish closed registration from an allowlist miss. Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an exact-address `AUTH_SIGNUP_ALLOWLIST=owner@example.com`, replace the container, create the intended accounts, and close signup again. |
 | The container remains `starting` or becomes `unhealthy` | First boot can take several minutes. Run `autogpt-healthcheck` and inspect container logs for the first failed service. |
-| The container is OOM-killed or repeatedly restarts during startup | The appliance uses about 5–6 GiB before workload headroom. On Docker Desktop, increase the VM memory allocation under **Settings → Resources**. |
+| The container is OOM-killed or repeatedly restarts during startup | The appliance uses about 5–6 GiB before workload headroom. On Docker Desktop, increase the VM memory allocation under **Settings → Resources**, or in `.wslconfig` with the Windows WSL 2 backend. |
 | Startup refuses to continue after an interrupted migration | Follow the empty-install versus existing-install recovery procedure in [Quick start](#quick-start). The restart-looping container cannot reliably run `docker exec`; do not mark the migration applied or rolled back until you verify which database changes completed. |
 | Startup rejects `DB_CONNECTION_LIMIT`, `DB_CONNECT_TIMEOUT`, or `DB_POOL_TIMEOUT` | Use an integer in the supported range: `1`–`5`, `1`–`600`, and `1`–`3600`, respectively. |
 | Startup rejects legacy JWT secrets | Remove `JWT_VERIFY_KEY` and `SUPABASE_JWT_SECRET` for a fresh Better Auth installation. Set `AUTOGPT_ENABLE_LEGACY_AUTH=true` only for an intentional legacy-auth migration, and set both legacy variables to the same shared secret of at least 32 characters. |
 | A run stays `RUNNING` without progress after a restart | The container stopped while the run was in flight. Its message was dropped and the row was not reconciled; start a new run. |
 | Requests stall for minutes under concurrent runs | Inspect backend and PostgreSQL logs for connection-pool exhaustion. `DB_CONNECTION_LIMIT` cannot be raised above its default maximum of `5`; lowering `DB_POOL_TIMEOUT` makes pool exhaustion fail sooner but does not add capacity. Reduce concurrency or move to a distributed deployment when the fixed pools are insufficient. |
 | AutoPilot returns a provider `401` | Configure the key for the selected transport. The default remote route needs `OPEN_ROUTER_API_KEY`; complete remote memory also needs `OPENAI_API_KEY`. |
-| Local chat works but memory ingestion fails | Install the configured embedding model and confirm its `/v1/embeddings` endpoint works. If the server does not provide the default Qwen and `nomic-embed-text` slugs, set and install `GRAPHITI_LLM_MODEL`, `GRAPHITI_RERANKER_MODEL`, and `GRAPHITI_EMBEDDER_MODEL` explicitly. |
+| Local chat works but memory ingestion fails | Install the configured embedding model and confirm its `/v1/embeddings` endpoint works. Under the local transport Graphiti defaults to `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` and `nomic-embed-text`; if the server does not serve those slugs, set and install `GRAPHITI_LLM_MODEL`, `GRAPHITI_RERANKER_MODEL`, and `GRAPHITI_EMBEDDER_MODEL` explicitly. |
 | Ollama cannot be reached | Keep the host-gateway option, ensure Ollama listens on an address Docker can reach, and test `/api/tags` from inside the container. |
 | The container exits after a persistent health failure | The watchdog intentionally stops the appliance. Keep `--restart unless-stopped` so Docker can recover it. |
 | Data appears missing after replacement | The new container is using another or anonymous `/data` volume. Inspect its mount and reattach the original named volume. |

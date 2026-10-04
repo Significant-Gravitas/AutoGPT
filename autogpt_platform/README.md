@@ -2,12 +2,15 @@
 
 Welcome to the AutoGPT Platform - a powerful system for creating and running AI agents to solve business problems. This platform enables you to harness the power of artificial intelligence to automate tasks, analyze data, and generate insights for your organization.
 
+> **Just want to run AutoGPT?** The quickest way is the single-container image on Docker Hub, [`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt). See the [self-hosting guide](https://docs.agpt.co/platform/self-hosting/getting-started). The steps below build and run every service from this checkout with Docker Compose.
+
 ## Getting Started
 
 ### Prerequisites
 
 - Docker
 - Docker Compose V2 (comes with Docker Desktop, or can be installed separately)
+- `make` and Python 3 (used to generate your local secrets)
 
 ### Running the System
 
@@ -23,10 +26,12 @@ To run the AutoGPT Platform, follow these steps:
 2. Run the following command:
 
    ```
-   cp .env.default .env
+   make init-env
    ```
 
-   This command will copy the `.env.default` file to `.env`. You can modify the `.env` file to add your own environment variables.
+   This command copies each `.env.default` file to `.env` (in `autogpt_platform`, `backend` and `frontend`) where no `.env` exists yet, and generates the secrets those files leave blank: `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and `BETTER_AUTH_SECRET`. The backend refuses to start without `ENCRYPTION_KEY`. It never overwrites an existing file or value, so it is safe to re-run. You can then modify the `.env` files to add your own environment variables.
+
+   Without `make`, run `installer/setup-autogpt.sh` (Linux/macOS) or `installer\setup-autogpt.bat` (Windows) instead. They do the same and then start the services.
 
 3. Run the following command:
 
@@ -46,10 +51,10 @@ You can now run the following to enable just the core services.
 # For help
 make help
 
-# Run just Postgres + Redis + RabbitMQ
+# Run the services the backend needs (Postgres, Redis, RabbitMQ, ClamAV, FalkorDB) and apply migrations
 make start-core
 
-# Stop core services
+# Stop every running service in the stack
 make stop-core
 
 # View logs from core services 
@@ -77,7 +82,7 @@ Here are some useful Docker Compose commands for managing your AutoGPT Platform:
 - `docker compose stop`: Stop the running services without removing them.
 - `docker compose rm`: Remove stopped service containers.
 - `docker compose build`: Build or rebuild services.
-- `docker compose down`: Stop and remove containers, networks, and volumes.
+- `docker compose down`: Stop and remove containers and networks. Add `-v` to also delete the named volumes (workspace files, marketplace media, FalkorDB memory, and the ClamAV database); the database in `data/db/data` survives both.
 - `docker compose watch`: Watch for changes in your services and automatically update them.
 
 ### Sample Scenarios
@@ -87,29 +92,21 @@ Here are some common scenarios where you might use multiple Docker Compose comma
 1. Updating and restarting a specific service:
 
    ```
-   docker compose build api_srv
-   docker compose up -d --no-deps api_srv
+   docker compose build rest_server
+   docker compose up -d --no-deps rest_server
    ```
 
-   This rebuilds the `api_srv` service and restarts it without affecting other services.
+   This rebuilds the `rest_server` service and restarts it without affecting other services.
 
 2. Viewing logs for troubleshooting:
 
    ```
-   docker compose logs -f api_srv ws_srv
+   docker compose logs -f rest_server websocket_server
    ```
 
-   This shows and follows the logs for both `api_srv` and `ws_srv` services.
+   This shows and follows the logs for both `rest_server` and `websocket_server` services.
 
-3. Scaling a service for increased load:
-
-   ```
-   docker compose up -d --scale executor=3
-   ```
-
-   This scales the `executor` service to 3 instances to handle increased load.
-
-4. Stopping the entire system for maintenance:
+3. Stopping the entire system for maintenance:
 
    ```
    docker compose stop
@@ -123,7 +120,7 @@ Here are some common scenarios where you might use multiple Docker Compose comma
    builds from source; without it `pull` tries to fetch them from a registry
    they were never published to and fails.
 
-5. Developing with live updates:
+4. Developing with live updates:
 
    ```
    docker compose watch
@@ -131,7 +128,7 @@ Here are some common scenarios where you might use multiple Docker Compose comma
 
    This watches for changes in your code and automatically updates the relevant services.
 
-6. Checking the status of services:
+5. Checking the status of services:
    ```
    docker compose ps
    ```
@@ -141,31 +138,13 @@ These scenarios demonstrate how to use Docker Compose commands in combination to
 
 ### Persisting Data
 
-To persist data for PostgreSQL and Redis, you can modify the `docker-compose.yml` file to add volumes. Here's how:
+Your data already persists across restarts:
 
-1. Open the `docker-compose.yml` file in a text editor.
-2. Add volume configurations for PostgreSQL and Redis services:
+- PostgreSQL keeps its data in `autogpt_platform/data/db/data` on the host.
+- Workspace files, marketplace media, and FalkorDB memory use the named volumes `workspace-data`, `store-media-data`, and `falkordb_data`.
+- The three Redis nodes are a cache and are not persisted; do not add volumes to them.
 
-   ```yaml
-   services:
-     postgres:
-       # ... other configurations ...
-       volumes:
-         - postgres_data:/var/lib/postgresql/data
-
-     redis:
-       # ... other configurations ...
-       volumes:
-         - redis_data:/data
-
-   volumes:
-     postgres_data:
-     redis_data:
-   ```
-
-3. Save the file and run `docker compose up -d` to apply the changes.
-
-This configuration will create named volumes for PostgreSQL and Redis, ensuring that your data persists across container restarts.
+Back up `data/db/data` (with the stack stopped) together with your `.env` files: `backend/.env` holds the `ENCRYPTION_KEY` your stored integration credentials are encrypted with.
 
 ### API Client Generation
 
