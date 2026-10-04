@@ -17,8 +17,10 @@ from .security_hooks import (
     _validate_user_isolation,
     create_security_hooks,
 )
+from .tool_adapter import get_copilot_tool_names, get_sdk_disallowed_tools
 
 SDK_CWD = "/tmp/copilot-abc123"
+ALLOWED = get_copilot_tool_names()
 
 
 def _sdk_available() -> bool:
@@ -48,9 +50,40 @@ def test_blocked_tools_denied():
         assert _is_denied(result), f"{tool} should be blocked"
 
 
-def test_unknown_tool_allowed():
-    result = _validate_tool_access("SomeCustomTool", {})
-    assert result == {}
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.parametrize(
+    "tool_name", ["ListAgents2", "mcp__copilot__not_registered", "mcp__other__tool"]
+)
+@pytest.mark.asyncio
+async def test_tool_outside_allowed_set_denied(tool_name):
+    pre = create_security_hooks("u1", sdk_cwd=SDK_CWD, allowed_tools=ALLOWED)[
+        "PreToolUse"
+    ][0].hooks[0]
+    result = await pre(
+        {"tool_name": tool_name, "tool_input": {}}, tool_use_id=None, context={}
+    )
+    assert "not available in this session" in _reason(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.parametrize("use_e2b", [False, True])
+@pytest.mark.asyncio
+async def test_every_allowed_tool_passes_the_hook(use_e2b):
+    allowed = get_copilot_tool_names(use_e2b=use_e2b)
+    pre = create_security_hooks("u1", sdk_cwd=SDK_CWD, allowed_tools=allowed)[
+        "PreToolUse"
+    ][0].hooks[0]
+    usable = set(allowed) - set(get_sdk_disallowed_tools(use_e2b=use_e2b))
+    denied = [
+        name
+        for name in sorted(usable)
+        if _is_denied(
+            await pre(
+                {"tool_name": name, "tool_input": {}}, tool_use_id=None, context={}
+            )
+        )
+    ]
+    assert denied == []
 
 
 # -- Workspace-scoped tools --------------------------------------------------
@@ -205,12 +238,16 @@ def test_bash_builtin_always_blocked():
 
 
 def test_dangerous_pattern_blocked():
-    result = _validate_tool_access("SomeTool", {"cmd": "sudo rm -rf /"})
+    result = _validate_tool_access(
+        "SomeTool", {"cmd": "sudo rm -rf /"}, allowed_tools={"SomeTool"}
+    )
     assert _is_denied(result)
 
 
 def test_subprocess_pattern_blocked():
-    result = _validate_tool_access("SomeTool", {"code": "subprocess.run(...)"})
+    result = _validate_tool_access(
+        "SomeTool", {"code": "subprocess.run(...)"}, allowed_tools={"SomeTool"}
+    )
     assert _is_denied(result)
 
 
@@ -268,7 +305,9 @@ def test_bash_builtin_blocked_message_clarity():
 @pytest.fixture()
 def _hooks():
     """Create security hooks and return (pre, post, post_failure) handlers."""
-    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+    )
     pre = hooks["PreToolUse"][0].hooks[0]
     post = hooks["PostToolUse"][0].hooks[0]
     post_failure = hooks["PostToolUseFailure"][0].hooks[0]
@@ -616,7 +655,9 @@ async def test_mixed_task_agent_share_slots(_hooks):
 @pytest.fixture()
 def _subagent_hooks():
     """Create hooks and return (subagent_start, subagent_stop) handlers."""
-    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+    )
     start = hooks["SubagentStart"][0].hooks[0]
     stop = hooks["SubagentStop"][0].hooks[0]
     return start, stop
@@ -738,7 +779,9 @@ async def test_post_tool_use_injects_followup_additional_context(
         "backend.copilot.pending_messages.stash_pending_for_persist", fake_stash
     )
 
-    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+    )
     post = hooks["PostToolUse"][0].hooks[0]
 
     result = await post(
@@ -776,7 +819,9 @@ async def test_post_tool_use_no_pending_returns_empty(monkeypatch):
         "backend.copilot.pending_messages.drain_pending_messages", fake_drain
     )
 
-    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+    )
     post = hooks["PostToolUse"][0].hooks[0]
 
     result = await post(
@@ -810,7 +855,9 @@ async def test_post_tool_use_drain_failure_returns_empty(monkeypatch):
         "backend.copilot.pending_messages.drain_pending_messages", failing_drain
     )
 
-    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+    )
     post = hooks["PostToolUse"][0].hooks[0]
 
     result = await post(
@@ -845,7 +892,9 @@ async def test_post_tool_use_no_session_skips_drain(monkeypatch):
         "backend.copilot.pending_messages.drain_pending_messages", fake_drain
     )
 
-    hooks = create_security_hooks(user_id=None, sdk_cwd=SDK_CWD, max_subtasks=2)
+    hooks = create_security_hooks(
+        user_id=None, sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+    )
     post = hooks["PostToolUse"][0].hooks[0]
 
     result = await post(
