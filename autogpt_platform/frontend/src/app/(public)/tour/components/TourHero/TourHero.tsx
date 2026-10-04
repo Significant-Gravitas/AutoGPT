@@ -1,6 +1,7 @@
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { TourBackground } from "./TourBackground";
 import { ArrowRight02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -65,6 +66,7 @@ export function TourHero() {
           </Button>
         </div>
       </div>
+      <CookieSettingsLink className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2" />
     </section>
   );
 }

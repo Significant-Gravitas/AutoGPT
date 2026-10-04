@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 
 import { getGetV1GetSharedExecutionMockHandler200 } from "@/app/api/__generated__/endpoints/default/default.msw";
 import type { SharedExecutionResponse } from "@/app/api/__generated__/models/sharedExecutionResponse";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import SharePage from "../page";
 
 const TOKEN = "550e8400-e29b-41d4-a716-446655440000";
@@ -87,5 +92,48 @@ describe("SharePage (execution share viewer)", () => {
     ).toBeDefined();
     // Try again button is the only retry affordance on this view.
     expect(screen.getByRole("button", { name: /try again/i })).toBeDefined();
+  });
+
+  describe("Cookie settings", () => {
+    afterEach(() => {
+      removeCookiebot();
+      vi.unstubAllEnvs();
+    });
+
+    test("opens the Cookiebot dialog from the page footer", async () => {
+      configureCookiebot();
+      const { renew } = installCookiebot();
+      server.use(
+        http.get(
+          "*/api/public/shared/:token",
+          () => new HttpResponse(null, { status: 404 }),
+        ),
+      );
+
+      render(<SharePage />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Cookie settings" }),
+      );
+
+      expect(renew).toHaveBeenCalledOnce();
+    });
+
+    test("hides the link when no consent banner is configured", async () => {
+      vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+      server.use(
+        http.get(
+          "*/api/public/shared/:token",
+          () => new HttpResponse(null, { status: 404 }),
+        ),
+      );
+
+      render(<SharePage />);
+
+      expect(await screen.findByText(/share link not found/i)).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: "Cookie settings" }),
+      ).toBeNull();
+    });
   });
 });
