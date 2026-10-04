@@ -1,3 +1,3 @@
-# Supabase Docker
+# Backend test database
 
-This is a minimal Docker Compose setup for self-hosting Supabase. Follow the steps [here](https://supabase.com/docs/guides/hosting/docker) to get started.
+The backend test stack (`autogpt_platform/backend/docker-compose.test.yaml`) extends the `db` and `vector` services in this folder's `docker-compose.yml`. Nothing else uses it.
