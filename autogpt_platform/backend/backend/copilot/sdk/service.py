@@ -3230,7 +3230,8 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     The server blocks a first-turn row carries (``<available_skills>``,
     ``<memory_context>``, ``<user_context>`` …) are peeled off: inside the
     history the system prompt tells the model to ignore them, and the
-    no-``--resume`` fallback re-sends fresh copies ahead of the history.
+    no-``--resume`` fallback re-sends fresh copies of all but
+    ``<memory_context>`` ahead of the history.
 
     Returns None if there are no messages to format.
     """
@@ -6728,9 +6729,10 @@ async def _rebuild_first_turn_prefix(
     which replaces it with a summary (``_context_after_compaction``).  This
     renders the blocks with the first turn's own builders — skills index,
     expert or team workflows, follow-ups, working directory and user context.
-    Graphiti memory (``<memory_context>``) is not among them: it has its own
-    owner and is never re-sent here.  Best effort: any failure is logged and
-    ``""`` returned, and the turn goes on without them.
+    Graphiti memory (``<memory_context>``) is not among them: it is fetched
+    for the first turn only (``_fetch_graphiti_context``) and is not re-sent
+    here.  Best effort: any failure is logged and ``""`` returned, and the
+    turn goes on without them.
     """
     try:
         (env_ctx, session_ctx, skills_ctx), understanding = await asyncio.gather(

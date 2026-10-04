@@ -188,7 +188,7 @@ _FIRST_TURN_BLOCKS = (
 
 
 def _assert_no_memory(resent: str) -> None:
-    """Memory has its own owner: the re-sent first-turn blocks never fetch it."""
+    """Memory is fetched for the first turn only; the re-send never carries it."""
     assert "<memory_context>" not in resent
     assert _MEMORY not in resent
 
