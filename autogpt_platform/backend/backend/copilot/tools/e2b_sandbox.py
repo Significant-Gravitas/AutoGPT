@@ -73,6 +73,7 @@ import asyncio
 import contextlib
 import logging
 import math
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, Literal
 
@@ -144,6 +145,14 @@ _MAX_WAIT_ATTEMPTS = math.ceil(_CREATION_LOCK_TTL / _WAIT_INTERVAL_SECONDS * 1.2
 # control-plane operations; if the sandbox is unreachable, fail fast and retry
 # on the next turn.
 _E2B_API_TIMEOUT_SECONDS = 10
+
+# Serialises the read-compare-set of one box's running-time limit, so two
+# commands started together cannot each read the old limit and the shorter
+# one land last.  The holder makes at most two E2B calls; a waiter that gives
+# up extends without the lock rather than not at all.
+_LIMIT_LOCK_PREFIX = "copilot:e2b:limit_lock:"
+_LIMIT_LOCK_TTL = 3 * _E2B_API_TIMEOUT_SECONDS
+_LIMIT_LOCK_WAIT_SECONDS = 2 * _E2B_API_TIMEOUT_SECONDS
 
 # Bound on stopping the screen's stream before a pause: a box that does not
 # answer must not hold the pause up for long.
@@ -1061,6 +1070,72 @@ async def pause_sandbox_direct(
             exc,
         )
         return False
+
+
+async def keep_sandbox_running(
+    sandbox: "AsyncSandbox", seconds: int, owner: SandboxOwner | None = None
+) -> bool:
+    """Make the box's running-time limit at least *seconds* from now.
+
+    Only a connect re-arms the limit, once per turn, and E2B pauses the box
+    at it whatever is running: a command started late in a long turn is cut
+    off mid-run.  ``set_timeout`` can shorten the limit as well, and a box
+    runs commands side by side (parallel calls in a turn, every session of
+    an expert), so a limit already further out is left alone.  The screen's
+    stream password lives as long as the box could run (``_settle_stream``),
+    so it is pushed out with it, never shortened.
+    Best effort: returns ``False`` when E2B did not take the new limit.
+    """
+    lock = None
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        candidate = redis.lock(
+            f"{_LIMIT_LOCK_PREFIX}{sandbox.sandbox_id}",
+            timeout=_LIMIT_LOCK_TTL,
+            blocking_timeout=_LIMIT_LOCK_WAIT_SECONDS,
+        )
+        if await candidate.acquire():
+            lock = candidate
+    try:
+        if not await _extend_running_limit(sandbox, seconds):
+            return False
+    finally:
+        if lock is not None:
+            with contextlib.suppress(Exception):
+                await lock.release()
+    if owner is not None:
+        with contextlib.suppress(Exception):
+            redis = await get_redis_async()
+            await redis.expire(owner.stream_key(), seconds, gt=True)
+    return True
+
+
+async def _extend_running_limit(sandbox: "AsyncSandbox", seconds: int) -> bool:
+    """Set the box's limit to *seconds* from now unless it already ends later."""
+    wanted_end = time.time() + seconds
+    try:
+        info = await asyncio.wait_for(
+            sandbox.get_info(), timeout=_E2B_API_TIMEOUT_SECONDS
+        )
+        if info.end_at.timestamp() >= wanted_end:
+            return True
+    except Exception as exc:
+        logger.debug(
+            "[E2B] Could not read sandbox %.12s limit: %s", sandbox.sandbox_id, exc
+        )
+    try:
+        await asyncio.wait_for(
+            sandbox.set_timeout(seconds), timeout=_E2B_API_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Could not extend sandbox %.12s to %ds: %s",
+            sandbox.sandbox_id,
+            seconds,
+            exc,
+        )
+        return False
+    return True
 
 
 async def kill_sandbox(session_id: str, api_key: str) -> bool:

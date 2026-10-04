@@ -14,13 +14,16 @@ OS-level isolation with a whitelist-only filesystem, no network, and resource
 limits.  Requires bubblewrap to be installed (Linux only).
 """
 
+import asyncio
 import logging
 import shlex
 from typing import Any
 
 from e2b import AsyncSandbox, CommandExitException
-from e2b.exceptions import TimeoutException
+from e2b.exceptions import NotFoundException, TimeoutException
+from pydantic import BaseModel
 
+from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
@@ -33,13 +36,45 @@ from backend.copilot.integration_creds import (
     get_integration_env_vars,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import config as chat_config
+from backend.util.e2b_network import reattach_command
 
 from .base import BaseTool
 from .connect_integration import requested_scopes
+from .e2b_sandbox import SandboxOwner, keep_sandbox_running
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
 logger = logging.getLogger(__name__)
+
+# Headroom on the box's running-time limit past the command's own timeout, so
+# the box is still up to report the result (or the timeout) and to be killed.
+_SANDBOX_LIMIT_MARGIN_SECONDS = 60
+# A stream that breaks this close to the command's deadline is its timeout.
+# The SDK's own deadline starts after ours and is rounded to the millisecond,
+# so it never fires earlier than this; any earlier break is the box's doing.
+_DEADLINE_SLACK_SECONDS = 0.05
+# Reattaches to a running command after its stream to the box drops.
+_MAX_RECONNECTS = 3
+_KILL_TIMEOUT_SECONDS = 10
+
+
+class _E2BRun(BaseModel):
+    """How a command on the box ended, with all the output we received."""
+
+    stdout: str
+    stderr: str
+    elapsed: float
+    exit_code: int | None = None
+    timed_out: bool = False
+    # Kill sent after a timeout: True done, False not found, None unknown.
+    killed: bool | None = None
+    # Why we stopped following a command that had not ended: the stream
+    # error's type name.
+    lost: str | None = None
+    # The command ended while we were not attached: no exit code.
+    ended_unseen: bool = False
+    reconnects: int = 0
 
 
 def _build_completion_response(
@@ -155,6 +190,11 @@ class BashExecTool(BaseTool):
                 session_id,
                 user_id,
                 required_scopes=requested_scopes(session),
+                owner=(
+                    SandboxOwner.for_session(session.session_id, session.expert_id)
+                    if session
+                    else None
+                ),
             )
 
         # Bubblewrap fallback: local isolated execution.
@@ -194,6 +234,7 @@ class BashExecTool(BaseTool):
         session_id: str | None,
         user_id: str | None = None,
         required_scopes: dict[str, frozenset[str]] | None = None,
+        owner: SandboxOwner | None = None,
     ) -> ToolResponseBase:
         """Execute *command* on the E2B sandbox via commands.run().
 
@@ -201,6 +242,9 @@ class BashExecTool(BaseTool):
         for any user with connected accounts. E2B has full internet access, so
         CLI tools like ``gh`` work without manual authentication.
         """
+        # The turn stops following a tool after the hung-tool cap and pauses
+        # the box, so a longer timeout only keeps an unwatched box billing.
+        timeout = min(max(timeout, 1), HUNG_TOOL_CAP_SECONDS)
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         }
@@ -222,31 +266,26 @@ class BashExecTool(BaseTool):
             if git_identity:
                 envs.update(git_identity)
 
+        # The box's running-time limit was armed when this turn connected;
+        # E2B pauses the box at it, breaking the command's stream mid-run.
+        await keep_sandbox_running(
+            sandbox,
+            max(
+                chat_config.e2b_sandbox_timeout,
+                timeout + _SANDBOX_LIMIT_MARGIN_SECONDS,
+            ),
+            owner,
+        )
         try:
-            result = await sandbox.commands.run(
-                f"bash -c {shlex.quote(command)}",
-                cwd=E2B_WORKDIR,
-                timeout=timeout,
-                envs=envs,
-            )
-            return _build_completion_response(
-                result.stdout,
-                result.stderr,
-                result.exit_code,
-                secret_values,
-                session_id,
-            )
-        except CommandExitException as exc:
-            return _build_completion_response(
-                exc.stdout, exc.stderr, exc.exit_code, secret_values, session_id
-            )
-        except TimeoutException:
-            return BashExecResponse(
-                message="Execution timed out",
-                stdout="",
-                stderr=f"Timed out after {timeout}s",
-                exit_code=-1,
-                timed_out=True,
+            run = await _follow_command(sandbox, command, timeout, envs)
+        except TimeoutException as exc:
+            return ErrorResponse(
+                message=(
+                    "The sandbox did not confirm the command started within "
+                    "the request timeout, so it may or may not have run "
+                    f"({exc}). This is not the command's {timeout}s timeout."
+                ),
+                error="e2b_start_timeout",
                 session_id=session_id,
             )
         except Exception as exc:
@@ -256,3 +295,151 @@ class BashExecTool(BaseTool):
                 error="e2b_execution_error",
                 session_id=session_id,
             )
+        return _run_response(run, timeout, secret_values, session_id)
+
+
+async def _follow_command(
+    sandbox: AsyncSandbox, command: str, timeout: int, envs: dict[str, str]
+) -> _E2BRun:
+    """Run *command* on the box and follow it to its end or its *timeout*.
+
+    The SDK raises ``TimeoutException`` for more than the command's own
+    deadline: the box pausing or dying, or a proxy cancelling the stream,
+    surface the same way at any elapsed time.  Only a break at the deadline
+    is the timeout (the command is then killed); before it, the command is
+    still running on the box, so the stream is reattached instead of the
+    command reported as failed.  Output printed while detached is not
+    replayed by E2B.  Raises only when the command could not be started.
+    """
+    loop = asyncio.get_running_loop()
+    stdout: list[str] = []
+    stderr: list[str] = []
+    started = loop.time()
+    deadline = started + timeout
+    handle = await sandbox.commands.run(
+        f"bash -c {shlex.quote(command)}",
+        background=True,
+        cwd=E2B_WORKDIR,
+        timeout=timeout,
+        envs=envs,
+        on_stdout=stdout.append,
+        on_stderr=stderr.append,
+    )
+    pid = handle.pid
+    reconnects = 0
+
+    def outcome(**kwargs: Any) -> _E2BRun:
+        return _E2BRun(
+            stdout="".join(stdout),
+            stderr="".join(stderr),
+            elapsed=loop.time() - started,
+            reconnects=reconnects,
+            **kwargs,
+        )
+
+    while True:
+        try:
+            result = await handle.wait()
+            return outcome(exit_code=result.exit_code)
+        except CommandExitException as exc:
+            return outcome(exit_code=exc.exit_code)
+        except Exception as exc:
+            remaining = deadline - loop.time()
+            if remaining <= _DEADLINE_SLACK_SECONDS:
+                return outcome(timed_out=True, killed=await _kill(sandbox, pid))
+            logger.warning(
+                "[E2B] bash_exec lost its stream to pid %s after %.1fs of %ds "
+                "(%s: %s)",
+                pid,
+                loop.time() - started,
+                timeout,
+                type(exc).__name__,
+                exc,
+            )
+            if reconnects >= _MAX_RECONNECTS:
+                return outcome(lost=type(exc).__name__)
+            reconnects += 1
+            try:
+                handle = await reattach_command(
+                    sandbox,
+                    pid,
+                    timeout=remaining,
+                    on_stdout=stdout.append,
+                    on_stderr=stderr.append,
+                )
+            except NotFoundException:
+                return outcome(ended_unseen=True)
+            except Exception as reconnect_exc:
+                if deadline - loop.time() <= _DEADLINE_SLACK_SECONDS:
+                    return outcome(timed_out=True, killed=await _kill(sandbox, pid))
+                logger.warning(
+                    "[E2B] bash_exec could not reattach to pid %s: %s",
+                    pid,
+                    reconnect_exc,
+                )
+                return outcome(lost=type(exc).__name__)
+
+
+async def _kill(sandbox: AsyncSandbox, pid: int) -> bool | None:
+    try:
+        return await asyncio.wait_for(
+            sandbox.commands.kill(pid), timeout=_KILL_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.warning("[E2B] Could not kill timed-out pid %s: %s", pid, exc)
+        return None
+
+
+def _run_response(
+    run: _E2BRun, timeout: int, secret_values: list[str], session_id: str | None
+) -> BashExecResponse:
+    if run.exit_code is not None:
+        response = _build_completion_response(
+            run.stdout, run.stderr, run.exit_code, secret_values, session_id
+        )
+        if run.reconnects:
+            response.message += (
+                f" (the connection to the sandbox dropped {run.reconnects} "
+                "time(s) and was resumed; output printed meanwhile may be "
+                "missing)"
+            )
+        return response
+
+    elapsed = f"{run.elapsed:.1f}s"
+    if run.timed_out:
+        if run.killed is True:
+            fate = "it was killed."
+        elif run.killed is False:
+            fate = "it had already ended."
+        else:
+            fate = "it could not be killed and may still be running."
+        note = f"Timed out after {timeout}s"
+        message = f"{note}; {fate}"
+    elif run.ended_unseen:
+        note = (
+            f"Lost the connection to the sandbox after {elapsed} (timeout "
+            f"{timeout}s); the command ended meanwhile, exit code unknown"
+        )
+        message = (
+            f"{note}. Any output it printed after the drop is lost; it was "
+            "not killed and did not time out."
+        )
+    else:
+        note = (
+            f"Lost the connection to the sandbox after {elapsed} (timeout "
+            f"{timeout}s); the command may still be running"
+        )
+        message = (
+            f"{note}. It did not time out and was not killed (the stream "
+            f"to it broke: {run.lost}). "
+            "Check whether it is still running (e.g. with ps) before running "
+            "it again."
+        )
+    response = _build_completion_response(
+        run.stdout, run.stderr, -1, secret_values, session_id
+    )
+    # First line of stderr, so it is what the chat shows for this call.
+    response.stderr = f"{note}\n{response.stderr}".rstrip("\n")
+    response.message = message
+    response.timed_out = run.timed_out
+    return response
