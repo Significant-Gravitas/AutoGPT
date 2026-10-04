@@ -1075,6 +1075,22 @@ def _make_sdk_patches(
                 thinking_standard_model="anthropic/claude-sonnet-4-6",
             ),
         ),
+        # Pin the compaction-target resolvers: _compaction_target_tokens
+        # resolves through the same pin/pct functions as the subprocess,
+        # which would otherwise read auto-MagicMock attributes off the
+        # mocked service config. Values mirror the pre-pin behavior for
+        # the scenario model (catalog 200K window, override pct 0).
+        # Only the service's lazy import site sees these; env.py bound
+        # the real functions at import, so subprocess pinning is
+        # unaffected.
+        (
+            "backend.copilot.sdk.context_window.pinned_context_window",
+            dict(return_value=200_000),
+        ),
+        (
+            "backend.copilot.sdk.context_window.autocompact_pct",
+            dict(return_value=0),
+        ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         # Bypass dynamic budget resolution — the helper hits Redis via
         # get_global_rate_limits / get_remaining_usd_budget, which the

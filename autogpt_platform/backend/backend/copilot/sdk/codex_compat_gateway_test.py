@@ -11,8 +11,14 @@ from aiohttp import ClientSession, web
 from backend.copilot.sdk import codex_compat_gateway
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
+    _Continuation,
+    _Conversation,
+    _DuplicateSubmission,
+    _DuplicateToolResultError,
     _safe_tool_name,
     _serialize_messages,
+    _tool_result_request_fingerprint,
+    _ToolCallRecord,
 )
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
@@ -836,6 +842,34 @@ def test_serialize_messages_rejects_unknown_roles() -> None:
         _serialize_messages([{"role": "tool", "content": "result"}])
 
 
+def _unstarted_gateway() -> CodexAnthropicGateway:
+    # No `async with`: construction alone never binds a socket, so this
+    # runs anywhere (unlike the request-level tests elsewhere in this file).
+    return CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-6-astra",
+        transport=_FakeTransport(_FakeAgentSession()),
+    )
+
+
+class TestBoundaryPeakEstimate:
+    def test_peak_tracks_max_across_boundaries(self) -> None:
+        gateway = _unstarted_gateway()
+        assert gateway.peak_boundary_estimate == 0
+        gateway._record_boundary_estimate(100_000)
+        gateway._record_boundary_estimate(244_800)
+        gateway._record_boundary_estimate(50_000)
+        assert gateway.peak_boundary_estimate == 244_800
+
+    def test_boundary_series_logged_per_request(self, caplog) -> None:
+        gateway = _unstarted_gateway()
+        with caplog.at_level(
+            logging.INFO, logger="backend.copilot.sdk.codex_compat_gateway"
+        ):
+            gateway._record_boundary_estimate(244_800)
+        assert "codex boundary: estimate=244800 peak=244800" in caplog.text
+
+
 @pytest.mark.asyncio
 async def test_identical_tool_result_retry_replays_the_streamed_response() -> None:
     agent_session = _FakeAgentSession(use_tool=True)
@@ -1122,3 +1156,220 @@ def test_replay_cache_evicts_the_oldest_entry_first() -> None:
         _entry(b"x" * (codex_compat_gateway._MAX_REPLAY_BYTES + 1)),
     )
     assert "oversized" not in conversation.replays
+
+
+# ---------------------------------------------------------------------------
+# Auto-compaction requests must not be mistaken for duplicate tool results
+# ---------------------------------------------------------------------------
+
+
+def _satisfied_tool_call(
+    gateway: CodexAnthropicGateway, call_id: str, output: str
+) -> None:
+    """Record a tool call the gateway already asked for and got back."""
+    conversation = _Conversation(id="conv-1")
+    record = _ToolCallRecord(
+        gateway_call_id=call_id,
+        raw_call_id=call_id,
+        conversation=conversation,
+        future=asyncio.get_running_loop().create_future(),
+        result=CodexDynamicToolResult(content=output, success=True),
+        claim_fingerprint="fingerprint-of-the-original-request",
+    )
+    gateway._conversations[conversation.id] = conversation
+    gateway._tool_calls[call_id] = record
+
+
+def _pending_tool_call(gateway: CodexAnthropicGateway, call_id: str) -> _ToolCallRecord:
+    """Record a tool call the gateway asked for and is still waiting on."""
+    conversation = _Conversation(id=f"conv-{call_id}")
+    record = _ToolCallRecord(
+        gateway_call_id=call_id,
+        raw_call_id=call_id,
+        conversation=conversation,
+        future=asyncio.get_running_loop().create_future(),
+    )
+    gateway._conversations[conversation.id] = conversation
+    gateway._tool_calls[call_id] = record
+    return record
+
+
+def _turn_with_final_user_content(call_id: str, final_content: list[dict]) -> dict:
+    """One tool round as the CLI sends it, ending on *final_content* plus the
+    ``system`` message the CLI appends to every request."""
+    return {
+        "model": "gpt-6-astra",
+        "stream": True,
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": "list the files"}]},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": call_id, "name": "Glob", "input": {}}
+                ],
+            },
+            {"role": "user", "content": final_content},
+            {"role": "system", "content": "<total_tokens>1 tokens left</total_tokens>"},
+        ],
+    }
+
+
+def _delivery_payload(call_id: str, output: str, *, reminder: bool = False) -> dict:
+    """A plain continuation: the CLI handing back one tool result, with or
+    without the ``<system-reminder>`` text it sometimes injects beside it."""
+    content: list[dict] = [
+        {"type": "tool_result", "tool_use_id": call_id, "content": output}
+    ]
+    if reminder:
+        content.append(
+            {
+                "type": "text",
+                "text": (
+                    "<system-reminder>\nThe file changed on disk.\n"
+                    "</system-reminder>"
+                ),
+            }
+        )
+    return _turn_with_final_user_content(call_id, content)
+
+
+def _compaction_payload(call_id: str, output: str) -> dict:
+    """The shape the CLI actually sends when auto-compaction fires.
+
+    Captured from claude 2.1.274 against a stub: the whole conversation is
+    replayed with the summarisation instruction as a text block in the same
+    user message as the latest ``tool_result`` — which, mid-turn, has not
+    been delivered yet.
+    """
+    return _turn_with_final_user_content(
+        call_id,
+        [
+            {"type": "tool_result", "tool_use_id": call_id, "content": output},
+            {
+                "type": "text",
+                "text": (
+                    "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools. "
+                    "You already have all the context you need to write a "
+                    "detailed summary of the conversation."
+                ),
+            },
+        ],
+    )
+
+
+class TestCompactionRequestRouting:
+    async def test_compaction_with_pending_result_abandons_the_call(self) -> None:
+        """The real mid-turn shape: the latest result is still undelivered.
+        Claiming it would resume the task upstream and lose the summarise
+        instruction, so the call is abandoned and the request served whole."""
+        gateway = _unstarted_gateway()
+        record = _pending_tool_call(gateway, "toolu_1")
+
+        outcome = gateway._continue_conversation(
+            _compaction_payload("toolu_1", "notes.txt")
+        )
+
+        assert outcome is None
+        assert record.closed
+        assert record.future.cancelled()
+        assert record.result is not None and record.result.content == "notes.txt"
+
+    async def test_compaction_with_settled_result_starts_a_new_conversation(
+        self,
+    ) -> None:
+        """Settled results under a new ask is a fresh request, not a replay."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+
+        assert (
+            gateway._continue_conversation(_compaction_payload("toolu_1", "notes.txt"))
+            is None
+        )
+
+    async def test_resent_compaction_request_reads_as_settled(self) -> None:
+        """The CLI retries a failed compaction; the abandoned call's stored
+        result must make the second copy settled, not conflicting."""
+        gateway = _unstarted_gateway()
+        _pending_tool_call(gateway, "toolu_1")
+        payload = _compaction_payload("toolu_1", "notes.txt")
+
+        assert gateway._continue_conversation(payload) is None
+        assert gateway._continue_conversation(payload) is None
+
+    async def test_delivery_beside_a_system_reminder_still_continues(self) -> None:
+        """Injected reminder text is not a new ask."""
+        gateway = _unstarted_gateway()
+        record = _pending_tool_call(gateway, "toolu_1")
+
+        outcome = gateway._continue_conversation(
+            _delivery_payload("toolu_1", "notes.txt", reminder=True)
+        )
+
+        assert isinstance(outcome, _Continuation)
+        assert outcome.conversation is record.conversation
+        assert record.future.result().content == "notes.txt"
+
+    async def test_true_replay_of_a_delivery_takes_the_replay_path(self) -> None:
+        """A byte-identical resend of an accepted delivery is answered from
+        the replay cache, and that branch is checked before any 409."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+        payload = _delivery_payload("toolu_1", "notes.txt")
+        fingerprint = _tool_result_request_fingerprint(payload)
+        gateway._tool_calls["toolu_1"].claim_fingerprint = fingerprint
+
+        outcome = gateway._continue_conversation(payload)
+
+        assert isinstance(outcome, _DuplicateSubmission)
+        assert outcome.replay_key == fingerprint
+
+    async def test_conflicting_result_still_rejected(self) -> None:
+        """Same id, different output, is a genuine protocol conflict — even
+        when it arrives dressed as a compaction request."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+
+        with pytest.raises(_DuplicateToolResultError):
+            gateway._continue_conversation(
+                _compaction_payload("toolu_1", "something-else.txt")
+            )
+
+    async def test_reframed_delivery_of_a_completed_result_still_rejected(
+        self,
+    ) -> None:
+        """A pure delivery of an already-answered result under a new
+        fingerprint has no response to serve and nothing new to forward."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+
+        with pytest.raises(_DuplicateToolResultError, match="completed model call"):
+            gateway._continue_conversation(_delivery_payload("toolu_1", "notes.txt"))
+
+    async def test_unclaimed_result_still_continues_its_conversation(self) -> None:
+        """The ordinary path — a result the gateway is still waiting on —
+        must keep resolving against its own conversation."""
+        gateway = _unstarted_gateway()
+        record = _pending_tool_call(gateway, "toolu_2")
+
+        outcome = gateway._continue_conversation(
+            _delivery_payload("toolu_2", "notes.txt")
+        )
+
+        assert isinstance(outcome, _Continuation)
+        assert outcome.conversation is record.conversation
+
+    async def test_reframed_delivery_after_an_abandoned_call_is_completed(
+        self,
+    ) -> None:
+        """Abandoning keeps the result on the record, so a later pure
+        re-delivery under a new fingerprint reads as a *completed* call —
+        not a closed one whose result was never seen."""
+        gateway = _unstarted_gateway()
+        _pending_tool_call(gateway, "toolu_1")
+        assert (
+            gateway._continue_conversation(_compaction_payload("toolu_1", "notes.txt"))
+            is None
+        )
+
+        with pytest.raises(_DuplicateToolResultError, match="completed model call"):
+            gateway._continue_conversation(_delivery_payload("toolu_1", "notes.txt"))

@@ -12,8 +12,13 @@ import os
 import re
 from urllib.parse import urlparse
 
-from backend.copilot.config import ChatConfig
-from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
+from backend.copilot.config import CLI_DEFAULT_CONTEXT_WINDOW, ChatConfig
+from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.sdk.context_window import (
+    CodexEngineWindow,
+    autocompact_pct,
+    pinned_context_window,
+)
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -47,8 +52,13 @@ def build_sdk_env(
     model: str | None = None,
     codex_gateway_url: str | None = None,
     codex_gateway_token: str | None = None,
+    codex_engine: CodexEngineWindow | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
+
+    *codex_engine* is what the connected account advertises for the routed
+    model on the Codex route; the pin and trigger follow it when given
+    (see ``sdk/context_window.py``).  Callers on other routes leave it None.
 
     Four modes (checked in order):
     1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
@@ -86,7 +96,8 @@ def build_sdk_env(
     # win over the deployment-wide profile, including ``local``: the loopback
     # gateway speaks the Anthropic wire protocol expected by Claude Code even
     # when the configured baseline provider does not.
-    if codex_gateway_url is not None and codex_gateway_token is not None:
+    codex_route = codex_gateway_url is not None
+    if codex_route and codex_gateway_token is not None:
         no_proxy = _loopback_no_proxy_value()
         env: dict[str, str] = {
             "ANTHROPIC_BASE_URL": codex_gateway_url.rstrip("/"),
@@ -178,14 +189,37 @@ def build_sdk_env(
     # the model table, the 1M capability flags and the server-side experiment
     # branches that newer CLIs consult — without it the compaction trigger is
     # an emergent property of whichever bundled CLI we happen to ship.
-    window = _pinned_context_window(model)
+    # Each route is held to its coding engine's window (see
+    # ``sdk/context_window.py``): what the account advertises on Codex, the
+    # engine default elsewhere; the platform route keeps the 200K default.
+    window = pinned_context_window(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
     env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(window)
+
+    # ...but that pin is clamped to the window the CLI *assumes* for the
+    # model, so on a route whose slug the CLI does not recognise (the Codex
+    # models) every value past that assumption is dropped in silence.
+    # ``CLAUDE_CODE_MAX_CONTEXT_TOKENS`` is the knob that moves the
+    # assumption — the CLI's own unknown-model notice points operators at it —
+    # and without it the line above is inert.  Measured against CLI 2.1.274:
+    # pins of 200K, 272K and 1M produce byte-identical compaction schedules
+    # until this is set, and 1M only takes effect once it is.
+    #
+    # Codex-only on purpose.  Everywhere else the CLI's model table is the
+    # better authority, and raising this would push its client-side length
+    # guard past what the provider actually accepts — trading a clean local
+    # refusal for a provider 400 mid-turn.
+    if codex_route:
+        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(window)
 
     # The window above is clamped by the model's own window, which this
     # kill-switch holds at 200K; keeping it set past that point would swallow
     # the raise silently.  1M is GA (no beta header) on Sonnet 4.6+/5, so the
-    # experimental-betas flag above does not cover it.
-    if window <= _CLI_DEFAULT_CONTEXT_WINDOW:
+    # experimental-betas flag above does not cover it.  On the Codex route
+    # the flag is inert (a GPT slug has no 1M gate) but harmless, so the one
+    # rule — set iff the pin is at or below the CLI default — stands.
+    if window <= CLI_DEFAULT_CONTEXT_WINDOW:
         env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
 
     # Trigger threshold, as a percentage of the window pinned above (CLI
@@ -193,12 +227,16 @@ def build_sdk_env(
     # Moonshot routes skip it because their OpenRouter endpoint returns
     # ``cache_create=0`` (no cache writes happen, so there's no cost to cap)
     # and an aggressive trigger cascades into 3+ compactions per turn.
+    # The Codex route instead mirrors the engine's own 90% trigger (see
+    # ``sdk/context_window.py``) — including for a moonshot-shaped slug,
+    # which still runs on Codex infra there, not the Moonshot endpoint.
     # Operators can also set the config to 0 to disable globally.
-    if (
-        not is_moonshot_model(model)
-        and config.claude_agent_autocompact_pct_override > 0
-    ):
-        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(_autocompact_pct_for_model(model))
+    if codex_route or not is_moonshot_model(model):
+        pct = autocompact_pct(
+            config, model, codex_route=codex_route, codex_engine=codex_engine
+        )
+        if pct > 0:
+            env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(pct)
 
     # Disable gzip on API responses to prevent ZlibError decompression
     # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
@@ -213,41 +251,24 @@ def build_sdk_env(
     return env
 
 
-# What the CLI assumes any Claude model's window to be once 1M is gated off.
-_CLI_DEFAULT_CONTEXT_WINDOW = 200_000
+def describe_sdk_context(
+    *,
+    route: str,
+    model: str | None,
+    sdk_env: dict[str, str],
+    window_source: str | None = None,
+) -> str:
+    """One-line summary of the context the SDK subprocess was pinned to.
 
-
-def _pinned_context_window(model: str | None) -> int:
-    """Configured window pin, capped at a Moonshot route's real window.
-
-    A pin above what the provider serves puts the compaction trigger past the
-    point the provider rejects the turn, so compaction never fires.  Anthropic
-    is deliberately not capped: the catalog holds every Anthropic entry at 200K
-    pending the Claude-5 tokenizer soak, which would cancel a legitimate raise.
-    An unlisted Kimi SKU falls back to the window the CLI assumes anyway.
+    Read back off the built env (rather than recomputed) so the line
+    always states what the subprocess actually received. Never includes
+    secret values — window, trigger, and flags only.
     """
-    window = config.claude_agent_context_window
-    if not is_moonshot_model(model):
-        return window
-    return min(window, moonshot_context_window(model) or _CLI_DEFAULT_CONTEXT_WINDOW)
-
-
-# Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
-# so the same 50%-of-200K trigger would compact at ~77% of the *text* budget
-# 4.x sessions get.  Scaling the trigger by the inflation factor keeps the
-# effective text-equivalent context at parity (50% -> 65% = 130K tokens
-# ~= 100K 4.x-tokens' worth), without touching the perceived window.
-_SONNET_5_TOKENIZER_INFLATION = 1.3
-
-
-def _autocompact_pct_for_model(model: str | None) -> int:
-    """Auto-compaction trigger percentage for ``model``.
-
-    Base value from config; Sonnet 5 is scaled up by the tokenizer-inflation
-    factor (capped at 90, below the CLI's ~93% internal ceiling) so its
-    compaction fires at the same text-equivalent point as on 4.x models.
-    """
-    pct = config.claude_agent_autocompact_pct_override
-    if model and "claude-sonnet-5" in model:
-        pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)
-    return pct
+    window = sdk_env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "<unset>")
+    pct = sdk_env.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "<cli-default>")
+    kill = "true" if "CLAUDE_CODE_DISABLE_1M_CONTEXT" in sdk_env else "false"
+    source = f" window_source={window_source}" if window_source else ""
+    return (
+        f"route={route} model={model} window={window}{source} "
+        f"trigger_pct={pct} disable_1m_context={kill}"
+    )

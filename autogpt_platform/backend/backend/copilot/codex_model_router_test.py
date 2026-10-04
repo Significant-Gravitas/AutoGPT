@@ -3,7 +3,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot.model_router import resolve_codex_model_route
+from backend.copilot.model_router import (
+    _resolved_codex_model,
+    resolve_codex_model_route,
+)
 from backend.data.llm_registry import registry
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
 from backend.integrations.credential_lease import CredentialLease
@@ -26,6 +29,8 @@ def _model(
     hidden: bool = False,
     default_effort: CodexReasoningEffort = "medium",
     efforts: list[CodexReasoningEffort] | None = None,
+    context_window: int | None = None,
+    auto_compact_token_limit: int | None = None,
 ) -> CodexModelInfo:
     return CodexModelInfo(
         model=model,
@@ -35,6 +40,8 @@ def _model(
         default_reasoning_effort=default_effort,
         supported_reasoning_efforts=efforts or ["low", "medium", "high", "xhigh"],
         input_modalities=["text"],
+        context_window=context_window,
+        auto_compact_token_limit=auto_compact_token_limit,
     )
 
 
@@ -103,7 +110,7 @@ async def test_catalog_cells_select_latest_advertised_model(
         lease,
     )
 
-    assert resolved == (expected_model, expected_effort, "catalog")
+    assert resolved[:3] == (expected_model, expected_effort, "catalog")
     transport.models.assert_awaited_once_with(lease)
 
 
@@ -131,7 +138,7 @@ async def test_unavailable_catalog_model_uses_visible_account_default(
         _lease(),
     )
 
-    assert resolved == ("gpt-5.4", "low", "account_default")
+    assert resolved[:3] == ("gpt-5.4", "low", "account_default")
 
 
 @pytest.mark.asyncio
@@ -150,7 +157,7 @@ async def test_no_default_uses_first_visible_account_model(monkeypatch, catalog_
         _lease(),
     )
 
-    assert resolved == ("gpt-5.2", "medium", "account_available")
+    assert resolved[:3] == ("gpt-5.2", "medium", "account_available")
 
 
 @pytest.mark.asyncio
@@ -186,4 +193,20 @@ async def test_disabled_account_default_is_not_used(monkeypatch, catalog_state):
         _lease(),
     )
 
-    assert resolved == ("gpt-5.2", "medium", "account_available")
+    assert resolved[:3] == ("gpt-5.2", "medium", "account_available")
+
+
+def test_resolved_model_carries_the_account_window() -> None:
+    info = _model(
+        "gpt-6-astra", context_window=272_000, auto_compact_token_limit=244_800
+    )
+    resolved = _resolved_codex_model(info, "thinking", "advanced", "catalog")
+    assert (resolved.model, resolved.effort, resolved.source)[0] == "gpt-6-astra"
+    assert resolved.context_window == 272_000
+    assert resolved.auto_compact_token_limit == 244_800
+    assert (
+        _resolved_codex_model(
+            _model("gpt-6-astra"), "thinking", "advanced", "catalog"
+        ).context_window
+        is None
+    )
