@@ -18646,6 +18646,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
           },
+          "dm_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dm Url"
+          },
           "dm_link": {
             "anyOf": [
               { "$ref": "#/components/schemas/PlatformUserLinkInfo" },

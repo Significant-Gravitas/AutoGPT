@@ -46,7 +46,9 @@ async def test_setup_in_group_mints_link_and_sends_button():
         button_url="https://x/l",
     )
     with patch(f"{_CMD}.setup_reply", new=AsyncMock(return_value=reply)) as sr:
-        await commands.handle(MagicMock(), client, _message("/setup"), "setup")
+        await commands.handle(
+            MagicMock(), client, _message("/setup"), "setup", AsyncMock()
+        )
     kwargs = sr.call_args.kwargs
     assert kwargs["platform"] == "telegram"
     assert kwargs["server_noun"] == "group"
@@ -58,22 +60,81 @@ async def test_setup_in_group_mints_link_and_sends_button():
 
 
 @pytest.mark.asyncio
-async def test_setup_in_private_chat_redirects_to_dm_linking():
+@pytest.mark.parametrize("text", ["/start", "/start connect", "/setup"])
+async def test_start_in_private_chat_sends_the_dm_link_button(text):
+    # The Bots page's "Message bot" link opens t.me/<bot>?start=connect, which
+    # Telegram delivers as "/start connect" in the private chat.
     client = MagicMock()
     client.call = AsyncMock()
-    with patch(f"{_CMD}.setup_reply", new=AsyncMock()) as sr:
-        await commands.handle(
-            MagicMock(), client, _message("/setup", chat_type="private"), "setup"
-        )
+    send_link = AsyncMock()
+    message = _message(text, chat_type="private")
+    message["chat"] = {"id": 42, "type": "private"}
+    reply = CommandReply(
+        text="**Welcome to AutoGPT**",
+        button_label="Link Account",
+        button_url="https://x/link/dm",
+    )
+    command = commands.parse_command(message, "OurBot")
+    with (
+        patch(f"{_CMD}.setup_reply", new=AsyncMock()) as sr,
+        patch(f"{_CMD}.dm_link_reply", new=AsyncMock(return_value=reply)) as dr,
+    ):
+        await commands.handle(MagicMock(), client, message, command, send_link)
     sr.assert_not_called()
-    assert "send me a message" in client.call.call_args.kwargs["text"]
+    assert dr.call_args.kwargs["platform"] == "telegram"
+    assert dr.call_args.kwargs["platform_user_id"] == "42"
+    assert dr.call_args.kwargs["platform_username"] == "bently"
+    send_link.assert_awaited_once_with(
+        "42", "**Welcome to AutoGPT**", "Link Account", "https://x/link/dm"
+    )
+    client.call.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_start_in_private_chat_when_already_linked_sends_plain_text():
+    client = MagicMock()
+    client.call = AsyncMock()
+    send_link = AsyncMock()
+    reply = CommandReply(text="Your Telegram DMs are linked to AutoGPT.")
+    with patch(f"{_CMD}.dm_link_reply", new=AsyncMock(return_value=reply)):
+        await commands.handle(
+            MagicMock(),
+            client,
+            _message("/start", chat_type="private"),
+            "start",
+            send_link,
+        )
+    send_link.assert_not_called()
+    assert "DMs are linked" in client.call.call_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_start_in_group_still_links_the_group():
+    client = MagicMock()
+    client.call = AsyncMock()
+    reply = CommandReply(
+        text="**Set up AutoGPT for Builders**",
+        button_label="Link Group",
+        button_url="https://x/l",
+    )
+    with (
+        patch(f"{_CMD}.setup_reply", new=AsyncMock(return_value=reply)) as sr,
+        patch(f"{_CMD}.dm_link_reply", new=AsyncMock()) as dr,
+    ):
+        await commands.handle(
+            MagicMock(), client, _message("/start"), "start", AsyncMock()
+        )
+    dr.assert_not_called()
+    assert sr.call_args.kwargs["platform_server_id"] == "-100123456"
+    sent = client.call.call_args.kwargs
+    assert sent["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://x/l"
 
 
 @pytest.mark.asyncio
 async def test_help_sends_usage_text():
     client = MagicMock()
     client.call = AsyncMock()
-    await commands.handle(MagicMock(), client, _message("/help"), "help")
+    await commands.handle(MagicMock(), client, _message("/help"), "help", AsyncMock())
     text = client.call.call_args.kwargs["text"]
     # Rendered as real HTML — an escaped-entity regression would show the
     # user literal &lt;b&gt; junk.
@@ -88,7 +149,7 @@ async def test_new_clears_the_target_session():
     msg = _message("/new")
     msg["message_thread_id"] = 7
     with patch(f"{_CMD}.sessions.clear_session", new=AsyncMock()) as clear:
-        await commands.handle(MagicMock(), client, msg, "new")
+        await commands.handle(MagicMock(), client, msg, "new", AsyncMock())
     clear.assert_awaited_once_with("telegram", "-100123456|7")
     assert "fresh conversation" in client.call.call_args.kwargs["text"]
 
@@ -98,7 +159,7 @@ async def test_commands_track_command_used_with_group_scope():
     client = MagicMock()
     client.call = AsyncMock()
     api = MagicMock()
-    await commands.handle(api, client, _message("/help"), "help")
+    await commands.handle(api, client, _message("/help"), "help", AsyncMock())
     api.track_event.assert_called_once_with(
         platform="telegram",
         event_type="command_used",
@@ -112,5 +173,7 @@ async def test_dm_commands_track_without_server_id():
     client = MagicMock()
     client.call = AsyncMock()
     api = MagicMock()
-    await commands.handle(api, client, _message("/help", chat_type="private"), "help")
+    await commands.handle(
+        api, client, _message("/help", chat_type="private"), "help", AsyncMock()
+    )
     assert api.track_event.call_args.kwargs["server_id"] is None
