@@ -83,9 +83,9 @@ class TestFormatArgs:
         self, permission_manager: CommandPermissionManager
     ):
         """list_folder should format like read_file."""
-        args = {"path": "/tmp"}
+        args = {"folder": "sub"}
         result = permission_manager._format_args("list_folder", args)
-        assert result == str(Path("/tmp").resolve())
+        assert result == str((permission_manager.workspace / "sub").resolve())
 
     def test_format_args_shell_command_with_args(
         self, permission_manager: CommandPermissionManager
@@ -322,6 +322,47 @@ class TestGeneralizePattern:
 
 class TestCheckCommand:
     """Tests for check_command() method."""
+
+    def test_default_policy_allows_list_folder_in_workspace(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default policy should allow folders inside the workspace."""
+        result = permission_manager.check_command("list_folder", {"folder": "sub"})
+        assert result.allowed
+
+    def test_default_policy_allows_list_folder_at_workspace_root(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default policy should allow the workspace root."""
+        result = permission_manager.check_command("list_folder", {"folder": "."})
+        assert result.allowed
+
+    def test_list_folder_uses_executed_folder_when_path_conflicts(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """A legacy path field must not override the executed folder."""
+        result = permission_manager.check_command(
+            "list_folder", {"folder": "/etc", "path": "sub"}
+        )
+        assert not result.allowed
+
+    def test_default_policy_allows_finish_reason_with_path(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default finish rule should allow reasons that contain paths."""
+        result = permission_manager.check_command(
+            "finish", {"reason": "Saved /workspace/report.txt"}
+        )
+        assert result.allowed
+
+    def test_default_policy_allows_ask_user(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default policy should allow Agent Protocol user questions."""
+        result = permission_manager.check_command(
+            "ask_user", {"question": "Which folder should I inspect?"}
+        )
+        assert result.allowed
 
     def test_check_command_allowed_by_workspace(
         self, permission_manager: CommandPermissionManager
@@ -807,6 +848,36 @@ permissions:
 
         assert settings.permissions.allow == ["custom_command(*)"]
         assert settings.permissions.deny == []
+
+    def test_load_or_create_migrates_legacy_defaults(self, tmp_path: Path):
+        """load_or_create should update a legacy generated allow list."""
+        workspace = tmp_path / "workspace"
+        autogpt_dir = workspace / ".autogpt"
+        autogpt_dir.mkdir(parents=True)
+        settings_file = autogpt_dir / "autogpt.yaml"
+        settings_file.write_text(
+            """
+permissions:
+  allow:
+    - read_file({workspace}/**)
+    - write_file({workspace}/**)
+    - list_folder({workspace}/**)
+    - finish(*)
+    - custom_command(*)
+  deny: []
+"""
+        )
+
+        settings = WorkspaceSettings.load_or_create(workspace)
+
+        assert "list_folder({workspace})" in settings.permissions.allow
+        assert "ask_user(**)" in settings.permissions.allow
+        assert "finish(**)" in settings.permissions.allow
+        assert "finish(*)" not in settings.permissions.allow
+        assert "custom_command(*)" in settings.permissions.allow
+
+        reloaded = WorkspaceSettings.load_or_create(workspace)
+        assert reloaded == settings
 
     def test_add_permission(self, tmp_path: Path):
         """add_permission should add and save permission."""
