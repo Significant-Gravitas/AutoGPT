@@ -274,6 +274,24 @@ def test_gpt6_sol_bills_at_authored_rates():
     assert sol_entry.context_window == 1050000
 
 
+def test_gpt6_1_sol_bills_at_authored_rates():
+    """GPT-6.1 Sol (OpenAI list price $2/$10 per 1M, same as GPT-6 Sol) —
+    flat tier and per-1M projections must match the authored catalog
+    entry."""
+    sol = LLMModel("gpt-6.1-sol")
+    assert MODEL_COST[sol] == 4
+    assert TOKEN_COST[sol].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[sol].max_output_tokens == 128000
+    sol_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-sol")
+    assert sol_entry.price_tier == 2
+    assert sol_entry.context_window == 1050000
+
+
 def test_gpt6_luna_bills_at_authored_rates():
     """GPT-6 Luna (OpenAI list price $0.10/$0.50 per 1M, the fast/cheapest
     GPT-6 tier) — flat tier and per-1M projections must match the
@@ -417,16 +435,16 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter live rate $0.30/$1.20 per 1M,
-    $0.0042/1M cached input as of 2026-09-26 — this route reprices
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.03/$0.75 per 1M,
+    $0.00375/1M cached input as of 2026-10-02 — this route reprices
     continuously by design) — flat tier and per-1M projections must
     match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 45.0,
-        "output": 180.0,
-        "cache_read": 0.63,
+        "input": 4.5,
+        "output": 112.5,
+        "cache_read": 0.5625,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[flash].max_output_tokens == 384000

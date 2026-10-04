@@ -165,9 +165,11 @@ test.each([
       offer_token: trialOffer.token,
       return_to: "billing",
     });
-    expect(posthog.capture).toHaveBeenCalledWith(
+    // The backend sends checkout_started (checkout_kind: trial) once the
+    // Checkout session exists, so the browser sends no checkout event.
+    expect(posthog.capture).not.toHaveBeenCalledWith(
       "subscription_trial_checkout_started",
-      { trial_offer_version: trialOffer.version, surface: "billing" },
+      expect.anything(),
     );
   },
 );
@@ -179,7 +181,7 @@ test("reports the offer impression against the billing surface", async () => {
 
   await screen.findByRole("button", { name: "Start 7-day trial" });
   expect(posthog.capture).toHaveBeenCalledWith(
-    "subscription_trial_offer_viewed",
+    "trial_offer_viewed",
     expect.objectContaining({ surface: "billing" }),
   );
 });

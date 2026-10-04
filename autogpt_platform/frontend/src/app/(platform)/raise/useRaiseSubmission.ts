@@ -2,6 +2,8 @@ import { useCreateRaisedExpert } from "@/app/api/__generated__/endpoints/experts
 import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { roleFor } from "./components/CategoryStep/helpers";
@@ -17,6 +19,7 @@ import {
 } from "./helpers";
 
 export function useRaiseSubmission() {
+  const queryClient = useQueryClient();
   const router = useRouter();
   const { mutateAsync: createRaisedExpert, isPending } =
     useCreateRaisedExpert();
@@ -55,6 +58,11 @@ export function useRaiseSubmission() {
         });
       }
       clearDraft();
+      // The copilot page only fires the kickoff for an expert it finds in the
+      // roster, and the sidebar keeps that roster cached, so refresh it before
+      // handing over or the new expert is treated as unknown and the kickoff
+      // param is dropped.
+      await invalidateExpertRosterQueries(queryClient);
       // kickoff=1 has the expert open the thread itself: introduce who it is,
       // say what it can take on, and start or ask for its first job.
       router.push(

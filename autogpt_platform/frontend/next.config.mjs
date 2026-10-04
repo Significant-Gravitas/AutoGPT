@@ -117,6 +117,13 @@ const nextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // Modern equivalent of X-Frame-Options; browsers that support CSP
+          // use this and ignore the legacy header, so send both.
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
           // Enables Sentry browser JS self-profiling.
           { key: "Document-Policy", value: "js-profiling" },
         ],

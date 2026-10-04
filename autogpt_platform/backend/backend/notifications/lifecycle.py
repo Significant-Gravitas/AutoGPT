@@ -14,9 +14,9 @@ from datetime import datetime, timezone
 import stripe
 from prisma.enums import NotificationType
 
+from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
-    AudienceEventModel,
     NotificationEventModel,
     PaymentFailedData,
     PaymentFinalNoticeData,
@@ -27,6 +27,7 @@ from backend.data.notifications import (
 )
 from backend.data.stripe_client import stripe_call
 from backend.data.user import BillingEmailRecipient
+from backend.notifications import subscriber_fields
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import (
     card_from_invoice,
@@ -34,11 +35,14 @@ from backend.notifications.lifecycle_plan import (
     format_date,
     plan_from_invoice,
     plan_from_subscription,
+    tier_and_cycle_from_subscription,
 )
 from backend.notifications.queue import queue_audience_change, queue_notification_async
+from backend.notifications.subscriber_fields import audience_event
 from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
+from backend.util.product_analytics import track_subscription_ended
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Lifecycle]")
@@ -105,13 +109,14 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     user = await _user_for(session.get("customer"))
     if user is None:
         return
+    fields = subscriber_fields.subscribed(subscription.get("start_date"))
 
     if user.welcome_email_sent_at is not None:
-        await queue_audience_change(
-            AudienceEventModel(
-                action=AudienceAction.ADD_CHANGELOG, email=user.email, user_id=user.id
-            )
+        event = audience_event(
+            AudienceAction.ADD_CHANGELOG, user.email, user.id, fields
         )
+        if event is not None:
+            await queue_audience_change(event)
         return
 
     # Claim before queueing: Stripe retries webhooks, and two welcomes is worse
@@ -142,11 +147,10 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     # Must not propagate: the welcome is already out and the claim is durable,
     # so a Stripe retry would take the returning-customer branch and enrol them
     # in the changelog instead of the tour. Report it rather than fail.
-    enrolled = await queue_audience_change(
-        AudienceEventModel(
-            action=AudienceAction.ENROLL_TOUR, email=user.email, user_id=user.id
-        )
-    )
+    event = audience_event(AudienceAction.ENROLL_TOUR, user.email, user.id, fields)
+    if event is None:
+        return
+    enrolled = await queue_audience_change(event)
     if not enrolled.success:
         logger.error(
             f"Welcomed user {user.id} but could not queue the onboarding tour: "
@@ -255,6 +259,11 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
             ),
             claim_key,
         )
+        await subscriber_fields.queue_fields(
+            user.id,
+            user.email,
+            subscriber_fields.subscription_canceled(subscription.get("canceled_at")),
+        )
         return
 
     claim_key = f"resumed:{sub_id}:{episode}"
@@ -272,6 +281,9 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
         ),
         claim_key,
     )
+    await subscriber_fields.queue_fields(
+        user.id, user.email, subscriber_fields.subscription_resumed()
+    )
 
 
 async def on_subscription_deleted(subscription: dict) -> None:
@@ -288,7 +300,7 @@ async def on_subscription_deleted(subscription: dict) -> None:
     if not await claim_once(claim_key):
         return
 
-    reason = (subscription.get("cancellation_details") or {}).get("reason")
+    reason = _churn_reason(subscription)
     plan = await plan_from_subscription(subscription)
     await _publish(
         NotificationEventModel[SubscriptionEndedData](
@@ -303,12 +315,30 @@ async def on_subscription_deleted(subscription: dict) -> None:
         ),
         claim_key,
     )
-    # Churned users get win-back only, never the monthly update.
-    await queue_audience_change(
-        AudienceEventModel(
-            action=AudienceAction.REMOVE_CHANGELOG, email=user.email, user_id=user.id
-        )
+    # After the claim and the publish, so a Stripe replay cannot count the
+    # same churn twice.
+    tier, cycle = await tier_and_cycle_from_subscription(subscription)
+    track_subscription_ended(
+        user_id=user.id, subscription_tier=tier, billing_cycle=cycle, reason=reason
     )
+    # Churned users get win-back only, never the monthly update.
+    event = audience_event(
+        AudienceAction.REMOVE_CHANGELOG,
+        user.email,
+        user.id,
+        subscriber_fields.subscription_ended(subscription.get("ended_at")),
+    )
+    if event is not None:
+        await queue_audience_change(event)
+
+
+def _churn_reason(subscription: dict) -> str | None:
+    """Stripe's ``cancellation_details.reason``, except that our own cancel
+    after a failed renewal is involuntary churn, not a requested one."""
+    details = subscription.get("cancellation_details") or {}
+    if details.get("comment") == PAYMENT_FAILURE_CANCELLATION_COMMENT:
+        return "payment_failed"
+    return details.get("reason")
 
 
 async def _user_for(customer_id: object) -> BillingEmailRecipient | None:

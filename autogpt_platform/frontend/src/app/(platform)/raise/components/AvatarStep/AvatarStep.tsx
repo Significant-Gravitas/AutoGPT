@@ -41,12 +41,5 @@ export function AvatarStep({
     );
   }
 
-  return (
-    <ExpertAvatarPicker
-      name={name}
-      category={category}
-      autoGenerate
-      onPick={onPick}
-    />
-  );
+  return <ExpertAvatarPicker name={name} category={category} onPick={onPick} />;
 }

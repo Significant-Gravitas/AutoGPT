@@ -34,7 +34,7 @@ from backend.copilot.dream.scheduling import (
     NIGHTLY_BATCH_REGISTRATION_PREFIX,
     clear_registration_marker,
 )
-from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
@@ -565,6 +565,13 @@ async def _execute_copilot_turn(**kwargs):
                 if args.routine_id is not None
                 else None
             ),
+            # Nobody watches a scheduled turn, so the executor alerts when it
+            # fails after this dispatch succeeded (SECRT-2799).
+            scheduled=ScheduledTurnOrigin(
+                schedule_id=args.schedule_id,
+                routine_id=args.routine_id,
+                cron=args.cron,
+            ),
         )
         if routine is not None and routine.run_at is not None:
             # APScheduler drops a one-shot job once it fires, so without this
@@ -938,6 +945,9 @@ def _morning_briefing_crontab(user_id: str) -> str:
     """
     minute = int(hashlib.sha256(user_id.encode("utf-8")).hexdigest(), 16) % 60
     return f"{minute} 9 * * *"
+
+
+_POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
 
 
 def _job_timezone_name(job: JobObj) -> str | None:
@@ -1474,6 +1484,19 @@ def reconcile_stripe_tiers():
         return await db.reconcile_all_stripe_tiers()
 
     run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
+
+
+def sync_posthog_lifecycles():
+    """Resend subscription status and lifecycle dates to PostHog (SECRT-2778).
+
+    Only starts the sweep; it runs inside the database manager.
+    """
+
+    async def _start():
+        db = get_database_manager_async_client()
+        return await db.start_posthog_lifecycle_sweep()
+
+    run_async(_start())
 
 
 def execution_accuracy_alerts():
@@ -2137,6 +2160,10 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
+        if self.register_system_tasks:
+            # After start: until then get_job only sees pending jobs, not the
+            # jobstore, so the "leave an unchanged job alone" check can't work.
+            self._register_posthog_lifecycle_sweep()
         self._report_parked_jobs()
 
         # Keep the service running since BackgroundScheduler doesn't block
@@ -2782,6 +2809,32 @@ class Scheduler(AppService):
         return run_async(
             rebuild_communities_for_user(user_id, force=force),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+
+    def _register_posthog_lifecycle_sweep(self) -> None:
+        """Daily PostHog lifecycle sweep: the safety net behind the webhook and
+        signup hooks, and what moves a trial that ran out on the clock on.
+
+        Cron rather than an interval, because replace_existing re-arms an
+        interval from every restart. An unchanged job isn't re-registered
+        either: replacing it recomputes ``next_run_time``, so a restart after
+        04:15 but before the overdue run fires would skip that day's sweep.
+        Left in place, the overdue run fires on start (``coalesce``, no
+        misfire limit).
+        """
+        trigger = CronTrigger.from_crontab("15 4 * * *")
+        existing = self.scheduler.get_job(
+            _POSTHOG_LIFECYCLE_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            sync_posthog_lifecycles,
+            trigger,
+            id=_POSTHOG_LIFECYCLE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
         )
 
     # --- Morning briefing ---
