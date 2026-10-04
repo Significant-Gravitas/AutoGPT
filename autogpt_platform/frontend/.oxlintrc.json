@@ -1,0 +1,22 @@
+{
+  "categories": {
+    "correctness": "off"
+  },
+  "jsPlugins": ["@shadcn/lint"],
+  "rules": {
+    "shadcn/require-static-classes": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx",
+        "src/app/(platform)/copilot/components/ChatInput/components/MentionDropdown.stories.tsx",
+        "src/components/layout/AppSidebar/AppSidebar.tsx",
+        "src/components/ui/input-group.tsx"
+      ],
+      "rules": {
+        "shadcn/require-static-classes": "warn"
+      }
+    }
+  ]
+}
