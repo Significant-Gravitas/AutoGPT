@@ -315,13 +315,21 @@ This block uses the Reddit API via PRAW to edit the body text of a self-post you
 ## Execute Code
 
 ### What it is
-Executes code in a sandbox environment with internet access.
+Executes code in a sandbox environment with internet access. Python and JavaScript code can take up to 10 MB of input data through `variables`.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block executes Python, JavaScript, or Bash code in an isolated E2B sandbox with internet access. Use setup_commands to install dependencies before running your code.
 
 The sandbox includes pip and npm pre-installed. Set timeout to limit execution time, and use dispose_sandbox to clean up after execution or keep the sandbox running for follow-up steps.
+
+**Passing data in with `variables` (Python and JavaScript):** each key becomes a variable of the same name in your code, and its value arrives exactly as given, whatever quotes, backslashes or unicode it holds. The limit is 10 MB of JSON in total:
+
+- Up to 64 KB, the data is also in the `AGPT_VARIABLES` environment variable as base64-encoded JSON.
+- From 64 KB to 10 MB, it is written to a JSON file in the sandbox instead, and `AGPT_VARIABLES_FILE` holds that file's path. The variables are still set for you; read the file yourself only if you want the raw JSON.
+- Over 10 MB, the block returns an error. Put the data at a URL (or in a file your code can fetch) and download it from your code.
+
+JSON has no `NaN` or `Infinity`. In JavaScript they arrive as `null`, the same as `JSON.stringify` produces; Python keeps them as floats.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -329,7 +337,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
-| variables | Variables defined here can be used directly in your code. Each key (`variables_#_{name}`) is injected directly as a local variable with the same name (`{name}`) in your code. Values wired in from other blocks keep their type; default values set on this node come in as strings, so parse them in your code if you need a number or other type. | Dict[str, Any] | No |
+| variables | Variables defined here can be used directly in your code. Each key (`variables_#_{name}`) is injected directly as a local variable with the same name (`{name}`) in your code. Values wired in from other blocks keep their type; default values set on this node come in as strings, so parse them in your code if you need a number or other type. Values arrive exactly as given (any quotes, backslashes or unicode); in JavaScript, NaN and Infinity arrive as null. Up to 10 MB of JSON in total. Up to 64 KB it is also in the `AGPT_VARIABLES` env var (base64 JSON); above that it is in the JSON file named by `AGPT_VARIABLES_FILE`. For more than 10 MB, put the data at a URL and download it in your code. | Dict[str, Any] | No |
 | code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | timeout | Execution timeout in seconds | int | No |
