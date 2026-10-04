@@ -258,7 +258,15 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# Raised 77_014 -> 77_280 for #11220's `constant_inputs`
+# (setup_agent_webhook_trigger) and `trigger_config` (update_preset), which an
+# agent carrying both a trigger node and input nodes needs to configure the two
+# separately. Measured on that branch merged with dev 5d28ec680a (2026-09-23):
+#     dev 5d28ec680a                              76,714 (89 tools)
+#     + #11220's two arguments        +178        76,892 (89 tools)
+#     + headroom (~0.5%)              +388        77,280
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_CHAR_BUDGET = 77_280
 
 
 @pytest.fixture(scope="module")
@@ -448,7 +456,15 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-_SESSION_WIRE_BUDGET = 69_483
+#
+# Raised 69_483 -> 69_700 for #11220's same two arguments; both tools ride the
+# largest session, so the whole delta lands here too. Measured on that branch
+# merged with dev 5d28ec680a (2026-09-23):
+#     dev 5d28ec680a                              69,183
+#     + #11220's two arguments        +164        69,347
+#     + headroom (~0.5%)              +353        69,700
+# On conflict keep the higher value.
+_SESSION_WIRE_BUDGET = 69_700
 
 
 def test_largest_declared_session_wire_budget() -> None:
