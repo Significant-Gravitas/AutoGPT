@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
@@ -235,6 +236,7 @@ export function AppSidebar(props: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
+  const { isLoggedIn } = useAuth();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const mainLinks = isHireExpertsEnabled
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
@@ -299,9 +301,11 @@ export function AppSidebar(props: Props) {
             <CollapsibleNavGroup label="Recent chats" scrollable>
               {/* Suspense boundary: RecentChats reads useSearchParams(), which
                   Next.js requires to be wrapped to avoid forcing the route to
-                  client-side rendering. */}
+                  client-side rendering. Signed-out marketplace visitors see
+                  this sidebar until the session check settles, and reading
+                  their chats then only earns a 401. */}
               <Suspense fallback={null}>
-                <RecentChats />
+                {isLoggedIn ? <RecentChats /> : null}
               </Suspense>
             </CollapsibleNavGroup>
           </motion.div>
