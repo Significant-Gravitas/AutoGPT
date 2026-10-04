@@ -53,6 +53,7 @@ import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { QueueBadge } from "./components/QueueBadge";
 import { ThreadHeader } from "./components/ThreadHeader";
 import {
@@ -473,7 +474,7 @@ export function ChatMessagesContainer({
     wasStreamingRef.current = isActivelyStreaming;
   });
 
-  return (
+  const thread = (
     <>
       {showThreadHeader && (
         <ThreadHeader
@@ -877,5 +878,15 @@ export function ChatMessagesContainer({
         <ConversationScrollButton />
       </Conversation>
     </>
+  );
+
+  // Every chat surface renders through here, so the pending-answer state
+  // (clarifying questions, a hire's onboarding, held calls) lives here too
+  // instead of in each host. A read-only viewer answers nothing.
+  if (readOnly) return thread;
+  return (
+    <PendingAnswerContexts messages={allMessages}>
+      {thread}
+    </PendingAnswerContexts>
   );
 }

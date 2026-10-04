@@ -1,8 +1,8 @@
 "use client";
 
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { getHeldOutcomes } from "../../ChatMessagesContainer/heldCallRows";
-import { HeldOutcomesContext } from "../../ChatMessagesContainer/HeldOutcomesContext";
+import { getHeldOutcomes } from "../heldCallRows";
+import { HeldOutcomesContext } from "../HeldOutcomesContext";
 import { getPendingOnboardingCallId } from "../../ExpertOnboardingCard/helpers";
 import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { getPendingQuestions } from "../../QuestionDock/helpers";
