@@ -69,11 +69,34 @@ class ResolvedRaiseAttachments(BaseModel):
 
     @property
     def skill_names(self) -> list[str]:
-        return [skill.name for skill in self.skills]
+        return list(dict.fromkeys(skill.name for skill in self.skills))
 
     @property
     def library_skill_names(self) -> list[str]:
         return [s.name for s in self.skills if s.marketplace_slug is None]
+
+
+def _failed_skill_names_without_survivors(
+    skills: list[ResolvedSkill],
+    marketplace_failures: list[RaiseAttachmentFailure],
+    failed_library_copies: set[str],
+) -> set[str]:
+    uninstalled = {_attachment_key(failure) for failure in marketplace_failures}
+    failed_names = failed_library_copies | {
+        skill.name
+        for skill in skills
+        if _attachment_key(skill.attachment) in uninstalled
+    }
+    surviving_names = {
+        skill.name
+        for skill in skills
+        if (skill.marketplace_slug is None and skill.name not in failed_library_copies)
+        or (
+            skill.marketplace_slug is not None
+            and _attachment_key(skill.attachment) not in uninstalled
+        )
+    }
+    return failed_names - surviving_names
 
 
 async def resolve_attachments(
@@ -84,7 +107,7 @@ async def resolve_attachments(
     skills: list[ResolvedSkill] = []
     seen: set[tuple[str, str, str]] = set()
     for attachment in attachments:
-        key = _dedupe_key(attachment)
+        key = _attachment_key(attachment)
         if key in seen:
             continue
         seen.add(key)
@@ -331,7 +354,9 @@ async def _existing_listing_workflow(
     )
 
 
-def _dedupe_key(attachment: RaiseAttachment) -> tuple[str, str, str]:
+def _attachment_key(
+    attachment: RaiseAttachment | RaiseAttachmentFailure,
+) -> tuple[str, str, str]:
     attachment_id = attachment.id
     # Both skill sources are slugs, which are case-insensitive.
     if attachment.kind == "skill":

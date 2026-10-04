@@ -1703,7 +1703,7 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
             experts_db.raise_attachments,
             "read_user_skill_with_body",
             new_callable=AsyncMock,
-            return_value=SimpleNamespace(name="My Own Playbook"),
+            return_value=SimpleNamespace(name=hub_listing.slug),
         ),
     ):
         raised = await experts_db.create_raised_expert(
@@ -1715,7 +1715,7 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
             + _library_skill(hub_listing.slug),
         )
 
-    assert raised.expert.skills == ["My Own Playbook"]
+    assert raised.expert.skills == [hub_listing.slug]
     assert [(f.source, f.reason) for f in raised.failed_attachments] == [
         ("marketplace", "installation_failed")
     ]
