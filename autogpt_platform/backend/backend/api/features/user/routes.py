@@ -141,7 +141,19 @@ async def update_preferences(
     user_id: Annotated[str, Security(get_user_id)],
     preferences: NotificationPreferenceDTO = Body(...),
 ) -> NotificationPreference:
-    output = await update_user_notification_preference(user_id, preferences)
+    # No address: the update skips an empty one, so saving preferences never
+    # writes User.email. Changing the address is POST /auth/user/email's job.
+    output = await update_user_notification_preference(
+        user_id,
+        NotificationPreference(
+            user_id=user_id,
+            email="",
+            briefing_frequency=preferences.briefing_frequency,
+            alerts_enabled=preferences.alerts_enabled,
+            store_verdicts_enabled=preferences.store_verdicts_enabled,
+            daily_limit=preferences.daily_limit,
+        ),
+    )
     return output
 
 
@@ -176,7 +188,7 @@ async def apply_email_preference_choice(
 
 def _preference_with_choice(
     current: NotificationPreference, choice: str
-) -> NotificationPreferenceDTO | None:
+) -> NotificationPreference | None:
     """The volume knob, server-side. "alerts" and "off" both stop the digest;
     they differ in whether alerts survive."""
     mapping: dict[str, tuple[BriefingFrequency, bool]] = {
@@ -189,7 +201,8 @@ def _preference_with_choice(
     if choice not in mapping:
         return None
     frequency, alerts = mapping[choice]
-    return NotificationPreferenceDTO(
+    return NotificationPreference(
+        user_id=current.user_id,
         email=current.email,
         briefing_frequency=frequency,
         alerts_enabled=alerts,
