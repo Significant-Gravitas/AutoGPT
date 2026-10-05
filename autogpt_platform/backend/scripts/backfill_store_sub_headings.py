@@ -108,7 +108,7 @@ async def find_listings_without_sub_heading(
     status_clause = (
         "" if include_unapproved else "AND \"submissionStatus\" = 'APPROVED'"
     )
-    limit_clause = "LIMIT $1" if limit else ""
+    limit_clause = "LIMIT $1" if limit is not None else ""
     rows = await get_client().query_raw(
         f"""
         SELECT id, name, description
@@ -118,7 +118,7 @@ async def find_listings_without_sub_heading(
         ORDER BY "createdAt" DESC
         {limit_clause}
         """,
-        *([int(limit)] if limit else []),
+        *([int(limit)] if limit is not None else []),
     )
     return [(r["id"], r["name"], r["description"]) for r in rows]
 
