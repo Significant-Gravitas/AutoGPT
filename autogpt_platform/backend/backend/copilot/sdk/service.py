@@ -231,6 +231,7 @@ from .tool_display import (
     stamp_tool_display_name,
     strip_display_token,
 )
+from .turn_cost_estimate import TokenUsage, record_call_usage
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -501,6 +502,8 @@ async def _consume_sdk_until_done(
                 and msg_id not in state.generation_ids
             ):
                 state.generation_ids.append(msg_id)
+            if msg_id is not None and msg_id.startswith("gen-"):
+                record_call_usage(state.generation_usage, msg_id, sdk_msg.usage)
             # Track the model the SDK actually used — when a fallback
             # activates, this differs from ``state.options.model``.
             # Consumed by the Moonshot cost-override decision so we
@@ -1375,6 +1378,9 @@ class _RetryState:
     # authoritative ``/generation`` total_cost.  Lives on ``_RetryState``
     # (not per-attempt ``_StreamAccumulator``) so it survives retries.
     generation_ids: list[str] = dataclass_field(default_factory=list)
+    # Per-generation token usage from ``AssistantMessage.usage``, so a
+    # partial ``/generation`` lookup estimates only the unresolved calls.
+    generation_usage: dict[str, TokenUsage] = dataclass_field(default_factory=dict)
     # The *actually executed* model observed on ``AssistantMessage.model`` —
     # differs from ``state.options.model`` (the requested primary) when
     # ``_resolve_fallback_model`` swaps to a fallback mid-attempt.  The
@@ -6250,6 +6256,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     api_key=config.api_key,
                     log_prefix=log_prefix,
                     langfuse_trace_id=langfuse_trace_id,
+                    generation_usage=(
+                        dict(state.generation_usage) if state is not None else {}
+                    ),
                 )
             )
             _background_tasks.add(cost_reconcile_task)

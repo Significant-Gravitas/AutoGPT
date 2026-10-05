@@ -149,6 +149,21 @@ def token_usage_from_sdk(usage: dict[str, Any] | None) -> TokenUsage | None:
     )
 
 
+def record_call_usage(
+    usage_by_generation: dict[str, TokenUsage],
+    generation_id: str,
+    sdk_usage: dict[str, Any] | None,
+) -> None:
+    """Fold one ``AssistantMessage.usage`` into the per-generation map."""
+    usage = token_usage_from_sdk(sdk_usage)
+    if usage is None:
+        return
+    previous = usage_by_generation.get(generation_id)
+    usage_by_generation[generation_id] = (
+        usage if previous is None else previous.merge(usage)
+    )
+
+
 def _catalog_slug_candidates(model: str) -> list[str]:
     candidates = [model]
     vendor, _, bare = model.partition("/")

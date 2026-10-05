@@ -1617,6 +1617,53 @@ class TestConsumeSdkUntilDone:
         assert loop_state.ended_with_stream_error is False
 
     @pytest.mark.asyncio
+    async def test_records_usage_per_openrouter_generation(self):
+        """Each ``gen-`` message's usage is kept per generation (merged
+        across the CLI's per-block re-emissions) for the cost reconcile."""
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.turn_cost_estimate import TokenUsage
+
+        ctx = self._ctx()
+        state = self._state()
+        usage = {"input_tokens": 54, "cache_read_input_tokens": 30869}
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            for out in (1, 1600):
+                yield AssistantMessage(
+                    content=[TextBlock(text="hi")],
+                    model="anthropic/claude-sonnet-5-5",
+                    message_id="gen-1",
+                    usage={**usage, "output_tokens": out},
+                )
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="hi",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            async for _ in _consume_sdk_until_done(
+                MagicMock(), ctx, state, self._acc(), self._loop_state()
+            ):
+                pass
+
+        assert state.generation_ids == ["gen-1"]
+        assert state.generation_usage == {
+            "gen-1": TokenUsage(
+                input_tokens=54, cache_read_tokens=30869, output_tokens=1600
+            )
+        }
+
+    @pytest.mark.asyncio
     async def test_heartbeat_sentinel_yields_heartbeat_event(self):
         """``None`` from ``_iter_sdk_messages`` is the heartbeat sentinel —
         the helper must refresh the lock and yield ``StreamHeartbeat``

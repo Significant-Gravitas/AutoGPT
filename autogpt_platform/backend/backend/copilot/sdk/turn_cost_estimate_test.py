@@ -12,6 +12,7 @@ from backend.copilot.sdk.turn_cost_estimate import (
     TokenUsage,
     estimate_cost_usd,
     fallback_turn_cost,
+    record_call_usage,
     token_usage_from_sdk,
 )
 
@@ -198,3 +199,13 @@ class TestTokenUsageFromSdk:
         last = _usage(54, 30869, 120000, 1600)
         assert first.merge(last) == last
         assert last.merge(first) == last
+
+
+class TestRecordCallUsage:
+    def test_repeated_emissions_of_one_call_merge(self):
+        by_gen: dict[str, TokenUsage] = {}
+        sdk = {"input_tokens": 54, "cache_read_input_tokens": 30869}
+        record_call_usage(by_gen, "gen-1", {**sdk, "output_tokens": 1})
+        record_call_usage(by_gen, "gen-1", {**sdk, "output_tokens": 1600})
+        record_call_usage(by_gen, "gen-2", None)
+        assert by_gen == {"gen-1": _usage(54, 30869, 0, 1600)}
