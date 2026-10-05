@@ -173,6 +173,10 @@ async def test_distinct_endpoints_on_one_host_are_not_deduplicated(
     monkeypatch.setattr(
         "backend.copilot.tools.session_registry.get_registry", lambda: catalog_index
     )
+    monkeypatch.setattr(
+        "backend.copilot.tools.session_registry.load_connection_state",
+        AsyncMock(return_value=ConnectionState(server_urls=frozenset({tenant_url}))),
+    )
     validated = await RunCapabilityTool()._execute(
         USER, make_session(USER), id=custom["id"], input={}, validate_only=True
     )
