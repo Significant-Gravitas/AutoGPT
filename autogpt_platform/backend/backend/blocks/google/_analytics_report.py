@@ -276,7 +276,8 @@ def _row(
 def _metric_values(
     row: dict[str, Any], metrics: list[tuple[str, str]]
 ) -> dict[str, int | float]:
-    """Metric values arrive as strings; integer metrics become ints, others floats."""
+    """Metric values arrive as strings; whole integer metrics become ints, the
+    rest floats."""
     return {
         name: _number(value.get("value", "0"), metric_type)
         for (name, metric_type), value in zip(metrics, row.get("metricValues", []))
@@ -284,4 +285,7 @@ def _metric_values(
 
 
 def _number(text: str, metric_type: str) -> int | float:
-    return int(text) if metric_type == "TYPE_INTEGER" else float(text)
+    # Google types each metric, not each value, so an integer metric sent as
+    # "12.0" or as a fraction must not fail the whole report.
+    value = float(text)
+    return int(value) if metric_type == "TYPE_INTEGER" and value.is_integer() else value

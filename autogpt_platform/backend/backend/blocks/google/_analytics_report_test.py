@@ -305,6 +305,23 @@ def test_parse_report_types_values_by_metric_type():
     assert type(row["totalRevenue"]) is float
 
 
+def test_parse_report_reads_integer_metrics_sent_with_a_decimal_point():
+    report = parse_report(
+        {
+            "metricHeaders": [
+                {"name": "sessions", "type": "TYPE_INTEGER"},
+                {"name": "keyEvents", "type": "TYPE_INTEGER"},
+            ],
+            "rows": [{"metricValues": [{"value": "12.0"}, {"value": "2.5"}]}],
+            "totals": [{"metricValues": [{"value": "40"}, {"value": "7.5"}]}],
+            "rowCount": 1,
+        }
+    )
+    assert report.rows == [{"sessions": 12, "keyEvents": 2.5}]
+    assert type(report.rows[0]["sessions"]) is int
+    assert report.totals == {"sessions": 40, "keyEvents": 7.5}
+
+
 def test_parse_report_without_dimensions_has_one_row_and_its_totals():
     report = parse_report(
         {
