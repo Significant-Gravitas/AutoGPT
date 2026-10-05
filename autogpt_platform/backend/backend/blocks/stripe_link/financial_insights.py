@@ -20,6 +20,7 @@ from pydantic import field_validator, model_validator
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -142,6 +143,7 @@ class StripeLinkListFinancialAccountsBlock(Block):
                     "has_more": False,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -280,6 +282,7 @@ class StripeLinkListTransactionsBlock(Block):
                     "has_more": True,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -364,6 +367,7 @@ class StripeLinkGetBalancesBlock(Block):
                     "has_more": False,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
