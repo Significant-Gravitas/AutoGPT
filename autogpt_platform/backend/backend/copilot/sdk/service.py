@@ -218,6 +218,7 @@ from .tool_adapter import (
     MCP_TOOL_PREFIX,
     create_copilot_mcp_server,
     get_copilot_tool_names,
+    get_sdk_declared_tools,
     get_sdk_disallowed_tools,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -5076,13 +5077,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
 
+        extra_builtins = config.claude_agent_extra_builtin_tools
         if permissions is not None:
             allowed, disallowed = apply_tool_permissions(
-                permissions, use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+                permissions,
+                use_e2b=use_e2b,
+                disabled_groups=disabled_tool_groups,
+                extra_builtins=extra_builtins,
             )
         else:
             allowed = get_copilot_tool_names(
-                use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+                use_e2b=use_e2b,
+                disabled_groups=disabled_tool_groups,
+                extra_builtins=extra_builtins,
             )
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
@@ -5143,6 +5150,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # have a clean HOME, so this is a no-op there.
             setting_sources=[],
             extra_args={"strict-mcp-config": None},
+            # Declare only the built-ins the security hook lets through, so
+            # a CLI upgrade's new built-ins never reach the model.
+            tools=get_sdk_declared_tools(allowed, disallowed),
             allowed_tools=allowed,
             disallowed_tools=disallowed,
             hooks=security_hooks,

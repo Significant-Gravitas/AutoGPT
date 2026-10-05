@@ -409,12 +409,9 @@ def _select_final_answer_parts(
 def sdk_disallowed_tools() -> list[str]:
     """Disable ALL known SDK built-in tools — only graph MCP tools available.
 
-    This blocklist is the ONLY thing that removes a built-in: per the SDK,
-    ``allowed_tools`` merely auto-approves without prompting, and the base set
-    is controlled by ``tools`` (unset here, so every Claude Code default stays
-    in the model's context).  A built-in missing from this list is therefore
-    callable, not blocked — which is why it is derived from the copilot's own
-    inventory rather than kept in sync by hand.
+    ``tools=[]`` is what keeps built-ins out of the model's context; this
+    blocklist is the second layer, derived from the copilot's own inventory
+    rather than kept in sync by hand.  ``allowed_tools`` merely auto-approves.
     """
     # Local import: tool_adapter pulls in the whole copilot tool registry,
     # which every block load should not have to pay for.
@@ -1781,6 +1778,8 @@ class OrchestratorBlock(Block):
             options = ClaudeAgentOptions(
                 system_prompt=input_data.sys_prompt or "",
                 mcp_servers={self._SDK_MCP_SERVER_NAME: mcp_server},
+                # Graph MCP tools only: no CLI built-in is declared.
+                tools=[],
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
                 cwd=sdk_cwd,

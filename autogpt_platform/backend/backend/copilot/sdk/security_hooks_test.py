@@ -66,6 +66,21 @@ async def test_tool_outside_allowed_set_denied(tool_name):
 
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.parametrize("tool_name", ["Agent", "Task"])
+@pytest.mark.asyncio
+async def test_sub_agent_tool_denied_by_default(tool_name):
+    pre = create_security_hooks("u1", sdk_cwd=SDK_CWD, allowed_tools=ALLOWED)[
+        "PreToolUse"
+    ][0].hooks[0]
+    result = await pre(
+        {"tool_name": tool_name, "tool_input": {"prompt": "x"}},
+        tool_use_id=None,
+        context={},
+    )
+    assert "not available in this session" in _reason(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.parametrize("use_e2b", [False, True])
 @pytest.mark.asyncio
 async def test_every_allowed_tool_passes_the_hook(use_e2b):
@@ -304,9 +319,16 @@ def test_bash_builtin_blocked_message_clarity():
 
 @pytest.fixture()
 def _hooks():
-    """Create security hooks and return (pre, post, post_failure) handlers."""
+    """Create security hooks and return (pre, post, post_failure) handlers.
+
+    The sub-agent tool is off by default; these hooks belong to a session
+    whose operator turned it back on, which is when the slot limit applies.
+    """
     hooks = create_security_hooks(
-        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+        user_id="u1",
+        sdk_cwd=SDK_CWD,
+        max_subtasks=2,
+        allowed_tools=get_copilot_tool_names(extra_builtins=["Agent"]),
     )
     pre = hooks["PreToolUse"][0].hooks[0]
     post = hooks["PostToolUse"][0].hooks[0]

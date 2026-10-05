@@ -303,6 +303,23 @@ class TestBuildSdkEnvModePriority:
         assert result.get("ANTHROPIC_CUSTOM_HEADERS") == "Accept-Encoding: identity"
 
 
+@pytest.mark.parametrize("use_openrouter", [False, True])
+def test_sub_agents_run_in_the_foreground(use_openrouter: bool):
+    # A background sub-agent outlives the stream read that ends at the turn's
+    # result and is lost, so a re-enabled Agent must hand back in-turn.
+    cfg = _make_config(
+        use_openrouter=use_openrouter,
+        api_key="or-key" if use_openrouter else None,
+        base_url="https://openrouter.ai/api/v1" if use_openrouter else None,
+    )
+    with patch("backend.copilot.sdk.env.config", cfg):
+        from backend.copilot.sdk.env import build_sdk_env
+
+        result = build_sdk_env()
+
+    assert result["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+
+
 # ---------------------------------------------------------------------------
 # CLAUDE_CODE_TMPDIR integration
 # ---------------------------------------------------------------------------

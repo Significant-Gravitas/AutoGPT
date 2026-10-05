@@ -294,9 +294,10 @@ the model as available tools.
 # (``tools/todo_write.py``), while SDK mode still uses the CLI-native
 # original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
 # MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
-# ``Task`` remains an SDK-only built-in
-# (for queue-backed context-isolation on baseline, use ``run_sub_session``
-# instead).
+# ``Agent``/``Task`` (the CLI sub-agent tool) stay accepted for saved graphs
+# and routines but are off on the SDK path unless an operator enables them
+# (``claude_agent_extra_builtin_tools``); ``run_sub_session`` is the
+# delegation path on both engines.
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
@@ -604,6 +605,7 @@ def apply_tool_permissions(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    extra_builtins: Iterable[str] = (),
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
@@ -613,7 +615,12 @@ def apply_tool_permissions(
     applies *permissions* on top.  Tools belonging to any *disabled_groups*
     are hidden from the base allowed list — use this to gate capability
     groups (e.g. ``"graphiti"`` when the memory backend is off for the
-    current user).
+    current user).  *extra_builtins* joins the base allowed list before
+    *permissions* narrows it, so a whitelist still decides.
+
+    A name the base list does not hold drops out: ``Agent`` and ``Task``
+    stay valid in saved permission lists but grant nothing unless an
+    operator turned the CLI sub-agent tool back on.
 
     Returns:
         ``(allowed_tools, extra_disallowed)`` where *allowed_tools* is the
@@ -631,7 +638,9 @@ def apply_tool_permissions(
     from backend.copilot.tools import TOOL_REGISTRY
 
     base_allowed = get_copilot_tool_names(
-        use_e2b=use_e2b, disabled_groups=disabled_groups
+        use_e2b=use_e2b,
+        disabled_groups=disabled_groups,
+        extra_builtins=extra_builtins,
     )
     base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 

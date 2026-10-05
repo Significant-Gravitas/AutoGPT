@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from backend.blocks.autopilot import AutoPilotBlock
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
     CAPABILITY_GATE_NAMES,
@@ -814,3 +815,57 @@ class TestApplyToolPermissionsIsLossless:
             for name in allowed_unfiltered
             if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
         }
+
+
+class TestSubAgentToolIsInert:
+    """Saved graphs, routines and delegated turns may still name ``Agent`` or
+    ``Task``.  The CLI sub-agent tool is off by default, so those names must
+    still validate and must grant nothing, while the turn keeps the rest of
+    what its list allows."""
+
+    def test_saved_block_input_naming_the_sub_agent_tool_validates(self) -> None:
+        data = AutoPilotBlock.Input.model_validate(
+            {"prompt": "hi", "tools": ["Agent", "Task", "TodoWrite", "Glob"]}
+        )
+
+        assert data.tools == ["Agent", "Task", "TodoWrite", "Glob"]
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_whitelist_naming_it_keeps_its_other_tools(self, use_e2b: bool) -> None:
+        perms = CopilotPermissions(
+            tools=["Agent", "Task", "web_fetch", "TodoWrite"], tools_exclude=False
+        )
+
+        allowed, _ = apply_tool_permissions(perms, use_e2b=use_e2b)
+
+        assert "mcp__copilot__web_fetch" in allowed
+        assert "TodoWrite" in allowed
+        assert not {"Agent", "Task"} & set(allowed)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_blacklist_naming_it_changes_nothing(self, use_e2b: bool) -> None:
+        perms = CopilotPermissions(tools=["Agent", "Task"], tools_exclude=True)
+
+        allowed, _ = apply_tool_permissions(perms, use_e2b=use_e2b)
+        unfiltered, _ = apply_tool_permissions(CopilotPermissions(), use_e2b=use_e2b)
+
+        assert set(allowed) == set(unfiltered)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_operator_extra_is_still_narrowed_by_a_whitelist(
+        self, use_e2b: bool
+    ) -> None:
+        with_agent = CopilotPermissions(
+            tools=["Agent", "web_fetch"], tools_exclude=False
+        )
+        without_agent = CopilotPermissions(tools=["web_fetch"], tools_exclude=False)
+
+        allowed_with, _ = apply_tool_permissions(
+            with_agent, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+        allowed_without, _ = apply_tool_permissions(
+            without_agent, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert "Agent" in allowed_with
+        assert "Agent" not in allowed_without

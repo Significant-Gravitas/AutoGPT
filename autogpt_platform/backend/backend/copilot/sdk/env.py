@@ -169,6 +169,10 @@ def build_sdk_env(
     # Keep TodoWrite, the checklist the UI renders; the CLI otherwise swaps in
     # its TaskCreate/TaskUpdate tools.
     env["CLAUDE_CODE_ENABLE_TASKS"] = "0"
+    # The stream is read only up to the turn's result, so a background
+    # sub-agent is cut off mid-task.  If Agent is re-enabled it must run in
+    # the foreground and return its result inside the turn.
+    env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
     # NOTE: this disables ALL experimental betas including
     # context-management-2025-06-27.  This is intentional: OpenRouter
