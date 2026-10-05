@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from backend.util.db_boundary import check_database_boundary, find_violations
+from backend.util.db_boundary_policy import DATABASE_IMPLEMENTATIONS
 
 QUERY_SOURCE = """
 from prisma.models import User
@@ -109,6 +110,13 @@ def test_syntax_errors_are_not_silently_skipped():
 def test_backend_database_boundary():
     root = Path(__file__).resolve().parents[1]
     assert not (failures := check_database_boundary(root)), "\n".join(failures)
+
+
+@pytest.mark.parametrize("module", sorted(DATABASE_IMPLEMENTATIONS))
+def test_database_implementation_exceptions_name_existing_modules(module: str):
+    root = Path(__file__).resolve().parents[1]
+    path = root.joinpath(*module.removeprefix("backend.").split(".")).with_suffix(".py")
+    assert path.is_file(), f"Remove stale database implementation exception: {module}"
 
 
 def test_sentry_workspace_embedding_bypass_is_rejected():
@@ -243,6 +251,10 @@ def test_legacy_counts_cannot_hide_an_extra_call_or_a_later_regression(tmp_path:
     notification.write_text(source + "User.prisma().find_many()\n", encoding="utf-8")
     assert any(
         "2 references; 1 legacy" in error for error in check_database_boundary(tmp_path)
+    )
+    assert any(
+        "backend/notifications/example.py:2,3" in error
+        for error in check_database_boundary(tmp_path)
     )
 
     notification.write_text("", encoding="utf-8")

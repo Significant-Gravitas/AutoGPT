@@ -41,8 +41,9 @@ def check_database_boundary(root: Path) -> list[str]:
         allowed = baseline.get(key, 0)
         if len(lines) > allowed:
             path, detail = key.split("::", 1)
+            locations = ",".join(map(str, sorted(set(lines))))
             failures.append(
-                f"backend/{path}:{lines[0]} {detail} ({len(lines)} references; {allowed} legacy)"
+                f"backend/{path}:{locations} {detail} ({len(lines)} references; {allowed} legacy)"
             )
         elif len(lines) < allowed:
             failures.append(

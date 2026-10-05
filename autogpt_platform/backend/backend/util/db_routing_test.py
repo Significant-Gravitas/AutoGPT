@@ -1,6 +1,6 @@
 """Worker calls must use RPC while local Prisma is disconnected."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +15,7 @@ from backend.data.db_manager import DatabaseManager, DatabaseManagerAsyncClient
 
 @pytest.fixture
 def session() -> ChatSession:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return ChatSession(
         session_id="caller",
         user_id="owner",
