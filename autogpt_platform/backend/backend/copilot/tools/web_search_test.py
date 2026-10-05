@@ -9,6 +9,9 @@ the handler plumbs through to ``persist_and_record_usage`` with
 ``provider='open_router'`` and the real ``usage.cost`` value.
 """
 
+import json
+import re
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -24,7 +27,7 @@ from openai.types.chat.chat_completion_message import (
 
 from backend.copilot.model import ChatSession
 
-from .models import ErrorResponse, WebSearchResponse
+from .models import ErrorResponse, WebSearchResponse, WebSearchResult
 from .web_search import (
     WebSearchTool,
     _extract_answer,
@@ -190,6 +193,102 @@ class TestExtractResults:
         out = _extract_results(resp, limit=1)
         assert len(out) == 1
         assert len(out[0].snippet) == 500
+
+
+_SONAR_FIXTURES = json.loads(
+    (Path(__file__).parent / "testdata" / "web_search_sonar_responses.json").read_text()
+)
+
+
+def _recorded_response(name: str) -> ChatCompletion:
+    """A real ``perplexity/sonar`` response recorded through OpenRouter."""
+    return ChatCompletion.model_validate(_SONAR_FIXTURES[name])
+
+
+def _cited_numbers(answer: str) -> set[int]:
+    return {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
+
+
+class TestCitedSources:
+    """Sonar's answer cites its sources as ``[n]`` markers that index
+    the annotation list (annotation i is ``[i+1]``).  Every number the
+    answer cites must come back with that number, or the caller cannot
+    say where a claim came from."""
+
+    @pytest.mark.asyncio
+    async def test_answer_citing_twelve_sources_returns_all_twelve_numbered(
+        self, monkeypatch
+    ):
+        sources = [
+            {"title": f"Source {i}", "url": f"https://news.example.com/story-{i}"}
+            for i in range(1, 13)
+        ]
+        answer = " ".join(
+            f"Claim {i} is reported by source {i}.[{i}]" for i in range(1, 13)
+        )
+        dispatch = TestWebSearchToolDispatch()
+        mock_client = dispatch._mock_client(
+            _fake_response(citations=sources, answer=answer)
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.web_search._chat_config",
+            type(
+                "C",
+                (),
+                {"api_key": "sk-test", "base_url": "https://openrouter.ai/api/v1"},
+            )(),
+        )
+        with (
+            patch(
+                "backend.copilot.tools.web_search.AsyncOpenAI",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.tools.web_search.persist_and_record_usage",
+                new=AsyncMock(return_value=160),
+            ),
+        ):
+            result = await WebSearchTool()._execute(
+                user_id="u1", session=dispatch._session(), query="twelve sources"
+            )
+
+        assert isinstance(result, WebSearchResponse)
+        assert [r.model_dump() for r in result.results] == [
+            {
+                "n": i,
+                "title": f"Source {i}",
+                "url": f"https://news.example.com/story-{i}",
+            }
+            for i in range(1, 13)
+        ]
+
+    def test_answer_citing_seven_returns_a_result_numbered_seven(self):
+        resp = _fake_response(
+            citations=[
+                {"title": f"r{i}", "url": f"https://e/{i}"} for i in range(1, 9)
+            ],
+            answer="Only the seventh source backs this.[7]",
+        )
+        by_n = {r.n: r for r in _extract_results(resp, limit=5)}
+        assert by_n[7].url == "https://e/7"
+        assert by_n[7].title == "r7"
+
+    @pytest.mark.parametrize("name", ["jwst_news", "central_bank_rates"])
+    def test_recorded_sonar_response_every_cited_number_resolves(self, name):
+        resp = _recorded_response(name)
+        annotations = resp.choices[0].message.annotations or []
+        cited = _cited_numbers(_extract_answer(resp))
+        assert cited, "fixture answer should cite sources"
+
+        by_n = {r.n: r for r in _extract_results(resp, limit=5)}
+        assert cited <= set(by_n)
+        for n in cited:
+            assert by_n[n].url == annotations[n - 1].url_citation.url
+            assert by_n[n].title == annotations[n - 1].url_citation.title
+
+    def test_description_and_result_promise_no_snippet(self):
+        assert "snippet" not in WebSearchTool().description
+        assert "snippet" not in WebSearchResult.model_fields
 
 
 class TestExtractCostUsd:
