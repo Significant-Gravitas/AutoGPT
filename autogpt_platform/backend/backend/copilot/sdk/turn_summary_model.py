@@ -97,6 +97,7 @@ class TurnSummary(BaseModel):
             self.model_dump(exclude_none=True),
             separators=(",", ":"),
             ensure_ascii=False,
+            default=str,
         )
         return f"{TURN_SUMMARY_MARKER} {payload}"
 
