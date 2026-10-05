@@ -1624,8 +1624,9 @@ async def _publish_approved_media(
 ) -> prisma.models.StoreListingVersion:
     """
     Copy an approved version's media and its creator's avatar to the public site
-    media bucket, and point the rows at the copies. Never fails the review: on
-    error the rows keep their current URLs.
+    media bucket, and point the rows at the copies. Never fails the review. The
+    profile and the version are written separately on purpose: each copy is
+    valid on its own, so a failed version write keeps the published avatar.
     """
     if not Settings().config.public_site_media_bucket:
         return version
@@ -1715,9 +1716,12 @@ async def _publish_live_creator_avatar(
         published = await store_media.publish_media_urls([profile.avatarUrl], user_id)
         if profile.avatarUrl not in published:
             return profile
-        updated = await prisma.models.Profile.prisma().update(
-            where={"id": profile.id},
+        await prisma.models.Profile.prisma().update_many(
+            where={"id": profile.id, "avatarUrl": profile.avatarUrl},
             data={"avatarUrl": published[profile.avatarUrl]},
+        )
+        updated = await prisma.models.Profile.prisma().find_unique(
+            where={"id": profile.id}
         )
         return updated or profile
     except Exception:

@@ -1527,6 +1527,10 @@ async def test_update_profile_publishes_a_live_creators_new_avatar(
     mock_profile.return_value.update = AsyncMock(
         side_effect=lambda where, data: saved.model_copy(update=dict(data))
     )
+    mock_profile.return_value.update_many = AsyncMock(return_value=1)
+    mock_profile.return_value.find_unique = AsyncMock(
+        return_value=_avatar_profile(f"{PUBLIC_URL}/new.png")
+    )
     mock_listing = mocker.patch("prisma.models.StoreListing.prisma")
     mock_listing.return_value.find_first = AsyncMock(
         return_value=mocker.MagicMock() if live_listing else None
@@ -1561,6 +1565,10 @@ async def test_update_profile_publishes_a_live_creators_new_avatar(
     }
     if published:
         publish.assert_awaited_once_with([f"{PRIVATE_URL}/new.png"], "owner-id")
+        mock_profile.return_value.update_many.assert_awaited_once_with(
+            where={"id": "profile-id", "avatarUrl": f"{PRIVATE_URL}/new.png"},
+            data={"avatarUrl": f"{PUBLIC_URL}/new.png"},
+        )
         assert result.avatar_url == f"{PUBLIC_URL}/new.png"
     else:
         publish.assert_not_awaited()
@@ -1593,3 +1601,70 @@ async def test_update_profile_saves_when_publishing_the_avatar_fails(
 
     assert result.avatar_url == f"{PRIVATE_URL}/new.png"
     mock_profile.return_value.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_avatar_publish_does_not_overwrite_a_newer_avatar(
+    mocker, public_media_bucket
+):
+    saved = _avatar_profile(f"{PRIVATE_URL}/first.png")
+    row = [saved]
+
+    def update(where, data):
+        row[0] = row[0].model_copy(update=dict(data))
+        return row[0]
+
+    def update_many(where, data):
+        if all(getattr(row[0], key) == value for key, value in where.items()):
+            update(where, data)
+            return 1
+        return 0
+
+    mock_profile = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile.return_value.update = AsyncMock(side_effect=update)
+    mock_profile.return_value.update_many = AsyncMock(side_effect=update_many)
+    mock_profile.return_value.find_unique = AsyncMock(side_effect=lambda where: row[0])
+    mocker.patch("prisma.models.StoreListing.prisma").return_value.find_first = (
+        AsyncMock(return_value=mocker.MagicMock())
+    )
+
+    async def publish_while_a_newer_avatar_is_saved(urls, user_id):
+        row[0] = row[0].model_copy(update={"avatarUrl": f"{PUBLIC_URL}/second.png"})
+        return {f"{PRIVATE_URL}/first.png": f"{PUBLIC_URL}/first.png"}
+
+    _publish_mock(mocker, side_effect=publish_while_a_newer_avatar_is_saved)
+
+    result = await db._publish_live_creator_avatar("owner-id", saved)
+
+    assert row[0].avatarUrl == f"{PUBLIC_URL}/second.png"
+    assert result.avatarUrl == f"{PUBLIC_URL}/second.png"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_approve_keeps_the_published_avatar_when_the_version_write_fails(
+    mocker, public_media_bucket, review_mocks
+):
+    _publish_mock(
+        mocker,
+        return_value={
+            f"{PRIVATE_URL}/a.png": f"{PUBLIC_URL}/a.png",
+            f"{PRIVATE_URL}/avatar.png": f"{PUBLIC_URL}/avatar.png",
+        },
+    )
+    save_review = review_mocks.slv.update.side_effect
+
+    def fail_the_media_write(where, data, include=None):
+        if review_mocks.slv.update.await_count > 1:
+            raise Exception("database is down")
+        return save_review(where, data, include)
+
+    review_mocks.slv.update.side_effect = fail_the_media_write
+
+    result = await _review(is_approved=True)
+
+    assert result.status == prisma.enums.SubmissionStatus.APPROVED
+    assert result.image_urls[0] == f"{PRIVATE_URL}/a.png"
+    review_mocks.profile.update_many.assert_awaited_once_with(
+        where={"userId": "owner-id", "avatarUrl": f"{PRIVATE_URL}/avatar.png"},
+        data={"avatarUrl": f"{PUBLIC_URL}/avatar.png"},
+    )
