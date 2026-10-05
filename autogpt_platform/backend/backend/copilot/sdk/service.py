@@ -5137,6 +5137,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 sdk_cwd=sdk_cwd,
                 use_e2b=use_e2b,
                 log_prefix=log_prefix,
+                hidden_tools=hidden_tools,
             ),
         )
 
@@ -6693,6 +6694,7 @@ async def _context_after_compaction(
     sdk_cwd: str,
     use_e2b: bool,
     log_prefix: str,
+    hidden_tools: frozenset[str] = frozenset(),
 ) -> list[str]:
     """What the ``SessionStart`` hook hands the model after the CLI compacts.
 
@@ -6701,6 +6703,8 @@ async def _context_after_compaction(
     every turn that resumes the compacted session.  Returned as the parts
     one hook callback each delivers, every one within the CLI's hook-output
     cap (``fit_after_compaction``); ``[]`` when there is nothing to re-send.
+    ``hidden_tools`` are the tools this turn does not offer: a block is not
+    shortened with a pointer to one of them.
     """
     prefix = await _rebuild_first_turn_prefix(
         session,
@@ -6710,7 +6714,9 @@ async def _context_after_compaction(
         log_prefix=log_prefix,
         reason="compaction",
     )
-    fitted = fit_after_compaction(_AFTER_COMPACTION_LEAD, prefix)
+    fitted = fit_after_compaction(
+        _AFTER_COMPACTION_LEAD, prefix, hidden_tools=hidden_tools
+    )
     if fitted.dropped or fitted.shortened:
         logger.warning(
             "%s First-turn context re-sent after compaction was cut to fit the"

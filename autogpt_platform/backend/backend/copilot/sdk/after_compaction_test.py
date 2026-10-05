@@ -5,6 +5,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.experts.models import (
+    PROTECTED_SOUL_RULES,
+    Expert,
+    ExpertRoutine,
+    ExpertWorkflowRef,
+)
+from backend.copilot.expert_context import (
+    _routines_block,
+    render_expert_workflows_block,
+    render_team_context,
+)
+
 from .after_compaction import (
     AFTER_COMPACTION_MAX_PARTS,
     AFTER_COMPACTION_PART_BUDGET,
@@ -44,6 +56,55 @@ def _skills_block(n_entries: int) -> str:
 
 def _prefix(*blocks: str) -> str:
     return "".join(blocks)
+
+
+def _expert(index: int, *, workflows: int = 1) -> Expert:
+    return Expert(
+        id=f"exp-{index}",
+        name=f"Expert {index}",
+        avatar_url=None,
+        role="Specialist",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="You are a specialist.",
+        voice_preferences="Direct.",
+        boundaries="Ask first.",
+        protected_soul_rules=list(PROTECTED_SOUL_RULES),
+        is_template=False,
+        source_template_id=None,
+        is_archived=False,
+        workflows=[
+            ExpertWorkflowRef(
+                id=f"wf-{index}-{w}",
+                store_listing_version_id="slv-1",
+                library_agent_id=f"la-{w}",
+                graph_id=f"graph-{w}",
+                name=f"Workflow {w}",
+                description=f"First line of {w}\nsecond line of {w}",
+            )
+            for w in range(workflows)
+        ],
+    )
+
+
+def _routine(index: int, source: str) -> ExpertRoutine:
+    return ExpertRoutine(
+        id=f"routine-{index}",
+        expert_id=None,
+        title=f"Routine {index}\nwith a second line",
+        prompt="Read the week ahead.",
+        crons=["0 8 * * 1"],
+        source=source,
+        enabled=False,
+    )
+
+
+async def _routines(source: str) -> str:
+    db = MagicMock()
+    db.list_routines = AsyncMock(return_value=[_routine(i, source) for i in range(40)])
+    with patch("backend.copilot.expert_context.experts_db", return_value=db):
+        return await _routines_block("user-1", None)
 
 
 class TestSplitBlocks:
@@ -211,7 +272,8 @@ class TestOversizeBlock:
             text=(
                 "<team_context>\nThe user has hired these experts:\n"
                 + "\n".join(f"- Expert {i} — role (expert id: e{i})" for i in range(50))
-                + "\nNever delegate silently.\n</team_context>\n\n"
+                + "\nWhen a request clearly matches an expert's domain, say so."
+                + "\n</team_context>\n\n"
             ),
         )
 
@@ -221,21 +283,136 @@ class TestOversizeBlock:
         assert utf16_len(short.text) <= 600
         lines = short.text.split("\n")
         assert lines[1] == "The user has hired these experts:"
-        assert lines[-4] == "Never delegate silently."
+        assert lines[-4] == "When a request clearly matches an expert's domain, say so."
         assert lines[-5].endswith("call `tool:list_team` for the full roster.")
 
+    def test_a_dropped_last_item_takes_its_other_lines_with_it(self):
+        entries = "\n".join(
+            f"- name: skill-{i} — Does thing {i}.\nSecond line of {i}."
+            for i in range(6)
+        )
+        block = ContextBlock(
+            tag="available_skills",
+            text=f"<available_skills>\n{entries}\n</available_skills>\n\n",
+        )
 
-@pytest.mark.parametrize("size", [9_499, 9_500])
-def test_budget_leaves_margin_under_the_cli_cap(size):
-    assert AFTER_COMPACTION_PART_BUDGET < _CLI_HOOK_CAP
-    fitted = fit_after_compaction("", _block("session_context", size))
-    assert all(utf16_len(p) <= AFTER_COMPACTION_PART_BUDGET for p in fitted.parts)
+        short = shorten_block(block, 230)
+
+        assert short is not None
+        assert short.text == (
+            "<available_skills>\n"
+            "- name: skill-0 — Does thing 0.\nSecond line of 0.\n"
+            "- name: skill-1 — Does thing 1.\nSecond line of 1.\n"
+            "4 more skills are not listed here: call `tool:list_skills` for "
+            "the full index.\n"
+            "</available_skills>\n\n"
+        )
+
+    def test_hiring_roster_is_not_shortened(self):
+        # Its items are templates to hire, which `list_team` does not list.
+        hiring = (
+            "<team_context>\nThe user has not hired any experts yet. You are "
+            "their Head of AI.\nRoster:\n"
+            + "\n".join(f"- Template {i} (template_id: t{i})" for i in range(400))
+            + "\n</team_context>\n\n"
+        )
+        session = _block("session_context", 200)
+
+        fitted = fit_after_compaction(_LEAD, hiring + session)
+
+        assert fitted.dropped == ["team_context"]
+        assert fitted.shortened == []
+        assert fitted.parts == [_LEAD + session]
+
+    def test_not_shortened_when_the_turn_hides_the_listing_tool(self):
+        skills = _skills_block(150)
+        session = _block("session_context", 200)
+
+        fitted = fit_after_compaction(
+            _LEAD, skills + session, hidden_tools={"list_skills"}
+        )
+
+        assert fitted.dropped == ["available_skills"]
+        assert fitted.shortened == []
+        assert fitted.parts == [_LEAD + session]
+
+
+class TestRenderedBlocksShorten:
+    """The real renderers' blocks lose whole items and keep their last line,
+    even when an item's text runs over several lines."""
+
+    @staticmethod
+    def _shorten(rendered: str) -> list[str]:
+        (block,) = split_blocks(rendered)
+        short = shorten_block(block, utf16_len(block.text) // 2)
+        assert short is not None
+        return short.text.split("\n")
+
+    @pytest.mark.parametrize("delegation_enabled", [True, False])
+    @pytest.mark.parametrize("exclude_expert_id", [None, "exp-0"])
+    def test_team_roster(self, delegation_enabled, exclude_expert_id):
+        experts = [_expert(i) for i in range(40)]
+        rendered = render_team_context(
+            experts,
+            delegation_enabled=delegation_enabled,
+            exclude_expert_id=exclude_expert_id,
+        )
+
+        lines = self._shorten(rendered)
+
+        assert rendered.split("\n")[-4] == lines[-4]
+        assert lines[-5].endswith("call `tool:list_team` for the full roster.")
+        assert lines[-6].startswith("- Expert ")
+
+    def test_expert_workflows(self):
+        rendered = render_expert_workflows_block(_expert(0, workflows=40))
+
+        lines = self._shorten(rendered)
+
+        assert lines[-4].startswith("If the user skips or declines")
+        assert rendered.split("\n")[-4] == lines[-4]
+        assert lines[-5].endswith("call `tool:list_expert_workflows` for all of them.")
+        # The last kept workflow is whole: both lines of its description.
+        assert lines[-6].startswith("second line of ")
+        assert lines[-7].startswith("- Workflow ")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("source", ["TEMPLATE", "OWNER"])
+    async def test_routines(self, source):
+        rendered = await _routines(source)
+
+        lines = self._shorten(rendered)
+
+        closing = -5 if source == "TEMPLATE" else -4
+        assert lines[closing].endswith("call `tool:list_routines` for all of them.")
+        assert lines[closing - 1].startswith("with a second line (id: routine-")
+        if source == "TEMPLATE":
+            assert lines[-4].startswith("The routines marked (proposal)")
+
+
+def test_a_block_of_exactly_the_budget_goes_out_whole():
+    assert AFTER_COMPACTION_PART_BUDGET == 9_500 < _CLI_HOOK_CAP
+    block = _block("session_context", 9_500)
+
+    fitted = fit_after_compaction("", block)
+
+    assert fitted.parts == [block]
+    assert fitted.dropped == []
+
+
+def test_a_block_one_over_the_budget_that_cannot_be_shortened_is_dropped():
+    fitted = fit_after_compaction("", _block("session_context", 9_501))
+
+    assert fitted.parts == []
+    assert fitted.dropped == ["session_context"]
 
 
 class TestContextAfterCompaction:
     """``_context_after_compaction`` hands the hook parts and says when it cut."""
 
-    async def _parts(self, prefix: str) -> list[str]:
+    async def _parts(
+        self, prefix: str, hidden_tools: frozenset[str] = frozenset()
+    ) -> list[str]:
         with patch(
             "backend.copilot.sdk.service._rebuild_first_turn_prefix",
             AsyncMock(return_value=prefix),
@@ -246,6 +423,7 @@ class TestContextAfterCompaction:
                 sdk_cwd="/tmp/copilot-x",
                 use_e2b=False,
                 log_prefix="[test]",
+                hidden_tools=hidden_tools,
             )
 
     @pytest.mark.asyncio
@@ -280,6 +458,17 @@ class TestContextAfterCompaction:
         assert f"{delivered} of {rebuilt} chars in {len(parts)} parts" in message
         assert "dropped=['team_context'" in message
         assert "shortened=['available_skills']" in message
+
+    @pytest.mark.asyncio
+    async def test_a_hidden_listing_tool_is_not_pointed_at(self, caplog):
+        prefix = _prefix(_skills_block(150), _block("user_context", 300))
+
+        with caplog.at_level(logging.WARNING):
+            parts = await self._parts(prefix, frozenset({"list_skills"}))
+
+        assert parts == [_AFTER_COMPACTION_LEAD + _block("user_context", 300)]
+        (record,) = caplog.records
+        assert "dropped=['available_skills']" in record.getMessage()
 
     @pytest.mark.asyncio
     async def test_nothing_rebuilt_sends_nothing(self):
