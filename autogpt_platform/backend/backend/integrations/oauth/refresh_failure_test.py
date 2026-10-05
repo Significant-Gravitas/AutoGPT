@@ -104,6 +104,9 @@ def manager_with(
         get_creds_by_id=store.get_creds_by_id, update_creds=store.update_creds
     )
     manager._get_oauth_handler = AsyncMock(return_value=handler)
+    # Rotating providers (Linear) take the locked path even for lock=False.
+    manager._locked = MagicMock(return_value=_Noop())
+    manager._acquire_lock = AsyncMock(return_value=_released_lock())
     return manager, store
 
 
@@ -261,17 +264,34 @@ async def test_invalid_grant_marks_the_credential_and_is_never_replayed(sentry):
         assert (marker.error_code, marker.status_code) == ("invalid_grant", 400)
         assert REFRESH_TOKEN not in json.dumps(stored.metadata)
 
-        # Later turns (unlocked copilot path and locked block path) read the
+        # Later turns (copilot's lock=False and a block's lock=True) read the
         # marked row and must not send the dead refresh token again.
         for lock in (False, True):
-            manager._locked = MagicMock(return_value=_Noop())
-            manager._acquire_lock = AsyncMock(return_value=_released_lock())
             with pytest.raises(CredentialsNeedReconnectError) as again:
                 await manager.refresh_if_needed("user-1", stored, lock=lock)
             assert "reconnect" in str(again.value)
             assert "invalid_grant" in str(again.value)
 
     assert len(endpoint.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_dead_token_is_not_replayed_on_the_unlocked_path(sentry):
+    # Linear now always refreshes under the lock; GitHub does not rotate its
+    # refresh token, so lock=False still takes the unlocked path.
+    endpoint = FakeTokenEndpoint(200, {"error": "bad_refresh_token"})
+    dead = expiring("github", ["repo"])
+    manager, store = manager_with(GitHubOAuthHandler(*CLIENT), dead)
+    manager._refresh_locked = AsyncMock()
+
+    with endpoint.patch("backend.integrations.oauth.github"):
+        for _ in range(2):
+            with pytest.raises(CredentialsNeedReconnectError):
+                await manager.refresh_if_needed("user-1", store.creds, lock=False)
+
+    assert reconnect_required(store.creds) is not None
+    assert len(endpoint.calls) == 1
+    manager._refresh_locked.assert_not_awaited()
 
 
 @pytest.mark.asyncio

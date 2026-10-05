@@ -676,9 +676,7 @@ def _credential_rejected_response(
             f"(HTTP {status_code})"
         )
     else:
-        refused = (
-            f"The saved {provider_name} credential{named} could not be refreshed"
-        )
+        refused = f"The saved {provider_name} credential{named} could not be refreshed"
     logger.warning(
         "Unattended copilot turn in session %s: block %s did not run, %s",
         session_id,
