@@ -30,6 +30,7 @@ def _make_config(**overrides) -> ChatConfig:
         # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
         # these tests target SDK behavior, not the aux check.
         "aux_api_key": "or-aux-key",
+        "direct_anthropic_api_key": "sk-ant-direct-key",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)
@@ -255,8 +256,8 @@ class TestBuildSdkEnv:
         assert env["ANTHROPIC_AUTH_TOKEN"] == ""
         assert env["ANTHROPIC_BASE_URL"] == ""
 
-    def test_direct_anthropic_inherits_api_key(self):
-        """Mode 2: direct Anthropic doesn't set ANTHROPIC_* keys (inherits from parent)."""
+    def test_direct_anthropic_passes_api_key_explicitly(self):
+        """Mode 2: direct Anthropic hands the CLI its key and blanks the rest."""
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=False,
@@ -266,9 +267,9 @@ class TestBuildSdkEnv:
 
             env = build_sdk_env()
 
-        assert "ANTHROPIC_API_KEY" not in env
-        assert "ANTHROPIC_AUTH_TOKEN" not in env
-        assert "ANTHROPIC_BASE_URL" not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant-direct-key"
+        assert env["ANTHROPIC_AUTH_TOKEN"] == ""
+        assert env["ANTHROPIC_BASE_URL"] == ""
 
     def test_openrouter_sets_base_url_and_auth(self):
         """Mode 3: OpenRouter sets base URL, auth token, and clears API key."""
@@ -322,7 +323,7 @@ class TestBuildSdkEnv:
         assert env["CLAUDE_CODE_REFRESH_TOKEN"] == ""
 
     def test_direct_anthropic_clears_oauth_tokens(self):
-        """Mode 2: OAuth tokens are cleared so CLI uses ANTHROPIC_API_KEY from parent env."""
+        """Mode 2: OAuth tokens are cleared so the CLI uses the explicit API key."""
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=False,

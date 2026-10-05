@@ -26,7 +26,7 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
-from backend.copilot.sdk.env import config as copilot_config
+from backend.copilot.sdk.env import build_user_key_sdk_env
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -1707,46 +1707,9 @@ class OrchestratorBlock(Block):
                 ),
             )
             return
-        provider = credentials.provider
-        api_key = credentials.api_key.get_secret_value()
-        if provider == "open_router":
-            # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
-            # OpenRouter's Anthropic-compat endpoint and set BOTH auth env
-            # vars to the OpenRouter key.  OpenRouter accepts either
-            # ``x-api-key`` (set by ``ANTHROPIC_API_KEY``) or
-            # ``Authorization: Bearer`` (set by ``ANTHROPIC_AUTH_TOKEN``);
-            # whichever the Claude Code CLI happens to send on the wire is
-            # a valid OR credential.
-            #
-            # We MUST explicitly set ``ANTHROPIC_API_KEY`` here rather than
-            # omit it or set it to an empty string.  The Claude Agent SDK
-            # merges ``options.env`` on top of ``os.environ``, so omitting
-            # the key lets any inherited platform ``ANTHROPIC_API_KEY``
-            # (e.g. a deployment's direct-Anthropic key) leak through to
-            # OpenRouter and 401.  Setting it to ``""`` was the previous
-            # approach to "force AUTH_TOKEN usage", but the CLI's HTTP
-            # layer treats the empty string as set and emits
-            # ``x-api-key:`` (empty value), which OpenRouter rejects with
-            # ``invalid x-api-key``.  Using the OR key for both vars
-            # avoids both failure modes.
-            #
-            # NOTE: We use the platform's global OpenRouter base URL from
-            # ChatConfig.  Per-credential base URLs are not yet supported;
-            # if the user's credential targets a custom proxy, the SDK will
-            # still route through the platform's configured endpoint.
-            or_base = (copilot_config.base_url or "https://openrouter.ai/api").rstrip(
-                "/"
-            )
-            if or_base.endswith("/v1"):
-                or_base = or_base[:-3]
-            sdk_env = {
-                "ANTHROPIC_BASE_URL": or_base,
-                "ANTHROPIC_AUTH_TOKEN": api_key,
-                "ANTHROPIC_API_KEY": api_key,
-            }
-        else:
-            # Direct Anthropic key
-            sdk_env = {"ANTHROPIC_API_KEY": api_key}
+        sdk_env = build_user_key_sdk_env(
+            credentials.provider, credentials.api_key.get_secret_value()
+        )
 
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
