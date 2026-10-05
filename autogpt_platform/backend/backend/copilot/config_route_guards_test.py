@@ -54,4 +54,5 @@ class TestAttributionHeaderSwitch:
 
     def test_read_from_the_environment(self, monkeypatch):
         monkeypatch.setenv("CHAT_CLAUDE_AGENT_OMIT_ATTRIBUTION_HEADER", "true")
-        assert ChatConfig().claude_agent_omit_attribution_header is True
+        cfg = _make_direct_safe_config()
+        assert cfg.claude_agent_omit_attribution_header is True
