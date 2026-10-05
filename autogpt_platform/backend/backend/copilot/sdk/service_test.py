@@ -24,6 +24,7 @@ from .service import (
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
     _close_codex_gateway_for_finally,
+    _configured_system_prompt_value,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
@@ -1059,6 +1060,65 @@ class TestSystemPromptPreset:
             aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_live_system_prompt is False
+
+    def test_default_config_strips_prompt_snapshots(self, _clean_config_env):
+        cfg = cfg_mod.ChatConfig(
+            _env_file=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.claude_agent_strip_prompt_snapshots is True
+
+    def test_env_var_turns_the_snapshot_strip_off(self, _clean_config_env, monkeypatch):
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_STRIP_PROMPT_SNAPSHOTS", "false")
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.claude_agent_strip_prompt_snapshots is False
+
+    def test_configured_prompt_follows_the_live_switch(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.copilot.sdk.service.config.claude_agent_cross_user_prompt_cache",
+            False,
+        )
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.service.config.claude_agent_live_system_prompt", True
+        )
+        assert _configured_system_prompt_value("sys") == {
+            "type": "custom",
+            "prompt": "sys",
+            "snapshot": False,
+        }
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.service.config.claude_agent_live_system_prompt", False
+        )
+        assert _configured_system_prompt_value("sys") == "sys"
+
+    def test_configured_prompt_follows_the_cache_switch(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.copilot.sdk.service.config.claude_agent_cross_user_prompt_cache",
+            True,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.service.config.claude_agent_live_system_prompt", True
+        )
+
+        assert _configured_system_prompt_value("sys") == _build_system_prompt_value(
+            "sys", cross_user_cache=True, live=True
+        )
 
     def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
         """The default config passes only AutoGPT's Copilot system prompt."""

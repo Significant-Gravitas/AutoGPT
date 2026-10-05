@@ -232,12 +232,29 @@ def strip_stale_thinking_blocks(content: str) -> str:
     return "\n".join(result_lines) + "\n"
 
 
+def _strippable_attachment_types() -> frozenset[str]:
+    """Attachment types to drop from a stored transcript.
+
+    Recorded prompts are dropped only while launches send a live prompt.  A
+    launch that relies on the recording and finds none sends its own prompt
+    and records it again, so stripping under it would change the prompt (and
+    re-write the session's cache) every turn.
+    """
+    if not config.claude_agent_live_system_prompt:
+        return frozenset()
+    if not config.claude_agent_strip_prompt_snapshots:
+        return frozenset()
+    return STRIPPABLE_ATTACHMENT_TYPES
+
+
 def strip_for_upload(content: str) -> str:
     """Combined single-parse strip of progress entries and stale thinking blocks.
 
     Equivalent to ``strip_stale_thinking_blocks(strip_progress_entries(content))``
     but parses the JSONL only once, avoiding redundant ``split`` + ``json.loads``
-    passes on every upload.
+    passes on every upload.  Also drops the attachment entries listed in
+    ``STRIPPABLE_ATTACHMENT_TYPES`` when prompt snapshots are being stripped
+    (see :func:`_strippable_attachment_types`).
     """
     lines = content.strip().split("\n")
     if not lines:
@@ -247,11 +264,7 @@ def strip_for_upload(content: str) -> str:
     for line in lines:
         parsed.append((line, json.loads(line, fallback=None)))
 
-    attachment_types = (
-        STRIPPABLE_ATTACHMENT_TYPES
-        if config.claude_agent_strip_prompt_snapshots
-        else frozenset()
-    )
+    attachment_types = _strippable_attachment_types()
 
     # --- Phase 1: progress stripping (reparent children) ---
     stripped_uuids: set[str] = set()

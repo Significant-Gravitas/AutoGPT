@@ -641,16 +641,20 @@ class ChatConfig(BaseSettings):
         "so a changed prompt (the building-mode restart's guide) never reaches "
         "the model. A live prompt re-writes a session's prompt cache once "
         "whenever the prompt differs between two turns; set False to roll "
-        "back to the recorded prompt.",
+        "back to the recorded prompt. False also keeps recorded prompt "
+        "snapshots in stored transcripts, whatever "
+        "claude_agent_strip_prompt_snapshots says, so this one switch "
+        "restores the recorded-prompt behaviour.",
     )
     claude_agent_strip_prompt_snapshots: bool = Field(
         default=True,
         description="Drop the CLI's recorded prompt snapshots (the system "
         "prompt and every tool description, 134-180KB per recording) from a "
         "session's transcript when it is stored or restored. A live-prompt "
-        "launch never reads them. A launch with claude_agent_live_system_prompt "
-        "off that finds none sends its own prompt and records it again, so to "
-        "roll back to one recorded prompt per session set this False as well.",
+        "launch never reads them. Applies only while "
+        "claude_agent_live_system_prompt is on: a launch with the live prompt "
+        "off that finds no snapshot sends its own prompt and records it "
+        "again, so the snapshots are kept for it.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",

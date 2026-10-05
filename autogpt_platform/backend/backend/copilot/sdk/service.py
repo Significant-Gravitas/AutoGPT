@@ -1747,11 +1747,7 @@ async def _apply_building_mode_restart(
         prompt_parts, building_suffix=building_suffix
     )
     sdk_options_restart = copy(sdk_options)
-    sdk_options_restart.system_prompt = _build_system_prompt_value(
-        system_prompt,
-        cross_user_cache=config.claude_agent_cross_user_prompt_cache,
-        live=config.claude_agent_live_system_prompt,
-    )
+    sdk_options_restart.system_prompt = _configured_system_prompt_value(system_prompt)
     # Resume the CLI session the interrupted run was writing. The guide reaches
     # the resumed turn only with the live prompt: with the CLI's snapshot on,
     # the session resends the prompt it recorded on its first request
@@ -2430,6 +2426,21 @@ def _raise_deferred_codex_cleanup_error(
     if turn_error is not None and turn_error is not cleanup_error:
         raise cleanup_error from turn_error
     raise cleanup_error
+
+
+def _configured_system_prompt_value(
+    system_prompt: str,
+) -> str | SystemPromptPreset | SystemPromptCustom:
+    """The ``system_prompt`` option for *system_prompt* under the current config.
+
+    Every launch (first, context-size retry, building-mode restart) goes
+    through here so they agree on the prompt's form.
+    """
+    return _build_system_prompt_value(
+        system_prompt,
+        cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+        live=config.claude_agent_live_system_prompt,
+    )
 
 
 def _build_system_prompt_value(
@@ -5132,11 +5143,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # ones — so all turns share the same static prefix. With the live
         # prompt, this turn's prompt is the one sent even when resuming a
         # session that started with another.
-        system_prompt_value = _build_system_prompt_value(
-            system_prompt,
-            cross_user_cache=config.claude_agent_cross_user_prompt_cache,
-            live=config.claude_agent_live_system_prompt,
-        )
+        system_prompt_value = _configured_system_prompt_value(system_prompt)
 
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
@@ -5647,10 +5654,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Recompute system_prompt for retry. When enabled, the preset
                 # is safe on every turn (requires CLI ≥ 2.1.98, bundled in
                 # claude-agent-sdk >= 0.1.64).
-                sdk_options_retry.system_prompt = _build_system_prompt_value(
-                    system_prompt,
-                    cross_user_cache=config.claude_agent_cross_user_prompt_cache,
-                    live=config.claude_agent_live_system_prompt,
+                sdk_options_retry.system_prompt = _configured_system_prompt_value(
+                    system_prompt
                 )
                 state.options = sdk_options_retry
                 # Retry intentionally omits prior_messages (transcript+gap context) and

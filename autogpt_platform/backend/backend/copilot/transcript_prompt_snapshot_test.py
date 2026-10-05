@@ -51,6 +51,7 @@ _SESSION = _jsonl(
 @pytest.fixture
 def strip_on(mocker):
     mocker.patch.object(transcript.config, "claude_agent_strip_prompt_snapshots", True)
+    mocker.patch.object(transcript.config, "claude_agent_live_system_prompt", True)
 
 
 @pytest.fixture
@@ -107,4 +108,13 @@ def test_stripped_transcript_is_still_valid(strip_on):
 
 
 def test_switch_off_leaves_the_file_alone(strip_off):
+    assert strip_for_upload(_SESSION) == _SESSION
+
+
+def test_live_prompt_off_keeps_the_snapshots(mocker):
+    """A launch without the live prompt reads the recorded one; with none on
+    file it would send and re-record its own prompt on every turn."""
+    mocker.patch.object(transcript.config, "claude_agent_strip_prompt_snapshots", True)
+    mocker.patch.object(transcript.config, "claude_agent_live_system_prompt", False)
+
     assert strip_for_upload(_SESSION) == _SESSION
