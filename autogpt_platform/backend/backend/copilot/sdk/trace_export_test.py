@@ -1,3 +1,4 @@
+import os
 import threading
 import time
 from collections.abc import Iterator
@@ -64,14 +65,20 @@ def trace_receiver() -> Iterator[_TraceServer]:
 
 
 @pytest.fixture
+def trace_export_environment() -> Iterator[None]:
+    with patch.dict(os.environ):
+        for key in (
+            "OTEL_PYTHON_EXPORTER_OTLP_HTTP_CREDENTIAL_PROVIDER",
+            "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
+        ):
+            os.environ.pop(key, None)
+        yield
+
+
+@pytest.fixture
 def langfuse_client(
-    trace_receiver: _TraceServer, monkeypatch: pytest.MonkeyPatch
+    trace_receiver: _TraceServer, trace_export_environment: None
 ) -> Iterator[Langfuse]:
-    for key in (
-        "OTEL_PYTHON_EXPORTER_OTLP_HTTP_CREDENTIAL_PROVIDER",
-        "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
-    ):
-        monkeypatch.delenv(key, raising=False)
     settings = MagicMock()
     settings.secrets.langfuse_public_key = f"pk-test-{uuid4()}"
     settings.secrets.langfuse_secret_key = "sk-test"
