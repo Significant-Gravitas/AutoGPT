@@ -75,10 +75,9 @@ def direct_anthropic_env(api_key: str | None) -> dict[str, str]:
 def openrouter_user_key_env(base_url: str, api_key: str) -> dict[str, str]:
     """A user's own OpenRouter key against OpenRouter's Anthropic endpoint.
 
-    Both auth variables carry the key: OpenRouter accepts either header, an
-    inherited ``ANTHROPIC_API_KEY`` would otherwise leak through and 401,
-    and an empty one goes out as an empty ``x-api-key`` that OpenRouter
-    rejects.
+    Both auth variables carry the key, so the CLI sends it as ``x-api-key``
+    and as a bearer and OpenRouter accepts either; neither can be inherited
+    from the parent environment.
     """
     if not api_key:
         raise RuntimeError("An OpenRouter launch needs a non-empty API key.")

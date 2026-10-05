@@ -52,8 +52,9 @@ def build_user_key_sdk_env(provider: str, api_key: str) -> dict[str, str]:
     """Credentials for a CLI launch on a user's own API key.
 
     The orchestrator block's launch: ``open_router`` goes through the
-    deployment's OpenRouter base URL, any other provider is a direct
-    Anthropic key.  No Claude OAuth variable or parent base URL survives.
+    deployment's OpenRouter base URL (per-credential base URLs are not
+    supported), any other provider is a direct Anthropic key.  No Claude
+    OAuth variable or parent base URL survives.
     """
     if provider != "open_router":
         return direct_anthropic_env(api_key)
