@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.copilot.credential_selection import CredentialPins
 from backend.data.expert_run_output import OutputType
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
@@ -257,6 +258,9 @@ class ExpertRoutine(BaseModel):
     # Whether this routine's turns may reach the owner's connected services.
     # Always False on anything a template shipped.
     grants_credentials: bool = False
+    # ``{provider: pin}``: the account each of its turns runs on where the
+    # owner has several, chosen in the chat that set it up (SECRT-2804).
+    credential_pins: CredentialPins = {}
 
     @property
     def recurring(self) -> bool:
@@ -397,6 +401,10 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
+
+
+# Where a hire was made, for the ``expert_hired`` analytics event.
+HireSurface = Literal["onboarding", "expert_page", "copilot"]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]

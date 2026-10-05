@@ -67,6 +67,11 @@ const TOAST_BY_BACKEND_CODE: Record<
     fallbackDescription:
       "The assistant couldn't complete this turn. Press Try Again to retry.",
   },
+  provider_unavailable: {
+    title: "AutoPilot is temporarily unavailable",
+    fallbackDescription:
+      "The AI model provider is temporarily unavailable. We've been alerted and are working on it. Please try again shortly.",
+  },
   max_budget_exhausted: {
     title: "Turn budget reached",
     fallbackDescription:

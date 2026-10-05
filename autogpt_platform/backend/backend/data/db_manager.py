@@ -2,6 +2,8 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from prisma.enums import ContentType
+
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
@@ -41,7 +43,10 @@ from backend.api.features.library.triggers import (
 from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
+    delete_content_embedding,
+    get_content_embedding,
     get_embedding_stats,
+    store_content_embedding,
 )
 from backend.api.features.search.hybrid_search import unified_hybrid_search
 from backend.api.features.store import skill_db as marketplace_skill_db
@@ -142,6 +147,7 @@ from backend.data.human_review import (
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
+    process_all_reviews_for_execution,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -174,6 +180,7 @@ from backend.data.user import (
     get_briefing_candidates,
     get_user_by_id,
     get_user_credentials,
+    get_user_default_chat_route,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
@@ -236,6 +243,25 @@ async def _get_credits(user_id: str) -> int:
 # Public aliases used by db_accessors.credit_db() when Prisma is connected
 get_credits = _get_credits
 spend_credits = _spend_credits
+
+
+async def _store_content_embedding(
+    content_type: ContentType,
+    content_id: str,
+    embedding: list[float],
+    searchable_text: str,
+    metadata: dict | None = None,
+    user_id: str | None = None,
+) -> bool:
+    # Without the ``tx`` parameter, which can't cross the RPC boundary.
+    return await store_content_embedding(
+        content_type=content_type,
+        content_id=content_id,
+        embedding=embedding,
+        searchable_text=searchable_text,
+        metadata=metadata,
+        user_id=user_id,
+    )
 
 
 async def _spend_org_credits(
@@ -352,6 +378,8 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    # The scheduler routes unattended chats by the user's saved default.
+    get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
     get_subscription_trial = _(get_subscription_trial)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
@@ -386,6 +414,7 @@ class DatabaseManager(AppService):
     get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
+    process_all_reviews_for_execution = _(process_all_reviews_for_execution)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -437,6 +466,12 @@ class DatabaseManager(AppService):
     backfill_missing_embeddings = _(backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
     unified_hybrid_search = _(unified_hybrid_search)
+    # The copilot executor indexes chat titles and workspace files.
+    get_content_embedding = _(get_content_embedding)
+    store_content_embedding = _(
+        _store_content_embedding, name="store_content_embedding"
+    )
+    delete_content_embedding = _(delete_content_embedding)
 
     # ============ Alerts ============ #
     raise_alert_condition = _(raise_alert_condition)
@@ -592,6 +627,7 @@ class DatabaseManager(AppService):
     expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
+    active_expert_ids = _(experts_db.active_expert_ids)
     count_raised_experts = _(experts_db.count_raised_experts)
 
     # ============ Marketplace skills ============ #
@@ -785,6 +821,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
@@ -804,6 +841,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_chat_session = d.get_pending_reviews_for_chat_session
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
+    process_all_reviews_for_execution = d.process_all_reviews_for_execution
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -893,6 +931,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Search ============ #
     unified_hybrid_search = d.unified_hybrid_search
+    get_content_embedding = d.get_content_embedding
+    store_content_embedding = d.store_content_embedding
+    delete_content_embedding = d.delete_content_embedding
 
     # ============ Marketplace skills ============ #
     get_active_versions = d.get_active_versions
@@ -1019,6 +1060,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
+    active_expert_ids = d.active_expert_ids
     count_raised_experts = d.count_raised_experts
 
     # ============ CoPilot Chat Sessions ============ #
