@@ -17,6 +17,7 @@ from prisma.models import PendingHumanReview
 
 from backend.copilot.gate import chat_rules, check_action, held
 from backend.copilot.gate import review as review_store
+from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -26,6 +27,7 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.data.db_accessors import review_db
@@ -468,3 +470,34 @@ async def test_the_chain_row_and_the_card_name_the_call_alike(
     assert output["type"] == "approval_required"
     assert (output["ask"], output["object"]) == ("Post a message", None)
     assert row.payload["headline"]["ask"] == output["ask"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_turn_is_judged_against_the_users_request(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Not against the wake or result rows the answered card wrote as the user."""
+    session = await _new_session(test_user_id)
+    request = "Post a hello to the team, then set up the weekly GitHub trigger"
+    await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content=request)
+    )
+    review_id = await _hold(session, test_user_id, "hello")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    with patch("backend.copilot.executor.utils.dispatch_turn", AsyncMock()):
+        await held.wake(test_user_id, session.session_id)
+    woken = await get_chat_session(session.session_id, test_user_id)
+    assert woken is not None
+    delivered = await held.resolve_answered(test_user_id, woken)
+    assert await persist_pending_as_user_rows(woken, None, delivered, log_prefix="test")
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    users = [m.content for m in reloaded.messages if m.role == "user"]
+    assert users[-2] == held.WAKE_MESSAGE
+    assert users[-1].startswith("<held_call_result")
+
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="asked"))
+    with patch("backend.copilot.gate.supervise", supervisor):
+        await check_action("bash_exec", {"command": "ls"}, test_user_id, reloaded)
+
+    assert supervisor.await_args.kwargs["user_message"] == request
