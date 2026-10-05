@@ -12,6 +12,11 @@ field excluded from serialized payloads: the frontend treats any non-null
 metadata on an assistant row as a reason to keep it as its own bubble, so
 the key must never reach the API. :func:`split_prompt_origin` lifts it out
 on the way in and :func:`with_prompt_origin` folds it back for the insert.
+
+Being excluded, the field is also dropped by the Redis session cache and by
+DatabaseManager RPC responses, so today it is readable only from the column
+itself or from ``ChatMessage.from_db`` in a process with a direct Prisma
+connection.
 """
 
 import logging

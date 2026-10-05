@@ -230,7 +230,8 @@ class ChatMessage(BaseModel):
     # Set on a prompt row the platform wrote on the user's behalf (a
     # scheduled turn). Stored inside the ``metadata`` column but excluded
     # from payloads: see ``copilot/prompt_origin.py``. Like routing_source it
-    # does not survive the Redis session cache; the DB row keeps it.
+    # is dropped by anything that serializes the row (the Redis session
+    # cache, a DatabaseManager RPC response); the DB row keeps it.
     prompt_origin: PromptOrigin | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
