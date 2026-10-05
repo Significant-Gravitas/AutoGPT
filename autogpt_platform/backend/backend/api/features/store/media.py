@@ -1,6 +1,9 @@
 import logging
 import os
+import re
 import uuid
+from collections.abc import Iterable
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import fastapi
 from gcloud.aio import storage as async_storage
@@ -16,6 +19,31 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+# The ways a stored URL can point at a GCS object: JSON API, path-style, virtual-host
+# and gs://. The JSON API form comes first because it is also a valid path-style URL.
+_GCS_URL_FORMS = (
+    re.compile(
+        r"https?://(?:www|storage)\.googleapis\.com/(?:download/)?storage/v1"
+        r"/b/(?P<bucket>[^/?#]+)/o/(?P<path>[^?#]+)(?:[?#].*)?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"https?://(?:storage\.googleapis\.com|storage\.cloud\.google\.com"
+        r"|commondatastorage\.googleapis\.com)/(?P<bucket>[^/?#]+)/(?P<path>[^?#]+)"
+        r"(?:[?#].*)?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"https?://(?P<bucket>[a-z0-9._-]+)\.storage\.googleapis\.com"
+        r"/(?P<path>[^?#]+)(?:[?#].*)?",
+        re.IGNORECASE,
+    ),
+    re.compile(r"gs://(?P<bucket>[^/?#]+)/(?P<path>[^?#]+)", re.IGNORECASE),
+)
+_PUBLISHABLE_MEDIA_PATH = re.compile(
+    r"users/(?P<owner>[^/]+)/(?:images|videos)/[A-Za-z0-9._-]+"
+)
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
@@ -221,3 +249,66 @@ async def upload_media(
         raise store_exceptions.MediaUploadError(
             "Unexpected error during media upload"
         ) from e
+
+
+def _gcs_object_path(url: str, bucket: str) -> str | None:
+    """Path of the object in `bucket` that `url` points at, or None."""
+    url = url.strip()
+    wrapped = urlsplit(url)
+    if wrapped.path == "/_next/image":
+        url = parse_qs(wrapped.query).get("url", [""])[0].strip()
+    url = unquote(url)
+    for form in _GCS_URL_FORMS:
+        match = form.fullmatch(url)
+        if match:
+            return match["path"] if match["bucket"] == bucket else None
+    return None
+
+
+async def publish_media_urls(
+    urls: Iterable[str | None], owner_id: str
+) -> dict[str, str]:
+    """
+    Copy marketplace media from the media bucket to the public site media bucket.
+
+    Only objects at `users/<owner_id>/(images|videos)/<file>` in the media bucket
+    are copied, to the same path. Any other URL (another user's object, other
+    folders, other hosts, URLs already in the public bucket) is left alone.
+
+    Returns:
+        dict[str, str]: each copied URL mapped to its public URL. Empty when
+        PUBLIC_SITE_MEDIA_BUCKET is not set.
+    """
+    settings = Settings()
+    media_bucket = settings.config.media_gcs_bucket_name
+    public_bucket = settings.config.public_site_media_bucket
+    if not media_bucket or not public_bucket or media_bucket == public_bucket:
+        return {}
+
+    paths: dict[str, str] = {}
+    for url in dict.fromkeys(u for u in urls if u):
+        path = _gcs_object_path(url, media_bucket)
+        if path is None:
+            continue
+        match = _PUBLISHABLE_MEDIA_PATH.fullmatch(path)
+        if not match or match["owner"] != owner_id or ".." in path:
+            logger.warning(f"Not publishing {path!r}: not media owned by {owner_id}")
+            continue
+        paths[url] = path
+
+    if not paths:
+        return {}
+
+    published: dict[str, str] = {}
+    async with async_storage.Storage() as async_client:
+        for url, path in paths.items():
+            try:
+                await async_client.copy(
+                    media_bucket, path, public_bucket, new_name=path
+                )
+            except Exception:
+                logger.exception(f"Failed to publish {path} to {public_bucket}")
+                continue
+            published[url] = f"https://storage.googleapis.com/{public_bucket}/{path}"
+            logger.info(f"Published {path} to {public_bucket}")
+    return published

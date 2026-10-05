@@ -484,6 +484,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    public_site_media_bucket: str = Field(
+        default="",
+        description="Public Google Cloud Storage bucket for approved marketplace "
+        "media. On approval, a listing's media and its creator's avatar are copied "
+        "here from media_gcs_bucket_name. Empty disables the copy.",
+    )
+
     workspace_storage_dir: str = Field(
         default="",
         description="Local directory for workspace file storage when GCS is not configured. "
