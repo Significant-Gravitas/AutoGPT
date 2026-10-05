@@ -587,3 +587,157 @@ def test_a_service_query_keeps_both_skills_and_platform_tools(rival_index):
     assert not {"discord-announce", "post_to_chat_platform"} & {
         h.entry.name for h in result.fallback
     }
+
+
+# --- SECRT-2820: a kind filter must not hide the user's connected blocks ---
+
+GMAIL_LIST_ID = "99999999-9999-9999-9999-999999999991"
+GMAIL_READ_ID = "99999999-9999-9999-9999-999999999992"
+GOOGLE = ConnectionState(providers=frozenset({"google"}))
+
+
+def _tool(name, purpose, *, description="", tags=()):
+    return CapabilityEntry(
+        id=f"tool:{name}",
+        kind="tool",
+        name=name,
+        purpose=purpose,
+        description=description or purpose,
+        tags=sorted({*name.split("_"), *tags}),
+        context="direct",
+        implementations=[Implementation(kind="tool", ref=name, context="direct")],
+    )
+
+
+CONNECT_INTEGRATION = _tool(
+    "connect_integration",
+    "Prompt the user to connect a required integration. Supported providers: "
+    "'github'.",
+    description=(
+        "Prompt the user to connect a required integration. Supported "
+        "providers: 'github'. ONLY call this tool for one of the supported "
+        "providers listed above - do NOT call it for Google, Gmail, Slack, or "
+        "any other provider not in the list."
+    ),
+)
+
+
+@pytest.fixture
+def gmail_index(rival_index) -> CapabilityIndex:
+    """The 2901dcfb shape: Gmail is a family of Google blocks, and the tools
+    that share a word with the query only by accident."""
+    return rival_index.with_entries(
+        [
+            _block(
+                GMAIL_LIST_ID,
+                "GmailListLabelsBlock",
+                "Retrieve all labels from a Gmail account for organising emails.",
+                provider="google",
+                tags=("email",),
+            ),
+            _block(
+                GMAIL_READ_ID,
+                "GmailReadBlock",
+                "Read recent emails from a Gmail inbox.",
+                provider="google",
+                args=("query", "max_results"),
+                tags=("email",),
+            ),
+            CONNECT_INTEGRATION,
+            _tool("web_search", "Search the web for live info (news, recent docs)."),
+            _tool("list_skills", "List the skills available here."),
+            _tool(
+                "create_feature_request",
+                "File a feature request; the team follows up by email.",
+            ),
+        ]
+    )
+
+
+def test_a_kind_filter_surfaces_the_connected_blocks_it_hid(gmail_index):
+    """2901dcfb: kind="tool" with Google connected returned eight unrelated
+    tools and the model went looking for a Gmail MCP server.  The connected
+    Gmail blocks come back beside the filtered list, with a count."""
+    result = gmail_index.search(
+        "Gmail list recent emails", kind="tool", connections=GOOGLE
+    )
+    assert all(hit.entry.kind == "tool" for hit in result.hits)
+    hidden = [hit.entry.name for hit in result.other_kinds]
+    assert "GmailReadBlock" in hidden
+    assert all(hit.connected for hit in result.other_kinds)
+    assert result.hidden_by_kind >= len(result.other_kinds) > 0
+
+
+def test_a_kind_filter_that_empties_the_list_still_surfaces_other_kinds(
+    rival_index,
+):
+    """Prod Sep 30: kind="mcp_server" for a service with no server in the
+    catalog came back empty.  The blocks it hid are surfaced instead."""
+    result = rival_index.search(
+        "send discord message",
+        kind="mcp_server",
+        connections=ConnectionState(providers=frozenset({"discord"})),
+    )
+    assert result.hits == []
+    assert "SendDiscordMessageBlock" in [h.entry.name for h in result.other_kinds]
+
+
+def test_other_kinds_are_capped_at_three(gmail_index):
+    state = ConnectionState(providers=frozenset({"google", "discord"}))
+    result = gmail_index.search("email message", kind="skill", connections=state)
+    assert result.hits == []
+    assert len(result.other_kinds) == 3
+    assert result.hidden_by_kind > 3
+
+
+def test_a_by_name_kind_lookup_gets_no_other_kinds(gmail_index):
+    """Most kind calls are deliberate lookups by name; they must not be told
+    to search again."""
+    result = gmail_index.search("web_search", kind="tool", connections=GOOGLE)
+    assert result.names[0] == "web_search"
+    assert result.other_kinds == [] and result.hidden_by_kind == 0
+
+
+def test_an_unconnected_weaker_match_of_another_kind_is_not_surfaced(rival_index):
+    """Only a connected entry, or one covering more of the query than the
+    filtered list does, is worth a second search."""
+    result = rival_index.search(
+        "post to discord", kind="tool", connections=ConnectionState()
+    )
+    assert result.names[0] == "post_to_chat_platform"
+    assert result.other_kinds == []
+
+
+def test_no_kind_means_no_other_kinds(gmail_index):
+    result = gmail_index.search("Gmail list recent emails", connections=GOOGLE)
+    assert result.other_kinds == [] and result.hidden_by_kind == 0
+    assert result.names[0] in {"GmailReadBlock", "GmailListLabelsBlock"}
+
+
+def test_a_tool_does_not_lead_connected_blocks_on_a_query_naming_no_service(
+    gmail_index,
+):
+    """"email" names no service; create_feature_request only ties on
+    coverage, so the user's connected Gmail blocks lead.  #15011 put tools
+    first for every query and moved 19 such queries."""
+    result = gmail_index.search("email", connections=GOOGLE)
+    assert result.service is None
+    assert result.hits[0].entry.kind == "block"
+    assert result.hits[0].connected is True
+    assert "create_feature_request" in result.names
+
+
+def test_a_negative_mention_does_not_pull_a_tool_into_a_service_query(gmail_index):
+    """connect_integration says "do NOT call it for Google, Gmail, Slack":
+    only a tool's name, purpose and tags count as naming the service."""
+    slack = _mcp(
+        "mcp:mcp.slack.com",
+        "Slack",
+        "Send messages, search channels and read threads in Slack.",
+        SLACK_MCP_URL,
+        ["slack", "mcp", "slack", "mcp.slack.com"],
+    )
+    result = gmail_index.with_entries([slack]).search("slack send message")
+    assert result.service == "slack"
+    assert "connect_integration" not in result.names
+    assert "post_to_chat_platform" in result.names

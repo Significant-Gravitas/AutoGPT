@@ -35,6 +35,8 @@ _NAME_WEIGHT = 2  # repeat name tokens so the name outweighs the purpose text
 
 DEFAULT_LIMIT = 8
 DEFAULT_FALLBACK_LIMIT = 3
+# Entries of other kinds a ``kind`` filter hid that are listed beside it.
+OTHER_KINDS_LIMIT = 3
 # How far below the best coverage a connected MCP server the query names
 # still counts as covering the query; one whole concept.
 CONNECTED_COVERAGE_MARGIN = 1.0
@@ -44,10 +46,10 @@ class SearchHit(BaseModel):
     entry: CapabilityEntry
     score: float
     # Query concepts the entry matched: 1 per token matched as written, 0.5
-    # when only a synonym matched.  Ranking is coverage first, then platform
-    # tools, then connection, then BM25: two entries that both match "create"
-    # and "issue" are ordered by whether the user has connected them, not by
-    # which description happens to be shorter.
+    # when only a synonym matched.  Ranking is coverage first, then
+    # connection and platform tools (see ``_ranked``), then BM25: two entries
+    # that both match "create" and "issue" are ordered by whether the user has
+    # connected them, not by which description happens to be shorter.
     coverage: float = 0.0
     connected: bool | None = None
     reason: str = "search"  # "exact_id" | "exact_name" | "search"
@@ -58,6 +60,11 @@ class SearchResult(BaseModel):
     hits: list[SearchHit]
     fallback: list[SearchHit] = []
     service: str | None = None
+    # Set only when ``kind`` filtered the search: entries of other kinds it
+    # hid that are connected or cover more of the query than ``hits`` do, and
+    # how many there were before the cap.
+    other_kinds: list[SearchHit] = []
+    hidden_by_kind: int = 0
 
     @property
     def ids(self) -> list[str]:
@@ -137,6 +144,45 @@ class CapabilityIndex:
         limit: int = DEFAULT_LIMIT,
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
     ) -> SearchResult:
+        """Ranked entries for *query*.
+
+        Integrations such as Gmail, Slack and Sheets are blocks, so
+        ``kind="tool"`` hides every one of them and the model got unrelated
+        tools, or nothing, and went looking for an MCP server off the
+        catalog (SECRT-2820).  A filtered search therefore also runs without
+        the filter and returns what it hid in ``other_kinds``.
+        """
+        result = self._search(
+            query,
+            context=context,
+            kind=kind,
+            connections=connections,
+            permissions=permissions,
+            limit=limit,
+            fallback_limit=fallback_limit,
+        )
+        if kind is not None and result.query:
+            self._add_other_kinds(
+                result,
+                context=context,
+                kind=kind,
+                connections=connections,
+                permissions=permissions,
+                limit=limit,
+            )
+        return result
+
+    def _search(
+        self,
+        query: str,
+        *,
+        context: CapabilityContext,
+        kind: CapabilityKindName | None,
+        connections: ConnectionState | None,
+        permissions: "CopilotPermissions | None",
+        limit: int,
+        fallback_limit: int,
+    ) -> SearchResult:
         query = " ".join((query or "").split())
         if not query:
             return SearchResult(query=query, hits=[])
@@ -209,6 +255,48 @@ class CapabilityIndex:
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service
         )
+
+    def _add_other_kinds(
+        self,
+        result: SearchResult,
+        *,
+        context: CapabilityContext,
+        kind: CapabilityKindName,
+        connections: ConnectionState | None,
+        permissions: "CopilotPermissions | None",
+        limit: int,
+    ) -> None:
+        """Fill ``result.other_kinds`` from the same search without *kind*.
+
+        An entry of another kind counts when the user has connected it or it
+        covers more of the query than anything the filter kept, and among
+        equal coverage a connected one is listed first: those are what the
+        filter hid.  A lookup by name (an exact hit) found what it asked for
+        and gets nothing: most ``kind`` calls are those, and they must not be
+        told to search again.
+        """
+        if any(hit.reason != "search" for hit in result.hits):
+            return
+        best = max((hit.coverage for hit in result.hits), default=0.0)
+        unfiltered = self._search(
+            result.query,
+            context=context,
+            kind=None,
+            connections=connections,
+            permissions=permissions,
+            limit=limit,
+            fallback_limit=0,
+        )
+        hidden = sorted(
+            (
+                hit
+                for hit in unfiltered.hits
+                if hit.entry.kind != kind and (hit.connected or hit.coverage > best)
+            ),
+            key=lambda hit: (-hit.coverage, not hit.connected),
+        )
+        result.other_kinds = hidden[:OTHER_KINDS_LIMIT]
+        result.hidden_by_kind = len(hidden)
 
     # ------------------------------------------------------------------
 
@@ -285,11 +373,20 @@ class CapabilityIndex:
         return [idx for idx in dict.fromkeys(indices) if idx in allowed]
 
     def _tool_names(self, idx: int, service_names: list[str]) -> bool:
-        """Whether entry *idx* is a platform tool whose own text names one of
-        the services the query asked for."""
-        if self.entries[idx].kind != "tool":
+        """Whether entry *idx* is a platform tool whose name, purpose or tags
+        name one of the services the query asked for.
+
+        Not the whole description: connect_integration says "do NOT call it
+        for Google, Gmail, Slack", and matching that put it in every Google,
+        Slack and GitHub query."""
+        entry = self.entries[idx]
+        if entry.kind != "tool":
             return False
-        document = self._token_sets[idx]
+        document = {
+            *tokenize(entry.name),
+            *tokenize(entry.purpose),
+            *(token for tag in entry.tags for token in tokenize(tag)),
+        }
         for name in service_names:
             tokens = tokenize(name.replace("_", " "))
             if tokens and all(token in document for token in tokens):
@@ -417,8 +514,16 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
 
 
 def _ranked(hits: list[SearchHit], *, lift: bool = False) -> list[SearchHit]:
-    """Coverage first, then a platform tool, then a connected capability,
+    """Coverage first, then a connected capability, then a platform tool,
     then the class-weighted BM25 score (``score`` already carries the weight).
+
+    With *lift* a platform tool comes before connection.  The list is then
+    the named service's own entries plus the tools that name it, so a tool
+    tying on coverage is the first-party way to do that service's job
+    (post_to_chat_platform for Discord).  On a query that names no service a
+    tool that ties has only shared a word with it ("email" and
+    create_feature_request), and putting it first moved 19 such queries off
+    the user's connected blocks.
 
     With *lift*, a connected MCP server within
     :data:`CONNECTED_COVERAGE_MARGIN` of the best coverage is read as covering
@@ -445,8 +550,9 @@ def _ranked(hits: list[SearchHit], *, lift: bool = False) -> list[SearchHit]:
     """
     best = max((h.coverage for h in hits), default=0.0)
 
-    def key(hit: SearchHit) -> tuple[float, bool, int, float, str]:
+    def key(hit: SearchHit) -> tuple[float, int, int, float, str]:
         rank = tier(hit.entry, hit.connected)
+        not_tool = int(hit.entry.kind != "tool")
         coverage = hit.coverage
         if (
             lift
@@ -455,12 +561,7 @@ def _ranked(hits: list[SearchHit], *, lift: bool = False) -> list[SearchHit]:
             and coverage >= best - CONNECTED_COVERAGE_MARGIN
         ):
             coverage = best
-        return (
-            -coverage,
-            hit.entry.kind != "tool",
-            rank,
-            -hit.score,
-            hit.entry.name.lower(),
-        )
+        first, second = (not_tool, rank) if lift else (rank, not_tool)
+        return (-coverage, first, second, -hit.score, hit.entry.name.lower())
 
     return sorted(hits, key=key)

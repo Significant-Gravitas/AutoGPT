@@ -179,8 +179,8 @@ already connected (`connected: true`), and prefer a platform tool
 through the account link the user already has. A block is the right answer
 when it is the only thing that covers the job, or when the user asked for it.
 
-If `find_capability` returns nothing for a named service, `web_search` for
-"<service> MCP server" and call `run_capability` with the server URL as `id`.
+If `find_capability` without `kind` returns nothing for a named service,
+`web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,
 ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
