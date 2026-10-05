@@ -141,8 +141,11 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
     return patches
 
 
-async def _run_turn(session: ChatSession, client_factory, *, resume_hit: bool) -> str:
-    """Run one turn; return what the CLI would get right after a compaction.
+async def _run_turn(
+    session: ChatSession, client_factory, *, resume_hit: bool
+) -> list[str]:
+    """Run one turn; return what the CLI would get right after a compaction,
+    one part per ``SessionStart`` callback.
 
     The turn wires its ``SessionStart`` hook through ``create_security_hooks``;
     calling the context source it passed there, while the turn's patches are
@@ -262,10 +265,12 @@ class TestCompactionKeepsFirstTurnContext:
         session = _session()
         queries: list[str] = []
 
-        after_compaction = await _run_turn(
+        parts = await _run_turn(
             session, lambda *a, **kw: _client(queries), resume_hit=True
         )
 
+        # Well under the CLI's hook-output cap, so it goes out in one part.
+        (after_compaction,) = parts
         assert after_compaction.startswith(_AFTER_COMPACTION_LEAD)
         blocks = after_compaction[len(_AFTER_COMPACTION_LEAD) :]
         assert blocks.startswith("<available_skills>\n")
@@ -285,11 +290,11 @@ class TestCompactionKeepsFirstTurnContext:
         queries: list[str] = []
 
         with patch(f"{_SVC}._rebuild_first_turn_prefix", AsyncMock(return_value="")):
-            after_compaction = await _run_turn(
+            parts = await _run_turn(
                 session, lambda *a, **kw: _client(queries), resume_hit=True
             )
 
-        assert after_compaction == ""
+        assert parts == []
 
 
 class TestFormatConversationContext:

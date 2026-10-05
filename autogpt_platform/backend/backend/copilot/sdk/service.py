@@ -207,6 +207,7 @@ from ..transcript import (
     validate_transcript,
 )
 from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
+from .after_compaction import fit_after_compaction
 from .compaction import (
     CompactionStats,
     CompactionTracker,
@@ -6692,13 +6693,14 @@ async def _context_after_compaction(
     sdk_cwd: str,
     use_e2b: bool,
     log_prefix: str,
-) -> str:
+) -> list[str]:
     """What the ``SessionStart`` hook hands the model after the CLI compacts.
 
     Compaction replaces the session's first user message with a summary, and
     the first-turn blocks went with it — for the rest of the turn and for
-    every turn that resumes the compacted session.  ``""`` when there is
-    nothing to re-send.
+    every turn that resumes the compacted session.  Returned as the parts
+    one hook callback each delivers, every one within the CLI's hook-output
+    cap (``fit_after_compaction``); ``[]`` when there is nothing to re-send.
     """
     prefix = await _rebuild_first_turn_prefix(
         session,
@@ -6708,7 +6710,20 @@ async def _context_after_compaction(
         log_prefix=log_prefix,
         reason="compaction",
     )
-    return _AFTER_COMPACTION_LEAD + prefix if prefix else ""
+    fitted = fit_after_compaction(_AFTER_COMPACTION_LEAD, prefix)
+    if fitted.dropped or fitted.shortened:
+        logger.warning(
+            "%s First-turn context re-sent after compaction was cut to fit the"
+            " CLI hook-output cap: %d of %d chars in %d parts; dropped=%s,"
+            " shortened=%s",
+            log_prefix,
+            fitted.delivered_chars,
+            fitted.rebuilt_chars,
+            len(fitted.parts),
+            fitted.dropped,
+            fitted.shortened,
+        )
+    return fitted.parts
 
 
 async def _rebuild_first_turn_prefix(
@@ -6758,8 +6773,7 @@ async def _rebuild_first_turn_prefix(
         )
         return ""
     logger.info(
-        "%s Re-injecting first-turn context (%s): %d chars;"
-        " skills=%s, user_context=%s",
+        "%s Rebuilt first-turn context (%s): %d chars; skills=%s, user_context=%s",
         log_prefix,
         reason,
         len(prefix),

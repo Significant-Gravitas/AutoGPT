@@ -4,6 +4,7 @@ This module provides security hooks that validate tool calls before execution,
 ensuring multi-user isolation and preventing unauthorized operations.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -19,6 +20,7 @@ from backend.copilot.context import (
 )
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
+from .after_compaction import AFTER_COMPACTION_MAX_PARTS
 from .tool_adapter import (
     BLOCKED_TOOLS,
     DANGEROUS_PATTERNS,
@@ -208,7 +210,7 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
-    context_after_compaction: Callable[[], Awaitable[str]] | None = None,
+    context_after_compaction: Callable[[], Awaitable[list[str]]] | None = None,
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -227,9 +229,11 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
-        context_after_compaction: Returns the text to hand the model right
-            after the CLI compacts the conversation — the first-turn blocks
-            the summary does not carry.  ``""`` sends nothing.
+        context_after_compaction: Returns what to hand the model right after
+            the CLI compacts the conversation — the first-turn blocks the
+            summary does not carry — as at most
+            ``AFTER_COMPACTION_MAX_PARTS`` parts, each within the CLI's
+            per-callback cap.  ``[]`` sends nothing.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -457,42 +461,58 @@ def create_security_hooks(
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
-        async def session_start_hook(
-            input_data: HookInput,
-            tool_use_id: str | None,
-            context: HookContext,
-        ) -> SyncHookJSONOutput:
-            """Hand the model back the context the compaction summary dropped.
+        # The parts of the latest compaction's re-send, shared by its callbacks.
+        after_compaction: list[asyncio.Task[list[str]]] = []
 
-            The first-turn blocks (skills index, workflows, follow-ups, working
-            dir, user context) live in the session's first user message,
-            which compaction replaces with a summary.  The CLI puts this
-            hook's ``additionalContext`` right after the summary.
-            """
-            _ = context, tool_use_id
-            source = input_data.get("source")
-            if context_after_compaction is None or source != "compact":
-                return cast(SyncHookJSONOutput, {})
+        async def _rebuild_after_compaction() -> list[str]:
+            if context_after_compaction is None:
+                return []
             try:
-                extra = await context_after_compaction()
+                return await context_after_compaction()
             except Exception:
                 logger.exception(
                     "[SDK] Could not rebuild the context to re-send after"
                     " compaction (user=%s)",
                     user_id,
                 )
-                return cast(SyncHookJSONOutput, {})
-            if not extra:
-                return cast(SyncHookJSONOutput, {})
-            return cast(
-                SyncHookJSONOutput,
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "SessionStart",
-                        "additionalContext": extra,
-                    }
-                },
-            )
+                return []
+
+        def session_start_hook(part: int):
+            async def hook(
+                input_data: HookInput,
+                tool_use_id: str | None,
+                context: HookContext,
+            ) -> SyncHookJSONOutput:
+                """Hand the model back part of what the compaction dropped.
+
+                The first-turn blocks (skills index, workflows, follow-ups,
+                working dir, user context) live in the session's first user
+                message, which compaction replaces with a summary.  The CLI
+                runs these callbacks in order and puts their
+                ``additionalContext`` right after the summary; the first one
+                rebuilds the context for this compaction.
+                """
+                _ = context, tool_use_id
+                if input_data.get("source") != "compact":
+                    return cast(SyncHookJSONOutput, {})
+                if part == 0 or not after_compaction:
+                    after_compaction[:] = [
+                        asyncio.create_task(_rebuild_after_compaction())
+                    ]
+                parts = await after_compaction[0]
+                if part >= len(parts) or not parts[part]:
+                    return cast(SyncHookJSONOutput, {})
+                return cast(
+                    SyncHookJSONOutput,
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "SessionStart",
+                            "additionalContext": parts[part],
+                        }
+                    },
+                )
+
+            return hook
 
         async def subagent_start_hook(
             input_data: HookInput,
@@ -543,10 +563,15 @@ def create_security_hooks(
             "SubagentStop": [HookMatcher(matcher="*", hooks=[subagent_stop_hook])],
         }
         if context_after_compaction is not None:
+            # One callback per part: the CLI caps each callback's context on
+            # its own (``after_compaction``).
             hooks[_SESSION_START_EVENT] = [
                 HookMatcher(
                     matcher="compact",
-                    hooks=[session_start_hook],
+                    hooks=[
+                        session_start_hook(part)
+                        for part in range(AFTER_COMPACTION_MAX_PARTS)
+                    ],
                     timeout=_AFTER_COMPACTION_HOOK_TIMEOUT_S,
                 )
             ]

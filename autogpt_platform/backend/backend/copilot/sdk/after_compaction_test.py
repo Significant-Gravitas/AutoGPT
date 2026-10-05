@@ -1,5 +1,8 @@
 """The context re-sent after a compaction never exceeds the CLI's hook cap."""
 
+import logging
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from .after_compaction import (
@@ -11,6 +14,7 @@ from .after_compaction import (
     split_blocks,
     utf16_len,
 )
+from .service import _AFTER_COMPACTION_LEAD, _context_after_compaction
 
 _LEAD = "The conversation was just compacted; here are the blocks again:\n\n"
 # The CLI 2.1.284 threshold: longer than this and the model gets a preview.
@@ -226,3 +230,57 @@ def test_budget_leaves_margin_under_the_cli_cap(size):
     assert AFTER_COMPACTION_PART_BUDGET < _CLI_HOOK_CAP
     fitted = fit_after_compaction("", _block("session_context", size))
     assert all(utf16_len(p) <= AFTER_COMPACTION_PART_BUDGET for p in fitted.parts)
+
+
+class TestContextAfterCompaction:
+    """``_context_after_compaction`` hands the hook parts and says when it cut."""
+
+    async def _parts(self, prefix: str) -> list[str]:
+        with patch(
+            "backend.copilot.sdk.service._rebuild_first_turn_prefix",
+            AsyncMock(return_value=prefix),
+        ):
+            return await _context_after_compaction(
+                MagicMock(),
+                "u1",
+                sdk_cwd="/tmp/copilot-x",
+                use_e2b=False,
+                log_prefix="[test]",
+            )
+
+    @pytest.mark.asyncio
+    async def test_fitting_context_goes_out_whole(self, caplog):
+        prefix = _prefix(_skills_block(3), _block("user_context", 400))
+
+        with caplog.at_level(logging.WARNING):
+            parts = await self._parts(prefix)
+
+        assert parts == [_AFTER_COMPACTION_LEAD + prefix]
+        assert not caplog.records
+
+    @pytest.mark.asyncio
+    async def test_a_cut_is_logged_with_its_sizes(self, caplog):
+        prefix = _prefix(
+            _skills_block(150),
+            *(_block("team_context", 9_000) for _ in range(4)),
+            _block("user_context", 300),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            parts = await self._parts(prefix)
+
+        assert 1 <= len(parts) <= AFTER_COMPACTION_MAX_PARTS
+        assert all(utf16_len(p) <= AFTER_COMPACTION_PART_BUDGET for p in parts)
+        assert parts[0].startswith(_AFTER_COMPACTION_LEAD)
+        (record,) = caplog.records
+        assert record.levelno == logging.WARNING
+        message = record.getMessage()
+        delivered = sum(len(p) for p in parts)
+        rebuilt = len(_AFTER_COMPACTION_LEAD) + len(prefix)
+        assert f"{delivered} of {rebuilt} chars in {len(parts)} parts" in message
+        assert "dropped=['team_context'" in message
+        assert "shortened=['available_skills']" in message
+
+    @pytest.mark.asyncio
+    async def test_nothing_rebuilt_sends_nothing(self):
+        assert await self._parts("") == []
