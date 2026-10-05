@@ -1,12 +1,14 @@
 """The ``SessionStart`` hook hands the model back what compaction dropped.
 
 Compaction replaces the session's first user message, and the first-turn
-blocks at its start, with a summary. With matcher ``compact`` the CLI runs
-these callbacks right after it, one after another, and puts every one's
-``additionalContext`` after the summary, joined in registration order. Each
-callback's context is capped on its own, so the re-send goes out in parts,
-one per callback.
+blocks at its start, with a summary. With matcher ``compact`` the CLI starts
+these callbacks right after it, all at the same time, and puts every one's
+``additionalContext`` after the summary in the order the callbacks answer.
+Each callback's context is capped on its own, so the re-send goes out in
+parts, one per callback.
 """
+
+import asyncio
 
 import pytest
 
@@ -22,16 +24,35 @@ def _session_start_matcher(context_after_compaction):
     return matcher
 
 
-async def _fire(context_after_compaction, source: str) -> list[dict]:
-    """Run every callback the way the CLI does: in order, awaiting each."""
-    return [
-        await hook(
+async def _fire_hooks(hooks, source: str = "compact", *, start_order=None):
+    """Run one compaction's callbacks the way the CLI and SDK do: every
+    callback in its own task, all in flight together.
+
+    Returns each callback's result by part, and the parts in the order their
+    callbacks answered. ``start_order`` is the order the callbacks start in
+    (registration order when not given).
+    """
+    answered: list[int] = []
+
+    async def run(part: int) -> dict:
+        result = await hooks[part](
             {"hook_event_name": "SessionStart", "source": source},
             None,
             {"signal": None},
         )
-        for hook in _session_start_matcher(context_after_compaction).hooks
-    ]
+        answered.append(part)
+        return result
+
+    order = list(start_order or range(len(hooks)))
+    results = await asyncio.gather(*(run(part) for part in order))
+    return [results[order.index(part)] for part in range(len(hooks))], answered
+
+
+async def _fire(context_after_compaction, source: str) -> list[dict]:
+    results, _ = await _fire_hooks(
+        _session_start_matcher(context_after_compaction).hooks, source
+    )
+    return results
 
 
 def _resent(part: str) -> dict:
@@ -96,16 +117,56 @@ async def test_every_compaction_rebuilds():
     async def _context() -> list[str]:
         return next(versions)
 
-    matcher = _session_start_matcher(_context)
-    payload = {"hook_event_name": "SessionStart", "source": "compact"}
+    hooks = _session_start_matcher(_context).hooks
     sent = []
     for _ in range(2):
-        for hook in matcher.hooks:
-            result = await hook(payload, None, {"signal": None})
-            if result:
-                sent.append(result["hookSpecificOutput"]["additionalContext"])
+        results, _ = await _fire_hooks(hooks)
+        sent.append(
+            [r["hookSpecificOutput"]["additionalContext"] for r in results if r]
+        )
 
-    assert sent == ["first", "second"]
+    assert sent == [["first"], ["second"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "start_order",
+    [[0, 1, 2, 3], [3, 2, 1, 0], [2, 0, 3, 1]],
+    ids=["registration", "reversed", "shuffled"],
+)
+async def test_parts_answer_in_part_order_whichever_callback_starts_first(start_order):
+    rebuilds: list[int] = []
+
+    async def _context() -> list[str]:
+        rebuilds.append(1)
+        await asyncio.sleep(0)
+        return ["one", "two", "three", "four"]
+
+    hooks = _session_start_matcher(_context).hooks
+
+    results, answered = await _fire_hooks(hooks, start_order=start_order)
+
+    assert results == [_resent(p) for p in ("one", "two", "three", "four")]
+    assert answered == [0, 1, 2, 3]
+    assert rebuilds == [1]
+
+
+@pytest.mark.asyncio
+async def test_a_second_compaction_started_in_reverse_gets_its_own_rebuild():
+    versions = iter([["a1", "a2", "a3", "a4"], ["b1", "b2", "b3", "b4"]])
+
+    async def _context() -> list[str]:
+        await asyncio.sleep(0)
+        return next(versions)
+
+    hooks = _session_start_matcher(_context).hooks
+
+    first, first_answered = await _fire_hooks(hooks)
+    second, second_answered = await _fire_hooks(hooks, start_order=[3, 2, 1, 0])
+
+    assert first == [_resent(p) for p in ("a1", "a2", "a3", "a4")]
+    assert second == [_resent(p) for p in ("b1", "b2", "b3", "b4")]
+    assert first_answered == second_answered == [0, 1, 2, 3]
 
 
 @pytest.mark.asyncio

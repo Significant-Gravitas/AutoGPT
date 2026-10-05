@@ -4,7 +4,6 @@ This module provides security hooks that validate tool calls before execution,
 ensuring multi-user isolation and preventing unauthorized operations.
 """
 
-import asyncio
 import json
 import logging
 import re
@@ -21,6 +20,7 @@ from backend.copilot.context import (
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
 from .after_compaction import AFTER_COMPACTION_MAX_PARTS
+from .after_compaction_handout import AfterCompactionHandout
 from .tool_adapter import (
     BLOCKED_TOOLS,
     DANGEROUS_PATTERNS,
@@ -461,9 +461,6 @@ def create_security_hooks(
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
-        # The parts of the latest compaction's re-send, shared by its callbacks.
-        after_compaction: list[asyncio.Task[list[str]]] = []
-
         async def _rebuild_after_compaction() -> list[str]:
             if context_after_compaction is None:
                 return []
@@ -477,6 +474,8 @@ def create_security_hooks(
                 )
                 return []
 
+        after_compaction = AfterCompactionHandout(_rebuild_after_compaction)
+
         def session_start_hook(part: int):
             async def hook(
                 input_data: HookInput,
@@ -488,26 +487,23 @@ def create_security_hooks(
                 The first-turn blocks (skills index, workflows, follow-ups,
                 working dir, user context) live in the session's first user
                 message, which compaction replaces with a summary.  The CLI
-                runs these callbacks in order and puts their
-                ``additionalContext`` right after the summary; the first one
-                rebuilds the context for this compaction.
+                starts these callbacks together and puts their
+                ``additionalContext`` right after the summary in the order
+                they answer; ``after_compaction`` rebuilds the context once
+                per compaction and lets the parts answer in order.
                 """
                 _ = context, tool_use_id
                 if input_data.get("source") != "compact":
                     return cast(SyncHookJSONOutput, {})
-                if part == 0 or not after_compaction:
-                    after_compaction[:] = [
-                        asyncio.create_task(_rebuild_after_compaction())
-                    ]
-                parts = await after_compaction[0]
-                if part >= len(parts) or not parts[part]:
+                text = await after_compaction.part(part)
+                if not text:
                     return cast(SyncHookJSONOutput, {})
                 return cast(
                     SyncHookJSONOutput,
                     {
                         "hookSpecificOutput": {
                             "hookEventName": "SessionStart",
-                            "additionalContext": parts[part],
+                            "additionalContext": text,
                         }
                     },
                 )
@@ -564,7 +560,7 @@ def create_security_hooks(
         }
         if context_after_compaction is not None:
             # One callback per part: the CLI caps each callback's context on
-            # its own (``after_compaction``).
+            # its own (``after_compaction.py``).
             hooks[_SESSION_START_EVENT] = [
                 HookMatcher(
                     matcher="compact",
