@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.blocks.google._drive import GoogleDriveFile
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
@@ -2003,3 +2004,40 @@ async def _store_workspace_file(path: str):
             dry_run=False,
             expert_id="expert-a",
         )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_outputs_keep_field_aliases_so_drive_files_chain():
+    """A Drive file a block returns keeps `_credentials_id`, as stored graph
+    outputs do, so the model can pass it to the next block's picker field."""
+    block = _make_block()
+
+    async def _execute(
+        input_data: dict, **kwargs: Any
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield "file", GoogleDriveFile.model_validate(
+            {"id": "file-1", "name": "Q3 report", "_credentials_id": "cred-1"}
+        )
+
+    block.execute = _execute
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+    ):
+        result = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-alias",
+            matched_credentials={},
+            dry_run=False,
+        )
+
+    assert isinstance(result, BlockOutputResponse)
+    file = result.outputs["file"][0]
+    assert file["_credentials_id"] == "cred-1"
+    assert "credentials_id" not in file

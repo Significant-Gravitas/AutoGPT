@@ -48,6 +48,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.json import to_dict
 from backend.util.request import HTTPClientError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
@@ -277,7 +278,7 @@ async def execute_block(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
-                outputs=dict(outputs),
+                outputs=to_dict(dict(outputs)),
                 provider=get_block_provider(block),
                 success=True,
                 is_dry_run=True,
@@ -531,7 +532,9 @@ async def execute_block(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
                     block_name=block.name,
-                    outputs=dict(outputs),
+                    # Encoded by alias like stored graph outputs, so a Drive file keeps
+                    # the `_credentials_id` the next block's picker field reads.
+                    outputs=to_dict(dict(outputs)),
                     provider=get_block_provider(block),
                     success=True,
                     session_id=session_id,

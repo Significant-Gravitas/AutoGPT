@@ -121,9 +121,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Get New Items](block-integrations/exa/websets_items.md#exa-get-new-items) | Get items added since a cursor - enables incremental processing without reprocessing |
 | [Exa List Imports](block-integrations/exa/websets_import_export.md#exa-list-imports) | List all imports with pagination support |
 | [File Read](block-integrations/data.md#file-read) | Reads a file and returns its content as a string, with optional chunking by delimiter and size limits |
+| [Google Calendar Get Event](block-integrations/google/calendar_search.md#google-calendar-get-event) | Get one Google Calendar event by its ID: title, exact times, location, description, video link, organizer, guests and their replies |
+| [Google Calendar List Calendars](block-integrations/google/calendar_search.md#google-calendar-list-calendars) | List the user's Google calendars with each one's ID, name, time zone and the user's access level |
 | [Google Calendar Read Events](block-integrations/google/calendar.md#google-calendar-read-events) | Retrieves upcoming events from a Google Calendar with filtering options |
+| [Google Calendar Search Events](block-integrations/google/calendar_search.md#google-calendar-search-events) | Search a Google Calendar for events by keyword, across past and future events, optionally within a time range |
 | [Google Docs Append Markdown](block-integrations/google/docs.md#google-docs-append-markdown) | Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output |
 | [Google Docs Append Plain Text](block-integrations/google/docs.md#google-docs-append-plain-text) | Append plain text to the end of a Google Doc (no formatting applied) |
+| [Google Docs Batch Update](block-integrations/google/docs_batch_update.md#google-docs-batch-update) | Apply any Google Docs API batchUpdate requests to a document in one all-or-nothing call: named ranges, bullets, headers, footnotes, images and anything the other Google Docs blocks don't cover |
 | [Google Docs Create](block-integrations/google/docs.md#google-docs-create) | Create a new Google Doc |
 | [Google Docs Delete Content](block-integrations/google/docs.md#google-docs-delete-content) | Delete a range of content from a Google Doc |
 | [Google Docs Export](block-integrations/google/docs.md#google-docs-export) | Export a Google Doc to PDF, Word, text, or other formats |
@@ -141,11 +145,23 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Docs Replace Range With Markdown](block-integrations/google/docs.md#google-docs-replace-range-with-markdown) | Replace a specific index range in a Google Doc with formatted Markdown - ideal for LLM/AI output |
 | [Google Docs Set Public Access](block-integrations/google/docs.md#google-docs-set-public-access) | Make a Google Doc public or private |
 | [Google Docs Share](block-integrations/google/docs.md#google-docs-share) | Share a Google Doc with specific users |
+| [Google Drive Copy File](block-integrations/google/drive_manage.md#google-drive-copy-file) | Copy a Google Drive file, optionally with a new name or into another folder |
+| [Google Drive Create File](block-integrations/google/drive_manage.md#google-drive-create-file) | Create a file in Google Drive from text or an uploaded file, optionally converting it to a Google Doc, Sheet or Slides file |
+| [Google Drive Create Folder](block-integrations/google/drive_manage.md#google-drive-create-folder) | Create a folder in Google Drive, optionally inside another folder |
+| [Google Drive Download File](block-integrations/google/drive_files.md#google-drive-download-file) | Download a file from Google Drive (up to 50 MB) |
+| [Google Drive Get File Info](block-integrations/google/drive_files.md#google-drive-get-file-info) | Get a Google Drive file's details: name, type, size, owners, created and modified dates, and the folders it is in |
+| [Google Drive Get File Permissions](block-integrations/google/drive_files.md#google-drive-get-file-permissions) | List who can access a Google Drive file: users, groups, domains or anyone with the link, and their roles |
+| [Google Drive List Comments](block-integrations/google/drive_comments.md#google-drive-list-comments) | List the comment threads on a Google Doc, Sheet, Slides deck or other Drive file: who said what, the text each comment is on, replies, and whether the thread is resolved |
+| [Google Drive List Recent Files](block-integrations/google/drive_search.md#google-drive-list-recent-files) | List the most recently used, modified or viewed files in Google Drive |
+| [Google Drive Move File](block-integrations/google/drive_manage.md#google-drive-move-file) | Move a Google Drive file into another folder |
+| [Google Drive Read File](block-integrations/google/drive_files.md#google-drive-read-file) | Read a Google Drive file as text |
+| [Google Drive Search Files](block-integrations/google/drive_search.md#google-drive-search-files) | Search Google Drive for files by name, content, type, folder or modified date |
 | [Google Sheets Add Column](block-integrations/google/sheets.md#google-sheets-add-column) | Add a new column with a header |
 | [Google Sheets Add Dropdown](block-integrations/google/sheets.md#google-sheets-add-dropdown) | Add a dropdown list (data validation) to cells |
 | [Google Sheets Add Note](block-integrations/google/sheets.md#google-sheets-add-note) | Add a note to a cell in a Google Sheet |
 | [Google Sheets Append Row](block-integrations/google/sheets.md#google-sheets-append-row) | Append or Add a single row to the end of a Google Sheet |
 | [Google Sheets Batch Operations](block-integrations/google/sheets.md#google-sheets-batch-operations) | This block performs multiple operations on a Google Sheets spreadsheet in a single batch request |
+| [Google Sheets Batch Update](block-integrations/google/sheets_batch_update.md#google-sheets-batch-update) | Apply any Google Sheets API batchUpdate requests to a spreadsheet in one all-or-nothing call: charts, conditional formatting, merges, filters and anything the other Google Sheets blocks don't cover |
 | [Google Sheets Clear](block-integrations/google/sheets.md#google-sheets-clear) | This block clears data from a specified range in a Google Sheets spreadsheet |
 | [Google Sheets Copy To Spreadsheet](block-integrations/google/sheets.md#google-sheets-copy-to-spreadsheet) | Copy a sheet from one spreadsheet to another |
 | [Google Sheets Create Named Range](block-integrations/google/sheets.md#google-sheets-create-named-range) | Create a named range to reference cells by name instead of A1 notation |
@@ -177,6 +193,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Update Cell](block-integrations/google/sheets.md#google-sheets-update-cell) | Update a single cell in a Google Sheets spreadsheet |
 | [Google Sheets Update Row](block-integrations/google/sheets.md#google-sheets-update-row) | Update a specific row by its index |
 | [Google Sheets Write](block-integrations/google/sheets.md#google-sheets-write) | A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range |
+| [Google Slides Get Slide](block-integrations/google/slides_read.md#google-slides-get-slide) | Get one slide of a Google Slides presentation by slide ID: every element on it (text boxes, shapes, tables, images) with its element ID, type and text, plus the slide's speaker notes |
+| [Google Slides Read Presentation](block-integrations/google/slides_read.md#google-slides-read-presentation) | Read a Google Slides presentation: its title and, for each slide, the slide ID, position, title, text from shapes and tables, and speaker notes |
 | [JSON Decoder](block-integrations/data.md#json-decoder) | Decodes a JSON string into the value or data structure, it represents, e |
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
@@ -253,6 +271,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Text Generator](block-integrations/llm.md#ai-text-generator) | A block that produces text responses using a Large Language Model (LLM) based on customizable prompts and system instructions |
 | [AI Text Summarizer](block-integrations/llm.md#ai-text-summarizer) | A block that summarizes long texts using a Large Language Model (LLM), with configurable focus topics and summary styles |
 | [AI Video Generator](block-integrations/fal/ai_video_generator.md#ai-video-generator) | Generate videos using FAL AI models |
+| [Ask Google Developer Docs](block-integrations/google/developer_docs.md#ask-google-developer-docs) | Answer a question about Google developer products with an answer Google writes from its official documentation, plus the passages it used |
 | [Bannerbear Text Overlay](block-integrations/bannerbear/text_overlay.md#bannerbear-text-overlay) | Add text overlay to images using Bannerbear templates |
 | [Claude Code](block-integrations/llm.md#claude-code) | Execute tasks using Claude Code in an E2B sandbox |
 | [Code Generation](block-integrations/llm.md#code-generation) | Generate or refactor code using an OpenAI API key or a connected ChatGPT plan through Codex App Server |
@@ -260,6 +279,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results |
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
+| [Get Google Maps Platform Coding Instructions](block-integrations/google/maps_platform_docs.md#get-google-maps-platform-coding-instructions) | Get Google's system prompt for AI assistants that write Google Maps Platform code |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
 | [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
 | [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
@@ -335,7 +355,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Firecrawl Search](block-integrations/firecrawl/search.md#firecrawl-search) | Firecrawl searches the web for the given query |
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
-| [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
+| [Google Maps Get Directions](block-integrations/search.md#google-maps-get-directions) | Get directions between two places with Google Maps: distance, travel time and a route summary, plus turn-by-turn steps if you ask for them |
+| [Google Maps Resolve Links](block-integrations/search.md#google-maps-resolve-links) | Find the place a Google Maps link points to, including short share links: place ID, name, address, coordinates and types |
+| [Google Maps Resolve Places](block-integrations/search.md#google-maps-resolve-places) | Look up place names or addresses on Google Maps and get each one's place ID, name, full address, coordinates, types and Google Maps link |
+| [Google Maps Search](block-integrations/search.md#google-maps-search) | Search Google Maps for businesses and other places that match a text query |
+| [Google Maps Weather](block-integrations/search.md#google-maps-weather) | Get the weather for a place from Google Maps: current conditions, a daily forecast for up to 10 days, or an hourly forecast for up to 240 hours |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
@@ -516,15 +540,33 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Baas Bot Leave Meeting](block-integrations/baas/bots.md#baas-bot-leave-meeting) | Remove a bot from an ongoing meeting |
 | [Gmail Add Label](block-integrations/google/gmail.md#gmail-add-label) | A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist |
 | [Gmail Create Draft](block-integrations/google/gmail.md#gmail-create-draft) | Create draft emails in Gmail with automatic HTML detection and proper text formatting |
+| [Gmail Create Label](block-integrations/google/gmail_labels.md#gmail-create-label) | Create a Gmail label, with an optional color and visibility |
 | [Gmail Draft Reply](block-integrations/google/gmail.md#gmail-draft-reply) | Create draft replies to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Forward](block-integrations/google/gmail.md#gmail-forward) | Forward Gmail messages to other recipients with automatic HTML detection and proper formatting |
+| [Gmail Get Message](block-integrations/google/gmail_messages.md#gmail-get-message) | Get one Gmail email by its message ID or Message-ID header, or a draft by its draft ID |
 | [Gmail Get Profile](block-integrations/google/gmail.md#gmail-get-profile) | Get the authenticated user's Gmail profile details including email address and message statistics |
 | [Gmail Get Thread](block-integrations/google/gmail.md#gmail-get-thread) | A block that retrieves an entire Gmail thread (email conversation) by ID, returning all messages with decoded bodies for reading complete conversations |
+| [Gmail List Drafts](block-integrations/google/gmail_messages.md#gmail-list-drafts) | List Gmail drafts, optionally only those matching a Gmail search |
 | [Gmail List Labels](block-integrations/google/gmail.md#gmail-list-labels) | A block that retrieves all labels (categories) from a Gmail account for organizing and categorizing emails |
+| [Gmail Mark As Read](block-integrations/google/gmail_organize.md#gmail-mark-as-read) | Mark a Gmail message, or a whole thread, as read or unread |
 | [Gmail Read](block-integrations/google/gmail.md#gmail-read) | A block that retrieves and reads emails from a Gmail account based on search criteria, returning detailed message information including subject, sender, body, and attachments |
 | [Gmail Remove Label](block-integrations/google/gmail.md#gmail-remove-label) | A block that removes a label from a specific email message in a Gmail account |
 | [Gmail Reply](block-integrations/google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](block-integrations/google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
+| [Gmail Spam](block-integrations/google/gmail_organize.md#gmail-spam) | Report a Gmail message, or a whole thread, as spam, which moves it to Spam |
+| [Gmail Trash](block-integrations/google/gmail_organize.md#gmail-trash) | Move a Gmail message, or a whole thread, to the Trash, or restore it from the Trash |
+| [Gmail Update Labels](block-integrations/google/gmail_labels.md#gmail-update-labels) | Add and remove labels on a Gmail message, or a whole thread, in one step |
+| [Google Chat Find Direct Message](block-integrations/google/chat_direct_messages.md#google-chat-find-direct-message) | Find the user's existing Google Chat direct message with a person, by email address or user ID, and get its ID for reading or sending messages |
+| [Google Chat Find Group Chats](block-integrations/google/chat_spaces.md#google-chat-find-group-chats) | Find Google Chat group chats whose members are exactly the user plus the people you list, by email address or user ID, and get their IDs for reading or sending messages |
+| [Google Chat List Messages](block-integrations/google/chat_messages.md#google-chat-list-messages) | Read the messages in a Google Chat space, group chat or direct message, optionally only one thread or a time range |
+| [Google Chat List Spaces](block-integrations/google/chat_spaces.md#google-chat-list-spaces) | List the Google Chat conversations the user is in (named spaces, group chats and direct messages) with their IDs, names, types and member counts |
+| [Google Chat Search Messages](block-integrations/google/chat_message_search.md#google-chat-search-messages) | Search Google Chat messages across every conversation the user is in, by keywords, sender, conversation, time, unread status, mentions, links or attachments |
+| [Google Chat Search Spaces](block-integrations/google/chat_spaces.md#google-chat-search-spaces) | Find named Google Chat spaces the user is in by words in the space name, and get their IDs |
+| [Google Chat Send Message](block-integrations/google/chat_messages.md#google-chat-send-message) | Send a Google Chat message as the user to a space, group chat or direct message, or reply in a thread of a named space |
+| [Google Chat Start Direct Message](block-integrations/google/chat_direct_messages.md#google-chat-start-direct-message) | Open a Google Chat direct message with a person, by email address or user ID: returns the existing conversation, or creates an empty one |
+| [Google Contacts Get My Profile](block-integrations/google/contacts.md#google-contacts-get-my-profile) | Get the connected Google account's own profile: name, email address, photo, company and job title, plus language when Google shares it |
+| [Google Contacts Search](block-integrations/google/contacts.md#google-contacts-search) | Search the user's Google Contacts by name, email address, phone number or company, optionally including 'Other contacts' (people they have emailed but never saved) |
+| [Google Contacts Search Directory](block-integrations/google/contacts_directory.md#google-contacts-search-directory) | Search the user's Google Workspace directory for colleagues and contacts shared with the organization, by name or email address |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
 
 ## Developer Tools
@@ -552,6 +594,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
+| [Get Google Developer Docs](block-integrations/google/developer_docs.md#get-google-developer-docs) | Get whole pages of Google's developer documentation as Markdown, up to 20 at a time |
 | [Github Add Label](block-integrations/github/issues.md#github-add-label) | A block that adds a label to a GitHub issue or pull request for categorization and organization |
 | [Github Assign Issue](block-integrations/github/issues.md#github-assign-issue) | A block that assigns a GitHub user to an issue for task ownership and tracking |
 | [Github Assign PR Reviewer](block-integrations/github/pull_requests.md#github-assign-pr-reviewer) | This block assigns a reviewer to a specified GitHub pull request |
@@ -613,6 +656,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Update File](block-integrations/github/repo_files.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
+| [Search Google Developer Docs](block-integrations/google/developer_docs.md#search-google-developer-docs) | Search Google's developer documentation and return the best-matching passages with links to their pages |
+| [Search Google Maps Platform Docs](block-integrations/google/maps_platform_docs.md#search-google-maps-platform-docs) | Search Google Maps Platform documentation and code samples and return the best-matching passages with their source links |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
 ## Media Generation
@@ -620,6 +665,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Add Audio To Video](block-integrations/video/add_audio.md#add-audio-to-video) | Block to attach an audio file to a video file using moviepy |
+| [Google Slides Get Slide Thumbnail](block-integrations/google/slides_read.md#google-slides-get-slide-thumbnail) | Render one slide of a Google Slides presentation as a PNG image, for example to check how a slide looks after editing it |
 | [Loop Video](block-integrations/video/loop.md#loop-video) | Block to loop a video to a given duration or number of repeats |
 | [Media Duration](block-integrations/video/duration.md#media-duration) | Block to get the duration of a media file |
 | [Video Clip](block-integrations/video/clip.md#video-clip) | Extract a time segment from a video |
@@ -632,6 +678,15 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Google Calendar Create Event](block-integrations/google/calendar.md#google-calendar-create-event) | This block creates a new event in Google Calendar with customizable parameters |
+| [Google Calendar Delete Event](block-integrations/google/calendar_events.md#google-calendar-delete-event) | Delete a Google Calendar event, or one occurrence of a repeating event, and optionally email the guests a cancellation |
+| [Google Calendar Respond To Event](block-integrations/google/calendar_invitations.md#google-calendar-respond-to-event) | Accept, decline or tentatively accept a Google Calendar invitation, with an optional note to the organizer |
+| [Google Calendar Suggest Meeting Times](block-integrations/google/calendar_availability.md#google-calendar-suggest-meeting-times) | Suggest meeting times when you and the given people are all free, using Google Calendar free/busy |
+| [Google Calendar Update Event](block-integrations/google/calendar_events.md#google-calendar-update-event) | Change a Google Calendar event's title, time, location, description, guests or Google Meet link |
+| [Google Slides Add Slide](block-integrations/google/slides_create.md#google-slides-add-slide) | Add a slide to a Google Slides presentation using one of Google's built-in layouts, such as title and body, and fill in its title and body text |
+| [Google Slides Batch Update](block-integrations/google/slides_edit.md#google-slides-batch-update) | Change a Google Slides presentation with Slides API batchUpdate requests: add shapes, tables, images and slides, insert or delete text, restyle, reorder or delete objects |
+| [Google Slides Create Presentation](block-integrations/google/slides_create.md#google-slides-create-presentation) | Create a new Google Slides presentation with the given title, in the root of My Drive |
+| [Google Slides Replace All Text](block-integrations/google/slides_edit.md#google-slides-replace-all-text) | Replace text everywhere in a Google Slides presentation, with several find-and-replace pairs at once |
+| [Google Slides Set Speaker Notes](block-integrations/google/slides_edit.md#google-slides-set-speaker-notes) | Set the speaker notes of one slide in a Google Slides presentation, replacing any notes it already has |
 | [Notion Create Page](block-integrations/notion/create_page.md#notion-create-page) | Create a new page in Notion |
 | [Notion Read Database](block-integrations/notion/read_database.md#notion-read-database) | Query a Notion database with optional filtering and sorting, returning structured entries |
 | [Notion Read Page](block-integrations/notion/read_page.md#notion-read-page) | Read a Notion page by its ID and return its raw JSON |
