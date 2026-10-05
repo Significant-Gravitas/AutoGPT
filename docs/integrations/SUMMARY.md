@@ -126,6 +126,8 @@
 * [Google Gmail Messages](block-integrations/google/gmail_messages.md)
 * [Google Gmail Organize](block-integrations/google/gmail_organize.md)
 * [Google Maps Platform Docs](block-integrations/google/maps_platform_docs.md)
+* [Google Search Console](block-integrations/google/search_console.md)
+* [Google Search Console Indexing](block-integrations/google/search_console_indexing.md)
 * [Google Sheets](block-integrations/google/sheets.md)
 * [Google Sheets Batch Update](block-integrations/google/sheets_batch_update.md)
 * [Google Slides Create](block-integrations/google/slides_create.md)
