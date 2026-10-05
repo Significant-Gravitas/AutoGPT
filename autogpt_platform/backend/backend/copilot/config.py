@@ -643,6 +643,15 @@ class ChatConfig(BaseSettings):
         "whenever the prompt differs between two turns; set False to roll "
         "back to the recorded prompt.",
     )
+    claude_agent_strip_prompt_snapshots: bool = Field(
+        default=True,
+        description="Drop the CLI's recorded prompt snapshots (the system "
+        "prompt and every tool description, 134-180KB per recording) from a "
+        "session's transcript when it is stored or restored. A live-prompt "
+        "launch never reads them. A launch with claude_agent_live_system_prompt "
+        "off that finds none sends its own prompt and records it again, so to "
+        "roll back to one recorded prompt per session set this False as well.",
+    )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",
         description="TTL for the ephemeral prompt-cache markers on the baseline "
