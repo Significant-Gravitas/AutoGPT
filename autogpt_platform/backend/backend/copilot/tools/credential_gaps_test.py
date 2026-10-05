@@ -31,8 +31,8 @@ from .credential_gaps import (
     credential_gap_message,
     find_credential_gap,
 )
-from .helpers import _build_credential_rejected_card
-from .models import SetupRequirementsResponse
+from .helpers import _build_credential_rejected_card, _credential_rejected_response
+from .models import ErrorResponse, SetupRequirementsResponse
 from .utils import find_matching_credential
 
 USER = "user-credential-gaps"
@@ -173,6 +173,41 @@ def test_rejected_card_says_reconnect_and_why():
     assert card.rejection is not None
     assert "invalid_grant" in card.rejection.detail
     assert card.setup_info.user_readiness.ready_to_run is False
+
+
+def test_scheduled_turn_error_says_reconnect_and_why():
+    # Nobody answers a card on a scheduled turn (SECRT-2804), so the error the
+    # turn's reply passes on has to carry the same reason the card would.
+    dead = oauth("linear", ["comments:create", "read"], metadata=DEAD)
+    marker = reconnect_required(dead)
+    assert marker is not None
+
+    with patch("backend.copilot.tools.helpers.is_unattended_turn", return_value=True):
+        response = _credential_rejected_response(
+            block=LinearCreateCommentBlock(),
+            block_id=LinearCreateCommentBlock().id,
+            input_data={},
+            matched_credentials={
+                "credentials": CredentialsMetaInput(
+                    id=dead.id,
+                    provider=ProviderName("linear"),
+                    type="oauth2",
+                    title=dead.title,
+                )
+            },
+            session_id="session-1",
+            status_code=400,
+            exc=CredentialsNeedReconnectError("linear", dead.id, marker),
+        )
+
+    assert isinstance(response, ErrorResponse)
+    assert response.error == "credential_rejected"
+    assert response.message.startswith(
+        "The saved Linear credential 'alice's linear' has to be reconnected: "
+        "Linear refused to refresh the saved sign-in (invalid_grant, HTTP 400), "
+        "so block "
+    )
+    assert "did not run" in response.message
 
 
 # -- The connect card the bot relays -- #

@@ -665,11 +665,20 @@ def _credential_rejected_response(
     rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
-    refused = (
-        f"{provider_name} rejected the saved credential{named} (HTTP {status_code})"
-        if status_code is not None
-        else f"The saved {provider_name} credential{named} could not be refreshed"
-    )
+    if isinstance(exc, CredentialsNeedReconnectError):
+        refused = (
+            f"The saved {provider_name} credential{named} has to be reconnected: "
+            f"{exc.marker.reason(provider_name)}"
+        )
+    elif status_code is not None:
+        refused = (
+            f"{provider_name} rejected the saved credential{named} "
+            f"(HTTP {status_code})"
+        )
+    else:
+        refused = (
+            f"The saved {provider_name} credential{named} could not be refreshed"
+        )
     logger.warning(
         "Unattended copilot turn in session %s: block %s did not run, %s",
         session_id,
