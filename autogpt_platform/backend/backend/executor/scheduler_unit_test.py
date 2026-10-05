@@ -16,6 +16,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
@@ -333,6 +335,95 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["message"] == "check CI"
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
+    # Marks the turn as scheduled so the executor alerts if it fails later.
+    assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_into_the_users_chat_is_marked_unattended():
+    """A follow-up pinned to the user's own chat still has nobody watching it,
+    so its tools must not hand questions back to the user (SECRT-2804)."""
+    args = _args()
+    mock_schedule_turn = AsyncMock()
+    users_chat = MagicMock(session_id="session-1", expert_id=None)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=users_chat),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_awaited_once()
+    assert mock_schedule_turn.call_args.kwargs["unattended"] is True
+
+
+_WORK_KEY = CredentialPin(id="exa-new", title="Work key")
+
+
+async def _fire_into_users_chat(args: CopilotTurnJobArgs, routine=None) -> dict:
+    mock_schedule_turn = AsyncMock()
+    users_chat = MagicMock(session_id="session-1", expert_id=None)
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=users_chat),
+        ),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+    mock_schedule_turn.assert_awaited_once()
+    return mock_schedule_turn.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_a_followups_turn_runs_on_the_accounts_picked_when_it_was_made():
+    kwargs = await _fire_into_users_chat(_args(credential_pins={"exa": _WORK_KEY}))
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
+
+
+@pytest.mark.asyncio
+async def test_a_routines_turn_runs_on_the_accounts_on_its_row():
+    """A routine keeps its pins on the row, so they survive it being switched
+    off and on, which re-creates its jobs."""
+    routine = ExpertRoutine(
+        id="routine-1",
+        title="Briefing",
+        prompt="Brief me",
+        crons=["0 9 * * *"],
+        enabled=True,
+        grants_credentials=True,
+        credential_pins={"exa": _WORK_KEY},
+    )
+    kwargs = await _fire_into_users_chat(
+        _args(routine_id="routine-1", run_at=None, cron="0 9 * * *"), routine
+    )
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
+
+
+@pytest.mark.asyncio
+async def test_a_schedule_made_before_pins_fires_with_none(caplog):
+    legacy = CopilotTurnJobArgs.model_validate(
+        {"user_id": "user-1", "session_id": "session-1", "message": "check CI"}
+    )
+    with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
+        kwargs = await _fire_into_users_chat(legacy)
+    assert kwargs["credential_pins"] == {}
+    assert "no pinned credentials" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_keeps_the_pinned_accounts():
+    args = _args(cap_retry_count=0, credential_pins={"exa": _WORK_KEY})
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+    kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
 
 
 @pytest.mark.asyncio
