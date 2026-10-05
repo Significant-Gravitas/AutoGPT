@@ -48,8 +48,8 @@ from pydantic.fields import Field
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.data.expert_run_output import reconstruct_run_outputs
+from backend.data.run_scoring import score_completed_run
 from backend.data.tenancy import get_user_team_ids, visibility_filter
-from backend.notifications.scoring import score_completed_run
 from backend.util import type as type_utils
 from backend.util.exceptions import (
     DatabaseError,

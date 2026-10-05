@@ -60,6 +60,15 @@ poetry run pytest path/to/test.py --snapshot-update
 
 ## Code Style
 
+### Database access boundary
+
+- Services, routes, blocks, tools, and shared helpers must use the connection-aware helpers in `backend.data.db_accessors`, or the DatabaseManager clients from `backend.util.clients`. The accessor chooses local operations only when the process owns a connected Prisma client; otherwise it uses RPC.
+- Keep Prisma queries and raw SQL in `backend.data`, `db.py`, or `*_db.py` implementations. Importing Prisma models, enums, input types, and pure helpers is allowed; importing or calling a helper that reaches Prisma is database access, including aliases and reexports.
+- If an operation is missing, add its scoped implementation and expose the same endpoint name on `DatabaseManager` and `DatabaseManagerAsyncClient` before using it through an accessor. Preserve user and organization ownership checks.
+- Workers must not open Prisma connections or reproduce `is_connected()` routing branches. Extend an accessor instead.
+- Run `poetry run python -m backend.util.db_boundary` and `poetry run pytest backend/util/db_boundary_test.py` after database-access changes. Lint, pre-commit, and backend tests enforce the AST boundary.
+- `backend/util/database_boundary_legacy.json` records existing debt by module, function, target, and reference count. Fix and remove these entries; do not add entries, increase counts, or exempt a directory to get a change through. Fixed entries must be removed so they cannot conceal a later regression.
+
 - **Top-level imports only** — no local/inner imports (lazy imports only for heavy optional deps like `openpyxl`)
 - **Absolute imports** — use `from backend.module import ...` for cross-package imports. Single-dot relative (`from .sibling import ...`) is acceptable for sibling modules within the same package (e.g., blocks). Avoid double-dot relative imports (`from ..parent import ...`) — use the absolute path instead
 - **No duck typing** — no `hasattr`/`getattr`/`isinstance` for type dispatch; use typed interfaces/unions/protocols

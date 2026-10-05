@@ -288,6 +288,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: database-boundary
+        name: Check database access boundary - AutoGPT Platform - Backend
+        entry: poetry -C autogpt_platform/backend run python -m backend.util.db_boundary
+        files: ^autogpt_platform/backend/
+        language: system
+        pass_filenames: false
+
       - id: tsc
         name: Typecheck - AutoGPT Platform - Frontend
         entry: bash -c 'cd autogpt_platform/frontend && pnpm types'

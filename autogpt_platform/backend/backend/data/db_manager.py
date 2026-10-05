@@ -651,6 +651,7 @@ class DatabaseManager(AppService):
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
+    list_recent_chat_sessions = _(chat_db.list_recent_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
     get_sessions_with_pending_question = _(chat_db.get_sessions_with_pending_question)
@@ -1073,6 +1074,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
+    list_recent_chat_sessions = d.list_recent_chat_sessions
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question
     get_sessions_with_pending_question = d.get_sessions_with_pending_question

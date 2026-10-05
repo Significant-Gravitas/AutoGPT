@@ -32,6 +32,7 @@ def lint():
         run("gen-prisma-stub")
 
     lint_step_args: list[list[str]] = [
+        ["python", "-m", "backend.util.db_boundary"],
         ["ruff", "check", *TARGET_DIRS, "--exit-zero"],
         ["ruff", "format", "--diff", "--check", LIBS_DIR],
         ["isort", "--diff", "--check", "--profile", "black", BACKEND_DIR],

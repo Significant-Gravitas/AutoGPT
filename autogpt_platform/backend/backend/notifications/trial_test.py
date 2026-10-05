@@ -150,6 +150,7 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
         ),
         patch.object(notices, "release_claim", AsyncMock()) as release,
         patch.object(notices, "queue_notification_async", queue),
+        patch.object(notices, "queue_trial_audience_change", AsyncMock()),
         patch.object(notices, "_track_billing_event") as track,
     ):
         if outcome in ("publish_failed", "raised"):
@@ -247,17 +248,20 @@ async def test_only_conversion_invoice_triggers_trial_confirmation(
             "retrieve_async",
             AsyncMock(return_value=subscription),
         ),
-        patch.object(notices, "sync_subscription_from_stripe", AsyncMock()),
         patch.object(
             notices,
             "credit_db",
             return_value=MagicMock(
-                get_subscription_trial=AsyncMock(return_value=trial)
+                get_subscription_trial=AsyncMock(return_value=trial),
+                sync_subscription_from_stripe=AsyncMock(),
             ),
-        ),
+        ) as database,
         patch.object(notices, "notify_trial", AsyncMock()) as notify,
     ):
         assert await notices.on_trial_invoice(invoice, paid=True) is expected
+    database.return_value.sync_subscription_from_stripe.assert_awaited_once_with(
+        subscription
+    )
     if expected:
         notify.assert_awaited_once_with(subscription, "converted")
     else:
