@@ -157,6 +157,8 @@ def results_from_response(response: Any) -> list[Search1APIResult]:
     """Parse the ``results`` list of a /search or /news response."""
     if not isinstance(response, dict) or not isinstance(response.get("results"), list):
         raise ValueError("malformed Search1API response: missing results list")
+    if not all(isinstance(r, dict) for r in response["results"]):
+        raise ValueError("malformed Search1API response: non-object result entry")
     return [
         Search1APIResult(
             title=r.get("title") or "",
@@ -166,7 +168,6 @@ def results_from_response(response: Any) -> list[Search1APIResult]:
             published_date=r.get("published_date") or None,
         )
         for r in response["results"]
-        if isinstance(r, dict)
     ]
 
 

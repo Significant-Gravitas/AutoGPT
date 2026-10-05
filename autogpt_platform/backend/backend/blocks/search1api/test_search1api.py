@@ -117,6 +117,11 @@ def test_results_from_response_rejects_missing_results():
         results_from_response({"searchParameters": {}})
 
 
+def test_results_from_response_rejects_non_object_entries():
+    with pytest.raises(ValueError, match="non-object result entry"):
+        results_from_response({"results": [_row(), "not a result"]})
+
+
 def test_search_credits_counts_crawled_pages_only_when_requested():
     results = results_from_response(
         {"results": [_row(content="a"), _row(content="b"), _row()]}
@@ -342,11 +347,16 @@ async def test_crawl_outputs_page_and_cost():
 
 @pytest.mark.asyncio
 async def test_crawl_malformed_response_raises():
-    block = Search1APICrawlBlock()
-    _mock_block(block, {"_crawl": lambda *a, **k: {"results": []}})
+    for response in (
+        {"results": []},
+        {"results": {"title": "AutoGPT", "link": "https://agpt.co"}},
+        {"results": {"title": "AutoGPT", "link": "https://agpt.co", "content": 1}},
+    ):
+        block = Search1APICrawlBlock()
+        _mock_block(block, {"_crawl": lambda *a, _r=response, **k: _r})
 
-    with pytest.raises(BlockExecutionError, match="Crawl failed: malformed"):
-        await _collect(block, {"url": "https://agpt.co"})
+        with pytest.raises(BlockExecutionError, match="Crawl failed: malformed"):
+            await _collect(block, {"url": "https://agpt.co"})
 
 
 # ---------------------------------------------------------------------------

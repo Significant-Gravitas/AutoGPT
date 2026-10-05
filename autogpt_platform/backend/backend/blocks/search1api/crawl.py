@@ -77,7 +77,7 @@ class Search1APICrawlBlock(Block):
                 raise ValueError("malformed Search1API response: missing results")
             url = page.get("link") or input_data.url
             title = page.get("title") or ""
-            content = page.get("content") or ""
+            content = page.get("content")
             if not all(isinstance(v, str) for v in (url, title, content)):
                 raise ValueError("malformed Search1API response fields")
         except Exception as e:
