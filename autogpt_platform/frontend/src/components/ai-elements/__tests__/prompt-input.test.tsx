@@ -65,6 +65,20 @@ describe("PromptInputTextarea Enter handling", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("does not submit on Enter on touch devices", () => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+    try {
+      const { textarea, onSubmit } = renderComposer();
+
+      fireEvent.keyDown(textarea, { key: "Enter" });
+
+      expect(onSubmit).not.toHaveBeenCalled();
+    } finally {
+      // @ts-expect-error jsdom has no matchMedia by default
+      delete window.matchMedia;
+    }
+  });
+
   it("lets a consumer onKeyDown claim the key first", () => {
     const onSubmit = vi.fn();
     render(
