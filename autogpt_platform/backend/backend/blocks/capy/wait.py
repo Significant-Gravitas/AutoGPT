@@ -180,47 +180,76 @@ async def _poll(
     after_message_id: str = "",
 ) -> tuple[Thread, list[Message], bool]:
     deadline = time.monotonic() + timeout_seconds
-    stopped_checks = 0
+    quiet_checks = 0
     while True:
         thread = await client.get_thread(thread_id)
-        finished = thread.needs_you
-        if not finished and thread.status not in ACTIVE_THREAD_STATUSES:
+        if thread.needs_you or thread.status not in ACTIVE_THREAD_STATUSES:
             page = await client.newest_messages(thread_id, limit=50)
-            # A thread keeps its previous status (usually idle) for a moment
-            # after it is created or sent a message, before the agent picks
-            # the message up, so an idle status alone doesn't mean it answered.
+            # Right after a thread is created or sent a message, it keeps its
+            # previous state (idle, failed, or flagged with the question just
+            # answered) until the agent picks the message up, so only a reply
+            # to the message ends the wait at once.
             if _answered(page.items, after_message_id):
                 return thread, page.items, True
-            # A failed or archived thread won't pick the message up on its
-            # own, so a second check that still finds it unanswered ends the
-            # wait rather than the timeout.
-            if thread.status in STOPPED_THREAD_STATUSES:
-                stopped_checks += 1
-                if stopped_checks >= 2:
-                    return thread, page.items, True
+            # A thread that has really stopped without a reply (failed,
+            # archived, flagged without a written question, or quiet after
+            # taking steps) ends the wait once two checks in a row find it so.
+            quiet_checks = (
+                quiet_checks + 1
+                if _stopped(thread, page.items, after_message_id)
+                else 0
+            )
+            if quiet_checks >= 2:
+                return thread, page.items, True
+        else:
+            quiet_checks = 0
         remaining = deadline - time.monotonic()
-        if finished or remaining <= 0:
+        if remaining <= 0:
             break
         await asyncio.sleep(min(poll_interval, remaining))
     page = await client.newest_messages(thread_id, limit=50)
-    return thread, page.items, finished
+    return thread, page.items, False
 
 
 def _answered(messages: list[Message], after_message_id: str) -> bool:
-    """Whether the agent has replied to the message the wait is about.
+    """Whether the agent has written a reply to the message the wait is about.
 
-    Transcript IDs are ULIDs, so they sort by time: a reply to the given
-    message sorts after it. Without one, the latest user entry is the message,
-    and it is answered once anything follows it. An empty transcript isn't an
-    answer: right after a thread is created Capy reports it idle before the
-    brief even reaches the transcript.
+    Message IDs are ULIDs, so they sort by time: a reply to the given message
+    sorts after it. Without one, the latest user entry is the message. Tool
+    steps aren't a reply: Capy can report a thread idle a moment before it
+    reports the agent working, and an empty transcript means the brief hasn't
+    even arrived.
     """
     if after_message_id:
         return any(
             m.source == "assistant" and m.text and m.id > after_message_id
             for m in messages
         )
-    return bool(messages) and messages[-1].source != "user"
+    return _replied_since_last_user_entry(messages)
+
+
+def _stopped(thread: Thread, messages: list[Message], after_message_id: str) -> bool:
+    """Whether an unanswered thread looks stopped rather than about to pick up
+    its message: it failed or was archived, it flags a question, or the agent
+    already took steps after the message."""
+    if thread.needs_you or thread.status in STOPPED_THREAD_STATUSES:
+        return True
+    return bool(_entries_after(messages, after_message_id))
+
+
+def _entries_after(messages: list[Message], after_message_id: str) -> list[Message]:
+    """The transcript after the message the wait is about, found by position
+    because tool step IDs (call_...) don't sort with message IDs. A message
+    not in the transcript yet (queued) has nothing after it."""
+    if after_message_id:
+        ids = [m.id for m in messages]
+        if after_message_id not in ids:
+            return []
+        return messages[ids.index(after_message_id) + 1 :]
+    last_user = max(
+        (i for i, m in enumerate(messages) if m.source == "user"), default=-1
+    )
+    return messages[last_user + 1 :]
 
 
 def _with_reply(

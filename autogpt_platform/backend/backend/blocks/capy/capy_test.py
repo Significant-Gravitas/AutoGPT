@@ -751,12 +751,23 @@ class TestWaitForThread:
     async def test_stops_when_the_agent_needs_an_answer(
         self, monkeypatch: pytest.MonkeyPatch
     ):
+        # Seen live: Capy flags the question while the thread still reads
+        # working, and the question itself is an ordinary reply.
         asking = Thread.model_validate(
-            {**LIVE_THREAD, "status": "waiting", "needsYou": True}
+            {**LIVE_THREAD, "status": "working", "needsYou": True}
         )
         monkeypatch.setattr(CapyClient, "get_thread", AsyncMock(return_value=asking))
         monkeypatch.setattr(
-            CapyClient, "newest_messages", AsyncMock(return_value=MessagePage())
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(id="01A", source="user", text="Count a file's lines"),
+                        Message(id="01B", source="assistant", text="Which file?"),
+                    ]
+                )
+            ),
         )
         monkeypatch.setattr(_api, "Requests", MagicMock())
 
@@ -764,6 +775,142 @@ class TestWaitForThread:
 
         assert out["finished"] is True
         assert out["needs_you"] is True
+        assert out["last_reply"] == "Which file?"
+
+    async def test_an_answered_question_still_flagged_is_not_a_new_question(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Right after the answer is sent, the thread can still carry the
+        # flag from the question it answers.
+        flagged, working, idle = (
+            Thread.model_validate({**LIVE_THREAD, "status": s, "needsYou": n})
+            for s, n in (("working", True), ("working", False), ("idle", False))
+        )
+        get_thread = AsyncMock(side_effect=[flagged, working, idle])
+        asked = [
+            Message(id="01A", source="user", text="Count a file's lines"),
+            Message(id="01B", source="assistant", text="Which file?"),
+            Message(id="01C", source="user", text="README.md"),
+        ]
+        newest = AsyncMock(
+            side_effect=[
+                MessagePage(items=asked),
+                MessagePage(
+                    items=[*asked, Message(id="01D", source="assistant", text="227")]
+                ),
+            ]
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(CapyClient, "newest_messages", newest)
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(
+            CapyWaitForThreadBlock(),
+            thread_id="t1",
+            timeout_seconds=600,
+            after_message_id="01C",
+        )
+
+        assert get_thread.await_count == 3
+        assert out["finished"] is True
+        assert out["needs_you"] is False
+        assert out["last_reply"] == "227"
+
+    async def test_a_failed_thread_must_stay_failed_two_checks_in_a_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # A thread that fails, works again, then reads failed once more has
+        # had one stopped check since it last worked, not two.
+        failed, working = (
+            Thread.model_validate({**LIVE_THREAD, "status": s, "needsYou": False})
+            for s in ("failed", "working")
+        )
+        get_thread = AsyncMock(side_effect=[failed, working, failed, failed])
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[Message(id="01A", source="user", text="Fix the bug")]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
+
+        assert get_thread.await_count == 4
+        assert out["finished"] is True
+        assert out["status"] == "failed"
+
+    async def test_tool_steps_alone_are_not_a_reply(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Capy can report a thread idle a moment after the agent has started
+        # taking steps; only a written reply answers the brief.
+        idle, working = (
+            Thread.model_validate({**LIVE_THREAD, "status": s, "needsYou": False})
+            for s in ("idle", "working")
+        )
+        get_thread = AsyncMock(side_effect=[idle, working, idle])
+        started = [
+            Message(id="01A", source="user", text="Count the files"),
+            Message(id="call_9f2", source="tool", text="Listing files"),
+        ]
+        newest = AsyncMock(
+            side_effect=[
+                MessagePage(items=started),
+                MessagePage(
+                    items=[*started, Message(id="01B", source="assistant", text="12")]
+                ),
+            ]
+        )
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(CapyClient, "newest_messages", newest)
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
+
+        assert get_thread.await_count == 3
+        assert out["finished"] is True
+        assert out["last_reply"] == "12"
+
+    @pytest.mark.parametrize("status, needs_you", [("idle", False), ("working", True)])
+    async def test_a_thread_that_stops_without_a_word_still_finishes(
+        self, monkeypatch: pytest.MonkeyPatch, status: str, needs_you: bool
+    ):
+        # The agent took steps and stopped, or flagged a question, without a
+        # written reply; a second check that finds it unchanged ends the wait.
+        quiet = Thread.model_validate(
+            {**LIVE_THREAD, "status": status, "needsYou": needs_you}
+        )
+        get_thread = AsyncMock(side_effect=[quiet, quiet])
+        monkeypatch.setattr(CapyClient, "get_thread", get_thread)
+        monkeypatch.setattr(
+            CapyClient,
+            "newest_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(id="01A", source="user", text="Count the files"),
+                        Message(id="call_9f2", source="tool", text="Listing files"),
+                    ]
+                )
+            ),
+        )
+        monkeypatch.setattr(_api, "Requests", MagicMock())
+        monkeypatch.setattr("backend.blocks.capy.wait.asyncio.sleep", AsyncMock())
+
+        out = await _run(CapyWaitForThreadBlock(), thread_id="t1", timeout_seconds=600)
+
+        assert get_thread.await_count == 2
+        assert out["finished"] is True
+        assert out["needs_you"] is needs_you
+        assert out["last_reply"] == ""
 
     async def test_zero_timeout_returns_current_state(
         self, monkeypatch: pytest.MonkeyPatch
@@ -851,6 +998,30 @@ class TestListThreadMessages:
             AsyncMock(
                 return_value=MessagePage(
                     items=[Message(id="01ABC", source="assistant", text="hi")],
+                    cursor=None,
+                )
+            ),
+        )
+
+        out = await _run(block, thread_id="t1")
+
+        assert out["next_cursor"] == "01ABC"
+
+    async def test_cursor_never_falls_back_to_a_tool_step(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Capy's cursors are 26-character event IDs; tool steps carry IDs like
+        # call_9f2, which the next request would reject.
+        block = CapyListThreadMessagesBlock()
+        monkeypatch.setattr(
+            block,
+            "list_messages",
+            AsyncMock(
+                return_value=MessagePage(
+                    items=[
+                        Message(id="01ABC", source="assistant", text="hi"),
+                        Message(id="call_9f2", source="tool", text="Listing files"),
+                    ],
                     cursor=None,
                 )
             ),

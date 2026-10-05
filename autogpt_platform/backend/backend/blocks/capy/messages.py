@@ -150,12 +150,13 @@ class CapyListThreadMessagesBlock(Block):
         yield "messages", [m.model_dump(exclude_none=True) for m in items]
         yield "last_reply", _last_assistant_text(items)
         # The newest page reports no forward cursor, and an empty page past the
-        # caller's cursor has none either. Fall back to the last entry's event
-        # ID, then to the caller's cursor, so polling never rewinds to the
-        # start of the transcript.
+        # caller's cursor has none either. Fall back to the last message's
+        # event ID (tool steps carry call_... IDs Capy rejects as cursors),
+        # then to the caller's cursor, so polling never rewinds to the start
+        # of the transcript.
         yield "next_cursor", (
             page.cursor
-            or (page.items[-1].id if page.items else "")
+            or next((m.id for m in reversed(page.items) if m.source != "tool"), "")
             or input_data.after_cursor
         )
         yield "older_cursor", page.before_cursor or ""
