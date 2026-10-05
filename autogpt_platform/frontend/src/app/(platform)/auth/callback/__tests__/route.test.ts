@@ -12,6 +12,7 @@ const scheduleAccountCreatedGoalMock = vi.fn();
 const cookieSetMock = vi.fn();
 const cookieGetMock = vi.fn();
 const cookieDeleteMock = vi.fn();
+const captureExceptionMock = vi.fn();
 
 vi.mock("@/lib/auth/server/getServerSession", () => ({
   getServerSession: () => getServerSessionMock(),
@@ -54,6 +55,10 @@ vi.mock("next/headers", () => ({
 
 vi.mock("next/cache", () => ({
   revalidatePath: (...args: unknown[]) => revalidatePathMock(...args),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  captureException: (...args: unknown[]) => captureExceptionMock(...args),
 }));
 
 import { GET } from "../route";
@@ -105,6 +110,7 @@ beforeEach(() => {
   cookieSetMock.mockReset();
   cookieGetMock.mockReset();
   cookieDeleteMock.mockReset();
+  captureExceptionMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -254,9 +260,8 @@ describe("auth callback GET — signup consent", () => {
   it("still lands the user on the normal next page when the consent write fails", async () => {
     withOptOutCookie();
     postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
-    postV1RecordUserConsentMock.mockRejectedValue(
-      new ApiError("Internal Server Error", 500, {}),
-    );
+    const error = new ApiError("Internal Server Error", 500, {});
+    postV1RecordUserConsentMock.mockRejectedValue(error);
 
     const response = await GET(
       makeCallbackRequest("/auth/callback?next=/marketplace"),
@@ -265,6 +270,11 @@ describe("auth callback GET — signup consent", () => {
     expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
     expect(revalidatePathMock).toHaveBeenCalledWith("/marketplace", "layout");
     expect(rollbackSessionMock).not.toHaveBeenCalled();
+    expect(captureExceptionMock).toHaveBeenCalledWith(error, {
+      tags: { signup_step: "record_consent" },
+      user: { id: "user-1" },
+      extra: { marketingOptOut: true },
+    });
   });
 });
 

@@ -55,7 +55,10 @@ export async function GET(request: Request) {
         await markAccountCreated("google");
         // Never throws, so a failed consent write can't reach the rollback
         // below or change where the user lands.
-        await recordSignupConsent(marketingOptOut);
+        await recordSignupConsent({
+          userID: session.user.id,
+          marketingOptOut,
+        });
       }
 
       const { shouldShowOnboarding } = await getOnboardingStatus();

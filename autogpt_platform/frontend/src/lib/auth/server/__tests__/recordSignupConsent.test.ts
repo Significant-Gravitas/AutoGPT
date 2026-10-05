@@ -26,7 +26,7 @@ describe("recordSignupConsent", () => {
   it.each([true, false])(
     "records the current terms version with marketing_opt_out=%s",
     async (marketingOptOut) => {
-      await recordSignupConsent(marketingOptOut);
+      await recordSignupConsent({ userID: "user-1", marketingOptOut });
 
       expect(mocks.postV1RecordUserConsent).toHaveBeenCalledOnce();
       expect(mocks.postV1RecordUserConsent).toHaveBeenCalledWith({
@@ -43,11 +43,15 @@ describe("recordSignupConsent", () => {
   ])("reports %s without throwing", async (_label, error) => {
     mocks.postV1RecordUserConsent.mockRejectedValue(error);
 
-    await expect(recordSignupConsent(true)).resolves.toBeUndefined();
+    await expect(
+      recordSignupConsent({ userID: "user-1", marketingOptOut: true }),
+    ).resolves.toBeUndefined();
 
     expect(mocks.captureException).toHaveBeenCalledOnce();
     expect(mocks.captureException).toHaveBeenCalledWith(error, {
       tags: { signup_step: "record_consent" },
+      user: { id: "user-1" },
+      extra: { marketingOptOut: true },
     });
     expect(console.error).toHaveBeenCalledWith(
       "Failed to record signup consent:",

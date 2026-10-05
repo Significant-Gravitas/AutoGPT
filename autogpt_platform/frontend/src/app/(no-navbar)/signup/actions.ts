@@ -37,9 +37,10 @@ export async function signup(
       };
     }
 
+    let userID: string;
     try {
       // The session cookie is set automatically by the nextCookies plugin.
-      await auth.api.signUpEmail({
+      const { user } = await auth.api.signUpEmail({
         body: {
           email: parsed.data.email,
           password: parsed.data.password,
@@ -47,6 +48,7 @@ export async function signup(
         },
         headers: await headers(),
       });
+      userID = user.id;
     } catch (error) {
       if (error instanceof APIError) {
         // Match on the body message ("Signups are not allowed."), not
@@ -82,7 +84,10 @@ export async function signup(
         await markAccountCreated("email");
         // Never throws, so a failed consent write can't reach the rollback
         // below: the account exists and the signup still succeeds.
-        await recordSignupConsent(parsed.data.marketingOptOut);
+        await recordSignupConsent({
+          userID,
+          marketingOptOut: parsed.data.marketingOptOut,
+        });
       }
     } catch (createUserError) {
       console.error("Error creating user during signup:", createUserError);

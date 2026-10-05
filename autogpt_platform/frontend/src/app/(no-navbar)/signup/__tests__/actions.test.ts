@@ -50,7 +50,7 @@ describe("email signup account creation tracking", () => {
     vi.clearAllMocks();
     // Better Auth's signUpEmail sets the session cookie; a resolved call is
     // the success case.
-    mocks.signUpEmail.mockResolvedValue({});
+    mocks.signUpEmail.mockResolvedValue({ user: { id: "user-1" } });
     mocks.getOnboardingStatus.mockResolvedValue({
       shouldShowOnboarding: true,
     });
@@ -129,7 +129,7 @@ describe("email signup consent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    mocks.signUpEmail.mockResolvedValue({});
+    mocks.signUpEmail.mockResolvedValue({ user: { id: "user-1" } });
     mocks.getOnboardingStatus.mockResolvedValue({
       shouldShowOnboarding: true,
     });
@@ -196,6 +196,8 @@ describe("email signup consent", () => {
       expect(mocks.captureException).toHaveBeenCalledOnce();
       expect(mocks.captureException).toHaveBeenCalledWith(error, {
         tags: { signup_step: "record_consent" },
+        user: { id: "user-1" },
+        extra: { marketingOptOut: true },
       });
     },
   );
