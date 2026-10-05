@@ -1980,6 +1980,10 @@ def _setup_langfuse_otel() -> None:
         os.environ.setdefault(
             "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
         )
+        os.environ.setdefault(
+            "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
+            "autogpt-copilot-traces",
+        )
 
         # Set the Langfuse environment via OTEL resource attributes so the
         # Langfuse server maps it to the first-class environment field.
