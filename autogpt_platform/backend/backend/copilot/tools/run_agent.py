@@ -13,6 +13,7 @@ from backend.api.features.library.model import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.gate.subject import (
     NO_OP,
     Subject,
@@ -23,7 +24,13 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_chat_outcome
 from backend.copilot.tree import charge_credits
-from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
+from backend.data.db_accessors import (
+    execution_db,
+    graph_db,
+    library_db,
+    orgs_db,
+    user_db,
+)
 from backend.data.execution import (
     ExecutionStatus,
     ExecutionTrigger,
@@ -61,7 +68,11 @@ from .expert_scope import (
     require_installed_workflow,
     ungranted_credential_hint,
 )
-from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
+from .helpers import (
+    get_inputs_from_schema,
+    get_picker_inputs_from_schema,
+    unattended_missing_credentials_error,
+)
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -588,11 +599,12 @@ class RunAgentTool(BaseTool):
         user_id: str,
         expert_id: str | None,
         inputs: dict[str, Any] | None = None,
-    ) -> SetupRequirementsResponse | None:
+    ) -> SetupRequirementsResponse | ErrorResponse | None:
         """Turn a credential-only ``GraphValidationError`` into the inline
         setup-requirements card; return ``None`` if *any* non-credential
         error is present so the caller falls back to the plain text path
-        (otherwise structural errors would be hidden)."""
+        (otherwise structural errors would be hidden). A turn nobody watches
+        gets the unattended missing-credential error instead of a card."""
         messages = [
             msg
             for node_errors in error.node_errors.values()
@@ -607,9 +619,16 @@ class RunAgentTool(BaseTool):
         # creds are now invalid, so narrowing to `error.node_errors` would
         # leak the stale mapping. Passing ``None`` means no field is
         # treated as "already connected".
-        credentials_dict = await annotate_expert_grants(
-            user_id, expert_id, build_missing_credentials_from_graph(graph, None)
-        )
+        missing = build_missing_credentials_from_graph(graph, None)
+        if is_unattended_turn():
+            return await unattended_missing_credentials_error(
+                f"Agent '{graph.name}'",
+                missing,
+                session_id,
+                user_id,
+                expert_id,
+            )
+        credentials_dict = await annotate_expert_grants(user_id, expert_id, missing)
         return SetupRequirementsResponse(
             message=(
                 f"Agent '{graph.name}' has credentials that are missing or "
@@ -730,6 +749,14 @@ class RunAgentTool(BaseTool):
                 expert_id,
                 build_missing_credentials_from_graph(graph, graph_credentials),
             )
+            if is_unattended_turn():
+                return graph_credentials, await unattended_missing_credentials_error(
+                    f"Agent '{graph.name}'",
+                    missing_credentials_dict,
+                    session_id,
+                    user_id,
+                    expert_id,
+                )
             return graph_credentials, SetupRequirementsResponse(
                 message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)
                 + await ungranted_credential_hint(
@@ -740,6 +767,7 @@ class RunAgentTool(BaseTool):
                         for m in missing_credentials_dict.values()
                     }
                     - {""},
+                    missing_credentials_dict.values(),
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(
@@ -977,9 +1005,7 @@ class RunAgentTool(BaseTool):
         # only the fallback for sessions predating org tagging.
         org_id, team_id = session.organization_id, session.team_id
         if org_id is None:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, team_id = await get_user_default_team(user_id)
+            org_id, team_id = await orgs_db().get_user_default_team(user_id)
 
         try:
             execution = await execution_utils.add_graph_execution(
@@ -1307,9 +1333,7 @@ class RunAgentTool(BaseTool):
         # and is cleaned up when she is archived.
         org_id, team_id = session.organization_id, session.team_id
         if org_id is None:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, team_id = await get_user_default_team(user_id)
+            org_id, team_id = await orgs_db().get_user_default_team(user_id)
 
         try:
             result = await get_scheduler_client().add_execution_schedule(

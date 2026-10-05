@@ -15244,6 +15244,7 @@
         "summary": "Download agent file",
         "description": "Download agent graph file for a specific marketplace listing version",
         "operationId": "getV2Download agent file",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -19738,6 +19739,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
           },
+          "credential_pins": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialPin"
+            },
+            "type": "object",
+            "title": "Credential Pins"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -20262,6 +20270,16 @@
         "type": "object",
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
+      },
+      "CredentialPin": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title", "default": "" }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "CredentialPin",
+        "description": "The account a schedule runs one provider on, chosen when it was made.\n\nThe title is kept so a run can still name the account after it was\ndeleted, which is when the name matters most."
       },
       "CredentialRejection": {
         "properties": {
@@ -28426,7 +28444,15 @@
       },
       "RequestTopUp": {
         "properties": {
-          "credit_amount": { "type": "integer", "title": "Credit Amount" }
+          "credit_amount": { "type": "integer", "title": "Credit Amount" },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "const": "billing" },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the top-up was started; analytics only."
+          }
         },
         "type": "object",
         "required": ["credit_amount"],
@@ -30644,6 +30670,17 @@
             "enum": ["monthly", "yearly"],
             "title": "Billing Cycle",
             "default": "monthly"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "paywall_gate", "billing"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the plan was picked; analytics only."
           }
         },
         "type": "object",

@@ -92,8 +92,10 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(
         chat_transports,
-        "get_user_default_chat_route",
-        new=AsyncMock(return_value=(None, None)),
+        "user_db",
+        return_value=MagicMock(
+            get_user_default_chat_route=AsyncMock(return_value=(None, None))
+        ),
     )
     mocker.patch.object(
         chat_transports,
@@ -1781,7 +1783,10 @@ def test_list_chat_transports_marks_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
 
     response = client.get("/transports")
 
@@ -1815,7 +1820,10 @@ def test_set_default_transport_saves_the_choice(
 def test_set_default_transport_clears_the_choice(
     test_user_id: str,
 ) -> None:
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
 
     response = client.put("/transports/default", json={})
 
@@ -1885,7 +1893,10 @@ def test_create_session_uses_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -1908,7 +1919,10 @@ def test_an_explicit_route_still_beats_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -1927,7 +1941,10 @@ def test_a_saved_default_that_vanished_falls_back_instead_of_failing(
     test_user_id: str,
 ) -> None:
     """The saved ChatGPT account was disconnected since it was chosen."""
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-gone")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-gone",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",

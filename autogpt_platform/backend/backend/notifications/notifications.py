@@ -392,6 +392,7 @@ class NotificationManager(AppService):
             AudienceAction.REMOVE_TRIAL: mailerlite.remove_from_trial,
             AudienceAction.UPDATE_FIELDS: mailerlite.update_fields,
             AudienceAction.SIGNUP: mailerlite.record_signup,
+            AudienceAction.CHECKOUT_OPENED: mailerlite.record_checkout_opened,
         }[event.action]
         try:
             await handler(event.email, event.fields or None)
