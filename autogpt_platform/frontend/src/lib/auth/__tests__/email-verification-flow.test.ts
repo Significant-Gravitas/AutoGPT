@@ -15,6 +15,15 @@ vi.mock("better-auth", async (importOriginal) => {
     betterAuth: vi.fn((options: unknown) => ({ options })),
   };
 });
+// Better Auth hands each email it sends to `after` (see background-tasks.ts);
+// these are the sends still pending once a response is back.
+const pendingAfterResponse = vi.hoisted(() => [] as Promise<unknown>[]);
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: vi.fn((task: Promise<unknown>) => {
+    pendingAfterResponse.push(task);
+  }),
+}));
 vi.mock("better-auth/next-js", () => ({
   nextCookies: vi.fn(() => ({ id: "next-cookies" })),
 }));
@@ -82,6 +91,26 @@ async function createAuthHandler(
   return { handler: instance.handler as Handler, db };
 }
 
+async function emailsSent() {
+  await Promise.all(pendingAfterResponse.splice(0));
+}
+
+function never() {
+  return new Promise<void>(() => {});
+}
+
+async function answeredWithin<T>(response: Promise<T>, ms = 2000) {
+  const timedOut = Symbol("timed out");
+  const result = await Promise.race([
+    response,
+    new Promise<typeof timedOut>((resolve) =>
+      setTimeout(() => resolve(timedOut), ms),
+    ),
+  ]);
+  if (result === timedOut) throw new Error(`No response within ${ms}ms`);
+  return result as T;
+}
+
 function post(handler: Handler, path: string, body: object) {
   return handler(
     new Request(`${baseURL}/api/auth${path}`, {
@@ -114,6 +143,7 @@ function lastVerifyLink(to: string) {
 
 beforeEach(() => {
   sentEmails.length = 0;
+  pendingAfterResponse.length = 0;
   provisionPlatformUser.mockReset();
 });
 
@@ -130,6 +160,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthSession).toEqual([]);
+    await emailsSent();
     const link = new URL(lastVerifyLink("new@example.com") ?? "");
     expect(link.pathname).toBe("/api/auth/verify-email");
     expect(link.searchParams.get("callbackURL")).toBe(callbackURL);
@@ -144,6 +175,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     expect(response.status).toBe(403);
     expect((await response.json()).code).toBe("EMAIL_NOT_VERIFIED");
+    await emailsSent();
     expect(lastVerifyLink("existing@example.com")).toContain(
       "/api/auth/verify-email",
     );
@@ -160,12 +192,14 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     });
 
     expect(response.status).toBe(401);
+    await emailsSent();
     expect(sentEmails).toEqual([]);
   });
 
   it("verify link signs the user in and lands on /auth/callback", async () => {
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "new@example.com");
+    await emailsSent();
 
     const response = await handler(
       new Request(lastVerifyLink("new@example.com") ?? ""),
@@ -189,6 +223,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     const { handler } = await createAuthHandler(true);
 
     await signUp(handler, "new@example.com");
+    await emailsSent();
     await handler(new Request(lastVerifyLink("new@example.com") ?? ""));
 
     // Neither the sign-up nor the verify link provisions: /auth/callback
@@ -224,6 +259,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthIdentity).toHaveLength(1);
+    await emailsSent();
     const link = new URL(lastVerifyLink("again@example.com") ?? "");
     expect(link.pathname).toBe("/api/auth/verify-email");
     expect(link.searchParams.get("callbackURL")).toBe(callbackURL);
@@ -249,6 +285,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthIdentity).toHaveLength(1);
+    await emailsSent();
     expect(consoleError).toHaveBeenCalledWith(
       "Failed to email a repeat sign-up its verification link",
       { error: "mailer down" },
@@ -269,6 +306,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthIdentity).toHaveLength(1);
+    await emailsSent();
     expect(lastVerifyLink("unsigned@example.com")).toBeUndefined();
     expect(consoleError).toHaveBeenCalledWith(
       "Failed to email a repeat sign-up its verification link",
@@ -280,6 +318,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   it("sends nothing when a verified address signs up again", async () => {
     const { handler } = await createAuthHandler(true);
     await signUp(handler, "taken@example.com");
+    await emailsSent();
     await handler(new Request(lastVerifyLink("taken@example.com") ?? ""));
     sentEmails.length = 0;
 
@@ -287,8 +326,36 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
+    await emailsSent();
     expect(sentEmails).toEqual([]);
   });
+
+  it.each([
+    ["a new address", false],
+    ["an address still waiting on its link", true],
+  ])(
+    "answers a sign-up for %s without waiting on the email",
+    async (_, alreadySignedUp) => {
+      const { handler } = await createAuthHandler(true);
+      if (alreadySignedUp) {
+        await signUp(handler, "slow@example.com");
+        await emailsSent();
+      }
+      const { sendAuthEmail } = await import("../email");
+      vi.mocked(sendAuthEmail).mockImplementationOnce(never);
+
+      // A mail call that never finishes must not hold the response, or its
+      // timing tells an unverified address from a verified one.
+      const response = await answeredWithin(
+        signUp(handler, "slow@example.com"),
+      );
+
+      expect(response.status).toBe(200);
+      expect((await response.json()).token).toBeNull();
+      await vi.waitFor(() => expect(sendAuthEmail).toHaveBeenCalled());
+      expect(pendingAfterResponse).not.toHaveLength(0);
+    },
+  );
 
   it("re-sends the link through the resend endpoint", async () => {
     const { handler } = await createAuthHandler(true);

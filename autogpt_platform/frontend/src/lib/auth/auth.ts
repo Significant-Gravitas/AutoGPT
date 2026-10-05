@@ -4,6 +4,7 @@ import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
+import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
@@ -135,6 +136,10 @@ export const auth = betterAuth({
       // pre-migration ids are Supabase UUIDs.
       generateId: () => crypto.randomUUID(),
     },
+    // Auth emails go out alongside the response instead of before it, so a
+    // sign-up takes as long whether or not the address already has an
+    // account: see background-tasks.ts.
+    backgroundTasks: { handler: runAfterResponse },
   },
   session: {
     modelName: "UserAuthSession",
