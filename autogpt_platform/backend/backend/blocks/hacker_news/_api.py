@@ -23,7 +23,9 @@ MAX_CONCURRENT_REQUESTS = 10
 
 _TRUSTED_ORIGINS = ["https://hn.algolia.com", "https://hacker-news.firebaseio.com"]
 _DIGITS = re.compile(r"[0-9]+")
-# HN usernames are letters, digits, - and _ (2 to 15 of them for new accounts).
+# HN usernames are letters, digits, - and _. New accounts get 2 to 15 of them,
+# but older ones predate that rule, so the length check is deliberately loose:
+# a name HN doesn't know fails as "not found" instead.
 _USERNAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 
