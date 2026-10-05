@@ -69,10 +69,10 @@ _REST_OF = {
         "the full index."
     ),
     "team_context": (
-        "{n} more are not listed here: call `tool:list_team` for the full " "roster."
+        "{n} more are not listed here: call `tool:list_team` for the full roster."
     ),
     "routines": (
-        "{n} more are not listed here: call `tool:list_routines` for all of " "them."
+        "{n} more are not listed here: call `tool:list_routines` for all of them."
     ),
     "expert_workflows": (
         "{n} more are not listed here: call `tool:list_expert_workflows` for "
