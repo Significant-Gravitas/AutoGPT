@@ -1,5 +1,30 @@
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SAFE_MEDIA_PATH_COMPONENT_RE = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+const SINGLE_BYTE_RANGE_RE = /^bytes=(?:[0-9]{1,20}-[0-9]{0,20}|-[0-9]{1,20})$/;
+
+export function isPrivateStoreMediaRequest(path: string[]): boolean {
+  return (
+    path.length === 7 &&
+    path[0] === "api" &&
+    path[1] === "store" &&
+    path[2] === "submissions" &&
+    path[3] === "media" &&
+    SAFE_MEDIA_PATH_COMPONENT_RE.test(path[4]) &&
+    (path[5] === "images" || path[5] === "videos") &&
+    SAFE_MEDIA_PATH_COMPONENT_RE.test(path[6])
+  );
+}
+
+export function isPrivateStoreVideoRequest(path: string[]): boolean {
+  return isPrivateStoreMediaRequest(path) && path[5] === "videos";
+}
+
+export function getSafePrivateMediaRange(value: string | null): string | null {
+  if (!value) return null;
+  const range = value.trim();
+  return SINGLE_BYTE_RANGE_RE.test(range) ? range : null;
+}
 
 export function isWorkspaceDownloadRequest(path: string[]): boolean {
   // api/workspace/files/{id}/download

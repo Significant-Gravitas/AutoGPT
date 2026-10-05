@@ -15,9 +15,14 @@ from backend.util.settings import Settings
 @pytest.fixture
 def generated_media_io(monkeypatch, tmp_path):
     settings = Settings()
-    settings.config.use_agent_image_generation_v2 = True
-    settings.config.workspace_storage_dir = str(tmp_path / "workspaces")
-    settings.config.platform_base_url = ""
+    monkeypatch.setattr(settings.config, "use_agent_image_generation_v2", True)
+    monkeypatch.setattr(settings.config, "media_gcs_bucket_name", "")
+    monkeypatch.setattr(settings.config, "public_site_media_bucket", "")
+    monkeypatch.setattr(settings.config, "private_user_data_bucket", "")
+    monkeypatch.setattr(
+        settings.config, "workspace_storage_dir", str(tmp_path / "workspaces")
+    )
+    monkeypatch.setattr(settings.config, "platform_base_url", "")
     monkeypatch.setattr(image_gen, "settings", settings)
     monkeypatch.setattr(image_gen, "ideogram_credentials", TEST_CREDENTIALS)
     monkeypatch.setattr(media, "Settings", lambda: settings)

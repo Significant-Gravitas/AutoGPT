@@ -1,49 +1,20 @@
 import logging
-import os
-import re
-import uuid
-from collections.abc import Iterable
-from urllib.parse import parse_qs, unquote, urlsplit
 
 import fastapi
 from gcloud.aio import storage as async_storage
 
+from backend.util.gcs_utils import is_not_found_error
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
 from . import exceptions as store_exceptions
-from . import local_media
+from . import local_media, submission_media
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-
-# The ways a stored URL can point at a GCS object: JSON API, path-style, virtual-host
-# and gs://. The JSON API form comes first because it is also a valid path-style URL.
-_GCS_URL_FORMS = (
-    re.compile(
-        r"https?://(?:www|storage)\.googleapis\.com/(?:download/)?storage/v1"
-        r"/b/(?P<bucket>[^/?#]+)/o/(?P<path>[^?#]+)(?:[?#].*)?",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"https?://(?:storage\.googleapis\.com|storage\.cloud\.google\.com"
-        r"|commondatastorage\.googleapis\.com)/(?P<bucket>[^/?#]+)/(?P<path>[^?#]+)"
-        r"(?:[?#].*)?",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"https?://(?P<bucket>[a-z0-9._-]+)\.storage\.googleapis\.com"
-        r"/(?P<path>[^?#]+)(?:[?#].*)?",
-        re.IGNORECASE,
-    ),
-    re.compile(r"gs://(?P<bucket>[^/?#]+)/(?P<path>[^?#]+)", re.IGNORECASE),
-)
-_PUBLISHABLE_MEDIA_PATH = re.compile(
-    r"users/(?P<owner>[^/]+)/(?:images|videos)/[A-Za-z0-9._-]+"
-)
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
@@ -58,32 +29,46 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     Returns:
         str | None: URL of the blob if it exists, None otherwise
     """
-    settings = Settings()
-    if not settings.config.media_gcs_bucket_name:
+    config = Settings().config
+    bucket_name = config.resolved_private_user_data_bucket
+    if not bucket_name:
         return await local_media.check_media_exists(user_id, filename)
+    try:
+        safe_user_id = local_media.validate_path_component(user_id)
+        safe_filename = local_media.validate_path_component(filename)
+    except ValueError:
+        return None
+    if local_media.content_type_for_filename(safe_filename) is None:
+        return None
 
     async with async_storage.Storage() as async_client:
-        bucket_name = settings.config.media_gcs_bucket_name
-
-        # Check images
-        image_path = f"users/{user_id}/images/{filename}"
+        image_path = f"users/{safe_user_id}/images/{safe_filename}"
         try:
             await async_client.download_metadata(bucket_name, image_path)
-            # If we get here, the file exists - construct public URL
-            return f"https://storage.googleapis.com/{bucket_name}/{image_path}"
-        except Exception:
-            # File doesn't exist, continue to check videos
-            pass
+            return _stored_media_url(
+                config.private_user_data_bucket,
+                bucket_name,
+                safe_user_id,
+                "images",
+                safe_filename,
+            )
+        except Exception as error:
+            if not _is_missing_media_error(error):
+                raise
 
-        # Check videos
-        video_path = f"users/{user_id}/videos/{filename}"
+        video_path = f"users/{safe_user_id}/videos/{safe_filename}"
         try:
             await async_client.download_metadata(bucket_name, video_path)
-            # If we get here, the file exists - construct public URL
-            return f"https://storage.googleapis.com/{bucket_name}/{video_path}"
-        except Exception:
-            # File doesn't exist
-            pass
+            return _stored_media_url(
+                config.private_user_data_bucket,
+                bucket_name,
+                safe_user_id,
+                "videos",
+                safe_filename,
+            )
+        except Exception as error:
+            if not _is_missing_media_error(error):
+                raise
 
         return None
 
@@ -147,8 +132,9 @@ async def upload_media(
         else:
             raise store_exceptions.InvalidFileTypeError("Invalid video file signature")
 
-    settings = Settings()
-    use_local_storage = not settings.config.media_gcs_bucket_name
+    config = Settings().config
+    bucket_name = config.resolved_private_user_data_bucket
+    use_local_storage = not bucket_name
 
     try:
         # Validate file type
@@ -192,39 +178,26 @@ async def upload_media(
         # Reset file pointer
         await file.seek(0)
 
-        # Generate unique filename
-        filename = file.filename or ""
-        file_ext = os.path.splitext(filename)[1].lower()
-        if use_file_name and not is_avatar:
-            unique_filename = filename
-        else:
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-
-        # Construct storage path
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
+        unique_filename = local_media.stored_filename(
+            file.filename or "", content_type, use_file_name and not is_avatar
+        )
 
         if use_local_storage:
-            unique_filename = local_media.stored_filename(
-                unique_filename, content_type, use_file_name and not is_avatar
-            )
             file_bytes = await file.read()
             await scan_content_safe(file_bytes, filename=unique_filename)
             return await local_media.store_media(
                 user_id, media_type, unique_filename, file_bytes
             )
 
-        storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
+        storage_path = submission_media.object_path(
+            user_id, media_type, unique_filename
+        )
 
         try:
             async with async_storage.Storage() as async_client:
-                bucket_name = settings.config.media_gcs_bucket_name
-
                 file_bytes = await file.read()
                 await scan_content_safe(file_bytes, filename=unique_filename)
-
-                public_url = (
-                    f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
-                )
 
                 # Upload using pure async client
                 await async_client.upload(
@@ -232,7 +205,13 @@ async def upload_media(
                 )
 
                 logger.info(f"Successfully uploaded file to: {storage_path}")
-                return public_url
+                return _stored_media_url(
+                    config.private_user_data_bucket,
+                    bucket_name,
+                    user_id,
+                    media_type,
+                    unique_filename,
+                )
 
         except fastapi.HTTPException:
             raise
@@ -251,64 +230,18 @@ async def upload_media(
         ) from e
 
 
-def _gcs_object_path(url: str, bucket: str) -> str | None:
-    """Path of the object in `bucket` that `url` points at, or None."""
-    url = url.strip()
-    wrapped = urlsplit(url)
-    if wrapped.path == "/_next/image":
-        url = parse_qs(wrapped.query).get("url", [""])[0].strip()
-    url = unquote(url)
-    for form in _GCS_URL_FORMS:
-        match = form.fullmatch(url)
-        if match:
-            return match["path"] if match["bucket"] == bucket else None
-    return None
+def _stored_media_url(
+    private_bucket: str,
+    bucket_name: str,
+    user_id: str,
+    media_type: str,
+    filename: str,
+) -> str:
+    if private_bucket:
+        return submission_media.url(user_id, media_type, filename)
+    object_path = submission_media.object_path(user_id, media_type, filename)
+    return f"https://storage.googleapis.com/{bucket_name}/{object_path}"
 
 
-async def publish_media_urls(
-    urls: Iterable[str | None], owner_id: str
-) -> dict[str, str]:
-    """
-    Copy marketplace media from the media bucket to the public site media bucket.
-
-    Only objects at `users/<owner_id>/(images|videos)/<file>` in the media bucket
-    are copied, to the same path. Any other URL (another user's object, other
-    folders, other hosts, URLs already in the public bucket) is left alone.
-
-    Returns:
-        dict[str, str]: each copied URL mapped to its public URL. Empty when
-        PUBLIC_SITE_MEDIA_BUCKET is not set.
-    """
-    settings = Settings()
-    media_bucket = settings.config.media_gcs_bucket_name
-    public_bucket = settings.config.public_site_media_bucket
-    if not media_bucket or not public_bucket or media_bucket == public_bucket:
-        return {}
-
-    paths: dict[str, str] = {}
-    for url in dict.fromkeys(u for u in urls if u):
-        path = _gcs_object_path(url, media_bucket)
-        if path is None:
-            continue
-        match = _PUBLISHABLE_MEDIA_PATH.fullmatch(path)
-        if not match or match["owner"] != owner_id or ".." in path:
-            logger.warning(f"Not publishing {path!r}: not media owned by {owner_id}")
-            continue
-        paths[url] = path
-
-    if not paths:
-        return {}
-
-    published: dict[str, str] = {}
-    async with async_storage.Storage() as async_client:
-        for url, path in paths.items():
-            try:
-                await async_client.copy(
-                    media_bucket, path, public_bucket, new_name=path
-                )
-            except Exception:
-                logger.exception(f"Failed to publish {path} to {public_bucket}")
-                continue
-            published[url] = f"https://storage.googleapis.com/{public_bucket}/{path}"
-            logger.info(f"Published {path} to {public_bucket}")
-    return published
+def _is_missing_media_error(error: Exception) -> bool:
+    return isinstance(error, FileNotFoundError) or is_not_found_error(error)

@@ -24,8 +24,8 @@ from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFa
 from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
-from . import media as store_media
 from . import model as store_model
+from . import public_media
 from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
@@ -1637,7 +1637,7 @@ async def _publish_approved_media(
             where={"userId": owner_id}
         )
         avatar_url = profile.avatarUrl if profile else None
-        published = await store_media.publish_media_urls(
+        published = await public_media.publish_urls(
             [
                 *version.imageUrls,
                 version.videoUrl,
@@ -1713,7 +1713,7 @@ async def _publish_live_creator_avatar(
         if not live_listing:
             return profile
 
-        published = await store_media.publish_media_urls([profile.avatarUrl], user_id)
+        published = await public_media.publish_urls([profile.avatarUrl], user_id)
         if profile.avatarUrl not in published:
             return profile
         await prisma.models.Profile.prisma().update_many(

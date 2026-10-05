@@ -6,6 +6,7 @@ import fastapi
 import pytest
 import starlette.datastructures
 
+from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
 from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
@@ -16,8 +17,9 @@ from . import media as store_media
 @pytest.fixture
 def mock_settings(monkeypatch):
     settings = Settings()
-    settings.config.media_gcs_bucket_name = "test-bucket"
-    settings.config.google_application_credentials = "test-credentials"
+    monkeypatch.setattr(settings.config, "media_gcs_bucket_name", "test-bucket")
+    monkeypatch.setattr(settings.config, "public_site_media_bucket", "")
+    monkeypatch.setattr(settings.config, "private_user_data_bucket", "")
     monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
     return settings
 
@@ -46,6 +48,60 @@ def mock_storage_client(mocker):
     return mock_client
 
 
+async def test_upload_media_uses_private_bucket_when_storage_is_split(
+    mock_settings, mock_storage_client
+):
+    mock_settings.config.platform_base_url = "https://backend.test"
+    mock_settings.config.public_site_media_bucket = "public-media"
+    mock_settings.config.private_user_data_bucket = "private-media"
+    test_file = fastapi.UploadFile(
+        filename="private.jpeg",
+        file=io.BytesIO(b"\xff\xd8\xffprivate"),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert mock_storage_client.upload.await_args.args[0] == "private-media"
+    assert result.startswith("/api/store/submissions/media/test-user/images/")
+
+
+async def test_check_media_exists_uses_private_bucket_when_storage_is_split(
+    mock_settings, mock_storage_client
+):
+    mock_settings.config.platform_base_url = "https://backend.test"
+    mock_settings.config.public_site_media_bucket = "public-media"
+    mock_settings.config.private_user_data_bucket = "private-media"
+    mock_storage_client.download_metadata.return_value = {}
+
+    result = await store_media.check_media_exists("test-user", "agent.jpeg")
+
+    mock_storage_client.download_metadata.assert_awaited_once_with(
+        "private-media", "users/test-user/images/agent.jpeg"
+    )
+    assert result == "/api/store/submissions/media/test-user/images/agent.jpeg"
+
+
+async def test_check_media_exists_preserves_non_not_found_errors(
+    mock_settings, mock_storage_client
+):
+    mock_storage_client.download_metadata.side_effect = _gcs_http_error(
+        503, _URL_CONTAINING_404
+    )
+
+    with pytest.raises(Exception) as error:
+        await store_media.check_media_exists("test-user", "agent.jpeg")
+
+    assert getattr(error.value, "status", None) == 503
+
+
+async def test_check_media_exists_rejects_invalid_path_before_storage_access(
+    mock_settings, mock_storage_client
+):
+    assert await store_media.check_media_exists("test-user", "../private.jpeg") is None
+    mock_storage_client.download_metadata.assert_not_awaited()
+
+
 async def test_upload_media_success(mock_settings, mock_storage_client):
     # Create test JPEG data with valid signature
     test_data = b"\xff\xd8\xff" + b"test data"
@@ -58,9 +114,8 @@ async def test_upload_media_success(mock_settings, mock_storage_client):
 
     result = await store_media.upload_media("test-user", test_file)
 
-    assert result.startswith(
-        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
-    )
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
     assert result.endswith(".jpeg")
     mock_storage_client.upload.assert_called_once()
 
@@ -96,17 +151,41 @@ async def test_upload_media_missing_content_type_accepts_valid_jpeg(
         filename="image.jpeg", file=io.BytesIO(b"\xff\xd8\xffimage")
     )
     result = await store_media.upload_media("test-user", upload)
-    assert result.startswith("https://storage.googleapis.com/test-bucket/")
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
     assert mock_storage_client.upload.call_args.kwargs["content_type"] == "image/jpeg"
+
+
+@pytest.mark.parametrize("use_file_name", [False, True])
+async def test_upload_media_normalizes_extension_from_validated_content(
+    mock_settings, mock_storage_client, use_file_name
+):
+    upload = fastapi.UploadFile(
+        filename="misleading.png",
+        file=io.BytesIO(b"\xff\xd8\xffimage"),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    result = await store_media.upload_media(
+        "test-user", upload, use_file_name=use_file_name
+    )
+
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert object_path.endswith(".jpeg")
+    assert not object_path.endswith(".png")
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
 
 
 @pytest.fixture
 def local_storage_settings(monkeypatch, tmp_path):
     settings = Settings()
-    settings.config.media_gcs_bucket_name = ""
-    settings.config.google_application_credentials = ""
-    settings.config.workspace_storage_dir = str(tmp_path / "workspaces")
-    settings.config.platform_base_url = ""
+    monkeypatch.setattr(settings.config, "media_gcs_bucket_name", "")
+    monkeypatch.setattr(settings.config, "public_site_media_bucket", "")
+    monkeypatch.setattr(settings.config, "private_user_data_bucket", "")
+    monkeypatch.setattr(
+        settings.config, "workspace_storage_dir", str(tmp_path / "workspaces")
+    )
+    monkeypatch.setattr(settings.config, "platform_base_url", "")
     monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
     monkeypatch.setattr(
         "backend.api.features.store.local_media.Settings", lambda: settings
@@ -180,9 +259,8 @@ async def test_upload_media_video_type(mock_settings, mock_storage_client):
 
     result = await store_media.upload_media("test-user", test_file)
 
-    assert result.startswith(
-        "https://storage.googleapis.com/test-bucket/users/test-user/videos/"
-    )
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
     assert result.endswith(".mp4")
     mock_storage_client.upload.assert_called_once()
 
@@ -221,9 +299,8 @@ async def test_upload_media_png_success(mock_settings, mock_storage_client):
     )
 
     result = await store_media.upload_media("test-user", test_file)
-    assert result.startswith(
-        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
-    )
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
     assert result.endswith(".png")
 
 
@@ -235,9 +312,8 @@ async def test_upload_media_gif_success(mock_settings, mock_storage_client):
     )
 
     result = await store_media.upload_media("test-user", test_file)
-    assert result.startswith(
-        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
-    )
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
     assert result.endswith(".gif")
 
 
@@ -249,9 +325,8 @@ async def test_upload_media_webp_success(mock_settings, mock_storage_client):
     )
 
     result = await store_media.upload_media("test-user", test_file)
-    assert result.startswith(
-        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
-    )
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
     assert result.endswith(".webp")
 
 
@@ -263,9 +338,8 @@ async def test_upload_media_webm_success(mock_settings, mock_storage_client):
     )
 
     result = await store_media.upload_media("test-user", test_file)
-    assert result.startswith(
-        "https://storage.googleapis.com/test-bucket/users/test-user/videos/"
-    )
+    object_path = mock_storage_client.upload.await_args.args[1]
+    assert result == f"https://storage.googleapis.com/test-bucket/{object_path}"
     assert result.endswith(".webm")
 
 
@@ -341,126 +415,3 @@ async def test_expert_avatar_still_enforces_type_and_size(
         await store_media.upload_media("owner", upload, is_avatar=True)
     assert error.value.status_code == status
     mock_storage_client.upload.assert_not_awaited()
-
-
-OWNER = "owner-1"
-OWN_IMAGE = "users/owner-1/images/shot.png"
-OWN_VIDEO = "users/owner-1/videos/demo.mp4"
-
-
-@pytest.fixture
-def public_bucket(mock_settings):
-    mock_settings.config.public_site_media_bucket = "public-bucket"
-    return mock_settings
-
-
-async def test_publish_media_urls_is_a_noop_when_unset(
-    mock_settings, mock_storage_client
-):
-    mock_settings.config.public_site_media_bucket = ""
-
-    result = await store_media.publish_media_urls(
-        [f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"], OWNER
-    )
-
-    assert result == {}
-    mock_storage_client.copy.assert_not_called()
-
-
-async def test_publish_media_urls_copies_own_media_to_the_same_path(
-    public_bucket, mock_storage_client
-):
-    image = f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"
-    video = f"https://storage.googleapis.com/test-bucket/{OWN_VIDEO}"
-
-    result = await store_media.publish_media_urls([image, video, None, image], OWNER)
-
-    assert result == {
-        image: f"https://storage.googleapis.com/public-bucket/{OWN_IMAGE}",
-        video: f"https://storage.googleapis.com/public-bucket/{OWN_VIDEO}",
-    }
-    assert mock_storage_client.copy.await_args_list == [
-        unittest.mock.call(
-            "test-bucket", OWN_IMAGE, "public-bucket", new_name=OWN_IMAGE
-        ),
-        unittest.mock.call(
-            "test-bucket", OWN_VIDEO, "public-bucket", new_name=OWN_VIDEO
-        ),
-    ]
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        f"  https://storage.googleapis.com/test-bucket/{OWN_IMAGE}  ",
-        f"https://storage.cloud.google.com/test-bucket/{OWN_IMAGE}?authuser=0",
-        f"https://commondatastorage.googleapis.com/test-bucket/{OWN_IMAGE}",
-        "https://storage.googleapis.com/download/storage/v1/b/test-bucket/o/"
-        "users%2Fowner-1%2Fimages%2Fshot.png?alt=media",
-        f"https://test-bucket.storage.googleapis.com/{OWN_IMAGE}",
-        f"gs://test-bucket/{OWN_IMAGE}",
-        "https://storage.googleapis.com/test-bucket/users/owner-1/images/shot%2Epng",
-        "/_next/image?url=https%3A%2F%2Fstorage.googleapis.com%2Ftest-bucket%2F"
-        "users%2Fowner-1%2Fimages%2Fshot.png&w=640&q=75",
-    ],
-)
-async def test_publish_media_urls_accepts_every_stored_url_form(
-    public_bucket, mock_storage_client, url
-):
-    result = await store_media.publish_media_urls([url], OWNER)
-
-    assert result == {url: f"https://storage.googleapis.com/public-bucket/{OWN_IMAGE}"}
-    mock_storage_client.copy.assert_awaited_once_with(
-        "test-bucket", OWN_IMAGE, "public-bucket", new_name=OWN_IMAGE
-    )
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://storage.googleapis.com/test-bucket/users/someone-else/images/a.png",
-        "https://storage.googleapis.com/test-bucket/uploads/owner-1/secret.pdf",
-        "https://storage.googleapis.com/test-bucket/workspaces/owner-1/notes.md",
-        "https://storage.googleapis.com/test-bucket/users/owner-1/files/a.png",
-        "https://storage.googleapis.com/test-bucket/users/owner-1/images/sub/a.png",
-        "https://storage.googleapis.com/test-bucket/users/owner-1/images/..",
-        "https://storage.googleapis.com/test-bucket/users/owner-1/images/%2E%2E",
-        "https://storage.googleapis.com/test-bucket/users/../images/a.png",
-        "https://storage.googleapis.com/test-bucket/users/owner-1/images/a%20b.png",
-        f"https://storage.googleapis.com/public-bucket/{OWN_IMAGE}",
-        f"https://storage.googleapis.com/other-bucket/{OWN_IMAGE}",
-        f"https://example.com/test-bucket/{OWN_IMAGE}",
-        f"https://example.com/?u=https://storage.googleapis.com/test-bucket/{OWN_IMAGE}",
-        "/api/store/media/owner-1/images/shot.png",
-        "",
-    ],
-)
-async def test_publish_media_urls_refuses_everything_else(
-    public_bucket, mock_storage_client, url
-):
-    assert await store_media.publish_media_urls([url], OWNER) == {}
-    mock_storage_client.copy.assert_not_called()
-
-
-async def test_publish_media_urls_skips_objects_that_fail_to_copy(
-    public_bucket, mock_storage_client
-):
-    image = f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"
-    video = f"https://storage.googleapis.com/test-bucket/{OWN_VIDEO}"
-    mock_storage_client.copy.side_effect = [Exception("404 not found"), {}]
-
-    result = await store_media.publish_media_urls([image, video], OWNER)
-
-    assert result == {
-        video: f"https://storage.googleapis.com/public-bucket/{OWN_VIDEO}"
-    }
-
-
-async def test_publish_media_urls_is_idempotent(public_bucket, mock_storage_client):
-    image = f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"
-
-    first = await store_media.publish_media_urls([image], OWNER)
-    second = await store_media.publish_media_urls(list(first.values()), OWNER)
-
-    assert second == {}
-    mock_storage_client.copy.assert_awaited_once()

@@ -13,7 +13,10 @@ import {
   buildSafeWorkspaceDownloadHeaders,
   fetchWorkspaceDownloadWithRetry,
   getResponseStartTimeoutMs,
+  getSafePrivateMediaRange,
   getWorkspaceDownloadErrorMessage,
+  isPrivateStoreMediaRequest,
+  isPrivateStoreVideoRequest,
   isWorkspaceDownloadRequest,
   watchResponseStart,
 } from "./route.helpers";
@@ -79,6 +82,7 @@ const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   "upgrade",
   "content-encoding",
   "content-length",
+  "authorization",
   "set-cookie",
 ]);
 
@@ -125,6 +129,12 @@ function filterResponseHeaders(src: Headers): Headers {
     }
   });
   return out;
+}
+
+function hardenPrivateMediaResponseHeaders(headers: Headers): Headers {
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return headers;
 }
 
 const METHODS_WITHOUT_BODY: ReadonlySet<string> = new Set([
@@ -219,6 +229,7 @@ async function handler(
   const queryString = url.search;
   const backendUrl = buildBackendUrl(path, queryString);
   const method = req.method;
+  const isPrivateMedia = isPrivateStoreMediaRequest(path);
 
   try {
     const token = await getServerAuthToken();
@@ -228,6 +239,16 @@ async function handler(
     }
 
     const headers = await buildForwardHeaders(req, token);
+    if (isPrivateMedia) {
+      headers.set("cache-control", "no-store");
+    }
+    if (method === "GET" && isPrivateStoreVideoRequest(path)) {
+      const range = getSafePrivateMediaRange(req.headers.get("range"));
+      if (range) {
+        headers.set("range", range);
+        headers.set("accept-encoding", "identity");
+      }
+    }
     const hasBody = !METHODS_WITHOUT_BODY.has(method);
 
     // Two-phase timeout: the overall ceiling covers the whole hop, while the
@@ -249,6 +270,7 @@ async function handler(
         // ReadableStream body. Cast because TS lib types haven't caught up.
         ...(responseStart.body ? ({ duplex: "half" } as RequestInit) : {}),
         redirect: "manual",
+        ...(isPrivateMedia ? { cache: "no-store" } : {}),
         signal: AbortSignal.any([
           AbortSignal.timeout(BACKEND_FETCH_TIMEOUT_MS),
           responseStart.signal,
@@ -258,17 +280,35 @@ async function handler(
       responseStart.clear();
     }
 
+    const responseHeaders = filterResponseHeaders(backendResponse.headers);
+    if (isPrivateMedia) {
+      hardenPrivateMediaResponseHeaders(responseHeaders);
+    }
+
     return new NextResponse(backendResponse.body, {
       status: backendResponse.status,
       statusText: backendResponse.statusText,
-      headers: filterResponseHeaders(backendResponse.headers),
+      headers: responseHeaders,
     });
   } catch (error) {
     const timedOut = isTimeoutError(error);
+    const errorMessage = timedOut
+      ? "Proxy request timed out"
+      : "Proxy request failed";
+    if (isPrivateMedia) {
+      console.error(`Private media proxy ${method} failed: ${errorMessage}`);
+      const response = NextResponse.json(
+        { error: errorMessage },
+        { status: timedOut ? 504 : 502 },
+      );
+      hardenPrivateMediaResponseHeaders(response.headers);
+      return response;
+    }
+
     console.error(`Proxy error for ${method} /${path.join("/")}:`, error);
     return NextResponse.json(
       {
-        error: timedOut ? "Proxy request timed out" : "Proxy request failed",
+        error: errorMessage,
         detail: error instanceof Error ? error.message : "Unknown error",
       },
       { status: timedOut ? 504 : 502 },

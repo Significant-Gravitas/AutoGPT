@@ -30,7 +30,7 @@ class CloudStorageConfig:
         config = Config()
 
         # GCS configuration from settings - uses Application Default Credentials
-        self.gcs_bucket_name = config.media_gcs_bucket_name
+        self.gcs_bucket_name = config.resolved_private_user_data_bucket
 
         # Future providers can be added here
         # self.aws_bucket_name = config.aws_bucket_name
@@ -208,9 +208,11 @@ class CloudStorageHandler:
             blob_name,
             content,
             metadata={
-                "uploaded_at": upload_time.isoformat(),
-                "expires_at": expiration_time.isoformat(),
-                "expiration_hours": str(expiration_hours),
+                "metadata": {
+                    "uploaded_at": upload_time.isoformat(),
+                    "expires_at": expiration_time.isoformat(),
+                    "expiration_hours": str(expiration_hours),
+                }
             },
         )
 
@@ -256,12 +258,7 @@ class CloudStorageHandler:
             f"in_task: {current_task is not None}"
         )
 
-        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
@@ -415,12 +412,7 @@ class CloudStorageHandler:
         graph_exec_id: str | None = None,
     ) -> str:
         """Generate signed URL for GCS with authorization."""
-        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
@@ -429,6 +421,18 @@ class CloudStorageHandler:
         return await generate_signed_url(
             sync_client, bucket_name, blob_name, expiration_hours * 3600
         )
+
+    def _parse_configured_gcs_path(self, path: str) -> tuple[str, str]:
+        parts = path.split("/", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid GCS path: {path}")
+        bucket_name, blob_name = parts
+        configured_bucket = self.config.gcs_bucket_name
+        if not configured_bucket:
+            raise ValueError("GCS_BUCKET_NAME not configured")
+        if bucket_name != configured_bucket:
+            raise PermissionError("Access denied: not the configured private bucket")
+        return bucket_name, blob_name
 
     async def delete_expired_files(self, provider: str = "gcs") -> int:
         """
@@ -454,16 +458,8 @@ class CloudStorageHandler:
         current_time = datetime.now(timezone.utc)
 
         try:
-            # List all blobs in the uploads directory using pure async client
-            list_response = await async_client.list_objects(
-                self.config.gcs_bucket_name, params={"prefix": "uploads/"}
-            )
-
-            items = list_response.get("items", [])
             deleted_count = 0
-
-            # Process deletions in parallel with limited concurrency
-            semaphore = asyncio.Semaphore(10)  # Limit to 10 concurrent deletions
+            semaphore = asyncio.Semaphore(10)
 
             async def delete_if_expired(blob_info):
                 async with semaphore:
@@ -496,11 +492,32 @@ class CloudStorageHandler:
                         pass
                     return 0
 
-            if items:
-                results = await asyncio.gather(
-                    *[delete_if_expired(blob) for blob in items]
+            params = {"prefix": "uploads/"}
+            seen_page_tokens: set[str] = set()
+            while True:
+                list_response = await async_client.list_objects(
+                    self.config.gcs_bucket_name, params=params
                 )
-                deleted_count = sum(results)
+                items = list_response.get("items", [])
+                if items:
+                    results = await asyncio.gather(
+                        *[delete_if_expired(blob) for blob in items]
+                    )
+                    deleted_count += sum(results)
+
+                next_page_token = list_response.get("nextPageToken")
+                if not next_page_token:
+                    break
+                if next_page_token in seen_page_tokens:
+                    logger.error(
+                        "[CloudStorage] Repeated page token while cleaning uploads"
+                    )
+                    break
+                seen_page_tokens.add(next_page_token)
+                params = {
+                    "prefix": "uploads/",
+                    "pageToken": next_page_token,
+                }
 
             return deleted_count
 
@@ -529,11 +546,7 @@ class CloudStorageHandler:
 
     async def _check_file_expired_gcs(self, path: str) -> bool:
         """Check if a GCS file has expired."""
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         async_client = await self._get_async_gcs_client()
 

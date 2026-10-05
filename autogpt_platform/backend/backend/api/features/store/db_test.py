@@ -1300,7 +1300,7 @@ def public_media_bucket(mocker):
 
 def _publish_mock(mocker, **kwargs):
     return mocker.patch(
-        "backend.api.features.store.db.store_media.publish_media_urls",
+        "backend.api.features.store.db.public_media.publish_urls",
         new_callable=AsyncMock,
         **kwargs,
     )
