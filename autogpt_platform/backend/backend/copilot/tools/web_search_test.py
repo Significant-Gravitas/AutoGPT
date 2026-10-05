@@ -57,19 +57,12 @@ def _usage(
     return CompletionUsage.model_construct(None, **payload)
 
 
-def _citation(*, url: str, title: str, content: str | None = None) -> Annotation:
-    """Typed ``Annotation`` for a URL citation.  ``content`` is an
-    OpenRouter extension on the otherwise-typed schema — goes into
-    ``url_citation.model_extra`` when model_construct preserves it."""
-    payload: dict[str, Any] = {
-        "url": url,
-        "title": title,
-        "start_index": 0,
-        "end_index": len(title),
-    }
-    if content is not None:
-        payload["content"] = content
-    url_citation = AnnotationURLCitation.model_construct(None, **payload)
+def _citation(*, url: str, title: str) -> Annotation:
+    """Typed ``Annotation`` for a URL citation, shaped like OpenRouter's
+    Sonar annotations (indices always 0, no snippet)."""
+    url_citation = AnnotationURLCitation(
+        url=url, title=title, start_index=0, end_index=0
+    )
     return Annotation(type="url_citation", url_citation=url_citation)
 
 
@@ -85,11 +78,7 @@ def _fake_response(
     response — typed end-to-end so the production code's attribute
     access runs under the real SDK types in tests."""
     annotations = [
-        _citation(
-            url=c.get("url", ""),
-            title=c.get("title", "untitled"),
-            content=c.get("content"),
-        )
+        _citation(url=c.get("url", ""), title=c.get("title", "untitled"))
         for c in citations or []
     ]
     message = ChatCompletionMessage.model_construct(
@@ -124,35 +113,98 @@ class TestExtractResults:
     OpenRouter surfaces here first.  Same extractor serves both tiers
     because OpenRouter normalises annotations across models."""
 
-    def test_extracts_title_url_and_content_snippet(self):
+    def test_extracts_number_title_and_url(self):
         resp = _fake_response(
             citations=[
-                {
-                    "title": "Kimi K2.6 launch",
-                    "url": "https://example.com/kimi",
-                    "content": "Moonshot released K2.6 on 2026-04-20.",
-                },
+                {"title": "Kimi K2.6 launch", "url": "https://example.com/kimi"},
                 {
                     "title": "OpenRouter pricing",
                     "url": "https://openrouter.ai/moonshotai/kimi-k2.6",
                 },
-            ]
+            ],
+            answer="K2.6 launched on 2026-04-20.[1] Pricing is listed.[2]",
         )
         out = _extract_results(resp, limit=10)
-        assert len(out) == 2
-        assert out[0].title == "Kimi K2.6 launch"
-        assert out[0].url == "https://example.com/kimi"
-        assert out[0].snippet.startswith("Moonshot released")
-        # Missing ``content`` extension → empty snippet rather than crash.
-        assert out[1].snippet == ""
+        assert [r.model_dump() for r in out] == [
+            {"n": 1, "title": "Kimi K2.6 launch", "url": "https://example.com/kimi"},
+            {
+                "n": 2,
+                "title": "OpenRouter pricing",
+                "url": "https://openrouter.ai/moonshotai/kimi-k2.6",
+            },
+        ]
 
-    def test_limit_caps_returned_results(self):
+    def test_answer_without_markers_returns_first_limit_sources(self):
         resp = _fake_response(
             citations=[{"title": f"r{i}", "url": f"https://e/{i}"} for i in range(10)]
         )
         out = _extract_results(resp, limit=3)
-        assert len(out) == 3
-        assert [r.title for r in out] == ["r0", "r1", "r2"]
+        assert [(r.n, r.title) for r in out] == [(1, "r0"), (2, "r1"), (3, "r2")]
+
+    def test_cited_sources_with_gaps_are_padded_to_limit(self):
+        resp = _fake_response(
+            citations=[
+                {"title": f"r{i}", "url": f"https://e/{i}"} for i in range(1, 25)
+            ],
+            answer="The rate is 3.75%.[10][20]",
+        )
+        out = _extract_results(resp, limit=5)
+        assert [r.n for r in out] == [1, 2, 3, 10, 20]
+        assert {r.n: r.url for r in out}[20] == "https://e/20"
+
+    def test_cited_sources_are_not_cut_to_limit(self):
+        resp = _fake_response(
+            citations=[
+                {"title": f"r{i}", "url": f"https://e/{i}"} for i in range(1, 25)
+            ],
+            answer="".join(f"Fact.[{n}] " for n in (2, 4, 7, 9, 13, 15, 21)),
+        )
+        out = _extract_results(resp, limit=1)
+        assert [r.n for r in out] == [2, 4, 7, 9, 13, 15, 21]
+
+    def test_markers_with_no_annotation_are_dropped(self):
+        resp = _fake_response(
+            citations=[
+                {"title": f"r{i}", "url": f"https://e/{i}"} for i in range(1, 4)
+            ],
+            answer="Known.[2] Unknown.[9] Not a source.[0]",
+        )
+        out = _extract_results(resp, limit=1)
+        assert [r.n for r in out] == [2]
+
+    def test_duplicate_urls_keep_each_cited_number(self):
+        resp = _fake_response(
+            citations=[
+                {"title": "Page", "url": "https://e/same"},
+                {"title": "Other", "url": "https://e/other"},
+                {"title": "Page again", "url": "https://e/same"},
+            ],
+            answer="One.[1] Two.[3]",
+        )
+        out = _extract_results(resp, limit=1)
+        assert [(r.n, r.url) for r in out] == [
+            (1, "https://e/same"),
+            (3, "https://e/same"),
+        ]
+
+    def test_repeated_markers_return_one_entry_per_number(self):
+        resp = _fake_response(
+            citations=[
+                {"title": f"r{i}", "url": f"https://e/{i}"} for i in range(1, 4)
+            ],
+            answer="A.[2] B.[2][2] C.[3]",
+        )
+        assert [r.n for r in _extract_results(resp, limit=1)] == [2, 3]
+
+    def test_more_than_twenty_cited_sources_are_capped_at_twenty(self):
+        resp = _fake_response(
+            citations=[
+                {"title": f"r{i}", "url": f"https://e/{i}"} for i in range(1, 31)
+            ],
+            answer="".join(f"Fact.[{n}] " for n in range(1, 31)),
+        )
+        out = _extract_results(resp, limit=5)
+        assert [r.n for r in out] == list(range(1, 21))
 
     def test_missing_choices_returns_empty(self):
         resp = ChatCompletion.model_construct(
@@ -184,15 +236,6 @@ class TestExtractResults:
             usage=_usage(),
         )
         assert _extract_answer(resp) == ""
-
-    def test_snippet_clamped_to_max_chars(self):
-        long_body = "x" * 5000
-        resp = _fake_response(
-            citations=[{"title": "t", "url": "https://e", "content": long_body}]
-        )
-        out = _extract_results(resp, limit=1)
-        assert len(out) == 1
-        assert len(out[0].snippet) == 500
 
 
 _SONAR_FIXTURES = json.loads(
@@ -356,13 +399,7 @@ class TestWebSearchToolDispatch:
     @pytest.mark.asyncio
     async def test_quick_path_uses_sonar_base(self, monkeypatch):
         fake_resp = _fake_response(
-            citations=[
-                {
-                    "title": "hello",
-                    "url": "https://example.com",
-                    "content": "greeting",
-                }
-            ],
+            citations=[{"title": "hello", "url": "https://example.com"}],
             answer="Kimi K2.6 launched 2026-04-20 [1].",
             cost=0.01,
         )
@@ -402,7 +439,11 @@ class TestWebSearchToolDispatch:
         assert isinstance(result, WebSearchResponse)
         assert result.answer == "Kimi K2.6 launched 2026-04-20 [1]."
         assert len(result.results) == 1
-        assert result.results[0].snippet == "greeting"
+        assert result.results[0].model_dump() == {
+            "n": 1,
+            "title": "hello",
+            "url": "https://example.com",
+        }
 
         create_call = mock_client.chat.completions.create.call_args
         assert create_call.kwargs["model"] == "perplexity/sonar"
@@ -417,13 +458,7 @@ class TestWebSearchToolDispatch:
     @pytest.mark.asyncio
     async def test_deep_path_uses_sonar_deep_research(self, monkeypatch):
         fake_resp = _fake_response(
-            citations=[
-                {
-                    "title": "deep find",
-                    "url": "https://example.com/deep",
-                    "content": "research body",
-                }
-            ],
+            citations=[{"title": "deep find", "url": "https://example.com/deep"}],
             cost=0.087,
         )
         mock_client = self._mock_client(fake_resp)

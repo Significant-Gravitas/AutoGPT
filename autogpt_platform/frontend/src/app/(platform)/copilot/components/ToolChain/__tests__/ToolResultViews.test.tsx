@@ -38,6 +38,26 @@ describe("SearchResults", () => {
     expect(screen.getByText("en.wikipedia.org")).toBeDefined();
   });
 
+  it("labels each cited source with its [n] number, even when URLs repeat", () => {
+    render(
+      <SearchResults
+        items={[
+          { n: 3, title: "First cite", url: "https://example.com/a" },
+          { n: 12, title: "Same page again", url: "https://example.com/a" },
+        ]}
+        answer="Claim.[3] Another claim.[12]"
+      />,
+    );
+
+    expect(screen.getByText("[3]")).toBeDefined();
+    expect(screen.getByText("[12]")).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: "Same page again" })
+        .getAttribute("href"),
+    ).toBe("https://example.com/a");
+  });
+
   it("renders unlinked results as plain text", () => {
     render(<SearchResults items={[{ snippet: "Loose snippet" }]} />);
 
