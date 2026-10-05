@@ -97,6 +97,7 @@ __all__ = [
 @dataclass
 class ResolveResult:
     linked: bool
+    account_hint: str | None = None
 
 
 @dataclass
@@ -252,12 +253,18 @@ class BotBackend:
         )
         return ResolveResult(linked=resp.linked)
 
-    async def resolve_user(self, platform: str, platform_user_id: str) -> ResolveResult:
+    async def resolve_user(
+        self, platform: str, platform_user_id: str, include_account: bool = False
+    ) -> ResolveResult:
+        """Check a DM link; ``include_account`` also fetches the masked email
+        of the linked account (an extra lookup, so only for user-facing copy).
+        """
         resp = await self._client.resolve_user_link(
             platform=Platform(platform.upper()),
             platform_user_id=platform_user_id,
+            include_account=include_account,
         )
-        return ResolveResult(linked=resp.linked)
+        return ResolveResult(linked=resp.linked, account_hint=resp.account_hint)
 
     async def list_linked_server_ids(self, platform: str, user_id: str) -> list[str]:
         """Return the platform server (guild) IDs ``user_id`` has linked.

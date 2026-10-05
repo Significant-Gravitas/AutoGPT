@@ -109,6 +109,47 @@ async def test_start_in_private_chat_when_already_linked_sends_plain_text():
 
 
 @pytest.mark.asyncio
+async def test_start_when_already_linked_names_the_account_in_the_sent_text():
+    # Runs the real dm_link_reply + HTML conversion, so the masked email
+    # reaches Telegram literally (its *** must not turn into emphasis).
+    client = MagicMock()
+    client.call = AsyncMock()
+    api = MagicMock()
+    api.resolve_user = AsyncMock(
+        return_value=MagicMock(linked=True, account_hint="b***@agpt.co")
+    )
+    message = _message("/start", chat_type="private")
+    message["chat"] = {"id": 42, "type": "private"}
+    await commands.handle(api, client, message, "start", AsyncMock())
+    api.resolve_user.assert_awaited_once_with("telegram", "42", include_account=True)
+    sent = client.call.call_args.kwargs
+    assert "reply_markup" not in sent
+    assert "linked to the AutoGPT account b***@agpt.co." in sent["text"]
+    assert "Send /unlink, sign in as b***@agpt.co" in sent["text"]
+
+
+@pytest.mark.asyncio
+async def test_unlink_in_private_chat_points_at_bots_settings():
+    client = MagicMock()
+    client.call = AsyncMock()
+    message = _message("/unlink", chat_type="private")
+    message["chat"] = {"id": 42, "type": "private"}
+    with patch(
+        f"{_CMD}.unlink_reply",
+        return_value=CommandReply(
+            text="Unlinking requires authentication",
+            button_label="Open Settings",
+            button_url="https://x/settings/bots",
+        ),
+    ):
+        await commands.handle(MagicMock(), client, message, "unlink", AsyncMock())
+    sent = client.call.call_args.kwargs
+    assert sent["chat_id"] == "42"
+    button = sent["reply_markup"]["inline_keyboard"][0][0]
+    assert button["url"] == "https://x/settings/bots"
+
+
+@pytest.mark.asyncio
 async def test_start_in_group_still_links_the_group():
     client = MagicMock()
     client.call = AsyncMock()

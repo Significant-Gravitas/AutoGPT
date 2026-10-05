@@ -191,6 +191,10 @@ class LinkTokenInfoResponse(BaseModel):
 
 class ResolveResponse(BaseModel):
     linked: bool
+    # Masked email of the linked AutoGPT account (e.g. "b***@agpt.co"), only
+    # filled when the caller asks for it, so the bot can tell a user which
+    # account their DMs run as without exposing the full address.
+    account_hint: str | None = None
 
 
 class PlatformLinkInfo(BaseModel):

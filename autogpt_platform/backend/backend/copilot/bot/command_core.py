@@ -98,15 +98,12 @@ async def dm_link_reply(
     the Bots settings page gets the Link Account button straight away instead
     of having to send a first message.
     """
-    linked_reply = CommandReply(
-        text=(
-            f"Your {platform_display} DMs are linked to AutoGPT. Send me a "
-            "message to start chatting."
-        )
-    )
     try:
-        if (await api.resolve_user(platform, platform_user_id)).linked:
-            return linked_reply
+        resolved = await api.resolve_user(
+            platform, platform_user_id, include_account=True
+        )
+        if resolved.linked:
+            return _dm_linked_reply(platform_display, resolved.account_hint)
         result = await api.create_user_link_token(
             platform=platform,
             platform_user_id=platform_user_id,
@@ -114,7 +111,7 @@ async def dm_link_reply(
         )
     except LinkAlreadyExistsError:
         # Linked between the check and the mint.
-        return linked_reply
+        return _dm_linked_reply(platform_display, None)
     except Exception:
         logger.exception("%s DM link token creation failed", platform)
         return CommandReply(
@@ -129,6 +126,28 @@ async def dm_link_reply(
         ),
         button_label="Link Account",
         button_url=result.link_url,
+    )
+
+
+def _dm_linked_reply(platform_display: str, account_hint: str | None) -> CommandReply:
+    """Say which account the DMs run as, and how to switch if it's the wrong one.
+
+    The web Bots page lists only the signed-in account's links, so someone
+    signed in elsewhere has to manage the link as the account named here.
+    """
+    if account_hint:
+        account = f"the AutoGPT account {account_hint}"
+        switch = f"sign in as {account_hint} and unlink these DMs"
+    else:
+        account = "an AutoGPT account"
+        switch = "sign in as that account and unlink these DMs"
+    return CommandReply(
+        text=(
+            f"Your {platform_display} DMs are linked to {account}. Send me a "
+            "message to start chatting.\n\n"
+            "Using a different AutoGPT account? Send /unlink, "
+            f"{switch}, then message me again to link the right one."
+        )
     )
 
 
