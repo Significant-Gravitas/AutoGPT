@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { sendAuthEmail } from "./email";
 
 // At most one email of a kind per address per window, however often whatever
@@ -27,6 +28,7 @@ export interface AuthEmailContext {
     create: (args: {
       model: string;
       data: Record<string, unknown>;
+      forceAllowId?: boolean;
     }) => Promise<unknown>;
     updateMany: (args: {
       model: string;
@@ -82,14 +84,32 @@ function isResendRequest(request: Request | undefined) {
 }
 
 // Kept in Better Auth's verification table, which every server shares and
-// which Better Auth clears of expired rows itself. Two sends in the same
-// instant can both pass, which costs one extra email, not an unbounded number.
+// which Better Auth clears of expired rows itself. The row's id is fixed per
+// address and window, so when several sends pass the check below at the same
+// moment, the primary key lets one insert win and the rest fail.
 export async function claimEmailSlot(
   context: AuthEmailContext,
   kind: "repeat-sign-up" | "verify-email",
   email: string,
 ) {
   const identifier = `${kind}:${email.toLowerCase()}`;
+  if (await hasLiveSlot(context, identifier)) return false;
+  try {
+    await createVerification(context, {
+      id: slotID(identifier),
+      identifier,
+      value: "sent",
+      expiresInSeconds: AUTH_EMAIL_COOLDOWN_SECONDS,
+    });
+  } catch (error) {
+    // Lost the race to a concurrent send, or a real failure.
+    if (await hasLiveSlot(context, identifier)) return false;
+    throw error;
+  }
+  return true;
+}
+
+async function hasLiveSlot(context: AuthEmailContext, identifier: string) {
   const live = await context.adapter.findMany({
     model: "verification",
     where: [
@@ -98,23 +118,29 @@ export async function claimEmailSlot(
     ],
     limit: 1,
   });
-  if (live.length) return false;
-  await createVerification(context, {
-    identifier,
-    value: "sent",
-    expiresInSeconds: AUTH_EMAIL_COOLDOWN_SECONDS,
-  });
-  return true;
+  return live.length > 0;
+}
+
+function slotID(identifier: string) {
+  const window = Math.floor(Date.now() / (AUTH_EMAIL_COOLDOWN_SECONDS * 1000));
+  return createHash("sha256").update(`${identifier}#${window}`).digest("hex");
 }
 
 export function createVerification(
   context: AuthEmailContext,
-  args: { identifier: string; value: string; expiresInSeconds: number },
+  args: {
+    id?: string;
+    identifier: string;
+    value: string;
+    expiresInSeconds: number;
+  },
 ) {
   const now = new Date();
   return context.adapter.create({
     model: "verification",
+    forceAllowId: args.id !== undefined,
     data: {
+      ...(args.id === undefined ? {} : { id: args.id }),
       identifier: args.identifier,
       value: args.value,
       expiresAt: new Date(now.getTime() + args.expiresInSeconds * 1000),
