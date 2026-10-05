@@ -8,7 +8,10 @@ import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
-import { emailRepeatSignUp } from "./existing-user-sign-up";
+import {
+  emailRepeatSignUp,
+  type RepeatSignUpContext,
+} from "./existing-user-sign-up";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
@@ -178,10 +181,17 @@ export const auth = betterAuth({
     onExistingUserSignUp: async ({ user }) => {
       await emailRepeatSignUp({
         user,
-        baseURL,
-        secret: authSecret,
-        expiresIn: emailVerificationExpiresIn,
+        getAuthContext,
+        resetRedirectTo: new URL("/reset-password", baseURL).toString(),
       });
+    },
+    // A reset link only reaches whoever holds the address, so opening one
+    // verifies it: an unverified account (a repeat sign-up's above, or one
+    // from before the flag) then logs in with the password just set.
+    onPasswordReset: async ({ user }) => {
+      if (user.emailVerified) return;
+      const { internalAdapter } = await getAuthContext();
+      await internalAdapter.updateUser(user.id, { emailVerified: true });
     },
     password: {
       // bcrypt instead of Better Auth's default scrypt so password hashes
@@ -286,3 +296,18 @@ export const auth = betterAuth({
     nextCookies(),
   ],
 });
+
+// Better Auth hands the hooks above the user alone; this reaches back into the
+// instance they belong to, once it exists.
+async function getAuthContext(): Promise<
+  RepeatSignUpContext & {
+    internalAdapter: {
+      updateUser: (
+        userId: string,
+        data: { emailVerified: boolean },
+      ) => Promise<unknown>;
+    };
+  }
+> {
+  return auth.$context;
+}

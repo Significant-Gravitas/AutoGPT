@@ -5,14 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // and the verify link is checked end to end rather than assumed.
 
 vi.mock("pg", () => ({ Pool: vi.fn() }));
-// ../auth only builds its options here; the real betterAuth is kept aside so
-// each test can build a handler from them on an in-memory database.
+// ../auth builds the real Better Auth instance, on the in-memory database of
+// the test that imported it, so the hooks that reach back into it work too.
+const testDB = vi.hoisted(() => ({ current: {} as Record<string, unknown[]> }));
 vi.mock("better-auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("better-auth")>();
+  const { memoryAdapter } = await import("better-auth/adapters/memory");
   return {
     ...actual,
-    actualBetterAuth: actual.betterAuth,
-    betterAuth: vi.fn((options: unknown) => ({ options })),
+    betterAuth: (options: Parameters<typeof actual.betterAuth>[0]) =>
+      actual.betterAuth({
+        ...options,
+        database: memoryAdapter(testDB.current),
+        plugins: [],
+      }),
   };
 });
 // Better Auth hands each email it sends to `after` (see background-tasks.ts);
@@ -56,43 +62,33 @@ const callbackURL = "/auth/callback?method=email";
 
 type Handler = (request: Request) => Promise<Response>;
 
-async function createAuthHandler(
-  requireVerification: boolean,
-  secret: string | null = "test-secret-that-is-at-least-32-chars",
-) {
+async function createAuthHandler(requireVerification: boolean) {
   vi.stubEnv(
     "AUTH_REQUIRE_EMAIL_VERIFICATION",
     requireVerification ? "true" : "false",
   );
   vi.stubEnv("BETTER_AUTH_URL", baseURL);
-  vi.stubEnv("BETTER_AUTH_SECRET", secret ?? undefined);
+  vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-that-is-at-least-32-chars");
   vi.doUnmock("../auth");
   vi.resetModules();
 
-  const { auth } = (await import("../auth")) as unknown as {
-    auth: { options: Record<string, unknown> };
-  };
-  const { actualBetterAuth } = (await import("better-auth")) as unknown as {
-    actualBetterAuth: typeof import("better-auth").betterAuth;
-  };
-  const { memoryAdapter } = await import("better-auth/adapters/memory");
-
   const db = {
-    UserAuthIdentity: [],
-    UserAuthSession: [],
-    UserAuthAccount: [],
-    UserAuthVerification: [],
+    UserAuthIdentity: [] as Array<Record<string, unknown>>,
+    UserAuthSession: [] as Array<Record<string, unknown>>,
+    UserAuthAccount: [] as Array<Record<string, unknown>>,
+    UserAuthVerification: [] as Array<Record<string, unknown>>,
   };
-  const instance = actualBetterAuth({
-    ...auth.options,
-    database: memoryAdapter(db),
-    plugins: [],
-  });
-  return { handler: instance.handler as Handler, api: instance.api, db };
+  testDB.current = db;
+  const { auth } = await import("../auth");
+  return { handler: auth.handler as Handler, db };
 }
 
+// A send can queue another (the repeat sign-up's reset email), so drain until
+// nothing is left.
 async function emailsSent() {
-  await Promise.all(pendingAfterResponse.splice(0));
+  while (pendingAfterResponse.length) {
+    await Promise.all(pendingAfterResponse.splice(0));
+  }
 }
 
 function never() {
@@ -130,8 +126,29 @@ function signUp(handler: Handler, email: string) {
   });
 }
 
-function signIn(handler: Handler, email: string) {
-  return post(handler, "/sign-in/email", { email, password, callbackURL });
+function signIn(handler: Handler, email: string, as = password) {
+  return post(handler, "/sign-in/email", {
+    email,
+    password: as,
+    callbackURL,
+  });
+}
+
+function signUpAs(handler: Handler, email: string, as: string) {
+  return post(handler, "/sign-up/email", {
+    email,
+    password: as,
+    name: email.split("@")[0],
+    callbackURL,
+  });
+}
+
+function lastResetToken(to: string) {
+  const email = sentEmails.filter(
+    (sent) => sent.to === to && sent.type === "reset_password",
+  );
+  const url = email.at(-1)?.url;
+  return url ? new URL(url).pathname.split("/").at(-1) : undefined;
 }
 
 function lastVerifyLink(to: string) {
@@ -247,72 +264,121 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     );
   });
 
-  it("emails a fresh link when an unverified address signs up again", async () => {
+  it("emails a reset link, not a verify link, when an unverified address signs up again", async () => {
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "again@example.com");
+    await emailsSent();
     sentEmails.length = 0;
 
     // Better Auth answers a repeat sign-up like a new one, and the page then
-    // says a link was sent, so one has to be.
+    // says to check the inbox, so something has to arrive.
     const response = await signUp(handler, "again@example.com");
 
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthIdentity).toHaveLength(1);
     await emailsSent();
-    const link = new URL(lastVerifyLink("again@example.com") ?? "");
-    expect(link.pathname).toBe("/api/auth/verify-email");
-    expect(link.searchParams.get("callbackURL")).toBe(callbackURL);
-    const verified = await handler(new Request(link));
-    expect(verified.status).toBe(302);
-    expect(verified.headers.get("location")).toBe(callbackURL);
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["reset_password"]);
+    expect(lastResetToken("again@example.com")).toEqual(expect.any(String));
+  });
+
+  it("leaves whoever signed up first no password once the owner verifies", async () => {
+    // Someone signs up with an address they do not own...
+    const { handler, db } = await createAuthHandler(true);
+    await signUpAs(
+      handler,
+      "victim@example.com",
+      "the-first-sign-ups-password",
+    );
+    await emailsSent();
+    const firstLink = lastVerifyLink("victim@example.com") ?? "";
+    // ...then the owner signs up too, with their own password.
+    await signUpAs(handler, "victim@example.com", "the-owners-own-password");
+    await emailsSent();
+
+    // Even if the owner opens the first sign-up's link, which signs them in,
+    // the first password must no longer work.
+    await handler(new Request(firstLink));
     expect(db.UserAuthIdentity).toEqual([
       expect.objectContaining({ emailVerified: true }),
+    ]);
+    const response = await signIn(
+      handler,
+      "victim@example.com",
+      "the-first-sign-ups-password",
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("lets the owner set a password through the reset link, which verifies the address", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    await signUpAs(handler, "owner@example.com", "the-first-sign-ups-password");
+    await signUp(handler, "owner@example.com");
+    await emailsSent();
+
+    const reset = await post(handler, "/reset-password", {
+      token: lastResetToken("owner@example.com"),
+      newPassword: "the-owners-new-password",
+    });
+
+    expect(reset.status).toBe(200);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: true }),
+    ]);
+    const asOwner = await signIn(
+      handler,
+      "owner@example.com",
+      "the-owners-new-password",
+    );
+    expect(asOwner.status).toBe(200);
+    const asFirst = await signIn(
+      handler,
+      "owner@example.com",
+      "the-first-sign-ups-password",
+    );
+    expect(asFirst.status).toBe(401);
+  });
+
+  it("emails a repeatedly signed-up address once per cooldown", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    await signUp(handler, "spam@example.com");
+    await emailsSent();
+    sentEmails.length = 0;
+
+    for (let i = 0; i < 3; i++) {
+      const response = await signUp(handler, "spam@example.com");
+      expect(response.status).toBe(200);
+      await emailsSent();
+    }
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["reset_password"]);
+
+    // Once the window has passed, the next repeat sign-up emails again.
+    for (const row of db.UserAuthVerification) {
+      if (String(row.identifier).startsWith("repeat-sign-up:")) {
+        row.expiresAt = new Date(Date.now() - 1000);
+      }
+    }
+    await signUp(handler, "spam@example.com");
+    await emailsSent();
+    expect(sentEmails.map((sent) => sent.type)).toEqual([
+      "reset_password",
+      "reset_password",
     ]);
   });
 
   it("answers a repeat sign-up like a new one even when its email fails", async () => {
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "again@example.com");
+    await emailsSent();
     const { sendAuthEmail } = await import("../email");
     vi.mocked(sendAuthEmail).mockRejectedValueOnce(new Error("mailer down"));
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
 
     const response = await signUp(handler, "again@example.com");
+    await emailsSent();
 
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthIdentity).toHaveLength(1);
-    await emailsSent();
-    expect(consoleError).toHaveBeenCalledWith(
-      "Failed to email a repeat sign-up its verification link",
-      { error: "mailer down" },
-    );
-    consoleError.mockRestore();
-  });
-
-  it("sends a repeat sign-up no link it cannot sign", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-    const { handler, db } = await createAuthHandler(true, null);
-    await signUp(handler, "unsigned@example.com");
-    sentEmails.length = 0;
-
-    const response = await signUp(handler, "unsigned@example.com");
-
-    expect(response.status).toBe(200);
-    expect((await response.json()).token).toBeNull();
-    expect(db.UserAuthIdentity).toHaveLength(1);
-    await emailsSent();
-    expect(lastVerifyLink("unsigned@example.com")).toBeUndefined();
-    expect(consoleError).toHaveBeenCalledWith(
-      "Failed to email a repeat sign-up its verification link",
-      { error: "BETTER_AUTH_SECRET is not set" },
-    );
-    consoleError.mockRestore();
   });
 
   it("sends nothing when a verified address signs up again", async () => {
@@ -343,6 +409,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
       }
       const { sendAuthEmail } = await import("../email");
       vi.mocked(sendAuthEmail).mockImplementationOnce(never);
+      const callsBefore = vi.mocked(sendAuthEmail).mock.calls.length;
 
       // A mail call that never finishes must not hold the response, or its
       // timing tells an unverified address from a verified one.
@@ -352,46 +419,14 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
       expect(response.status).toBe(200);
       expect((await response.json()).token).toBeNull();
-      await vi.waitFor(() => expect(sendAuthEmail).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(vi.mocked(sendAuthEmail).mock.calls.length).toBeGreaterThan(
+          callsBefore,
+        ),
+      );
       expect(pendingAfterResponse).not.toHaveLength(0);
     },
   );
-
-  it.each([
-    ["keeps the sign-up page's next in", "/library", "/library"],
-    ["drops an off-site next from", "https://evil.example", null],
-  ])("%s a repeat sign-up's link", async (_, next, expectedNext) => {
-    // The sign-up action calls auth.api.signUpEmail inside runSignUp.
-    const { api } = await createAuthHandler(true);
-    const { runSignUp } = await import("../sign-up-next");
-    const { getEmailVerificationCallbackURL } = await import(
-      "../email-verification"
-    );
-    const body = {
-      email: "again@example.com",
-      password,
-      name: "again",
-      callbackURL: getEmailVerificationCallbackURL(next),
-    };
-    await runSignUp(next, () => api.signUpEmail({ body }));
-    await emailsSent();
-    const first = new URL(lastVerifyLink("again@example.com") ?? "");
-    sentEmails.length = 0;
-
-    await runSignUp(next, () => api.signUpEmail({ body }));
-    await emailsSent();
-
-    const repeat = new URL(lastVerifyLink("again@example.com") ?? "");
-    expect(repeat.searchParams.get("callbackURL")).toBe(
-      first.searchParams.get("callbackURL"),
-    );
-    const landing = new URL(
-      repeat.searchParams.get("callbackURL") ?? "",
-      baseURL,
-    );
-    expect(landing.pathname).toBe("/auth/callback");
-    expect(landing.searchParams.get("next")).toBe(expectedNext);
-  });
 
   it("re-sends the link through the resend endpoint", async () => {
     const { handler } = await createAuthHandler(true);
