@@ -168,7 +168,6 @@ class CapabilityIndex:
                 kind=kind,
                 connections=connections,
                 permissions=permissions,
-                limit=limit,
             )
         return result
 
@@ -264,7 +263,6 @@ class CapabilityIndex:
         kind: CapabilityKindName,
         connections: ConnectionState | None,
         permissions: "CopilotPermissions | None",
-        limit: int,
     ) -> None:
         """Fill ``result.other_kinds`` from the same search without *kind*.
 
@@ -273,7 +271,10 @@ class CapabilityIndex:
         equal coverage a connected one is listed first: those are what the
         filter hid.  A lookup by name (an exact hit) found what it asked for
         and gets nothing: most ``kind`` calls are those, and they must not be
-        told to search again.
+        told to search again.  The second search is uncapped: entries of
+        *kind* fill its top slots and are then dropped, so a capped one would
+        lose a connected entry ranked just below them and undercount
+        ``hidden_by_kind``.
         """
         if any(hit.reason != "search" for hit in result.hits):
             return
@@ -284,7 +285,7 @@ class CapabilityIndex:
             kind=None,
             connections=connections,
             permissions=permissions,
-            limit=limit,
+            limit=len(self.entries),
             fallback_limit=0,
         )
         hidden = sorted(

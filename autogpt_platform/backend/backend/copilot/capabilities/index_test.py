@@ -717,7 +717,7 @@ def test_no_kind_means_no_other_kinds(gmail_index):
 def test_a_tool_does_not_lead_connected_blocks_on_a_query_naming_no_service(
     gmail_index,
 ):
-    """"email" names no service; create_feature_request only ties on
+    """ "email" names no service; create_feature_request only ties on
     coverage, so the user's connected Gmail blocks lead.  #15011 put tools
     first for every query and moved 19 such queries."""
     result = gmail_index.search("email", connections=GOOGLE)
@@ -741,3 +741,27 @@ def test_a_negative_mention_does_not_pull_a_tool_into_a_service_query(gmail_inde
     assert result.service == "slack"
     assert "connect_integration" not in result.names
     assert "post_to_chat_platform" in result.names
+
+
+def test_other_kinds_look_past_the_filtered_kind_filling_the_top_slots():
+    """The unfiltered search used to stop at the page limit, so nine tools
+    outranking the connected block took every slot and the block, the one
+    thing the filter hid, was never seen."""
+    tools = [
+        _tool(f"ledger_export_{n}", "Export ledger rows to a quarterly report.")
+        for n in range(9)
+    ]
+    block = _block(
+        "99999999-9999-9999-9999-999999999993",
+        "AcmeLedgerBlock",
+        "Read rows from the Acme ledger.",
+        provider="acme",
+        tags=("ledger",),
+    )
+    index = CapabilityIndex([*tools, block])
+    state = ConnectionState(providers=frozenset({"acme"}))
+    query = "export ledger quarterly report"
+    assert "AcmeLedgerBlock" not in index.search(query, connections=state).names
+    result = index.search(query, kind="tool", connections=state)
+    assert [hit.entry.name for hit in result.other_kinds] == ["AcmeLedgerBlock"]
+    assert result.hidden_by_kind == 1
