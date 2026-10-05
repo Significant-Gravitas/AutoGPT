@@ -156,6 +156,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Drive Move File](block-integrations/google/drive_manage.md#google-drive-move-file) | Move a Google Drive file into another folder |
 | [Google Drive Read File](block-integrations/google/drive_files.md#google-drive-read-file) | Read a Google Drive file as text |
 | [Google Drive Search Files](block-integrations/google/drive_search.md#google-drive-search-files) | Search Google Drive for files by name, content, type, folder or modified date |
+| [Google Search Console Get Performance](block-integrations/google/search_console.md#google-search-console-get-performance) | Get a site's search performance from Google Search Console: clicks, impressions, CTR and average position, by query, page, country, device or date |
+| [Google Search Console Inspect URL](block-integrations/google/search_console_indexing.md#google-search-console-inspect-url) | Inspect a URL with Google Search Console: whether Google has indexed it and if not why, when it was last crawled, its canonical and any rich results |
+| [Google Search Console List Sitemaps](block-integrations/google/search_console_indexing.md#google-search-console-list-sitemaps) | List a site's sitemaps in Google Search Console: when Google last read each one, its errors and warnings, and how many URLs it lists |
+| [Google Search Console List Sites](block-integrations/google/search_console.md#google-search-console-list-sites) | List the Google Search Console properties (sites) the connected Google account can see, with its permission level for each |
 | [Google Sheets Add Column](block-integrations/google/sheets.md#google-sheets-add-column) | Add a new column with a header |
 | [Google Sheets Add Dropdown](block-integrations/google/sheets.md#google-sheets-add-dropdown) | Add a dropdown list (data validation) to cells |
 | [Google Sheets Add Note](block-integrations/google/sheets.md#google-sheets-add-note) | Add a note to a cell in a Google Sheet |
