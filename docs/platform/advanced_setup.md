@@ -79,7 +79,7 @@ The cluster also needs:
 
 - **Redis 7.0 or later, or a compatible engine such as Valkey.** The backend uses sharded pub/sub (`SPUBLISH`, `SSUBSCRIBE`), which Redis 7.0 introduced, along with Streams and Lua scripts. It uses no Redis modules.
 - **Shard addresses the backend can reach.** With `REDIS_USE_ANNOUNCED_ADDRESS=true`, the backend connects to each shard at the address the cluster announces, so those addresses must resolve from where the backend runs. Without it, the backend connects to every shard at `REDIS_HOST` and keeps only the announced port, which works only when every shard is reachable on that one host.
-- **Password authentication without TLS.** The backend sends `REDIS_PASSWORD` when it is set. It does not connect over TLS or with a username.
+- **A private network between the backend and every shard.** The backend connects without TLS and does not send a username. It sends `REDIS_PASSWORD` when one is set, and a cluster without a password works too. Nothing on the connection is encrypted, so don't route it over a network you don't trust.
 
 Point `REDIS_HOST` and `REDIS_PORT` at any node of the cluster, and set `REDIS_PASSWORD` if the cluster has one.
 
