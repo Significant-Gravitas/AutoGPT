@@ -19,6 +19,7 @@ marked in their metadata, so refresh and revocation keep reaching the client
 that issued them even while older device-code credentials remain in use.
 """
 
+import json
 import logging
 import time
 from typing import ClassVar, Optional
@@ -32,13 +33,15 @@ from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scop
 from backend.integrations.oauth.stripe_link import (
     LINK_AUTH_BASE_URL,
     LINK_HTTP_TIMEOUT,
+    StripeLinkDeviceAuthHandler,
     fetch_link_username,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.settings import Secrets
+from backend.util.settings import Config, Secrets
 
 logger = logging.getLogger(__name__)
 
+_config = Config()
 _secrets = Secrets()
 STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
     _secrets.stripe_link_client_id
@@ -47,6 +50,28 @@ STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
 )
 
 HOSTED_FLOW = "authorization_code"
+
+# The financial-insights grant: the source actions the device-code flow asks
+# for, as the JSON array the authorization endpoint takes in one
+# `authorization_details` parameter (the device endpoint reads the same detail
+# as bracketed form fields). Compact, so the URL carries no encoded spaces.
+# https://docs.stripe.com/financial-connections/agents/financial-insights
+AUTHORIZATION_DETAILS = json.dumps(
+    [{"type": "source", "actions": StripeLinkDeviceAuthHandler.SOURCE_ACTIONS}],
+    separators=(",", ":"),
+)
+
+
+def requests_financial_insights() -> bool:
+    """Whether the hosted login also asks the customer to share bank and card
+    accounts with the financial-insights blocks.
+
+    Opt-in, because Link refuses the whole authorization, payments included,
+    when it cannot grant something asked for: insights need the Stripe account
+    registered for Financial Connections, and Link offers them to US consumers
+    only, while agent payments also serve Canada.
+    """
+    return _config.stripe_link_financial_insights
 
 
 def is_hosted_link_credential(credentials: OAuth2Credentials) -> bool:
@@ -83,6 +108,8 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
         }
+        if requests_financial_insights():
+            params["authorization_details"] = AUTHORIZATION_DETAILS
         return f"{LINK_AUTH_BASE_URL}/auth?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
@@ -199,3 +226,13 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
                 f"Stripe Link authorization failed (HTTP {response.status_code})"
             )
         return {} if endpoint == "revoke" else response.json()
+
+
+def revocation_handler() -> StripeLinkHostedOAuthHandler:
+    """The configured client, built to end a grant. Revoking sends no redirect
+    URI, so a deployment without a frontend URL can still revoke."""
+    return StripeLinkHostedOAuthHandler(
+        _secrets.stripe_link_client_id,
+        _secrets.stripe_link_client_secret,
+        redirect_uri="",
+    )
