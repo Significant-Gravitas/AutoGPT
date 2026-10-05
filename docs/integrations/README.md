@@ -340,6 +340,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
 | [Search The Web](block-integrations/jina/search.md#search-the-web) | This block searches the internet for the given search query |
+| [Search1API Batch Search](block-integrations/search1api/batch_search.md#search1api-batch-search) | Runs up to 10 Search1API searches in a single batch request and returns one result group per query |
+| [Search1API Crawl](block-integrations/search1api/crawl.md#search1api-crawl) | Crawls a single URL with Search1API and returns its main content as clean markdown, ready for LLM input |
+| [Search1API News](block-integrations/search1api/news.md#search1api-news) | Searches recent news with Search1API across Google, Bing, Hacker News, Reuters and other sources |
+| [Search1API Search](block-integrations/search1api/search.md#search1api-search) | Searches the web with Search1API across Google, Bing, Baidu and other engines, or inside platforms such as Reddit, GitHub, arXiv and YouTube, optionally returning full page content |
 | [Tavily Crawl](block-integrations/tavily/crawl.md#tavily-crawl) | Crawls a website with Tavily, following links from the root URL and extracting page content |
 | [Tavily Extract](block-integrations/tavily/extract.md#tavily-extract) | Extracts page content from one or more URLs using Tavily, optimized for LLM consumption |
 | [Tavily Map](block-integrations/tavily/map.md#tavily-map) | Maps a website's structure with Tavily, discovering its URLs without extracting content |
