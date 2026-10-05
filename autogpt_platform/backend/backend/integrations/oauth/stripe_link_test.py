@@ -115,6 +115,30 @@ async def test_poll_returns_credentials_once_approved():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "granted",
+    ["userinfo:read payment_methods.agentic", "userinfo:read,payment_methods.agentic"],
+)
+async def test_poll_records_granted_scopes_with_either_delimiter(granted):
+    """link-cli notes the token endpoint can echo `scope` comma-delimited; kept
+    whole, the one bogus scope fails every `payment_methods.agentic` check."""
+    patcher, _ = mock_http(
+        200,
+        {
+            "access_token": "new-access",
+            "refresh_token": "new-refresh",
+            "expires_in": 3600,
+            "scope": granted,
+        },
+    )
+    with patcher:
+        result = await StripeLinkDeviceAuthHandler().poll_for_tokens("dc")
+
+    assert result.credentials is not None
+    assert result.credentials.scopes == ["userinfo:read", "payment_methods.agentic"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "error_code, expected",
     [
         ("authorization_pending", "pending"),

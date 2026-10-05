@@ -74,6 +74,7 @@ _READ = frozenset(
         "web_search",
         "browser_navigate",
         "browser_screenshot",
+        "browser_link_payment_status",
     }
 )
 
@@ -85,6 +86,8 @@ _WORKSPACE = frozenset(
         "start_desktop",
         "store_skill",
         "write_workspace_file",
+        # Discards the agent's own sealed payment browser, nothing else.
+        "browser_reset_after_payment",
     }
 )
 
@@ -139,6 +142,13 @@ _UNGATED = frozenset(
         "connect_integration",
         "request_credential_grant",
         "resume_capability",
+        # A Link purchase carries its own explicit approval, in the chat or in
+        # Link: requesting one (or a higher total) is the question, and
+        # completing one pays only what the customer approved. Gating any of
+        # them would ask twice.
+        "browser_request_link_payment",
+        "browser_raise_link_payment",
+        "browser_complete_link_payment",
     }
 )
 

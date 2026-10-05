@@ -258,7 +258,25 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# Bumped 77_014 -> 80_520 for the four Link checkout tools
+# (browser_request_link_payment, browser_complete_link_payment,
+# browser_link_payment_status, browser_reset_after_payment). Their descriptions
+# were cut first (-676), and the payment fields are flat strings rather than
+# nested objects, so what remains is the tools themselves. They only reach a
+# session when an operator turns the private checkout on. Measured on the
+# branch merged with dev 55c41887fd:
+#     dev 55c41887fd                              76,725 (89 tools)
+#     + four checkout tools         +3,495        80,220 (93 tools)
+#     + headroom                       +300       80,520
+# Bumped 80_520 -> 81_544 for the checkout's fifth tool,
+# browser_raise_link_payment (a total that rose after approval, approved again
+# by the user), and the request tool's ``execution`` argument for Stripe
+# checkouts paid with a Link Pay Token. Their descriptions were trimmed first.
+# Measured on #14927's head:
+#     #14927 head                                 80,351 (93 tools)
+#     + raise tool, execution          +893       81,244 (94 tools)
+#     + headroom                       +300       81,544
+_CHAR_BUDGET = 81_544
 
 
 @pytest.fixture(scope="module")
@@ -448,7 +466,19 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-_SESSION_WIRE_BUDGET = 69_483
+#
+# Raised 69_483 -> 72_566 for the same four Link checkout tools as
+# ``_CHAR_BUDGET`` above; no group hides them from an Otto chat, so the whole
+# wire delta lands here. Measured on the branch merged with dev 55c41887fd:
+#     dev 55c41887fd                              69,193
+#     + four checkout tools         +3,073        72,266
+#     + headroom                       +300       72,566
+# Raised 72_566 -> 73_526 for the same checkout changes as ``_CHAR_BUDGET``
+# (browser_raise_link_payment and ``execution``), measured on #14927's head:
+#     #14927 head                                 72,415
+#     + raise tool, execution          +811       73,226
+#     + headroom                       +300       73,526
+_SESSION_WIRE_BUDGET = 73_526
 
 
 def test_largest_declared_session_wire_budget() -> None:

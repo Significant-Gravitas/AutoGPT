@@ -107,6 +107,119 @@ describe("ToolChain", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("keeps Link approval visible after streaming and sends a bounded approval check", async () => {
+    const user = userEvent.setup();
+    const checkoutId = "a".repeat(32);
+    render(
+      <ToolChain
+        parts={[
+          toolPart("browser_request_link_payment", "output-available", {
+            output: {
+              type: "browser_checkout",
+              checkout_id: checkoutId,
+              merchant_name: "Test bookshop",
+              amount: 1299,
+              currency: "usd",
+              test_mode: true,
+              status: "pending_approval",
+              approval_url:
+                "https://app.link.com/activity/approve/lsrq_fixture",
+              message: "Review this purchase in Link.",
+            },
+          }),
+        ]}
+        isStreaming={false}
+      />,
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "Review in Link" })
+        .closest('[aria-hidden="true"]'),
+    ).toBeNull();
+    expect(screen.getByText("Test bookshop")).toBeTruthy();
+    expect(screen.getByText("$12.99")).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Check approval & continue" }),
+    );
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(
+      `Check Link approval using run_capability with id "tool:browser_complete_link_payment" and input {"checkout_id":"${checkoutId}"}. Continue only if Link confirms approval; do not create another payment request.`,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Check approval & continue" }),
+    ).toBeNull();
+  });
+
+  it.each([
+    "submitted",
+    "outcome_unknown",
+    "not_submitted",
+    "requires_action",
+    "approved",
+  ])(
+    "keeps %s payment status visible and never asks to submit again",
+    async (status) => {
+      const user = userEvent.setup();
+      const checkoutId = "b".repeat(32);
+      render(
+        <ToolChain
+          parts={[
+            toolPart("browser_link_payment_status", "output-available", {
+              output: {
+                type: "browser_checkout",
+                checkout_id: checkoutId,
+                merchant_name: "Bookshop",
+                amount: 100,
+                currency: "usd",
+                test_mode: true,
+                status,
+                paid: false,
+                attempted: true,
+              },
+            }),
+          ]}
+          isStreaming={false}
+        />,
+      );
+      const button = screen.getByRole("button", {
+        name: "Check payment status",
+      });
+      expect(button.closest('[aria-hidden="true"]')).toBeNull();
+      await user.click(button);
+      expect(onSend).toHaveBeenCalledExactlyOnceWith(
+        `Use run_capability with id "tool:browser_link_payment_status" and input {"checkout_id":"${checkoutId}"}. This is a read-only status check; do not retrieve a card, submit payment, or create another request.`,
+      );
+    },
+  );
+
+  it("does not expose checkout actions on a shared conversation", () => {
+    render(
+      <CopilotChatActionsProvider onSend={onSend} chatSurface="share">
+        <ToolChain
+          parts={[
+            toolPart("browser_link_payment_status", "output-available", {
+              output: {
+                type: "browser_checkout",
+                checkout_id: "b".repeat(32),
+                merchant_name: "Bookshop",
+                amount: 100,
+                currency: "usd",
+                status: "requires_action",
+                action_url: "https://app.link.com/verify",
+              },
+            }),
+          ]}
+          isStreaming={false}
+        />
+      </CopilotChatActionsProvider>,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Check payment status" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Complete verification in Link" }),
+    ).toBeNull();
+  });
+
   it("collapses a settled chain to a summary heading and expands on click", async () => {
     const user = userEvent.setup();
     render(

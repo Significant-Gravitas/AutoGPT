@@ -14,6 +14,7 @@ import httpx
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.oauth.base import parse_granted_scopes
 from backend.integrations.oauth.device_base import (
     BaseDeviceAuthHandler,
     DeviceAuthInitiation,
@@ -61,6 +62,29 @@ def _connection_label(platform_host: str) -> str:
     # implies an identity it does not carry is worse than a generic one, and
     # telling the two cases apart needs a public suffix list.
     return LINK_CLIENT_NAME
+
+
+async def fetch_link_username(access_token: str) -> str | None:
+    """Best-effort wallet identity, used only to de-duplicate credentials.
+
+    A failure here must not fail an otherwise-successful authorization:
+    the grant is already complete by this point, and the caller would be
+    left with an approved grant and no credential. Shared by the device-code
+    and hosted authorization-code handlers.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+            response = await client.get(
+                f"{LINK_API_BASE_URL}/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        if response.status_code != 200:
+            return None
+        info = response.json()
+        return info.get("email") or info.get("phone") or None
+    except Exception as e:
+        logger.warning(f"Could not read Link userinfo for credential title: {e}")
+        return None
 
 
 class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
@@ -138,10 +162,10 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
             data = response.json()
             # Record what was actually granted, not what was asked for. The
             # two can differ, and storing the request means a later scope
-            # check passes on scopes the token may not carry. Link returns a
-            # space-delimited `scope` string per RFC 6749; fall back to the
-            # requested set only when it is absent.
-            granted = str(data.get("scope") or "").split()
+            # check passes on scopes the token may not carry. RFC 6749 says
+            # space-delimited, but link-cli notes Link's token endpoint echoes
+            # the scope comma-delimited; split on either.
+            granted = parse_granted_scopes(data.get("scope"), [])
             credentials = OAuth2Credentials(
                 provider=self.PROVIDER_NAME,
                 access_token=SecretStr(data["access_token"]),
@@ -157,7 +181,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
                 title="Stripe Link",
                 # Lets `_merge_or_create_credential` recognise a re-auth of the
                 # same wallet instead of stacking a second credential for it.
-                username=await self._fetch_username(data["access_token"]),
+                username=await fetch_link_username(data["access_token"]),
             )
             return DeviceAuthPollResult(status="approved", credentials=credentials)
 
@@ -184,27 +208,6 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
             f"Unexpected response from Link auth: "
             f"{response.status_code} {response.text}"
         )
-
-    async def _fetch_username(self, access_token: str) -> str | None:
-        """Best-effort wallet identity, used only to de-duplicate credentials.
-
-        A failure here must not fail an otherwise-successful authorization:
-        the grant is already complete by this point, and the caller would be
-        left with an approved device code and no credential.
-        """
-        try:
-            async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
-                response = await client.get(
-                    f"{LINK_API_BASE_URL}/userinfo",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
-            if response.status_code != 200:
-                return None
-            info = response.json()
-            return info.get("email") or info.get("phone") or None
-        except Exception as e:
-            logger.warning(f"Could not read Link userinfo for credential title: {e}")
-            return None
 
     # Link *rotates* the refresh token, unlike every other handler here. The
     # credentials manager documents concurrent refreshes as tolerable because
