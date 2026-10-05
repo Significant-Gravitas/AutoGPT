@@ -1,6 +1,6 @@
 """Every PostHog event name the backend sends, in one place.
 
-``docs/platform/tracking-plan.md`` says what each event means, which side
+``docs/engineering/tracking-plan.md`` says what each event means, which side
 sends it and which properties it carries. This module is the code half of
 that plan: emitters take the name from here instead of spelling it out.
 The names follow the product analytics plan ("Every Second Counts"). The
@@ -66,16 +66,17 @@ class PostHogEvent(StrEnum):
     # person-update event, not a user action; keep it out of funnels.
     SET_PERSON_PROPERTIES = "$set"
 
-
-class PlannedPostHogEvent(StrEnum):
-    """Planned in the tracking plan and NOT emitted yet (SECRT-2723).
-
-    Move a member into ``PostHogEvent`` in the change that starts sending it.
-    """
-
+    # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
     CHECKOUT_STARTED = "checkout_started"
     SUBSCRIPTION_ENDED = "subscription_ended"
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
+
+
+class PlannedPostHogEvent(StrEnum):
+    """Planned in the tracking plan and NOT emitted yet.
+
+    Move a member into ``PostHogEvent`` in the change that starts sending it.
+    """

@@ -13,7 +13,7 @@ from backend.api.features.library.model import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
-from backend.copilot.context import get_current_envelope
+from backend.copilot.context import get_current_envelope, is_unattended_turn
 from backend.copilot.gate.subject import (
     NO_OP,
     Subject,
@@ -68,7 +68,11 @@ from .expert_scope import (
     require_installed_workflow,
     ungranted_credential_hint,
 )
-from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
+from .helpers import (
+    get_inputs_from_schema,
+    get_picker_inputs_from_schema,
+    unattended_missing_credentials_error,
+)
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -595,11 +599,12 @@ class RunAgentTool(BaseTool):
         user_id: str,
         expert_id: str | None,
         inputs: dict[str, Any] | None = None,
-    ) -> SetupRequirementsResponse | None:
+    ) -> SetupRequirementsResponse | ErrorResponse | None:
         """Turn a credential-only ``GraphValidationError`` into the inline
         setup-requirements card; return ``None`` if *any* non-credential
         error is present so the caller falls back to the plain text path
-        (otherwise structural errors would be hidden)."""
+        (otherwise structural errors would be hidden). A turn nobody watches
+        gets the unattended missing-credential error instead of a card."""
         messages = [
             msg
             for node_errors in error.node_errors.values()
@@ -614,9 +619,16 @@ class RunAgentTool(BaseTool):
         # creds are now invalid, so narrowing to `error.node_errors` would
         # leak the stale mapping. Passing ``None`` means no field is
         # treated as "already connected".
-        credentials_dict = await annotate_expert_grants(
-            user_id, expert_id, build_missing_credentials_from_graph(graph, None)
-        )
+        missing = build_missing_credentials_from_graph(graph, None)
+        if is_unattended_turn():
+            return await unattended_missing_credentials_error(
+                f"Agent '{graph.name}'",
+                missing,
+                session_id,
+                user_id,
+                expert_id,
+            )
+        credentials_dict = await annotate_expert_grants(user_id, expert_id, missing)
         return SetupRequirementsResponse(
             message=(
                 f"Agent '{graph.name}' has credentials that are missing or "
@@ -737,6 +749,14 @@ class RunAgentTool(BaseTool):
                 expert_id,
                 build_missing_credentials_from_graph(graph, graph_credentials),
             )
+            if is_unattended_turn():
+                return graph_credentials, await unattended_missing_credentials_error(
+                    f"Agent '{graph.name}'",
+                    missing_credentials_dict,
+                    session_id,
+                    user_id,
+                    expert_id,
+                )
             return graph_credentials, SetupRequirementsResponse(
                 message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)
                 + await ungranted_credential_hint(
@@ -747,6 +767,7 @@ class RunAgentTool(BaseTool):
                         for m in missing_credentials_dict.values()
                     }
                     - {""},
+                    missing_credentials_dict.values(),
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(
