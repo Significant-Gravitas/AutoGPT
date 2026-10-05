@@ -19739,6 +19739,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
           },
+          "credential_pins": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialPin"
+            },
+            "type": "object",
+            "title": "Credential Pins"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -20263,6 +20270,16 @@
         "type": "object",
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
+      },
+      "CredentialPin": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title", "default": "" }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "CredentialPin",
+        "description": "The account a schedule runs one provider on, chosen when it was made.\n\nThe title is kept so a run can still name the account after it was\ndeleted, which is when the name matters most."
       },
       "CredentialRejection": {
         "properties": {
