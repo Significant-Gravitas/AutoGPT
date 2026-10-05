@@ -21,7 +21,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
@@ -38,7 +38,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from claude_agent_sdk.types import SystemPromptPreset
+from claude_agent_sdk.types import SystemPromptCustom, SystemPromptPreset
 from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
@@ -129,7 +129,6 @@ from ..prompting import (
     get_expert_oversight_supplement,
     get_team_building_supplement,
     get_graphiti_supplement,
-    get_sdk_supplement,
 )
 from ..rate_limit import (
     get_global_rate_limits,
@@ -214,6 +213,7 @@ from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
+from .system_prompt import SystemPromptParts, assemble_system_prompt
 from .tool_adapter import (
     cap_late_tool_result,
     MCP_TOOL_PREFIX,
@@ -234,17 +234,6 @@ from .tool_display import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
-
-
-class _SystemPromptPreset(SystemPromptPreset, total=False):
-    """Extends :class:`SystemPromptPreset` with ``exclude_dynamic_sections``.
-
-    The field was added to the upstream TypedDict in claude-agent-sdk 0.1.59.
-    Until the package is pinned to that version we declare it locally so Pyright
-    accepts the kwarg without a ``# type: ignore`` comment.
-    """
-
-    exclude_dynamic_sections: NotRequired[bool]
 
 
 # On context-size errors the SDK query is retried with progressively
@@ -1716,13 +1705,7 @@ async def _apply_building_mode_restart(
     session: "ChatSession",
     state: "_RetryState",
     sdk_options: "ClaudeAgentOptions",
-    base_system_prompt: str,
-    delegation_supplement: str,
-    oversight_supplement: str,
-    team_building_supplement: str,
-    graphiti_supplement: str,
-    auto_mode_supplement: str,
-    use_e2b: bool,
+    prompt_parts: SystemPromptParts,
     session_id: str,
     message_id: str,
     log_prefix: str,
@@ -1750,37 +1733,29 @@ async def _apply_building_mode_restart(
             log_prefix,
             session.session_id,
         )
-    expert_session_suffix = await build_expert_identity_suffix(
+    # Re-validates an expert session, failing closed if the expert went away
+    # mid-turn. The prompt keeps the identity the turn launched with.
+    await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
         organization_id=session.organization_id,
         team_id=session.team_id,
     )
-    # Same supplement order as the main assembly. The delegation and
-    # chat-reading tools stay registered across a restart (registration happens
-    # once, before it), so dropping their disclosure rules here would leave the
-    # model able to delegate, or read a teammate's chats, silently for the rest
-    # of the turn.
-    system_prompt = (
-        base_system_prompt
-        + get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
-        + delegation_supplement
-        + oversight_supplement
-        + team_building_supplement
-        + get_chat_platform_supplement(session.metadata.source_platform)
-        + graphiti_supplement
-        + auto_mode_supplement
-        + building_suffix
-        + expert_session_suffix
+    # The turn's own prompt parts, so the delegation and chat-reading rules
+    # stay with their tools, which remain registered across a restart.
+    system_prompt = assemble_system_prompt(
+        prompt_parts, building_suffix=building_suffix
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
         system_prompt,
         cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+        live=config.claude_agent_live_system_prompt,
     )
-    # Resume the CLI session the interrupted run was writing —
-    # spike-verified: --resume accepts a changed append and the
-    # new content is live on the resumed turn.
+    # Resume the CLI session the interrupted run was writing. The guide reaches
+    # the resumed turn only with the live prompt: with the CLI's snapshot on,
+    # the session resends the prompt it recorded on its first request
+    # (system_prompt_snapshot_cli_test.py).
     sdk_options_restart.resume = session_id
     sdk_options_restart.session_id = None
     state.options = sdk_options_restart
@@ -2461,7 +2436,8 @@ def _build_system_prompt_value(
     system_prompt: str,
     *,
     cross_user_cache: bool,
-) -> str | SystemPromptPreset:
+    live: bool,
+) -> str | SystemPromptPreset | SystemPromptCustom:
     """Build the ``system_prompt`` argument for :class:`ClaudeAgentOptions`.
 
     When *cross_user_cache* is enabled, returns a :class:`SystemPromptPreset`
@@ -2470,27 +2446,45 @@ def _build_system_prompt_value(
     prompt cache.  Our custom *system_prompt* is appended after the preset.
 
     Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
-    is combined with ``--resume``).  The SDK bundles CLI 2.1.248 at
-    ``claude-agent-sdk >= 0.2.146``, so the pin in ``pyproject.toml`` is
-    the single source of truth — no external install needed.
+    is combined with ``--resume``); the CLI bundled with the pinned
+    ``claude-agent-sdk`` is newer.
 
-    When *cross_user_cache* is disabled, the raw *system_prompt* string is
-    returned.  This intentionally replaces the CLI's built-in prompt via
-    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset).
-    Per-session prompt caching remains available; only the shared Claude Code
-    preset prefix and its cross-user cache reuse are removed.
+    When *cross_user_cache* is disabled, *system_prompt* replaces the CLI's
+    built-in prompt via ``--system-prompt`` (vs ``--append-system-prompt``
+    for the preset).  Per-session prompt caching remains available; only the
+    shared Claude Code preset prefix and its cross-user cache reuse are
+    removed.
+
+    When *live* is set, both forms carry ``snapshot=False``, so the prompt
+    this process was launched with is the one sent, on a new session and on
+    ``--resume``.  With the snapshot on (the CLI's default when the key is
+    absent), the CLI records the system prompt and every tool description on
+    a session's first request and resends that record on every later request
+    and resume until the session compacts, ignoring the prompt a later
+    process was given.  Only the dict forms can carry ``snapshot`` (the SDK
+    sends it on the initialize request; the prompt text still travels as the
+    flag above), so the replace-mode prompt is wrapped in
+    :class:`SystemPromptCustom`.  Without *live*, the values are exactly the
+    ones passed before ``snapshot`` existed: a raw string, or the preset
+    without the key.
 
     An empty *system_prompt* is accepted: the preset dict will have
     ``append: ""`` which the SDK treats as no custom suffix.
     """
     if cross_user_cache:
         logger.debug("Using SystemPromptPreset for cross-user prompt cache")
-        return _SystemPromptPreset(
+        preset = SystemPromptPreset(
             type="preset",
             preset="claude_code",
             append=system_prompt,
             exclude_dynamic_sections=True,
         )
+        if live:
+            preset["snapshot"] = False
+        return preset
+    if live:
+        logger.debug("Cross-user prompt cache disabled, using custom prompt")
+        return SystemPromptCustom(type="custom", prompt=system_prompt, snapshot=False)
     logger.debug("Cross-user prompt cache disabled, using raw string")
     return system_prompt
 
@@ -4908,9 +4902,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         e2b_sandbox = await e2b_task
 
         use_e2b = e2b_sandbox is not None
-        # Append appropriate supplement (Claude gets tool schemas automatically)
-
-        graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         auto_mode_supplement = approval_mode_supplement(
             await active_mode(user_id, session)
         )
@@ -4922,15 +4913,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         experts_enabled = bool(user_id) and await is_feature_enabled(
             Flag.HIRE_EXPERTS, user_id, default=False
         )
-        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
-        oversight_supplement = get_expert_oversight_supplement(
-            experts_enabled=experts_enabled, expert_id=session.expert_id
-        )
-        team_building_supplement = get_team_building_supplement(
-            experts_enabled=experts_enabled, expert_id=session.expert_id
-        )
-        chat_platform_supplement = get_chat_platform_supplement(
-            session.metadata.source_platform
+        # Append appropriate supplement (Claude gets tool schemas automatically)
+        prompt_parts = SystemPromptParts(
+            base=base_system_prompt,
+            use_e2b=use_e2b,
+            expert_session=bool(session.expert_id),
+            delegation=get_delegation_supplement() if experts_enabled else "",
+            oversight=get_expert_oversight_supplement(
+                experts_enabled=experts_enabled, expert_id=session.expert_id
+            ),
+            team_building=get_team_building_supplement(
+                experts_enabled=experts_enabled, expert_id=session.expert_id
+            ),
+            chat_platform=get_chat_platform_supplement(
+                session.metadata.source_platform
+            ),
+            graphiti=get_graphiti_supplement() if graphiti_enabled else "",
+            auto_mode=auto_mode_supplement,
+            expert_identity=expert_session_suffix,
         )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
@@ -4947,19 +4947,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # calls into a gate that asks about *this* turn.
         session.clear_inflight_tool_calls()
         session.guide_in_system_prompt = bool(builder_session_suffix)
-        system_prompt = (
-            base_system_prompt
-            + get_sdk_supplement(
-                use_e2b=use_e2b, expert_session=bool(session.expert_id)
-            )
-            + delegation_supplement
-            + oversight_supplement
-            + team_building_supplement
-            + chat_platform_supplement
-            + graphiti_supplement
-            + auto_mode_supplement
-            + builder_session_suffix
-            + expert_session_suffix
+        system_prompt = assemble_system_prompt(
+            prompt_parts, building_suffix=builder_session_suffix
         )
 
         transcript_content = _restore.transcript_content
@@ -5140,15 +5129,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # When cross-user caching is enabled, use SystemPromptPreset with
         # exclude_dynamic_sections=True on every turn — including resumed
-        # ones — so all turns share the same static prefix.
-        #
-        # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
-        # is combined with --resume).  claude-agent-sdk >= 0.2.146 bundles
-        # CLI 2.1.248, so the pin in pyproject.toml is sufficient — no
-        # external install or env-var override needed.
+        # ones — so all turns share the same static prefix. With the live
+        # prompt, this turn's prompt is the one sent even when resuming a
+        # session that started with another.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
             cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+            live=config.claude_agent_live_system_prompt,
         )
 
         sdk_options = ClaudeAgentOptions(
@@ -5663,6 +5650,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 sdk_options_retry.system_prompt = _build_system_prompt_value(
                     system_prompt,
                     cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+                    live=config.claude_agent_live_system_prompt,
                 )
                 state.options = sdk_options_retry
                 # Retry intentionally omits prior_messages (transcript+gap context) and
@@ -5784,13 +5772,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session=session,
                     state=state,
                     sdk_options=sdk_options,
-                    base_system_prompt=base_system_prompt,
-                    delegation_supplement=delegation_supplement,
-                    oversight_supplement=oversight_supplement,
-                    team_building_supplement=team_building_supplement,
-                    graphiti_supplement=graphiti_supplement,
-                    auto_mode_supplement=auto_mode_supplement,
-                    use_e2b=use_e2b,
+                    prompt_parts=prompt_parts,
                     session_id=session_id,
                     message_id=message_id,
                     log_prefix=log_prefix,

@@ -632,6 +632,17 @@ class ChatConfig(BaseSettings):
         "from the prefix. Set to True to opt in. When False, our system prompt "
         "is passed as a raw string and replaces the Claude Code default prompt.",
     )
+    claude_agent_live_system_prompt: bool = Field(
+        default=True,
+        description="Send the system prompt each CLI launch was given, also "
+        "when it resumes a session. When False, the CLI records the prompt "
+        "and tool descriptions on a session's first request and resends that "
+        "record on every later request and resume until the session compacts, "
+        "so a changed prompt (the building-mode restart's guide) never reaches "
+        "the model. A live prompt re-writes a session's prompt cache once "
+        "whenever the prompt differs between two turns; set False to roll "
+        "back to the recorded prompt.",
+    )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",
         description="TTL for the ephemeral prompt-cache markers on the baseline "

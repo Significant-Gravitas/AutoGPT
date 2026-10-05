@@ -104,7 +104,9 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
 
     from .service import _build_system_prompt_value
 
-    preset = _build_system_prompt_value("custom system prompt", cross_user_cache=True)
+    preset = _build_system_prompt_value(
+        "custom system prompt", cross_user_cache=True, live=True
+    )
     assert isinstance(
         preset, dict
     ), "_build_system_prompt_value must return a dict when caching is on"
@@ -117,14 +119,30 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
     assert opts.system_prompt == sdk_preset
 
 
-def test_build_system_prompt_value_returns_plain_string_when_cross_user_cache_off():
-    """When cross_user_cache=False (feature flag disabled globally), the
-    helper returns a plain string; the CLI will receive --system-prompt
-    (replace-mode) and skip the preset entirely."""
+@pytest.mark.parametrize(
+    "cross_user_cache, flag",
+    [(False, "--system-prompt"), (True, "--append-system-prompt")],
+)
+def test_live_prompt_reaches_the_cli_as_its_prompt_flag(cross_user_cache, flag):
+    """The live prompt's dict form must still put the prompt text on the
+    CLI's command line, as the raw string did (cross_user_cache=False
+    replaces the CLI's prompt, True appends to its preset)."""
+    from claude_agent_sdk import ClaudeAgentOptions
+    from claude_agent_sdk._internal.transport.subprocess_cli import (
+        SubprocessCLITransport,
+    )
+
     from .service import _build_system_prompt_value
 
-    result = _build_system_prompt_value("my prompt", cross_user_cache=False)
-    assert result == "my prompt", "Must return the raw string, not a preset dict"
+    value = _build_system_prompt_value(
+        "my prompt", cross_user_cache=cross_user_cache, live=True
+    )
+    transport = SubprocessCLITransport(
+        prompt="", options=ClaudeAgentOptions(system_prompt=value, cli_path="claude")
+    )
+
+    cmd = transport._build_command()
+    assert cmd[cmd.index(flag) + 1] == "my prompt"
 
 
 def test_agent_options_accepts_all_our_fields():
