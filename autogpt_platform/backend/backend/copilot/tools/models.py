@@ -166,7 +166,8 @@ class ToolResponseBase(BaseModel):
     def from_outside(self, *parts: Any) -> Self:
         """Declare the values in this response that came from outside AutoGPT,
         exactly as placed in it; with none, the response is wholly ours. The
-        content judge reads only these."""
+        content judge reads only these, and every image. An agent's name,
+        description and schema count as ours: discovery returns them unjudged."""
         self._outside = (*(self._outside or ()), *parts)
         return self
 

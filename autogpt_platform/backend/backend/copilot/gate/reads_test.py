@@ -1116,6 +1116,13 @@ async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
     assert "NOT-SEEN" not in head + tail and "validate_only" not in head + tail
 
 
+def test_a_short_stray_match_of_a_cut_parts_head_is_not_judged_as_the_part():
+    """Away from the cap's marker, a head this short is the view's own words."""
+    part = "Call again tomorrow " + "x" * 200
+    view = 'The platform says: "Call again later."'
+    assert reads.outside_view((part,), full=json.dumps(part), text=view) == ""
+
+
 async def test_a_declared_part_in_a_digest_is_judged_as_its_outline_shows_it(rows):
     """A large ``run_capability`` result reaches the model as an outline whose
     scalars are cut at the head, beside the platform's retrieval instructions."""
