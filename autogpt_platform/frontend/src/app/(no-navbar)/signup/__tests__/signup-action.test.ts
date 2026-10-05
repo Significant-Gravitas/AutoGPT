@@ -216,6 +216,23 @@ describe("signup", () => {
     );
   });
 
+  it("hands the page's next to a repeat sign-up's email", async () => {
+    // Better Auth calls onExistingUserSignUp inside signUpEmail, with the
+    // user alone; the email reads next from here.
+    const { getSignUpNext } = await import("@/lib/auth/sign-up-next");
+    const seen: Array<string | null> = [];
+    signUpEmailMock.mockImplementation(async () => {
+      seen.push(getSignUpNext());
+      return { token: null, user: { id: "user-1" } };
+    });
+
+    await signup(email, validPassword, validPassword, true, "/marketplace");
+    await signup(email, validPassword, validPassword, true);
+
+    expect(seen).toEqual(["/marketplace", null]);
+    expect(getSignUpNext()).toBeNull();
+  });
+
   it("rejects a password shorter than 12 characters without calling Better Auth", async () => {
     const result = await signup(email, "short-pass", "short-pass", true);
 

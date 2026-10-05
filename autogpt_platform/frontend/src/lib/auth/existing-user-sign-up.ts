@@ -1,6 +1,7 @@
 import { createEmailVerificationToken } from "better-auth/api";
 import { sendAuthEmail } from "./email";
 import { getEmailVerificationCallbackURL } from "./email-verification";
+import { getSignUpNext } from "./sign-up-next";
 
 interface Args {
   user: { email: string; emailVerified?: boolean | null };
@@ -19,7 +20,8 @@ interface Args {
  * gets nothing here.
  *
  * Never throws: a failure must not turn this response into an error that a
- * brand-new address would not get.
+ * brand-new address would not get. Better Auth runs it alongside the response
+ * (see background-tasks.ts), so it adds no time either.
  */
 export async function emailRepeatSignUp({
   user,
@@ -37,7 +39,10 @@ export async function emailRepeatSignUp({
       undefined,
       expiresIn,
     );
-    const callbackURL = encodeURIComponent(getEmailVerificationCallbackURL());
+    // Lands where the first sign-up's link does, `next` included.
+    const callbackURL = encodeURIComponent(
+      getEmailVerificationCallbackURL(getSignUpNext()),
+    );
     await sendAuthEmail({
       to: user.email,
       type: "verify_email",

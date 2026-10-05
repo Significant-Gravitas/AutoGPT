@@ -88,7 +88,7 @@ async function createAuthHandler(
     database: memoryAdapter(db),
     plugins: [],
   });
-  return { handler: instance.handler as Handler, db };
+  return { handler: instance.handler as Handler, api: instance.api, db };
 }
 
 async function emailsSent() {
@@ -356,6 +356,42 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
       expect(pendingAfterResponse).not.toHaveLength(0);
     },
   );
+
+  it.each([
+    ["keeps the sign-up page's next in", "/library", "/library"],
+    ["drops an off-site next from", "https://evil.example", null],
+  ])("%s a repeat sign-up's link", async (_, next, expectedNext) => {
+    // The sign-up action calls auth.api.signUpEmail inside runSignUp.
+    const { api } = await createAuthHandler(true);
+    const { runSignUp } = await import("../sign-up-next");
+    const { getEmailVerificationCallbackURL } = await import(
+      "../email-verification"
+    );
+    const body = {
+      email: "again@example.com",
+      password,
+      name: "again",
+      callbackURL: getEmailVerificationCallbackURL(next),
+    };
+    await runSignUp(next, () => api.signUpEmail({ body }));
+    await emailsSent();
+    const first = new URL(lastVerifyLink("again@example.com") ?? "");
+    sentEmails.length = 0;
+
+    await runSignUp(next, () => api.signUpEmail({ body }));
+    await emailsSent();
+
+    const repeat = new URL(lastVerifyLink("again@example.com") ?? "");
+    expect(repeat.searchParams.get("callbackURL")).toBe(
+      first.searchParams.get("callbackURL"),
+    );
+    const landing = new URL(
+      repeat.searchParams.get("callbackURL") ?? "",
+      baseURL,
+    );
+    expect(landing.pathname).toBe("/auth/callback");
+    expect(landing.searchParams.get("next")).toBe(expectedNext);
+  });
 
   it("re-sends the link through the resend endpoint", async () => {
     const { handler } = await createAuthHandler(true);
