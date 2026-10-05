@@ -82,6 +82,8 @@ _langfuse = None
 # fetch, and the lock that hands the next window to one caller.
 # See _get_prompt_bounded_stale().
 _cached_prompt: str | None = None
+# The same copy paired with its Langfuse version, read by system_prompt_source().
+_cached_prompt_identity: tuple[str, int | None] | None = None
 _last_prompt_revalidation = 0.0
 _prompt_revalidation_lock = threading.Lock()
 
@@ -511,7 +513,7 @@ async def _revalidate_prompt() -> str:
     above can reach us. One attempt, because the copy we hold covers a failure
     and a chat turn should not wait out a retry chain.
     """
-    global _cached_prompt
+    global _cached_prompt, _cached_prompt_identity
     label = None if settings.config.app_env == AppEnvironment.PRODUCTION else "latest"
     prompt = await asyncio.to_thread(
         _get_langfuse().get_prompt,
@@ -537,7 +539,24 @@ async def _revalidate_prompt() -> str:
             "inject_user_context() instead."
         )
     _cached_prompt = compiled
+    version = prompt.version
+    _cached_prompt_identity = (compiled, version if isinstance(version, int) else None)
     return compiled
+
+
+def system_prompt_source(system_prompt: str) -> tuple[str, int | None]:
+    """The base prompt *system_prompt* was assembled on, for measurement.
+
+    Returns ``("fallback", None)`` for the in-code prompt, else the Langfuse
+    prompt name with the version this process holds, or ``None`` as the
+    version when the copy held now is not the one *system_prompt* starts with.
+    """
+    if system_prompt.startswith(_CACHEABLE_SYSTEM_PROMPT):
+        return "fallback", None
+    identity = _cached_prompt_identity
+    if identity is not None and system_prompt.startswith(identity[0]):
+        return config.langfuse_prompt_name, identity[1]
+    return config.langfuse_prompt_name, None
 
 
 async def _build_system_prompt(
