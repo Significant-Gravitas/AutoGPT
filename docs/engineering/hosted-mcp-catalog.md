@@ -1,6 +1,6 @@
 # Maintaining MCP Integrations
 
-[`mcp_catalog.json`](../../../autogpt_platform/backend/backend/integrations/mcp_catalog.json) defines the official services shown in Integrations and the AutoPilot MCP guide. [`mcp_catalog.py`](../../../autogpt_platform/backend/backend/integrations/mcp_catalog.py) validates the records and exposes them through `get_mcp_catalog()`.
+[`mcp_catalog.json`](../../autogpt_platform/backend/backend/integrations/mcp_catalog.json) defines the official services shown in Integrations and the AutoPilot MCP guide. [`mcp_catalog.py`](../../autogpt_platform/backend/backend/integrations/mcp_catalog.py) validates the records and exposes them through `get_mcp_catalog()`.
 
 ## Add or update a service
 
