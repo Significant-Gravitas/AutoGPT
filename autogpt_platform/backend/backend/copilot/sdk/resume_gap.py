@@ -24,14 +24,20 @@ _MARKER_PREFIXES = (
 )
 
 
-def row_sequence(index: int, message: ChatMessage) -> int:
-    """The row's DB sequence, or its list position when it has none.
+def row_sequences(prior: list[ChatMessage]) -> list[int]:
+    """The DB sequence of each row of *prior*.
 
-    Every stored row has a sequence.  Rows built in memory without one (test
-    fixtures, a save that never back-filled) fall back to their position in
-    the unfiltered list, which equals the sequence for an uncapped history.
+    Every stored row has a sequence.  A row built in memory without one (test
+    fixtures, a save that never back-filled) takes the sequence after the row
+    before it, or its list position when no sequenced row precedes it.
     """
-    return message.sequence if message.sequence is not None else index
+    sequences: list[int] = []
+    for index, message in enumerate(prior):
+        if message.sequence is not None:
+            sequences.append(message.sequence)
+            continue
+        sequences.append(sequences[-1] + 1 if sequences else index)
+    return sequences
 
 
 def uncovered_rows(prior: list[ChatMessage], watermark: int) -> list[ChatMessage]:
@@ -42,8 +48,8 @@ def uncovered_rows(prior: list[ChatMessage], watermark: int) -> list[ChatMessage
     """
     return [
         message
-        for index, message in enumerate(prior)
-        if message.role != "reasoning" and row_sequence(index, message) >= watermark
+        for message, sequence in zip(prior, row_sequences(prior))
+        if message.role != "reasoning" and sequence >= watermark
     ]
 
 
@@ -51,11 +57,13 @@ def missing_range(prior: list[ChatMessage], watermark: int) -> tuple[int, int] |
     """The sequences ``[watermark, first loaded)`` that are not in memory.
 
     Only a window that starts above the watermark has such a hole (the
-    eager-load cap on a long session); its rows must come from the DB.
+    eager-load cap on a long session); its rows must come from the DB.  Only
+    stored sequences say where the window starts.
     """
-    if not prior:
+    stored = [m.sequence for m in prior if m.sequence is not None]
+    if not stored:
         return None
-    first_loaded = min(row_sequence(index, m) for index, m in enumerate(prior))
+    first_loaded = min(stored)
     if first_loaded <= watermark:
         return None
     return watermark, first_loaded

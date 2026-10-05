@@ -873,12 +873,16 @@ async def _consume_sdk_until_done(
                 followup_drained = await drain_pending_for_persist(
                     ctx.session.session_id
                 )
-                if followup_drained:
-                    await persist_pending_as_user_rows(
-                        ctx.session,
-                        state.transcript_builder,
-                        followup_drained,
-                        log_prefix=ctx.log_prefix,
+                if followup_drained and await persist_pending_as_user_rows(
+                    ctx.session,
+                    state.transcript_builder,
+                    followup_drained,
+                    log_prefix=ctx.log_prefix,
+                ):
+                    logger.debug(
+                        "%s Persisted %d mid-turn follow-up row(s)",
+                        ctx.log_prefix,
+                        len(followup_drained),
                     )
 
         # Append assistant entry AFTER convert_message so that
@@ -3388,16 +3392,17 @@ async def _resume_query_with_gap(
     hole_range = missing_range(prior_rows, transcript_msg_count)
     hole = await _fetch_gap_hole(session_id, hole_range) if hole_range else []
     gap = sendable_gap((hole or []) + uncovered_rows(prior_rows, transcript_msg_count))
+    rows_left_out = hole_range is not None and hole is None
+    if rows_left_out:
+        logger.warning(
+            "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
+            " not contain post-watermark rows (transcript=%d, db=%d)",
+            session_id[:8],
+            transcript_msg_count,
+            msg_count,
+        )
     if not gap:
-        if hole_range is not None and hole is None:
-            logger.warning(
-                "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
-                " not contain post-watermark rows (transcript=%d, db=%d)",
-                session_id[:8],
-                transcript_msg_count,
-                msg_count,
-            )
-        else:
+        if not rows_left_out:
             logger.info(
                 "[SDK] [%s] --resume covers full context (%d messages)",
                 session_id[:8],
@@ -3479,6 +3484,18 @@ def _log_gap_sent(
         stats is not None,
         len(gap_context),
     )
+
+
+def _transcript_watermark_after_turn(messages: list[ChatMessage]) -> int:
+    """The watermark to store with the session file a finished turn wrote.
+
+    It is the next uncovered DB sequence over every row of the turn.  A
+    mid-turn follow-up row is covered like any other: its text reached the CLI
+    as the PostToolUse hook's additionalContext, which the CLI keeps in the
+    session file and replays on resume.  A lower watermark re-sends the rows
+    that follow the follow-up, not the follow-up.
+    """
+    return next_uncovered_sequence(messages)
 
 
 # Claude API vision-supported image types.
@@ -6402,11 +6419,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # (using the GCS watermark as the anchor for gap detection),
                     # which makes len(session.messages) safe to use here.
                     #
-                    # Watermark = next uncovered DB sequence.  Mid-turn
-                    # follow-up user rows are covered too: their text reached
-                    # the CLI as the PostToolUse hook's additionalContext,
-                    # which the CLI keeps in this file and replays on resume.
-                    _jsonl_covered = next_uncovered_sequence(session.messages)
+                    # Watermark = next uncovered DB sequence.
+                    _jsonl_covered = _transcript_watermark_after_turn(session.messages)
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,

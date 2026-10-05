@@ -12,8 +12,8 @@ from backend.copilot.sdk.service import (
     _BARE_MESSAGE_TOKEN_FLOOR,
     _build_query_message,
     _format_conversation_context,
+    _transcript_watermark_after_turn,
 )
-from backend.copilot.transcript import next_uncovered_sequence
 
 # ---------------------------------------------------------------------------
 # _format_conversation_context
@@ -797,13 +797,71 @@ async def test_build_query_resume_cap_warning_fires_when_unloaded_rows_are_left_
 
 
 @pytest.mark.asyncio
+async def test_build_query_resume_cap_warning_fires_when_only_the_window_is_sent(
+    monkeypatch, caplog
+):
+    """The hole fetch fails but the loaded rows above the watermark are still
+    sent: the rows in between were left out, so it warns as well."""
+    session = _make_session(
+        _seq_rows(
+            ("user", "LOADED QUESTION"),
+            ("assistant", "LOADED ANSWER"),
+            ("user", "CURRENT"),
+            start=1504,
+        )
+    )
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_raise(RuntimeError("db down"))
+            ),
+        },
+    )()
+    monkeypatch.setattr("backend.copilot.sdk.service.chat_db", lambda: fake_db)
+
+    result, _ = await _build_query_message(
+        "CURRENT",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+    assert result == (
+        _history("User: LOADED QUESTION", "You responded: LOADED ANSWER")
+        + "\n\nNow, the user says:\nCURRENT"
+    )
+    assert _cap_warnings(caplog) == [
+        "[SDK] [test-ses] Cap-engaged + empty sequence-based gap: window may not"
+        " contain post-watermark rows (transcript=1500, db=3)"
+    ]
+
+
+def test_transcript_watermark_after_a_midturn_followup_covers_the_whole_turn():
+    """The follow-up row is not subtracted: the watermark is one past the
+    turn's last row, so nothing of the turn is uncovered."""
+    turn = _seq_rows(
+        ("user", "build me an agent"),
+        ("assistant", "On it."),
+        ("tool", "TOOL OUTPUT"),
+        ("user", "FOLLOW-UP: make it hourly"),
+        ("reasoning", "thinking again"),
+        ("assistant", "FINAL ANSWER"),
+        start=40,
+    )
+    assert _transcript_watermark_after_turn(turn) == 46
+
+
+@pytest.mark.asyncio
 async def test_build_query_after_a_midturn_followup_turn_resends_nothing():
     """Turn N took a follow-up mid-turn.  Its text reached the CLI as the
     PostToolUse hook's additionalContext, which the CLI stores in its session
-    file, so the upload watermark is the next uncovered sequence over every
-    row of the turn.  Turn N+1 must not re-send turn N's tail (it used to get
-    the final answer and last tool output as a <conversation_history> prefix,
-    because a row count was subtracted from the watermark)."""
+    file (see followup_resume_cli_test.py), so the watermark uploaded after
+    turn N covers every row of the turn.  Turn N+1 must not re-send turn N's
+    tail: a watermark stepped back by the follow-up count sends the last tool
+    output and the final answer as a <conversation_history> prefix, and not
+    the follow-up."""
     turn_n = _seq_rows(
         ("user", "build me an agent"),
         ("reasoning", "thinking"),
@@ -813,7 +871,7 @@ async def test_build_query_after_a_midturn_followup_turn_resends_nothing():
         ("reasoning", "thinking again"),
         ("assistant", "FINAL ANSWER"),
     )
-    watermark = next_uncovered_sequence(turn_n)
+    watermark = _transcript_watermark_after_turn(turn_n)
     session = _make_session(turn_n + _seq_rows(("user", "CURRENT"), start=7))
 
     result, stats = await _build_query_message(

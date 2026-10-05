@@ -53,6 +53,25 @@ def test_missing_range_only_when_the_window_starts_above_the_watermark():
     assert missing_range([], 5) is None
 
 
+def test_rows_without_a_sequence_continue_from_the_row_before_them():
+    # A capped window (1000, 1001) followed by two rows a failed save left
+    # without a sequence: they sit at 1002 and 1003, not at list positions 2, 3.
+    window = _rows("user", "assistant", start=1000) + [
+        ChatMessage(role="user", content="unsaved-question"),
+        ChatMessage(role="assistant", content="unsaved-answer"),
+    ]
+    assert missing_range(window, 900) == (900, 1000)
+    assert [m.content for m in uncovered_rows(window, 1002)] == [
+        "unsaved-question",
+        "unsaved-answer",
+    ]
+    assert uncovered_rows(window, 1004) == []
+
+
+def test_missing_range_is_unknown_when_no_row_has_a_sequence():
+    assert missing_range([ChatMessage(role="user", content="u")], 5) is None
+
+
 def test_missing_range_counts_a_leading_reasoning_row_as_loaded():
     window = [ChatMessage(role="reasoning", content="r", sequence=10)] + _rows(
         "assistant", start=11
