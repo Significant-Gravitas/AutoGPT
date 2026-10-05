@@ -901,8 +901,8 @@ async def _run_capability(args: dict[str, Any]) -> StreamToolOutputAvailable:
 async def test_a_validate_only_answer_is_the_platforms_own_words_and_not_judged(
     rows, kind, ref
 ):
-    """Nick's case: a platform tool's validate_only answer ends "Call again
-    without validate_only to run.", which the judge held as an instruction."""
+    """A platform tool's validate_only answer ends "Call again without
+    validate_only to run.": the platform's own instruction, never judged."""
     from backend.copilot.tools import TOOL_REGISTRY
 
     judge = _judge(_HELD)
@@ -1028,7 +1028,7 @@ async def test_an_mcp_sign_in_card_is_not_judged_but_the_providers_refusal_in_on
 class _Declared(_Fetch):
     """A read whose producer declares ``parts`` (None: declares nothing)."""
 
-    def __init__(self, content: str, parts: tuple[str, ...] | None, **kwargs):
+    def __init__(self, content: str, parts: tuple[Any, ...] | None, **kwargs):
         super().__init__(content, **kwargs)
         self.parts = parts
 
@@ -1043,8 +1043,10 @@ class _Declared(_Fetch):
         (None, True),
         (("a sentence this page never says",), True),
         ((_MARKER,), False),
+        ((_MARKER,) * (reads._MAX_OUTSIDE_VALUES + 1), True),
+        ((object(),), True),
     ],
-    ids=["undeclared", "declared-but-absent", "declared"],
+    ids=["undeclared", "declared-but-absent", "declared", "over-budget", "unreadable"],
 )
 async def test_a_result_is_judged_whole_unless_its_declaration_holds(
     rows, parts, whole
@@ -1058,6 +1060,28 @@ async def test_a_result_is_judged_whole_unless_its_declaration_holds(
     ).model_dump_json(exclude_none=True)
     assert judge.await_args.kwargs["text"] == (whole_output if whole else _MARKER)
     assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_every_image_is_judged_whatever_its_producer_declared(rows):
+    """AutoGPT writes no images, so declaring a result its own narrows only
+    its text."""
+
+    class _Picture(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return _WorkspaceFile(
+                message="Here is the page.",
+                mime_type="image/png",
+                content_base64="iVBOR",
+            ).from_outside()
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge):
+        result = await _call(_Picture(""), _session())
+
+    judge.assert_awaited_once()
+    (image,) = judge.await_args.kwargs["images"]
+    assert image.data_base64 == "iVBOR"
+    assert "iVBOR" not in result.output and len(rows.rows) == 1
 
 
 async def test_a_declared_part_is_judged_as_the_json_the_model_reads(rows):

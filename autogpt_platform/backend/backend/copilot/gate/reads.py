@@ -230,9 +230,8 @@ async def screen_read(
         if mode is None or mode == "unsupervised":
             return None
         if outside is not None:
-            text, images = await asyncio.to_thread(
-                outside_view, outside, full, text, images, tool_name
-            )
+            # AutoGPT writes no images, so a declaration narrows only the text.
+            text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
         # Bytes nobody can read are not instructions until something decodes
         # them, and that later read is judged.
         if not text.strip() and not images:
@@ -327,26 +326,19 @@ def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
 
 
 def outside_view(
-    outside: tuple[Any, ...],
-    full: str,
-    text: str,
-    images: tuple[Image, ...],
-    tool_name: str = "",
-) -> tuple[str, tuple[Image, ...]]:
+    outside: tuple[Any, ...], full: str, text: str, tool_name: str = ""
+) -> str:
     """What of the declared parts the model reads in ``text``, each as the caps
-    left it, and the images among them; ``text`` whole when a part is not in
-    ``full``, so a mark that misses the bytes it names fails closed."""
+    left it; ``text`` whole when a part is not in ``full``, so a mark that
+    misses the bytes it names fails closed."""
     pieces: dict[str, None] = {}
     budget = [_MAX_OUTSIDE_VALUES]
     if not all(_locate(part, full, text, pieces, budget) for part in outside):
         logger.warning(
             f"Declared outside parts of {tool_name} not located; judged whole"
         )
-        return text, images
-    shown = tuple(pieces)
-    return "\n".join(shown), tuple(
-        image for image in images if any(image.data_base64 in p for p in shown)
-    )
+        return text
+    return "\n".join(pieces)
 
 
 # Past this many values a declaration is judged whole: locating each is a scan
