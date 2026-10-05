@@ -26,13 +26,18 @@ from backend.copilot.executor.processor import (
     _wait_for_expert_setup,
     sync_fail_close_session,
 )
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.prompt_origin import PromptOrigin, split_prompt_origin
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
@@ -1576,3 +1581,54 @@ def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
 
     # No envelope (a legacy queue entry) stays None rather than inventing one.
     assert taint_for_source_platform(None, slack) is None
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_turn_hands_the_engine_a_stamped_prompt() -> None:
+    """The engine writes the prompt row from ``message_metadata``, so the
+    schedule's stamp has to be in it when the processor calls the engine."""
+    session = ChatSession.new("user-1", dry_run=False)
+    session.session_id = "sess-1"
+    stream_fn = MagicMock(return_value=MagicMock())
+    entry = _make_entry().model_copy(
+        update={
+            "is_user_message": False,
+            "scheduled": ScheduledTurnOrigin(schedule_id="job-1", routine_id="r-1"),
+        }
+    )
+    with (
+        patch(
+            "backend.copilot.executor.processor.ChatConfig",
+            return_value=MagicMock(test_mode=True),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            stream_fn,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=_TrackedStream(events=[]),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+    ):
+        await CoPilotProcessor()._execute_async(
+            entry, threading.Event(), MagicMock(), _make_log()
+        )
+
+    metadata = stream_fn.call_args.kwargs["message_metadata"]
+    assert split_prompt_origin(metadata) == (
+        None,
+        PromptOrigin(kind="scheduled_routine", schedule_id="job-1", routine_id="r-1"),
+    )
+    assert stream_fn.call_args.kwargs["is_user_message"] is False

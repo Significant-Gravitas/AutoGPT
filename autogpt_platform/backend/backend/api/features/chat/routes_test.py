@@ -1,5 +1,6 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
@@ -9,14 +10,16 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from prisma.models import ChatMessage as PrismaChatMessage
 from pydantic import SecretStr
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
+from backend.copilot.prompt_origin import PromptOrigin, with_prompt_origin
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
@@ -4560,3 +4563,55 @@ def test_credential_selection_rejects_a_provider_named_twice(
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
     remember.assert_not_awaited()
+
+
+def _history_with_assistant_row(
+    mocker: pytest_mock.MockerFixture, metadata: dict | None
+) -> list[dict]:
+    page, _ = _make_paginated_messages(mocker)
+    page.messages.append(
+        ChatMessage.from_db(
+            PrismaChatMessage(
+                id="msg-1",
+                createdAt=datetime(2026, 10, 5, 9, 0, tzinfo=UTC),
+                sessionId="sess-1",
+                role="assistant",
+                content="Check the inbox.",
+                sequence=1,
+                metadata=None if metadata is None else json.dumps(metadata),
+            )
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+    response = client.get("/sessions/sess-1")
+    assert response.status_code == 200
+    assert "prompt_origin" not in response.text
+    return response.json()["messages"]
+
+
+def test_get_session_history_is_unchanged_by_a_scheduled_prompt_stamp(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The stamp lives in the row's metadata column, and the frontend keeps any
+    assistant row with metadata as its own bubble — so it must not reach the
+    payload, not even as an empty bag."""
+    stamp = with_prompt_origin(
+        None,
+        PromptOrigin(
+            kind="scheduled_followup",
+            schedule_id="job-1",
+            fired_at=datetime(2026, 10, 5, 9, 0, tzinfo=UTC),
+        ),
+    )
+
+    stamped = _history_with_assistant_row(mocker, stamp)
+    plain = _history_with_assistant_row(mocker, None)
+
+    assert stamped == plain
+    assert stamped[1]["role"] == "assistant"
+    assert stamped[1]["content"] == "Check the inbox."
+    assert stamped[1]["metadata"] is None
