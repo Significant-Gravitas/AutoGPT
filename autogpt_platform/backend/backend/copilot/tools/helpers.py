@@ -687,7 +687,7 @@ def _credential_rejected_response(
         ),
         error="credential_rejected",
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 def _rejected_credential(
@@ -880,7 +880,7 @@ async def unattended_missing_credentials_error(
         + grant_hint,
         error="missing_credentials",
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 async def _pinned_account_error(
@@ -940,7 +940,7 @@ async def _pinned_account_error(
         ),
         error="pinned_credential_missing" if lost else "pinned_credential_unusable",
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 @dataclass

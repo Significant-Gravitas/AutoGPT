@@ -5,16 +5,18 @@ SDK wrapper for the rest — with only the judge and the review rows faked. The
 rows go through ``sanitize_json`` as Postgres's JSON column does.
 """
 
+import asyncio
 import base64
 import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.context import set_turn_unattended
 from backend.copilot.gate import held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
@@ -1192,3 +1194,96 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
         empty = await grep({"pattern": "nothing"})
     judge.assert_not_awaited()
     assert "No matches found." in _text_from_mcp_result(empty)
+
+
+# A scheduled turn's step that could not run answers with the platform's own
+# instructions for the reply; held, the reply never says the step was skipped.
+
+
+async def _agent_without_credentials() -> ToolResponseBase | None:
+    from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
+
+    graph = MagicMock(id="graph-1", version=1, input_schema={})
+    graph.name = "Daily Scraper"
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.match_user_credentials_to_graph",
+            AsyncMock(return_value=({}, ["credentials"])),
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.build_missing_credentials_from_graph",
+            return_value={"credentials": {"provider": "firecrawl"}},
+        ),
+    ):
+        _, response = await RunAgentTool()._check_prerequisites(
+            graph, "user-1", RunAgentInput(), "session-1"
+        )
+    return response
+
+
+async def _block_credential_rejected() -> ToolResponseBase:
+    from backend.blocks.search import GetWeatherInformationBlock
+    from backend.copilot.tools.helpers import _credential_rejected_response
+    from backend.util.request import HTTPClientError
+
+    block = GetWeatherInformationBlock()
+    return _credential_rejected_response(
+        block=block,
+        block_id=block.id,
+        input_data={},
+        matched_credentials={},
+        session_id="session-1",
+        status_code=401,
+        exc=HTTPClientError("HTTP 401", 401),
+    )
+
+
+async def _pinned_account_gone() -> ToolResponseBase:
+    from backend.copilot.credential_selection import (
+        CredentialPin,
+        set_turn_credential_pins,
+    )
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+
+    set_turn_credential_pins({"exa": CredentialPin(id="cred-1", title="Work Exa")})
+    with patch(
+        "backend.copilot.tools.helpers.get_user_credentials",
+        AsyncMock(return_value=[]),
+    ):
+        return await unattended_missing_credentials_error(
+            "Block 'Search'",
+            {"credentials": {"provider": "exa"}},
+            "session-1",
+            "user-1",
+            None,
+        )
+
+
+@pytest.mark.parametrize(
+    "tool_name, produce, error",
+    [
+        ("run_agent", _agent_without_credentials, "missing_credentials"),
+        ("run_capability", _block_credential_rejected, "credential_rejected"),
+        ("run_capability", _pinned_account_gone, "pinned_credential_missing"),
+    ],
+)
+async def test_a_scheduled_turns_skipped_step_reaches_the_model_unjudged(
+    rows, tool_name, produce, error
+):
+    class _Unattended(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return await produce()
+
+    session = _session()
+
+    async def turn():
+        # Fired by the scheduler into the user's own chat, so the gate is on.
+        set_turn_unattended(session, scheduled=True)
+        return await _call(_Unattended("", name=tool_name), session)
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        result = await asyncio.create_task(turn())
+
+    judge.assert_not_awaited()
+    assert json.loads(result.output)["error"] == error and rows.rows == {}
