@@ -139,6 +139,31 @@ def test_connection_router_cannot_hide_a_direct_query():
     assert any(key.startswith("data/db_accessors.py::") for key in violations)
 
 
+@pytest.mark.parametrize("name", ["is_connected", "cache_clear", "cache_delete"])
+def test_query_helper_names_cannot_bypass_the_boundary(name: str):
+    sources = {
+        "backend.data.user": QUERY_SOURCE.replace("read_user", name),
+        "backend.notifications.example": (
+            f"from backend.data.user import {name}\n{name}('user')"
+        ),
+    }
+    assert any(
+        key.startswith("notifications/example.py::") for key in find_violations(sources)
+    )
+
+
+def test_connection_status_and_query_cache_invalidation_are_safe():
+    sources = {
+        "backend.data.user": QUERY_SOURCE,
+        "backend.data.db": "from prisma import Prisma\nprisma = Prisma()\ndef is_connected():\n    return prisma.is_connected()",
+        "backend.notifications.example": (
+            "from backend.data import db, user\n"
+            "db.is_connected()\nuser.read_user.cache_clear()"
+        ),
+    }
+    assert not find_violations(sources)
+
+
 def test_rpc_client_declarations_do_not_taint_their_callers():
     sources = {
         "backend.data.user": QUERY_SOURCE,

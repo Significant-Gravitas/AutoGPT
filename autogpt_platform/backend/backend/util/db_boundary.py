@@ -137,7 +137,13 @@ def _module_violations(
 def _unsafe_target(target: str, unsafe: set[str], rpc_clients: set[str]) -> str | None:
     if (
         is_gateway(target)
-        or target.rsplit(".", 1)[-1] in {"cache_delete", "cache_clear", "is_connected"}
+        or target
+        in {
+            "backend.data.db.is_connected",
+            "prisma.Prisma.is_connected",
+            "prisma.client.Prisma.is_connected",
+            ".prisma.is_connected",
+        }
         or any(
             target == client or target.startswith(client + ".")
             for client in rpc_clients
@@ -146,6 +152,8 @@ def _unsafe_target(target: str, unsafe: set[str], rpc_clients: set[str]) -> str 
         return None
     if target in unsafe:
         return target
+    if target.rsplit(".", 1)[-1] in {"cache_delete", "cache_clear"}:
+        return None
     parts = target.split(".")
     for length in range(len(parts) - 1, 0, -1):
         prefix = ".".join(parts[:length])
