@@ -1,41 +1,17 @@
 import { randomBytes } from "node:crypto";
+import {
+  type AuthEmailContext,
+  claimEmailSlot,
+  createVerification,
+} from "./auth-email-cooldown";
 import { sendAuthEmail } from "./email";
 
-// One email per address per window, however often it is signed up again.
-export const REPEAT_SIGN_UP_EMAIL_COOLDOWN_SECONDS = 10 * 60;
 // Better Auth's own default for a reset link.
 const RESET_LINK_EXPIRES_IN_SECONDS = 60 * 60;
 
-interface Where {
-  field: string;
-  value: string | Date;
-  operator?: "eq" | "gt";
-}
-
-export interface RepeatSignUpContext {
-  baseURL: string;
-  adapter: {
-    findMany: (args: {
-      model: string;
-      where: Where[];
-      limit: number;
-    }) => Promise<unknown[]>;
-    create: (args: {
-      model: string;
-      data: Record<string, unknown>;
-    }) => Promise<unknown>;
-    updateMany: (args: {
-      model: string;
-      where: Where[];
-      update: Record<string, unknown>;
-    }) => Promise<unknown>;
-  };
-  password: { hash: (password: string) => Promise<string> };
-}
-
 interface Args {
   user: { id: string; email: string; emailVerified?: boolean | null };
-  getAuthContext: () => Promise<RepeatSignUpContext>;
+  getAuthContext: () => Promise<AuthEmailContext>;
   resetRedirectTo: string;
 }
 
@@ -45,19 +21,20 @@ interface Args {
  * error), so as not to reveal that the account exists, and the sign-up page
  * then says to check the inbox. A verified account gets nothing here.
  *
- * An unverified one gets a password reset link, not a verification link. Its
- * password was set by whoever signed up first, who need not own the address:
- * a verification link would sign the owner in to an account someone else
- * still has the password to. So the old password is replaced with a random
- * one at once, and the reset link lets the owner set their own; opening it
- * proves they hold the address, so it verifies it too (onPasswordReset).
+ * An unverified one gets a password reset link, not a verification link, at
+ * most once per address per window (auth-email-cooldown.ts). If the account
+ * has never held a session, its password was set by a sign-up whose author
+ * need not own the address: a verification link would sign the owner in to an
+ * account someone else still has the password to. So that password is first
+ * replaced with a random one. An account that has held a session (one from
+ * before the flag) keeps its password: its owner set it, and a stranger
+ * signing up with their address must not lock them out. Either way the reset
+ * link lets the owner set a password, and opening it proves they hold the
+ * address, so it verifies it too (onPasswordReset).
  *
  * Better Auth runs this alongside the response (see background-tasks.ts), so
- * neither the work nor the cooldown shows in its timing. By then the sign-up's
- * database transaction has committed, and Better Auth's internal adapter (and
- * any auth.api call) would still go through it, so this works on the base
- * adapter directly. Never throws: a failure must not turn this response into
- * an error that a brand-new address would not get.
+ * none of it shows in the response's timing. Never throws: a failure must not
+ * turn this response into an error that a brand-new address would not get.
  */
 export async function emailRepeatSignUp({
   user,
@@ -67,15 +44,17 @@ export async function emailRepeatSignUp({
   if (user.emailVerified) return;
   try {
     const context = await getAuthContext();
-    await context.adapter.updateMany({
-      model: "account",
-      where: [
-        { field: "userId", value: user.id },
-        { field: "providerId", value: "credential" },
-      ],
-      update: { password: await context.password.hash(randomToken(32)) },
-    });
-    if (!(await claimEmailSlot(context, user.email))) return;
+    if (!(await claimEmailSlot(context, "repeat-sign-up", user.email))) return;
+    if (!(await hasHeldSession(context, user.id))) {
+      await context.adapter.updateMany({
+        model: "account",
+        where: [
+          { field: "userId", value: user.id },
+          { field: "providerId", value: "credential" },
+        ],
+        update: { password: await context.password.hash(randomToken(32)) },
+      });
+    }
     await sendPasswordReset(context, user, resetRedirectTo);
   } catch (error) {
     console.error("Failed to handle a repeat sign-up", {
@@ -84,32 +63,21 @@ export async function emailRepeatSignUp({
   }
 }
 
-// Kept in Better Auth's verification table, which every server shares and
-// which Better Auth clears of expired rows itself. Two sign-ups in the same
-// instant can both pass, which costs one extra email, not an unbounded number.
-async function claimEmailSlot(context: RepeatSignUpContext, email: string) {
-  const identifier = `repeat-sign-up:${email.toLowerCase()}`;
-  const live = await context.adapter.findMany({
-    model: "verification",
-    where: [
-      { field: "identifier", value: identifier },
-      { field: "expiresAt", value: new Date(), operator: "gt" },
-    ],
+// The same test the orphan sweep uses: with the flag on, a password sign-up
+// gets no session until its address is verified.
+async function hasHeldSession(context: AuthEmailContext, userId: string) {
+  const sessions = await context.adapter.findMany({
+    model: "session",
+    where: [{ field: "userId", value: userId }],
     limit: 1,
   });
-  if (live.length) return false;
-  await createVerification(context, {
-    identifier,
-    value: "sent",
-    expiresInSeconds: REPEAT_SIGN_UP_EMAIL_COOLDOWN_SECONDS,
-  });
-  return true;
+  return sessions.length > 0;
 }
 
 // The same token and link Better Auth's request-password-reset issues, so its
 // /reset-password endpoint redeems it.
 async function sendPasswordReset(
-  context: RepeatSignUpContext,
+  context: AuthEmailContext,
   user: Args["user"],
   redirectTo: string,
 ) {
@@ -123,23 +91,6 @@ async function sendPasswordReset(
     to: user.email,
     type: "reset_password",
     url: `${context.baseURL}/reset-password/${token}?callbackURL=${encodeURIComponent(redirectTo)}`,
-  });
-}
-
-function createVerification(
-  context: RepeatSignUpContext,
-  args: { identifier: string; value: string; expiresInSeconds: number },
-) {
-  const now = new Date();
-  return context.adapter.create({
-    model: "verification",
-    data: {
-      identifier: args.identifier,
-      value: args.value,
-      expiresAt: new Date(now.getTime() + args.expiresInSeconds * 1000),
-      createdAt: now,
-      updatedAt: now,
-    },
   });
 }
 

@@ -80,7 +80,18 @@ async function createAuthHandler(requireVerification: boolean) {
   };
   testDB.current = db;
   const { auth } = await import("../auth");
-  return { handler: auth.handler as Handler, db };
+  return { handler: auth.handler as Handler, api: auth.api, db };
+}
+
+type TestDB = Awaited<ReturnType<typeof createAuthHandler>>["db"];
+
+// Lets the per-address email cooldowns lapse, as ten minutes would.
+function expireCooldowns(db: TestDB) {
+  for (const row of db.UserAuthVerification) {
+    if (/^(repeat-sign-up|verify-email):/.test(String(row.identifier))) {
+      row.expiresAt = new Date(Date.now() - 1000);
+    }
+  }
 }
 
 // A send can queue another (the repeat sign-up's reset email), so drain until
@@ -184,9 +195,12 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("re-sends the link when an unverified user signs in, instead of a dead end", async () => {
-    const { handler } = await createAuthHandler(true);
+    const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "existing@example.com");
+    await emailsSent();
     sentEmails.length = 0;
+    // The sign-up's own email holds the address's cooldown for a while.
+    expireCooldowns(db);
 
     const response = await signIn(handler, "existing@example.com");
 
@@ -353,11 +367,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sentEmails.map((sent) => sent.type)).toEqual(["reset_password"]);
 
     // Once the window has passed, the next repeat sign-up emails again.
-    for (const row of db.UserAuthVerification) {
-      if (String(row.identifier).startsWith("repeat-sign-up:")) {
-        row.expiresAt = new Date(Date.now() - 1000);
-      }
-    }
+    expireCooldowns(db);
     await signUp(handler, "spam@example.com");
     await emailsSent();
     expect(sentEmails.map((sent) => sent.type)).toEqual([
@@ -379,6 +389,12 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthIdentity).toHaveLength(1);
+    expect(sendAuthEmail).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        to: "again@example.com",
+        type: "reset_password",
+      }),
+    );
   });
 
   it("sends nothing when a verified address signs up again", async () => {
@@ -428,6 +444,108 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     },
   );
 
+  it("keeps the password of an account that has signed in before", async () => {
+    // An unverified account from before the flag was turned on: its owner set
+    // the password and has used it, so a stranger signing up with the address
+    // must not lock them out.
+    const { handler, db } = await createAuthHandler(true);
+    await signUpAs(handler, "legacy@example.com", "the-owners-own-password");
+    await emailsSent();
+    const [identity] = db.UserAuthIdentity;
+    db.UserAuthSession.push({
+      id: "legacy-session",
+      userId: identity.id,
+      token: "legacy-session-token",
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    sentEmails.length = 0;
+
+    await signUpAs(handler, "legacy@example.com", "a-strangers-password");
+    await emailsSent();
+
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["reset_password"]);
+    expireCooldowns(db);
+    const asOwner = await signIn(
+      handler,
+      "legacy@example.com",
+      "the-owners-own-password",
+    );
+    expect(asOwner.status).toBe(403);
+    expect((await asOwner.json()).code).toBe("EMAIL_NOT_VERIFIED");
+  });
+
+  it("emails an unverified address once per cooldown however often it signs in", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    await signUp(handler, "signs-in@example.com");
+    await emailsSent();
+    expireCooldowns(db);
+    sentEmails.length = 0;
+
+    for (let i = 0; i < 3; i++) {
+      expect((await signIn(handler, "signs-in@example.com")).status).toBe(403);
+      await emailsSent();
+    }
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["verify_email"]);
+
+    expireCooldowns(db);
+    await signIn(handler, "signs-in@example.com");
+    await emailsSent();
+    expect(sentEmails.map((sent) => sent.type)).toEqual([
+      "verify_email",
+      "verify_email",
+    ]);
+  });
+
+  it("does not hold back the resend button's emails", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "resend@example.com");
+    await emailsSent();
+    sentEmails.length = 0;
+
+    for (let i = 0; i < 2; i++) {
+      const response = await post(handler, "/send-verification-email", {
+        email: "resend@example.com",
+        callbackURL,
+      });
+      expect(response.status).toBe(200);
+    }
+
+    expect(sentEmails.map((sent) => sent.type)).toEqual([
+      "verify_email",
+      "verify_email",
+    ]);
+  });
+
+  it("leaves a verified account verified after a password reset", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    await signUp(handler, "verified@example.com");
+    await emailsSent();
+    await handler(new Request(lastVerifyLink("verified@example.com") ?? ""));
+    await post(handler, "/request-password-reset", {
+      email: "verified@example.com",
+      redirectTo: `${baseURL}/reset-password`,
+    });
+    await emailsSent();
+
+    const reset = await post(handler, "/reset-password", {
+      token: lastResetToken("verified@example.com"),
+      newPassword: "a-new-long-enough-password",
+    });
+
+    expect(reset.status).toBe(200);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: true }),
+    ]);
+    const signedIn = await signIn(
+      handler,
+      "verified@example.com",
+      "a-new-long-enough-password",
+    );
+    expect(signedIn.status).toBe(200);
+  });
+
   it("re-sends the link through the resend endpoint", async () => {
     const { handler } = await createAuthHandler(true);
     await signUp(handler, "new@example.com");
@@ -442,6 +560,83 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(lastVerifyLink("new@example.com")).toContain(
       encodeURIComponent(callbackURL),
     );
+  });
+});
+
+// The independent audit's red tests (audit-1005, scripts/audit-findings.test.ts),
+// in this harness.
+describe("audit: repeat sign-ups with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
+  it("does not sign the address owner into an account whose password someone else set", async () => {
+    const { handler } = await createAuthHandler(true);
+    const victim = "victim@example.com";
+    const attackerPassword = "attacker-chose-this-password";
+
+    // Someone who does not own the mailbox registers it first; the owner is
+    // emailed a verification link for that sign-up.
+    await post(handler, "/sign-up/email", {
+      email: victim,
+      password: attackerPassword,
+      name: "victim",
+      callbackURL,
+    });
+    await emailsSent();
+    const link = lastVerifyLink(victim);
+    expect(link).toBeDefined();
+
+    // The owner then signs up with their own password, and opens the link.
+    await signUp(handler, victim);
+    await emailsSent();
+    const verified = await handler(new Request(link ?? ""));
+    expect(verified.status).toBe(302);
+
+    // The person who set the first password must not be able to sign in.
+    const attacker = await post(handler, "/sign-in/email", {
+      email: victim,
+      password: attackerPassword,
+    });
+    expect(attacker.status).not.toBe(200);
+  });
+
+  it("does not email one unverified address on every repeat sign-up", async () => {
+    const { handler, api } = await createAuthHandler(true);
+    const email = "target@example.com";
+    await signUp(handler, email);
+    await emailsSent();
+    sentEmails.length = 0;
+
+    // The sign-up page's server action calls auth.api directly, which skips
+    // Better Auth's per-IP HTTP rate limit.
+    for (let i = 0; i < 5; i++) {
+      await api.signUpEmail({
+        body: { email, password, name: "target", callbackURL },
+      });
+    }
+    await emailsSent();
+
+    expect(
+      sentEmails.filter((sent) => sent.to === email).length,
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it("does not email an unverified address on every sign-in", async () => {
+    const { handler, api } = await createAuthHandler(true);
+    const email = "pre-registered@example.com";
+    await signUp(handler, email);
+    await emailsSent();
+    sentEmails.length = 0;
+
+    // Whoever set the password (possibly not the address owner) signs in
+    // through the login page's server action, which calls auth.api directly.
+    for (let i = 0; i < 5; i++) {
+      await api
+        .signInEmail({ body: { email, password, callbackURL } })
+        .catch(() => undefined);
+    }
+    await emailsSent();
+
+    expect(
+      sentEmails.filter((sent) => sent.to === email).length,
+    ).toBeLessThanOrEqual(1);
   });
 });
 

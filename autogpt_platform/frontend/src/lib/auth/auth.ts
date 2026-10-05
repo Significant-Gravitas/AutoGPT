@@ -9,9 +9,10 @@ import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
 import {
-  emailRepeatSignUp,
-  type RepeatSignUpContext,
-} from "./existing-user-sign-up";
+  type AuthEmailContext,
+  sendVerificationLink,
+} from "./auth-email-cooldown";
+import { emailRepeatSignUp } from "./existing-user-sign-up";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
@@ -217,12 +218,10 @@ export const auth = betterAuth({
     // sign-up/sign-in action passed, which is /auth/callback?method=email.
     autoSignInAfterVerification: true,
     expiresIn: emailVerificationExpiresIn,
-    sendVerificationEmail: async ({ user, url }) => {
-      await sendAuthEmail({
-        to: user.email,
-        type: "verify_email",
-        url,
-      });
+    // Throttled per address, except for the resend button's own route: see
+    // auth-email-cooldown.ts.
+    sendVerificationEmail: async ({ user, url }, request) => {
+      await sendVerificationLink({ user, url, request, getAuthContext });
     },
   },
   user: {
@@ -300,7 +299,7 @@ export const auth = betterAuth({
 // Better Auth hands the hooks above the user alone; this reaches back into the
 // instance they belong to, once it exists.
 async function getAuthContext(): Promise<
-  RepeatSignUpContext & {
+  AuthEmailContext & {
     internalAdapter: {
       updateUser: (
         userId: string,
