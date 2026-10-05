@@ -62,6 +62,7 @@ SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
         "name": "Stripe Link",
         "env_vars": [],
         "default_scopes": ["payment_methods.agentic", "userinfo:read"],
+        "swap_hosts": [],
     },
     "github": {
         "name": "GitHub",
