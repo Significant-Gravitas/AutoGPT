@@ -10,6 +10,7 @@ import pytest
 
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.openrouter_cost import record_turn_cost_from_openrouter
+from backend.copilot.sdk.turn_cost_estimate import TokenUsage, estimate_cost_usd
 
 
 def _session() -> ChatSession:
@@ -22,6 +23,15 @@ def _session() -> ChatSession:
         updated_at=now,
         messages=[],
     )
+
+
+def _kimi_estimate(prompt_tokens: int, completion_tokens: int) -> float:
+    cost = estimate_cost_usd(
+        "moonshotai/kimi-k2.6",
+        TokenUsage(input_tokens=prompt_tokens, output_tokens=completion_tokens),
+    )
+    assert cost is not None
+    return cost
 
 
 def _mock_generation_response(cost: float) -> dict:
@@ -176,10 +186,10 @@ class TestRecordTurnCostFromOpenRouter:
         assert cost == pytest.approx(sum(costs_by_id.values()), rel=1e-9)
 
     @pytest.mark.asyncio
-    async def test_partial_lookup_falls_back_to_estimate(self):
+    async def test_partial_lookup_estimates_the_unresolved_rest(self):
         """If only some gen-IDs resolve, summing them would under-report.
-        Fall back to the caller's estimate and log — the rate-limit
-        counter stays populated with the best available number."""
+        Keep the resolved cost and price the rest from the catalog — the
+        rate-limit counter stays populated with the best available number."""
         fallback = 0.05
         seq = iter(
             [
@@ -218,7 +228,12 @@ class TestRecordTurnCostFromOpenRouter:
                 log_prefix="[test]",
             )
         mock_persist.assert_called_once()
-        assert mock_persist.call_args.kwargs["cost_usd"] == fallback
+        assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(
+            0.03 + _kimi_estimate(1000, 10)
+        )
+        assert mock_persist.call_args.kwargs["extra_metadata"] == {
+            "cost_source": "openrouter+catalog"
+        }
 
     @pytest.mark.asyncio
     async def test_fast_fail_on_401_no_retries(self):
@@ -256,9 +271,11 @@ class TestRecordTurnCostFromOpenRouter:
             )
         # Only one call — no retries.
         assert call_count["n"] == 1
-        # Fallback was recorded (lookup failed → keep rate-limit counter live).
+        # Estimate was recorded (lookup failed → keep rate-limit counter live).
         mock_persist.assert_called_once()
-        assert mock_persist.call_args.kwargs["cost_usd"] == 0.02
+        assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(
+            _kimi_estimate(1000, 10)
+        )
 
     @pytest.mark.asyncio
     async def test_retries_on_404_then_succeeds(self):
@@ -303,9 +320,8 @@ class TestRecordTurnCostFromOpenRouter:
 
     @pytest.mark.asyncio
     async def test_complete_lookup_failure_falls_back_to_estimate(self):
-        """Every lookup fails → record the estimate so the rate-limit
-        counter isn't left empty.  At-worst parity with the pre-task
-        behaviour."""
+        """Every lookup fails → record the catalog estimate of the turn's
+        tokens so the rate-limit counter isn't left empty."""
         fallback = 0.02
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
@@ -335,7 +351,12 @@ class TestRecordTurnCostFromOpenRouter:
                 log_prefix="[test]",
             )
         mock_persist.assert_called_once()
-        assert mock_persist.call_args.kwargs["cost_usd"] == fallback
+        assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(
+            _kimi_estimate(1000, 10)
+        )
+        assert mock_persist.call_args.kwargs["extra_metadata"] == {
+            "cost_source": "catalog"
+        }
 
     @pytest.mark.asyncio
     async def test_compaction_subagent_gen_ids_are_swept(self, tmp_path):
@@ -629,7 +650,8 @@ class TestLangfuseTraceBackfill:
         mock_lf.create_event.assert_called_once()
         meta = mock_lf.create_event.call_args.kwargs["metadata"]
         assert meta["cost_source"] == "fallback"
-        assert meta["cost_usd"] == pytest.approx(0.018, rel=1e-9)
+        assert meta["cost_usd"] == pytest.approx(0.012 + _kimi_estimate(100, 10))
+        assert meta["estimate_source"] == "openrouter+catalog"
         assert meta["resolved_generation_id_count"] == 1
         assert meta["generation_id_count"] == 2
 
@@ -713,3 +735,125 @@ class TestLangfuseTraceBackfill:
             )
 
         mock_persist.assert_called_once()
+
+
+class TestFallbackOnProdTurnShapes:
+    """Turn shapes from prod ``[cost-record]`` lines, 2026-10-03."""
+
+    @staticmethod
+    async def _record(*, model, turn, resolved, call_usage, cli_cost):
+        async def _get(_self, _url, *, params, **_kwargs):
+            cost = resolved.get(params["id"])
+            if cost is None:
+                return httpx.Response(404, json={"error": "not found"})
+            return httpx.Response(200, json=_mock_generation_response(cost))
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+            patch("httpx.AsyncClient.get", new=_get),
+            patch(
+                "backend.copilot.sdk.openrouter_cost.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model=model,
+                prompt_tokens=turn.input_tokens,
+                completion_tokens=turn.output_tokens,
+                cache_read_tokens=turn.cache_read_tokens,
+                cache_creation_tokens=turn.cache_creation_tokens,
+                generation_ids=list(call_usage),
+                cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
+                fallback_cost_usd=cli_cost,
+                api_key="sk-or-test",
+                log_prefix="[SDK][ab94b903-594][T1]",
+                generation_usage=call_usage,
+            )
+        mock_persist.assert_called_once()
+        return mock_persist.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_partial_lookup_records_resolved_cost_plus_rest(self, caplog):
+        call_1 = TokenUsage(
+            input_tokens=54,
+            cache_read_tokens=30869,
+            cache_creation_tokens=120000,
+            output_tokens=1600,
+        )
+        call_2 = TokenUsage(
+            input_tokens=55,
+            cache_read_tokens=30869,
+            cache_creation_tokens=8529,
+            output_tokens=1630,
+        )
+        turn = TokenUsage(
+            input_tokens=109,
+            cache_read_tokens=61738,
+            cache_creation_tokens=128529,
+            output_tokens=3230,
+        )
+        with caplog.at_level("WARNING"):
+            kwargs = await self._record(
+                model="anthropic/claude-sonnet-5-5",
+                turn=turn,
+                resolved={"gen-1": 0.322282},
+                call_usage={"gen-1": call_1, "gen-2": call_2},
+                cli_cost=7.014386699999999,
+            )
+        assert kwargs["cost_usd"] == pytest.approx(0.36619, rel=1e-4)
+        line = next(
+            r.getMessage() for r in caplog.records if "[cost-record]" in r.getMessage()
+        )
+        assert line.startswith(
+            "[SDK][ab94b903-594][T1][cost-record] OpenRouter partial lookup (1/2) — "
+            "using fallback estimate=$0.3661"
+        )
+        assert line.endswith(
+            " source=openrouter+catalog cli_estimate=$7.014386699999999"
+        )
+
+    @pytest.mark.asyncio
+    async def test_failed_lookup_on_resumed_session_ignores_cli_total(self, caplog):
+        turn = TokenUsage(
+            input_tokens=109,
+            cache_read_tokens=30869,
+            cache_creation_tokens=164649,
+            output_tokens=1799,
+        )
+        with caplog.at_level("WARNING"):
+            kwargs = await self._record(
+                model="anthropic/claude-sonnet-5-5",
+                turn=turn,
+                resolved={},
+                call_usage={"gen-1": turn},
+                cli_cost=9.293846699999998,
+            )
+        assert kwargs["cost_usd"] == pytest.approx(0.436004, rel=1e-4)
+        line = next(
+            r.getMessage() for r in caplog.records if "[cost-record]" in r.getMessage()
+        )
+        assert (
+            "OpenRouter lookup failed for all gens — using fallback estimate=$0.436"
+            in line
+        )
+        assert line.endswith(" source=catalog cli_estimate=$9.293846699999998")
+
+    @pytest.mark.asyncio
+    async def test_unknown_model_records_the_cli_figure(self):
+        turn = TokenUsage(input_tokens=1000, output_tokens=10)
+        kwargs = await self._record(
+            model="acme/unknown-model",
+            turn=turn,
+            resolved={},
+            call_usage={"gen-1": turn},
+            cli_cost=0.02,
+        )
+        assert kwargs["cost_usd"] == 0.02
+        assert kwargs["extra_metadata"] == {"cost_source": "cli"}

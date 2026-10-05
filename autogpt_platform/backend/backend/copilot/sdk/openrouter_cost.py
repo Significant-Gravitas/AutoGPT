@@ -18,10 +18,13 @@ This module provides :func:`record_turn_cost_from_openrouter` — an
 3. Calls :func:`persist_and_record_usage` **once** with the real number,
    updating both the cost-analytics row and the rate-limit counter.
 
-If every lookup fails (404 / timeout / parse error), the caller's
-``fallback_cost_usd`` is recorded instead — keeps the rate-limit counter
+If some or all lookups fail (404 / timeout / parse error), the calls that
+did not resolve are priced from the turn's own token usage and the LLM
+catalog (:mod:`turn_cost_estimate`) — keeps the rate-limit counter
 populated with the best available estimate rather than leaving the turn
-uncharged.
+uncharged.  The caller's ``fallback_cost_usd`` (the CLI's figure, a
+running session total on resumed sessions) is recorded only for a model
+the catalog cannot price.
 """
 
 from __future__ import annotations
@@ -35,6 +38,11 @@ from typing import TYPE_CHECKING
 import httpx
 from langfuse import get_client
 
+from backend.copilot.sdk.turn_cost_estimate import (
+    FallbackCost,
+    TokenUsage,
+    fallback_turn_cost,
+)
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util import json
 
@@ -258,6 +266,7 @@ async def record_turn_cost_from_openrouter(
     api_key: str | None,
     log_prefix: str,
     langfuse_trace_id: str | None = None,
+    generation_usage: dict[str, TokenUsage] | None = None,
 ) -> None:
     """Persist turn cost from OpenRouter's authoritative ``/generation``.
 
@@ -275,10 +284,12 @@ async def record_turn_cost_from_openrouter(
     (writing a possibly-wrong estimate synchronously) creates a
     double-count when the reconcile delta arrives.
 
-    Fallback semantics: if every generation lookup fails, records
-    ``fallback_cost_usd`` instead so the rate-limit counter isn't left
-    completely empty.  Keeps behaviour at-worst equivalent to the
-    rate-card estimate that came before this task existed.
+    Fallback semantics: when any generation lookup fails, records the
+    provider's cost for the generations that resolved plus a catalog
+    estimate for the rest of the turn's tokens (``generation_usage`` maps
+    each generation to the tokens the live stream reported for it), so the
+    rate-limit counter isn't left empty.  ``fallback_cost_usd`` is recorded
+    only when the catalog has no price for ``model``.
     """
     if not api_key:
         logger.debug(
@@ -339,6 +350,7 @@ async def record_turn_cost_from_openrouter(
 
     fetched = [r for r in results if isinstance(r, (int, float))]
     cost_source = "fallback"
+    fallback: FallbackCost | None = None
     if fetched and len(fetched) == len(generation_ids):
         real_cost: float | None = sum(fetched)
         cost_source = "openrouter"
@@ -361,26 +373,34 @@ async def record_turn_cost_from_openrouter(
             len(generation_ids),
         )
     else:
-        real_cost = fallback_cost_usd
-        if fetched:
-            # Partial success: some lookups returned a cost, others didn't.
-            # Trusting the partial sum would under-report; fall back to the
-            # estimate so rate-limit enforcement stays conservative.
-            logger.warning(
-                "%s[cost-record] OpenRouter partial lookup (%d/%d) — "
-                "using fallback estimate=$%s",
-                log_prefix,
-                len(fetched),
-                len(generation_ids),
-                real_cost,
-            )
-        else:
-            logger.warning(
-                "%s[cost-record] OpenRouter lookup failed for all gens — "
-                "using fallback estimate=$%s",
-                log_prefix,
-                real_cost,
-            )
+        # Partial or failed: the partial sum alone would under-report, and
+        # the CLI's figure carries the session's earlier turns.  Keep the
+        # provider's cost where it resolved and price the rest from the
+        # catalog.
+        fallback = fallback_turn_cost(
+            model=model,
+            turn_usage=TokenUsage(
+                input_tokens=prompt_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_tokens=cache_creation_tokens,
+                output_tokens=completion_tokens,
+            ),
+            resolved_costs={
+                gen_id: float(cost)
+                for gen_id, cost in zip(generation_ids, results)
+                if isinstance(cost, (int, float))
+            },
+            call_usage=generation_usage or {},
+            cli_cost_usd=fallback_cost_usd,
+        )
+        real_cost = fallback.cost_usd
+        _log_fallback(
+            log_prefix=log_prefix,
+            resolved=len(fetched),
+            total=len(generation_ids),
+            fallback=fallback,
+            cli_cost_usd=fallback_cost_usd,
+        )
 
     try:
         await persist_and_record_usage(
@@ -394,6 +414,9 @@ async def record_turn_cost_from_openrouter(
             cost_usd=real_cost,
             model=model,
             provider="open_router",
+            extra_metadata={
+                "cost_source": fallback.source if fallback else "openrouter"
+            },
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
@@ -418,6 +441,7 @@ async def record_turn_cost_from_openrouter(
                     "cost_usd": real_cost,
                     "cost_source": cost_source,
                     "fallback_cost_usd": fallback_cost_usd,
+                    "estimate_source": fallback.source if fallback else None,
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "cache_read_tokens": cache_read_tokens,
@@ -434,3 +458,38 @@ async def record_turn_cost_from_openrouter(
                 log_prefix,
                 exc_info=True,
             )
+
+
+def _log_fallback(
+    *,
+    log_prefix: str,
+    resolved: int,
+    total: int,
+    fallback: FallbackCost,
+    cli_cost_usd: float | None,
+) -> None:
+    """Warn that the recorded cost is (partly) estimated.
+
+    ``[cost-record]`` lines are parsed by log scripts: the existing fields
+    stay as they were and new ones are appended at the end.
+    """
+    if resolved:
+        logger.warning(
+            "%s[cost-record] OpenRouter partial lookup (%d/%d) — "
+            "using fallback estimate=$%s source=%s cli_estimate=$%s",
+            log_prefix,
+            resolved,
+            total,
+            fallback.cost_usd,
+            fallback.source,
+            cli_cost_usd,
+        )
+        return
+    logger.warning(
+        "%s[cost-record] OpenRouter lookup failed for all gens — "
+        "using fallback estimate=$%s source=%s cli_estimate=$%s",
+        log_prefix,
+        fallback.cost_usd,
+        fallback.source,
+        cli_cost_usd,
+    )
