@@ -132,6 +132,7 @@ class CapabilityIndex:
         permissions: "CopilotPermissions | None" = None,
         limit: int = DEFAULT_LIMIT,
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
+        collapse_services: bool = False,
     ) -> SearchResult:
         query = " ".join((query or "").split())
         if not query:
@@ -183,6 +184,8 @@ class CapabilityIndex:
         else:
             main = rest
         hits += _ranked([to_hit(idx, "search") for idx in main])
+        if collapse_services:
+            hits = _collapse_block_twins(hits)
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service
         )
@@ -338,6 +341,26 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
             else len(entry.tags)
         )
         yield from (tag.lower() for tag in entry.tags[marker + 1 :])
+
+
+def _collapse_block_twins(hits: list[SearchHit]) -> list[SearchHit]:
+    """One entry per service: where an MCP server and a block share a
+    service, the server stays.  An expert acting in chat talks to the
+    vendor's own tools; the block is for graphs."""
+    served = {
+        h.entry.service
+        for h in hits
+        if h.entry.kind == "mcp_server" and h.entry.service
+    }
+    return [
+        h
+        for h in hits
+        if not (
+            h.entry.kind == "block"
+            and h.entry.klass == "service"
+            and h.entry.service in served
+        )
+    ]
 
 
 def _ranked(hits: list[SearchHit]) -> list[SearchHit]:

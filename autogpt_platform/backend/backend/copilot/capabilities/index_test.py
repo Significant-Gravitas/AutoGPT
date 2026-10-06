@@ -298,3 +298,84 @@ def test_a_platform_entry_keeps_a_bare_ref_a_skill_shares(index):
     shared = layered.get("web_search")
     assert shared is not None and shared.kind == "tool"
     assert layered.get("skill:web_search") is clone
+
+
+def _mcp(host: str, name: str, service: str, purpose: str):
+    return CapabilityEntry(
+        id=f"mcp:{host}",
+        kind="mcp_server",
+        klass="service",
+        name=name,
+        purpose=purpose,
+        tags=["mcp", service, host],
+        context="direct",
+        implementations=[Implementation(kind="mcp_server", ref=f"https://{host}/mcp")],
+        connection=Connection(
+            required=True, key_type="server_url", key=f"https://{host}/mcp"
+        ),
+        service=service,
+    )
+
+
+@pytest.fixture
+def twin_index() -> CapabilityIndex:
+    linear_block = _block(
+        LINEAR_ID,
+        "LinearCreateIssueBlock",
+        "Create a new issue in Linear.",
+        provider="linear",
+        args=("title", "team"),
+    )
+    linear_block.service = "linear"
+    return CapabilityIndex(
+        [
+            linear_block,
+            _mcp(
+                "mcp.linear.app",
+                "Linear",
+                "linear",
+                "Issues, projects and cycles in Linear.",
+            ),
+            _mcp("mcp.sentry.dev", "Sentry", "sentry", "Errors and traces in Sentry."),
+        ]
+    )
+
+
+def test_collapse_keeps_only_the_mcp_twin(twin_index: CapabilityIndex):
+    result = twin_index.search("linear issue", collapse_services=True)
+    kinds = {hit.entry.id: hit.entry.kind for hit in result.hits}
+    assert "mcp:mcp.linear.app" in kinds
+    assert f"block:{LINEAR_ID}" not in kinds
+
+
+def test_no_collapse_by_default(twin_index: CapabilityIndex):
+    result = twin_index.search("linear issue")
+    ids = {hit.entry.id for hit in result.hits}
+    assert {"mcp:mcp.linear.app", f"block:{LINEAR_ID}"} <= ids
+
+
+def test_collapse_leaves_a_block_without_a_twin_alone(twin_index: CapabilityIndex):
+    github = _block(
+        GITHUB_ID,
+        "GithubMakeIssueBlock",
+        "Create an issue on GitHub.",
+        provider="github",
+    )
+    github.service = "github"
+    index = twin_index.with_entries([github])
+    result = index.search("github issue", collapse_services=True)
+    assert f"block:{GITHUB_ID}" in {hit.entry.id for hit in result.hits}
+
+
+def test_collapsed_twin_reports_the_mcp_connection_state(twin_index: CapabilityIndex):
+    connected = ConnectionState(
+        providers=frozenset({"linear"}),
+        server_urls=frozenset(),
+    )
+    result = twin_index.search(
+        "linear issue", connections=connected, collapse_services=True
+    )
+    hit = next(h for h in result.hits if h.entry.id == "mcp:mcp.linear.app")
+    # The API key connects the block, not the server; the surviving entry
+    # says what it needs, and that is a sign-in.
+    assert hit.connected is False

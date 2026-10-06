@@ -61,7 +61,7 @@ async def test_expert_search_reports_needs_grant_for_an_owned_but_ungranted_cred
         AsyncMock(return_value=GITHUB_UNGRANTED),
     ) as loader:
         result = await FindCapabilityTool()._execute(
-            USER, session, query="github pull request"
+            USER, session, query="github pull request", kind="block"
         )
     assert isinstance(result, CapabilityListResponse)
     loader.assert_awaited_once_with(USER, "expert-1")
@@ -84,7 +84,7 @@ async def test_expert_search_reports_connected_for_a_granted_credential():
         AsyncMock(return_value=granted),
     ):
         result = await FindCapabilityTool()._execute(
-            USER, session, query="github pull request"
+            USER, session, query="github pull request", kind="block"
         )
     assert isinstance(result, CapabilityListResponse)
     assert all(c["connected"] is True for c in _github_hits(result))
@@ -98,7 +98,7 @@ async def test_expert_search_reports_false_for_a_provider_the_account_lacks():
         AsyncMock(return_value=ConnectionState(ungranted=ConnectionState())),
     ):
         result = await FindCapabilityTool()._execute(
-            USER, session, query="github pull request"
+            USER, session, query="github pull request", kind="block"
         )
     assert isinstance(result, CapabilityListResponse)
     assert all(c["connected"] is False for c in _github_hits(result))
@@ -167,3 +167,46 @@ async def test_loader_fails_closed_when_the_grant_lookup_fails():
     assert state.providers == frozenset()
     assert state.ungranted is not None
     assert state.ungranted.providers == frozenset({"github"})
+
+
+async def test_expert_direct_search_lists_one_entry_per_service():
+    """GitHub ships both as blocks and as a catalog server linked to the
+    ``github`` provider, so in an expert chat only the server is listed."""
+    session = make_session(USER, expert_id="expert-1")
+    with patch(
+        "backend.copilot.tools.find_capability.load_connection_state",
+        AsyncMock(return_value=ConnectionState()),
+    ):
+        result = await FindCapabilityTool()._execute(
+            USER, session, query="github issue"
+        )
+    assert isinstance(result, CapabilityListResponse)
+    assert any(c["kind"] == "mcp_server" for c in result.capabilities)
+    assert not _github_hits(result)
+
+
+async def test_expert_graph_search_keeps_blocks():
+    session = make_session(USER, expert_id="expert-1")
+    with patch(
+        "backend.copilot.tools.find_capability.load_connection_state",
+        AsyncMock(return_value=ConnectionState()),
+    ):
+        result = await FindCapabilityTool()._execute(
+            USER, session, query="github issue", context="graph"
+        )
+    assert isinstance(result, CapabilityListResponse)
+    assert _github_hits(result)
+
+
+async def test_otto_search_keeps_both_twins():
+    session = make_session(USER)
+    with patch(
+        "backend.copilot.tools.find_capability.load_connection_state",
+        AsyncMock(return_value=ConnectionState()),
+    ):
+        result = await FindCapabilityTool()._execute(
+            USER, session, query="github search issues"
+        )
+    assert isinstance(result, CapabilityListResponse)
+    assert _github_hits(result)
+    assert any(c["kind"] == "mcp_server" for c in result.capabilities)
