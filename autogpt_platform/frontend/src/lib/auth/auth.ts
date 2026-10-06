@@ -204,10 +204,21 @@ export const auth = betterAuth({
     // A reset link only reaches whoever holds the address, so opening one
     // verifies it: an unverified account (a repeat sign-up's above, or one
     // from before the flag) then logs in with the password just set.
+    // Better Auth has already saved the password and used up the token by
+    // now, and a throw here would answer 500 and skip revoking sessions. So a
+    // failure is logged and the address left unverified: the next sign-in
+    // sends a fresh verify link (sendOnSignIn).
     onPasswordReset: async ({ user }) => {
       if (user.emailVerified) return;
-      const { internalAdapter } = await getAuthContext();
-      await internalAdapter.updateUser(user.id, { emailVerified: true });
+      try {
+        const { internalAdapter } = await getAuthContext();
+        await internalAdapter.updateUser(user.id, { emailVerified: true });
+      } catch (error) {
+        console.error("Failed to verify the address on password reset", {
+          userId: user.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     },
     password: {
       // bcrypt instead of Better Auth's default scrypt so password hashes

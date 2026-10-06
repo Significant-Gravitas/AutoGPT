@@ -391,6 +391,54 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(asFirst.status).toBe(401);
   });
 
+  it("still resets the password when marking the address verified fails", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    await signUp(handler, "unverified@example.com");
+    await post(handler, "/request-password-reset", {
+      email: "unverified@example.com",
+      redirectTo: `${baseURL}/reset-password`,
+    });
+    await emailsSent();
+    const { auth } = await import("../auth");
+    const { internalAdapter } = await auth.$context;
+    const updateUser = vi
+      .spyOn(internalAdapter, "updateUser")
+      .mockRejectedValueOnce(new Error("database is down"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const reset = await post(handler, "/reset-password", {
+      token: lastResetToken("unverified@example.com", "reset_password"),
+      newPassword: "a-new-long-enough-password",
+    });
+
+    expect(updateUser).toHaveBeenCalled();
+    expect(reset.status).toBe(200);
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      "unverified@example.com",
+    );
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: false }),
+    ]);
+    // The address stays unverified, so signing in with the new password
+    // sends a fresh verify link rather than a dead end.
+    sentEmails.length = 0;
+    expireCooldowns(db);
+    const signedIn = await signIn(
+      handler,
+      "unverified@example.com",
+      "a-new-long-enough-password",
+    );
+    expect(signedIn.status).toBe(403);
+    expect((await signedIn.json()).code).toBe("EMAIL_NOT_VERIFIED");
+    await emailsSent();
+    expect(lastVerifyLink("unverified@example.com")).toContain(
+      "/api/auth/verify-email",
+    );
+    consoleError.mockRestore();
+  });
+
   it("emails a repeatedly signed-up address once per cooldown", async () => {
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "spam@example.com");
