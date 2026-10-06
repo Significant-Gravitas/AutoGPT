@@ -1,7 +1,7 @@
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import { ProviderMetadataSupportedAuthTypesItem as AuthType } from "@/app/api/__generated__/models/providerMetadataSupportedAuthTypesItem";
 
-import { formatProviderName } from "../../helpers";
+import { serviceIcon, serviceKey, serviceName } from "../../helpers";
 
 export type AuthMethod = (typeof AuthType)[keyof typeof AuthType];
 
@@ -9,6 +9,7 @@ export { AuthType };
 
 export interface ConnectableProvider {
   id: string;
+  serviceId: string;
   name: string;
   description?: string | null;
   supportedAuthTypes: AuthMethod[];
@@ -33,28 +34,49 @@ export function toConnectableProviders(
   metadata: ProviderMetadata[],
 ): ConnectableProvider[] {
   const seen = new Set<string>();
-  const byDisplayProvider = new Map<string, ConnectableProvider>();
+  const byService = new Map<string, ConnectableProvider>();
   for (const item of metadata) {
     if (seen.has(item.name)) continue;
     seen.add(item.name);
 
     const displayProvider = item.name === "codex" ? "openai" : item.name;
+    const ref = {
+      provider: item.name,
+      service: item.service,
+      service_name: item.service_name,
+      service_icon: item.service_icon,
+    };
+    const key = serviceKey(ref);
     const authTypes = normalizeAuthTypes(item.supported_auth_types);
-    const existing = byDisplayProvider.get(displayProvider);
-    const provider = existing ?? {
-      id: displayProvider,
-      name: item.display_name ?? formatProviderName(displayProvider),
+    const existing = byService.get(key);
+    const provider: ConnectableProvider = existing ?? {
+      // A block provider keeps its slug as id so OAuth and API-key flows
+      // address it; an MCP-only service keeps its catalog name.
+      id: item.mcp_server ? item.name : displayProvider,
+      serviceId: key,
+      name: serviceName(ref),
       description: item.description,
       supportedAuthTypes: [],
-      iconId: item.service_icon ?? displayProvider,
+      iconId: serviceIcon(ref),
     };
-    if (item.mcp_server) provider.mcpServer = item.mcp_server;
+    if (item.mcp_server) {
+      provider.mcpServer = item.mcp_server;
+      if (existing) {
+        provider.searchTerms = Array.from(
+          new Set([...(provider.searchTerms ?? []), item.name]),
+        );
+      }
+    } else if (existing?.mcpServer && provider.id !== displayProvider) {
+      // The catalog entry came first; the block provider owns the id.
+      provider.searchTerms = Array.from(
+        new Set([...(provider.searchTerms ?? []), provider.id]),
+      );
+      provider.id = displayProvider;
+    }
 
     for (const authType of authTypes) {
       const alreadySupported = provider.supportedAuthTypes.includes(authType);
-      if (!alreadySupported) {
-        provider.supportedAuthTypes.push(authType);
-      }
+      if (!alreadySupported) provider.supportedAuthTypes.push(authType);
       if (item.name === displayProvider) {
         delete provider.authProviderByType?.[authType];
       } else if (!alreadySupported) {
@@ -64,24 +86,24 @@ export function toConnectableProviders(
         };
       }
     }
-    if (item.name !== displayProvider) {
+    if (item.name !== displayProvider && !item.mcp_server) {
       provider.searchTerms = Array.from(
         new Set([...(provider.searchTerms ?? []), item.name]),
       );
     }
-    if (item.name === displayProvider) {
+    if (item.name === displayProvider && !item.mcp_server) {
       provider.description = item.description;
     }
-    byDisplayProvider.set(displayProvider, provider);
+    byService.set(key, provider);
   }
 
-  const openai = byDisplayProvider.get("openai");
+  const openai = byService.get("openai");
   if (openai?.authProviderByType?.oauth2 === "codex") {
     openai.description =
       "OpenAI models via API key or your ChatGPT subscription";
   }
 
-  const result = Array.from(byDisplayProvider.values());
+  const result = Array.from(byService.values());
   result.sort((a, b) => a.name.localeCompare(b.name));
   return result;
 }

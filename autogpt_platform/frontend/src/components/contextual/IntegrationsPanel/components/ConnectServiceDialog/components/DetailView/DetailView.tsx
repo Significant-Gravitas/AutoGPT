@@ -1,5 +1,6 @@
 "use client";
 import { motion, useReducedMotion } from "framer-motion";
+import { useState } from "react";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
@@ -13,7 +14,7 @@ import {
 
 import { AuthType, ConnectableProvider, type AuthMethod } from "../../helpers";
 import { McpConnectPanel } from "./McpConnectPanel";
-import { MCPPresetPanel } from "./MCPPresetPanel";
+import { McpFirstPanel } from "./McpFirstPanel";
 import { getAuthMethodLabel, MethodPanel } from "./MethodPanel";
 import { ProviderAvatar } from "./ProviderAvatar";
 import { UnsupportedNotice } from "./UnsupportedNotice";
@@ -26,6 +27,8 @@ interface Props {
   provider: ConnectableProvider;
   onBack: () => void;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
+  /** Open on the service's own sign-in when it has one. */
+  preferMcp?: boolean;
 }
 
 const TAB_PRIORITY: AuthMethod[] = [
@@ -43,7 +46,12 @@ const lastTabByProvider = new Map<string, AuthMethod>();
 // Standard product-UI ease-out — keep transitions under Emil's 300ms ceiling.
 const PANEL_TRANSITION = { duration: 0.18, ease: [0, 0, 0.2, 1] as const };
 
-export function DetailView({ provider, onBack, onSuccess }: Props) {
+export function DetailView({
+  provider,
+  onBack,
+  onSuccess,
+  preferMcp = false,
+}: Props) {
   const description = provider.description;
   const reduceMotion = useReducedMotion();
   const tabs = TAB_PRIORITY.filter((method) =>
@@ -53,6 +61,7 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
   const remembered = lastTabByProvider.get(provider.id);
   const defaultTab =
     remembered && tabs.includes(remembered) ? remembered : tabs[0];
+  const [useNative, setUseNative] = useState(!preferMcp && tabs.length > 0);
 
   return (
     <div className="flex flex-col gap-5 pl-1">
@@ -68,10 +77,7 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
           <Icon icon={ArrowLeft02Icon} size={18} />
         </Button>
         <ProviderAvatar
-          id={
-            provider.mcpServer?.icon_id ??
-            (provider.mcpServer ? "mcp" : provider.id)
-          }
+          id={provider.iconId ?? provider.id}
           name={provider.name}
         />
         <div className="flex min-w-0 flex-col gap-1">
@@ -86,53 +92,72 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
         </div>
       </div>
 
-      {provider.mcpServer ? (
-        <MCPPresetPanel server={provider.mcpServer} onSuccess={onSuccess} />
+      {provider.mcpServer && !useNative ? (
+        <McpFirstPanel
+          server={provider.mcpServer}
+          hasNativeMethods={tabs.length > 0}
+          onUseNative={() => setUseNative(true)}
+          onSuccess={onSuccess}
+        />
       ) : provider.id === MCP_PROVIDER_ID ? (
         <McpConnectPanel onSuccess={onSuccess} />
       ) : tabs.length === 0 ? (
         <UnsupportedNotice providerName={provider.name} />
-      ) : tabs.length === 1 ? (
-        <MethodPanel
-          method={tabs[0]}
-          provider={provider}
-          onSuccess={onSuccess}
-        />
       ) : (
-        <TabsLine
-          defaultValue={defaultTab}
-          onValueChange={(value) => {
-            const next = value as AuthMethod;
-            if (tabs.includes(next)) lastTabByProvider.set(provider.id, next);
-          }}
-        >
-          <TabsLineList>
-            {tabs.map((method) => (
-              <TabsLineTrigger key={method} value={method}>
-                {getAuthMethodLabel(provider, method)}
-              </TabsLineTrigger>
-            ))}
-          </TabsLineList>
-          {tabs.map((method) => (
-            <TabsLineContent key={method} value={method}>
-              <motion.div
-                initial={
-                  reduceMotion
-                    ? { opacity: 0 }
-                    : { opacity: 0, x: 6, filter: "blur(2px)" }
-                }
-                animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                transition={PANEL_TRANSITION}
-              >
-                <MethodPanel
-                  method={method}
-                  provider={provider}
-                  onSuccess={onSuccess}
-                />
-              </motion.div>
-            </TabsLineContent>
-          ))}
-        </TabsLine>
+        <div className="flex flex-col gap-4">
+          {tabs.length === 1 ? (
+            <MethodPanel
+              method={tabs[0]}
+              provider={provider}
+              onSuccess={onSuccess}
+            />
+          ) : (
+            <TabsLine
+              defaultValue={defaultTab}
+              onValueChange={(value) => {
+                const next = value as AuthMethod;
+                if (tabs.includes(next))
+                  lastTabByProvider.set(provider.id, next);
+              }}
+            >
+              <TabsLineList>
+                {tabs.map((method) => (
+                  <TabsLineTrigger key={method} value={method}>
+                    {getAuthMethodLabel(provider, method)}
+                  </TabsLineTrigger>
+                ))}
+              </TabsLineList>
+              {tabs.map((method) => (
+                <TabsLineContent key={method} value={method}>
+                  <motion.div
+                    initial={
+                      reduceMotion
+                        ? { opacity: 0 }
+                        : { opacity: 0, x: 6, filter: "blur(2px)" }
+                    }
+                    animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                    transition={PANEL_TRANSITION}
+                  >
+                    <MethodPanel
+                      method={method}
+                      provider={provider}
+                      onSuccess={onSuccess}
+                    />
+                  </motion.div>
+                </TabsLineContent>
+              ))}
+            </TabsLine>
+          )}
+          {provider.mcpServer && !preferMcp ? (
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={() => setUseNative(false)}
+            >
+              Sign in with {provider.name} instead
+            </Button>
+          ) : null}
+        </div>
       )}
     </div>
   );

@@ -477,24 +477,45 @@ describe("managing an expert's integrations", () => {
     expect(within(list).queryByRole("button", { name: /Slack/ })).toBeNull();
   });
 
-  it("excludes MCP presets from the native-method picker", async () => {
+  it("offers a vendor once and opens its sign-in first, with an API key alternative", async () => {
     server.use(
       getListExpertCredentialsMockHandler([]),
       http.get("*/api/integrations/providers", () =>
         HttpResponse.json([
           {
-            name: "notion",
-            description: "Docs and databases",
+            name: "linear",
+            description: "Issues and projects",
             supported_auth_types: ["api_key"],
+            service: "linear",
+            service_name: null,
+            service_icon: "linear",
           },
           {
-            name: "mcp_airtable",
-            display_name: "Airtable",
+            name: "mcp_linear",
+            display_name: "Linear",
             supported_auth_types: [],
+            service: "linear",
+            service_name: "Linear",
+            service_icon: "linear",
             mcp_server: {
-              server_url: "https://mcp.airtable.com/mcp",
-              documentation_url: "https://support.airtable.com",
-              setup_instructions: "Sign in to Airtable.",
+              server_url: "https://mcp.linear.app/mcp",
+              documentation_url: "https://linear.app/docs",
+              setup_instructions: "Sign in to Linear.",
+              connection_mode: "hosted",
+              auth_methods: ["oauth"],
+            },
+          },
+          {
+            name: "mcp_sentry",
+            display_name: "Sentry",
+            supported_auth_types: [],
+            service: "sentry",
+            service_name: "Sentry",
+            service_icon: "sentry",
+            mcp_server: {
+              server_url: "https://mcp.sentry.dev/mcp",
+              documentation_url: "https://docs.sentry.io",
+              setup_instructions: "Sign in to Sentry.",
               connection_mode: "hosted",
               auth_methods: ["oauth"],
             },
@@ -511,11 +532,111 @@ describe("managing an expert's integrations", () => {
     const dialog = await screen.findByRole("dialog");
     const list = await within(dialog).findByRole("list", { name: "Services" });
 
-    expect(within(list).queryByRole("button", { name: /Airtable/ })).toBeNull();
-    await userEvent.click(within(list).getByRole("button", { name: /Notion/ }));
+    expect(
+      within(list).getAllByRole("button", { name: /Linear/ }),
+    ).toHaveLength(1);
+    expect(within(list).getByRole("button", { name: /Sentry/ })).toBeDefined();
+    expect(within(dialog).queryByText("MCP")).toBeNull();
+
+    await userEvent.click(within(list).getByRole("button", { name: /Linear/ }));
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+    expect(
+      within(dialog).getByRole("button", {
+        name: /Connect with an API key instead/,
+      }),
+    ).toBeDefined();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: /Connect with an API key instead/,
+      }),
+    );
     expect(
       await within(dialog).findByRole("button", { name: /API Key/ }),
     ).toBeDefined();
+  });
+
+  it("grants a credential connected through the service sign-in", async () => {
+    let granted: string[] = [];
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "mcp_sentry",
+            display_name: "Sentry",
+            supported_auth_types: [],
+            service: "sentry",
+            service_name: "Sentry",
+            service_icon: "sentry",
+            mcp_server: {
+              server_url: "https://mcp.sentry.dev/mcp",
+              documentation_url: "https://docs.sentry.io",
+              setup_instructions: "Paste your Sentry token.",
+              connection_mode: "hosted",
+              auth_methods: ["bearer"],
+            },
+          },
+        ]),
+      ),
+      http.post("*/api/mcp/discover-tools", () =>
+        HttpResponse.json({
+          tools: [],
+          server_url: "https://mcp.sentry.dev/mcp",
+        }),
+      ),
+      http.post("*/api/mcp/token", () =>
+        HttpResponse.json({
+          id: "cred-sentry",
+          provider: "mcp",
+          type: "oauth2",
+          title: "MCP: mcp.sentry.dev",
+          host: "https://mcp.sentry.dev/mcp",
+          service: "sentry",
+          service_name: "Sentry",
+          service_icon: "sentry",
+        }),
+      ),
+      http.post(
+        "*/api/experts/expert-maria/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = body.credential_ids;
+          return HttpResponse.json([
+            {
+              credential_id: "cred-sentry",
+              provider: "mcp",
+              title: "MCP: mcp.sentry.dev",
+              type: "oauth2",
+              service: "sentry",
+              service_name: "Sentry",
+              service_icon: "sentry",
+            },
+          ]);
+        },
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(
+        await within(dialog).findByRole("list", { name: "Services" }),
+      ).getByRole("button", { name: /Sentry/ }),
+    );
+    await userEvent.type(
+      await within(dialog).findByLabelText("API token"),
+      "sntrys_token_value",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Save token" }),
+    );
+
+    await waitFor(() => expect(granted).toEqual(["cred-sentry"]));
   });
 
   it("grants only the credential the dialog created", async () => {

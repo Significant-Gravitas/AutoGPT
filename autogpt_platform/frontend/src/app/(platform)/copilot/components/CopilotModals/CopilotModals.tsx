@@ -60,6 +60,7 @@ export function CopilotModals() {
       </Dialog>
 
       <ConnectServiceDialog
+        preferMcp
         open={modal === "connect"}
         onOpenChange={handleOpenChange}
       />

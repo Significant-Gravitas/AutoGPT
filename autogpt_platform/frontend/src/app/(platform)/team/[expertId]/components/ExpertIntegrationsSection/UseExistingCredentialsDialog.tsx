@@ -47,6 +47,7 @@ function groupByProvider(
     .map(([id, list]) => ({
       provider: {
         id,
+        serviceId: id,
         name: serviceName(list[0]),
         supportedAuthTypes: [],
         iconId: serviceIcon(list[0]),

@@ -12,6 +12,7 @@ import {
   type AuthMethod,
   type ConnectableProvider,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
+import { serviceKey } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useEffect, useState } from "react";
 
@@ -73,24 +74,21 @@ export function useExpertConnectServiceDialog({
     }
   }, [open, initialProviderId]);
 
-  const allProviders = toConnectableProviders(
-    (providersQuery.data ?? []).filter((provider) => !provider.mcp_server),
-  );
+  const allProviders = toConnectableProviders(providersQuery.data ?? []);
   const credentials = credentialsQuery.data ?? [];
-  const connectedProviders = new Set(
-    credentials.map((credential) => credential.provider),
-  );
+  const connectedServices = new Set(credentials.map(serviceKey));
   const providers = filterConnectableProviders(
     allProviders,
     debouncedQuery,
   ).filter((provider) => {
     if (filter === "all") return true;
-    const isConnected = connectedProviders.has(provider.id);
+    const isConnected = connectedServices.has(provider.serviceId);
     return filter === "connected" ? isConnected : !isConnected;
   });
   const selectedProvider: ConnectableProvider | null = selectedId
     ? (allProviders.find((provider) => provider.id === selectedId) ?? null)
     : null;
+  const isMcpStep = Boolean(selectedProvider?.mcpServer) && !selectedMethod;
   function handleSuccess(credential?: CredentialsMetaResponse) {
     setDirection(-1);
     setSelectedId(null);
@@ -141,15 +139,16 @@ export function useExpertConnectServiceDialog({
     refetch: providersQuery.refetch,
     selectedProvider,
     direction,
-    connectedProviders,
+    connectedServices,
     selectedMethod,
     setSelectedMethod,
     apiKeyForm: apiKey.form,
     handleApiKeySubmit: apiKey.handleSubmit,
     showContinue:
-      !selectedMethod ||
-      selectedMethod === AuthType.oauth2 ||
-      selectedMethod === AuthType.api_key,
+      !isMcpStep &&
+      (!selectedMethod ||
+        selectedMethod === AuthType.oauth2 ||
+        selectedMethod === AuthType.api_key),
     isContinueDisabled:
       !selectedMethod ||
       (selectedMethod === AuthType.api_key && !apiKey.form.formState.isValid),

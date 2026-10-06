@@ -66,7 +66,7 @@ export function ExpertConnectServiceDialog({
     refetch,
     selectedProvider,
     direction,
-    connectedProviders,
+    connectedServices,
     selectedMethod,
     setSelectedMethod,
     apiKeyForm,
@@ -116,6 +116,7 @@ export function ExpertConnectServiceDialog({
                     transition={STEP_TRANSITION}
                   >
                     <ConnectMethodView
+                      preferMcp
                       provider={selectedProvider}
                       selectedMethod={selectedMethod}
                       onSelectMethod={setSelectedMethod}
@@ -214,8 +215,8 @@ export function ExpertConnectServiceDialog({
                                     provider={provider}
                                     className="rounded-lg"
                                     onSelect={handleSelect}
-                                    isConnected={connectedProviders.has(
-                                      provider.id,
+                                    isConnected={connectedServices.has(
+                                      provider.serviceId,
                                     )}
                                   />
                                 </li>
