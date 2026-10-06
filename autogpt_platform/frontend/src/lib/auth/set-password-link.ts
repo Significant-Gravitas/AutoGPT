@@ -15,8 +15,9 @@ const RESET_LINK_EXPIRES_IN_SECONDS = 60 * 60;
  * link. Sign-out deletes the session but never the row, so the row is the
  * lasting evidence, and a session still counts in case provisioning failed.
  *
- * If the row can't be read, the answer is `ifUnknown`: each caller picks the
- * one that keeps a first registrant's password from surviving.
+ * If the row or the sessions can't be read, the answer is `ifUnknown`: each
+ * caller picks the one that keeps a first registrant's password from
+ * surviving.
  */
 export async function hasAccountBeenUsed(
   context: AuthEmailContext,
@@ -26,12 +27,14 @@ export async function hasAccountBeenUsed(
 ) {
   const hasUser = await hasPlatformUser(userId).catch(() => ifUnknown);
   if (hasUser) return true;
-  const sessions = await context.adapter.findMany({
-    model: "session",
-    where: [{ field: "userId", value: userId }],
-    limit: 1,
-  });
-  return sessions.length > 0;
+  return context.adapter
+    .findMany({
+      model: "session",
+      where: [{ field: "userId", value: userId }],
+      limit: 1,
+    })
+    .then((sessions) => sessions.length > 0)
+    .catch(() => ifUnknown);
 }
 
 // The same token and link Better Auth's request-password-reset issues, so its

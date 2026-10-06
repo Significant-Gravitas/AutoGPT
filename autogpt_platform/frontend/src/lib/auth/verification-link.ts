@@ -46,6 +46,8 @@ export async function sendVerificationLink(args: Args) {
 }
 
 async function sendsSetPasswordLink(args: Args) {
+  // No context means no set-password link either, and falling back to the
+  // verification link would sign in whoever opens it, so this one errors.
   const context = await args.getAuthContext();
   // Unknown counts as used: the set-password link is the safe one to send.
   const used = await hasAccountBeenUsed(

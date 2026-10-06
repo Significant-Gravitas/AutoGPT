@@ -649,6 +649,33 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
   });
 
+  it("answers Resend with the set-password link when the session lookup fails", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "unknown@example.com");
+    await emailsSent();
+    sentEmails.length = 0;
+    const { auth } = await import("../auth");
+    const { adapter } = await auth.$context;
+    const findMany = adapter.findMany.bind(adapter);
+    let failed = false;
+    vi.spyOn(adapter, "findMany").mockImplementation(async (args) => {
+      if (args.model === "session" && !failed) {
+        failed = true;
+        throw new Error("database is down");
+      }
+      return findMany(args);
+    });
+
+    const resend = await post(handler, "/send-verification-email", {
+      email: "unknown@example.com",
+      callbackURL,
+    });
+
+    expect(failed).toBe(true);
+    expect(resend.status).toBe(200);
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
+  });
+
   it("lets one IP have only a few addresses emailed through the sign-up page", async () => {
     const { api } = await createAuthHandler(true);
 
