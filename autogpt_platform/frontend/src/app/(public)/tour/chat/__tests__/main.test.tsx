@@ -99,24 +99,6 @@ describe("Tour chat scripted demo", () => {
     expect(getSendBar()).toBeDefined();
   });
 
-  test("clicking the active sidebar session restarts the demo with an empty bar", async () => {
-    render(<TourChatPage />);
-
-    // Let the first turn auto-play so the second turn's prompt prefills.
-    await advanceThroughTurn();
-    expect(getSendBar()).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Competitor watch" }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    // Fresh run: transcript cleared and the bar empty/disabled again while
-    // the first turn re-plays on its own.
-    expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
-    expect(screen.queryByText(/break that down/i)).toBeNull();
-  });
-
   test("plays the competitor watch demo through to the payoff and upsell", async () => {
     render(<TourChatPage />);
 
@@ -156,9 +138,9 @@ describe("Tour chat scripted demo", () => {
     ).toBeDefined();
 
     // The end card carries the upsell now — the sidebar card hides.
-    expect(screen.queryByText(/Ready to build your own/i)).toBeNull();
-    expect(screen.queryByText(/Start with Pro for \$42\.50\/mo/i)).toBeNull();
-    expect(screen.queryByText("Self-host free")).toBeNull();
+    expect(screen.queryByText("Your AI team starts here")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Start free trial" })).toBeNull();
+    expect(screen.queryByText("Self-host instead")).toBeNull();
     expect(screen.queryByText(/Replay demo/i)).toBeNull();
 
     // Completion flips the store flag that hides the sidebar card.
@@ -177,46 +159,17 @@ describe("Tour chat scripted demo", () => {
     expect(useTourStore.getState().isDemoComplete).toBe(true);
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
 
-    // Picking another chat example from the sidebar must close the panel —
-    // it belongs to the finished demo, not the new one.
-    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Watch another scenario/i }),
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  test("scenario chips switch the demo path", async () => {
-    render(<TourChatPage />);
-
-    for (const label of [
-      "Daily brief",
-      "Call prep",
-      "Competitor watch",
-      "Support queue",
-    ]) {
-      expect(screen.getByRole("button", { name: label })).toBeDefined();
-    }
-
-    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    // The bar stays empty while the selected scenario's first turn auto-plays.
+    expect(useTourStore.getState().activeScenarioId).toBe("support-queue");
     expect(
-      screen.queryByText(/pull my unread emails and calendar/i),
-    ).toBeNull();
-
-    // The newly selected scenario auto-plays its first turn too.
-    await advanceThroughTurn();
-
-    expect(
-      screen.getByText(/pull my unread emails and calendar/i),
-    ).toBeDefined();
-    expect(
-      screen.getByText(/Love it\. Here's how I'll set that up/i),
+      screen.getByRole("link", { name: "Start free trial" }),
     ).toBeDefined();
   });
 });

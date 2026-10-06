@@ -1,60 +1,66 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
-import { buildTourPricingUrl, TOUR_GITHUB_URL } from "../../../constants";
-import { trackTourCtaClick } from "../../../tracking";
-import { GithubIcon, SparklesIcon } from "@hugeicons/core-free-icons";
+import { Card } from "@/components/atoms/Card/Card";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import {
+  ArrowRight02Icon,
+  GithubIcon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import { TOUR_GITHUB_URL } from "../../../constants";
+import { trackTourCtaClick } from "../../../tracking";
 
-// Only rendered while the demo is still playing — once it completes the
-// sidebar hides this card and the end card in the chat carries the upsell.
 export function TourUpsellCard() {
   return (
-    <div className="relative flex flex-col rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-1.5">
-        <Icon
-          icon={SparklesIcon}
-          size={14}
-          className="shrink-0 text-violet-600"
-        />
-        <Text variant="body-medium" className="text-zinc-900">
-          Ready to build your own?
+    <Card className="flex flex-col gap-4 border border-zinc-200 p-4 shadow-subtle">
+      <div className="flex items-center gap-2.5">
+        <span className="flex size-9 items-center justify-center rounded-medium bg-purple-100 text-purple-700">
+          <Icon icon={SparklesIcon} size={18} aria-hidden />
+        </span>
+        <Text variant="eyebrow" tone="secondary">
+          Free trial
         </Text>
       </div>
-      <Text variant="small" className="mt-1 text-zinc-500">
-        Spin up agents like this in minutes, hosted for you or on your own
-        infrastructure.
-      </Text>
-      <Button
-        as="NextLink"
-        href={buildTourPricingUrl("sidebar_card")}
-        target="_blank"
-        rel="noopener noreferrer"
-        variant="primary"
-        size="small"
-        onClick={() =>
-          trackTourCtaClick("pricing", { placement: "sidebar-card" })
-        }
-        className="mt-3 w-full shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)] transition-shadow hover:shadow-[0_0_28px_-4px_rgba(124,58,237,0.75)]"
-      >
-        Start with Pro for $42.50/mo
-      </Button>
-      <Button
-        as="NextLink"
-        href={TOUR_GITHUB_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        variant="ghost"
-        size="small"
-        onClick={() =>
-          trackTourCtaClick("self-host", { placement: "sidebar-card" })
-        }
-        className="mt-1.5 w-full text-zinc-600"
-        leftIcon={<Icon icon={GithubIcon} className="h-4 w-4" />}
-      >
-        Self-host free
-      </Button>
-    </div>
+      <div className="space-y-1.5">
+        <Text variant="h5" as="h2" tone="primary">
+          Your AI team starts here
+        </Text>
+        <Text variant="body" tone="secondary">
+          Build agents and put AI experts to work on your everyday tasks.
+        </Text>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Button
+          as="NextLink"
+          href="/signup"
+          variant="primary"
+          size="small"
+          onClick={() =>
+            trackTourCtaClick("free-trial", { placement: "sidebar-card" })
+          }
+          rightIcon={<Icon icon={ArrowRight02Icon} size={16} aria-hidden />}
+          className="w-full"
+        >
+          Start free trial
+        </Button>
+        <Button
+          as="NextLink"
+          href={TOUR_GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          variant="ghost"
+          size="small"
+          onClick={() =>
+            trackTourCtaClick("self-host", { placement: "sidebar-card" })
+          }
+          leftIcon={<Icon icon={GithubIcon} size={14} aria-hidden />}
+          className="w-full text-xs text-zinc-600"
+        >
+          Self-host instead
+        </Button>
+      </div>
+    </Card>
   );
 }

@@ -89,8 +89,12 @@ describe("Tour DataFast tracking", () => {
       ["tour_scenario_start", { scenario: DEFAULT_SCENARIO_ID }],
     ]);
 
-    // Switching scenario starts a new run but must not re-fire tour_start.
-    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
+    await advanceThroughTurn();
+    await pressEnterToSend();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Watch another scenario/i }),
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -98,7 +102,21 @@ describe("Tour DataFast tracking", () => {
     expect(eventsNamed("tour_start")).toHaveLength(1);
     expect(eventsNamed("tour_scenario_start")).toHaveLength(2);
     expect(eventsNamed("tour_scenario_start")[1][1]).toEqual({
-      scenario: "daily-brief",
+      scenario: "support-queue",
+    });
+  });
+
+  test("sidebar free-trial CTA tracks its signup intent", () => {
+    render(<TourChatPage />);
+
+    fireEvent.click(screen.getByRole("link", { name: "Start free trial" }));
+
+    expect(eventsNamed("tour_cta_click")).toEqual([
+      ["tour_cta_click", { label: "free-trial", placement: "sidebar-card" }],
+    ]);
+    expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
+      label: "free-trial",
+      placement: "sidebar-card",
     });
   });
 
