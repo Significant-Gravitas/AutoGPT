@@ -55,7 +55,7 @@ export function CopilotModals() {
         title="Integrations"
       >
         <Dialog.Content>
-          <IntegrationsPanel withHeading={false} />
+          <IntegrationsPanel withHeading={false} preferMcp />
         </Dialog.Content>
       </Dialog>
 

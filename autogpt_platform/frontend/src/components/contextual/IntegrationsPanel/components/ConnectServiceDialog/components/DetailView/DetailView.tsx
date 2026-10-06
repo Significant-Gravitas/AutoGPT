@@ -27,7 +27,6 @@ interface Props {
   provider: ConnectableProvider;
   onBack: () => void;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
-  /** Open on the service's own sign-in when it has one. */
   preferMcp?: boolean;
 }
 
@@ -61,7 +60,7 @@ export function DetailView({
   const remembered = lastTabByProvider.get(provider.id);
   const defaultTab =
     remembered && tabs.includes(remembered) ? remembered : tabs[0];
-  const [useNative, setUseNative] = useState(!preferMcp && tabs.length > 0);
+  const [showNative, setShowNative] = useState(!preferMcp && tabs.length > 0);
 
   return (
     <div className="flex flex-col gap-5 pl-1">
@@ -92,11 +91,11 @@ export function DetailView({
         </div>
       </div>
 
-      {provider.mcpServer && !useNative ? (
+      {provider.mcpServer && !showNative ? (
         <McpFirstPanel
           server={provider.mcpServer}
           hasNativeMethods={tabs.length > 0}
-          onUseNative={() => setUseNative(true)}
+          onUseNative={() => setShowNative(true)}
           onSuccess={onSuccess}
         />
       ) : provider.id === MCP_PROVIDER_ID ? (
@@ -148,11 +147,11 @@ export function DetailView({
               ))}
             </TabsLine>
           )}
-          {provider.mcpServer && !preferMcp ? (
+          {provider.mcpServer ? (
             <Button
               variant="ghost"
               size="small"
-              onClick={() => setUseNative(false)}
+              onClick={() => setShowNative(false)}
             >
               Sign in with {provider.name} instead
             </Button>

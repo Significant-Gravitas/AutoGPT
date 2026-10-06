@@ -7,6 +7,7 @@ import {
   getListCopilotFollowupSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -14,6 +15,7 @@ import {
   screen,
   within,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";
@@ -47,6 +49,38 @@ function Harness() {
       <button onClick={openConnect}>open-connect</button>
       <CopilotModals />
     </>
+  );
+}
+
+const linearBlockAndSignIn = getGetV1ListProvidersMockHandler([
+  {
+    name: "linear",
+    description: "Issues and projects",
+    supported_auth_types: ["api_key"],
+    service: "linear",
+    service_name: null,
+    service_icon: "linear",
+  },
+  {
+    name: "mcp_linear",
+    display_name: "Linear",
+    supported_auth_types: [],
+    service: "linear",
+    service_name: "Linear",
+    service_icon: "linear",
+    mcp_server: {
+      server_url: "https://mcp.linear.app/mcp",
+      documentation_url: "https://linear.app/docs",
+      setup_instructions: "Sign in to Linear.",
+      connection_mode: "hosted",
+      auth_methods: ["oauth"],
+    },
+  },
+]);
+
+async function openLinear(dialog: HTMLElement) {
+  await userEvent.click(
+    await within(dialog).findByRole("button", { name: /Linear/ }),
   );
 }
 
@@ -138,6 +172,73 @@ describe("CopilotModals", () => {
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText("Issues and PRs")).toBeDefined();
     expect(screen.queryByText("No integration connected")).toBeNull();
+  });
+
+  test("the connect dialog opens a service on its sign-in, with the API key one click away", async () => {
+    server.use(linearBlockAndSignIn);
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-connect"));
+
+    const dialog = await screen.findByRole("dialog");
+    await openLinear(dialog);
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+    expect(within(dialog).queryByPlaceholderText("My Linear key")).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Connect with an API key instead",
+      }),
+    );
+    expect(
+      await within(dialog).findByPlaceholderText("My Linear key"),
+    ).toBeDefined();
+    expect(within(dialog).queryByText("Sign in to Linear.")).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Sign in with Linear instead",
+      }),
+    );
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+  });
+
+  test("the integrations modal's connect dialog also opens on the sign-in", async () => {
+    server.use(linearBlockAndSignIn);
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-integrations"));
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Connect Service/ }))[0],
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect a service",
+    });
+    await openLinear(dialog);
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+  });
+
+  test("without the sign-in preference a service opens on its API key, with the sign-in one click away", async () => {
+    server.use(linearBlockAndSignIn);
+    render(<ConnectServiceDialog open onOpenChange={vi.fn()} />);
+
+    const dialog = await screen.findByRole("dialog");
+    await openLinear(dialog);
+    expect(
+      await within(dialog).findByPlaceholderText("My Linear key"),
+    ).toBeDefined();
+    expect(within(dialog).queryByText("Sign in to Linear.")).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Sign in with Linear instead",
+      }),
+    );
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+    expect(
+      within(dialog).getByRole("button", {
+        name: "Connect with an API key instead",
+      }),
+    ).toBeDefined();
   });
 
   test("renders the connect dialog from a ?modal=connect deep link", async () => {

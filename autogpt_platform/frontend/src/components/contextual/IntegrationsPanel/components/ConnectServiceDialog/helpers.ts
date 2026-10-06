@@ -50,8 +50,6 @@ export function toConnectableProviders(
     const authTypes = normalizeAuthTypes(item.supported_auth_types);
     const existing = byService.get(key);
     const provider: ConnectableProvider = existing ?? {
-      // A block provider keeps its slug as id so OAuth and API-key flows
-      // address it; an MCP-only service keeps its catalog name.
       id: item.mcp_server ? item.name : displayProvider,
       serviceId: key,
       name: serviceName(ref),
@@ -67,7 +65,6 @@ export function toConnectableProviders(
         );
       }
     } else if (existing?.mcpServer && provider.id !== displayProvider) {
-      // The catalog entry came first; the block provider owns the id.
       provider.searchTerms = Array.from(
         new Set([...(provider.searchTerms ?? []), provider.id]),
       );

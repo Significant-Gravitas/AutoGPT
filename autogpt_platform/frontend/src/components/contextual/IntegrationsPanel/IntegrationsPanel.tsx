@@ -12,9 +12,10 @@ import { AvailableIntegrations } from "./components/AvailableIntegrations/Availa
 
 interface Props {
   withHeading?: boolean;
+  preferMcp?: boolean;
 }
 
-export function IntegrationsPanel({ withHeading = true }: Props) {
+export function IntegrationsPanel({ withHeading = true, preferMcp }: Props) {
   const [isConnectOpen, setIsConnectOpen] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
@@ -49,6 +50,7 @@ export function IntegrationsPanel({ withHeading = true }: Props) {
         open={isConnectOpen}
         onOpenChange={setIsConnectOpen}
         initialProviderId={selectedProviderId}
+        preferMcp={preferMcp}
       />
     </>
   );
