@@ -46,12 +46,12 @@ CREATOR_IS_PUBLIC: LiteralString = """(
     )
 )"""
 
-# Rows shown only to signed-in users. The private media endpoint serves any
-# signed-in user, so the owner is the one in the object path and the UPDATE
-# takes no owner parameter.
+# Org avatars have no single owner. The private media endpoint serves a file to
+# members of an active org its uploader belongs to, so these rows are rewritten
+# only when the uploader is an active member of that org, and the UPDATE takes
+# no owner parameter.
 PATH_OWNER_TARGETS = frozenset(
     {
-        "LibraryAgent.imageUrl",
         "Organization.avatarUrl",
         "OrganizationProfile.avatarUrl",
     }
@@ -78,6 +78,7 @@ UPDATE_QUERIES: dict[str, LiteralString] = {
         SET "imageUrl" = $2
         WHERE la.id = $1
           AND la."imageUrl" = $3
+          AND la."userId" = $4
     """,
     "StoreListingVersion.imageUrls": f"""
         UPDATE platform."StoreListingVersion" AS slv

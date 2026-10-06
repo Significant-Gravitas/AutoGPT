@@ -30,6 +30,7 @@ if __package__:
         ApplyProgress,
         BackfillReport,
         Candidate,
+        Outcome,
         Transaction,
         print_report,
         process_candidates,
@@ -41,6 +42,7 @@ else:
         ApplyProgress,
         BackfillReport,
         Candidate,
+        Outcome,
         Transaction,
         print_report,
         process_candidates,
@@ -73,8 +75,18 @@ WITH candidates AS (
 
     UNION ALL
     SELECT
-        'LibraryAgent.imageUrl', la.id, NULL,
-        ARRAY[la."imageUrl"]::text[], false, NULL, ARRAY[]::text[]
+        'LibraryAgent.imageUrl', la.id, la."userId",
+        ARRAY[la."imageUrl"]::text[], false, NULL,
+        ARRAY(
+            SELECT colleague."userId"
+            FROM platform."OrgMember" AS me
+            JOIN platform."OrgMember" AS colleague ON colleague."orgId" = me."orgId"
+            JOIN platform."Organization" AS org ON org.id = me."orgId"
+            WHERE me."userId" = la."userId"
+              AND me.status = 'ACTIVE'
+              AND colleague.status = 'ACTIVE'
+              AND org."deletedAt" IS NULL
+        )
     FROM platform."LibraryAgent" AS la
     WHERE la."imageUrl" IS NOT NULL
 
@@ -123,14 +135,24 @@ WITH candidates AS (
     UNION ALL
     SELECT
         'Organization.avatarUrl', o.id, NULL,
-        ARRAY[o."avatarUrl"]::text[], false, NULL, ARRAY[]::text[]
+        ARRAY[o."avatarUrl"]::text[], false, NULL,
+        ARRAY(
+            SELECT om."userId"
+            FROM platform."OrgMember" AS om
+            WHERE om."orgId" = o.id AND om.status = 'ACTIVE'
+        )
     FROM platform."Organization" AS o
     WHERE o."avatarUrl" IS NOT NULL
 
     UNION ALL
     SELECT
         'OrganizationProfile.avatarUrl', op."organizationId", NULL,
-        ARRAY[op."avatarUrl"]::text[], false, NULL, ARRAY[]::text[]
+        ARRAY[op."avatarUrl"]::text[], false, NULL,
+        ARRAY(
+            SELECT om."userId"
+            FROM platform."OrgMember" AS om
+            WHERE om."orgId" = op."organizationId" AND om.status = 'ACTIVE'
+        )
     FROM platform."OrganizationProfile" AS op
     WHERE op."avatarUrl" IS NOT NULL
 )
@@ -195,7 +217,16 @@ async def main(*, apply: bool, bucket_override: str | None = None) -> int:
         await disconnect()
 
     print_report(report, apply=apply)
-    return 2 if report.cas_conflicts else 0
+    return 2 if report.cas_conflicts or stranded_references(report) else 0
+
+
+def stranded_references(report: BackfillReport) -> int:
+    """References left on the legacy bucket, which stop loading once it is private."""
+    return sum(
+        count
+        for outcome, count in report.counts.items()
+        if outcome not in {Outcome.REWRITE, Outcome.ALREADY_PUBLIC}
+    )
 
 
 async def _run(

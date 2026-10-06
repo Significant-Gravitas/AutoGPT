@@ -4,11 +4,11 @@ import fastapi
 from gcloud.aio import storage as async_storage
 
 from backend.util.gcs_utils import is_not_found_error
-from backend.util.settings import Settings
+from backend.util.settings import Config, Settings
 from backend.util.virus_scanner import scan_content_safe
 
 from . import exceptions as store_exceptions
-from . import local_media, public_media, submission_media
+from . import local_media, submission_media
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
         try:
             await async_client.download_metadata(bucket_name, image_path)
             return _stored_media_url(
-                public_media.publishing_enabled(),
+                _serves_private_urls(config),
                 bucket_name,
                 safe_user_id,
                 "images",
@@ -62,7 +62,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
         try:
             await async_client.download_metadata(bucket_name, video_path)
             return _stored_media_url(
-                public_media.publishing_enabled(),
+                _serves_private_urls(config),
                 bucket_name,
                 safe_user_id,
                 "videos",
@@ -208,7 +208,7 @@ async def upload_media(
 
                 logger.info(f"Successfully uploaded file to: {storage_path}")
                 return _stored_media_url(
-                    public_media.publishing_enabled(),
+                    _serves_private_urls(config),
                     bucket_name,
                     user_id,
                     media_type,
@@ -230,6 +230,14 @@ async def upload_media(
         raise store_exceptions.MediaUploadError(
             "Unexpected error during media upload"
         ) from e
+
+
+def _serves_private_urls(config: Config) -> bool:
+    """Only the legacy single-bucket setup still hands out direct GCS URLs."""
+    return (
+        config.resolved_private_user_data_bucket
+        != config.resolved_public_site_media_bucket
+    )
 
 
 def _stored_media_url(

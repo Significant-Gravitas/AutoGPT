@@ -1,7 +1,11 @@
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SAFE_MEDIA_PATH_COMPONENT_RE = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
-const SINGLE_BYTE_RANGE_RE = /^bytes=(?:[0-9]{1,20}-[0-9]{0,20}|-[0-9]{1,20})$/;
+const SINGLE_BYTE_RANGE_RE =
+  /^bytes=(?:([0-9]{1,15})-([0-9]{0,15})|-([0-9]{1,15}))$/;
+// Private media is buffered before it is forwarded, so each ranged response
+// is capped and a video loads in chunks of at most this size.
+export const PRIVATE_MEDIA_RANGE_CHUNK_BYTES = 4 * 1024 * 1024;
 
 export function isPrivateStoreMediaRequest(path: string[]): boolean {
   return (
@@ -22,8 +26,20 @@ export function isPrivateStoreVideoRequest(path: string[]): boolean {
 
 export function getSafePrivateMediaRange(value: string | null): string | null {
   if (!value) return null;
-  const range = value.trim();
-  return SINGLE_BYTE_RANGE_RE.test(range) ? range : null;
+  const match = SINGLE_BYTE_RANGE_RE.exec(value.trim());
+  if (!match) return null;
+  const [, startText, endText, suffixText] = match;
+  if (suffixText !== undefined) {
+    const suffix = Math.min(
+      Number(suffixText),
+      PRIVATE_MEDIA_RANGE_CHUNK_BYTES,
+    );
+    return `bytes=-${suffix}`;
+  }
+  const start = Number(startText);
+  const chunkEnd = start + PRIVATE_MEDIA_RANGE_CHUNK_BYTES - 1;
+  const end = endText ? Math.min(Number(endText), chunkEnd) : chunkEnd;
+  return `bytes=${start}-${end}`;
 }
 
 export function isWorkspaceDownloadRequest(path: string[]): boolean {

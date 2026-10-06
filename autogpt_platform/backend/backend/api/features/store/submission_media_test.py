@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock
 
 import autogpt_libs.auth
 import fastapi
+import prisma.enums
 import pytest
 
 from backend.util.exceptions import NotFoundError
@@ -266,3 +267,26 @@ async def test_private_media_read_hides_media_from_other_users(mocker):
             user=_user("stranger"),
         )
     metadata.assert_not_awaited()
+
+
+async def test_colleague_access_requires_active_memberships_in_a_live_org(mocker):
+    find_membership = mocker.patch("prisma.models.OrgMember.prisma")
+    find_membership.return_value.find_first = AsyncMock(return_value=None)
+
+    await submission_media.can_read(_user("colleague"), "owner")
+
+    assert find_membership.return_value.find_first.await_args.kwargs["where"] == {
+        "userId": "colleague",
+        "status": prisma.enums.OrgMemberStatus.ACTIVE,
+        "Org": {
+            "is": {
+                "deletedAt": None,
+                "Members": {
+                    "some": {
+                        "userId": "owner",
+                        "status": prisma.enums.OrgMemberStatus.ACTIVE,
+                    }
+                },
+            }
+        },
+    }

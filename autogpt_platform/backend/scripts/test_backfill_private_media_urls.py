@@ -266,24 +266,51 @@ def test_rewrite_accepts_query_and_wrapper_forms():
 @pytest.mark.parametrize(
     "target",
     [
-        backfill.Target.LIBRARY_IMAGE,
         backfill.Target.ORGANIZATION_AVATAR,
         backfill.Target.ORGANIZATION_PROFILE_AVATAR,
     ],
 )
-def test_signed_in_only_rows_take_the_owner_from_the_path(target):
-    candidate = _candidate(
-        target=target,
-        owner=None,
-        values=[_raw_url("creator", "images", "avatar.jpeg")],
+def test_org_avatars_are_rewritten_only_while_the_uploader_is_a_member(target):
+    member_upload = _raw_url("member", "images", "avatar.jpeg")
+    former_member_upload = _raw_url("former", "images", "avatar.jpeg")
+    candidates = [
+        _candidate(target=target, owner=None, values=[url], co_owners=["member"])
+        for url in (member_upload, former_member_upload)
+    ]
+
+    plan = backfill.build_plan(candidates, PRIVATE_BUCKET)
+
+    assert plan.counts == Counter(
+        {backfill.Outcome.REWRITE: 1, backfill.Outcome.HOLD_CROSS_USER: 1}
     )
-
-    plan = backfill.build_plan([candidate], PRIVATE_BUCKET)
-
-    assert plan.counts == Counter({backfill.Outcome.REWRITE: 1})
     assert plan.mutations[0].owner_user_id is None
     assert plan.mutations[0].new_values == [
-        "/api/store/submissions/media/creator/images/avatar.jpeg"
+        "/api/store/submissions/media/member/images/avatar.jpeg"
+    ]
+
+
+def test_library_rows_are_rewritten_only_to_media_their_owner_can_open():
+    own = _raw_url("owner", "images", "own.png")
+    colleague = _raw_url("colleague", "images", "shared.png")
+    creator = _raw_url("creator", "images", "listing.png")
+    candidates = [
+        _candidate(
+            target=backfill.Target.LIBRARY_IMAGE,
+            owner="owner",
+            values=[url],
+            co_owners=["colleague"],
+        )
+        for url in (own, colleague, creator)
+    ]
+
+    plan = backfill.build_plan(candidates, PRIVATE_BUCKET)
+
+    assert plan.counts == Counter(
+        {backfill.Outcome.REWRITE: 2, backfill.Outcome.HOLD_CROSS_USER: 1}
+    )
+    assert [mutation.owner_user_id for mutation in plan.mutations] == [
+        "owner",
+        "owner",
     ]
 
 
@@ -421,13 +448,13 @@ async def test_apply_allows_owner_proven_shared_expert_media():
     assert "visibility" not in query
 
 
-async def test_apply_rewrites_marketplace_library_copy_without_owner_parameter():
+async def test_apply_rewrites_a_library_image_only_for_its_owner():
     client = AsyncMock()
     client.execute_raw.return_value = 1
     transaction, _ = _transactions(client)
-    old_url = _raw_url("creator", "images", "listing.png")
+    old_url = _raw_url("owner", "images", "agent.png")
     candidate = _candidate(
-        target=backfill.Target.LIBRARY_IMAGE, owner=None, values=[old_url]
+        target=backfill.Target.LIBRARY_IMAGE, owner="owner", values=[old_url]
     )
 
     report = await backfill.process_candidates(
@@ -435,12 +462,12 @@ async def test_apply_rewrites_marketplace_library_copy_without_owner_parameter()
     )
 
     assert report.applied_rows == 1
-    query, row_id, replacement, expected = client.execute_raw.await_args.args
-    assert 'la."imageUrl" = $3' in query
-    assert "$4" not in query
+    query, row_id, replacement, expected, owner = client.execute_raw.await_args.args
+    assert 'la."userId" = $4' in query
     assert row_id == "record-secret"
-    assert replacement == "/api/store/submissions/media/creator/images/listing.png"
+    assert replacement == "/api/store/submissions/media/owner/images/agent.png"
     assert expected == old_url
+    assert owner == "owner"
 
 
 async def test_apply_commits_in_short_batches_and_keeps_progress_on_failure():
@@ -450,7 +477,7 @@ async def test_apply_commits_in_short_batches_and_keeps_progress_on_failure():
     candidates = [
         _candidate(
             target=backfill.Target.LIBRARY_IMAGE,
-            owner=None,
+            owner="creator",
             values=[_raw_url("creator", "images", f"{index}.png")],
         )
         for index in range(450)
@@ -477,7 +504,7 @@ async def test_apply_splits_mutations_into_batches_of_the_configured_size():
     candidates = [
         _candidate(
             target=backfill.Target.LIBRARY_IMAGE,
-            owner=None,
+            owner="creator",
             values=[_raw_url("creator", "images", f"{index}.png")],
         )
         for index in range(backfill.APPLY_BATCH_SIZE * 2 + 1)
@@ -623,3 +650,23 @@ def test_org_listing_rewrites_media_uploaded_by_an_active_member():
         stranger_image,
     ]
     assert plan.counts[backfill.Outcome.HOLD_CROSS_USER] == 1
+
+
+@pytest.mark.parametrize(
+    "outcome, blocks",
+    [
+        (backfill.Outcome.HOLD_CROSS_USER, True),
+        (backfill.Outcome.HOLD_MALFORMED, True),
+        (backfill.Outcome.HOLD_AMBIGUOUS, True),
+        (backfill.Outcome.HOLD_PUBLIC, True),
+        (backfill.Outcome.UNRECOGNIZED, True),
+        (backfill.Outcome.REWRITE, False),
+        (backfill.Outcome.ALREADY_PUBLIC, False),
+    ],
+)
+def test_references_left_on_the_legacy_bucket_fail_the_run(outcome, blocks):
+    report = backfill.BackfillReport(
+        counts=Counter({outcome: 1}), target_counts={}, planned_rows=0
+    )
+
+    assert bool(backfill_cli.stranded_references(report)) is blocks

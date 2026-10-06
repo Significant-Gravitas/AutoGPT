@@ -449,3 +449,20 @@ async def test_check_media_exists_looks_up_the_name_uploads_are_stored_under(
         "private-media", "users/test-user/images/agent.jpeg"
     )
     assert result == "/api/store/submissions/media/test-user/images/agent.jpeg"
+
+
+async def test_upload_media_is_private_when_only_the_private_bucket_is_set(
+    mock_settings, mock_storage_client
+):
+    mock_settings.config.media_gcs_bucket_name = ""
+    mock_settings.config.private_user_data_bucket = "private-media"
+    test_file = fastapi.UploadFile(
+        filename="private.jpeg",
+        file=io.BytesIO(b"\xff\xd8\xffprivate"),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert mock_storage_client.upload.await_args.args[0] == "private-media"
+    assert result.startswith("/api/store/submissions/media/test-user/images/")

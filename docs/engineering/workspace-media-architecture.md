@@ -167,8 +167,11 @@ become the private one:
    the repair tool when a copy at approval time failed.
 3. Rewrite the remaining private media URLs to the authenticated API path:
    `poetry run python scripts/backfill_private_media_urls.py` (dry run), then
-   `--apply` until it reports no conflicts. Both scripts commit in small
-   batches and can be re-run.
+   `--apply`, re-running until it reports no conflicts. It exits 2 while any
+   reference stays on the old bucket (held as public, cross-user, ambiguous,
+   malformed or unrecognised): those stop loading in step 4, so check the
+   counts before going on. Both scripts commit in small batches and can be
+   re-run.
 4. Run step 2's dry run once more and check it exits 0. Then remove every
    public binding from the old bucket and turn on public access prevention, so
    no object-level grant can expose a file again.

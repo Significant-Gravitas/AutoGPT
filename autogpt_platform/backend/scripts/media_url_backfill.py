@@ -103,8 +103,9 @@ class Candidate(BaseModel):
     values: list[str]
     is_array: bool
     hold_reason: HoldReason | None = None
-    # Active members of the org that owns a listing: they can edit it, and
-    # their uploads sit under their own user path.
+    # Users whose uploads the row's readers can open through the private media
+    # endpoint: active members of a listing's or avatar's org, or the org
+    # colleagues of a library owner.
     co_owner_ids: list[str] = []
 
 
@@ -403,7 +404,10 @@ def _classify_reference(
         return Outcome.HOLD_MALFORMED, None
     if not _target_accepts_media_type(candidate.target, parsed.media_type):
         return Outcome.HOLD_MALFORMED, None
-    if candidate.target.value not in PATH_OWNER_TARGETS:
+    if candidate.target.value in PATH_OWNER_TARGETS:
+        if parsed.owner_user_id not in candidate.co_owner_ids:
+            return Outcome.HOLD_CROSS_USER, None
+    else:
         if candidate.owner_user_id is None:
             return Outcome.HOLD_AMBIGUOUS, None
         if parsed.owner_user_id != candidate.owner_user_id and (

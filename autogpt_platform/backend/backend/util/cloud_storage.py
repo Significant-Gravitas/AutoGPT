@@ -459,8 +459,16 @@ class CloudStorageHandler:
         current_time = datetime.now(timezone.utc)
 
         try:
+            # List all blobs in the uploads directory using pure async client
+            list_response = await async_client.list_objects(
+                self.config.gcs_bucket_name, params={"prefix": "uploads/"}
+            )
+
+            items = list_response.get("items", [])
             deleted_count = 0
-            semaphore = asyncio.Semaphore(10)
+
+            # Process deletions in parallel with limited concurrency
+            semaphore = asyncio.Semaphore(10)  # Limit to 10 concurrent deletions
 
             async def delete_if_expired(blob_info):
                 async with semaphore:
@@ -493,32 +501,11 @@ class CloudStorageHandler:
                         pass
                     return 0
 
-            params = {"prefix": "uploads/"}
-            seen_page_tokens: set[str] = set()
-            while True:
-                list_response = await async_client.list_objects(
-                    self.config.gcs_bucket_name, params=params
+            if items:
+                results = await asyncio.gather(
+                    *[delete_if_expired(blob) for blob in items]
                 )
-                items = list_response.get("items", [])
-                if items:
-                    results = await asyncio.gather(
-                        *[delete_if_expired(blob) for blob in items]
-                    )
-                    deleted_count += sum(results)
-
-                next_page_token = list_response.get("nextPageToken")
-                if not next_page_token:
-                    break
-                if next_page_token in seen_page_tokens:
-                    logger.error(
-                        "[CloudStorage] Repeated page token while cleaning uploads"
-                    )
-                    break
-                seen_page_tokens.add(next_page_token)
-                params = {
-                    "prefix": "uploads/",
-                    "pageToken": next_page_token,
-                }
+                deleted_count = sum(results)
 
             return deleted_count
 

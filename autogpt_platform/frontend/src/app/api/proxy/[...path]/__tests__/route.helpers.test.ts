@@ -14,6 +14,7 @@ import {
   getResponseStartTimeoutMs,
   getSafePrivateMediaRange,
   isPrivateStoreMediaRequest,
+  PRIVATE_MEDIA_RANGE_CHUNK_BYTES,
   isPrivateStoreVideoRequest,
 } from "../route.helpers";
 
@@ -60,8 +61,10 @@ describe("private store media request matching", () => {
 
   it.each([
     ["bytes=0-1023", "bytes=0-1023"],
-    ["bytes=1024-", "bytes=1024-"],
+    ["bytes=1024-", `bytes=1024-${1023 + PRIVATE_MEDIA_RANGE_CHUNK_BYTES}`],
+    ["bytes=0-999999999", `bytes=0-${PRIVATE_MEDIA_RANGE_CHUNK_BYTES - 1}`],
     ["bytes=-512", "bytes=-512"],
+    ["bytes=-999999999", `bytes=-${PRIVATE_MEDIA_RANGE_CHUNK_BYTES}`],
     [" bytes=0-1023 ", "bytes=0-1023"],
     ["bytes=0-1,4-5", null],
     ["items=0-1", null],

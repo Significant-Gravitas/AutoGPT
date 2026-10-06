@@ -217,8 +217,8 @@ async function createWorkspaceDownloadErrorResponse(
  * pass through without parse → re-serialise round-trips. Status codes and
  * non-hop-by-hop response headers are preserved.
  *
- * Workspace file downloads have a dedicated buffering path because Vercel's
- * stream forwarding silently truncates large binary responses.
+ * Workspace file downloads and private store media are buffered because
+ * Vercel's stream forwarding silently truncates large binary responses.
  */
 async function handler(
   req: NextRequest,
@@ -283,6 +283,15 @@ async function handler(
     const responseHeaders = filterResponseHeaders(backendResponse.headers);
     if (isPrivateMedia) {
       hardenPrivateMediaResponseHeaders(responseHeaders);
+      // Buffered like workspace downloads: Vercel silently drops the tail of
+      // large streamed binary bodies.
+      const body = await backendResponse.arrayBuffer();
+      responseHeaders.set("content-length", String(body.byteLength));
+      return new NextResponse(body, {
+        status: backendResponse.status,
+        statusText: backendResponse.statusText,
+        headers: responseHeaders,
+      });
     }
 
     return new NextResponse(backendResponse.body, {

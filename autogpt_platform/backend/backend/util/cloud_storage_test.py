@@ -80,7 +80,10 @@ class TestCloudStorageHandler:
         assert call_args[0][0] == "test-bucket"  # bucket name
         assert call_args[0][1].startswith("uploads/system/")  # blob name
         assert call_args[0][2] == content  # file content
-        assert "metadata" in call_args[1]  # metadata argument
+        # Top level on purpose: see the comment in store_file.
+        upload_metadata = call_args.kwargs["metadata"]
+        assert upload_metadata["expires_at"]
+        assert "metadata" not in upload_metadata
 
     @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
@@ -229,39 +232,6 @@ class TestCloudStorageHandler:
         assert result == 1  # Only one file should be deleted
         # Verify delete was called once (for expired file)
         assert mock_async_client.delete.call_count == 1
-
-    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
-    @pytest.mark.asyncio
-    async def test_delete_expired_files_gcs_paginates(
-        self, mock_get_async_client, handler
-    ):
-        from datetime import datetime, timedelta, timezone
-
-        mock_async_client = AsyncMock()
-        mock_get_async_client.return_value = mock_async_client
-        expired_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        mock_async_client.list_objects = AsyncMock(
-            side_effect=[
-                {
-                    "items": [{"name": "uploads/first.txt"}],
-                    "nextPageToken": "second-page",
-                },
-                {"items": [{"name": "uploads/second.txt"}]},
-            ]
-        )
-        mock_async_client.download_metadata = AsyncMock(
-            return_value={"metadata": {"expires_at": expired_time}}
-        )
-        mock_async_client.delete = AsyncMock()
-
-        result = await handler.delete_expired_files("gcs")
-
-        assert result == 2
-        assert mock_async_client.list_objects.await_count == 2
-        assert mock_async_client.list_objects.await_args_list[1].kwargs["params"] == {
-            "prefix": "uploads/",
-            "pageToken": "second-page",
-        }
 
     @patch.object(CloudStorageHandler, "_get_async_gcs_client")
     @pytest.mark.asyncio

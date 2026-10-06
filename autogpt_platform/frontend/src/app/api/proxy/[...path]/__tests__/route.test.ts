@@ -412,6 +412,8 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("accept-encoding")).toBe("identity");
     expect(init.cache).toBe("no-store");
     expect(res.status).toBe(206);
+    expect(await res.text()).toBe("video bytes");
+    expect(res.headers.get("content-length")).toBe("11");
     expect(res.headers.get("content-range")).toBe("bytes 0-10/100");
     expect(res.headers.get("accept-ranges")).toBe("bytes");
     expect(res.headers.get("cache-control")).toBe("private, no-store");
