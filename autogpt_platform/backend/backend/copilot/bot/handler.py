@@ -79,6 +79,12 @@ class MessageHandler:
                 )
             return
 
+        # A message that @-mentions someone else, and not us, is addressed to
+        # them. Even in a thread we own that is not ours to answer; leaving it
+        # to the model's NO_REPLY still spent a turn and sometimes a reply.
+        if ctx.addressed_to_others and not ctx.bot_mentioned:
+            return
+
         # In a thread we only auto-reply when we own it (= we created it in
         # response to an @mention in a channel). For any other existing
         # thread we'd been added to, require an explicit @mention each turn
