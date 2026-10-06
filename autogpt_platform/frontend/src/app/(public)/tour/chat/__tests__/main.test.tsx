@@ -55,6 +55,7 @@ async function pressEnterToSend() {
 describe("Tour chat scripted demo", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     // The scenario store is module-level state — reset between tests.
     useTourStore.setState({
       activeScenarioId: DEFAULT_SCENARIO_ID,
@@ -71,6 +72,7 @@ describe("Tour chat scripted demo", () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   test("auto-types the first prompt into the bar and sends it on its own", async () => {

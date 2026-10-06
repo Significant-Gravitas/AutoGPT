@@ -13,7 +13,12 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
-import { configureCookiebot } from "@/tests/integrations/cookiebot";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
 const { posthog } = vi.hoisted(() => ({
   posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
@@ -21,6 +26,7 @@ const { posthog } = vi.hoisted(() => ({
 vi.mock("posthog-js", () => ({ default: posthog }));
 
 import TourChatPage from "../page";
+import { TourSidebar } from "../components/TourSidebar/TourSidebar";
 import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
 
@@ -57,6 +63,7 @@ async function pressEnterToSend() {
 describe("Tour DataFast tracking", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     // /tour sends DataFast events without consent, but only on the tour
     // itself and only when a consent banner is configured.
     configureCookiebot();
@@ -78,6 +85,7 @@ describe("Tour DataFast tracking", () => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    removeCookiebot();
     window.history.pushState({}, "", "/");
   });
 
@@ -106,21 +114,63 @@ describe("Tour DataFast tracking", () => {
     });
   });
 
-  test.each([
-    { name: "Start free trial", label: "free-trial" },
-    { name: "Self-host instead", label: "self-host" },
-  ])("sidebar $name CTA tracks its intent", ({ name, label }) => {
-    render(<TourChatPage />);
+  describe.each(["tour", "marketplace"] as const)("%s sidebar", (surface) => {
+    test.each([
+      {
+        mode: "CLOUD",
+        eyebrow: "Free trial",
+        name: "Start free trial",
+        label: "free-trial",
+      },
+      {
+        mode: "LOCAL",
+        eyebrow: "Get started",
+        name: "Create account",
+        label: "signup",
+      },
+    ])(
+      "$mode CTA describes its destination and tracks its surface",
+      ({ mode, eyebrow, name, label }) => {
+        vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", mode);
+        window.history.pushState(
+          {},
+          "",
+          surface === "tour" ? "/tour/chat" : "/marketplace",
+        );
+        installCookiebot({ statistics: true });
+        render(
+          <SidebarProvider>
+            <TourSidebar variant={surface} />
+          </SidebarProvider>,
+        );
 
-    fireEvent.click(screen.getByRole("link", { name }));
+        expect(screen.getByText(eyebrow)).toBeDefined();
+        const signupCTA = screen.getByRole("link", { name });
+        expect(signupCTA.getAttribute("href")).toBe("/signup");
+        expect(signupCTA.getAttribute("target")).toBeNull();
+        if (mode === "LOCAL") {
+          expect(screen.queryByText(/free trial/i)).toBeNull();
+        }
+        fireEvent.click(signupCTA);
+        fireEvent.click(
+          screen.getByRole("link", { name: "Self-host instead" }),
+        );
 
-    expect(eventsNamed("tour_cta_click")).toEqual([
-      ["tour_cta_click", { label, placement: "sidebar-card" }],
-    ]);
-    expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
-      label,
-      placement: "sidebar-card",
-    });
+        const metadata = { placement: "sidebar-card", surface };
+        expect(eventsNamed("tour_cta_click")).toEqual([
+          ["tour_cta_click", { label, ...metadata }],
+          ["tour_cta_click", { label: "self-host", ...metadata }],
+        ]);
+        expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
+          label,
+          ...metadata,
+        });
+        expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
+          label: "self-host",
+          ...metadata,
+        });
+      },
+    );
   });
 
   test("fires tour_scenario_complete when the demo plays through", async () => {

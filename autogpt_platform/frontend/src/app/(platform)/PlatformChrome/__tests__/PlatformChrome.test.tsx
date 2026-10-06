@@ -37,10 +37,12 @@ vi.mock("../../components/GlobalSearchModal/GlobalSearchOverlay", () => ({
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("PlatformChrome", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     showNewLayoutMock.mockReturnValue(false);
     showTourSidebarMock.mockReturnValue(false);
     useTourStore.setState({ isDemoComplete: false });
@@ -92,9 +94,9 @@ describe("PlatformChrome", () => {
       expect(screen.queryByRole("button", { name: label })).toBeNull();
     }
     expect(screen.getByText("Your AI team starts here")).toBeDefined();
-    const trialCta = screen.getByRole("link", { name: "Start free trial" });
-    expect(trialCta.getAttribute("href")).toBe("/signup");
-    expect(trialCta.getAttribute("target")).toBeNull();
+    const trialCTA = screen.getByRole("link", { name: "Start free trial" });
+    expect(trialCTA.getAttribute("href")).toBe("/signup");
+    expect(trialCTA.getAttribute("target")).toBeNull();
     expect(
       screen.getByRole("link", { name: "AutoGPT" }).getAttribute("href"),
     ).toBe("/marketplace");

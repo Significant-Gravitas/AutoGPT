@@ -142,8 +142,14 @@ what replaced them.
 | `tour_started` | browser | live | — | The public `/tour` page is opened (once per tab). |
 | `tour_scenario_started` | browser | live | `scenario` | A tour scenario starts playing. |
 | `tour_scenario_completed` | browser | live | `scenario` | A tour scenario reaches its end. |
-| `tour_cta_clicked` | browser | live | `label` (`free-trial`, `pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one | A tour call to action is clicked. |
+| `tour_cta_clicked` | browser | live | `label` (`free-trial`, `signup`, `pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one, `surface` (`tour`, `marketplace`) on sidebar-card clicks | A tour or logged-out marketplace call to action is clicked. |
 | `signup_completed` | backend | live | `signup_method` (the auth provider, e.g. `email`, `google`: from the user's first Better Auth account row, where `credential` is reported as `email`, else from a Supabase token's `app_metadata.provider`; omitted when neither has it) | The user row is created (`data/user.py`), whichever request creates it. |
+
+Sidebar CTA clicks retain the tour event names for compatibility. Filter
+`surface` to distinguish the marketplace from the tour; older sidebar events
+do not carry this property. For tour-only sidebar reports after deployment,
+require `surface = tour`. The signup CTA uses `free-trial` in cloud mode and
+`signup` on self-hosted installations, where creating an account starts no trial.
 
 The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
 `tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with

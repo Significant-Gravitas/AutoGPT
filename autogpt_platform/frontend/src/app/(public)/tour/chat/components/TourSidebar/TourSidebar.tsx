@@ -66,8 +66,8 @@ interface Props {
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
-  // Once the demo finishes, the end card in the chat carries the upsell —
-  // the sidebar card hides until a new scenario resets the demo.
+  // In the tour, the end card replaces the sidebar upsell after completion.
+  // The marketplace always shows the sidebar card.
   const isDemoComplete = useTourStore((s) => s.isDemoComplete);
 
   return (
@@ -154,7 +154,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
 
       {(variant === "marketplace" || !isDemoComplete) && (
         <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
-          <TourUpsellCard />
+          <TourUpsellCard surface={variant} />
         </SidebarFooter>
       )}
 

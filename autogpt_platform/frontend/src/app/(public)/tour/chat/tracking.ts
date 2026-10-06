@@ -7,6 +7,7 @@ import { TourEvent } from "@/services/analytics/posthog-events";
 
 export type TourCtaLabel =
   | "free-trial"
+  | "signup"
   | "pricing"
   | "another-scenario"
   | "self-host"

@@ -66,6 +66,7 @@ async function pressEnterToSend() {
 describe("Tour chat app shell", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     // Both stores are module-level state — reset between tests.
     useTourStore.setState({
       activeScenarioId: DEFAULT_SCENARIO_ID,
@@ -80,6 +81,7 @@ describe("Tour chat app shell", () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   test("renders a free-trial sidebar without demo chats and only Marketplace enabled", () => {
@@ -98,9 +100,9 @@ describe("Tour chat app shell", () => {
     }
 
     expect(screen.getByText("Your AI team starts here")).toBeDefined();
-    const trialCta = screen.getByRole("link", { name: "Start free trial" });
-    expect(trialCta.getAttribute("href")).toBe("/signup");
-    expect(trialCta.getAttribute("target")).toBeNull();
+    const trialCTA = screen.getByRole("link", { name: "Start free trial" });
+    expect(trialCTA.getAttribute("href")).toBe("/signup");
+    expect(trialCTA.getAttribute("target")).toBeNull();
     expect(screen.queryByText(/Start with Pro/i)).toBeNull();
     expect(screen.queryByText(/\$42\.50/)).toBeNull();
 

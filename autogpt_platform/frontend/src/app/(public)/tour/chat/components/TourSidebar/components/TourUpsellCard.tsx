@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { environment } from "@/services/environment";
 import {
   ArrowRight02Icon,
   GithubIcon,
@@ -12,7 +13,24 @@ import {
 import { TOUR_GITHUB_URL } from "../../../constants";
 import { trackTourCtaClick } from "../../../tracking";
 
-export function TourUpsellCard() {
+type Props = {
+  surface: "tour" | "marketplace";
+};
+
+export function TourUpsellCard({ surface }: Props) {
+  const isCloud = environment.isCloud();
+
+  function handleSignupClick() {
+    trackTourCtaClick(isCloud ? "free-trial" : "signup", {
+      placement: "sidebar-card",
+      surface,
+    });
+  }
+
+  function handleSelfHostClick() {
+    trackTourCtaClick("self-host", { placement: "sidebar-card", surface });
+  }
+
   return (
     <Card className="flex flex-col gap-4 border border-zinc-200 p-4 shadow-subtle">
       <div className="flex items-center gap-2.5">
@@ -20,7 +38,7 @@ export function TourUpsellCard() {
           <Icon icon={SparklesIcon} size={18} aria-hidden />
         </span>
         <Text variant="eyebrow" tone="secondary">
-          Free trial
+          {isCloud ? "Free trial" : "Get started"}
         </Text>
       </div>
       <div className="space-y-1.5">
@@ -37,13 +55,11 @@ export function TourUpsellCard() {
           href="/signup"
           variant="primary"
           size="small"
-          onClick={() =>
-            trackTourCtaClick("free-trial", { placement: "sidebar-card" })
-          }
+          onClick={handleSignupClick}
           rightIcon={<Icon icon={ArrowRight02Icon} size={16} aria-hidden />}
           className="w-full"
         >
-          Start free trial
+          {isCloud ? "Start free trial" : "Create account"}
         </Button>
         <Button
           as="NextLink"
@@ -52,9 +68,7 @@ export function TourUpsellCard() {
           rel="noopener noreferrer"
           variant="ghost"
           size="small"
-          onClick={() =>
-            trackTourCtaClick("self-host", { placement: "sidebar-card" })
-          }
+          onClick={handleSelfHostClick}
           leftIcon={<Icon icon={GithubIcon} size={14} aria-hidden />}
           className="w-full text-xs text-zinc-600"
         >
