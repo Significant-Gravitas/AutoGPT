@@ -21,7 +21,15 @@ from backend.integrations.oauth import (
     DEVICE_HANDLERS_BY_NAME,
     HANDLERS_BY_NAME,
 )
-from backend.integrations.providers import ProviderName
+from backend.integrations.oauth.refresh_failure import (
+    CredentialsNeedReconnectError,
+    describe_refresh_failure,
+    mark_reconnect_required,
+    reconnect_required,
+    report_refresh_failure,
+    without_reconnect_required,
+)
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 
@@ -318,12 +326,9 @@ class IntegrationCredentialsManager:
                 # Wait until the credentials are no longer in use anywhere
                 _lock = await self._acquire_lock(user_id, credentials.id)
                 try:
-                    fresh_credentials = await oauth_handler.refresh_tokens(credentials)
-                    await self.store.update_creds(user_id, fresh_credentials)
-                    await _invoke_creds_changed_hook(
-                        user_id, fresh_credentials.provider
+                    credentials = await self._refresh_and_store(
+                        user_id, credentials, oauth_handler
                     )
-                    credentials = fresh_credentials
                 finally:
                     if (await _lock.locked()) and (await _lock.owned()):
                         try:
@@ -356,11 +361,65 @@ class IntegrationCredentialsManager:
                 credentials.provider,
                 credentials.id,
             )
-            fresh_credentials = await oauth_handler.refresh_tokens(credentials)
-            await self.store.update_creds(user_id, fresh_credentials)
-            await _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
-            credentials = fresh_credentials
+            credentials = await self._refresh_and_store(
+                user_id, credentials, oauth_handler
+            )
         return credentials
+
+    async def _refresh_and_store(
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        oauth_handler: "BaseOAuthHandler | BaseDeviceAuthHandler",
+    ) -> OAuth2Credentials:
+        """Refresh *credentials* with the provider and persist the result.
+
+        A credential whose refresh token the provider already refused for good
+        is not sent to the provider again: that replay can only fail, and some
+        providers treat a reused rotated token as compromise. A failed refresh
+        is reported with the provider's status and error code, and a
+        definitive refusal (``invalid_grant``) marks the credential so every
+        later caller gets ``CredentialsNeedReconnectError`` straight away.
+        """
+        if marker := reconnect_required(credentials):
+            raise CredentialsNeedReconnectError(
+                credentials.provider, credentials.id, marker
+            )
+        try:
+            fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+        except Exception as exc:
+            failure = describe_refresh_failure(exc)
+            report_refresh_failure(
+                logger,
+                provider=provider_key(credentials.provider),
+                credential_id=credentials.id,
+                failure=failure,
+                exc=exc,
+            )
+            if not failure.definitive:
+                raise
+            marked, marker = mark_reconnect_required(credentials, failure)
+            try:
+                await self.store.update_creds(user_id, marked)
+                await _invoke_creds_changed_hook(user_id, marked.provider)
+            except Exception:
+                # Managed and system credentials refuse updates; the refusal
+                # is still reported, the next attempt just asks again.
+                logger.warning(
+                    "Could not mark credential #%s as needing reconnect",
+                    credentials.id,
+                    exc_info=True,
+                )
+            raise CredentialsNeedReconnectError(
+                credentials.provider, credentials.id, marker
+            ) from exc
+        # A refresh the provider accepted proves the grant is alive again.
+        fresh_credentials.metadata = without_reconnect_required(
+            fresh_credentials.metadata
+        )
+        await self.store.update_creds(user_id, fresh_credentials)
+        await _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
+        return fresh_credentials
 
     async def update(self, user_id: str, updated: Credentials) -> None:
         async with self._locked(user_id, updated.id):

@@ -75,6 +75,7 @@ from backend.integrations.oauth import (
     HANDLERS_BY_NAME,
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
+from backend.integrations.oauth.refresh_failure import without_reconnect_required
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util import product_analytics
@@ -1688,10 +1689,10 @@ async def _upgrade_existing_credential(
     merged.id = existing.id
     merged.title = existing.title
     merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
-    merged.metadata = {
-        **(existing.metadata or {}),
-        **(new_credentials.metadata or {}),
-    }
+    # A fresh grant supersedes a refresh the provider refused for good.
+    merged.metadata = without_reconnect_required(
+        {**(existing.metadata or {}), **(new_credentials.metadata or {})}
+    )
     # Preserve the existing refresh_token and username if the incremental
     # response doesn't carry them.  Providers like Google only return a
     # refresh_token on first authorization — dropping it here would orphan
