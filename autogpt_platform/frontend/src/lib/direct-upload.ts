@@ -141,7 +141,7 @@ export async function uploadFileDirect(
 
 /**
  * Uploads store submission media (agent thumbnails, profile avatars) directly
- * to the backend. Returns the public URL of the stored media.
+ * to private storage through the backend. Returns its authenticated media URL.
  */
 export async function uploadSubmissionMediaDirect(
   file: File,

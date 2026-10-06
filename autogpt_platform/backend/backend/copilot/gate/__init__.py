@@ -58,6 +58,8 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# Where the supervisor reads the content of the files a command runs.
+RUN_FILES_KEY = "files_this_command_runs"
 # A chat driven from these runs in Auto, and its cards are answered in the channel.
 LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
 # Any other linked platform has no buttons to answer a card with, so it runs
@@ -125,9 +127,11 @@ async def check_action(
     session: ChatSession,
     tool_call_id: str = "",
     subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
+    context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None = None,
 ) -> Decision:
     """``subject_of`` resolves what the call acts on; it runs only once no
-    approval answers the call, so an approved call is never re-derived."""
+    approval answers the call, so an approved call is never re-derived.
+    ``context_of`` reads the files the call runs, for the supervisor only."""
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -203,16 +207,22 @@ async def check_action(
         reason_kind = "mode"
     else:
         reason_kind = "supervisor"
-        *earlier, latest = _user_requests(session) or [""]
-        judgement = await supervise(
-            tool_name=tool_name,
-            args=args,
-            user_message=latest,
-            earlier=earlier,
-        )
-        if judgement.allowed:
-            return ALLOW
-        reason, decided_by = judgement.reason, judgement.decided_by
+        files = await context_of() if context_of is not None else None
+        if unread := [path for path, text in (files or {}).items() if text is None]:
+            reason = (
+                f"Could not read {', '.join(unread)}, so this could not be checked."
+            )
+        else:
+            *earlier, latest = _user_requests(session) or [""]
+            judgement = await supervise(
+                tool_name=tool_name,
+                args=_judged_args(args, files),
+                user_message=latest,
+                earlier=earlier,
+            )
+            if judgement.allowed:
+                return ALLOW
+            reason, decided_by = judgement.reason, judgement.decided_by
     call = held.HeldCall(
         review_id=review_id,
         tool_name=tool_name,
@@ -288,6 +298,16 @@ def _dollars(microdollars: int) -> str:
     return f"${max(microdollars, 0) / 1_000_000:,.2f}"
 
 
+def _judged_args(
+    args: dict[str, Any], files: dict[str, str | None] | None
+) -> dict[str, Any]:
+    # Dropped first, so a model cannot hand the supervisor a harmless copy.
+    judged = {key: value for key, value in args.items() if key != RUN_FILES_KEY}
+    if files:
+        judged[RUN_FILES_KEY] = files
+    return judged
+
+
 def _user_requests(session: ChatSession) -> list[str]:
     """What the user wrote in this chat, oldest first. Never the assistant's
     rows: the supervisor checks an assistant whose reading may have steered it."""
@@ -305,6 +325,7 @@ def _user_requests(session: ChatSession) -> list[str]:
 
 
 __all__ = [
+    "RUN_FILES_KEY",
     "Decision",
     "LINKED_CHAT_PLATFORMS",
     "active_mode",
