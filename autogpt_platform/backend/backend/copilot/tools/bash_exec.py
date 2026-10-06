@@ -127,7 +127,7 @@ class BashExecTool(BaseTool):
         """A command that only writes one workspace file is judged as that write."""
         command = args.get("command")
         target = workspace_write_target(command) if isinstance(command, str) else None
-        if target is None or not await _resolves_to_itself(target):
+        if target is None or not await _lands_on(target):
             return None
         return Subject(key="write_workspace_file", name=target, effect=Effect.WORKSPACE)
 
@@ -302,13 +302,16 @@ class BashExecTool(BaseTool):
             )
 
 
-async def _resolves_to_itself(path: str) -> bool:
-    """No symlink anywhere on ``path`` in the sandbox, so a shell write to it
-    lands there. Same accepted race as ``_check_sandbox_symlink_escape``."""
+async def _lands_on(path: str) -> bool:
+    """A shell write to ``path`` lands there: no symlink on it, and no changed login
+    file, which runs first and can redirect it (``CDPATH``, an exported ``cat``).
+    Same accepted race as ``_check_sandbox_symlink_escape``."""
     sandbox = get_current_sandbox()
     if sandbox is None:
         return False
     try:
+        if await changed_login_files(sandbox):
+            return False
         result = await run_internal(
             sandbox, f"readlink -m -- {shlex.quote(path)}", cwd=E2B_WORKDIR, timeout=5
         )

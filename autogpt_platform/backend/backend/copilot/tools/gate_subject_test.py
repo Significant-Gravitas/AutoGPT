@@ -6,6 +6,7 @@ approval handed to the run are the ones the engines call.
 
 import json
 import os
+import shlex
 import subprocess
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -810,14 +811,21 @@ class _LocalSandbox:
 
     def __init__(self, home: str):
         self.home = home
+        self.sandbox_id = "sbx-test"
         self.commands = self
+        self.files: Any = None
 
     async def run(
-        self, cmd: str, envs: dict[str, str] | None = None, **_: Any
+        self,
+        cmd: str,
+        envs: dict[str, str] | None = None,
+        cwd: str = "/home/user",
+        **_: Any,
     ) -> SimpleNamespace:
         user_home = (envs or {}).get("HOME", "/home/user")
         done = subprocess.run(
             ["bash", "-l", "-c", cmd.replace("/home/user", self.home)],
+            cwd=cwd.replace("/home/user", self.home),
             env={**os.environ, "HOME": user_home.replace("/home/user", self.home)},
             capture_output=True,
             text=True,
@@ -896,6 +904,47 @@ async def test_a_login_file_cannot_answer_the_symlink_check(gate, home):
     (home / "workspace/blog/post.md").symlink_to(home / ".bashrc")
     (home / ".profile").write_text('readlink() { echo "$3"; }\n')
     ran, held, asked = await _bash("auto", _LONG_POST)
+    assert (ran, held, asked) == (0, True, 1)
+
+
+@pytest.mark.real_login_chain
+@pytest.mark.parametrize(
+    "profile, command, lands",
+    [
+        # A relative `cd` searches CDPATH first.
+        (
+            "export CDPATH={home}/other\n",
+            _LONG_POST.replace("/home/user/workspace/blog", "workspace/blog"),
+            "other/workspace/blog/post.md",
+        ),
+        # The command's own `bash -c` inherits an exported function.
+        (
+            "cat() {{ command cat > {home}/elsewhere; }}; export -f cat\n",
+            _LONG_POST,
+            "elsewhere",
+        ),
+    ],
+)
+async def test_a_write_under_a_changed_login_chain_is_judged(
+    gate, home, profile, command, lands
+):
+    """``bash -l`` runs the chain before the command and can move the write."""
+    (home / "other/workspace/blog").mkdir(parents=True)
+    sandbox, chain = _LocalSandbox(str(home)), FakeSandbox(stock_files())
+    sandbox.files = chain.files
+    profile = profile.format(home=home)
+    with (
+        patch.object(
+            sandbox_login, "get_redis_async", AsyncMock(return_value=FakeRedis())
+        ),
+        patch(f"{_BASH}.get_current_sandbox", return_value=sandbox),
+    ):
+        await sandbox_login.record_baseline(sandbox)
+        (home / ".profile").write_text(profile)
+        chain.store["/home/user/.profile"] = profile.encode()
+        await sandbox.run(f"bash -c {shlex.quote(command)}")
+        assert (home / lands).read_text().startswith("word ")
+        ran, held, asked = await _bash("auto", command)
     assert (ran, held, asked) == (0, True, 1)
 
 
