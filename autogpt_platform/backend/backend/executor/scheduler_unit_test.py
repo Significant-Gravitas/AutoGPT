@@ -1584,6 +1584,17 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     assert match.kwargs["seconds"] == 12 * 3600
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.auth_identity_orphan_sweep_enabled", enabled
+    )
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    ids = [c.kwargs.get("id") for c in calls]
+    assert ids.count("report_orphaned_auth_identities") == int(enabled)
+
+
 def test_startup_embedding_backfill_defaults_on():
     assert Config.model_fields["scheduler_startup_embedding_backfill"].default is True
 

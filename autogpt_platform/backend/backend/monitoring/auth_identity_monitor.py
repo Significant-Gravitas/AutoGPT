@@ -55,6 +55,10 @@ class AuthIdentityMonitor:
         self.notification_client = get_notification_manager_client()
 
     def check_orphaned_auth_identities(self) -> str:
+        # Also stops a job persisted while the sweep was on.
+        if not self.config.auth_identity_orphan_sweep_enabled:
+            return "Orphaned auth identity sweep is disabled."
+
         report = get_database_manager_client().heal_orphaned_auth_identities(
             grace_secs=self.config.auth_identity_orphan_grace_secs,
             limit=self.config.auth_identity_orphan_check_limit,

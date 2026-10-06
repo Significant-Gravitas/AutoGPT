@@ -2059,15 +2059,16 @@ class Scheduler(AppService):
 
             # Auth identity <-> platform User invariant. Heals any auth
             # identity that has no platform User row and pages when it had to.
-            self.scheduler.add_job(
-                report_orphaned_auth_identities,
-                id="report_orphaned_auth_identities",
-                trigger="interval",
-                replace_existing=True,
-                max_instances=1,
-                seconds=config.auth_identity_orphan_check_interval_secs,
-                jobstore=Jobstores.EXECUTION.value,
-            )
+            if config.auth_identity_orphan_sweep_enabled:
+                self.scheduler.add_job(
+                    report_orphaned_auth_identities,
+                    id="report_orphaned_auth_identities",
+                    trigger="interval",
+                    replace_existing=True,
+                    max_instances=1,
+                    seconds=config.auth_identity_orphan_check_interval_secs,
+                    jobstore=Jobstores.EXECUTION.value,
+                )
 
             # Cloud Storage Cleanup - configurable interval
             self.scheduler.add_job(

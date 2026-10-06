@@ -21,6 +21,9 @@ def wiring(mocker):
     )
     sentry = mocker.patch.object(monitor_module, "sentry_capture_error")
     mocker.patch.dict(monitor_module._collisions_paged_at, clear=True)
+    mocker.patch.object(
+        monitor_module.config, "auth_identity_orphan_sweep_enabled", True
+    )
     return db, notifications, sentry
 
 
@@ -48,6 +51,24 @@ def test_quiet_when_the_invariant_holds(wiring):
         "grace_secs": monitor_module.config.auth_identity_orphan_grace_secs,
         "limit": monitor_module.config.auth_identity_orphan_check_limit,
     }
+
+
+def test_the_sweep_is_off_by_default():
+    assert monitor_module.Config().auth_identity_orphan_sweep_enabled is False
+
+
+def test_heals_and_pages_nothing_while_switched_off(wiring, mocker):
+    db, notifications, sentry = wiring
+    mocker.patch.object(
+        monitor_module.config, "auth_identity_orphan_sweep_enabled", False
+    )
+
+    result = report_orphaned_auth_identities()
+
+    assert "disabled" in result
+    db.heal_orphaned_auth_identities.assert_not_called()
+    notifications.discord_system_alert.assert_not_called()
+    sentry.assert_not_called()
 
 
 def test_pages_when_it_had_to_heal_or_could_not(wiring):

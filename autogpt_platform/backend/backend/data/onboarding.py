@@ -60,16 +60,8 @@ class UserOnboardingUpdate(pydantic.BaseModel):
 async def get_user_onboarding(user_id: str) -> UserOnboarding:
     """Read a user's onboarding state, creating nothing.
 
-    A user with no row yet gets an unsaved all-defaults one. Creating it here
-    instead would need a ``User`` row to hang the FK off, and a valid session
-    can outrun that row: the auth provider issues one as soon as the auth
-    identity exists, while the platform row is created by a separate write
-    that can lag or fail. This read runs on every page load, so for those
-    accounts the FK violation was a 500 on each one until something healed the
-    row -- and a read path has no business writing on every page load anyway.
-
-    Callers that persist need the row to exist; they use
-    ``ensure_user_onboarding``.
+    A user with no row yet gets an unsaved all-defaults one, so this works
+    before the ``User`` row exists. Write paths use ``ensure_user_onboarding``.
     """
     onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
     return onboarding or _default_user_onboarding(user_id)
