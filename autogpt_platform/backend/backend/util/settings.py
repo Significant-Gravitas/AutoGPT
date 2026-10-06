@@ -625,6 +625,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="AutoGPT <notify@agpt.co>",
         description="Sender for the Briefing, Alert and Verdict families",
     )
+    billing_reply_to_email: str = Field(
+        default="contact@agpt.co",
+        description="Shared inbox for replies to billing and account service messages",
+    )
+    product_reply_to_email: str = Field(
+        default="hello@agpt.co",
+        description="Reply-to address for Briefing, Alert and Verdict notifications",
+    )
     ops_sender_email: str = Field(
         default="AutoGPT Platform <platform@agpt.co>",
         description="Sender for internal ops mail to the refunds team",
