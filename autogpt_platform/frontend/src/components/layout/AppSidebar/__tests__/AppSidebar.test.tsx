@@ -16,6 +16,14 @@ import { fireEvent } from "@testing-library/react";
 import { AppSidebar } from "../AppSidebar";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", email: "alice@example.com", role: "user" },
+    isLoggedIn: true,
+    isUserLoading: false,
+  }),
+}));
+
 function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
   return { ...getGetHomeDashboardResponseMock200(), agents };
 }

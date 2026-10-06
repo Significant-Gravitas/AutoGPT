@@ -116,11 +116,13 @@ from ..model import (
 from ..pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
+    drained_rows_entry,
     pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
 from ..pending_messages import (
+    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -145,12 +147,14 @@ from ..rate_limit import (
 )
 from ..response_model import (
     StreamBaseResponse,
+    StreamCheckpoint,
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
     StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamPendingDrained,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -179,6 +183,7 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..stream_checkpoint import turn_checkpoint
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import (
@@ -808,18 +813,6 @@ async def _consume_sdk_until_done(
                 skip_strip=response is tail_delta,
             )
             if dispatched is not None:
-                # Persistence (via _dispatch_response) always runs so the
-                # session transcript keeps role='reasoning' rows; the
-                # wire is gated so UI can suppress rendering.
-                if not state.adapter.render_reasoning_in_ui and isinstance(
-                    dispatched,
-                    (
-                        StreamReasoningStart,
-                        StreamReasoningDelta,
-                        StreamReasoningEnd,
-                    ),
-                ):
-                    continue
                 # The envelope goes out just ahead of the error it explains,
                 # so a client acting on it has it in hand before the turn is
                 # reported failed. Same contract as the baseline path.
@@ -864,6 +857,7 @@ async def _consume_sdk_until_done(
                     # watermark excludes them and the next turn's
                     # detect_gap picks them up as gap-fill.
                     state.midturn_user_rows += len(followup_drained)
+                    yield drained_rows_entry(followup_drained)
 
         # Append assistant entry AFTER convert_message so that
         # any stashed tool results from the previous turn are
@@ -905,6 +899,7 @@ async def _consume_sdk_until_done(
             loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
             or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
         ):
+            checkpoint = None
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
                 logger.debug(
@@ -914,6 +909,7 @@ async def _consume_sdk_until_done(
                     loop_state.msgs_since_flush,
                     now - loop_state.last_flush_time,
                 )
+                checkpoint = turn_checkpoint(ctx.session.messages, ctx.turn_start)
             except Exception as flush_err:
                 logger.warning(
                     "%s Intermediate flush failed: %s",
@@ -922,6 +918,8 @@ async def _consume_sdk_until_done(
                 )
             loop_state.last_flush_time = now
             loop_state.msgs_since_flush = 0
+            if checkpoint is not None:
+                yield checkpoint
 
         # --- Building-mode switch (enter_agent_building_mode) ---
         # Restart the attempt with the guide in the system prompt.
@@ -1014,10 +1012,13 @@ def _intermediate_flush_blocked(
     has_unsealed_assistant = (
         acc.has_appended_assistant and not acc.accumulated_tool_calls
     )
-    has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
+    return has_pending_tools or has_unsealed_assistant or _has_open_block(adapter)
+
+
+def _has_open_block(adapter: SDKResponseAdapter) -> bool:
+    return (adapter.has_started_text and not adapter.has_ended_text) or (
         adapter.has_started_reasoning and not adapter.has_ended_reasoning
     )
-    return has_pending_tools or has_unsealed_assistant or has_open_block
 
 
 def _hidden_short_names_for_permissions(
@@ -1174,6 +1175,8 @@ _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
 # ``None`` when ``events_yielded > 0``.
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
+    StreamCheckpoint,
+    StreamPendingDrained,
     StreamToolDisplayAvailable,
     # Compaction UI events are cosmetic and must not block retry — they're
     # emitted before the SDK query on compacted attempts.
@@ -1493,6 +1496,8 @@ class _StreamContext:
     # text, and the gateway holds the last point at which it was typed.
     codex_gateway: "CodexAnthropicGateway | None" = None
     tool_display: SDKToolDisplayBridge | None = None
+    # Index in ``session.messages`` of the stream's first row, for checkpoints.
+    turn_start: int = 0
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -1877,7 +1882,6 @@ async def _apply_building_mode_restart(
     state.adapter = SDKResponseAdapter(
         message_id=message_id,
         session_id=session_id,
-        render_reasoning_in_ui=config.render_reasoning_in_ui,
     )
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
@@ -2504,7 +2508,6 @@ async def _do_transient_backoff(
     state.adapter = SDKResponseAdapter(
         message_id=message_id,
         session_id=session_id,
-        render_reasoning_in_ui=config.render_reasoning_in_ui,
     )
     state.usage.reset()
 
@@ -3854,7 +3857,20 @@ def _dispatch_response(
 
     if isinstance(response, StreamReasoningStart):
         acc.reasoning_response = ChatMessage(role="reasoning", content="")
-        ctx.session.messages.append(acc.reasoning_response)
+        messages = ctx.session.messages
+        # The post-tool placeholder pre-created for this message's text goes
+        # after its thinking, in the order the wire carries them.
+        placeholder = acc.assistant_response
+        if (
+            messages
+            and messages[-1] is placeholder
+            and placeholder.sequence is None
+            and not placeholder.content
+            and not placeholder.tool_calls
+        ):
+            messages.insert(len(messages) - 1, acc.reasoning_response)
+        else:
+            messages.append(acc.reasoning_response)
 
     elif isinstance(response, StreamReasoningDelta):
         if acc.reasoning_response is not None:
@@ -3905,6 +3921,12 @@ def _dispatch_response(
         )
 
     elif isinstance(response, StreamToolInputAvailable):
+        # A new assistant row opens after tool results, for a call as for text.
+        if acc.has_tool_results and acc.has_appended_assistant:
+            acc.assistant_response = ChatMessage(role="assistant", content="")
+            acc.accumulated_tool_calls = []
+            acc.has_appended_assistant = False
+            acc.has_tool_results = False
         acc.accumulated_tool_calls.append(
             {
                 "id": response.toolCallId,
@@ -4682,6 +4704,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
     message_metadata: dict[str, Any] | None = None,
+    turn_start: int | None = None,
+    continued_pending: list[PendingMessage] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4773,10 +4797,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
-    _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message, message_metadata
-    )
-    if _user_message_appended and is_user_message:
+    continued_entry: StreamPendingDrained | None = None
+    if continued_pending:
+        # An auto-continue call streams into the turn it continues: its user
+        # rows are the drained messages, one each, as a turn-start drain's are.
+        if not await persist_pending_as_user_rows(
+            session,
+            None,
+            continued_pending,
+            log_prefix=f"[SDK][{session_id[:12]}]",
+        ):
+            return  # rolled back and re-queued for the next turn
+        continued_entry = drained_rows_entry(continued_pending)
+        _user_message_appended = False
+    else:
+        _user_message_appended = maybe_append_user_message(
+            session, message, is_user_message, message_metadata
+        )
+    if (_user_message_appended or continued_entry) and is_user_message:
         track_user_message(
             user_id=user_id,
             session_id=session_id,
@@ -4817,6 +4855,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 f"{log_prefix} Eager persist of user message failed; "
                 f"in-memory append rolled back"
             )
+
+    # The stream's rows start after the message that triggered it.
+    if turn_start is None:
+        turn_start = len(session.messages)
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -4916,6 +4958,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # the loop (post-stream upload guards, finally-block bookkeeping) sees a
     # bound name even when the loop never enters its happy path.
     ended_with_stream_error = False
+    final_checkpoint: StreamCheckpoint | None = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -5085,6 +5128,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         restore_context_messages = _restore.context_messages
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
+        if continued_entry is not None:
+            yield continued_entry
 
         set_execution_context(
             user_id,
@@ -5349,7 +5394,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         adapter = SDKResponseAdapter(
             message_id=message_id,
             session_id=session_id,
-            render_reasoning_in_ui=config.render_reasoning_in_ui,
         )
 
         # Propagate user_id/session_id as OTEL context attributes so the
@@ -5546,6 +5590,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 log_prefix=log_prefix,
             )
             if persisted_ok:
+                yield drained_rows_entry(pending_messages)
                 current_message = combine_pending_with_current(
                     pending_messages,
                     current_message,
@@ -5660,6 +5705,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             lock=lock,
             codex_gateway=codex_gateway,
             tool_display=tool_display_bridge,
+            turn_start=turn_start,
         )
 
         # ---------------------------------------------------------------
@@ -5829,7 +5875,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id,
                     session_id=session_id,
-                    render_reasoning_in_ui=config.render_reasoning_in_ui,
                 )
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
@@ -6446,6 +6491,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix,
                     len(session.messages),
                 )
+                if turn_start is not None and not (
+                    state is not None and _has_open_block(state.adapter)
+                ):
+                    final_checkpoint = turn_checkpoint(session.messages, turn_start)
             except Exception as persist_err:
                 logger.error(
                     "%s Failed to persist session in finally: %s",
@@ -6612,6 +6661,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             turn_error,
         )
 
+    # Yielded here, not in ``finally``: an async generator cannot yield while
+    # it is being closed, and a closed turn has nobody left to read it.
+    if final_checkpoint is not None:
+        yield final_checkpoint
+
     # -------------------------------------------------------------------------
     # Auto-continue: drain any messages the user queued AFTER the turn-start
     # drain window and process them as a new turn automatically.
@@ -6680,6 +6734,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     organization_id=organization_id,
                     team_id=team_id,
                     credential_lease=credential_lease,
+                    turn_start=turn_start,
+                    continued_pending=_auto_pending_messages,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False

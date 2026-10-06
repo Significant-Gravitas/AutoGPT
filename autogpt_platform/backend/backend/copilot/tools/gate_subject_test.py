@@ -5,6 +5,9 @@ approval handed to the run are the ones the engines call.
 """
 
 import json
+import os
+import shlex
+import subprocess
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -36,7 +39,11 @@ from backend.copilot.gate.review import review_payload
 from backend.copilot.gate.subject import workflow_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.bash_exec import BashExecTool
-from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
+from backend.copilot.tools.models import (
+    BashExecResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+)
 from backend.copilot.tools.run_agent import RunAgentTool
 from backend.copilot.tools.run_capability import RunCapabilityTool
 from backend.data.graph import BaseGraph, GraphModel, Link, Node, NodeModel
@@ -787,3 +794,163 @@ async def _opened(
 ) -> Headline:
     # The headline the real card stores, so the chat row names what it names.
     return Headline.model_validate(review_payload(tool_name, args, subject)["headline"])
+
+
+# ---- a workspace file written through bash_exec -----------------------------
+
+_LONG_POST = (
+    "cd /home/user/workspace/blog && cat > post.md << 'EOF'\n"
+    + "word " * 2_000
+    + "\nEOF"
+)
+
+
+class _LocalSandbox:
+    """Runs sandbox commands as E2B does, with real ``bash -l`` here and
+    ``/home/user`` rooted at ``home``."""
+
+    def __init__(self, home: str):
+        self.home = home
+        self.sandbox_id = "sbx-test"
+        self.commands = self
+        self.files: Any = None
+
+    async def run(
+        self,
+        cmd: str,
+        envs: dict[str, str] | None = None,
+        cwd: str = "/home/user",
+        **_: Any,
+    ) -> SimpleNamespace:
+        user_home = (envs or {}).get("HOME", "/home/user")
+        done = subprocess.run(
+            ["bash", "-l", "-c", cmd.replace("/home/user", self.home)],
+            cwd=cwd.replace("/home/user", self.home),
+            env={**os.environ, "HOME": user_home.replace("/home/user", self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return SimpleNamespace(
+            exit_code=done.returncode,
+            stdout=done.stdout.replace(self.home, "/home/user"),
+            stderr=done.stderr,
+        )
+
+
+@pytest.fixture
+def home(tmp_path):
+    """The sandbox's home, with a real ``~/workspace/blog`` in it."""
+    (tmp_path / "workspace" / "blog").mkdir(parents=True)
+    with patch(
+        "backend.copilot.tools.bash_exec.get_current_sandbox",
+        return_value=_LocalSandbox(str(tmp_path)),
+    ):
+        yield tmp_path
+
+
+async def _bash(mode: AutopilotMode, command: str):
+    """What ran, whether it was held, and how often the supervisor was asked."""
+    shell = AsyncMock(
+        return_value=BashExecResponse(
+            message="ok", stdout="", stderr="", exit_code=0, timed_out=False
+        )
+    )
+    asks = AsyncMock(return_value=Judgement(allowed=False, reason="too long"))
+    with (
+        patch.object(BashExecTool, "_execute", shell),
+        patch(f"{_GATE}.supervise", asks),
+    ):
+        result = await BashExecTool().execute(
+            "user-1", _session(mode), "call-1", command=command
+        )
+    return shell.await_count, _is_held(result), asks.await_count
+
+
+@pytest.mark.parametrize("mode", ["ask_first", "auto"])
+@pytest.mark.parametrize(
+    "command, runs",
+    [(_LONG_POST, True), (_LONG_POST + "\nrm -rf ~", False)],
+)
+async def test_a_heredoc_write_into_the_workspace_runs_as_a_file_write(
+    gate, home, mode, command, runs
+):
+    """A write never reaches the supervisor, however long; a second command does."""
+    ran, held, asked = await _bash(mode, command)
+    assert held is not runs
+    assert ran == int(runs)
+    assert asked == int(not runs)
+
+
+@pytest.mark.parametrize(
+    "link, points_to",
+    [("workspace/blog/post.md", ".bashrc"), ("workspace/blog", ".config")],
+)
+async def test_a_write_through_a_symlink_is_judged_as_the_shell_command(
+    gate, home, link, points_to
+):
+    """The shell follows the link, so the file written is not the one named."""
+    path = home / link
+    if path.is_dir():
+        path.rmdir()
+        (home / points_to).mkdir()
+    path.symlink_to(home / points_to)
+    ran, held, asked = await _bash("auto", _LONG_POST)
+    assert (ran, held, asked) == (0, True, 1)
+
+
+async def test_a_login_file_cannot_answer_the_symlink_check(gate, home):
+    """The model can edit ``~/.profile``, which ``bash -l`` runs before a command."""
+    (home / "workspace/blog/post.md").symlink_to(home / ".bashrc")
+    (home / ".profile").write_text('readlink() { echo "$3"; }\n')
+    ran, held, asked = await _bash("auto", _LONG_POST)
+    assert (ran, held, asked) == (0, True, 1)
+
+
+@pytest.mark.real_login_chain
+@pytest.mark.parametrize(
+    "profile, command, lands",
+    [
+        # A relative `cd` searches CDPATH first.
+        (
+            "export CDPATH={home}/other\n",
+            _LONG_POST.replace("/home/user/workspace/blog", "workspace/blog"),
+            "other/workspace/blog/post.md",
+        ),
+        # The command's own `bash -c` inherits an exported function.
+        (
+            "cat() {{ command cat > {home}/elsewhere; }}; export -f cat\n",
+            _LONG_POST,
+            "elsewhere",
+        ),
+    ],
+)
+async def test_a_write_under_a_changed_login_chain_is_judged(
+    gate, home, profile, command, lands
+):
+    """``bash -l`` runs the chain before the command and can move the write."""
+    (home / "other/workspace/blog").mkdir(parents=True)
+    sandbox, chain = _LocalSandbox(str(home)), FakeSandbox(stock_files())
+    sandbox.files = chain.files
+    profile = profile.format(home=home)
+    with (
+        patch.object(
+            sandbox_login, "get_redis_async", AsyncMock(return_value=FakeRedis())
+        ),
+        patch(f"{_BASH}.get_current_sandbox", return_value=sandbox),
+    ):
+        await sandbox_login.record_baseline(sandbox)
+        (home / ".profile").write_text(profile)
+        chain.store["/home/user/.profile"] = profile.encode()
+        await sandbox.run(f"bash -c {shlex.quote(command)}")
+        assert (home / lands).read_text().startswith("word ")
+        ran, held, asked = await _bash("auto", command)
+    assert (ran, held, asked) == (0, True, 1)
+
+
+async def test_a_write_with_no_sandbox_to_resolve_it_in_is_judged(gate):
+    with patch(
+        "backend.copilot.tools.bash_exec.get_current_sandbox", return_value=None
+    ):
+        ran, held, asked = await _bash("auto", _LONG_POST)
+    assert (ran, held, asked) == (0, True, 1)
