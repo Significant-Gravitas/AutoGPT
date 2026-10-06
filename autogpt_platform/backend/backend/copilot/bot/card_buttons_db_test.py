@@ -40,7 +40,7 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
-from backend.copilot.response_model import StreamTextDelta
+from backend.copilot.response_model import StreamCheckpoint, StreamTextDelta
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.data.db_accessors import review_db
@@ -110,19 +110,32 @@ class _InProcessBot:
 class _Executor:
     """Runs a dispatched turn as the executor would, minus the model: the turn
     registers, says ``reply`` and ends. With ``then``, a turn the user starts
-    from the web follows the instant it ends, and says that."""
+    from the web follows the instant it ends, and says that. ``live`` turns
+    persist and checkpoint as the engines do, and run until ``finish``."""
 
-    def __init__(self, reply: str, then: str | None = None) -> None:
+    def __init__(self, reply: str, then: str | None = None, live: bool = False):
         self.reply = reply
         self.then = then
+        self.live = live
+        self.running: tuple[str, str] | None = None
 
     async def enqueue(self, **turn: Any) -> None:
         await self._finish(turn["session_id"], turn["turn_id"])
 
-    async def dispatch(self, _slot: Any, **turn: Any) -> None:
+    async def dispatch(self, slot: Any, **turn: Any) -> None:
         await stream_registry.create_session(
             turn["session_id"], turn["user_id"], "chat_stream", "chat", turn["turn_id"]
         )
+        if self.live:
+            slot.keep()
+            await stream_registry.publish_chunk(
+                turn["turn_id"], StreamTextDelta(id="reply", delta=self.reply)
+            )
+            await stream_registry.publish_chunk(
+                turn["turn_id"], StreamCheckpoint(rows=2, sequence=0, digest="")
+            )
+            self.running = (turn["session_id"], turn["turn_id"])
+            return
         await self._finish(turn["session_id"], turn["turn_id"])
         if self.then is not None:
             web = str(uuid.uuid4())
@@ -130,6 +143,13 @@ class _Executor:
                 turn["session_id"], turn["user_id"], "chat_stream", "chat", web
             )
             await self._finish(turn["session_id"], web, self.then)
+
+    async def finish(self) -> None:
+        """End the live turn; completion trims its stream to the checkpoint."""
+        if self.running is not None:
+            session_id, turn_id = self.running
+            self.running = None
+            await stream_registry.mark_session_completed(session_id, turn_id=turn_id)
 
     async def _finish(
         self, session_id: str, turn_id: str, reply: str | None = None
@@ -746,7 +766,8 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
     one_linked: _Channel, test_user_id, gate_on, dispatched
 ):
     """Through the real bot: the turn the click starts reads the user's request
-    as their last words, and its reply lands where the card was."""
+    as their last words, and its reply, streamed with entry ids and a
+    checkpoint as the engines stream it, lands where the card was."""
     session, _, card = await _held_card(one_linked, test_user_id)
     request = format_batch(
         [("Someone", one_linked.owner, "Post hello, then pause my weekly report")],
@@ -757,19 +778,32 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
     )
     thread = str(_Discord.thread_id)
     await bot_sessions.set_session(one_linked.platform, thread, session.session_id)
-    executor = _Executor("Posted it; pausing the report next.")
+    executor = _Executor("Posted it; pausing the report next.", live=True)
     dispatched.side_effect = executor.dispatch
     supervise = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    subscribed = asyncio.Event()
+    subscribe = stream_registry.subscribe_to_turn
+
+    async def subscribe_and_tell(*args: Any) -> Any:
+        queue = await subscribe(*args)
+        subscribed.set()
+        return queue
 
     with (
         patch.object(bot_chat, "enqueue_copilot_turn", executor.enqueue),
         patch("backend.copilot.gate.supervise", supervise),
+        patch.object(stream_registry, "subscribe_to_turn", subscribe_and_tell),
     ):
         bot = _InProcessBot()
         discord_ui.register_choice_handler(
             MagicMock(), bot.adapter, bot.handler.handle, bot.api
         )
-        await one_linked.click(card, one_linked.owner)
+        click = asyncio.create_task(one_linked.click(card, one_linked.owner))
+        try:
+            await asyncio.wait_for(subscribed.wait(), timeout=30)
+        finally:
+            await executor.finish()
+        await asyncio.wait_for(click, timeout=30)
         woken = await get_chat_session(session.session_id, test_user_id)
         assert woken is not None
         await check_action(

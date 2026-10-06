@@ -231,7 +231,7 @@ def _standout(agents: list[AgentPeriodStats], totals: BriefingTotals) -> str | N
     busiest = max(agents, key=lambda a: a.runs)
     if busiest.runs * 2 >= totals.runs:
         return (
-            f"{busiest.agent} did most of the work — {busiest.runs:,} of "
+            f"{busiest.agent} did most of the work: {busiest.runs:,} of "
             f"{totals.runs:,} runs."
         )
 

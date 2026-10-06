@@ -10,7 +10,7 @@ Get everything about one Conductor workspace: details, current status, shared pr
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block calls `GET /v0/workspaces/{id}` and `GET /v0/workspaces/{id}/status`, then best-effort `GET /v0/workspaces/{id}/preview` and `GET /v0/workspaces/{id}/sessions` (a workspace that is still initializing may not serve those yet, in which case `preview_url` is empty and `sessions` is empty). The session listing is paged in requests of up to 100 rows until `session_limit` sessions have been collected starting at `session_offset`; `sessions_has_more` and `next_session_offset` let a graph read the following page. `status` is one of initializing, ready, sleeping, archived, deleted, updating or unstarted; `lifecycle_step` and `error_message` explain an initializing or failed workspace.
+The block calls `GET /v0/workspaces/{id}` and `GET /v0/workspaces/{id}/status`, then best-effort `GET /v0/workspaces/{id}/preview` and `GET /v0/workspaces/{id}/sessions` (a workspace that is still initializing may not serve those yet, in which case `preview_url` is empty and `sessions` is empty). The session listing is paged in requests of up to 100 rows until `session_limit` sessions have been collected starting at `session_offset`; `sessions_has_more` and `next_session_offset` let a graph read the following page. `status` is one of initializing, ready, sleeping, archived, deleted, updating or unstarted; `lifecycle_step` and `error_message` explain an initializing or failed workspace. `base_branch` is filled from the workspace record when Conductor reports the branch it was cut from; the API currently omits it, so the output is empty and the `base_branch` output of Create Workspace is the record to keep.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,6 +37,7 @@ The block calls `GET /v0/workspaces/{id}` and `GET /v0/workspaces/{id}/status`, 
 | sessions_has_more | True when the workspace has more sessions than returned | bool |
 | next_session_offset | session_offset to request the next page of sessions | int |
 | deep_link | Link that opens the workspace | str |
+| base_branch | Branch the workspace was created from, when Conductor reports it. The API currently omits it, so this is empty; keep the base_branch output of Create Workspace instead. Verify it matches the PR target before opening a PR. | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

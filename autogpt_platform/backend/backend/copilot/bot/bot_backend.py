@@ -565,13 +565,13 @@ class BotBackend:
         on_approval_needed: ApprovalNeededCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Yield a running or finished turn's text deltas, from its start."""
-        queue = await stream_registry.subscribe_to_session(
-            session_id=handle.session_id,
-            user_id=handle.user_id,
-            last_message_id=handle.subscribe_from,
-            turn_id=handle.turn_id,
-        )
-        if queue is None:
+        try:
+            queue = await stream_registry.subscribe_to_turn(
+                handle.session_id, handle.user_id, handle.turn_id, handle.subscribe_from
+            )
+        except (stream_registry.TurnStreamGone, stream_registry.TurnStreamTrimmed):
+            # Trimmed: the turn ended before we subscribed and kept only its
+            # tail from the last checkpoint, which holds none of its text.
             raise BotStreamError(
                 "subscribe_failed",
                 "failed to subscribe to response stream",
@@ -593,7 +593,7 @@ class BotBackend:
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(
+                    _, chunk = await asyncio.wait_for(
                         queue.get(), timeout=STREAM_CHUNK_TIMEOUT_SECONDS
                     )
                 except asyncio.TimeoutError:

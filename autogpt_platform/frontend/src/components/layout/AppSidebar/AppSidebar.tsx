@@ -20,6 +20,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -232,6 +233,7 @@ function CollapsibleNavGroup({
 type Props = ComponentProps<typeof Sidebar>;
 
 export function AppSidebar(props: Props) {
+  const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
@@ -292,19 +294,21 @@ export function AppSidebar(props: Props) {
             </motion.div>
           ) : null}
 
-          <motion.div
-            variants={itemVariants}
-            className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
-          >
-            <CollapsibleNavGroup label="Recent chats" scrollable>
-              {/* Suspense boundary: RecentChats reads useSearchParams(), which
+          {isLoggedIn && (
+            <motion.div
+              variants={itemVariants}
+              className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
+            >
+              <CollapsibleNavGroup label="Recent chats" scrollable>
+                {/* Suspense boundary: RecentChats reads useSearchParams(), which
                   Next.js requires to be wrapped to avoid forcing the route to
                   client-side rendering. */}
-              <Suspense fallback={null}>
-                <RecentChats />
-              </Suspense>
-            </CollapsibleNavGroup>
-          </motion.div>
+                <Suspense fallback={null}>
+                  <RecentChats />
+                </Suspense>
+              </CollapsibleNavGroup>
+            </motion.div>
+          )}
         </motion.div>
       </SidebarContent>
 

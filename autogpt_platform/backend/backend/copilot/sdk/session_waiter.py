@@ -109,7 +109,7 @@ async def wait_for_session_result(
             remaining = deadline - loop.time()
             if remaining <= 0:
                 break
-            event = await asyncio.wait_for(queue.get(), timeout=remaining)
+            _, event = await asyncio.wait_for(queue.get(), timeout=remaining)
             process_event(event, acc)
             if isinstance(event, StreamFinish):
                 outcome = "completed"
