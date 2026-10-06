@@ -30,7 +30,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.settings import BehaveAs
 
 app = fastapi.FastAPI()
@@ -4560,3 +4560,144 @@ def test_credential_selection_rejects_a_provider_named_twice(
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
     remember.assert_not_awaited()
+
+
+# ─── Create session: client-named session_id ────────────────────────────
+
+
+def _in_memory_session_store(mocker: pytest_mock.MockerFixture):
+    """Back the model's get/create with a dict so a replayed create sees the
+    session the first request persisted, and a second insert of the same id
+    fails the way the primary key would."""
+    store: dict[str, ChatSession] = {}
+
+    async def _get(session_id: str, user_id: str | None = None):
+        session = store.get(session_id)
+        if session is None or (user_id is not None and session.user_id != user_id):
+            return None
+        return session
+
+    async def _create(user_id: str, *, dry_run: bool, session_id=None, **kwargs):
+        if session_id in store:
+            raise DatabaseError(f"Failed to create chat session {session_id}")
+        session = ChatSession.new(
+            user_id,
+            dry_run=dry_run,
+            session_id=session_id,
+            expert_id=kwargs.get("expert_id"),
+        )
+        store[session.session_id] = session
+        return session
+
+    mocker.patch("backend.copilot.model.get_chat_session", side_effect=_get)
+    create = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_create,
+    )
+    return store, create
+
+
+def test_create_session_replayed_with_the_same_session_id_returns_one_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """A retry after the first response was lost (the phone saw "Load failed"
+    while the server had already committed) adopts that session instead of
+    leaving it empty behind a second one."""
+    store, create = _in_memory_session_store(mocker)
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c2d"
+
+    first = client.post("/sessions", json={"session_id": session_id})
+    second = client.post("/sessions", json={"session_id": session_id})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["id"] == session_id
+    assert second.json()["id"] == session_id
+    assert list(store) == [session_id]
+    create.assert_awaited_once()
+
+
+def test_create_session_replay_keeps_the_expert_scope(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    store, create = _in_memory_session_store(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c2e"
+    body = {"session_id": session_id, "expert_id": "expert-1"}
+
+    first = client.post("/sessions", json=body)
+    second = client.post("/sessions", json=body)
+
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"] == session_id
+    assert second.json()["expert_id"] == "expert-1"
+    create.assert_awaited_once()
+
+
+def test_create_session_rejects_a_session_id_scoped_to_another_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Replaying an id with a different expert must not hand back a session
+    that runs as someone else."""
+    store, _ = _in_memory_session_store(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c2f"
+    client.post("/sessions", json={"session_id": session_id})
+
+    response = client.post(
+        "/sessions", json={"session_id": session_id, "expert_id": "expert-1"}
+    )
+
+    assert response.status_code == 409
+    assert store[session_id].expert_id is None
+
+
+def test_create_session_rejects_another_users_session_id(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """An id already taken by someone else is a conflict, never an adoption."""
+    store, _ = _in_memory_session_store(mocker)
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c30"
+    store[session_id] = ChatSession.new(
+        "someone-else", dry_run=False, session_id=session_id
+    )
+
+    response = client.post("/sessions", json={"session_id": session_id})
+
+    assert response.status_code == 409
+    assert "someone-else" not in response.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"session_id": "not-a-uuid"},
+        {
+            "session_id": "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c31",
+            "builder_graph_id": "graph-1",
+        },
+        {
+            "session_id": "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c31",
+            "expert_id": "expert-1",
+            "expert_kickoff": True,
+        },
+    ],
+)
+def test_create_session_rejects_session_id_it_cannot_honour(
+    mocker: pytest_mock.MockerFixture,
+    body: dict,
+) -> None:
+    """Builder and kickoff sessions pick their own ids, so a client id there
+    would be silently dropped; reject it instead."""
+    _, create = _in_memory_session_store(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json=body)
+
+    assert response.status_code == 422
+    create.assert_not_awaited()

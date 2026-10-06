@@ -1515,6 +1515,56 @@ async def get_or_create_expert_kickoff_session(
         raise
 
 
+class SessionIdConflictError(Exception):
+    """A client-named session id is taken by a session the caller cannot adopt."""
+
+
+async def get_or_create_client_chat_session(
+    user_id: str,
+    session_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+) -> ChatSession:
+    """Create the session the client named, or adopt it on a retry.
+
+    The client mints *session_id* before its first attempt, so a retry after a
+    lost response lands on the session that attempt committed instead of
+    leaving it empty behind a second one. The primary key is the claim, the
+    same way a turn-start send dedupes on its ``ChatMessage`` id.
+
+    Raises:
+        SessionIdConflictError: the id belongs to another user's session, or
+            to one scoped to a different expert.
+    """
+    existing = await get_chat_session(session_id, user_id)
+    if existing is None:
+        try:
+            return await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                session_id=session_id,
+                organization_id=organization_id,
+                team_id=team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+            )
+        except DatabaseError:
+            existing = await get_chat_session(session_id, user_id)
+            if existing is None:
+                if await get_chat_session(session_id) is not None:
+                    raise SessionIdConflictError(session_id)
+                raise
+    if existing.expert_id != expert_id:
+        raise SessionIdConflictError(session_id)
+    return existing
+
+
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
