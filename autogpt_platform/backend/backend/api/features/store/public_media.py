@@ -91,7 +91,7 @@ def _publishable_paths(
             or match["owner"] not in owner_ids
             or not _is_valid_path(match, path)
         ):
-            logger.warning(f"Not publishing {path!r}: not media of the listing owners")
+            logger.error(f"Not publishing {path!r}: not media of the listing owners")
             continue
         paths[source_url] = path
     return paths

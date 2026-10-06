@@ -18,6 +18,14 @@ vi.mock("@/services/environment", () => ({
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
+import { PRIVATE_MEDIA_RANGE_CHUNK_BYTES } from "../route.helpers";
+
+const PRIVATE_IMAGE_HEADER_KEYS = [
+  "accept",
+  "accept-encoding",
+  "authorization",
+  "cache-control",
+];
 
 const BACKEND = "https://backend.test";
 
@@ -383,6 +391,7 @@ describe("proxy route — handler pass-through", () => {
         status: 206,
         headers: {
           "Content-Type": "video/mp4",
+          "Content-Length": "11",
           "Content-Range": "bytes 0-10/100",
           "Accept-Ranges": "bytes",
           "Cache-Control": "public, max-age=3600",
@@ -418,6 +427,70 @@ describe("proxy route — handler pass-through", () => {
     expect(res.headers.get("accept-ranges")).toBe("bytes");
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("forwards only allowlisted headers for a private image", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("image", {
+        status: 200,
+        headers: { "Content-Type": "image/png", "Content-Length": "5" },
+      }),
+    );
+    const path = [
+      "api",
+      "store",
+      "submissions",
+      "media",
+      "user-123",
+      "images",
+      "thumbnail.png",
+    ];
+    const req = new NextRequest(
+      `https://app.test/api/proxy/${path.join("/")}`,
+      {
+        headers: {
+          Accept: "image/*",
+          Authorization: "Bearer client-supplied",
+          Range: "bytes=0-10",
+          "X-Forwarded-For": "203.0.113.7",
+        },
+      },
+    );
+    await GET(req, makeParams(path));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect([...sentHeaders.keys()].sort()).toEqual(PRIVATE_IMAGE_HEADER_KEYS);
+    expect(sentHeaders.get("authorization")).not.toBe("Bearer client-supplied");
+  });
+
+  it("streams private media too large to buffer", async () => {
+    const size = PRIVATE_MEDIA_RANGE_CHUNK_BYTES + 1;
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("large image", {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Length": String(size),
+        },
+      }),
+    );
+    const path = [
+      "api",
+      "store",
+      "submissions",
+      "media",
+      "user-123",
+      "images",
+      "large.png",
+    ];
+    const res = await GET(
+      new NextRequest(`https://app.test/api/proxy/${path.join("/")}`),
+      makeParams(path),
+    );
+
+    expect(res.headers.get("content-length")).toBeNull();
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.text()).toBe("large image");
   });
 
   it("does not expose private-media proxy exception details", async () => {

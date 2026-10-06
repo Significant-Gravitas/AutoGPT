@@ -3,8 +3,9 @@ const UUID_RE =
 const SAFE_MEDIA_PATH_COMPONENT_RE = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
 const SINGLE_BYTE_RANGE_RE =
   /^bytes=(?:([0-9]{1,15})-([0-9]{0,15})|-([0-9]{1,15}))$/;
-// Private media is buffered before it is forwarded, so each ranged response
-// is capped and a video loads in chunks of at most this size.
+// Private media up to this size is buffered before it is forwarded, below
+// Vercel's 4.5 MB limit for buffered bodies, and each video range is capped to
+// it so every video response stays buffered.
 export const PRIVATE_MEDIA_RANGE_CHUNK_BYTES = 4 * 1024 * 1024;
 
 export function isPrivateStoreMediaRequest(path: string[]): boolean {
@@ -40,6 +41,17 @@ export function getSafePrivateMediaRange(value: string | null): string | null {
   const chunkEnd = start + PRIVATE_MEDIA_RANGE_CHUNK_BYTES - 1;
   const end = endText ? Math.min(Number(endText), chunkEnd) : chunkEnd;
   return `bytes=${start}-${end}`;
+}
+
+export function shouldBufferPrivateMedia(headers: Headers): boolean {
+  const header = headers.get("content-length");
+  if (!header) return false;
+  const length = Number(header);
+  return (
+    Number.isFinite(length) &&
+    length >= 0 &&
+    length <= PRIVATE_MEDIA_RANGE_CHUNK_BYTES
+  );
 }
 
 export function isWorkspaceDownloadRequest(path: string[]): boolean {

@@ -4,6 +4,19 @@ import backend.util.settings as settings_module
 from backend.util.settings import Config
 
 
+@pytest.fixture(autouse=True)
+def no_bucket_env(monkeypatch):
+    # Config reads the environment before keyword arguments, and backend.data.db
+    # copies .env into os.environ on import.
+    for name in (
+        "BEHAVE_AS",
+        "MEDIA_GCS_BUCKET_NAME",
+        "PUBLIC_SITE_MEDIA_BUCKET",
+        "PRIVATE_USER_DATA_BUCKET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_storage_bucket_settings_use_distinct_public_and_private_names():
     config = Config(
         _env_file=None,

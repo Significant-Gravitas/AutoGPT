@@ -153,6 +153,9 @@ become the private one:
    the existing `MEDIA_GCS_BUCKET_NAME` bucket and `PUBLIC_SITE_MEDIA_BUCKET`
    set to the new one. Pointing `PRIVATE_USER_DATA_BUCKET` at a new bucket
    instead makes every existing workspace file and transcript unreadable.
+   Deploy the frontend first: once the backend has both names set, uploads
+   return `/api/store/submissions/media/...`, which a frontend without the new
+   rewrite answers with a 404.
    If anonymous users hold `roles/storage.objectViewer` on the old bucket,
    they can list every object in it until step 4. Swap that binding for
    `roles/storage.legacyObjectReader` first: existing links keep working and

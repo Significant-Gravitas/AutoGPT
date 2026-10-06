@@ -14,6 +14,7 @@ import {
   fetchWorkspaceDownloadWithRetry,
   getResponseStartTimeoutMs,
   getSafePrivateMediaRange,
+  shouldBufferPrivateMedia,
   getWorkspaceDownloadErrorMessage,
   isPrivateStoreMediaRequest,
   isPrivateStoreVideoRequest,
@@ -283,15 +284,18 @@ async function handler(
     const responseHeaders = filterResponseHeaders(backendResponse.headers);
     if (isPrivateMedia) {
       hardenPrivateMediaResponseHeaders(responseHeaders);
-      // Buffered like workspace downloads: Vercel silently drops the tail of
-      // large streamed binary bodies.
-      const body = await backendResponse.arrayBuffer();
-      responseHeaders.set("content-length", String(body.byteLength));
-      return new NextResponse(body, {
-        status: backendResponse.status,
-        statusText: backendResponse.statusText,
-        headers: responseHeaders,
-      });
+      // Vercel silently drops the tail of large streamed binary bodies, so
+      // private media is buffered like workspace downloads. Larger images keep
+      // streaming: a buffered body over Vercel's 4.5 MB limit fails outright.
+      if (shouldBufferPrivateMedia(backendResponse.headers)) {
+        const body = await backendResponse.arrayBuffer();
+        responseHeaders.set("content-length", String(body.byteLength));
+        return new NextResponse(body, {
+          status: backendResponse.status,
+          statusText: backendResponse.statusText,
+          headers: responseHeaders,
+        });
+      }
     }
 
     return new NextResponse(backendResponse.body, {

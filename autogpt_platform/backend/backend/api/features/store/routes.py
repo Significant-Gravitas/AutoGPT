@@ -598,6 +598,7 @@ async def upload_submission_media(
                 for content_type in local_media.CONTENT_TYPE_EXTENSIONS
             },
         },
+        404: {"description": "Media not found"},
         416: {"description": "Requested range is not satisfiable"},
     },
     tags=["store", "private"],
