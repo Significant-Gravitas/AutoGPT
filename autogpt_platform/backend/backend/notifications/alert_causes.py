@@ -48,6 +48,10 @@ class BaseCause(BaseModel, Generic[AlertCauseT]):
         return self.headline
 
     @property
+    def preheader(self) -> str:
+        return self.body
+
+    @property
     def headline(self) -> str:
         raise NotImplementedError
 
@@ -111,7 +115,14 @@ class AuthExpiredCause(BaseCause[Literal[AlertCause.AUTH_EXPIRED]]):
 
     @property
     def subject_line(self) -> str:
-        return f"{self.agent} is stuck — {self.provider} needs a reconnect"
+        return f"{self.agent} is stuck: {self.provider} needs a reconnect"
+
+    @property
+    def preheader(self) -> str:
+        return (
+            f"{self.provider}’s connection expired at {self.expired_at_label}, so "
+            f"{self.agent} can’t run."
+        )
 
     @property
     def body(self) -> str:
@@ -121,8 +132,7 @@ class AuthExpiredCause(BaseCause[Literal[AlertCause.AUTH_EXPIRED]]):
             else f"{self.runs_skipped} scheduled runs have"
         )
         return (
-            f"{self.provider}’s connection expired at {self.expired_at_label}, so "
-            f"{self.agent} can’t run. {runs} been skipped; the next try is at "
+            f"{self.preheader} {runs} been skipped; the next try is at "
             f"{self.next_try_label}. Until then, its schedule is on hold."
         )
 
@@ -154,11 +164,15 @@ class PausedFailuresCause(BaseCause[Literal[AlertCause.PAUSED_FAILURES]]):
         return f"{self.agent} paused itself"
 
     @property
-    def body(self) -> str:
+    def preheader(self) -> str:
         return (
             f"The step “{self.step}” failed on {self.consecutive_failures} "
-            "consecutive runs. It stays paused until you take a look."
+            "consecutive runs."
         )
+
+    @property
+    def body(self) -> str:
+        return f"{self.preheader} It stays paused until you take a look."
 
     @property
     def cta_label(self) -> str:
@@ -185,10 +199,14 @@ class BlockFailedCause(BaseCause[Literal[AlertCause.BLOCK_FAILED]]):
         return f"{self.agent} keeps failing on one step"
 
     @property
+    def preheader(self) -> str:
+        return f"Every run gets as far as “{self.step}” and stops there."
+
+    @property
     def body(self) -> str:
         return (
-            f"Every run gets as far as “{self.step}” and stops there. The rest of "
-            f"{self.agent} is fine — this one step needs a look."
+            f"{self.preheader} The rest of {self.agent} is fine: "
+            "this one step needs a look."
         )
 
     @property
@@ -271,12 +289,13 @@ class AwaitingReviewCause(BaseCause[Literal[AlertCause.AWAITING_REVIEW]]):
         return f"{self.agent} is waiting on your review"
 
     @property
-    def body(self) -> str:
+    def preheader(self) -> str:
         output = "1 output" if self.count == 1 else f"{self.count} outputs"
-        return (
-            f"{output} waiting since {self.since_label}. Nothing sends until you "
-            "approve or dismiss."
-        )
+        return f"{output} waiting since {self.since_label}."
+
+    @property
+    def body(self) -> str:
+        return f"{self.preheader} Nothing sends until you approve or dismiss."
 
     @property
     def cta_label(self) -> str:
@@ -341,20 +360,26 @@ class LowBalanceCause(BaseCause[Literal[AlertCause.LOW_BALANCE]]):
         return f"Your credits run out in about {self.days_left} {day_word}"
 
     @property
+    def preheader(self) -> str:
+        if self.days_left is None:
+            return f"{self.balance_display} remaining."
+        return (
+            f"At {self.daily_rate_display}/day the {self.balance_display} remaining "
+            f"run out around {self.runs_out_label}."
+        )
+
+    @property
     def body(self) -> str:
         agents = (
-            "1 scheduled agent would stop"
+            "1 scheduled workflow would stop"
             if self.scheduled_agents == 1
-            else f"{self.scheduled_agents} scheduled agents would stop"
+            else f"{self.scheduled_agents} scheduled workflows would stop"
         )
         if self.days_left is None:
             # No usable spend history: state the balance and the stake, and
             # stop short of a date we cannot stand behind.
-            return f"{self.balance_display} remaining. {agents} when it runs out."
-        return (
-            f"At {self.daily_rate_display}/day the {self.balance_display} remaining "
-            f"run out around {self.runs_out_label}. {agents}."
-        )
+            return f"{self.preheader} {agents} when it runs out."
+        return f"{self.preheader} {agents}."
 
     @property
     def cta_label(self) -> str:
@@ -379,14 +404,15 @@ class ZeroBalanceCause(BaseCause[Literal[AlertCause.ZERO_BALANCE]]):
 
     @property
     def headline(self) -> str:
-        return f"{self.agent} stopped — you are out of credits"
+        return f"{self.agent} stopped: you are out of credits"
+
+    @property
+    def preheader(self) -> str:
+        return f"{self.agent} needs {self.shortfall_display} more credits to finish."
 
     @property
     def body(self) -> str:
-        return (
-            f"{self.agent} needs {self.shortfall_display} more credits to finish. It "
-            "stays stopped until you top up."
-        )
+        return f"{self.preheader} It stays stopped until you top up."
 
     @property
     def cta_label(self) -> str:
@@ -413,11 +439,15 @@ class GuardrailCause(BaseCause[Literal[AlertCause.GUARDRAIL]]):
         return f"{self.agent} hit its spend limit"
 
     @property
-    def body(self) -> str:
+    def preheader(self) -> str:
         return (
             f"Reached its {self.limit_display}-credit limit for this "
-            f"{self.period_noun} and stopped mid-run. Resumes {self.reset_label}."
+            f"{self.period_noun} and stopped mid-run."
         )
+
+    @property
+    def body(self) -> str:
+        return f"{self.preheader} Resumes {self.reset_label}."
 
     @property
     def cta_label(self) -> str:

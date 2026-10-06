@@ -30,12 +30,20 @@ from backend.copilot.context import (
 )
 from backend.copilot.credential_selection import selected_credentials
 from backend.copilot.gate.executed_files import run_targets
+from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.shell_write import workspace_write_target
+from backend.copilot.gate.subject import Subject
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
 )
 from backend.copilot.model import ChatSession
-from backend.util.sandbox_login import changed_login_files, judged_text, read_capped
+from backend.util.sandbox_login import (
+    changed_login_files,
+    judged_text,
+    read_capped,
+    run_internal,
+)
 
 from .base import BaseTool
 from .connect_integration import requested_scopes
@@ -69,6 +77,8 @@ def _build_completion_response(
 
 class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
+
+    has_gate_subject = True
 
     @property
     def name(self) -> str:
@@ -110,6 +120,16 @@ class BashExecTool(BaseTool):
         # when user_id is present.  Defense-in-depth: ensures only authenticated
         # users reach the token injection path.
         return True
+
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> Subject | None:
+        """A command that only writes one workspace file is judged as that write."""
+        command = args.get("command")
+        target = workspace_write_target(command) if isinstance(command, str) else None
+        if target is None or not await _lands_on(target):
+            return None
+        return Subject(key="write_workspace_file", name=target, effect=Effect.WORKSPACE)
 
     async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
         """What the scripts this command runs contain, and the login files changed
@@ -280,3 +300,22 @@ class BashExecTool(BaseTool):
                 error="e2b_execution_error",
                 session_id=session_id,
             )
+
+
+async def _lands_on(path: str) -> bool:
+    """A shell write to ``path`` lands there: no symlink on it, and no changed login
+    file, which runs first and can redirect it (``CDPATH``, an exported ``cat``).
+    Same accepted race as ``_check_sandbox_symlink_escape``."""
+    sandbox = get_current_sandbox()
+    if sandbox is None:
+        return False
+    try:
+        if await changed_login_files(sandbox):
+            return False
+        result = await run_internal(
+            sandbox, f"readlink -m -- {shlex.quote(path)}", cwd=E2B_WORKDIR, timeout=5
+        )
+    except Exception:
+        logger.warning("Could not resolve a bash_exec write target", exc_info=True)
+        return False
+    return result.exit_code == 0 and (result.stdout or "").strip() == path
