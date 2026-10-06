@@ -4,10 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 // The old /profile pages are superseded by /settings. Each legacy page maps to
-// its closest new-settings equivalent. The new pages render under both the
-// classic and the new layout, so this is deliberately not flag-gated — links
-// in the wild (emails, bookmarks, the old sidebar) must land on the new
-// surface regardless of which shell the user is on.
+// its closest new-settings equivalent. Links in the wild (emails, bookmarks,
+// the old sidebar) must land on the new surface.
 const LEGACY_TO_NEW_SETTINGS: Record<string, string> = {
   "/profile": "/settings/profile",
   "/profile/dashboard": "/settings/creator-dashboard",

@@ -9,8 +9,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
-  /** The new layout floats its sidebar/files controls over the chat's
-   *  top-left corner on small viewports. */
+  /** The chrome floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports. */
   hasFloatingControls?: boolean;
 }
 

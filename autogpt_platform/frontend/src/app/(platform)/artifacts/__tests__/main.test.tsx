@@ -26,8 +26,8 @@ const { setFlagStatusMock, uploadFileDirectMock } = vi.hoisted(() => {
   };
 });
 
-// usePlatformChrome re-renders once on mount (isMounted guard), so per-test
-// flag overrides must persist across renders; restore the default afterward.
+// Per-test flag overrides must persist across re-renders; restore the default
+// afterward.
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   uploadFileDirectMock.mockReset();
@@ -43,10 +43,9 @@ beforeEach(() => {
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ARTIFACTS_PAGE: "artifacts-page",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
     HIRE_EXPERTS: "hire-experts",
   },
-  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
+  useGetFlag: () => true,
   useFlagStatus: () => setFlagStatusMock(),
 }));
 

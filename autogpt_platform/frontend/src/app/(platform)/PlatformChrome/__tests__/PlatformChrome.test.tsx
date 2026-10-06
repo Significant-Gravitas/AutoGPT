@@ -1,20 +1,15 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTourStore } from "@/app/(public)/tour/chat/tourStore";
 import { PlatformChrome } from "../PlatformChrome";
 
-const showNewLayoutMock = vi.fn<() => boolean>(() => false);
+const showAppSidebarMock = vi.fn<() => boolean>(() => true);
 const showTourSidebarMock = vi.fn<() => boolean>(() => false);
 vi.mock("../usePlatformChrome", () => ({
   usePlatformChrome: () => ({
-    showNewLayout: showNewLayoutMock(),
+    showAppSidebar: showAppSidebarMock(),
     showTourSidebar: showTourSidebarMock(),
   }),
 }));
@@ -39,9 +34,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/layout/AppSidebar/AppSidebar", () => ({
   AppSidebar: () => <div data-testid="app-sidebar" />,
 }));
-vi.mock("@/components/layout/Navbar/Navbar", () => ({
-  Navbar: () => <div data-testid="navbar" />,
-}));
 vi.mock("@/components/layout/TopUpPrompt/TopUpPromptProvider", () => ({
   TopUpPromptProvider: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -63,38 +55,38 @@ afterEach(() => {
 
 describe("PlatformChrome", () => {
   beforeEach(() => {
-    showNewLayoutMock.mockReturnValue(false);
+    showAppSidebarMock.mockReturnValue(true);
     showTourSidebarMock.mockReturnValue(false);
   });
 
-  it("renders the classic Navbar shell when the new layout is off", () => {
+  it("renders the app sidebar shell", () => {
     render(
       <PlatformChrome>
         <div data-testid="child">content</div>
       </PlatformChrome>,
     );
 
-    expect(screen.getByTestId("navbar")).toBeDefined();
+    expect(screen.getByTestId("app-sidebar")).toBeDefined();
+    expect(screen.getByTestId("global-search")).toBeDefined();
+    expect(screen.getByTestId("child")).toBeDefined();
+  });
+
+  it("renders a bare frame with no sidebar on excluded routes", () => {
+    showAppSidebarMock.mockReturnValue(false);
+    render(
+      <PlatformChrome>
+        <div data-testid="child">content</div>
+      </PlatformChrome>,
+    );
+
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.getByTestId("global-search")).toBeDefined();
     expect(screen.getByTestId("child")).toBeDefined();
   });
 
-  it("renders the new sidebar shell when enabled", async () => {
-    showNewLayoutMock.mockReturnValue(true);
-    render(
-      <PlatformChrome>
-        <div data-testid="child">content</div>
-      </PlatformChrome>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("app-sidebar")).toBeDefined();
-    });
-    expect(screen.queryByTestId("navbar")).toBeNull();
-    expect(screen.getByTestId("child")).toBeDefined();
-  });
-
-  it("renders the tour upsell sidebar shell when showTourSidebar is on", async () => {
+  it("renders the tour upsell sidebar shell when showTourSidebar is on", () => {
+    showAppSidebarMock.mockReturnValue(false);
     showTourSidebarMock.mockReturnValue(true);
     render(
       <PlatformChrome>
@@ -104,7 +96,6 @@ describe("PlatformChrome", () => {
 
     expect(screen.getByText("Try Otto")).toBeDefined();
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
-    expect(screen.queryByTestId("navbar")).toBeNull();
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
     expect(screen.getByTestId("child")).toBeDefined();
 

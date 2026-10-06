@@ -10,8 +10,8 @@ import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
  * fires the delete mutation, clears the active session if it was the one
  * deleted, and toasts on error.
  *
- * Consumed by both `ChatSidebar` and `MobileDrawer` so each can render its
- * own `DeleteChatDialog` without duplicating the mutation wiring.
+ * Consumed by the app sidebar's recent-chats list so it can render its own
+ * `DeleteChatDialog` without duplicating the mutation wiring.
  */
 export function useSessionDeletion() {
   const queryClient = useQueryClient();

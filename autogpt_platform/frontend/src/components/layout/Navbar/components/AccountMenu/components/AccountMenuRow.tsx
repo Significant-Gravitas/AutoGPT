@@ -13,8 +13,6 @@ interface Props {
   destructive?: boolean;
   as?: "link" | "button";
   external?: boolean;
-  // New sidebar layout variant: lighter text weight + external-link glyph.
-  newLayout?: boolean;
 }
 
 const baseRowClasses =
@@ -91,16 +89,11 @@ export function AccountMenuRow({
   destructive = false,
   as = "link",
   external = false,
-  newLayout = false,
 }: Props) {
   const colorClasses = destructive
     ? "text-neutral-700 hover:bg-red-50 hover:text-red-600 focus-visible:bg-red-50 focus-visible:text-red-600"
     : "text-neutral-700 hover:bg-neutral-100 focus-visible:bg-neutral-100";
-  const rowClasses = cn(
-    baseRowClasses,
-    newLayout ? "font-normal" : "font-medium",
-    colorClasses,
-  );
+  const rowClasses = cn(baseRowClasses, "font-normal", colorClasses);
 
   if (as === "link" && href) {
     if (external) {
@@ -115,7 +108,7 @@ export function AccountMenuRow({
             icon={icon}
             label={label}
             destructive={destructive}
-            external={newLayout}
+            external
           />
         </a>
       );

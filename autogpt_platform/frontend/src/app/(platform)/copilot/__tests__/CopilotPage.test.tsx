@@ -12,17 +12,8 @@ import { CopilotPage } from "../CopilotPage";
 vi.mock("../components/ChatContainer/ChatContainer", () => ({
   ChatContainer: () => <div data-testid="chat-container" />,
 }));
-vi.mock("../components/ChatSidebar/ChatSidebar", () => ({
-  ChatSidebar: () => <div data-testid="chat-sidebar" />,
-}));
 vi.mock("../components/DeleteChatDialog/DeleteChatDialog", () => ({
   DeleteChatDialog: () => null,
-}));
-vi.mock("../components/MobileDrawer/MobileDrawer", () => ({
-  MobileDrawer: () => null,
-}));
-vi.mock("../components/MobileHeader/MobileHeader", () => ({
-  MobileHeader: () => null,
 }));
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
@@ -94,6 +85,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
   },
   useGetFlag: () => false,
+  useFlagStatus: () => ({ enabled: false, ready: true, answered: true }),
 }));
 
 // Auth check moved into CopilotPage directly — default to a logged-in
