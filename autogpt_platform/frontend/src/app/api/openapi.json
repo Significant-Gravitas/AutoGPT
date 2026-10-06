@@ -16142,7 +16142,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Read private submission media",
-        "description": "Serve opaque capability URLs to authenticated marketplace collaborators.",
+        "description": "Serve a user's private media to them, to members of an organization they\nshare, and to admins. Anyone else gets a 404, as if it did not exist.",
         "operationId": "getV2Read private submission media",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

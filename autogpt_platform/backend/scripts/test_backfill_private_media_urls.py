@@ -584,6 +584,7 @@ def _candidate(
     values: list[str],
     is_array: bool = False,
     hold_reason: "backfill.HoldReason | None" = None,
+    co_owners: list[str] | None = None,
 ):
     return backfill.Candidate(
         target=target,
@@ -592,6 +593,7 @@ def _candidate(
         values=values,
         is_array=is_array,
         hold_reason=hold_reason,
+        co_owner_ids=co_owners or [],
     )
 
 
@@ -600,3 +602,24 @@ def _raw_url(owner: str, media_type: str, filename: str) -> str:
         f"https://storage.googleapis.com/{PRIVATE_BUCKET}/"
         f"users/{owner}/{media_type}/{filename}"
     )
+
+
+def test_org_listing_rewrites_media_uploaded_by_an_active_member():
+    member_image = _raw_url("member", "images", "shot.png")
+    stranger_image = _raw_url("stranger", "images", "shot.png")
+    candidate = _candidate(
+        target=backfill.Target.LISTING_IMAGES,
+        owner="owner",
+        values=[member_image, stranger_image],
+        is_array=True,
+        co_owners=["owner", "member"],
+    )
+
+    plan = backfill.build_plan([candidate], PRIVATE_BUCKET)
+
+    assert plan.mutations[0].owner_user_id == "owner"
+    assert plan.mutations[0].new_values == [
+        "/api/store/submissions/media/member/images/shot.png",
+        stranger_image,
+    ]
+    assert plan.counts[backfill.Outcome.HOLD_CROSS_USER] == 1

@@ -8,7 +8,7 @@ from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
 from . import exceptions as store_exceptions
-from . import local_media, submission_media
+from . import local_media, public_media, submission_media
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
         try:
             await async_client.download_metadata(bucket_name, image_path)
             return _stored_media_url(
-                config.private_user_data_bucket,
+                public_media.publishing_enabled(),
                 bucket_name,
                 safe_user_id,
                 "images",
@@ -60,7 +60,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
         try:
             await async_client.download_metadata(bucket_name, video_path)
             return _stored_media_url(
-                config.private_user_data_bucket,
+                public_media.publishing_enabled(),
                 bucket_name,
                 safe_user_id,
                 "videos",
@@ -206,7 +206,7 @@ async def upload_media(
 
                 logger.info(f"Successfully uploaded file to: {storage_path}")
                 return _stored_media_url(
-                    config.private_user_data_bucket,
+                    public_media.publishing_enabled(),
                     bucket_name,
                     user_id,
                     media_type,
@@ -231,13 +231,13 @@ async def upload_media(
 
 
 def _stored_media_url(
-    private_bucket: str,
+    buckets_are_split: bool,
     bucket_name: str,
     user_id: str,
     media_type: str,
     filename: str,
 ) -> str:
-    if private_bucket:
+    if buckets_are_split:
         return submission_media.url(user_id, media_type, filename)
     object_path = submission_media.object_path(user_id, media_type, filename)
     return f"https://storage.googleapis.com/{bucket_name}/{object_path}"

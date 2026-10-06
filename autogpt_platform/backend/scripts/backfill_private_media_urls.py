@@ -58,7 +58,8 @@ WITH candidates AS (
         p."userId" AS owner_user_id,
         ARRAY[p."avatarUrl"]::text[] AS values,
         false AS is_array,
-        CASE WHEN {CREATOR_IS_PUBLIC} THEN 'public' END AS hold_reason
+        CASE WHEN {CREATOR_IS_PUBLIC} THEN 'public' END AS hold_reason,
+        ARRAY[]::text[] AS co_owner_ids
     FROM platform."Profile" AS p
     WHERE p."avatarUrl" IS NOT NULL
 
@@ -66,14 +67,14 @@ WITH candidates AS (
     SELECT
         'Expert.avatarUrl', e.id, e."ownerUserId",
         ARRAY[e."avatarUrl"]::text[], false,
-        CASE WHEN e."ownerUserId" IS NULL THEN 'ambiguous' END
+        CASE WHEN e."ownerUserId" IS NULL THEN 'ambiguous' END, ARRAY[]::text[]
     FROM platform."Expert" AS e
     WHERE e."avatarUrl" IS NOT NULL
 
     UNION ALL
     SELECT
         'LibraryAgent.imageUrl', la.id, NULL,
-        ARRAY[la."imageUrl"]::text[], false, NULL
+        ARRAY[la."imageUrl"]::text[], false, NULL, ARRAY[]::text[]
     FROM platform."LibraryAgent" AS la
     WHERE la."imageUrl" IS NOT NULL
 
@@ -81,7 +82,12 @@ WITH candidates AS (
     SELECT
         'StoreListingVersion.imageUrls', slv.id, sl."owningUserId",
         slv."imageUrls", true,
-        CASE WHEN {VERSION_IS_PUBLIC} THEN 'public' END
+        CASE WHEN {VERSION_IS_PUBLIC} THEN 'public' END,
+        ARRAY(
+            SELECT om."userId"
+            FROM platform."OrgMember" AS om
+            WHERE om."orgId" = sl."owningOrgId" AND om.status = 'ACTIVE'
+        )
     FROM platform."StoreListingVersion" AS slv
     JOIN platform."StoreListing" AS sl ON sl.id = slv."storeListingId"
     WHERE cardinality(slv."imageUrls") > 0
@@ -90,7 +96,12 @@ WITH candidates AS (
     SELECT
         'StoreListingVersion.videoUrl', slv.id, sl."owningUserId",
         ARRAY[slv."videoUrl"]::text[], false,
-        CASE WHEN {VERSION_IS_PUBLIC} THEN 'public' END
+        CASE WHEN {VERSION_IS_PUBLIC} THEN 'public' END,
+        ARRAY(
+            SELECT om."userId"
+            FROM platform."OrgMember" AS om
+            WHERE om."orgId" = sl."owningOrgId" AND om.status = 'ACTIVE'
+        )
     FROM platform."StoreListingVersion" AS slv
     JOIN platform."StoreListing" AS sl ON sl.id = slv."storeListingId"
     WHERE slv."videoUrl" IS NOT NULL
@@ -99,7 +110,12 @@ WITH candidates AS (
     SELECT
         'StoreListingVersion.agentOutputDemoUrl', slv.id, sl."owningUserId",
         ARRAY[slv."agentOutputDemoUrl"]::text[], false,
-        CASE WHEN {VERSION_IS_PUBLIC} THEN 'public' END
+        CASE WHEN {VERSION_IS_PUBLIC} THEN 'public' END,
+        ARRAY(
+            SELECT om."userId"
+            FROM platform."OrgMember" AS om
+            WHERE om."orgId" = sl."owningOrgId" AND om.status = 'ACTIVE'
+        )
     FROM platform."StoreListingVersion" AS slv
     JOIN platform."StoreListing" AS sl ON sl.id = slv."storeListingId"
     WHERE slv."agentOutputDemoUrl" IS NOT NULL
@@ -107,18 +123,18 @@ WITH candidates AS (
     UNION ALL
     SELECT
         'Organization.avatarUrl', o.id, NULL,
-        ARRAY[o."avatarUrl"]::text[], false, NULL
+        ARRAY[o."avatarUrl"]::text[], false, NULL, ARRAY[]::text[]
     FROM platform."Organization" AS o
     WHERE o."avatarUrl" IS NOT NULL
 
     UNION ALL
     SELECT
         'OrganizationProfile.avatarUrl', op."organizationId", NULL,
-        ARRAY[op."avatarUrl"]::text[], false, NULL
+        ARRAY[op."avatarUrl"]::text[], false, NULL, ARRAY[]::text[]
     FROM platform."OrganizationProfile" AS op
     WHERE op."avatarUrl" IS NOT NULL
 )
-SELECT target, record_id, owner_user_id, values, is_array, hold_reason
+SELECT target, record_id, owner_user_id, values, is_array, hold_reason, co_owner_ids
 FROM candidates
 WHERE EXISTS (
     SELECT 1 FROM unnest(values) AS candidate_url

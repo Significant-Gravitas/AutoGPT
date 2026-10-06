@@ -601,17 +601,22 @@ async def upload_submission_media(
         416: {"description": "Requested range is not satisfiable"},
     },
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def get_private_submission_media(
     owner_user_id: str,
     media_type: str,
     filename: str,
     request: fastapi.Request,
+    user: autogpt_libs.auth.User = Security(autogpt_libs.auth.requires_user),
 ) -> fastapi.responses.StreamingResponse:
-    """Serve opaque capability URLs to authenticated marketplace collaborators."""
+    """
+    Serve a user's private media to them, to members of an organization they
+    share, and to admins. Anyone else gets a 404, as if it did not exist.
+    """
     content_type = local_media.content_type_for_filename(filename)
     if content_type is None:
+        raise NotFoundError("Media not found")
+    if not await submission_media.can_read(user, owner_user_id):
         raise NotFoundError("Media not found")
     try:
         metadata = await submission_media.metadata(owner_user_id, media_type, filename)

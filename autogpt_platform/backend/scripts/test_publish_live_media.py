@@ -449,3 +449,25 @@ def _private_url(owner: str, media_type: str, filename: str) -> str:
 
 def _public_url(path: str) -> str:
     return f"https://storage.googleapis.com/{PUBLIC}/{path}"
+
+
+@pytest.mark.parametrize(
+    "outcome, blocks",
+    [
+        (publish.PublishOutcome.SKIP_FOREIGN_OWNER, True),
+        (publish.PublishOutcome.SKIP_MALFORMED, True),
+        (publish.PublishOutcome.SKIP_UNRECOGNIZED, True),
+        (publish.PublishOutcome.COPY_FAILED, True),
+        (publish.PublishOutcome.ALREADY_PUBLIC, False),
+        (publish.PublishOutcome.PUBLISH, False),
+    ],
+)
+def test_every_unpublished_live_reference_fails_the_run(outcome, blocks):
+    report = publish.PublishReport(
+        counts={Target.LISTING_IMAGES: Counter({outcome: 1})},
+        planned_objects=0,
+        copied_objects=0,
+        planned_rows=0,
+    )
+
+    assert bool(publish_cli.unpublished_references(report)) is blocks

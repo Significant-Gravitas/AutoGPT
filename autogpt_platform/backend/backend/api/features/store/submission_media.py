@@ -1,6 +1,9 @@
 from collections.abc import AsyncIterator, Mapping
 
 import aiohttp
+import prisma.enums
+import prisma.models
+from autogpt_libs.auth import User
 from gcloud.aio import storage as async_storage
 
 from backend.util.gcs_utils import is_not_found_error
@@ -13,6 +16,35 @@ PRIVATE_MEDIA_PREFIX = "/api/store/submissions/media/"
 # The library's default is a 10-second total timeout, which covers the whole
 # body and so cuts off any video a client can't download in 10 seconds.
 _STREAM_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=60)
+
+
+async def can_read(user: User, owner_user_id: str) -> bool:
+    """
+    Whether `user` may read media stored under `owner_user_id`: their own, an
+    admin, or someone sharing an active organization with the owner, who can
+    see that owner's org listings, org avatar and shared agents. Leaving the
+    organization ends access.
+    """
+    if user.user_id == owner_user_id or user.role == "admin":
+        return True
+    shared_membership = await prisma.models.OrgMember.prisma().find_first(
+        where={
+            "userId": user.user_id,
+            "status": prisma.enums.OrgMemberStatus.ACTIVE,
+            "Org": {
+                "is": {
+                    "deletedAt": None,
+                    "Members": {
+                        "some": {
+                            "userId": owner_user_id,
+                            "status": prisma.enums.OrgMemberStatus.ACTIVE,
+                        }
+                    },
+                }
+            },
+        }
+    )
+    return shared_membership is not None
 
 
 def url(user_id: str, media_type: str, filename: str) -> str:

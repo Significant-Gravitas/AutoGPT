@@ -94,6 +94,13 @@ else:
 
 BATCH_TRANSACTION_TIMEOUT = timedelta(seconds=30)
 
+BLOCKING_OUTCOMES = (
+    PublishOutcome.COPY_FAILED,
+    PublishOutcome.SKIP_FOREIGN_OWNER,
+    PublishOutcome.SKIP_MALFORMED,
+    PublishOutcome.SKIP_UNRECOGNIZED,
+)
+
 CopierFactory = Callable[[], AbstractAsyncContextManager[ObjectCopier]]
 
 LISTING_QUERY = f"""
@@ -192,10 +199,16 @@ async def main(*, apply: bool, bucket_override: str | None = None) -> int:
         await disconnect()
 
     print_report(report, apply=apply)
-    copy_failures = sum(
-        counts[PublishOutcome.COPY_FAILED] for counts in report.counts.values()
+    return 2 if report.cas_conflicts or unpublished_references(report) else 0
+
+
+def unpublished_references(report: PublishReport) -> int:
+    """Live references that would break once the legacy bucket goes private."""
+    return sum(
+        counts[outcome]
+        for counts in report.counts.values()
+        for outcome in BLOCKING_OUTCOMES
     )
-    return 2 if report.cas_conflicts or copy_failures else 0
 
 
 async def _run(

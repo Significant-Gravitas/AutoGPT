@@ -11,6 +11,13 @@ from . import routes as store_routes
 from . import submission_media
 
 
+def _user(user_id: str, role: str = "authenticated") -> autogpt_libs.auth.User:
+    return autogpt_libs.auth.User(user_id=user_id, email="", phone_number="", role=role)
+
+
+OWNER = _user("owner")
+
+
 @pytest.fixture
 def mock_settings(monkeypatch):
     settings = Settings()
@@ -47,7 +54,7 @@ def test_private_media_route_requires_an_authenticated_user():
     }
 
 
-async def test_private_media_read_allows_authenticated_capability_holder(mocker):
+async def test_private_media_read_serves_the_owner(mocker):
     mocker.patch.object(
         submission_media, "metadata", new=AsyncMock(return_value={"size": "13"})
     )
@@ -62,6 +69,7 @@ async def test_private_media_read_allows_authenticated_capability_holder(mocker)
         media_type="images",
         filename="image.jpeg",
         request=fastapi.Request({"type": "http", "headers": []}),
+        user=OWNER,
     )
 
     assert (
@@ -85,6 +93,7 @@ async def test_private_media_read_returns_not_found_for_missing_object(mocker):
             media_type="images",
             filename="image.jpeg",
             request=fastapi.Request({"type": "http", "headers": []}),
+            user=OWNER,
         )
 
 
@@ -135,6 +144,7 @@ async def test_private_media_read_serves_single_byte_range(mocker):
         media_type="videos",
         filename="preview.mp4",
         request=request,
+        user=OWNER,
     )
 
     assert response.status_code == 206
@@ -158,6 +168,7 @@ async def test_private_media_read_rejects_unsatisfiable_range(mocker):
             media_type="videos",
             filename="preview.mp4",
             request=request,
+            user=OWNER,
         )
 
     assert error.value.status_code == 416
@@ -220,3 +231,38 @@ async def test_private_media_range_stream_uses_gcs_range_header(
         headers={"Range": "bytes=2-5"},
         timeout=submission_media._STREAM_TIMEOUT,
     )
+
+
+@pytest.mark.parametrize(
+    "user, shares_an_org, allowed",
+    [
+        (_user("owner"), False, True),
+        (_user("reviewer", role="admin"), False, True),
+        (_user("colleague"), True, True),
+        (_user("stranger"), False, False),
+    ],
+)
+async def test_private_media_is_readable_by_owner_admins_and_colleagues(
+    mocker, user, shares_an_org, allowed
+):
+    find_membership = mocker.patch("prisma.models.OrgMember.prisma")
+    find_membership.return_value.find_first = AsyncMock(
+        return_value=mocker.MagicMock() if shares_an_org else None
+    )
+
+    assert await submission_media.can_read(user, "owner") is allowed
+
+
+async def test_private_media_read_hides_media_from_other_users(mocker):
+    mocker.patch.object(submission_media, "can_read", new=AsyncMock(return_value=False))
+    metadata = mocker.patch.object(submission_media, "metadata", new=AsyncMock())
+
+    with pytest.raises(NotFoundError):
+        await store_routes.get_private_submission_media(
+            owner_user_id="owner",
+            media_type="images",
+            filename="image.jpeg",
+            request=fastapi.Request({"type": "http", "headers": []}),
+            user=_user("stranger"),
+        )
+    metadata.assert_not_awaited()

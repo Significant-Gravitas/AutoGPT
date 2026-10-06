@@ -132,8 +132,8 @@ Hosted storage has two trust boundaries:
 - `PRIVATE_USER_DATA_BUCKET` is the default destination for user uploads,
   generated library images, custom Expert avatars, workspaces, transcripts,
   and temporary agent inputs. Private media is read through an authenticated,
-  non-cacheable API. Its opaque URL is a capability that an authenticated
-  collaborator can use, including for team and organization resources.
+  non-cacheable API that serves a file to its owner, admins and members of
+  an organization the owner belongs to.
 - `PUBLIC_SITE_MEDIA_BUCKET` contains only objects that a trusted publication
   flow explicitly copied after approval, plus media whose purpose is inherently
   public such as OAuth consent-screen logos. Anonymous exact-object reads are
@@ -153,9 +153,15 @@ become the private one:
    the existing `MEDIA_GCS_BUCKET_NAME` bucket and `PUBLIC_SITE_MEDIA_BUCKET`
    set to the new one. Pointing `PRIVATE_USER_DATA_BUCKET` at a new bucket
    instead makes every existing workspace file and transcript unreadable.
+   If anonymous users hold `roles/storage.objectViewer` on the old bucket,
+   they can list every object in it until step 4. Swap that binding for
+   `roles/storage.legacyObjectReader` first: existing links keep working and
+   listing stops.
 2. Copy everything that is already public to the public bucket and repoint its
    rows: `poetry run python scripts/publish_live_media.py` (dry run), then
-   again with `--apply` until it reports no copy failures or conflicts. This
+   again with `--apply` until it exits 0. A non-zero exit means a live
+   reference was not published (copy failure, conflict, an object outside the
+   listing's owners or an unrecognised URL) and would break in step 4. This
    covers approved listing media, the avatars of creators with a public
    listing, library copies of listing images and OAuth app logos. It is also
    the repair tool when a copy at approval time failed.
@@ -163,8 +169,15 @@ become the private one:
    `poetry run python scripts/backfill_private_media_urls.py` (dry run), then
    `--apply` until it reports no conflicts. Both scripts commit in small
    batches and can be re-run.
-4. Run step 2's dry run once more, then remove public access from the old
-   bucket.
+4. Run step 2's dry run once more and check it exits 0. Then remove every
+   public binding from the old bucket and turn on public access prevention, so
+   no object-level grant can expose a file again.
+
+The private media endpoint serves a file to its owner, to admins and to
+members of an organization the owner belongs to, so a leaked URL is useless to
+anyone else. Published copies are never deleted automatically: when a listing
+is taken down or a creator changes their avatar, the old public copy stays in
+the public bucket until someone removes it by hand.
 
 ---
 

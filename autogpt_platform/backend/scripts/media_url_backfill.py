@@ -103,6 +103,9 @@ class Candidate(BaseModel):
     values: list[str]
     is_array: bool
     hold_reason: HoldReason | None = None
+    # Active members of the org that owns a listing: they can edit it, and
+    # their uploads sit under their own user path.
+    co_owner_ids: list[str] = []
 
 
 class Mutation(BaseModel):
@@ -403,7 +406,9 @@ def _classify_reference(
     if candidate.target.value not in PATH_OWNER_TARGETS:
         if candidate.owner_user_id is None:
             return Outcome.HOLD_AMBIGUOUS, None
-        if parsed.owner_user_id != candidate.owner_user_id:
+        if parsed.owner_user_id != candidate.owner_user_id and (
+            parsed.owner_user_id not in candidate.co_owner_ids
+        ):
             return Outcome.HOLD_CROSS_USER, None
     return Outcome.REWRITE, parsed.private_url
 

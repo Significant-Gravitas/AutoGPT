@@ -21,6 +21,9 @@ def mock_settings(monkeypatch):
     monkeypatch.setattr(settings.config, "public_site_media_bucket", "")
     monkeypatch.setattr(settings.config, "private_user_data_bucket", "")
     monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.api.features.store.public_media.Settings", lambda: settings
+    )
     return settings
 
 
@@ -415,3 +418,19 @@ async def test_expert_avatar_still_enforces_type_and_size(
         await store_media.upload_media("owner", upload, is_avatar=True)
     assert error.value.status_code == status
     mock_storage_client.upload.assert_not_awaited()
+
+
+async def test_upload_media_is_private_when_only_the_public_bucket_is_set(
+    mock_settings, mock_storage_client
+):
+    mock_settings.config.public_site_media_bucket = "public-media"
+    test_file = fastapi.UploadFile(
+        filename="private.jpeg",
+        file=io.BytesIO(b"\xff\xd8\xffprivate"),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert mock_storage_client.upload.await_args.args[0] == "test-bucket"
+    assert result.startswith("/api/store/submissions/media/test-user/images/")
