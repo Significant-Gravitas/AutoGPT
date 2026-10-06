@@ -42,7 +42,7 @@ export function useCheckYourInbox({ email, next }: Args) {
         title: "We couldn't send the email",
         description:
           error.status === 429
-            ? "Too many attempts. Please wait a minute and try again."
+            ? "Too many attempts. Please try again in a few minutes."
             : "Please try again in a moment.",
         variant: "destructive",
       });
@@ -50,7 +50,7 @@ export function useCheckYourInbox({ email, next }: Args) {
     }
 
     setCooldown(RESEND_COOLDOWN_SECONDS);
-    toast({ title: `Verification email sent to ${email}`, variant: "success" });
+    toast({ title: `Email sent to ${email}`, variant: "success" });
   }
 
   return {

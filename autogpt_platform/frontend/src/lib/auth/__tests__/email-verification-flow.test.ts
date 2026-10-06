@@ -48,6 +48,7 @@ vi.mock("../email-mirror", () => ({
 // The platform `User` rows the auth hook has written, as the real
 // provisionPlatformUser and platformUserExists would see them.
 const platformUsers = vi.hoisted(() => new Set<string>());
+const userLookupFails = vi.hoisted(() => ({ current: false }));
 const provisionPlatformUser = vi.hoisted(() =>
   vi.fn(async (_pool: unknown, user: { id: string }) => {
     platformUsers.add(user.id);
@@ -56,8 +57,10 @@ const provisionPlatformUser = vi.hoisted(() =>
 );
 vi.mock("../provision-platform-user", () => ({
   provisionPlatformUser,
-  platformUserExists: async (_pool: unknown, userId: string) =>
-    platformUsers.has(userId),
+  platformUserExists: async (_pool: unknown, userId: string) => {
+    if (userLookupFails.current) throw new Error("database is down");
+    return platformUsers.has(userId);
+  },
 }));
 
 const sentEmails = vi.hoisted(
@@ -207,6 +210,7 @@ beforeEach(() => {
   pendingAfterResponse.length = 0;
   provisionPlatformUser.mockClear();
   platformUsers.clear();
+  userLookupFails.current = false;
 });
 
 afterEach(() => {
@@ -571,6 +575,78 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
       "the-owners-new-password",
     );
     expect(asOwner.status).toBe(200);
+  });
+
+  it("leaves the first password dead when the owner signs up, then verifies through Resend", async () => {
+    // The owner can only reach Resend through their own sign-up: logging in
+    // with their password fails on an account someone else created.
+    const { handler } = await createAuthHandler(true);
+    await signUpAs(handler, "owner@example.com", "the-first-sign-ups-password");
+    await emailsSent();
+    const ownersLogin = await signIn(
+      handler,
+      "owner@example.com",
+      "the-owners-own-password",
+    );
+    expect(ownersLogin.status).toBe(401);
+    await signUpAs(handler, "owner@example.com", "the-owners-own-password");
+    await emailsSent();
+
+    await post(handler, "/send-verification-email", {
+      email: "owner@example.com",
+      callbackURL,
+    });
+    const verified = await handler(
+      new Request(lastVerifyLink("owner@example.com") ?? ""),
+    );
+
+    expect(verified.status).toBe(302);
+    const asFirst = await signIn(
+      handler,
+      "owner@example.com",
+      "the-first-sign-ups-password",
+    );
+    expect(asFirst.status).toBe(401);
+  });
+
+  it("still replaces the first password when the User row can't be read", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUpAs(
+      handler,
+      "victim@example.com",
+      "the-first-sign-ups-password",
+    );
+    await emailsSent();
+    const firstLink = lastVerifyLink("victim@example.com") ?? "";
+    userLookupFails.current = true;
+
+    await signUpAs(handler, "victim@example.com", "the-owners-own-password");
+    await emailsSent();
+    await handler(new Request(firstLink));
+
+    expect(sentEmails.at(-1)?.type).toBe("set_password");
+    const asFirst = await signIn(
+      handler,
+      "victim@example.com",
+      "the-first-sign-ups-password",
+    );
+    expect(asFirst.status).toBe(401);
+  });
+
+  it("answers Resend with the set-password link when the User row can't be read", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "unknown@example.com");
+    await emailsSent();
+    sentEmails.length = 0;
+    userLookupFails.current = true;
+
+    const resend = await post(handler, "/send-verification-email", {
+      email: "unknown@example.com",
+      callbackURL,
+    });
+
+    expect(resend.status).toBe(200);
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
   });
 
   it("lets one IP have only a few addresses emailed through the sign-up page", async () => {

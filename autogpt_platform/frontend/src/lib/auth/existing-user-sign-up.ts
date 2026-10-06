@@ -43,7 +43,9 @@ export async function emailRepeatSignUp({
   try {
     const context = await getAuthContext();
     if (!(await claimEmailSlot(context, "repeat-sign-up", user.email))) return;
-    if (!(await hasAccountBeenUsed(context, user.id, hasPlatformUser))) {
+    // Unknown counts as never used: the scramble costs a real owner nothing
+    // the set-password link below doesn't give back.
+    if (!(await hasAccountBeenUsed(context, user.id, hasPlatformUser, false))) {
       await context.adapter.updateMany({
         model: "account",
         where: [

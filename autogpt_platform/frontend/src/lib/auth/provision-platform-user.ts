@@ -60,8 +60,8 @@ function describePgError(error: unknown): {
   };
 }
 
-// Whether the platform `User` row exists. If it can't be read, assume it does:
-// the caller then keeps an account's password rather than replacing it.
+// Whether the platform `User` row exists. Throws if it can't be read: the
+// callers want opposite answers then (see hasAccountBeenUsed).
 export async function platformUserExists(
   pool: Pick<Pool, "query">,
   userId: string,
@@ -72,10 +72,8 @@ export async function platformUserExists(
     ]);
     return (result.rowCount ?? 0) > 0;
   } catch (error) {
-    console.error("Failed to look up the platform User", {
-      userId,
-      code: describePgError(error).code,
-    });
-    return true;
+    const { code } = describePgError(error);
+    console.error("Failed to look up the platform User", { userId, code });
+    throw new Error(`Failed to look up the platform User (pg ${code})`);
   }
 }

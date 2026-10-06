@@ -5,7 +5,10 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: (...args: unknown[]) => captureExceptionMock(...args),
 }));
 
-import { provisionPlatformUser } from "../provision-platform-user";
+import {
+  platformUserExists,
+  provisionPlatformUser,
+} from "../provision-platform-user";
 
 describe("provisionPlatformUser", () => {
   beforeEach(() => {
@@ -104,5 +107,34 @@ describe("provisionPlatformUser", () => {
     const [reported, context] = captureExceptionMock.mock.calls[0];
     expect(reported.message).toContain("pg unknown, unknown");
     expect(context.tags.pg_code).toBe("unknown");
+  });
+});
+
+describe("platformUserExists", () => {
+  test("reads the User row by id", async () => {
+    const query = vi.fn().mockResolvedValue({ rowCount: 1 });
+
+    await expect(platformUserExists({ query }, "user-1")).resolves.toBe(true);
+    expect(query.mock.calls[0][1]).toEqual(["user-1"]);
+  });
+
+  test("says no when there is no row", async () => {
+    const query = vi.fn().mockResolvedValue({ rowCount: 0 });
+
+    await expect(platformUserExists({ query }, "user-1")).resolves.toBe(false);
+  });
+
+  test("throws when the row can't be read, without the pg error's detail", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const query = vi.fn().mockRejectedValue(
+      Object.assign(new Error("boom"), {
+        code: "57P01",
+        detail: "Key (email)=(someone@example.com)",
+      }),
+    );
+
+    await expect(platformUserExists({ query }, "user-1")).rejects.toThrow(
+      "Failed to look up the platform User (pg 57P01)",
+    );
   });
 });

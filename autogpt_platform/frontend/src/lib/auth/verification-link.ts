@@ -47,8 +47,14 @@ export async function sendVerificationLink(args: Args) {
 
 async function sendsSetPasswordLink(args: Args) {
   const context = await args.getAuthContext();
-  if (!(await hasAccountBeenUsed(context, args.user.id, args.hasPlatformUser)))
-    return false;
+  // Unknown counts as used: the set-password link is the safe one to send.
+  const used = await hasAccountBeenUsed(
+    context,
+    args.user.id,
+    args.hasPlatformUser,
+    true,
+  );
+  if (!used) return false;
   await sendSetPasswordLink(context, args.user, args.resetRedirectTo);
   return true;
 }
