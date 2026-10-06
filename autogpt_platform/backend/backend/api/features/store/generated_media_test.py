@@ -170,3 +170,26 @@ async def test_flux_still_requests_and_preserves_jpeg(
     result = await image_gen.generate_agent_image(graph)
     assert result.read() == source.getvalue()
     assert run.call_args.kwargs["input"]["output_format"] == "jpg"
+
+
+@pytest.mark.parametrize("provider_format,mode", [("PNG", "RGB")])
+async def test_generate_image_regenerates_when_the_existence_check_fails(
+    generated_media_io,
+    graph_and_library_update,
+    ideogram_response,
+    monkeypatch,
+    provider_format,
+    mode,
+):
+    settings, _, _ = generated_media_io
+    settings.config.media_gcs_bucket_name = "test-bucket"
+    graph, _ = graph_and_library_update
+    _, generate, _ = ideogram_response
+    monkeypatch.setattr(
+        media, "check_media_exists", AsyncMock(side_effect=RuntimeError("GCS is down"))
+    )
+
+    result = await routes.generate_image(graph.id, user_id="test-user")
+
+    generate.assert_awaited_once()
+    assert result.image_url.endswith("users/test-user/images/agent_graph-1.jpeg")

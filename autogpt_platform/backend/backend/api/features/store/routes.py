@@ -715,7 +715,11 @@ async def generate_image(
     # Use .jpeg here since we are generating JPEG images
     filename = f"agent_{graph_id}.jpeg"
 
-    existing_url = await store_media.check_media_exists(user_id, filename)
+    try:
+        existing_url = await store_media.check_media_exists(user_id, filename)
+    except Exception:
+        logger.exception(f"Could not check for an existing image of graph {graph_id}")
+        existing_url = None
     if existing_url:
         logger.info(f"Using existing image for agent graph {graph_id}")
         return ImageURLResponse(image_url=existing_url)

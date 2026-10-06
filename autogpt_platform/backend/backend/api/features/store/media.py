@@ -38,8 +38,10 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
         safe_filename = local_media.validate_path_component(filename)
     except ValueError:
         return None
-    if local_media.content_type_for_filename(safe_filename) is None:
+    content_type = local_media.content_type_for_filename(safe_filename)
+    if content_type is None:
         return None
+    safe_filename = local_media.stored_filename(safe_filename, content_type, True)
 
     async with async_storage.Storage() as async_client:
         image_path = f"users/{safe_user_id}/images/{safe_filename}"

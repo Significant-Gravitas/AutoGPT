@@ -1563,14 +1563,8 @@ async def review_store_submission(
                         "ActiveVersion": {"connect": {"id": other_approved.id}},
                     },
                 )
-                reactivated = (
-                    await prisma.models.StoreListingVersion.prisma().find_unique(
-                        where={"id": other_approved.id},
-                        include={"StoreListing": True},
-                    )
-                )
-                if reactivated:
-                    await _publish_approved_media(reactivated)
+                if public_media.publishing_enabled():
+                    await _publish_reactivated_media(other_approved.id)
 
         submission_status = (
             prisma.enums.SubmissionStatus.APPROVED
@@ -1662,6 +1656,19 @@ async def _publish_approved_media(
             f"Failed to publish media of store listing version {version.id}"
         )
         return version
+
+
+async def _publish_reactivated_media(version_id: str) -> None:
+    """Publish the media of a version that became active again. Never raises."""
+    try:
+        version = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": version_id}, include={"StoreListing": True}
+        )
+    except Exception:
+        logger.exception(f"Failed to load store listing version {version_id}")
+        return
+    if version:
+        await _publish_approved_media(version)
 
 
 def _published_media_update(

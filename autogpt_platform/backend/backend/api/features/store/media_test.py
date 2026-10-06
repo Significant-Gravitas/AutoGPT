@@ -434,3 +434,18 @@ async def test_upload_media_is_private_when_only_the_public_bucket_is_set(
 
     assert mock_storage_client.upload.await_args.args[0] == "test-bucket"
     assert result.startswith("/api/store/submissions/media/test-user/images/")
+
+
+async def test_check_media_exists_looks_up_the_name_uploads_are_stored_under(
+    mock_settings, mock_storage_client
+):
+    mock_settings.config.public_site_media_bucket = "public-media"
+    mock_settings.config.private_user_data_bucket = "private-media"
+    mock_storage_client.download_metadata.return_value = {}
+
+    result = await store_media.check_media_exists("test-user", "agent.jpg")
+
+    mock_storage_client.download_metadata.assert_awaited_once_with(
+        "private-media", "users/test-user/images/agent.jpeg"
+    )
+    assert result == "/api/store/submissions/media/test-user/images/agent.jpeg"

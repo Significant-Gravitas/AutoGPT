@@ -1724,3 +1724,27 @@ async def test_reject_publishes_the_media_of_the_reactivated_version(
         )
         in publish.await_args_list
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reject_completes_when_the_reactivated_version_fails_to_load(
+    mocker, public_media_bucket, review_mocks
+):
+    approved = review_mocks.version.model_copy(
+        update={"submissionStatus": prisma.enums.SubmissionStatus.APPROVED}
+    )
+    previous = review_mocks.version.model_copy(update={"id": "previous-id"})
+
+    def find_unique(where, include=None):
+        if where["id"] == "previous-id":
+            raise prisma.errors.PrismaError("database is down")
+        return approved
+
+    review_mocks.slv.find_unique.side_effect = find_unique
+    review_mocks.slv.find_first.return_value = previous
+    publish = _publish_mock(mocker, return_value={})
+
+    result = await _review(is_approved=False)
+
+    assert result.status == prisma.enums.SubmissionStatus.REJECTED
+    publish.assert_not_awaited()
