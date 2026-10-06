@@ -188,7 +188,9 @@ the public bucket until someone removes it by hand.
 Hosted private image uploads are limited to 4 MiB so the frontend proxy can
 buffer and deliver the complete authenticated response below Vercel's body
 limit. Private videos retain the general 50 MiB upload limit and are delivered
-in bounded range responses.
+in bounded range responses. An oversized object written before this limit is
+served only after the same authorization check, using a 60-second signed URL
+that bypasses the frontend proxy without granting bucket listing access.
 
 ---
 

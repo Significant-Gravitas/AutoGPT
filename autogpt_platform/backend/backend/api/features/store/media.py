@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-MAX_PRIVATE_IMAGE_FILE_SIZE = 4 * 1024 * 1024  # 4MB
+MAX_PRIVATE_IMAGE_FILE_SIZE = submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
