@@ -25617,6 +25617,12 @@
             ],
             "title": "Provider",
             "description": "Block provider this server belongs to, when the platform also ships blocks for it. Lets the UI file an MCP connection under the same service as its API-key credential instead of a generic MCP group."
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only",
+            "description": "The server exposes only read tools, so writes need the service's other connection methods.",
+            "default": false
           }
         },
         "additionalProperties": false,

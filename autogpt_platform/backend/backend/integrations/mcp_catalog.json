@@ -597,7 +597,8 @@
         "bearer"
       ],
       "icon_id": "github",
-      "provider": "github"
+      "provider": "github",
+      "read_only": true
     }
   },
   {

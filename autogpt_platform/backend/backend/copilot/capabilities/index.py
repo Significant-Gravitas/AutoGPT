@@ -185,7 +185,9 @@ class CapabilityIndex:
             main = rest
         hits += _ranked(
             [to_hit(idx, "search") for idx in main],
-            mcp_first=prefer_mcp and service_indices is not None,
+            mcp_first=prefer_mcp
+            and service_indices is not None
+            and any(self.entries[idx].kind == "mcp_server" for idx in main),
         )
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service

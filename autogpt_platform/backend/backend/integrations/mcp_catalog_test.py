@@ -50,6 +50,13 @@ def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
 
 
+def test_only_read_only_servers_carry_the_read_only_flag():
+    entries = {entry.name: entry for entry in get_mcp_catalog()}
+
+    assert entries["mcp_github"].mcp_server.read_only is True
+    assert entries["mcp_linear"].mcp_server.read_only is False
+
+
 @pytest.mark.parametrize(
     "url",
     [

@@ -378,3 +378,11 @@ def test_prefer_mcp_leaves_a_block_without_a_twin_alone(twin_index: CapabilityIn
     index = twin_index.with_entries([github])
     result = index.search("github issue", prefer_mcp=True)
     assert result.hits[0].entry.id == f"block:{GITHUB_ID}"
+
+
+def test_prefer_mcp_keeps_coverage_first_when_no_server_matches(index):
+    notes = _skill("linear-notes", "Keep notes about Linear.")
+    layered = index.with_entries([notes])
+    result = layered.search("linear issue", prefer_mcp=True)
+    assert result.service == "linear"
+    assert result.names == ["LinearCreateIssueBlock", "linear-notes"]

@@ -49,6 +49,11 @@ class MCPServerMetadata(BaseModel):
         "also ships blocks for it. Lets the UI file an MCP connection under the "
         "same service as its API-key credential instead of a generic MCP group.",
     )
+    read_only: bool = Field(
+        default=False,
+        description="The server exposes only read tools, so writes need the "
+        "service's other connection methods.",
+    )
 
     @field_validator("server_url", "documentation_url", "oauth_server_url")
     @classmethod
