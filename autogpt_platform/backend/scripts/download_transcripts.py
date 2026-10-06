@@ -67,9 +67,9 @@ async def cmd_download(session_ids: list[str]) -> None:
         print("  You can find it in Sentry breadcrumbs or the DB.")
         sys.exit(1)
 
-    bucket = os.environ.get("PRIVATE_USER_DATA_BUCKET") or os.environ.get(
-        "MEDIA_GCS_BUCKET_NAME", ""
-    )
+    from backend.util.settings import Config
+
+    bucket = Config().resolved_private_user_data_bucket
     if not bucket:
         print(
             "ERROR: Set PRIVATE_USER_DATA_BUCKET (or legacy "
