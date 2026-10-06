@@ -5,21 +5,26 @@ import {
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { server } from "@/mocks/mock-server";
 import {
+  assistantTextChunks,
   copilotStreamErrorHandler,
   copilotStreamHandler,
+  streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getOrCreateCopilotChatRuntime } from "../copilotChatRegistry";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { getKickoffStatus, kickoffStorageKey } from "../expertKickoff";
 import { useCopilotUIStore } from "../store";
+import { getTurnRuntime } from "../stream/turnRuntime";
 import {
   renderHost,
   resetChatRuntimes,
   STREAM_PATHS,
+  type StreamPath,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
@@ -93,6 +98,69 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   });
 
   describe("Otto streaming — error paths", () => {
+    it.each(["ready", "error"] as const)(
+      "retries an empty response with a fresh stream when status is %s",
+      async (status) => {
+        const errorText = "The model returned an empty response.";
+        const failureChunks = assistantTextChunks(
+          `[__COPILOT_RETRYABLE_ERROR_a9c2__] ${errorText}`,
+          { messageId: "failed-response" },
+        );
+        if (status === "error") {
+          failureChunks.splice(-1, 1, { type: "error", errorText });
+        }
+        const requests: unknown[] = [];
+        const queueRequest = vi.fn(() =>
+          HttpResponse.json(
+            {
+              detail:
+                "Session has no active turn. Start a new turn with POST /stream.",
+            },
+            { status: 409 },
+          ),
+        );
+        server.use(
+          http.post(
+            `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+            async ({ request }) => {
+              requests.push(await request.json());
+              return streamSseResponse(
+                requests.length === 1
+                  ? failureChunks
+                  : assistantTextChunks("Retry succeeded.", {
+                      messageId: "retried-response",
+                    }),
+                { abortSignal: request.signal },
+              );
+            },
+          ),
+          http.post(
+            `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
+            queueRequest,
+          ),
+        );
+
+        renderHost();
+        await typeAndSend("Please try this task");
+        await screen.findByText(errorText);
+        await waitFor(() =>
+          expect(settledStatus(path)).toBe(
+            path === "stream runtime" ? RUNTIME_PHASE[status] : status,
+          ),
+        );
+
+        await userEvent
+          .setup()
+          .click(screen.getByRole("button", { name: /try again/i }));
+
+        await waitFor(() => expect(requests).toHaveLength(2));
+        expect(requests[1]).toMatchObject({ message: "Please try this task" });
+        expect(await screen.findByText("Retry succeeded.")).toBeDefined();
+        expect(queueRequest).not.toHaveBeenCalled();
+      },
+      15_000,
+    );
+
     it("surfaces an SSE error chunk to the user", async () => {
       const chunks: UIMessageChunk[] = [
         { type: "start", messageId: "msg-1" },
@@ -458,3 +526,12 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     });
   });
 });
+
+// The runtime settles a turn in its own phase, which the page maps to a status.
+const RUNTIME_PHASE = { ready: "finished", error: "failed" } as const;
+
+function settledStatus(path: StreamPath) {
+  return path === "stream runtime"
+    ? getTurnRuntime(TEST_SESSION_ID).getSnapshot().phase
+    : getOrCreateCopilotChatRuntime(TEST_SESSION_ID).chat.status;
+}

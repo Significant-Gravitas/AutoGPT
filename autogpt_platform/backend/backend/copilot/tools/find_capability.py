@@ -7,6 +7,10 @@ from typing import Any
 
 from backend.copilot.capabilities.index import SearchHit
 from backend.copilot.capabilities.models import CapabilityKindName
+from backend.copilot.capabilities.ranking import (
+    ConnectionState,
+    resolve_needs_expert_grant,
+)
 from backend.copilot.capabilities.resolve import load_connection_state
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
@@ -30,6 +34,9 @@ _KIND_ARG: dict[str, CapabilityKindName] = {
     "mcp_server": "mcp_server",
     "skill": "skill",
 }
+
+
+NEEDS_EXPERT_GRANT = "needs_expert_grant"
 
 
 class FindCapabilityTool(BaseTool):
@@ -113,7 +120,8 @@ class FindCapabilityTool(BaseTool):
             )
 
         connections, index = await asyncio.gather(
-            load_connection_state(user_id), session_registry(user_id, session)
+            load_connection_state(user_id, session.expert_id),
+            session_registry(user_id, session),
         )
         result = index.search(
             query,
@@ -132,31 +140,46 @@ class FindCapabilityTool(BaseTool):
                 ],
                 session_id=session_id,
             )
+        capabilities = [_listing(hit, connections) for hit in result.hits]
+        fallback = [_listing(hit, connections) for hit in result.fallback]
         return CapabilityListResponse(
             message=_message(
                 result.service,
                 len(result.hits),
                 len(result.fallback),
                 skills=any(hit.entry.kind == "skill" for hit in result.hits),
+                needs_grant=any(
+                    c.get("connected") == NEEDS_EXPERT_GRANT
+                    for c in capabilities + fallback
+                ),
             ),
             query=query,
-            capabilities=[_listing(hit) for hit in result.hits],
+            capabilities=capabilities,
             count=len(result.hits),
-            fallback=[_listing(hit) for hit in result.fallback],
+            fallback=fallback,
             service=result.service,
             session_id=session_id,
         )
 
 
-def _listing(hit: SearchHit) -> dict[str, Any]:
+def _listing(hit: SearchHit, connections: ConnectionState) -> dict[str, Any]:
     listing = hit.entry.listing()
     if hit.entry.connection.required:
-        listing["connected"] = hit.connected
+        listing["connected"] = (
+            NEEDS_EXPERT_GRANT
+            if resolve_needs_expert_grant(hit.entry, connections)
+            else hit.connected
+        )
     return listing
 
 
 def _message(
-    service: str | None, hits: int, fallback: int, *, skills: bool = False
+    service: str | None,
+    hits: int,
+    fallback: int,
+    *,
+    skills: bool = False,
+    needs_grant: bool = False,
 ) -> str:
     parts = [f"Found {hits} capabilit{'y' if hits == 1 else 'ies'}"]
     if service:
@@ -169,6 +192,14 @@ def _message(
         "run_capability(id, input). connected=false means the user must sign in "
         "first: run_capability returns the sign-in card."
     )
+    if needs_grant:
+        text += (
+            f" connected='{NEEDS_EXPERT_GRANT}' means the account already has "
+            "this integration but this expert has not been granted it: do not "
+            "ask the user to sign in. run_capability returns the setup card "
+            "with a Grant button for the existing credential; surface it and "
+            "ask the user to grant access."
+        )
     if skills:
         text += (
             " A kind=skill result is a saved procedure: "

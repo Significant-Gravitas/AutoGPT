@@ -90,7 +90,7 @@ test("auth happy path: user can complete onboarding and land in the app", async 
     painPoints: ["Research", "Reports & data"],
   });
 
-  await expect(page).toHaveURL(/\/copilot/);
+  await expect(page).toHaveURL(/\/home/);
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
 });
 

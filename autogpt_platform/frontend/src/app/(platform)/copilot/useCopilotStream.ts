@@ -519,7 +519,8 @@ export function useCopilotStream({
       text,
       isReconnectScheduled: reconnectScheduledRef.current,
       lastSubmittedText: coord?.lastSubmittedMessageText ?? null,
-      messages: rawMessages,
+      messages: chatRuntime?.chat.messages ?? rawMessages,
+      status: chatRuntime?.chat.status ?? status,
     });
 
     if (suppressReason === "reconnecting") {
@@ -661,6 +662,12 @@ export function useCopilotStream({
   //    not tear down its live SSE stream.
   // ---------------------------------------------------------------------------
   useMountEffect(() => {
+    // Strict Mode runs mount → cleanup → mount in development. Without this
+    // reset the simulated unmount left the flag false for the whole life of
+    // the real mount, so `handleFinish` never cleared `isFinishProbing` and
+    // every consumer gated on it (post-finish hydration, a held follow-up)
+    // stayed stuck after the first turn.
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
@@ -719,9 +726,8 @@ export function useCopilotStream({
   // `useCopilotReconnect`, which watches `status` internally.
   // `lastSubmittedMessageText` is intentionally NOT cleared here: it prevents
   // `getSendSuppressionReason` from allowing a duplicate POST of the same
-  // message immediately after a successful turn (the "duplicate" branch
-  // checks both the store and the visible last user message, so legitimate
-  // re-sends after a different reply are still allowed).
+  // message immediately after a successful turn. Failed turns are exempt
+  // from duplicate suppression so the error card can retry the same text.
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;
