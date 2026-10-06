@@ -21,8 +21,7 @@ import {
 import { onboardingStepKey, trackOnboardingStep } from "../tracking";
 
 describe("onboardingStepKey", () => {
-  // Pain points is step 3 with the paywall and step 2 without it, so the
-  // number alone can't identify a step across cohorts.
+  // Optional steps shift numeric positions; analytics keeps stable names.
   it("maps the same key across both step layouts", () => {
     expect(
       onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.painPoints),
@@ -40,10 +39,11 @@ describe("onboardingStepKey", () => {
 
   it("names the intro steps when the layout has them", () => {
     const steps = buildStepLayout({ hasIntro: true, hasPaywall: true });
-    expect(onboardingStepKey(steps, 1)).toBeNull();
-    expect(onboardingStepKey(steps, 2)).toBe("team");
-    expect(onboardingStepKey(steps, 3)).toBe("autopilot");
-    expect(onboardingStepKey(steps, 4)).toBe("role");
+    expect(onboardingStepKey(steps, 1)).toBe("team");
+    expect(onboardingStepKey(steps, 2)).toBe("autopilot");
+    expect(onboardingStepKey(steps, 3)).toBe("role");
+    expect(onboardingStepKey(steps, 4)).toBe("pain_points");
+    expect(onboardingStepKey(steps, 5)).toBeNull();
     expect(onboardingStepKey(steps, 6)).toBe("preparing");
   });
 
@@ -53,7 +53,8 @@ describe("onboardingStepKey", () => {
       hasHire: true,
       hasPaywall: true,
     });
-    expect(onboardingStepKey(steps, 6)).toBe("hire");
+    expect(onboardingStepKey(steps, 5)).toBe("hire");
+    expect(onboardingStepKey(steps, 6)).toBeNull();
     expect(onboardingStepKey(steps, 7)).toBe("preparing");
   });
 
