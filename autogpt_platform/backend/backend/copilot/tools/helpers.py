@@ -19,6 +19,8 @@ from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
     MAX_TOOL_WAIT_SECONDS,
 )
+from backend.copilot.context import is_unattended_turn
+from backend.copilot.credential_selection import turn_credential_pins
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
@@ -71,6 +73,8 @@ from .models import (
 from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
+    get_user_credentials,
+    is_per_target_credential,
     match_credentials_to_requirements,
     sanitize_provider_message,
 )
@@ -363,11 +367,13 @@ async def execute_block(
                 except HTTPClientError as e:
                     # The provider refused the refresh (revoked grant, expired
                     # refresh token). The user can only fix that by
-                    # reconnecting, so hand them the card rather than an error.
+                    # reconnecting, so hand them the card (or, with nobody
+                    # watching, an error naming the account) rather than a
+                    # bare failure.
                     # Anything else (store, config, handler setup) is not
                     # theirs to fix and takes the usual error path below.
                     await _release_credential_leases(credential_leases)
-                    return _build_credential_rejected_card(
+                    return _credential_rejected_response(
                         block=block,
                         block_id=block_id,
                         input_data=input_data,
@@ -604,7 +610,7 @@ async def execute_block(
                 f"Provider rejected a stored credential for block {block.name} "
                 f"with HTTP {status_code}"
             )
-            return _build_credential_rejected_card(
+            return _credential_rejected_response(
                 block=block,
                 block_id=block_id,
                 input_data=input_data,
@@ -628,6 +634,78 @@ async def execute_block(
         )
 
 
+def _credential_rejected_response(
+    *,
+    block: AnyBlockSchema,
+    block_id: str,
+    input_data: dict[str, Any],
+    matched_credentials: dict[str, CredentialsMetaInput],
+    session_id: str,
+    status_code: int | None,
+    exc: BaseException,
+) -> SetupRequirementsResponse | ErrorResponse:
+    """The answer when the provider refused a stored credential.
+
+    A watched turn gets the reconnect card. A scheduled turn's card would go
+    unanswered (SECRT-2804), so it gets an error naming the account instead,
+    which the turn's reply passes on to the user.
+    """
+    if not is_unattended_turn():
+        return _build_credential_rejected_card(
+            block=block,
+            block_id=block_id,
+            input_data=input_data,
+            matched_credentials=matched_credentials,
+            session_id=session_id,
+            status_code=status_code,
+            exc=exc,
+        )
+    rejected, provider = _rejected_credential(block, matched_credentials)
+    provider_name = provider.replace("_", " ").title() or "The provider"
+    named = f" '{rejected.title}'" if rejected and rejected.title else ""
+    refused = (
+        f"{provider_name} rejected the saved credential{named} (HTTP {status_code})"
+        if status_code is not None
+        else f"The saved {provider_name} credential{named} could not be refreshed"
+    )
+    logger.warning(
+        "Unattended copilot turn in session %s: block %s did not run, %s",
+        session_id,
+        block.name,
+        refused,
+    )
+    return ErrorResponse(
+        message=(
+            f"{refused}, so block '{block.name}' did not run. Nobody is "
+            "watching this turn (it was scheduled), so there is no one to "
+            "reconnect it now, and it did not switch to a different account. "
+            "Say plainly in your reply that this step was skipped, name that "
+            "credential, and tell the user to reconnect it or choose another "
+            "before the next run."
+        ),
+        error="credential_rejected",
+        session_id=session_id,
+    )
+
+
+def _rejected_credential(
+    block: AnyBlockSchema, matched_credentials: dict[str, CredentialsMetaInput]
+) -> tuple[CredentialsMetaInput | None, str]:
+    """The refused credential, when only one was in play, and its provider."""
+    rejected = (
+        next(iter(matched_credentials.values()))
+        if len(matched_credentials) == 1
+        else None
+    )
+    provider = (
+        # ProviderName is a str-Enum: str() would render "ProviderName.X".
+        str(getattr(rejected.provider, "value", rejected.provider))
+        if rejected
+        else get_block_provider(block) or ""
+    )
+    return rejected, provider
+
+
 def _build_credential_rejected_card(
     *,
     block: AnyBlockSchema,
@@ -646,17 +724,7 @@ def _build_credential_rejected_card(
     missing_creds_dict = build_missing_credentials_from_field_info(
         _resolve_discriminated_credentials(block, input_data), matched_keys=set()
     )
-    rejected = (
-        next(iter(matched_credentials.values()))
-        if len(matched_credentials) == 1
-        else None
-    )
-    provider = (
-        # ProviderName is a str-Enum: str() would render "ProviderName.X".
-        str(getattr(rejected.provider, "value", rejected.provider))
-        if rejected
-        else get_block_provider(block) or ""
-    )
+    rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
     return SetupRequirementsResponse(
@@ -748,6 +816,127 @@ async def resolve_block_credentials(
 
     return await match_credentials_to_requirements(
         user_id, requirements, expert_id, session_id
+    )
+
+
+async def unattended_missing_credentials_error(
+    subject: str,
+    missing: dict[str, dict[str, Any]],
+    session_id: str,
+    user_id: str,
+    expert_id: str | None,
+) -> ErrorResponse:
+    """The answer when a turn nobody watches has no credential to run with.
+
+    *missing* holds the setup card's entries, one per credential field that
+    nothing fitted. A setup card there is never answered, and the step used to
+    end as a quiet "not configured" (SECRT-2804). Name the provider, so the
+    turn's reply tells the user what to connect, and log it so the failure can
+    be found.
+
+    When the schedule pinned an account that is gone or cannot do this step,
+    name that account: the run refused to switch to another one, and the user
+    has to know which. When the account already has a credential the expert was never
+    granted and a field would accept, say to grant that one, since connecting
+    another would not help.
+    """
+    providers = {provider_slug(m.get("provider", "")) for m in missing.values()}
+    providers -= {""}
+    names = ", ".join(sorted(providers)) or "an integration"
+    pinned = await _pinned_account_error(
+        subject, providers, session_id, user_id, expert_id
+    )
+    if pinned is not None:
+        return pinned
+    grant_hint = await ungranted_credential_hint(
+        user_id, expert_id, providers, missing.values()
+    )
+    logger.warning(
+        "Unattended copilot turn in session %s: %s has no %s credential to use",
+        session_id,
+        subject,
+        names,
+    )
+    if grant_hint:
+        state = "granted to this expert"
+        fix = (
+            "grant this expert one of the existing credentials listed below, "
+            f"or connect {names} in their integrations,"
+        )
+    else:
+        state = "connected"
+        fix = f"connect {names} in their integrations"
+    return ErrorResponse(
+        message=(
+            f"{subject} has no {names} credential {state}, so this step "
+            "did not run. Nobody is watching this turn (it was "
+            "scheduled), so there is no one to fix it now. Say plainly "
+            "in your reply that this step was skipped and that the user needs "
+            f"to {fix} before the next run."
+        )
+        + grant_hint,
+        error="missing_credentials",
+        session_id=session_id,
+    )
+
+
+async def _pinned_account_error(
+    subject: str,
+    providers: set[str],
+    session_id: str,
+    user_id: str,
+    expert_id: str | None,
+) -> ErrorResponse | None:
+    """The error when a missing provider is pinned to an account this run
+    could not use, or ``None`` when no pin explains it."""
+    pins = turn_credential_pins()
+    pinned = set(pins) & providers
+    if not pinned:
+        return None
+    by_id = {c.id: c for c in await get_user_credentials(user_id, expert_id)}
+    lost = sorted(p for p in pinned if pins[p].id not in by_id)
+    unfit = sorted(
+        p
+        for p in pinned
+        if pins[p].id in by_id and not is_per_target_credential(by_id[pins[p].id])
+    )
+    if not lost and not unfit:
+        return None
+
+    def account(p: str) -> str:
+        return (
+            f"the {p} account '{pins[p].title or pins[p].id}' "
+            f"(credential_id={pins[p].id})"
+        )
+
+    detail = "; ".join(
+        [
+            f"{account(p)}, which has been deleted or is no longer available "
+            "to this run"
+            for p in lost
+        ]
+        + [
+            f"{account(p)}, which cannot do this step (it lacks the type or "
+            "permissions the step needs)"
+            for p in unfit
+        ]
+    )
+    logger.warning(
+        "Unattended copilot turn in session %s: %s is pinned to %s",
+        session_id,
+        subject,
+        detail,
+    )
+    return ErrorResponse(
+        message=(
+            f"{subject} did not run. This schedule is set to use {detail}. It "
+            "did not switch to a different account. Say plainly in your reply "
+            "that this step was skipped, name that account, and tell the user "
+            "to reconnect it with the access this step needs, or choose "
+            "another account for this schedule, before the next run."
+        ),
+        error="pinned_credential_missing" if lost else "pinned_credential_unusable",
+        session_id=session_id,
     )
 
 
@@ -909,12 +1098,19 @@ async def prepare_block_for_execution(
         dry_run or validate_only
     ):
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
+        missing_entries = build_missing_credentials_from_field_info(
+            credentials_fields_info, set(matched_credentials.keys())
+        )
+        if missing_credentials and is_unattended_turn():
+            return await unattended_missing_credentials_error(
+                f"Block '{block.name}'",
+                missing_entries,
+                session_id,
+                user_id,
+                session.expert_id,
+            )
         missing_creds_dict = await annotate_expert_grants(
-            user_id,
-            session.expert_id,
-            build_missing_credentials_from_field_info(
-                credentials_fields_info, set(matched_credentials.keys())
-            ),
+            user_id, session.expert_id, missing_entries
         )
         missing_creds_list = list(missing_creds_dict.values())
         if missing_credentials:
@@ -926,6 +1122,7 @@ async def prepare_block_for_execution(
                 user_id,
                 session.expert_id,
                 {provider_slug(m.provider) for m in missing_credentials},
+                missing_entries.values(),
             )
         else:
             message = (
