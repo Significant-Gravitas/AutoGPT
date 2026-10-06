@@ -111,7 +111,7 @@ async def signed_url(user_id: str, media_type: str, filename: str) -> str | None
         return None
     storage_path = object_path(user_id, media_type, filename)
     return await generate_iam_signed_url(
-        gcs_storage.Client(),
+        gcs_storage.Client.create_anonymous_client(),
         bucket_name,
         storage_path,
         PRIVATE_MEDIA_SIGNED_URL_TTL_SECONDS,
