@@ -1,0 +1,21 @@
+{"id": "1-0", "sse": "data: {\"type\": \"data-status\", \"data\": {\"message\": \"Message received\\u2026\"}}\n\n"}
+{"id": "2-0", "sse": "data: {\"type\": \"data-status\", \"data\": {\"message\": \"Setting up your environment\\u2026\"}}\n\n"}
+{"id": "3-0", "sse": "data: {\"type\": \"start\", \"messageId\": \"00000000-0000-4000-8000-000000000001\"}\n\n"}
+{"id": "4-0", "sse": "data: {\"type\":\"start-step\"}\n\n"}
+{"id": "5-0", "sse": "data: {\"type\":\"text-start\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "6-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"Let me \"}\n\n"}
+{"id": "7-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"fetch that \"}\n\n"}
+{"id": "8-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"page.\"}\n\n"}
+{"id": "9-0", "sse": "data: {\"type\":\"text-end\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "10-0", "sse": "data: {\"type\":\"finish-step\"}\n\n"}
+{"id": "11-0", "sse": "data: {\"type\":\"tool-input-start\",\"toolCallId\":\"call-fetch\",\"toolName\":\"web_fetch\"}\n\n"}
+{"id": "12-0", "sse": "data: {\"type\":\"tool-input-available\",\"toolCallId\":\"call-fetch\",\"toolName\":\"web_fetch\",\"input\":{\"url\":\"example.com\"}}\n\n"}
+{"id": "13-0", "sse": "data: {\"type\": \"tool-output-available\", \"toolCallId\": \"call-fetch\", \"output\": \"<h1>Example Domain</h1>\"}\n\n"}
+{"id": "14-0", "sse": "data: {\"type\":\"start-step\"}\n\n"}
+{"id": "15-0", "sse": "data: {\"type\":\"text-start\",\"id\":\"00000000-0000-4000-8000-000000000003\"}\n\n"}
+{"id": "16-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000003\",\"delta\":\"It says \"}\n\n"}
+{"id": "17-0", "sse": "data: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000003\",\"delta\":\"Example Domain.\"}\n\n"}
+{"id": "18-0", "sse": "data: {\"type\":\"text-end\",\"id\":\"00000000-0000-4000-8000-000000000003\"}\n\n"}
+{"id": "19-0", "sse": "data: {\"type\":\"finish-step\"}\n\n"}
+{"id": "20-0", "sse": ": usage {\"type\":\"usage\",\"promptTokens\":200,\"completionTokens\":40,\"totalTokens\":240,\"cacheReadTokens\":0,\"cacheCreationTokens\":0}\n\n"}
+{"id": "21-0", "sse": "data: {\"type\":\"finish\"}\n\n"}
