@@ -22,4 +22,5 @@
 {"id": "22-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "All done: report.md is ready."}}
 {"id": "23-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000003"}}
 {"id": "24-0", "data": {"type": "finish-step"}}
-{"id": "25-0", "data": {"type": "finish"}}
+{"id": "25-0", "data": {"type": "data-checkpoint", "rows": 5, "sequence": 1, "digest": "cc045d23143efbfa3f8a417f0fc6a97c18d55ce2792b263eb7067d9974daeead"}}
+{"id": "26-0", "data": {"type": "finish"}}
