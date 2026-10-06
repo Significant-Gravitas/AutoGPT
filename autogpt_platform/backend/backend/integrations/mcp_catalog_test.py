@@ -28,11 +28,26 @@ def test_posthog_catalog_entry_uses_hosted_authentication():
     assert entry.display_name == "PostHog"
     assert entry.mcp_server.icon_id == "posthog"
     assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
     assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
     assert (
         entry.mcp_server.documentation_url
         == "https://posthog.com/docs/model-context-protocol"
     )
+
+
+def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
+    entry = get_mcp_catalog_entry_for_url("https://app.openseo.so/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_openseo"
+    assert entry.display_name == "OpenSEO"
+    assert entry.mcp_server.icon_id == "openseo"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.server_url == "https://app.openseo.so/mcp"
+    assert entry.mcp_server.allow_custom_url is True
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
 
 
 @pytest.mark.parametrize(
@@ -63,9 +78,12 @@ def test_catalog_rejects_unsafe_urls(url: str, field: str):
     [
         {"server_url": None},
         {"connection_mode": "custom"},
+        {"server_url": None, "connection_mode": "custom", "allow_custom_url": True},
     ],
 )
-def test_catalog_rejects_misleading_connection_modes(changes: dict[str, str | None]):
+def test_catalog_rejects_misleading_connection_modes(
+    changes: dict[str, str | bool | None],
+):
     data = get_mcp_catalog()[0].mcp_server.model_dump()
     data.update(changes)
     with pytest.raises(ValidationError):

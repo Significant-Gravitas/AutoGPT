@@ -62,6 +62,7 @@ from backend.api.features.experts.models import (
     ExpertWorkflowLabel,
     ExpertWorkflowRef,
     HireResult,
+    HireSurface,
     RaiseAttachment,
     RaiseResult,
     decode_day_one,
@@ -127,6 +128,7 @@ from backend.util.exceptions import (
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -918,7 +920,12 @@ async def resolve_private_expert_tenancy(
     return organization_id, team_id
 
 
-async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+async def hire_expert(
+    user_id: str,
+    template_id: str,
+    name: str | None,
+    surface: HireSurface | None = None,
+) -> HireResult:
     """Hire *template_id* and return as soon as the expert's row exists.
 
     Its workflows, skills and routines install afterwards (``_run_hire_setup``);
@@ -926,18 +933,18 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     whose setup failed or was abandoned starts that setup again.
     """
     try:
-        return await _hire_expert_impl(user_id, template_id, name)
+        return await _hire_expert_impl(user_id, template_id, name, surface)
     except Exception:
         emit_funnel_event(
             user_id,
-            "hire_failed",
+            PostHogEvent.HIRE_FAILED,
             {"template_id": template_id, "failed_preloads_count": 0},
         )
         raise
 
 
 async def _hire_expert_impl(
-    user_id: str, template_id: str, name: str | None
+    user_id: str, template_id: str, name: str | None, surface: HireSurface | None
 ) -> HireResult:
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
@@ -991,19 +998,37 @@ async def _hire_expert_impl(
     if state == "created" or await _claim_setup(expert.id):
         spawn_background_task(
             _run_hire_setup(
-                user_id, expert.id, template.id, count_hire=state != "existing"
+                user_id,
+                expert.id,
+                template.id,
+                count_hire=state != "existing",
+                surface=surface,
             ),
             name=f"hire-setup-{expert.id}",
         )
         if state != "created":
             expert = await _reload_expert(expert)
     elif state == "revived":
-        emit_funnel_event(
-            user_id,
-            "hire_completed",
-            {"template_id": template.id, "failed_preloads_count": 0},
-        )
+        _emit_expert_hired(user_id, expert, template.id, 0, surface)
     return HireResult(expert=_to_model(expert))
+
+
+def _emit_expert_hired(
+    user_id: str,
+    expert: prisma.models.Expert,
+    template_id: str,
+    failed_preloads_count: int,
+    surface: HireSurface | None,
+) -> None:
+    hired: dict[str, str | int] = {
+        "expert_id": expert.id,
+        "template_id": template_id,
+        "name": expert.name,
+        "failed_preloads_count": failed_preloads_count,
+    }
+    if surface is not None:
+        hired["surface"] = surface
+    emit_funnel_event(user_id, PostHogEvent.EXPERT_HIRED, hired)
 
 
 async def _reload_expert(row: prisma.models.Expert) -> prisma.models.Expert:
@@ -1039,13 +1064,18 @@ async def _claim_setup(expert_id: str) -> bool:
 
 
 async def _run_hire_setup(
-    user_id: str, expert_id: str, template_id: str, *, count_hire: bool = False
+    user_id: str,
+    expert_id: str,
+    template_id: str,
+    *,
+    count_hire: bool = False,
+    surface: HireSurface | None = None,
 ) -> None:
     """Install a hire's workflows, skills and routines, retrying what failed.
 
     Every step skips what an earlier run installed, so a retry or a re-claimed
     setup finishes the job instead of duplicating it. *count_hire* emits the
-    hire's ``hire_completed`` once the failed preloads are known.
+    hire's ``expert_hired`` once the failed preloads are known.
     """
     failures: list[str] | None = None
     failed_preloads: list[str] = []
@@ -1068,7 +1098,7 @@ async def _run_hire_setup(
     if failures is None:
         failed_preloads = await _uninstalled_preloads(expert_id, template_id)
         failures = failed_preloads
-    await prisma.models.Expert.prisma().update(
+    settled = await prisma.models.Expert.prisma().update(
         where={"id": expert_id},
         data={
             "setupStatus": (
@@ -1079,12 +1109,8 @@ async def _run_hire_setup(
             "setupFailures": failures or [],
         },
     )
-    if count_hire:
-        emit_funnel_event(
-            user_id,
-            "hire_completed",
-            {"template_id": template_id, "failed_preloads_count": len(failed_preloads)},
-        )
+    if count_hire and settled is not None:
+        _emit_expert_hired(user_id, settled, template_id, len(failed_preloads), surface)
 
 
 async def _uninstalled_preloads(expert_id: str, template_id: str) -> list[str]:
@@ -1895,7 +1921,9 @@ def _emit_writing_style_added(
     are silent, so the funnel measures personalisation rather than edits."""
     if (before or "").strip() or not (after or "").strip():
         return
-    emit_funnel_event(user_id, "writing_style_added", {"expert_id": expert_id})
+    emit_funnel_event(
+        user_id, PostHogEvent.WRITING_STYLE_ADDED, {"expert_id": expert_id}
+    )
 
 
 async def _install_preloads(
@@ -1927,7 +1955,7 @@ async def _install_preloads(
             continue
         try:
             library_agent = await library_db.add_store_agent_to_library(
-                preload.storeListingVersionId, user_id
+                preload.storeListingVersionId, user_id, track_listing_added=False
             )
             row = await prisma.models.ExpertWorkflow.prisma().create(
                 data={
@@ -2071,10 +2099,10 @@ async def _install_library_workflow(
     )
     emit_funnel_event(
         user_id,
-        "workflow_installed_on_expert",
+        PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
         {
             "expert_id": expert_id,
-            "source": "library",
+            "workflow_source": "library",
             "library_agent_id": library_agent_id,
         },
     )
@@ -2095,7 +2123,7 @@ async def _install_marketplace_workflow(
         return _to_workflow_ref(existing)
 
     library_agent = await library_db.add_store_agent_to_library(
-        store_listing_version_id, user_id
+        store_listing_version_id, user_id, track_listing_added=False
     )
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(
@@ -2120,10 +2148,10 @@ async def _install_marketplace_workflow(
         return _to_workflow_ref(raced)
     emit_funnel_event(
         user_id,
-        "workflow_installed_on_expert",
+        PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
         {
             "expert_id": expert_id,
-            "source": "marketplace",
+            "workflow_source": "marketplace",
             "store_listing_version_id": store_listing_version_id,
         },
     )
@@ -2286,7 +2314,7 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
             raise ExpertNotFoundError(expert_id)
         # Re-archiving is an idempotent no-op; the funnel counts each firing once.
         return
-    emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
+    emit_funnel_event(user_id, PostHogEvent.EXPERT_FIRED, {"expert_id": expert_id})
     try:
         await scheduling.detach_expert_triggers(user_id, expert_id)
     except Exception:

@@ -376,6 +376,21 @@
     }
   },
   {
+    "name": "mcp_canva",
+    "display_name": "Canva",
+    "description": "Search, create, edit, autofill, and export Canva designs, and manage folders, assets, brand templates, and comments.",
+    "mcp_server": {
+      "server_url": "https://mcp.canva.com/mcp",
+      "documentation_url": "https://www.canva.dev/docs/apps/mcp/",
+      "setup_instructions": "Sign in with your Canva account and approve access. Your existing Canva permissions apply. Autofill, brand templates, and resize tools require a Canva Pro, Business, or Enterprise plan.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "canva"
+    }
+  },
+  {
     "name": "mcp_chargebee",
     "display_name": "Chargebee",
     "description": "Look up and export billing data through your Chargebee site MCP server.",
@@ -817,6 +832,23 @@
     }
   },
   {
+    "name": "mcp_openseo",
+    "display_name": "OpenSEO",
+    "description": "Research keywords, SERPs, backlinks and competitor domains, run site audits, track rankings, and build SEO reports.",
+    "mcp_server": {
+      "server_url": "https://app.openseo.so/mcp",
+      "documentation_url": "https://openseo.so/docs/mcp",
+      "setup_instructions": "Sign in to OpenSEO, or use an OpenSEO API key. OpenSEO's cloud service requires an active subscription; keyword, SERP, backlink, local SEO and rank tracking tools spend OpenSEO credits. Self-hosting OpenSEO on Cloudflare? Replace the server URL with your instance's /mcp URL and sign in; turn on Managed OAuth in its Cloudflare Access application first.",
+      "connection_mode": "hosted",
+      "allow_custom_url": true,
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "openseo"
+    }
+  },
+  {
     "name": "mcp_opsera",
     "display_name": "Opsera",
     "description": "Use DevSecOps investigation, architecture, compliance, and security tools.",
@@ -850,6 +882,31 @@
         "key:read"
       ],
       "icon_id": "parallel"
+    }
+  },
+  {
+    "name": "mcp_paypal",
+    "display_name": "PayPal",
+    "description": "Manage PayPal invoices, orders, payments, subscriptions, and disputes through natural language.",
+    "mcp_server": {
+      "documentation_url": "https://developer.paypal.com/ai-tools/mcp-server",
+      "setup_instructions": "Sign in with your PayPal account, or use a client ID and secret from the PayPal Developer Dashboard to generate a bearer access token. Existing account permissions apply. Choose Sandbox for testing or Production for live data.",
+      "connection_mode": "custom",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "server_url_options": [
+        {
+          "label": "Production",
+          "url": "https://mcp.paypal.com/mcp"
+        },
+        {
+          "label": "Sandbox",
+          "url": "https://mcp.sandbox.paypal.com/mcp"
+        }
+      ],
+      "icon_id": "paypal"
     }
   },
   {

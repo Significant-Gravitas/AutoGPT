@@ -163,11 +163,14 @@ def test_deepseek_chat_display_rate_tracks_openrouter():
     picks a model is still wrong. Re-derive with
     ``poetry run python scripts/check_openrouter_prices.py`` and move both
     sides together when OpenRouter reprices.
+
+    OpenRouter repriced again to $0.2574/$1.0287 live; these pins were moved
+    to match on 2026-09-28.
     """
     chat = LLMModel("deepseek/deepseek-chat")
     assert TOKEN_COST[chat].model_dump() == {
-        "input": 48.0,  # $0.32/1M x 150 cr/$
-        "output": 133.5,  # $0.89/1M x 150 cr/$
+        "input": 38.61,  # $0.2574/1M x 150 cr/$
+        "output": 154.305,  # $1.0287/1M x 150 cr/$
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
@@ -185,6 +188,25 @@ def test_claude_sonnet_5_bills_at_authored_rates():
         "cache_creation": 563.0,
     }
     assert MODEL_METADATA[s5].max_output_tokens == 128000
+
+
+def test_claude_sonnet_5_5_bills_at_authored_rates():
+    """Claude Sonnet 5.5 (Anthropic sticker $2/$10 per 1M, undercutting
+    Sonnet 5's $3/$15) — flat tier and per-1M projections must match the
+    authored catalog entry. This is the default standard-tier copilot
+    model, so a silent repricing here moves every standard chat."""
+    s55 = LLMModel("claude-sonnet-5-5")
+    assert MODEL_COST[s55] == 9
+    assert TOKEN_COST[s55].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 30.0,
+        "cache_creation": 375.0,
+    }
+    assert MODEL_METADATA[s55].max_output_tokens == 128000
+    s55_entry = next(m for m in CATALOG.models if m.slug == "claude-sonnet-5-5")
+    assert s55_entry.price_tier == 3
+    assert s55_entry.context_window == 200000
 
 
 def test_claude_opus_5_bills_at_authored_rates():
@@ -248,6 +270,24 @@ def test_gpt6_sol_bills_at_authored_rates():
     }
     assert MODEL_METADATA[sol].max_output_tokens == 128000
     sol_entry = next(m for m in CATALOG.models if m.slug == "gpt-6-sol")
+    assert sol_entry.price_tier == 2
+    assert sol_entry.context_window == 1050000
+
+
+def test_gpt6_1_sol_bills_at_authored_rates():
+    """GPT-6.1 Sol (OpenAI list price $2/$10 per 1M, same as GPT-6 Sol) —
+    flat tier and per-1M projections must match the authored catalog
+    entry."""
+    sol = LLMModel("gpt-6.1-sol")
+    assert MODEL_COST[sol] == 4
+    assert TOKEN_COST[sol].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[sol].max_output_tokens == 128000
+    sol_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-sol")
     assert sol_entry.price_tier == 2
     assert sol_entry.context_window == 1050000
 
@@ -395,16 +435,16 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter live rate $0.14/$0.42 per 1M,
-    $0.0042/1M cached input as of 2026-09-25 — this route reprices
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.03/$0.75 per 1M,
+    $0.00375/1M cached input as of 2026-10-02 — this route reprices
     continuously by design) — flat tier and per-1M projections must
     match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 21.0,
-        "output": 63.0,
-        "cache_read": 0.63,
+        "input": 4.5,
+        "output": 112.5,
+        "cache_read": 0.5625,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[flash].max_output_tokens == 384000

@@ -30,7 +30,7 @@ from backend.data.db_accessors import review_db
 
 from .classifier import DecidedBy
 from .headline import Headline, headline_for
-from .policy import DEFAULT_MODE, effect_for, is_irreversible
+from .policy import DEFAULT_MODE, PARKABLE, effect_for, is_irreversible
 from .references import Reference, listed_ids, resolve_references
 
 if TYPE_CHECKING:
@@ -38,9 +38,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Keep the stored payload small: @@agptfile: references are expanded before the
-# tool handler runs, so an argument can arrive holding a whole file.
-_MAX_ARG_CHARS = 4_000
+# At least the largest call the supervisor judges whole (25,650 bytes beside a
+# short request, classifier._fit), so a card it opens shows the call entire.
+_MAX_ARG_CHARS = 26_000
 
 GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
 
@@ -81,7 +81,7 @@ class GateReviewPayload(BaseModel):
     reason_kind: ReasonKind = "mode"
     # Which supervisor stage decided a ``supervisor`` card.
     decided_by: DecidedBy | None = None
-    # Only a card naming a subject can set a rule on it.
+    # The rules this card can set on its subject, a bare tool included.
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
     headline: Headline
     # A money card's estimate, spend so far and ceiling.
@@ -137,10 +137,7 @@ def review_payload(
         block_input = args.get("input")
         args = block_input if isinstance(block_input, dict) else {}
     redacted = _redact_secret_keys(args)
-    # Per value, never the whole blob: a long first argument must not push
-    # the one that matters off the card while the approval still binds it.
-    per_value = max(200, _MAX_ARG_CHARS // max(1, len(redacted)))
-    shown = {key: _clip(value, per_value) for key, value in redacted.items()}
+    shown = _clip_all(redacted, _MAX_ARG_CHARS)
     return GateReviewPayload(
         tool=tool_name,
         arguments=shown,
@@ -158,9 +155,10 @@ def review_payload(
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
         decided_by=decided_by,
-        # A money card rules on nothing: reads never consult a chat rule.
         chat_rules_allowed=(
-            ["allow", "judge"] if subject is not None and spend is None else []
+            ["allow", "judge"]
+            if _offers_rules(tool_name, subject, spend, reason_kind)
+            else []
         ),
         headline=(
             Headline(ask="Run", object=subject.name)
@@ -307,13 +305,27 @@ def payload_headline(payload: dict[str, Any]) -> str:
     return Headline.model_validate(payload["headline"]).text
 
 
+def _offers_rules(
+    tool_name: str,
+    subject: "GateSubject | None",
+    spend: dict[str, int] | None,
+    reason_kind: ReasonKind,
+) -> bool:
+    # A money card or a held read rules on nothing: neither consults a rule.
+    if spend is not None or reason_kind == "content":
+        return False
+    return (subject.effect if subject else effect_for(tool_name)) in PARKABLE
+
+
 def _payload_subject(
     tool_name: str, args: dict[str, Any], subject: "GateSubject | None"
 ) -> Subject:
     if subject is None:
+        # A rule on a bare tool covers every call of it, so it is named by the
+        # tool's action rather than this call's object.
         return Subject(
             key=tool_name,
-            name=_label(tool_name),
+            name=headline_for(tool_name, {}).ask,
             effect=effect_for(tool_name).value,
             irreversible=is_irreversible(tool_name, args),
         )
@@ -327,11 +339,6 @@ def _payload_subject(
         irreversible=subject.irreversible,
         block_id=ident if kind == "block" else None,
     )
-
-
-def _label(tool_name: str) -> str:
-    label = tool_name.replace("_", " ")
-    return label[:1].upper() + label[1:]
 
 
 def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
@@ -359,6 +366,24 @@ def _humanize(key: str) -> str:
     return words[:1].upper() + words[1:]
 
 
+def _clip_all(values: dict[str, Any], budget: int) -> dict[str, Any]:
+    # Short values take what they need and the long ones share the rest, so a
+    # long first argument cannot push the one that matters off the card.
+    shown: dict[str, Any] = {}
+    left = len(values)
+    for key in sorted(values, key=lambda k: len(_text(values[k]))):
+        share = max(200, budget // left)
+        shown[key] = _clip(values[key], share)
+        budget -= min(len(_text(values[key])), share)
+        left -= 1
+    return {key: shown[key] for key in values}
+
+
 def _clip(value: Any, limit: int) -> Any:
-    text = json.dumps(value, default=str)
+    text = _text(value)
     return value if len(text) <= limit else text[:limit] + "…"
+
+
+def _text(value: Any) -> str:
+    # A string is cut as its own text; its JSON form reaches the card escaped.
+    return value if isinstance(value, str) else json.dumps(value, default=str)

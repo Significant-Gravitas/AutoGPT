@@ -10,7 +10,9 @@ import { toChainRow } from "../ToolChain/helpers";
 import { AttentionRow } from "../../../home/components/NeedsYou/components/AttentionRow";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { toApprovalItem } from "./helpers";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import {
+  createAgent,
   deleteFolder,
   folder,
   heldRead,
@@ -103,6 +105,9 @@ export const RuleMenu: Story = {
 };
 
 export const RuleMenuWithOtto: Story = { args: queueOf([mcpTool()]) };
+
+// A bare tool's card rules on the tool itself.
+export const RuleMenuOnATool: Story = { args: queueOf([createAgent()]) };
 
 // A paid read over the task's spend ceiling.
 export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };
@@ -283,6 +288,25 @@ export const ChainRows: StoryObj = {
   },
 };
 
+// Approve the card: the row above it shows the answer at the click.
+export const RowFlipsAtTheClick: StoryObj = {
+  parameters: { msw: { handlers: [answerAfter(0)] } },
+  render: function Render() {
+    const answers = useHeldAnswersStore((state) => state.answers);
+    const row = applyHeldOutcome(
+      toChainRow(HELD_PART("a", "Q3 reports"), 0)!,
+      new Map(),
+      answers,
+    );
+    return (
+      <div className="flex flex-col gap-4">
+        <ChainRowView row={row} isLast />
+        <ApprovalQueue {...queueOf([folder("a", "Q3 reports")])} />
+      </div>
+    );
+  },
+};
+
 export const HeldRead: Story = {
   args: queueOf([heldRead("r", "docs.northwind.io/billing")]),
 };
@@ -424,3 +448,5 @@ export const RealExecuteCodeStep = realStory("Execute Code Step");
 export const RealSendWebRequest = realStory("Send Web Request");
 export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
+export const RealSandboxCommand = realStory("Sandbox Command");
+export const RealGmailNewsletter = realStory("Gmail Newsletter");
