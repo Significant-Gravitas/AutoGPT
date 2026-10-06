@@ -44,17 +44,21 @@ export async function GET(request: Request) {
   if (session?.user) {
     try {
       const createUserResponse = await postV1GetOrCreateUser();
-      // Consumed once the user exists, new or returning, so a refusal left
-      // by an abandoned or returning-user attempt can't leak into a later
-      // signup. Not taken before provisioning succeeds: a failure redirects
-      // to /error and the retry must still carry the refusal. Never throws,
-      // so it can't reach the rollback below.
+      // Consumed once the user exists, new or returning, so it applies to
+      // this sign-in only. Not taken before provisioning succeeds: a failure
+      // redirects to /error and the retry must still carry the refusal.
+      // Never throws, so it can't reach the rollback below.
       const marketingOptOut = await takeMarketingOptOutFlag();
-      if (wasAccountCreated(createUserResponse)) {
+      const accountCreated = wasAccountCreated(createUserResponse);
+      if (accountCreated) {
         await scheduleAccountCreatedGoal("google");
         await markAccountCreated("google");
-        // Never throws, so a failed consent write can't reach the rollback
-        // below or change where the user lands.
+      }
+      // A returning account that opted out on /signup before continuing with
+      // Google records the refusal too: the page has already told them they
+      // won't get marketing emails. Never throws, so a failed consent write
+      // can't reach the rollback below or change where the user lands.
+      if (accountCreated || marketingOptOut) {
         await recordSignupConsent({
           userID: session.user.id,
           marketingOptOut,

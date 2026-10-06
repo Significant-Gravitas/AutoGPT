@@ -233,14 +233,28 @@ describe("auth callback GET — signup consent", () => {
     expect(cookieDeleteMock).not.toHaveBeenCalled();
   });
 
-  it("records nothing for a returning user but still clears a stale refusal", async () => {
+  it("records the refusal on a returning account and clears the cookie", async () => {
     withOptOutCookie();
     postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
 
     await GET(makeCallbackRequest());
 
-    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
     expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+  });
+
+  it("records nothing for a returning account that did not opt out", async () => {
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
+
+    await GET(makeCallbackRequest());
+
+    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
+    expect(cookieDeleteMock).not.toHaveBeenCalled();
   });
 
   it("keeps the refusal for the retry when provisioning fails", async () => {
