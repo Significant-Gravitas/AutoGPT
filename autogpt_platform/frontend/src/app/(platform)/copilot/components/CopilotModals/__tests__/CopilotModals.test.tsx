@@ -13,9 +13,11 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";
@@ -86,7 +88,10 @@ async function openLinear(dialog: HTMLElement) {
 
 describe("CopilotModals", () => {
   beforeEach(() => {
-    useCopilotUIStore.setState({ initialPrompt: null });
+    useCopilotUIStore.setState({
+      initialPrompt: null,
+      contextPanelExpert: null,
+    });
     server.use(
       getListCopilotSkillsMockHandler([]),
       getListCopilotFollowupSchedulesMockHandler([]),
@@ -275,5 +280,70 @@ describe("CopilotModals", () => {
       ).toBeNull();
       expect(onUrlUpdate).toHaveBeenCalled();
     });
+  });
+
+  test("connecting from an expert chat grants the new credential to that expert", async () => {
+    let granted: string[] = [];
+    useCopilotUIStore.setState({
+      contextPanelExpert: { id: "expert-maria", name: "Maria" },
+    });
+    server.use(
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "mcp_sentry",
+          display_name: "Sentry",
+          description: "Errors",
+          supported_auth_types: [],
+          service: "sentry",
+          service_name: "Sentry",
+          service_icon: "sentry",
+          mcp_server: {
+            server_url: "https://mcp.sentry.dev/mcp",
+            documentation_url: "https://docs.sentry.io",
+            setup_instructions: "Paste your Sentry token.",
+            connection_mode: "hosted",
+            auth_methods: ["bearer"],
+            oauth_write_scopes: [],
+            server_url_options: [],
+            allow_custom_url: false,
+          },
+        },
+      ]),
+      http.post("*/api/mcp/discover-tools", () =>
+        HttpResponse.json({
+          tools: [],
+          server_url: "https://mcp.sentry.dev/mcp",
+        }),
+      ),
+      http.post("*/api/mcp/token", () =>
+        HttpResponse.json({
+          id: "cred-sentry",
+          provider: "mcp",
+          type: "oauth2",
+          title: "MCP: mcp.sentry.dev",
+          service: "sentry",
+        }),
+      ),
+      http.post(
+        "*/api/experts/expert-maria/credentials",
+        async ({ request }) => {
+          granted = ((await request.json()) as { credential_ids: string[] })
+            .credential_ids;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-connect"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /Sentry/ }),
+    );
+    const input = await within(dialog).findByLabelText("API token");
+    fireEvent.change(input, { target: { value: "sntrys_token" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save token" }));
+
+    await waitFor(() => expect(granted).toEqual(["cred-sentry"]));
   });
 });

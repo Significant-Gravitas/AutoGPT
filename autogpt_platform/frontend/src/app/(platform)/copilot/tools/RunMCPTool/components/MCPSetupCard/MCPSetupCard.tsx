@@ -25,11 +25,14 @@ import { getErrorMessage } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { connectMCPOAuth } from "@/lib/mcp-oauth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { grantToExpert } from "@/services/experts/grant-to-expert";
+import { useQueryClient } from "@tanstack/react-query";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
 import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
+import { coerceExpertGrant } from "../../../../components/SetupRequirementsCard/helpers";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -51,6 +54,7 @@ interface Props {
  */
 export function MCPSetupCard({ output, retryInstruction }: Props) {
   const { onSend } = useCopilotChatActions();
+  const queryClient = useQueryClient();
   const allProviders = useContext(CredentialsProvidersContext);
   const chainActions = useContext(ChainActionsContext);
   const actionId = useId();
@@ -62,6 +66,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
   const rejection = output.rejection ?? null;
+  const expertGrant = Object.values(
+    output.setup_info.user_readiness?.missing_credentials ?? {},
+  )
+    .map((entry) =>
+      coerceExpertGrant((entry as { expert_grant?: unknown }).expert_grant),
+    )
+    .find(Boolean);
 
   // Initial connection state comes from the backend.  When the model
   // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
@@ -146,6 +157,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // on the next attempt so the user can retry.
   const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthRequest = useRef<AbortController | null>(null);
+  const [granting, setGranting] = useState(false);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const [failedGrantId, setFailedGrantId] = useState<string | null>(null);
+  const grantableId = failedGrantId ?? expertGrant?.credentials[0]?.id ?? null;
   // Combined view:
   //   1. ``forceDisconnected`` (set by the catch block) wins.
   //   2. ``localConnected`` (just completed sign-in in this component) wins.
@@ -156,14 +171,43 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   //      than defaulting to disconnected.
   const liveSays = liveHasCred === "unknown" ? initiallyConnected : liveHasCred;
   // A rejected credential never counts as connected, whatever a stale cred
-  // list says — only a sign-in completed in this card does.
+  // list says — only a sign-in completed in this card does. Nor does the
+  // account's own credential while an expert is asking: the expert can use
+  // it only once granted.
   const connected =
-    !forceDisconnected && (localConnected || (!rejection && liveSays));
+    !forceDisconnected &&
+    (localConnected || (!rejection && !expertGrant && liveSays));
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
 
   useEffect(() => () => oauthRequest.current?.abort(), []);
+
+  async function finish(credentialId: string | undefined) {
+    if (expertGrant && credentialId) {
+      setGranting(true);
+      setGrantError(null);
+      const ok = await grantToExpert(
+        queryClient,
+        expertGrant.expertId,
+        credentialId,
+      );
+      setGranting(false);
+      if (!ok) {
+        setFailedGrantId(credentialId);
+        setGrantError(
+          "Connected, but could not grant access. Try Grant access again.",
+        );
+        return;
+      }
+    }
+    setConnected(true);
+    onSend(retryInstruction ?? "I've connected. Please retry.");
+  }
+
+  function handleGrantExisting() {
+    if (grantableId) void finish(grantableId);
+  }
 
   async function handleConnect() {
     if (loading || oauthRequest.current) return;
@@ -188,8 +232,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         return;
       }
       setForceDisconnected(false);
-      setConnected(true);
-      onSend(retryInstruction ?? "I've connected. Please retry.");
+      await finish(credential.id);
     } catch (error: unknown) {
       if (signal.aborted) return;
       setConnected(false);
@@ -272,8 +315,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       // Connected pill while the request is still in flight, briefly
       // showing a false "Connected" state to the user.
       setForceDisconnected(false);
-      setConnected(true);
-      onSend(retryInstruction ?? "I've connected. Please retry.");
+      await finish(res.status === 200 ? res.data.id : undefined);
     } catch (e: unknown) {
       // Keep the force-disconnect override on so the not-connected
       // branch (error banner + manual-token input) stays visible — an
@@ -292,10 +334,12 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
   const handleConnectRef = useRef(handleConnect);
   const handleManualTokenRef = useRef(handleManualToken);
+  const handleGrantRef = useRef(handleGrantExisting);
 
   useEffect(() => {
     handleConnectRef.current = handleConnect;
     handleManualTokenRef.current = handleManualToken;
+    handleGrantRef.current = handleGrantExisting;
   });
 
   // Inside a tool chain the card renders nothing itself — it registers an
@@ -313,14 +357,17 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         serverUrl,
         connected,
         loading,
-        error,
+        error: error ?? grantError,
         showManualToken,
         authScheme: manualAuthScheme,
+        grantable: Boolean(grantableId),
+        granting,
         onConnect: () => void handleConnectRef.current(),
         onUseToken: (token) => {
           setManualToken(token);
           void handleManualTokenRef.current(token);
         },
+        onGrant: () => handleGrantRef.current(),
       },
     });
     return () => chainActions.unregister(actionId);
@@ -330,6 +377,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     connected,
     loading,
     error,
+    grantError,
+    grantableId,
+    granting,
     showManualToken,
     manualAuthScheme,
     serverUrl,
@@ -372,22 +422,33 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
       <div className="rounded-2xl border bg-background p-4">
+        {grantableId ? (
+          <Button
+            variant="primary"
+            size="small"
+            onClick={handleGrantExisting}
+            disabled={granting || loading}
+            className="mr-2"
+          >
+            {granting ? "Granting…" : "Grant access"}
+          </Button>
+        ) : null}
         <Button
-          variant="primary"
+          variant={grantableId ? "secondary" : "primary"}
           size="small"
           onClick={handleConnect}
-          disabled={loading}
+          disabled={loading || granting}
         >
           {loading ? "Connecting…" : `Connect ${service}`}
         </Button>
 
-        {error && (
+        {(error || grantError) && (
           <div
             role="alert"
             aria-live="polite"
             className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
           >
-            {error}
+            {error ?? grantError}
           </div>
         )}
 
