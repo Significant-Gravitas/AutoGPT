@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+MAX_PRIVATE_IMAGE_FILE_SIZE = 4 * 1024 * 1024  # 4MB
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
@@ -137,6 +138,7 @@ async def upload_media(
     config = Settings().config
     bucket_name = config.resolved_private_user_data_bucket
     use_local_storage = not bucket_name
+    private_media_proxy_enabled = _serves_private_urls(config)
 
     try:
         # Validate file type
@@ -152,14 +154,20 @@ async def upload_media(
         # Validate file size
         file_size = 0
         chunk_size = 8192  # 8KB chunks
+        max_file_size = (
+            MAX_PRIVATE_IMAGE_FILE_SIZE
+            if private_media_proxy_enabled and content_type in ALLOWED_IMAGE_TYPES
+            else MAX_FILE_SIZE
+        )
+        max_file_size_mb = max_file_size // (1024 * 1024)
 
         try:
             while chunk := await file.read(chunk_size):
                 file_size += len(chunk)
-                if file_size > MAX_FILE_SIZE:
+                if file_size > max_file_size:
                     logger.warning(f"File size too large: {file_size} bytes")
                     raise store_exceptions.FileSizeTooLargeError(
-                        "File too large. Maximum size is 50MB"
+                        f"File too large. Maximum size is {max_file_size_mb}MB"
                     )
         except store_exceptions.FileSizeTooLargeError:
             raise
