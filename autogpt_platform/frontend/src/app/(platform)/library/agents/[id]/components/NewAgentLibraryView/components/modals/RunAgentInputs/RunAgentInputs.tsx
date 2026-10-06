@@ -231,7 +231,7 @@ export function RunAgentInputs({
 
     case DataType.MULTI_SELECT: {
       const _schema = schema as BlockIOObjectSubSchema;
-      const allKeys = Object.keys(_schema.properties);
+      const allKeys = Object.keys(_schema.properties ?? {});
       const selectedValues = Object.entries(value || {})
         .filter(([_, v]) => v)
         .map(([k]) => k);
