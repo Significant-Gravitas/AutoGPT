@@ -106,16 +106,19 @@ describe("Tour DataFast tracking", () => {
     });
   });
 
-  test("sidebar free-trial CTA tracks its signup intent", () => {
+  test.each([
+    { name: "Start free trial", label: "free-trial" },
+    { name: "Self-host instead", label: "self-host" },
+  ])("sidebar $name CTA tracks its intent", ({ name, label }) => {
     render(<TourChatPage />);
 
-    fireEvent.click(screen.getByRole("link", { name: "Start free trial" }));
+    fireEvent.click(screen.getByRole("link", { name }));
 
     expect(eventsNamed("tour_cta_click")).toEqual([
-      ["tour_cta_click", { label: "free-trial", placement: "sidebar-card" }],
+      ["tour_cta_click", { label, placement: "sidebar-card" }],
     ]);
     expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
-      label: "free-trial",
+      label,
       placement: "sidebar-card",
     });
   });
