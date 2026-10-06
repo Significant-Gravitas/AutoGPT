@@ -1092,6 +1092,30 @@ async def test_a_declared_part_is_judged_as_the_json_the_model_reads(rows):
     assert judge.await_args.kwargs["text"] == json.dumps(part, ensure_ascii=False)[1:-1]
 
 
+@pytest.mark.parametrize(
+    "tool_name, args",
+    [
+        ("bash_exec", {"command": f"cat > x.mjs <<'EOF'\n{_MARKER}\nEOF\nnode x.mjs"}),
+        ("web_search", {"query": _MARKER}),
+    ],
+)
+async def test_the_judge_never_reads_the_models_own_words(rows, tool_name, args):
+    """The source line sits inside the judge's fence of outside bytes, so a
+    command or query there was judged as the page's own text."""
+    from backend.copilot.tools.bash_exec import _build_completion_response
+
+    class _Ran(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return _build_completion_response("ok", "", 0, [], None)
+
+    judge = _judge(_CLEAN)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        await _call(_Ran("", name=tool_name), _session(), args)
+
+    assert judge.await_args.kwargs["text"] == "ok"
+    assert _MARKER not in judge.await_args.kwargs["source"]
+
+
 async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
     """Past the SDK's 70K cap the model reads the part's head and tail; the
     judge reads exactly those, never the middle nobody saw."""

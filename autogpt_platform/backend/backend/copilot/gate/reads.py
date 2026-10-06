@@ -94,6 +94,9 @@ _SOURCE_KEYS = (
     "session_id",
     "name",
 )
+# The judge's source line sits inside its fence of outside bytes, so it never
+# carries the model's own words (a command, a search query).
+_JUDGED_SOURCE_KEYS = ("url", "file_path", "path")
 _WAITING = (
     "This content is withheld while the user reviews it. Carry on with what "
     "does not depend on it; do not fetch it another way."
@@ -236,7 +239,9 @@ async def screen_read(
         # them, and that later read is judged.
         if not text.strip() and not images:
             return None
-        verdict = await judge_content(source=source, text=text, images=images)
+        verdict = await judge_content(
+            source=judged_source(tool_name, args), text=text, images=images
+        )
         if not verdict.held:
             return None
         assert user_id is not None
@@ -454,13 +459,20 @@ def _longest(encoded: str, view: str, *, head: bool) -> int:
     return low
 
 
-def source_of(tool_name: str, args: dict[str, Any]) -> str:
+def source_of(
+    tool_name: str, args: dict[str, Any], keys: tuple[str, ...] = _SOURCE_KEYS
+) -> str:
     """Where the bytes came from, for the stub and the card."""
-    for key in _SOURCE_KEYS:
+    for key in keys:
         value = args.get(key)
         if isinstance(value, str) and value:
             return f"{tool_name} {value[:200]}"
     return tool_name
+
+
+def judged_source(tool_name: str, args: dict[str, Any]) -> str:
+    """Where the bytes came from, for the judge: a URL or a path at most."""
+    return source_of(tool_name, args, _JUDGED_SOURCE_KEYS)
 
 
 def page_words(passage: str, text: str) -> str:
