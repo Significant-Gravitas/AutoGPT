@@ -927,6 +927,9 @@ def _build_catalog() -> CatalogPayload:
                 creator="mistral-ai",
                 context_window=131072,
                 price_tier=2,
+                # Retired by Mistral 2026-08-31 in favour of Medium 3.5.
+                is_enabled=False,
+                fallback_model_slug="mistralai/mistral-medium-3-5",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=60.0,
@@ -960,6 +963,9 @@ def _build_catalog() -> CatalogPayload:
                 context_window=131072,
                 max_output_tokens=131072,
                 price_tier=1,
+                # Retired by Mistral 2026-07-31 in favour of Small 4.
+                is_enabled=False,
+                fallback_model_slug="mistralai/mistral-small-2603",
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=14.0625,

@@ -467,7 +467,8 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
     "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
     "cohere/command-r-plus-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
-    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_3_2,
+    # The May SQL sent this to Small 3.2, which is now retired in turn.
+    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_4,
     "microsoft/wizardlm-2-8x22b": LLMModel.MICROSOFT_PHI_4,
     "moonshotai/kimi-k2": LLMModel.KIMI_K2_6,
     "moonshotai/kimi-k2-0905": LLMModel.KIMI_K2_6,
