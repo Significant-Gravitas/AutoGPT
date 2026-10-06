@@ -1245,6 +1245,11 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
     with (
         patch(f"{_READS}.judge_content", judge),
         patch.object(e2b_file_tools, "_get_sandbox", lambda: sandbox),
+        # The double holds no login files for run_internal to check.
+        patch(
+            "backend.util.sandbox_login.changed_login_files",
+            AsyncMock(return_value={}),
+        ),
     ):
         empty = await grep({"pattern": "nothing"})
     judge.assert_not_awaited()
