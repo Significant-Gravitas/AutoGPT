@@ -1,7 +1,7 @@
 import { patchV1UpdateOnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { clearLocalProgress, resumeStep } from "./progress";
+import { clearLocalProgress, resumeStep, sameProgress } from "./progress";
 import { loadWizardProgress } from "./loadWizardProgress";
 import { createProgressSaver } from "./progress-saver";
 import {
@@ -99,7 +99,7 @@ export function useWizardProgress({
         });
         return;
       }
-      const { progress, revision, offline } = result;
+      const { progress, revision, offline, needsSync } = result;
       if (!offline) reloadLatest.current = false;
       const controller = createProgressSaver({
         userID: userID!,
@@ -151,17 +151,17 @@ export function useWizardProgress({
         loadError: false,
         conflict: false,
         error: offline
-          ? "Your saved progress is available on this device. We're retrying the account save."
+          ? "Your saved progress is available on this device. Changes will sync when the connection returns."
           : null,
       });
-      let previous = JSON.stringify(snapshotProgress());
-      controller.enqueue(snapshotProgress());
+      let previous = snapshotProgress();
+      if (needsSync || (progress && !sameProgress(previous, progress)))
+        controller.enqueue(previous);
       unsubscribe = useOnboardingWizardStore.subscribe((state) => {
         if (!isCurrent() || state.userID !== userID) return;
         const snapshot = snapshotProgress();
-        const serialized = JSON.stringify(snapshot);
-        if (serialized === previous) return;
-        previous = serialized;
+        if (sameProgress(snapshot, previous)) return;
+        previous = snapshot;
         controller.enqueue(snapshot);
       });
     }
