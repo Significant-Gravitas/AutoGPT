@@ -33,7 +33,11 @@ from backend.data.activity_event import ActivityEventDraft
 from .base import GATE_APPROVED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
 from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
-from .helpers import required_input_keys, resolve_block_credentials
+from .helpers import (
+    prepare_block_for_execution,
+    required_input_keys,
+    resolve_block_credentials,
+)
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
@@ -224,6 +228,29 @@ async def _run_block(
     block_id = next(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
+    if payload.pop("connect", False):
+        # Connecting is not running: resolve credentials, surface the card
+        # if any are missing, and otherwise say so without touching the block.
+        prep = await prepare_block_for_execution(
+            block_id=block_id,
+            input_data=payload,
+            user_id=user_id,
+            session=session,
+            session_id=session.session_id,
+            dry_run=False,
+            validate_only=False,
+        )
+        if isinstance(prep, ToolResponseBase):
+            return prep
+        return CapabilityDetailsResponse(
+            message=(
+                f"The user is already connected for {entry.name}. "
+                "Nothing was run. Call again without connect to act."
+            ),
+            capability=entry.listing(),
+            parameters={},
+            session_id=session.session_id,
+        )
     return await RunBlockTool()._execute(
         user_id,
         session,
