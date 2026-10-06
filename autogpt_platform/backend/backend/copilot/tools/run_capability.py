@@ -42,6 +42,7 @@ from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
     ReviewRequiredResponse,
+    SetupRequirementsResponse,
     ToolResponseBase,
 )
 from .run_block import RunBlockTool
@@ -115,7 +116,7 @@ class RunCapabilityTool(BaseTool):
             return NO_OP
         if entry.kind == "mcp_server":
             return _mcp_subject(entry.implementations[0].ref, payload or {})
-        if entry.kind != "block":
+        if entry.kind != "block" or (payload or {}).get("connect", False):
             return NO_OP
         block_id = next(
             (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
@@ -229,8 +230,6 @@ async def _run_block(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
     if payload.pop("connect", False):
-        # Connecting is not running: resolve credentials, surface the card
-        # if any are missing, and otherwise say so without touching the block.
         prep = await prepare_block_for_execution(
             block_id=block_id,
             input_data=payload,
@@ -238,9 +237,13 @@ async def _run_block(
             session=session,
             session_id=session.session_id,
             dry_run=False,
-            validate_only=False,
+            validate_only=validate_only,
         )
-        if isinstance(prep, ToolResponseBase):
+        picker_only = (
+            isinstance(prep, SetupRequirementsResponse)
+            and prep.setup_info.user_readiness.has_all_credentials
+        )
+        if isinstance(prep, ToolResponseBase) and not picker_only:
             return prep
         return CapabilityDetailsResponse(
             message=(
