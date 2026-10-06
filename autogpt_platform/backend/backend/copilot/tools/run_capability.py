@@ -237,7 +237,7 @@ async def _run_block(
             session=session,
             session_id=session.session_id,
             dry_run=False,
-            validate_only=validate_only,
+            validate_only=False,
         )
         picker_only = (
             isinstance(prep, SetupRequirementsResponse)

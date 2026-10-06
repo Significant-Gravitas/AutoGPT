@@ -96,9 +96,10 @@ async def test_connect_treats_a_picker_only_card_as_connected():
     assert "connected" in result.message.lower()
 
 
-async def test_connect_passes_validate_only_through():
-    _, prepare = await _connect(lambda _session_id: object(), validate_only=True)
-    assert prepare.await_args.kwargs["validate_only"] is True
+async def test_connect_with_validate_only_still_surfaces_the_card():
+    result, prepare = await _connect(_card, validate_only=True)
+    assert isinstance(result, SetupRequirementsResponse)
+    assert prepare.await_args.kwargs["validate_only"] is False
 
 
 async def test_without_connect_the_block_runs_as_before():
