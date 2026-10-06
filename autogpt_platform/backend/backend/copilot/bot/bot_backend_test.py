@@ -455,7 +455,7 @@ class TestStreamChat:
             ),
             StreamFinish(),
         ):
-            await queue.put(chunk)
+            await queue.put((None, chunk))
         cards: list[tuple[str, str]] = []
 
         async def on_approval(session_id: str, review_id: str) -> None:
