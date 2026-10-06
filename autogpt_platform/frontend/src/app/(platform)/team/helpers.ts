@@ -28,7 +28,11 @@ export function getExpertCover(
 ) {
   return {
     art: null,
-    color: getExpertTopicHex(expert.role, expert.categories),
+    color: getExpertTopicHex({
+      avatarUrl: expert.avatar_url,
+      categories: expert.categories,
+      role: expert.role,
+    }),
   };
 }
 

@@ -196,6 +196,72 @@ def _make_log() -> CoPilotLogMetadata:
     return CoPilotLogMetadata(logger=logging.getLogger("test-copilot"))
 
 
+class TestExecuteAsyncScheduledTurnContext:
+    """The executor hands a scheduled turn's ``unattended`` flag and
+    credential pins to the tools through per-turn contextvars (SECRT-2804).
+    Every tool test sets those directly, so this seam is checked here."""
+
+    @staticmethod
+    async def _seen_by_the_turn(entry: CoPilotExecutionEntry) -> dict:
+        from backend.copilot.context import is_unattended_turn
+        from backend.copilot.credential_selection import turn_credential_pins
+
+        seen: dict = {}
+
+        def stream(**_kwargs):
+            seen["unattended"] = is_unattended_turn()
+            seen["pins"] = dict(turn_credential_pins())
+            return MagicMock()
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                side_effect=stream,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                return_value=_TrackedStream(events=[]),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
+            ),
+        ):
+            await asyncio.create_task(
+                CoPilotProcessor()._execute_async(
+                    entry, threading.Event(), MagicMock(), _make_log()
+                )
+            )
+        return seen
+
+    @pytest.mark.asyncio
+    async def test_a_scheduled_turn_runs_unattended_on_its_pins(self) -> None:
+        from backend.copilot.credential_selection import CredentialPin
+
+        pin = CredentialPin(id="exa-new", title="Work key")
+        entry = _make_entry().model_copy(
+            update={"unattended": True, "credential_pins": {"exa": pin}}
+        )
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen == {"unattended": True, "pins": {"exa": pin}}
+
+    @pytest.mark.asyncio
+    async def test_a_typed_turn_is_watched_and_has_no_pins(self) -> None:
+        seen = await self._seen_by_the_turn(_make_entry())
+
+        assert seen == {"unattended": False, "pins": {}}
+
+
 class TestExecuteAsyncAclose:
     """``_execute_async`` must call ``aclose`` on the published stream both
     when the loop exits naturally and when ``cancel`` is set mid-stream —
@@ -651,7 +717,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
     sdk_engine.assert_not_called()
     upsert.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
-        "sess-1", error_message="expert is not owned by user"
+        "sess-1", error_message="expert is not owned by user", turn_id="turn-1"
     )
 
 
@@ -724,7 +790,9 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     dummy_engine.assert_not_called()
     baseline_engine.assert_not_called()
     sdk_engine.assert_not_called()
-    mark_completed.assert_awaited_once_with("sess-1", error_message=expected_message)
+    mark_completed.assert_awaited_once_with(
+        "sess-1", error_message=expected_message, turn_id="turn-1"
+    )
 
 
 def _codex_entry(
@@ -961,6 +1029,7 @@ async def test_codex_release_failure_does_not_fail_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message=None,
+        turn_id="turn-codex",
     )
 
 
@@ -1014,6 +1083,7 @@ async def test_codex_checkpoint_failure_fails_closed_after_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_checkpoint_failed",
+        turn_id="turn-codex",
     )
 
 
@@ -1048,6 +1118,7 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_session_route_mismatch",
+        turn_id="turn-codex",
     )
 
 
@@ -1089,6 +1160,7 @@ async def test_codex_entitlement_is_checked_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="Max plan required",
+        turn_id="turn-codex",
     )
 
 
@@ -1136,6 +1208,7 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_busy",
+        turn_id="turn-codex",
     )
 
 
@@ -1171,12 +1244,13 @@ class TestSyncFailCloseSession:
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             new=mock_mark,
         ):
-            sync_fail_close_session("sess-1", _make_log(), exec_loop)
+            sync_fail_close_session("sess-1", "turn-1", _make_log(), exec_loop)
 
         mock_mark.assert_awaited_once()
         assert mock_mark.await_args is not None
         assert mock_mark.await_args.args[0] == "sess-1"
         assert "shut down" in mock_mark.await_args.kwargs["error_message"].lower()
+        assert mock_mark.await_args.kwargs["turn_id"] == "turn-1"
 
     def test_swallows_redis_error(self, exec_loop) -> None:
         # Raising from the mock ensures the helper catches the exception
@@ -1186,7 +1260,9 @@ class TestSyncFailCloseSession:
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             new=mock_mark,
         ):
-            sync_fail_close_session("sess-2", _make_log(), exec_loop)  # must not raise
+            sync_fail_close_session(
+                "sess-2", "turn-2", _make_log(), exec_loop
+            )  # must not raise
 
         mock_mark.assert_awaited_once()
 
@@ -1203,7 +1279,9 @@ class TestSyncFailCloseSession:
             new=mock_mark,
         ):
             # Must not raise even though the loop is closed
-            sync_fail_close_session("sess-closed-loop", _make_log(), dead_loop)
+            sync_fail_close_session(
+                "sess-closed-loop", "turn-3", _make_log(), dead_loop
+            )
 
         # mark_session_completed was never scheduled because the loop was dead
         mock_mark.assert_not_awaited()
@@ -1229,7 +1307,7 @@ class TestSyncFailCloseSession:
         ):
             start = _time.monotonic()
             sync_fail_close_session(
-                "sess-hang", _make_log(), exec_loop
+                "sess-hang", "turn-4", _make_log(), exec_loop
             )  # must not raise
             elapsed = _time.monotonic() - start
 

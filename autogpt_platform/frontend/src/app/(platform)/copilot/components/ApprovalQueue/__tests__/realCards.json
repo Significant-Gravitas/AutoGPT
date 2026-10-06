@@ -51,12 +51,14 @@
         },
         "reason": "Runs Gmail Send, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Gmail Send",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -235,12 +237,14 @@
         },
         "reason": "Otto does not know what Google Sheets Update Row does, so he asks.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Google Sheets Update Row",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Google Sheets Update Row",
       "editable": false,
@@ -453,12 +457,14 @@
         },
         "reason": "it reads a local file of invoices and prints what it finds.",
         "reason_kind": "supervisor",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Execute Code Step",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Execute Code Step",
       "editable": false,
@@ -600,12 +606,14 @@
         },
         "reason": "Runs Send Web Request, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Send Web Request",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Send Web Request",
       "editable": false,
@@ -741,12 +749,14 @@
         },
         "reason": "Runs Post To X, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Post To X",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Post To X",
       "editable": false,
@@ -1039,6 +1049,182 @@
     }
   },
   {
+    "story": "Gmail Newsletter",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_capability:373b3f39ce8fdfb5",
+      "node_id": "copilot-node-gate-run_capability",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_capability",
+        "arguments": {
+          "to": ["subscribers@acme.com"],
+          "subject": "How to write social posts people actually stop for",
+          "body": "# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "to",
+            "label": "To"
+          },
+          {
+            "key": "subject",
+            "label": "Subject"
+          },
+          {
+            "key": "body",
+            "label": "Body"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_capability",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:6c27abc2-e51d-499e-a85f-5a0041ba94f0",
+          "name": "Gmail Send",
+          "effect": "external",
+          "irreversible": true,
+          "block_id": "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
+        },
+        "reason": "Runs Gmail Send, which reaches outside the platform.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Gmail Send",
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Gmail Send",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "properties": {
+        "credentials": {
+          "credentials_provider": ["google"],
+          "credentials_types": ["oauth2"],
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "provider": {
+              "const": "google",
+              "title": "Provider",
+              "type": "string"
+            },
+            "type": {
+              "const": "oauth2",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": ["id", "provider", "type"],
+          "title": "CredentialsMetaInput[Literal[<ProviderName.GOOGLE: 'google'>], Literal['oauth2']]",
+          "type": "object",
+          "credentials_scopes": ["https://www.googleapis.com/auth/gmail.send"],
+          "description": "The Google integration requires OAuth2 authentication."
+        },
+        "to": {
+          "advanced": false,
+          "description": "Recipient email addresses",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "To",
+          "type": "array"
+        },
+        "subject": {
+          "advanced": false,
+          "description": "Email subject",
+          "secret": false,
+          "title": "Subject",
+          "type": "string"
+        },
+        "body": {
+          "advanced": false,
+          "description": "Email body (plain text or HTML)",
+          "secret": false,
+          "title": "Body",
+          "type": "string"
+        },
+        "cc": {
+          "advanced": true,
+          "description": "CC recipients",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Cc",
+          "type": "array"
+        },
+        "bcc": {
+          "advanced": true,
+          "description": "BCC recipients",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Bcc",
+          "type": "array"
+        },
+        "content_type": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "enum": ["auto", "plain", "html"],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+          "secret": false,
+          "title": "Content Type"
+        },
+        "attachments": {
+          "advanced": true,
+          "description": "Files to attach",
+          "items": {
+            "format": "file",
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Attachments",
+          "type": "array"
+        }
+      },
+      "required": ["credentials", "to", "subject", "body"],
+      "title": "Input",
+      "type": "object"
+    }
+  },
+  {
     "story": "Workflow",
     "review": {
       "node_exec_id": "copilot-node-gate-run_agent:b6b37239ba4de98b",
@@ -1082,14 +1268,73 @@
         },
         "reason": "Runs Morning digest; its step Gmail Send reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
           "object": "Morning digest",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Morning digest",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": null
+  },
+  {
+    "story": "Sandbox Command",
+    "review": {
+      "node_exec_id": "copilot-node-gate-bash_exec:b8e7dea87a064a4d",
+      "node_id": "copilot-node-gate-bash_exec",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "bash_exec",
+        "arguments": {
+          "command": "cd /home/user/workspace/blog && cat > post2-hooks-that-convert.md << 'EOF'\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\n# How to Write Social Posts People Actually Stop For\n\nYou have about two seconds. That's roughly how long someone scrolling gives your post before deciding to move on.\n\n## 1. The hook: earn the next sentence\n\nYour first line has one job, which is to make the second line worth reading:\n\n- **Name a specific problem.** \"Your posts get likes but no customers.\"\n- **Share a surprising result.** \"We doubled saves by deleting half our hashtags.\"\n- **Make a promise.** \"Three edits that turn a lecture into a thread.\"\n\nEOF",
+          "timeout": 60
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "command",
+            "label": "Command"
+          },
+          {
+            "key": "timeout",
+            "label": "Timeout"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-bash_exec",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "tool",
+          "key": "bash_exec",
+          "name": "Run a command in the sandbox",
+          "effect": "shell",
+          "irreversible": false,
+          "block_id": null
+        },
+        "reason": "it overwrites a file in the blog folder if one exists.",
+        "reason_kind": "supervisor",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run a command in the sandbox",
+          "object": null,
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "Run a command in the sandbox",
       "editable": false,
       "status": "WAITING"
     },

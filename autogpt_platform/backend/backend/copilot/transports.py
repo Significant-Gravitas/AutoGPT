@@ -18,8 +18,9 @@ from typing import Optional, get_args
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
+from backend.data.db_accessors import user_db
 from backend.data.model import Credentials, OAuth2Credentials
-from backend.data.user import get_user_default_chat_route, set_user_default_chat_route
+from backend.data.user import set_user_default_chat_route
 from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.credential_codec import bundle_from_credentials
@@ -113,7 +114,9 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
         for credentials in await _valid_microsoft_365_copilot_credentials(user_id)
     )
 
-    saved_provider, saved_credential_id = await get_user_default_chat_route(user_id)
+    saved_provider, saved_credential_id = await user_db().get_user_default_chat_route(
+        user_id
+    )
     _mark_default(transports, saved_provider, saved_credential_id)
     return transports
 

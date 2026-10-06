@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 settings = Settings()
 
-_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5")
+_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
 _TIMEOUT_SECONDS = 30
 
 # The Langfuse copy of these instructions wins whenever it is reachable,

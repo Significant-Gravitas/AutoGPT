@@ -3,11 +3,19 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.copilot.credential_selection import CredentialPins
 from backend.data.expert_run_output import OutputType
-from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
 ExpertRunStatus = Literal[
     "incomplete",
@@ -250,6 +258,9 @@ class ExpertRoutine(BaseModel):
     # Whether this routine's turns may reach the owner's connected services.
     # Always False on anything a template shipped.
     grants_credentials: bool = False
+    # ``{provider: pin}``: the account each of its turns runs on where the
+    # owner has several, chosen in the chat that set it up (SECRT-2804).
+    credential_pins: CredentialPins = {}
 
     @property
     def recurring(self) -> bool:
@@ -392,6 +403,10 @@ class HireResult(BaseModel):
     expert: Expert
 
 
+# Where a hire was made, for the ``expert_hired`` analytics event.
+HireSurface = Literal["onboarding", "expert_page", "copilot"]
+
+
 RaiseAttachmentKind = Literal["workflow", "skill"]
 RaiseAttachmentSource = Literal["marketplace", "library"]
 RaiseAttachmentFailureReason = Literal["unavailable", "installation_failed"]
@@ -446,16 +461,39 @@ class RaiseResult(BaseModel):
 
 
 class ExpertSkillsUpdate(BaseModel):
-    """The full list of skill names an expert should carry. Names new to the
-    expert must be library skills (default or uploaded); names already on
-    the expert are kept as-is so marketplace skills survive a round-trip."""
+    """Skills to attach to an expert and skills to remove from it. Names new
+    to the expert must be library skills (default or uploaded); names already
+    on the expert are kept as-is so marketplace skills survive a round-trip.
 
-    skills: list[str] = Field(max_length=MAX_SKILLS_PER_EXPERT)
+    Only names listed in ``remove`` are removed. A skill the expert carries
+    that appears in neither list is left alone, so a client holding a stale
+    list can never delete a skill it has not seen (the expert can distil new
+    ones at any time).
+
+    A normalized name must not appear in both ``skills`` and ``remove``;
+    such a request is rejected with a validation error. A marketplace listing
+    whose name matches a ``remove`` entry is rejected with a 400."""
+
+    skills: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
+    remove: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
 
-    @field_validator("skills", mode="before")
+    @model_validator(mode="after")
+    def reject_names_both_kept_and_removed(self) -> "ExpertSkillsUpdate":
+        # The same key update_skills removes by, so a name cannot pass this
+        # check as "different" and then match a removal on spelling alone.
+        both = {skill_name_key(n) for n in self.skills} & {
+            skill_name_key(n) for n in self.remove
+        }
+        if both:
+            raise ValueError(
+                f"Skills cannot be both added and removed: {', '.join(sorted(both))}"
+            )
+        return self
+
+    @field_validator("skills", "remove", mode="before")
     @classmethod
     def strip_and_dedupe(cls, value: object) -> object:
         if not isinstance(value, list):
@@ -468,9 +506,12 @@ class ExpertSkillsUpdate(BaseModel):
             name = item.strip()
             if not name or len(name) > 100:
                 raise ValueError("Skill names must be 1-100 characters")
-            if name.lower() in seen:
+            # Same key the overlap check and update_skills use, so
+            # "Deep Research" and "deep_research" count as one skill.
+            key = skill_name_key(name)
+            if key in seen:
                 continue
-            seen.add(name.lower())
+            seen.add(key)
             cleaned.append(name)
         return cleaned
 

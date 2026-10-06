@@ -236,7 +236,9 @@ async def _collect_status_page(
         for sub in subs.data:
             if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                 try:
-                    await sync_subscription_from_stripe(dict(sub))
+                    await sync_subscription_from_stripe(
+                        dict(sub), track_lifecycle=False
+                    )
                 except (ValueError, stripe.StripeError):
                     logger.exception(
                         "Trial reconciliation failed for subscription %s; snapshot is incomplete",

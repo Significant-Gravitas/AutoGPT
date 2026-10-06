@@ -32,6 +32,12 @@ class MCPServerMetadata(BaseModel):
         min_length=1
     )
     server_url_options: list[MCPServerURLPreset] = Field(default_factory=list)
+    allow_custom_url: bool = Field(
+        default=False,
+        description="Hosted entries only: server_url stays the default, and "
+        "users may replace it with their own endpoint, such as a self-hosted "
+        "instance of the service.",
+    )
     oauth_server_url: str | None = None
     oauth_scopes: list[str] | None = None
     oauth_write_scopes: list[str] = Field(default_factory=list)
@@ -79,6 +85,8 @@ class MCPServerMetadata(BaseModel):
                 raise ValueError("Hosted entries require a URL")
         elif self.server_url is not None:
             raise ValueError("Custom entries cannot prefill a URL")
+        elif self.allow_custom_url:
+            raise ValueError("Only hosted entries can allow a custom URL")
         if len(set(self.auth_methods)) != len(self.auth_methods):
             raise ValueError("Authentication methods must be unique")
         if self.oauth_write_scopes and self.oauth_scopes is None:

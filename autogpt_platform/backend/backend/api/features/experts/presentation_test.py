@@ -54,7 +54,9 @@ def test_template_projection_changes_only_recorded_defaults():
         tagline="Custom tagline",
     )
     result = template_presentation(row)
-    assert result["avatarUrl"] == "/experts/clay/v5/maria-marketing.png"
+    assert (
+        result["avatarUrl"] == "/autogpt-characters/v1.1/expert-maria/neutral/128.webp"
+    )
     assert result["bio"] == "Custom bio"
     assert result["identity"] == "Custom instructions"
 
@@ -199,25 +201,31 @@ async def test_backfill_reads_bounded_batches_without_offset_skips():
     ] == ["0", "1", "2"]
 
 
-def test_template_projection_replaces_shared_draft_avatars_only():
+def test_template_projection_replaces_retired_defaults_only():
     from backend.api.features.experts.presentation import template_presentation
 
     row = SimpleNamespace(
         name="Noor",
         isTemplate=True,
-        avatarUrl="/experts/clay/v1/marketing.png",
+        avatarUrl="/avatars/notion/2-2-15-8-2-0-27-0-0-0.sky.svg",
         bio=None,
         identity="",
         tagline=None,
     )
     assert (
-        template_presentation(row)["avatarUrl"] == "/experts/clay/v5/noor-marketing.png"
+        template_presentation(row)["avatarUrl"]
+        == "/autogpt-characters/v2.1/expert-noor/neutral/128.webp"
+    )
+    row.avatarUrl = "/experts/clay/v5/noor-marketing.png"
+    assert (
+        template_presentation(row)["avatarUrl"]
+        == "/autogpt-characters/v2.1/expert-noor/neutral/128.webp"
     )
     row.avatarUrl = "https://custom.example/image.png"
     assert template_presentation(row)["avatarUrl"] == row.avatarUrl
-    row.avatarUrl = "/experts/clay/v1/finance.png"
+    row.avatarUrl = "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp"
     assert template_presentation(row)["avatarUrl"] == row.avatarUrl
-    row.avatarUrl = "/experts/clay/v1/marketing.png"
+    row.avatarUrl = "/experts/clay/v5/noor-marketing.png"
     row.isTemplate = False
     assert template_presentation(row)["avatarUrl"] == row.avatarUrl
 
@@ -230,7 +238,7 @@ async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default(
     template = SimpleNamespace(
         id="template",
         name="Noor",
-        avatarUrl="/experts/clay/v5/noor-marketing.png",
+        avatarUrl="/autogpt-characters/v2.1/expert-noor/neutral/128.webp",
         jobTitle="Writer",
         tagline="Hi",
         bio=None,
@@ -244,9 +252,9 @@ async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default(
         )
         for i, url in enumerate(
             [
-                "/experts/clay/v1/marketing.png",
+                "/experts/clay/v5/noor-marketing.png",
                 "https://custom.example/image.png",
-                "/experts/clay/v1/finance.png",
+                "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp",
             ]
         )
     ]
@@ -264,5 +272,5 @@ async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default(
             "isTemplate": False,
             "updatedAt": "0",
         },
-        data={"avatarUrl": "/experts/clay/v5/noor-marketing.png"},
+        data={"avatarUrl": "/autogpt-characters/v2.1/expert-noor/neutral/128.webp"},
     )

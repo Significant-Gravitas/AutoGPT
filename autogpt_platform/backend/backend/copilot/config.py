@@ -203,7 +203,7 @@ class ChatConfig(BaseSettings):
     # ``CHAT_FAST_MODEL``) are preserved via ``validation_alias`` so
     # existing deployments continue to override the same effective cell.
     fast_standard_model: str = Field(
-        default="anthropic/claude-sonnet-5",
+        default="anthropic/claude-sonnet-5-5",
         validation_alias=AliasChoices(
             "CHAT_FAST_STANDARD_MODEL",
             "CHAT_FAST_MODEL",
@@ -221,7 +221,7 @@ class ChatConfig(BaseSettings):
         "the cloud default — see ``_apply_local_aux_models``.",
     )
     thinking_standard_model: str = Field(
-        default="anthropic/claude-sonnet-5",
+        default="anthropic/claude-sonnet-5-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_STANDARD_MODEL",
             "CHAT_MODEL",
@@ -284,6 +284,22 @@ class ChatConfig(BaseSettings):
         default=6.0,
         description="Hard timeout for one gate classification. Expiry is not "
         "an error path — it resolves to 'ask'.",
+    )
+    gate_first_stage: Literal["none", "jev"] = Field(
+        default="jev",
+        description="First stage of the action supervisor: Jev decides every "
+        "judged call and the LLM (``gate_model``) runs only on an ask, to write "
+        "the reason. Off without ``TYPESAFE_API_KEY``.",
+    )
+    gate_jev_model: str = Field(default="jev-1.13.0", description="Jev model id.")
+    gate_jev_ask_threshold: float | None = Field(
+        default=None,
+        description="Unset: Jev's allow/ask choice decides. Set: the call also "
+        "asks when Jev's must-ask probability reaches it (0.4 was measured).",
+    )
+    gate_jev_timeout_s: float = Field(
+        default=2.0,
+        description="Timeout for one Jev call; expiry falls through to the LLM.",
     )
     content_judge_timeout_s: float = Field(
         default=15.0,
@@ -502,6 +518,12 @@ class ChatConfig(BaseSettings):
         "this cap). Admission reads settled spend, so a tree can overshoot by "
         "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
         "what bounds it.",
+    )
+    spend_ceiling_reset: Literal["never", "daily"] = Field(
+        default="daily",
+        description="When a chat's spend ceiling starts over: at each UTC "
+        "midnight, like the daily usage limit (the ceiling and any approved "
+        "raises reset with the day), or never within the chat.",
     )
     tree_max_nodes: int = Field(
         default=8,
@@ -724,7 +746,7 @@ class ChatConfig(BaseSettings):
         description="E2B API key. Falls back to E2B_API_KEY environment variable.",
     )
     e2b_sandbox_template: str = Field(
-        default="agpt-desktop-1x2",
+        default="agpt-desktop-1x2-004d6e73",
         description="E2B sandbox template for copilot sessions. The default is our "
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "

@@ -11,10 +11,17 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma.enums import NotificationType
+from prisma.enums import NotificationType, SubscriptionTier
 
-from backend.data.notifications import NotificationResult, SubscriptionPlan
-from backend.notifications import lifecycle
+from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.notifications import (
+    AudienceAction,
+    NotificationResult,
+    SubscriberField,
+    SubscriptionPlan,
+    SubscriptionStatus,
+)
+from backend.notifications import lifecycle, lifecycle_plan, subscriber_fields
 from backend.notifications.lifecycle_plan import card_from_invoice
 
 CUSTOMER = "cus_1"
@@ -108,6 +115,11 @@ def _context(user, claim=True, audience_ok=True):
                 return_value=NotificationResult(success=audience_ok, message="test")
             ),
         ),
+        patch(
+            "backend.notifications.lifecycle.tier_and_cycle_from_subscription",
+            AsyncMock(return_value=("PRO", "monthly")),
+        ),
+        patch("backend.notifications.lifecycle.track_subscription_ended"),
     ]
 
 
@@ -116,7 +128,12 @@ async def _run(coro_factory, user, claim=True, audience_ok=True):
     started = [p.start() for p in patches]
     try:
         await coro_factory()
-        return {"notify": started[4], "audience": started[5], "claim": started[3]}
+        return {
+            "notify": started[4],
+            "audience": started[5],
+            "claim": started[3],
+            "ended": started[7],
+        }
     finally:
         for p in patches:
             p.stop()
@@ -301,6 +318,93 @@ async def test_the_ended_email_branches_on_which_road_they_took():
     assert calls["notify"].await_args.args[0].data.due_to_payment is False
 
 
+@pytest.mark.asyncio
+async def test_a_subscription_end_is_sent_to_analytics_once():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(cancellation_details={"reason": "payment_failed"})
+        ),
+        _User(),
+    )
+    calls["ended"].assert_called_once_with(
+        user_id="user-1",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+
+    # A Stripe replay finds the claim spent: no second churn.
+    replay = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(),
+        claim=False,
+    )
+    replay["ended"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_our_own_cancel_after_a_failed_renewal_is_involuntary_churn():
+    # Stripe stamps any API cancel "cancellation_requested"; the comment
+    # handle_subscription_payment_failure leaves is what tells them apart.
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(
+                cancellation_details={
+                    "reason": "cancellation_requested",
+                    "comment": PAYMENT_FAILURE_CANCELLATION_COMMENT,
+                }
+            )
+        ),
+        _User(),
+    )
+    calls["ended"].assert_called_once_with(
+        user_id="user-1",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+    assert calls["notify"].await_args.args[0].data.due_to_payment is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_ended_email_sends_no_analytics_event():
+    patches = _context(_User())
+    started = [p.start() for p in patches]
+    started[4].return_value = NotificationResult(success=False, message="down")
+    with patch("backend.notifications.lifecycle.release_claim", AsyncMock()):
+        try:
+            with pytest.raises(RuntimeError):
+                await lifecycle.on_subscription_deleted(_subscription())
+            started[7].assert_not_called()
+        finally:
+            for p in patches:
+                p.stop()
+
+
+@pytest.mark.asyncio
+async def test_tier_and_cycle_come_from_the_subscription_price():
+    with patch.object(
+        lifecycle_plan,
+        "build_price_to_tier_map",
+        AsyncMock(return_value={"price_1": SubscriptionTier.MAX}),
+    ):
+        yearly = _subscription()
+        yearly["items"]["data"][0]["price"]["recurring"] = {"interval": "year"}
+        assert await lifecycle_plan.tier_and_cycle_from_subscription(yearly) == (
+            "MAX",
+            "yearly",
+        )
+
+    with patch.object(
+        lifecycle_plan,
+        "build_price_to_tier_map",
+        AsyncMock(side_effect=RuntimeError("LD down")),
+    ):
+        assert await lifecycle_plan.tier_and_cycle_from_subscription(
+            _subscription()
+        ) == (None, "monthly")
+
+
 def test_the_platform_does_not_listen_for_trials():
     assert not hasattr(lifecycle, "on_trial_will_end")
     assert not any(name.endswith("TRIAL_ENDING") for name in dir(NotificationType))
@@ -432,3 +536,117 @@ async def test_a_failed_welcome_publish_gives_the_claim_back():
     released.assert_awaited_once_with(user)
     # The tour enrolment must not run for a welcome that never went out.
     audience.assert_not_awaited()
+
+
+# ── subscriber fields ──────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def fields_on(monkeypatch):
+    queued = AsyncMock(return_value=NotificationResult(success=True))
+    monkeypatch.setattr(subscriber_fields, "queue_audience_change", queued)
+    return queued
+
+
+def _day(timestamp: int) -> str:
+    return datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y-%m-%d")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("welcomed", [False, True])
+async def test_a_checkout_marks_them_subscribed_from_stripes_start_date(
+    fields_on, welcomed
+):
+    user = _User(welcome_sent_at=datetime(2026, 1, 1) if welcomed else None)
+    with patch(
+        "backend.notifications.lifecycle._claim_welcome",
+        AsyncMock(return_value=True),
+    ):
+        calls = await _run(
+            lambda: lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER}, _subscription(start_date=1788000000)
+            ),
+            user,
+        )
+    assert calls["audience"].await_args.args[0].fields == {
+        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIBED.value,
+        SubscriberField.SUBSCRIPTION_STARTED: _day(1788000000),
+        SubscriberField.SUBSCRIPTION_CANCELED: None,
+        SubscriberField.SUBSCRIPTION_ENDED: None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_paid_cancellation_sets_the_status_and_stripes_cancel_date(
+    fields_on,
+):
+    await _run(
+        lambda: lifecycle.on_subscription_updated(
+            _subscription(cancel_at_period_end=True, canceled_at=1789100000),
+            {"cancel_at_period_end": False},
+        ),
+        _User(),
+    )
+    event = fields_on.await_args.args[0]
+    assert event.action is AudienceAction.UPDATE_FIELDS
+    assert event.fields == {
+        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_CANCELED.value,
+        SubscriberField.SUBSCRIPTION_CANCELED: _day(1789100000),
+    }
+
+
+@pytest.mark.asyncio
+async def test_resuming_a_paid_subscription_clears_the_cancel_date(fields_on):
+    await _run(
+        lambda: lifecycle.on_subscription_updated(
+            _subscription(cancel_at_period_end=False),
+            {"cancel_at_period_end": True, "canceled_at": 1789100000},
+        ),
+        _User(),
+    )
+    assert fields_on.await_args.args[0].fields == {
+        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIBED.value,
+        SubscriberField.SUBSCRIPTION_CANCELED: None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_replayed_cancellation_writes_no_fields(fields_on):
+    await _run(
+        lambda: lifecycle.on_subscription_updated(
+            _subscription(cancel_at_period_end=True, canceled_at=1789100000),
+            {"cancel_at_period_end": False},
+        ),
+        _User(),
+        claim=False,
+    )
+    fields_on.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_field_update_never_fails_the_cancellation(fields_on, caplog):
+    fields_on.return_value = NotificationResult(success=False, message="down")
+    with caplog.at_level(logging.ERROR):
+        calls = await _run(
+            lambda: lifecycle.on_subscription_updated(
+                _subscription(cancel_at_period_end=True, canceled_at=1789100000),
+                {"cancel_at_period_end": False},
+            ),
+            _User(),
+        )
+    calls["notify"].assert_awaited_once()
+    assert "MailerLite fields" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_ended_subscription_sets_stripes_end_date_on_the_churn(fields_on):
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription(ended_at=1789200000)),
+        _User(),
+    )
+    event = calls["audience"].await_args.args[0]
+    assert event.action is AudienceAction.REMOVE_CHANGELOG
+    assert event.fields == {
+        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_ENDED.value,
+        SubscriberField.SUBSCRIPTION_ENDED: _day(1789200000),
+    }

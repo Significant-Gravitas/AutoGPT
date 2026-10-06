@@ -544,6 +544,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Auth mail (verify email, reset password, change email) is not gated by
+    # this: it always sends, so sign-in keeps working with notifications off.
+    enable_user_notifications: bool = Field(
+        default=True,
+        description=(
+            "Send notification emails to users: Briefings, Alerts, Verdicts, "
+            "subscription and trial mail. When false they are dropped, not "
+            "deferred. Auth emails and internal ops mail are unaffected."
+        ),
+    )
+
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
     billing_sender_email: str = Field(
@@ -599,10 +610,35 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="MailerLite group that receives the monthly changelog campaign",
     )
+    mailerlite_trial_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding customers in a card-required trial. "
+            "Blank leaves trial customers out of MailerLite."
+        ),
+    )
+    mailerlite_checkout_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding everyone who opened Stripe checkout, "
+            "which GTM segments for outreach. Blank leaves checkout openers "
+            "out of MailerLite."
+        ),
+    )
+    mailerlite_api_url: str = Field(
+        default="https://connect.mailerlite.com/api",
+        description=(
+            "MailerLite API base URL. Only a test stack changes it, to point "
+            "at a stub."
+        ),
+    )
 
     expert_avatar_model: str = Field(
-        default="gpt-image-1.5",
-        description="OpenAI model for transparent expert PNG avatars",
+        default="gpt-image-2-2026-04-21",
+        description=(
+            "OpenAI image-edit model for brand-constrained Expert avatar candidates; "
+            "the design system pins this dated snapshot"
+        ),
     )
 
     use_agent_image_generation_v2: bool = Field(
@@ -1033,6 +1069,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    typesafe_jev_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("TYPESAFE_API_KEY", "TYPESAFE_JEV_API_KEY"),
+        description="TypeSafe Jev key: the first stage of the action supervisor and the content judge",
+    )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
     webshare_proxy_username: str = Field(
@@ -1214,10 +1255,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
-    posthog_personal_api_key: str = Field(
+    posthog_secret_key: str = Field(
         default="",
-        description="PostHog personal API key. Only used for local feature-flag "
-        "evaluation; without it flag reads fall back to a remote /flags call.",
+        description="PostHog Feature Flags Secure API Key (project settings > "
+        "Feature Flags), for local flag evaluation; without it flag reads fall back "
+        "to a remote /flags call. A personal API key also works, but PostHog is "
+        "deprecating that use.",
     )
 
     # Add more secret fields as needed

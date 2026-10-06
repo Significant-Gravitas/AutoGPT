@@ -42,7 +42,6 @@ export function SkillsSection({ category }: Props) {
       className="mb-20 scroll-mt-24"
     >
       <SectionHeader
-        titleIcon={<Icon icon={BookOpen01Icon} size={30} aria-hidden />}
         title="Skills"
         titleId={HEADING_ID}
         subtitle="Playbooks your experts follow — from brand voice to cold outreach. Teach them your way of working."

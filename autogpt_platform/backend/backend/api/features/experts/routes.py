@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
-from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts import experts_db, onboarding, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
@@ -31,6 +31,7 @@ from backend.api.features.experts.models import (
     ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
+    HireSurface,
     RaiseAttachment,
     RaiseResult,
     validate_avatar_url,
@@ -44,7 +45,6 @@ from backend.copilot.computer import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
-from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ router = APIRouter(
 )
 
 router.include_router(avatar_routes.router)
+router.include_router(onboarding.router)
 
 # Templates are marketplace content: the expert page shows them to signed-out
 # visitors, so they live on a router without the session requirement. It must
@@ -67,6 +68,7 @@ public_router = APIRouter(prefix="/experts", tags=["experts"])
 class HireRequest(BaseModel):
     template_id: str
     name: str | None = Field(default=None, max_length=100)
+    surface: HireSurface | None = None
 
 
 class InstallWorkflowRequest(BaseModel):
@@ -176,8 +178,8 @@ async def hire_expert(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> HireResult:
     try:
-        result = await experts_db.hire_expert(
-            user_id, request.template_id, request.name
+        return await experts_db.hire_expert(
+            user_id, request.template_id, request.name, request.surface
         )
     except experts_db.ExpertTemplateNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
@@ -198,13 +200,6 @@ async def hire_expert(
             status_code=409,
             detail={"code": "active_expert_limit", "limit": e.limit},
         )
-    product_analytics.track_expert_hired(
-        user_id=user_id,
-        expert_id=result.expert.id,
-        template_id=request.template_id,
-        name=result.expert.name,
-    )
-    return result
 
 
 @router.post(
@@ -530,7 +525,10 @@ async def update_expert_soul(
 @router.put(
     "/{expert_id}/skills",
     operation_id="update_expert_skills",
-    responses={404: {"description": "Expert or skill not found"}},
+    responses={
+        400: {"description": "A marketplace skill is both attached and removed"},
+        404: {"description": "Expert or skill not found"},
+    },
 )
 async def update_expert_skills(
     expert_id: str,
@@ -543,9 +541,14 @@ async def update_expert_skills(
             expert_id,
             request.skills,
             marketplace_listing_ids=request.marketplace_listing_ids,
+            remove=request.remove,
         )
     except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        # A listing resolves to its name only inside update_skills, so this
+        # attach-and-remove contradiction can't be caught by the request model.
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
 @router.patch(
