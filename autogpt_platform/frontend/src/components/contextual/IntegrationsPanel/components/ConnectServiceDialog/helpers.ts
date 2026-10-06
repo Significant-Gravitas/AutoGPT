@@ -30,6 +30,23 @@ function normalizeAuthTypes(
   return raw.filter((t) => KNOWN_AUTH_METHODS.has(t));
 }
 
+export function opensOnNativeMethods(
+  provider: ConnectableProvider,
+  preferMcp: boolean,
+  nativeMethodCount: number,
+): boolean {
+  if (nativeMethodCount === 0) return false;
+  return !preferMcp || Boolean(provider.mcpServer?.read_only);
+}
+
+export function getSignInFallbackLabel(provider: ConnectableProvider): string {
+  if (provider.mcpServer?.auth_methods.includes("oauth")) {
+    return `Use the ${provider.name} sign-in instead`;
+  }
+  const article = /^[aeiou]/i.test(provider.name) ? "an" : "a";
+  return `Use ${article} ${provider.name} token instead`;
+}
+
 export function toConnectableProviders(
   metadata: ProviderMetadata[],
 ): ConnectableProvider[] {

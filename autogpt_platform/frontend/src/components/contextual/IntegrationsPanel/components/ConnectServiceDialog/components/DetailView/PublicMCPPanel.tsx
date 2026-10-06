@@ -33,8 +33,8 @@ export function PublicMCPPanel({ serverURL }: Props) {
       )}
       {toolCount !== null && (
         <Text variant="small" className="text-zinc-600">
-          No connection was saved. Use this server URL when adding MCP tools to
-          an agent.
+          This service needs no sign-in, so nothing was saved. Add it to an
+          agent or ask an expert to use it.
         </Text>
       )}
       {error && (

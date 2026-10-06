@@ -12,7 +12,13 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 
-import { AuthType, ConnectableProvider, type AuthMethod } from "../../helpers";
+import {
+  AuthType,
+  ConnectableProvider,
+  getSignInFallbackLabel,
+  opensOnNativeMethods,
+  type AuthMethod,
+} from "../../helpers";
 import { McpConnectPanel } from "./McpConnectPanel";
 import { McpFirstPanel } from "./McpFirstPanel";
 import { getAuthMethodLabel, MethodPanel } from "./MethodPanel";
@@ -60,7 +66,9 @@ export function DetailView({
   const remembered = lastTabByProvider.get(provider.id);
   const defaultTab =
     remembered && tabs.includes(remembered) ? remembered : tabs[0];
-  const [showNative, setShowNative] = useState(!preferMcp && tabs.length > 0);
+  const [showNative, setShowNative] = useState(
+    opensOnNativeMethods(provider, preferMcp, tabs.length),
+  );
 
   return (
     <div className="flex flex-col gap-5 pl-1">
@@ -153,7 +161,7 @@ export function DetailView({
               size="small"
               onClick={() => setShowNative(false)}
             >
-              Sign in with {provider.name} instead
+              {getSignInFallbackLabel(provider)}
             </Button>
           ) : null}
         </div>

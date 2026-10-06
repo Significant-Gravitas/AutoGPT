@@ -85,6 +85,12 @@ export function serviceIcon(ref: ServiceRef): string {
   return ref.service_icon || serviceKey(ref);
 }
 
+export function groupServiceIdentity(refs: ServiceRef[]) {
+  const named = refs.find((ref) => ref.service_name) ?? refs[0];
+  const withIcon = refs.find((ref) => ref.service_icon) ?? refs[0];
+  return { name: serviceName(named), icon: serviceIcon(withIcon) };
+}
+
 export function serviceLabelFromIcon(id: string): string {
   return id.startsWith("mcp:")
     ? id.slice("mcp:".length)
@@ -141,10 +147,11 @@ export function groupCredentialsByProvider(
 
   const groups: ProviderGroupView[] = [];
   for (const [id, creds] of byService) {
+    const identity = groupServiceIdentity(creds);
     groups.push({
       id,
-      name: serviceName(creds[0]),
-      logoUrl: integrationIconSrc(serviceIcon(creds[0])) ?? undefined,
+      name: identity.name,
+      logoUrl: integrationIconSrc(identity.icon) ?? undefined,
       credentials: creds.map(toCredentialView),
     });
   }

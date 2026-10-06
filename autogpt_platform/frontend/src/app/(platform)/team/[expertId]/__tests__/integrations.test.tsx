@@ -541,18 +541,78 @@ describe("managing an expert's integrations", () => {
     await userEvent.click(within(list).getByRole("button", { name: /Linear/ }));
     expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
     expect(
-      within(dialog).getByRole("button", {
-        name: /Connect with an API key instead/,
-      }),
+      within(dialog).getByRole("button", { name: "More ways to connect" }),
     ).toBeDefined();
 
     await userEvent.click(
-      within(dialog).getByRole("button", {
-        name: /Connect with an API key instead/,
-      }),
+      within(dialog).getByRole("button", { name: "More ways to connect" }),
     );
     expect(
       await within(dialog).findByRole("button", { name: /API Key/ }),
+    ).toBeDefined();
+    expect(
+      within(dialog).getByRole("button", {
+        name: "Use the Linear sign-in instead",
+      }),
+    ).toBeDefined();
+  });
+
+  it("opens a vendor with a read-only sign-in on its own methods", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "github",
+            description: "Issues and PRs",
+            supported_auth_types: ["oauth2", "api_key"],
+            service: "github",
+            service_name: null,
+            service_icon: "github",
+          },
+          {
+            name: "mcp_github",
+            display_name: "GitHub",
+            supported_auth_types: [],
+            service: "github",
+            service_name: "GitHub",
+            service_icon: "github",
+            mcp_server: {
+              server_url: "https://api.githubcopilot.com/mcp/readonly",
+              documentation_url: "https://github.com/github/github-mcp-server",
+              setup_instructions: "Paste a read-only GitHub token.",
+              connection_mode: "hosted",
+              auth_methods: ["bearer"],
+              read_only: true,
+            },
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const list = await within(dialog).findByRole("list", { name: "Services" });
+    await userEvent.click(within(list).getByRole("button", { name: /GitHub/ }));
+
+    expect(
+      await within(dialog).findByRole("button", { name: /API Key/ }),
+    ).toBeDefined();
+    expect(
+      within(dialog).queryByText("Paste a read-only GitHub token."),
+    ).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Use a GitHub token instead",
+      }),
+    );
+    expect(
+      await within(dialog).findByText("Paste a read-only GitHub token."),
     ).toBeDefined();
   });
 
@@ -941,6 +1001,24 @@ describe("managing an expert's integrations", () => {
           service_name: "Linear",
           service_icon: "linear",
         },
+        {
+          credential_id: "cred-posthog-key",
+          provider: "posthog",
+          title: "PostHog key",
+          type: "api_key",
+          service: "posthog",
+          service_name: null,
+          service_icon: null,
+        },
+        {
+          credential_id: "cred-posthog-mcp",
+          provider: "mcp",
+          title: "MCP: mcp.posthog.com",
+          type: "oauth2",
+          service: "posthog",
+          service_name: "PostHog",
+          service_icon: "posthog",
+        },
       ]),
     );
 
@@ -951,7 +1029,9 @@ describe("managing an expert's integrations", () => {
     const rows = await within(section).findAllByTestId(
       "expert-integration-row",
     );
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(4);
     expect(within(section).getAllByText("Linear")).toHaveLength(1);
+    expect(within(section).getAllByText("PostHog")).toHaveLength(1);
+    expect(within(section).queryByText("Posthog")).toBeNull();
   });
 });

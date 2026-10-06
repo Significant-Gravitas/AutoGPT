@@ -13,6 +13,8 @@ import type { ApiKeyConnectFormValues } from "@/components/contextual/Integratio
 import { UnsupportedNotice } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/UnsupportedNotice";
 import {
   AuthType,
+  getSignInFallbackLabel,
+  opensOnNativeMethods,
   type AuthMethod,
   type ConnectableProvider,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
@@ -106,7 +108,7 @@ export function ConnectMethodView({
     provider.supportedAuthTypes.includes(method),
   );
   const [showNative, setShowNative] = useState(
-    !preferMcp && methods.length > 0,
+    opensOnNativeMethods(provider, Boolean(preferMcp), methods.length),
   );
   const showMcp = Boolean(provider.mcpServer) && !showNative;
 
@@ -272,7 +274,7 @@ export function ConnectMethodView({
             </div>
             {provider.mcpServer ? (
               <Button variant="ghost" size="small" onClick={handleUseSignIn}>
-                Sign in with {provider.name} instead
+                {getSignInFallbackLabel(provider)}
               </Button>
             ) : null}
           </div>

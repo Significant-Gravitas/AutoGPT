@@ -26,7 +26,7 @@ export function McpFirstPanel({
       <MCPPresetPanel server={server} onSuccess={onSuccess} />
       {hasNativeMethods ? (
         <Button variant="ghost" size="small" onClick={onUseNative}>
-          Connect with an API key instead
+          More ways to connect
         </Button>
       ) : null}
     </div>

@@ -5,9 +5,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   formatCredentialName,
-  serviceIcon,
+  groupServiceIdentity,
   serviceKey,
-  serviceName,
 } from "@/components/contextual/IntegrationsPanel/helpers";
 import {
   Accordion,
@@ -70,8 +69,7 @@ export function groupExpertIntegrations(
   return [...byService.entries()]
     .map(([id, list]) => ({
       id,
-      name: serviceName(list[0]),
-      icon: serviceIcon(list[0]),
+      ...groupServiceIdentity(list),
       integrations: list,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));

@@ -7,9 +7,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   formatCredentialName,
+  groupServiceIdentity,
   serviceIcon,
   serviceKey,
-  serviceName,
 } from "@/components/contextual/IntegrationsPanel/helpers";
 import type { ConnectableProvider } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -44,16 +44,19 @@ function groupByProvider(
     groups.set(id, [...(groups.get(id) ?? []), credential]);
   }
   return [...groups.entries()]
-    .map(([id, list]) => ({
-      provider: {
-        id,
-        serviceId: id,
-        name: serviceName(list[0]),
-        supportedAuthTypes: [],
-        iconId: serviceIcon(list[0]),
-      },
-      credentials: list,
-    }))
+    .map(([id, list]) => {
+      const { name, icon } = groupServiceIdentity(list);
+      return {
+        provider: {
+          id,
+          serviceId: id,
+          name,
+          supportedAuthTypes: [],
+          iconId: icon,
+        },
+        credentials: list,
+      };
+    })
     .sort((a, b) => a.provider.name.localeCompare(b.provider.name));
 }
 
