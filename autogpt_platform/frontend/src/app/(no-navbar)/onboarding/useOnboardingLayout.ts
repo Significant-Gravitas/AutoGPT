@@ -1,9 +1,5 @@
 import { environment } from "@/services/environment";
-import {
-  Flag,
-  useFlagStatus,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useRef } from "react";
 import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
 import { buildStepLayout, type Step } from "./store";
@@ -20,9 +16,11 @@ export function useOnboardingLayout({
   trialConfirmation: { ready: boolean; active: boolean | undefined };
 }) {
   const payment = useFlagStatus(Flag.ENABLE_PLATFORM_PAYMENT);
-  const brain = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const expertTeam = useGetFlag(Flag.ONBOARDING_EXPERT_TEAM);
-  const hireExperts = useGetFlag(Flag.HIRE_EXPERTS);
+  const brain = useFlagStatus(Flag.ONBOARDING_BRAIN_DUMP);
+  const expertTeam = useFlagStatus(Flag.ONBOARDING_EXPERT_TEAM);
+  const hireExperts = useFlagStatus(Flag.HIRE_EXPERTS);
+  const flagsReady =
+    payment.ready && brain.ready && expertTeam.ready && hireExperts.ready;
   const snapshot = useRef<{
     userID: string | null;
     payment: boolean;
@@ -31,12 +29,12 @@ export function useOnboardingLayout({
   } | null>(null);
   if (snapshot.current?.userID !== userID) snapshot.current = null;
   // Resolve once per account: flag changes must not reorder an active wizard.
-  if (!snapshot.current && payment.ready && !isUserLoading) {
+  if (!snapshot.current && flagsReady && !isUserLoading) {
     snapshot.current = {
       userID,
       payment: payment.enabled,
-      brain,
-      team: expertTeam && hireExperts,
+      brain: brain.enabled,
+      team: expertTeam.enabled && hireExperts.enabled,
     };
   }
   const paidConfirmation = usePaidCheckoutStatus(
@@ -59,7 +57,7 @@ export function useOnboardingLayout({
     preparingStep: steps.preparing as Step,
     totalSteps: steps.preparing - 1,
     isReady:
-      payment.ready &&
+      flagsReady &&
       !isUserLoading &&
       (!isLoggedIn || !paidConfirmation.isLoading) &&
       trialConfirmation.ready &&
