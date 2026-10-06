@@ -33,6 +33,7 @@ import time
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
     ChatSession,
@@ -41,6 +42,7 @@ from backend.copilot.model import (
     get_chat_session,
 )
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
+from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -48,12 +50,14 @@ from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
     safe_caller_name,
+    sent_from_metadata,
     unknown_target_message,
 )
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     apply_delegated_expert,
+    discard_unused_sub_session,
     list_sub_workspace_files,
     response_from_outcome,
 )
@@ -82,7 +86,7 @@ class DelegateToExpertTool(BaseTool):
             f"work. Waits up to wait_for_result sec (max "
             f"{MAX_SUB_SESSION_WAIT_SECONDS}); if not done, returns "
             "status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "tool:get_sub_session_result."
         )
 
     @property
@@ -193,23 +197,40 @@ class DelegateToExpertTool(BaseTool):
                 f"delegate:{session.session_id}" if session.session_id else "delegate"
             ),
             tool_name="delegate_to_expert",
+            # A teammate keeps their own teammates; depth still bounds the chain.
+            spawn=SpawnRequest(may_spawn=True),
+            allow_queue=False,
+            message_metadata=sent_from_metadata(session, caller),
         )
         elapsed = time.monotonic() - started_at
+        discarded = (
+            not delegated_session_id.strip()
+            and await discard_unused_sub_session(inner_session_id, user_id, outcome)
+        )
+        if discarded:
+            # The thread is gone; handing back its id would send the model to
+            # poll a delegation that no longer exists.
+            return self._error(
+                result.refusal or f"{target.name} could not start this task.",
+                session,
+            )
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
             if outcome == "completed"
             else None
         )
+        delegated = response_from_outcome(
+            outcome=outcome,
+            result=result,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            elapsed=elapsed,
+            workspace_files=workspace_files,
+            actor=target.name,
+        )
+        delegated.message += await build_spawn_state_note()
         return apply_delegated_expert(
-            response_from_outcome(
-                outcome=outcome,
-                result=result,
-                inner_session_id=inner_session_id,
-                parent_session_id=session.session_id,
-                elapsed=elapsed,
-                workspace_files=workspace_files,
-                actor=target.name,
-            ),
+            delegated,
             DelegatedExpertInfo(
                 id=target.id,
                 name=target.name,
@@ -301,9 +322,9 @@ class DelegateToExpertTool(BaseTool):
         return delegated_session_id
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
-        """Who to introduce the hand-off as. Plain sessions are AutoPilot."""
+        """Who to introduce the hand-off as. Plain sessions are Otto."""
         if caller_expert_id is None:
-            return "AutoPilot"
+            return "Otto"
         try:
             caller = await experts_db().get_expert(
                 user_id, caller_expert_id, include_workflows=False

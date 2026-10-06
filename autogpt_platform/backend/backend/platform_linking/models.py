@@ -152,7 +152,7 @@ class WorkspaceUploadRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=512)
     mime_type: str = Field(min_length=1, max_length=255)
     content: Base64EncodedBytes
-    # Write into this session's folder (/sessions/<id>/) so AutoPilot reads the
+    # Write into this session's folder (/sessions/<id>/) so Otto reads the
     # file during the turn, same as a web upload. Resolved by the caller before
     # uploading (see ``ensure_chat_session``).
     session_id: str | None = Field(default=None, min_length=1, max_length=255)
@@ -304,6 +304,27 @@ class ChatTurnHandle(BaseModel):
     user_id: str
     subscribe_from: str = "0-0"
     denial: TurnDenial | None = None
+
+
+class ChannelCard(BaseModel):
+    """A held call's card for the channel: each option's button carries
+    ``token`` and the option's index."""
+
+    token: str
+    text: str
+    options: list[str]
+
+
+class CardAnswer(BaseModel):
+    """What a click on a card's button did.
+
+    ``follow_up`` is set only when the click answered the row: it is the
+    clicker's next message, whose turn carries the result. ``text`` then
+    replaces the buttons; otherwise only the clicker is shown it.
+    """
+
+    text: str
+    follow_up: str | None = None
 
 
 class ChatSessionSummary(BaseModel):

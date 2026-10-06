@@ -1,6 +1,6 @@
 """Cross-process helpers: dispatch + await a copilot session turn.
 
-The sub-AutoPilot tools (``run_sub_session``, ``get_sub_session_result``)
+The sub-Otto tools (``run_sub_session``, ``get_sub_session_result``)
 and ``AutoPilotBlock`` all delegate a copilot turn to the
 ``copilot_executor`` queue and then wait on the shared
 ``stream_registry`` for the terminal event. This module is the
@@ -21,7 +21,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
@@ -32,6 +32,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
+from backend.copilot.tree import SpawnRequest, TreeRefusal
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -47,6 +48,7 @@ SessionOutcome = Literal[
     "running",
     "queued",
     "rejected_concurrent_turn_cap",
+    "refused",
 ]
 
 
@@ -69,6 +71,9 @@ class SessionResult:
     total_tokens: int = 0
     queued: bool = False
     pending_buffer_length: int = 0
+    # Why the turn never started, when the outcome is ``refused``. Written
+    # for the model: it names the bound that was hit.
+    refusal: str = ""
 
 
 async def wait_for_session_result(
@@ -137,8 +142,23 @@ async def run_copilot_turn_via_queue(
     permissions: "CopilotPermissions | None" = None,
     tool_call_id: str,
     tool_name: str,
+    spawn: SpawnRequest | None = None,
+    allow_queue: bool = True,
+    message_metadata: dict[str, Any] | None = None,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
+
+    ``spawn`` is what the caller asks for the child's tree envelope; the
+    chokepoint clamps it. ``allow_queue=False`` refuses the in-flight
+    fallback below: a spawn tool must never append its prompt into a turn
+    that is already running under a different envelope.
+
+    That is a deliberate behaviour change, not just a new flag. Continuing a
+    delegation to a teammate who is still working (``delegate_to_expert`` with
+    ``delegated_session_id``) used to queue into their running turn; it now
+    returns ``refused`` with a message telling the caller to wait or start
+    fresh. ``AutoPilotBlock`` passes no ``spawn``, but it does pass
+    ``allow_queue=False`` for the same reason, and raises on ``refused``.
 
     The canonical invocation path shared by ``run_sub_session`` (the
     copilot tool), ``AutoPilotBlock`` (the graph block), and any future
@@ -156,7 +176,7 @@ async def run_copilot_turn_via_queue(
     sub-session, ``"autopilot_block"`` for an AutoPilotBlock run).
 
     Self-defensive queue-fallback: if the target session already has a
-    turn running (another ``run_sub_session`` / AutoPilot block / UI
+    turn running (another ``run_sub_session`` / Otto block / UI
     chat), don't race it on the cluster lock.  Push the message onto the
     pending buffer so the existing turn drains it at its next round
     boundary, then:
@@ -178,13 +198,23 @@ async def run_copilot_turn_via_queue(
         raise RuntimeError("copilot_session_not_found")
 
     if await is_turn_in_flight(session_id):
+        if not allow_queue:
+            return "refused", SessionResult(
+                refusal=(
+                    "That session already has a turn in flight, so this task "
+                    "cannot be handed to it right now. Wait for it to finish, "
+                    "or start a fresh one."
+                )
+            )
         logger.info(
             "[queue] session=%s has a turn in flight; queueing message "
             "(tool=%s) into pending buffer instead of starting a new turn",
             session_id[:12],
             tool_name,
         )
-        state = await queue_user_message(session_id=session_id, message=message)
+        state = await queue_user_message(
+            session_id=session_id, message=message, metadata=message_metadata
+        )
         if timeout <= 0:
             # Fire-and-forget: caller explicitly asked not to wait.
             return "queued", SessionResult(
@@ -223,9 +253,13 @@ async def run_copilot_turn_via_queue(
             llm_auth_provider=session.metadata.llm_auth_provider,
             llm_credential_id=session.metadata.llm_credential_id,
             permissions=permissions,
+            spawn=spawn,
+            message_metadata=message_metadata,
         )
+    except TreeRefusal as refused:
+        return "refused", SessionResult(refusal=refused.message)
     except ConcurrentTurnLimitError:
-        # Sub-AutoPilot / run_sub_session caller is at the cap (this is
+        # Sub-Otto / run_sub_session caller is at the cap (this is
         # the graph-block / tool path, not the HTTP route). Use a
         # distinct ``rejected_concurrent_turn_cap`` outcome so callers
         # render an actionable "wait for an in-flight turn to finish"

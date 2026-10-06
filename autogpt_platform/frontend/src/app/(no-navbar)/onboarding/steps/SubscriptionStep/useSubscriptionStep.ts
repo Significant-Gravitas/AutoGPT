@@ -8,7 +8,7 @@ import {
 import { environment } from "@/services/environment";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "../../store";
+import { useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
 import {
   PLAN_KEYS,
@@ -17,7 +17,12 @@ import {
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { trackPaywallCheckoutCancelled, trackPaywallView } from "./tracking";
+import {
+  markPaywallCheckoutStarted,
+  trackPaywallCheckoutCancelled,
+  trackPaywallView,
+} from "./tracking";
+import { trackPlanSelected } from "@/services/analytics/monetization-analytics";
 
 const PLAN_TO_TIER: Record<
   Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
@@ -41,10 +46,12 @@ export function useSubscriptionStep() {
   const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const selectedPlan = useOnboardingWizardStore((s) => s.selectedPlan);
+  const steps = useOnboardingWizardStore((s) => s.steps);
+  const currentStep = useOnboardingWizardStore((s) => s.currentStep);
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
-  const { billing, plans } = useSubscriptionPricingExperiment();
+  const { billing, plans, pricingVariant } = useSubscriptionPricingExperiment();
   const searchParams = useSearchParams();
 
   // This step only mounts once the paywall is genuinely on screen, so mount is
@@ -71,13 +78,24 @@ export function useSubscriptionStep() {
   const country = COUNTRIES[countryIdx];
   const isYearly = billing === "yearly";
 
+  function reportPlanSelected(planKey: PlanKey) {
+    trackPlanSelected({
+      subscription_tier: planKey === PLAN_KEYS.TEAM ? "BUSINESS" : planKey,
+      billing_cycle: isYearly ? "yearly" : "monthly",
+      surface: "onboarding",
+      ...(pricingVariant && { pricing_variant: pricingVariant }),
+    });
+  }
+
   async function handlePlanSelect(planKey: PlanKey) {
     if (planKey === PLAN_KEYS.TEAM) {
+      reportPlanSelected(planKey);
       window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
       return;
     }
     if (planKey === PLAN_KEYS.BUSINESS) return;
     if (isProcessing) return;
+    reportPlanSelected(planKey);
     setIsSubmitting(true);
 
     // Local dev: backend has no Stripe wiring, so skip the checkout
@@ -95,17 +113,19 @@ export function useSubscriptionStep() {
 
     try {
       // The paywall is the first step, so there's no profile to submit yet —
-      // name / role / pain points are collected after payment. On a successful
-      // checkout Stripe returns the user to Welcome to begin onboarding; on
-      // cancel, back to this paywall. Stripe fills {CHECKOUT_SESSION_ID}; plan
-      // and cycle let the return page report the subscription to Google Ads.
+      // role and pain points are collected after payment. On a successful
+      // checkout Stripe returns the user to the step after the paywall to
+      // begin onboarding; on cancel, back to this paywall. Stripe fills
+      // {CHECKOUT_SESSION_ID}; plan and cycle let the return page report the
+      // subscription to Google Ads.
       const baseUrl = `${window.location.origin}/onboarding`;
       const result = await updateTier({
         data: {
           tier,
-          success_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.welcome}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
-          cancel_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.subscription}&subscription=cancelled`,
+          success_url: `${baseUrl}?step=${(steps.subscription ?? currentStep) + 1}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
+          cancel_url: `${baseUrl}?step=${steps.subscription ?? currentStep}&subscription=cancelled`,
           billing_cycle: cycle,
+          surface: "onboarding",
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
@@ -116,6 +136,7 @@ export function useSubscriptionStep() {
         trackAdsConversion("begin_checkout", {
           value: getSubscriptionValue(planKey, cycle),
         });
+        markPaywallCheckoutStarted();
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;

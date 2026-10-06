@@ -19,9 +19,11 @@ from backend.data.onboarding_steps import (
     FrontendOnboardingStep as FrontendOnboardingStep,
 )
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.json import SafeJson
+from backend.util.product_analytics import track_onboarding_completed
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -123,12 +125,17 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
 
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
+    """Internal grant: callers must derive user_id from authenticated identity
+    or a verified webhook's stored owner, never an untrusted request field."""
     reward = 0
     match step:
         # The wizard fires ONBOARDING_COMPLETE on completion; this is the grant
         # backing the wallet's "Complete onboarding" task ($3).
         case OnboardingStep.ONBOARDING_COMPLETE:
             reward = 300
+            trial = await get_subscription_trial(user_id)
+            if trial and trial.consumed_at:
+                reward = trial.offer.onboarding_credit_amount
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
@@ -179,6 +186,8 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
                 "completedSteps": list(set(onboarding.completedSteps + [str(step)])),
             },
         )
+        if step == OnboardingStep.ONBOARDING_COMPLETE:
+            track_onboarding_completed(user_id=user_id)
         await _reward_user(user_id, onboarding, step)
         await _send_onboarding_notification(user_id, step)
 

@@ -17,8 +17,14 @@ on:
   pull_request:
     branches: [ "master", "release-*", "dev" ]
   merge_group:
+  workflow_dispatch:
   schedule:
     - cron: '15 4 * * 0'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
 
 jobs:
   analyze:

@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from backend.api.features.experts.models import Expert
 from backend.copilot.briefing.generate import AgentInfo
 from backend.copilot.briefing.generate import compose_briefing as compose_job_briefing
@@ -8,6 +11,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
 from .briefing import compose_briefing, without_summaries
 from .helpers import AgentRef
+from .models import AUTOPILOT_BRIEFING_AUTHOR, HomeBriefingAuthor
 
 NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
 TRIAGE = {"graph": AgentRef(name="Inbox triage", library_agent_id="library-agent")}
@@ -606,6 +610,38 @@ def test_live_briefing_has_no_narrative() -> None:
     )
 
     assert briefing.narrative is None
+
+
+def test_the_brief_is_authored_by_autopilot_whoever_did_the_work() -> None:
+    """Every run here is Ana's, and the brief still is not hers: Otto
+    authors it, and `kind` has no expert value to switch to."""
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={"expert-1": _expert()},
+        agent_by_graph=TRIAGE,
+        persisted=_stored(_stored_item("stored-run"), completed_total=1),
+    )
+
+    assert briefing.outcomes[0].expert is not None
+    assert briefing.outcomes[0].expert.name == "Ana"
+    assert briefing.author == AUTOPILOT_BRIEFING_AUTHOR
+    assert briefing.author.name == "Otto"
+    assert briefing.author.role == "Head of AI"
+    with pytest.raises(ValidationError):
+        HomeBriefingAuthor(kind="expert", name="Ana", role="Researcher")
+
+
+def test_the_live_brief_is_authored_by_autopilot_too() -> None:
+    """No stored row, so nothing was written — the byline is still Otto's."""
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+    )
+
+    assert briefing.author.kind == "autopilot"
 
 
 def test_without_summaries_drops_the_narrative() -> None:

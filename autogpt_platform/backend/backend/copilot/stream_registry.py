@@ -68,6 +68,9 @@ from .response_model import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The error a turn ends with when the user stopped it.
+CANCELLED_MESSAGE = "Operation cancelled"
 config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
 
@@ -885,6 +888,7 @@ async def mark_session_completed(
     error_message: str | None = None,
     *,
     skip_error_publish: bool = False,
+    turn_id: str = "",
 ) -> bool:
     """Mark a session as completed, then publish StreamFinish.
 
@@ -901,9 +905,12 @@ async def mark_session_completed(
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
         skip_error_publish: If True, still marks the session as "failed" but
-            does NOT publish a StreamError event. Use this when the error has
-            already been published to the stream (e.g. via stream_and_publish)
-            to avoid duplicate error delivery to the frontend.
+            does NOT publish a StreamError event. Use this for a user-initiated
+            cancel, which the frontend would otherwise render as "the assistant
+            encountered an error", and when the error has already been
+            published to the stream (e.g. via stream_and_publish).
+        turn_id: The finishing turn. When given, a session whose meta already
+            belongs to a later turn is left alone.
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
@@ -914,11 +921,14 @@ async def mark_session_completed(
 
     # Resolve turn_id for publishing to the correct stream
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
-    turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
+    guard = ("turn_id", turn_id) if turn_id else None
+    if not turn_id:
+        turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
-    # Atomic compare-and-swap: only update if status is "running"
+    # Atomic compare-and-swap: only update if status is "running". A turn's end
+    # can wake the next one, so its late safety-net call must not close that.
     swapped = await hash_compare_and_set(
-        redis, meta_key, "status", expected="running", new=status
+        redis, meta_key, "status", expected="running", new=status, guard=guard
     )
 
     # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
@@ -971,6 +981,14 @@ async def mark_session_completed(
                 session_id,
                 exc,
             )
+
+    # A card answered while this turn ran has nobody to start its turn but us,
+    # an error included; only the user's own Stop leaves it for their next turn.
+    if user_id and error_message != CANCELLED_MESSAGE:
+        # Deferred: the gate reaches back here through pending_messages.
+        from backend.copilot.gate.held import wake as wake_for_held_calls
+
+        await wake_for_held_calls(user_id, session_id)
 
     if error_message and not skip_error_publish:
         try:
@@ -1152,6 +1170,7 @@ async def get_active_session(
                 await mark_session_completed(
                     session_id,
                     error_message=f"Session timed out after {age_seconds:.0f}s",
+                    turn_id=_parse_session_meta(meta, session_id).turn_id,
                 )
                 return None, "0-0"
         except (ValueError, TypeError) as e:

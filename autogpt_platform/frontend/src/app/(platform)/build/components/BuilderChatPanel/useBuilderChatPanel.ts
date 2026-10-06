@@ -22,6 +22,7 @@ import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import { isKey } from "@/lib/keyboard";
 import { retryUnlessClientError } from "../../helpers/graphLoadError";
 
 interface UseBuilderChatPanelArgs {
@@ -405,7 +406,7 @@ export function useBuilderChatPanel({
   useEffect(() => {
     if (!isOpen) return;
     function onKeyDown(e: globalThis.KeyboardEvent) {
-      if (e.key !== "Escape") return;
+      if (!isKey(e, "Escape")) return;
       if (
         panelRef &&
         panelRef.current &&
@@ -478,11 +479,8 @@ export function useBuilderChatPanel({
         await queueFollowUpMessage(sessionId, trimmed);
       } catch (err) {
         Sentry.captureException(err);
-        toast({
-          variant: "destructive",
-          title: "Could not queue message",
-          description: "Please wait for the current response to finish.",
-        });
+        // The composer restores the draft and shows the one toast for it.
+        throw err;
       }
       return;
     }

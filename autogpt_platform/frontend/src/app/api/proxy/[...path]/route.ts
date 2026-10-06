@@ -1,12 +1,16 @@
 import {
   API_KEY_HEADER_NAME,
+  CLIENT_COUNTRY_TOKEN_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
+  VERCEL_COUNTRY_HEADER_NAME,
 } from "@/lib/constants";
+import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  buildSafeWorkspaceDownloadHeaders,
   fetchWorkspaceDownloadWithRetry,
   getResponseStartTimeoutMs,
   getWorkspaceDownloadErrorMessage,
@@ -82,13 +86,31 @@ function buildBackendUrl(path: string[], queryString: string): string {
   return `${environment.getAGPTServerBaseUrl()}/${path.join("/")}${queryString}`;
 }
 
-function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
+async function signCountry(country: string) {
+  try {
+    return await getCountryToken(country);
+  } catch (error) {
+    console.error("[proxy] Could not sign the client country", error);
+    return null;
+  }
+}
+
+async function buildForwardHeaders(
+  req: NextRequest,
+  token: string | null,
+): Promise<Headers> {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
   headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
+  // The visitor's country as the edge saw it, signed so the backend can tell
+  // it from one a caller typed. Without it the country is unknown, which the
+  // trial offer treats as "no offer", so a failed mint fails closed.
+  const country = req.headers.get(VERCEL_COUNTRY_HEADER_NAME);
+  const countryToken = country ? await signCountry(country) : null;
+  if (countryToken) headers.set(CLIENT_COUNTRY_TOKEN_HEADER_NAME, countryToken);
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
@@ -137,18 +159,11 @@ async function handleWorkspaceDownload(
   // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
   const buffer = await response.arrayBuffer();
 
-  const contentType =
-    response.headers.get("Content-Type") || "application/octet-stream";
-  const contentDisposition = response.headers.get("Content-Disposition");
-
-  const responseHeaders: Record<string, string> = {
-    "Content-Type": contentType,
-    "Content-Length": String(buffer.byteLength),
-  };
-
-  if (contentDisposition) {
-    responseHeaders["Content-Disposition"] = contentDisposition;
-  }
+  const responseHeaders = buildSafeWorkspaceDownloadHeaders(
+    response.headers.get("Content-Type"),
+    response.headers.get("Content-Disposition"),
+    buffer.byteLength,
+  );
 
   return new NextResponse(buffer, {
     status: 200,
@@ -212,7 +227,7 @@ async function handler(
       return await handleWorkspaceDownload(backendUrl, token);
     }
 
-    const headers = buildForwardHeaders(req, token);
+    const headers = await buildForwardHeaders(req, token);
     const hasBody = !METHODS_WITHOUT_BODY.has(method);
 
     // Two-phase timeout: the overall ceiling covers the whole hop, while the

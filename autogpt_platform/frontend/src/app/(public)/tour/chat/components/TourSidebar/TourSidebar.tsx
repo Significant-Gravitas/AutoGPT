@@ -221,7 +221,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
           >
             <SidebarGroup className="py-1">
               <SidebarGroupLabel className="text-[13px] font-medium">
-                {variant === "marketplace" ? "Try Autopilot" : "Recent chats"}
+                {variant === "marketplace" ? "Try Otto" : "Recent chats"}
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <TourSessionsMenu variant={variant} />

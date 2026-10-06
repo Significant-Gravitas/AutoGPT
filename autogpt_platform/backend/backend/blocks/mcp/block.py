@@ -174,11 +174,17 @@ class MCPToolBlock(Block):
         tool_name: str,
         arguments: dict[str, Any],
         authorization: str | None = None,
+        input_schema: dict[str, Any] | None = None,
     ) -> Any:
         """Call a tool on the MCP server. Extracted for easy mocking in tests."""
         client = MCPClient(server_url, authorization=authorization)
-        await client.initialize()
-        result = await client.call_tool(tool_name, arguments)
+        try:
+            await client.initialize()
+            result = await client.call_tool(
+                tool_name, arguments, input_schema=input_schema
+            )
+        finally:
+            await client.close()
 
         if result.is_error:
             error_text = ""
@@ -252,6 +258,7 @@ class MCPToolBlock(Block):
                 tool_name=input_data.selected_tool,
                 arguments=input_data.tool_arguments,
                 authorization=authorization,
+                input_schema=input_data.tool_input_schema or None,
             )
             yield "result", result
         except MCPClientError as e:

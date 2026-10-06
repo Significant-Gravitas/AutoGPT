@@ -1,29 +1,33 @@
 "use client";
 
-import { useMountEffect } from "@/hooks/useMountEffect";
-import { consent, type ConsentPreferences } from "@/services/consent/cookies";
+import { isConsentManagerConfigured } from "@/services/consent/consent";
+import { useConsent } from "@/services/consent/useConsent";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { environment } from "../environment";
-import { resolveAnalyticsLoading } from "./loading-policy";
+import { DATAFAST_SCRIPT_SRC, resolveAnalyticsLoading } from "./loading-policy";
 
 export function useSetupAnalytics(host: string) {
-  // Stored consent is only readable in the browser; the tag waits for it so
-  // the init script can replay the visitor's answer through Consent Mode.
-  const [preferences, setPreferences] = useState<ConsentPreferences | null>(
-    null,
-  );
-  useMountEffect(() => {
-    setPreferences(consent.load());
-  });
-
+  const consent = useConsent();
   const pathname = usePathname();
   const { googleTag, dataFast } = resolveAnalyticsLoading({
     host,
     pathname,
     isLocal: environment.isLocal(),
-    preferences,
+    isConsentManaged: isConsentManagerConfigured(),
+    consent,
   });
+
+  useEffect(() => {
+    // DataFast's script tracks client-side navigation on its own and can't be
+    // unloaded, so once the tour's exemption no longer covers it (the visitor
+    // navigated into the app without consenting) the page reloads to shed it.
+    // The element stays after unmount, even while still downloading, and is
+    // only marked when the exemption loaded it: a script loaded with consent
+    // that Cookiebot is asking about again waits for the visitor's reply.
+    if (dataFast || !isDataFastLoadedWithoutConsent()) return;
+    window.location.reload();
+  }, [dataFast]);
 
   useEffect(() => {
     if (!googleTag) return;
@@ -37,8 +41,16 @@ export function useSetupAnalytics(host: string) {
   }, [googleTag]);
 
   return {
-    preferences,
     googleTagEnabled: googleTag,
     dataFastEnabled: dataFast,
+    dataFastWithoutConsent: dataFast && !consent.analytics,
   };
+}
+
+function isDataFastLoadedWithoutConsent() {
+  return Boolean(
+    document.querySelector(
+      `script[src="${DATAFAST_SCRIPT_SRC}"][data-consent-exempt]`,
+    ),
+  );
 }

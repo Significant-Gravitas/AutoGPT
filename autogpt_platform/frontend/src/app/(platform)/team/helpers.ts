@@ -1,10 +1,10 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { findColorOption } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { formatDistanceToNow } from "date-fns";
 
 /** Section headings sit outside the cards, so they need the cards' own content
@@ -23,13 +23,26 @@ interface PodGroup {
 
 export const AUTOPILOT_ROLE = "Head of AI";
 
+export function getExpertCover(
+  expert: Pick<Expert, "id" | "avatar_url" | "color" | "role" | "categories">,
+) {
+  return {
+    art: null,
+    color: getExpertTopicHex({
+      avatarUrl: expert.avatar_url,
+      categories: expert.categories,
+      role: expert.role,
+    }),
+  };
+}
+
 export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
 export const AUTOPILOT_PILL_CLASS =
   "border border-zinc-200 bg-zinc-50 text-zinc-700";
 
-/** Autopilot owns whatever no hired expert does: every library workflow that
+/** Otto owns whatever no hired expert does: every library workflow that
  *  is not installed on an expert, shaped like an expert workflow so the expert
  *  page's cards can render it. A schedule on the same graph gives it its cron. */
 export function getAutopilotWorkflows(
@@ -64,7 +77,7 @@ export function getAutopilotWorkflows(
     });
 }
 
-/** Library skills no hired expert has claimed; Autopilot falls back to these. */
+/** Library skills no hired expert has claimed; Otto falls back to these. */
 export function getAutopilotSkills(
   experts: Expert[],
   librarySkills: CopilotSkillInfo[],
@@ -138,17 +151,6 @@ export function getLastRunLabel(expert: Expert) {
   return `Last run ${when}`;
 }
 
-/** The line under an expert's name on their card: their tagline, falling back
- *  to the opening of their identity when they have none. */
-export function getExpertBlurb(expert: Expert) {
-  if (expert.tagline?.trim()) return expert.tagline;
-  const lines = expert.identity
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines.slice(0, 2).join(" ") || null;
-}
-
 export function getWeeklySpend(expert: Expert) {
   if (expert.weekly_budget == null || expert.weekly_budget <= 0) return null;
   return { spent: expert.weekly_spend ?? 0, budget: expert.weekly_budget };
@@ -156,16 +158,14 @@ export function getWeeklySpend(expert: Expert) {
 
 export type ExpertRosterStatus = "idle" | "working" | "needs-you";
 
-export function getExpertRosterStatus(
-  expert: Expert,
-  needsSetupCount: number,
-): ExpertRosterStatus {
+// Missing setup is not a card status: the Setup needed card above the
+// roster names it and offers the fix.
+export function getExpertRosterStatus(expert: Expert): ExpertRosterStatus {
   const runStatus = expert.last_run_status?.toUpperCase();
 
   if (runStatus === "RUNNING" || runStatus === "QUEUED") return "working";
   if (
     expert.schedules_paused_at ||
-    needsSetupCount > 0 ||
     runStatus === "FAILED" ||
     runStatus === "TERMINATED" ||
     runStatus === "REVIEW"
@@ -307,7 +307,7 @@ interface AutopilotSummaryArgs {
   schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
 }
 
-/** Autopilot works across the whole team, so its card counts the team's
+/** Otto works across the whole team, so its card counts the team's
  *  totals. Skills are de-duplicated — two experts who can both write copy is
  *  one skill on the team, not two. */
 export function getAutopilotSummary({
@@ -324,14 +324,6 @@ export function getAutopilotSummary({
       0,
     ),
   };
-}
-
-/** Covers live at `public/experts/covers/<color token>.jpg`, one per raise-flow
- *  accent. Experts without a colour (marketplace templates) and Autopilot
- *  share `autopilot.jpg`. */
-export function getExpertCoverSrc(color: string | null | undefined) {
-  const token = findColorOption(color ?? null)?.id ?? "autopilot";
-  return `/experts/covers/${token}.jpg`;
 }
 
 export const WORKFLOW_FILTERS = [
@@ -394,4 +386,10 @@ export function filterExpertSchedules(
     if (filter === "week") return untilNext <= 7 * DAY_MS;
     return untilNext > 7 * DAY_MS;
   });
+}
+
+export const SETUP_POLL_MS = 2_000;
+
+export function isSettingUp(experts: Expert[]) {
+  return experts.some((expert) => expert.setup_status === "installing");
 }

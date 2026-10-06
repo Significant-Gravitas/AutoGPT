@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 
@@ -17,8 +15,7 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useIntegrationsSelection } from "./useIntegrationsSelection";
 
-export function useIntegrationsList() {
-  const [query, setQuery] = useState("");
+export function useIntegrationsList(query: string) {
   const debouncedQuery = useDebouncedValue(query, 250);
 
   const credentialsQuery = useGetV1ListCredentials({
@@ -88,8 +85,6 @@ export function useIntegrationsList() {
   const isError = credentialsQuery.isError;
 
   return {
-    query,
-    setQuery,
     providers,
     isLoading,
     isError,

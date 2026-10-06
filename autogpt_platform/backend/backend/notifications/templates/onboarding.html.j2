@@ -27,16 +27,16 @@
 {% call ui.para() %}I'm John, and I work on product here. You can reply to any of these emails and it comes straight to me — that's not a support queue, it's my inbox.{% endcall %}
 {% call ui.para(top=22) %}<strong style="color:#070629;">Your first win, in 2 minutes:</strong>{% endcall %}
 {{ ui.steps([
-    ('Open AutoPilot.', "It's the first thing you see when you log in."),
+    ('Open Otto.', "It's the first thing you see when you log in."),
     ('Describe a task in plain language.', 'Try: "Research the top 5 competitors in my space and summarize their pricing."'),
-    ('Watch it work.', 'AutoPilot figures out the steps, runs them, and delivers the result — while you do something else.'),
+    ('Watch it work.', 'Otto figures out the steps, runs them, and delivers the result — while you do something else.'),
 ]) }}
-{{ ui.cta('Open AutoPilot', urls.dashboard) }}
+{{ ui.cta('Open Otto', urls.chat) }}
 {{ ui.media_link('A quick welcome from our founder', '90 seconds on why we built this — and what we hope you do with it.', urls.founder_video) }}
 {% call ui.para(color='#575072', size=13, lh=20, top=18) %}Next up: the five workflows our users run most — steal them.{% endcall %}
 {%- elif part == 2 %}
 {% call ui.eyebrow(color='#5635b2') %}PART 2 OF {{ of }} · FIRST WORKFLOWS{% endcall %}
-{% call ui.headline() %}5 tasks you can hand to AutoPilot today{% endcall %}
+{% call ui.headline() %}5 tasks you can hand to Otto today{% endcall %}
 {% call ui.para() %}Hi {{ user_name }} — the best way to get value out of AutoGPT isn't to explore menus. It's to hand it something from your actual to-do list. Here are five workflows that ran start-to-finish in our demo, with zero hand-holding:{% endcall %}
 {{ ui.emoji_cards([
     ('🖥', 'Engineering & bug triage', 'Connected to Sentry, ranked bugs by impact, pushed sprint actions to Linear, and notified the team on Discord.'),
@@ -46,8 +46,8 @@
     ('🎯', 'Sales funnel & demo prep', 'Found leads matching our ICP, built curated demo agents, and wrote scripts and follow-up questions.'),
 ]) }}
 {{ ui.media_link('Watch all five in 6 minutes', 'Everything in the demo ran autonomously — and these five are just what fit in six minutes.', urls.demo_video) }}
-{% call ui.para() %}Pick the one closest to your work, open AutoPilot, and describe it in your own words. That's it — no setup, no flowcharts.{% endcall %}
-{{ ui.cta('Try a workflow', urls.dashboard) }}
+{% call ui.para() %}Pick the one closest to your work, open Otto, and describe it in your own words. That's it — no setup, no flowcharts.{% endcall %}
+{{ ui.cta('Try a workflow', urls.chat) }}
 {% call ui.para(color='#575072', size=13, lh=20, top=18) %}Next up: a tour of your workspace — artifacts, briefings, and the builder.{% endcall %}
 {%- elif part == 3 %}
 {% call ui.eyebrow(color='#5635b2') %}PART 3 OF {{ of }} · KNOW YOUR WORKSPACE{% endcall %}
@@ -65,7 +65,7 @@
 {% call ui.headline() %}How's it going so far?{% endcall %}
 {% call ui.para() %}Hi {{ user_name }} — quick one from me. No screenshots, no buttons.{% endcall %}
 {% call ui.para() %}You've had AutoGPT for a week now. <strong style="color:#070629;">How's it actually going?</strong> Did something click? Did something get in your way?{% endcall %}
-{% call ui.para() %}I ask because we're a small team, we ship every week, and the roadmap is genuinely shaped by what subscribers tell us. If AutoPilot mis-handled a task, or there's a feature you keep wishing existed, I want to know about it — the unpolished version is the most useful version.{% endcall %}
+{% call ui.para() %}I ask because we're a small team, we ship every week, and the roadmap is genuinely shaped by what subscribers tell us. If Otto mis-handled a task, or there's a feature you keep wishing existed, I want to know about it — the unpolished version is the most useful version.{% endcall %}
 {% call ui.para() %}<strong style="color:#070629;">Just hit reply.</strong> It comes straight to me, and I read every single one.{% endcall %}
 {% call ui.para(color='#575072', size=13, lh=20, top=18) %}P.S. If it's easier: here's a <a href="{{ urls.feedback_form }}" style="color:#5635b2; text-decoration:underline;">2-minute feedback form</a>, or <a href="{{ urls.booking }}" style="color:#5635b2; text-decoration:underline;">book 30 minutes with me</a> — no agenda needed.{% endcall %}
 {%- elif part == 5 %}
@@ -85,7 +85,7 @@
 {%- else %}
 {% call ui.eyebrow(color='#5635b2') %}PART 6 OF {{ of }} · YOU'RE IN{% endcall %}
 {% call ui.headline() %}Your direct line to the team{% endcall %}
-{% call ui.para() %}Hi {{ user_name }} — that's the end of the tour. You know your way around AutoPilot, your workspace, and everything we ship weekly. From here on we mostly stay out of your inbox: you'll hear from us when there's something genuinely new.{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — that's the end of the tour. You know your way around Otto, your workspace, and everything we ship weekly. From here on we mostly stay out of your inbox: you'll hear from us when there's something genuinely new.{% endcall %}
 {% call ui.para(top=22) %}<strong style="color:#070629;">Before I go, three things worth keeping:</strong>{% endcall %}
 {{ ui.emoji_cards([
     ('💬', 'The community', "5,000+ builders share what they're automating in our Discord. The team is in there daily — it's the fastest way to get unstuck."),

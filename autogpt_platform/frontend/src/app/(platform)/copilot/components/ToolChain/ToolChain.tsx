@@ -23,14 +23,23 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { describeSendFailure } from "../ChatInput/helpers";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
-import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import {
+  buildChainReply,
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "./chainActions";
+import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
+import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import { applyHeldOutcome } from "./heldRow";
+import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
   type ChainRow,
   getChainHeading,
@@ -48,8 +57,8 @@ interface Props {
   parts: MessagePart[];
   isStreaming: boolean;
   /** Public share viewer: the chain renders as the owner saw it, but setup
-   *  cards and the Proceed draft are the owner's work — a reader gets no
-   *  Connect prompt and no write into the composer store. */
+   *  cards and Proceed are the owner's work — a reader gets no Connect
+   *  prompt and no way to send a follow-up turn. */
   readOnly?: boolean;
 }
 
@@ -59,20 +68,17 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
-  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const heldOutcomes = useContext(HeldOutcomesContext);
+  const heldAnswers = useHeldAnswersStore((state) => state.answers);
   const { onSend } = useCopilotChatActions();
-  const sentMessageCount = useCopilotUIStore((s) => s.sentMessageCount);
-  // Ids drafted by the last Proceed, plus the send count at that moment.
-  // Proceed only fills the composer, so the cards' onSent callbacks fire
-  // when the user actually sends — not when the draft is written.
-  const draftedRef = useRef<{ ids: string[]; sentAt: number } | null>(null);
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
+  const sendingRef = useRef(false);
   const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
-  // renders one Proceed that drafts everything into the chat input at once.
+  // renders one Proceed that sends everything as a single message.
   const [actionEntries, setActionEntries] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
@@ -94,16 +100,6 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const chainActions = useMemo(
     () => ({ register, unregister }),
     [register, unregister],
-  );
-
-  useEffect(
-    function notifyDraftedCardsOnSend() {
-      const drafted = draftedRef.current;
-      if (!drafted || sentMessageCount <= drafted.sentAt) return;
-      draftedRef.current = null;
-      drafted.ids.forEach((id) => actionEntries.get(id)?.onSent?.());
-    },
-    [sentMessageCount, actionEntries],
   );
 
   const pendingActions = [...actionEntries.values()];
@@ -160,17 +156,15 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       if (!canAutoSend || autoSentRef.current) return;
       autoSentRef.current = true;
       setAutoSent(true);
-      const message = pendingActions
-        .map((entry) => entry.buildMessage())
-        .filter(Boolean)
-        .join("\n\n");
+      const message = buildChainReply(pendingActions);
       if (!message) return;
-      pendingActions.forEach((entry) => entry.onSent?.());
-      void onSend(message);
+      void sendAfter(pendingActions, message);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
   );
+
+  useCredentialFailureCounters({ entries: actionEntries });
 
   const rows = useMemo(
     () =>
@@ -178,6 +172,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         parts
           .map((part, i) => toChainRow(part, i))
           .filter((row): row is ChainRow => row !== null)
+          .map((row) => applyHeldOutcome(row, heldOutcomes, heldAnswers))
           // Unanswered clarifying questions and setup cards render their work
           // in the card below the chain — their rows are lifted out of view.
           .map((row) =>
@@ -188,7 +183,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 : row,
           ),
       ),
-    [parts, pendingQuestions],
+    [parts, pendingQuestions, heldOutcomes, heldAnswers],
   );
   if (rows.length === 0) return null;
 
@@ -224,23 +219,46 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // still-running chain has no such ending.
   const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
 
-  // Proceed never sends: it drafts the combined reply of every READY card
-  // into the chat input so the user reviews/edits and presses send
-  // themselves. Unready cards (e.g. an unconnected MCP server) are left
-  // out instead of blocking the ready ones. Cards stay registered until
-  // the message actually goes out, at which point their onSent fires.
+  // The cards are already gone by the time a send can fail — the user's
+  // message is appended optimistically and the chat's error banner offers
+  // Retry — so the failure only needs to be said out loud, and the toast
+  // points at the thread rather than the composer.
+  function sendReply(message: string) {
+    void Promise.resolve(onSend(message)).catch((error: unknown) =>
+      toast({
+        title: "Couldn't send message",
+        description: describeSendFailure(
+          error,
+          "it is still in the thread, use Retry to send it again",
+        ),
+        variant: "destructive",
+      }),
+    );
+  }
+
+  // Proceed sends the combined reply of every READY card as one message,
+  // and their onSent callbacks fire at that moment. Unready cards (e.g. an
+  // unconnected MCP server) are left out instead of blocking the ready ones.
   function handleProceed() {
     const readyActions = pendingActions.filter((entry) => entry.ready);
-    const message = readyActions
-      .map((entry) => entry.buildMessage())
-      .filter(Boolean)
-      .join("\n\n");
+    const message = buildChainReply(readyActions);
     if (!message) return;
-    draftedRef.current = {
-      ids: readyActions.map((entry) => entry.id),
-      sentAt: sentMessageCount,
-    };
-    setInitialPrompt(message);
+    void sendAfter(readyActions, message);
+  }
+
+  // Proceed stays clickable while beforeSend runs, and a second click would
+  // send the same reply again. The ref is set before the first await, so the
+  // second click sees it in time.
+  async function sendAfter(entries: ChainActionEntry[], message: string) {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+      entries.forEach((entry) => entry.onSent?.());
+      sendReply(message);
+    } finally {
+      sendingRef.current = false;
+    }
   }
 
   return (
@@ -346,6 +364,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                             <ChainRowView
                               row={row}
                               isLast={i === visible.length - 1 && !showDone}
+                              readOnly={readOnly}
                             />
                           </ChainActionsContext.Provider>
                         </m.div>
@@ -407,8 +426,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             <span className="flex items-center gap-1.5 text-sm text-zinc-600">
               <Icon icon={SentIcon} size={16} className="text-zinc-400" />
               {allActionsReady
-                ? "Everything's filled in — send it to continue"
-                : "Complete the steps above, then send to continue"}
+                ? "Everything's filled in"
+                : "Complete the steps above to continue"}
             </span>
             <Button
               variant="primary"

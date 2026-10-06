@@ -25,11 +25,9 @@ import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
 import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
-  postV2InitiateOauthLoginForAnMcpServer,
-  postV2ExchangeOauthCodeForMcpTokens,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { connectMCPOAuth } from "@/lib/mcp-oauth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
@@ -48,6 +46,7 @@ import {
   getErrorMessage,
   getErrorStatus,
 } from "@/lib/mcp-errors";
+import { isKey } from "@/lib/keyboard";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -113,18 +112,20 @@ export function MCPToolDialog({
   } = useMCPAuthScheme(storedAuthScheme, manualToken);
 
   const startOAuthRef = useRef(false);
-  const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
-
-  // Clean up on unmount
+  const oauthRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => oauthRequest.current?.abort(), []);
   useEffect(() => {
-    return () => {
-      oauthAbortRef.current?.();
-    };
-  }, []);
+    if (!open) {
+      oauthRequest.current?.abort();
+      oauthRequest.current = null;
+      setOauthLoading(false);
+      setLoading(false);
+    }
+  }, [open]);
 
   const reset = useCallback(() => {
-    oauthAbortRef.current?.();
-    oauthAbortRef.current = null;
+    oauthRequest.current?.abort();
+    oauthRequest.current = null;
     setStep("url");
     setServerUrl("");
     setManualToken("");
@@ -273,80 +274,49 @@ export function MCPToolDialog({
   }, [connectWithManualCredential, discoverTools, serverUrl, showManualToken]);
 
   const handleOAuthSignIn = useCallback(async () => {
-    if (!serverUrl.trim()) return;
+    if (!serverUrl.trim() || oauthRequest.current) return;
+    const controller = new AbortController();
+    oauthRequest.current = controller;
+    const { signal } = controller;
     setError(null);
-
-    // Abort any previous OAuth flow
-    oauthAbortRef.current?.();
-
     setOauthLoading(true);
 
     try {
-      const loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
-        server_url: serverUrl.trim(),
+      const credential = await connectMCPOAuth({
+        serverURL: serverUrl.trim(),
+        signal,
+        exchange: allProviders?.mcp?.mcpOAuthCallback,
       });
-      if (loginResponse.status !== 200) {
-        throw getAPIResponseError(loginResponse.status, loginResponse.data);
+      signal.throwIfAborted();
+      if ("reason" in credential) {
+        if (credential.noOAuth) setShowManualToken(true);
+        setError(credential.reason);
+        return;
       }
-      const { login_url, state_token } = loginResponse.data;
-
-      const { promise, cleanup } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        useCrossOriginListeners: true,
-      });
-      oauthAbortRef.current = cleanup.abort;
-
-      const result = await promise;
-
-      // Exchange code for tokens via the credentials provider (updates cache)
       setLoading(true);
       setOauthLoading(false);
-
-      const mcpProvider = allProviders?.["mcp"];
-      let callbackResult;
-      if (mcpProvider) {
-        callbackResult = await mcpProvider.mcpOAuthCallback(
-          result.code,
-          state_token,
-        );
-      } else {
-        const cbResponse = await postV2ExchangeOauthCodeForMcpTokens({
-          code: result.code,
-          state_token,
-        });
-        if (cbResponse.status !== 200) {
-          throw getAPIResponseError(cbResponse.status, cbResponse.data);
-        }
-        callbackResult = cbResponse.data;
-      }
-
       setCredentials({
-        id: callbackResult.id,
-        provider: callbackResult.provider,
-        type: callbackResult.type,
-        title: callbackResult.title,
+        id: credential.id,
+        provider: credential.provider,
+        type: credential.type,
+        title: credential.title,
       });
       setCredentialServerUrl(serverUrl.trim());
       setAuthRequired(false);
-
-      // Discover tools now that we're authenticated
-      const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
-        server_url: serverUrl.trim(),
-      });
-      if (toolsResponse.status !== 200) {
-        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
+      const response = await postV2DiscoverAvailableToolsOnAnMcpServer(
+        { server_url: serverUrl.trim() },
+        { signal },
+      );
+      signal.throwIfAborted();
+      if (response.status !== 200) {
+        throw getAPIResponseError(response.status, response.data);
       }
-      applyDiscoveredTools(toolsResponse);
+      applyDiscoveredTools(response);
     } catch (error: unknown) {
+      if (signal.aborted) return;
       const status = getErrorStatus(error);
       const message = getErrorMessage(error, "Failed to complete sign-in");
-      // If server doesn't support OAuth → show manual token entry
-      if (status === 400) {
-        setShowManualToken(true);
-        setError(
-          "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
-        );
-      } else if (message === "OAuth flow timed out") {
+      if (message === "OAuth flow timed out") {
         setError("OAuth sign-in timed out. Please try again.");
       } else if (status === 401 || status === 403) {
         setError(
@@ -357,9 +327,13 @@ export function MCPToolDialog({
         setError(message);
       }
     } finally {
-      setOauthLoading(false);
-      setLoading(false);
-      oauthAbortRef.current = null;
+      if (oauthRequest.current === controller) {
+        oauthRequest.current = null;
+        if (!signal.aborted) {
+          setOauthLoading(false);
+          setLoading(false);
+        }
+      }
     }
   }, [serverUrl, allProviders, applyDiscoveredTools]);
 
@@ -447,7 +421,7 @@ export function MCPToolDialog({
                   setError(null);
                   startOAuthRef.current = false;
                 }}
-                onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                 disabled={loading || oauthLoading}
                 autoFocus
               />
@@ -489,7 +463,7 @@ export function MCPToolDialog({
                     setManualToken(value);
                     detectSchemeFrom(value);
                   }}
-                  onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                  onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                   disabled={loading || oauthLoading}
                   autoFocus
                 />

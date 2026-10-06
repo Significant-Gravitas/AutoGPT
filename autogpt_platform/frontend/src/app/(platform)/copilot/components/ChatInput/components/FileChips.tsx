@@ -4,25 +4,17 @@ import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/Artifacts
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   type Attachment,
+  attachmentKey,
   attachmentName,
 } from "../../../helpers/workspaceAttachments";
-import { Cancel01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
+import {
+  Cancel01Icon,
+  Folder01Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
-
-function attachmentMimeType(attachment: Attachment): string {
-  return attachment.kind === "local"
-    ? attachment.file.type
-    : attachment.mimeType;
-}
-
-// Stable key so AnimatePresence animates the element that actually left, not
-// whatever shifted into its index.
-function attachmentKey(attachment: Attachment): string {
-  return attachment.kind === "workspace"
-    ? `ws-${attachment.fileId}`
-    : `local-${attachment.file.name}-${attachment.file.size}-${attachment.file.lastModified}`;
-}
 
 interface Props {
   attachments: Attachment[];
@@ -70,9 +62,20 @@ export function FileChips({
             <AnimatePresence initial={false} mode="popLayout">
               {attachments.map((attachment, index) => {
                 const name = attachmentName(attachment);
-                const fileIcon = getFileTypeIcon(
-                  attachmentMimeType(attachment),
-                );
+                const isFolder = attachment.kind === "folder";
+                const chipIcon = isFolder
+                  ? Folder01Icon
+                  : getFileTypeIcon(
+                      attachment.kind === "local"
+                        ? attachment.file.type
+                        : attachment.mimeType,
+                    );
+                const count = isFolder
+                  ? folderSummary(
+                      attachment.fileCount,
+                      attachment.subfolderCount,
+                    )
+                  : null;
                 // Workspace files are already stored — only local files show
                 // the upload spinner while a send is in flight.
                 const showSpinner = isUploading && attachment.kind === "local";
@@ -102,6 +105,9 @@ export function FileChips({
                     }
                     transition={{ duration: DURATION, ease: EASE_OUT }}
                     style={{ willChange: "transform, opacity, filter" }}
+                    aria-label={
+                      isFolder ? `Folder: ${name}, ${count}` : undefined
+                    }
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700",
                       stacked &&
@@ -109,13 +115,16 @@ export function FileChips({
                     )}
                   >
                     <Icon
-                      icon={fileIcon}
+                      icon={chipIcon}
                       className={cn(
                         "h-3.5 w-3.5 shrink-0 text-zinc-900",
                         stacked && "text-zinc-400",
                       )}
                     />
                     <span className="max-w-[160px] truncate">{name}</span>
+                    {count ? (
+                      <span className="shrink-0 text-zinc-500">· {count}</span>
+                    ) : null}
                     {showSpinner ? (
                       <Icon
                         icon={Loading03Icon}
@@ -124,7 +133,9 @@ export function FileChips({
                     ) : (
                       <button
                         type="button"
-                        aria-label={`Remove ${name}`}
+                        aria-label={
+                          isFolder ? `Remove folder ${name}` : `Remove ${name}`
+                        }
                         onClick={() => onRemove(index)}
                         className={cn(
                           "ml-0.5 rounded-full p-0.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600",

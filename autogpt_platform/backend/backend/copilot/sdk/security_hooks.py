@@ -167,7 +167,7 @@ def _validate_user_isolation(
         # The "path" param is a cloud storage key (e.g. "/ASEAN/report.md")
         # where a leading "/" is normal.  Only check for ".." traversal.
         # Filesystem paths (source_path, save_to_path) are validated inside
-        # the tool itself via _validate_ephemeral_path.
+        # the tool itself via workdir.validate_ephemeral_path.
         path = tool_input.get("path", "") or tool_input.get("file_path", "")
         if path and ".." in path:
             logger.warning(f"Blocked path traversal attempt: {path} by user {user_id}")
@@ -180,6 +180,13 @@ def _validate_user_isolation(
             }
 
     return {}
+
+
+# Tools whose display name (block, agent, MCP tool) streams to the UI before
+# the call finishes; the bridge tags their input with a call token.
+_DISPLAY_BRIDGED_TOOLS: frozenset[str] = frozenset(
+    {"run_agent", "run_capability", "resume_capability"}
+)
 
 
 def create_security_hooks(
@@ -215,16 +222,10 @@ def create_security_hooks(
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
-        #
-        # LIMITATION: For background (async) agents the SDK returns the
-        # Agent/Task tool immediately with {isAsync: true}, which triggers
-        # PostToolUse and releases the slot while the agent is still running.
-        # SubagentStop fires later when the background process finishes but
-        # does not currently hold a slot.  This means the concurrency limit
-        # only gates *launches*, not true concurrent execution.  To fix this
-        # we would need to track background agent_ids separately and release
-        # in SubagentStop, but the SDK does not guarantee SubagentStop fires
-        # for every background agent (e.g. on session abort).
+        # Sub-agents run in the foreground (build_sdk_env sets
+        # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS), so the Agent/Task call lasts
+        # as long as the sub-agent and PostToolUse releases the slot when it
+        # finishes.
         subagent_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
@@ -240,9 +241,6 @@ def create_security_hooks(
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
             if tool_name in _SUBAGENT_TOOLS:
-                # Background agents are allowed — the SDK returns immediately
-                # with {isAsync: true} and the model polls via TaskOutput.
-                # Still count them against the concurrency limit.
                 if len(subagent_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "
@@ -280,7 +278,7 @@ def create_security_hooks(
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             if (
                 is_copilot_tool
-                and clean_name in {"run_agent", "run_block", "continue_run_block"}
+                and clean_name in _DISPLAY_BRIDGED_TOOLS
                 and tool_use_id is not None
                 and tool_display_bridge is not None
             ):

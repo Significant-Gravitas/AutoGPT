@@ -10,6 +10,7 @@ import React, {
 import BoringAvatar from "boring-avatars";
 
 import Image, { ImageProps } from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { cn } from "@/lib/utils";
 
 type AvatarContextValue = {
@@ -156,7 +157,7 @@ export function AvatarImage({
       fill={Boolean(fill)}
       sizes={sizes}
       priority={priority}
-      unoptimized={unoptimized}
+      unoptimized={unoptimized || isLocalStoreMediaUrl(normalizedSrc)}
       onLoad={handleLoadingComplete}
       onError={handleErrorNext as ImageProps["onError"]}
     />
@@ -170,6 +171,13 @@ export type AvatarFallbackProps = React.HTMLAttributes<HTMLSpanElement> & {
    * with a smaller radius can clip the marble to a rounded square.
    */
   square?: boolean;
+  /**
+   * Names the fallback for assistive tech once the image is gone for good.
+   * Without it an avatar whose image fails to load has no accessible name at
+   * all. Pass it alongside your own `children`: the default marble is already
+   * an `img`, and two of those on one avatar help nobody.
+   */
+  accessibleLabel?: string;
 };
 
 export function AvatarFallback({
@@ -177,11 +185,27 @@ export function AvatarFallback({
   children,
   size: _size, // accepted for API compatibility; currently not used
   square = false,
+  accessibleLabel,
   ...props
 }: AvatarFallbackProps): JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
+  // An image on its way: a quiet grey placeholder, not a stand-in identity
+  // that gets swapped out a moment later.
+  if (hasImage) {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute inset-0 rounded-full bg-zinc-100",
+          square && "rounded-none",
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
   const computedSize = _size || getAvatarSizeFromClassName(className) || 40;
   const hasCustomFallback = typeof children !== "string" && children != null;
   // Trim the seed so call sites with padded names render the same gradient
@@ -190,8 +214,10 @@ export function AvatarFallback({
   return (
     <span
       // decorative gradient — hide from AT so the marble's unnamed role="img"
-      // svg doesn't surface as an axe violation
-      aria-hidden="true"
+      // svg doesn't surface as an axe violation, unless the caller named it
+      role={accessibleLabel ? "img" : undefined}
+      aria-label={accessibleLabel}
+      aria-hidden={accessibleLabel ? undefined : "true"}
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
         // svg stretched to fill so the marble always matches the avatar size

@@ -173,6 +173,7 @@ def _discriminated_reference_block(
             credential_reference_only=True,
             discriminator="transport",
             discriminator_mapping={"codex_app_server": ProviderName.CODEX},
+            credential_free_discriminator_values={"platform"},
         )
     }
     block.input_schema.get_required_fields.return_value = (

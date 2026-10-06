@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   deriveFileOrigin,
   downloadFileBlob,
+  formatDayLabel,
   formatFileSize,
   formatRelativeDate,
+  getEmptyMessage,
   getFileDownloadUrl,
   getFilePreviewUrl,
   getFileTypeIcon,
@@ -350,5 +352,155 @@ describe("source code files (`.ts` → video/mp2t MIME)", () => {
     const codeIcon = getFileTypeIcon("video/mp2t", "main.ts");
     const videoIcon = getFileTypeIcon("video/mp4", "clip.mp4");
     expect(codeIcon).not.toBe(videoIcon);
+  });
+});
+
+describe("formatDayLabel", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-15T12:00:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("returns a dash for invalid dates", () => {
+    expect(formatDayLabel("not-a-date")).toBe("—");
+  });
+
+  test("labels the current day as Today", () => {
+    expect(formatDayLabel("2026-06-15T00:30:00")).toBe("Today");
+  });
+
+  test("labels the previous day as Yesterday, even late at night", () => {
+    expect(formatDayLabel("2026-06-14T23:59:00")).toBe("Yesterday");
+  });
+
+  test("falls back to a short date within the current year", () => {
+    const out = formatDayLabel("2026-03-02T10:00:00");
+    expect(out).toMatch(/Mar/);
+    expect(out).toContain("2");
+    expect(out).not.toContain("2026");
+  });
+
+  test("includes the year for older dates", () => {
+    expect(formatDayLabel("2025-03-02T10:00:00")).toContain("2025");
+  });
+
+  test("accepts Date instances", () => {
+    expect(formatDayLabel(new Date("2026-06-15T09:00:00"))).toBe("Today");
+  });
+});
+
+describe("getEmptyMessage", () => {
+  test("prefers the search message", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: true,
+        isInFolder: true,
+        hasFolders: true,
+      }),
+    ).toBe("No files match your search");
+  });
+
+  test("describes an empty folder", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+      }),
+    ).toBe("This folder is empty");
+  });
+
+  test("describes a root that only holds folders", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: true,
+      }),
+    ).toBe("No files at the root yet");
+  });
+
+  test("describes an empty workspace", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: false,
+      }),
+    ).toBe("No files yet");
+  });
+});
+
+describe("getEmptyMessage - nested folders and the expert filter", () => {
+  test("a folder with subfolders but no direct files says so", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: true,
+      }),
+    ).toBe("No files directly in this folder");
+  });
+
+  test("a folder with neither is simply empty", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+      }),
+    ).toBe("This folder is empty");
+  });
+
+  test("an expert filter inside a folder names the expert and says 'here'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter at a root with folders says 'here' too", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: true,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter with nowhere else to look keeps 'yet'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from this expert yet");
+  });
+
+  test("falls back to 'this expert' when the name is unknown", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: null,
+      }),
+    ).toBe("No files from this expert here");
   });
 });

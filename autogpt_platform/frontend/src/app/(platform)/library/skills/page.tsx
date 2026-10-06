@@ -11,11 +11,11 @@ export default function SkillsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    document.title = "AutoPilot skills – AutoGPT Platform";
+    document.title = "Skills – AutoGPT Platform";
   }, []);
 
   function handleGuidedPrompt(prompt: string) {
-    router.push(`/copilot#prompt=${encodeURIComponent(prompt)}`);
+    router.push(`/home#prompt=${encodeURIComponent(prompt)}`);
   }
 
   return (

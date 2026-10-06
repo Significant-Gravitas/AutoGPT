@@ -39,6 +39,7 @@ import {
   tierLock,
   tierSummary,
 } from "./helpers";
+import { isComposingEvent } from "@/lib/keyboard";
 import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 import { TierToggle } from "./TierToggle";
 import { useConnectionPicker } from "./useConnectionPicker";
@@ -239,6 +240,9 @@ export function ConnectionPicker({
               // the tiers below.
               className="overflow-hidden rounded-xl"
               onKeyDown={(event) => {
+                // `event.key` goes straight into the roving helper, so guard
+                // here instead.
+                if (isComposingEvent(event)) return;
                 const to = nextRovingValue(
                   connectionOptions,
                   active?.offer_id ?? "",

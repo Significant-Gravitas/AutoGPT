@@ -28,6 +28,8 @@ from backend.platform_linking.models import (
     BotChatRequest,
     BotEventInput,
     BotGuildInput,
+    CardAnswer,
+    ChannelCard,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     EnsureSessionResult,
@@ -122,6 +124,20 @@ SetupDroppedCallback = Callable[
     [str, str | None],
     Awaitable[None],
 ]
+
+# Fired when AutoPilot's ask_question tool asks the user something and pauses
+# the turn for an answer. Args: (session_id, clarification_output, tool_name).
+# Without this, the question is parked on the session for the web "Needs You"
+# UI but never reaches a bot conversation, so the user sees the turn end with
+# nothing to reply to.
+ClarificationNeededCallback = Callable[
+    [str, dict[str, Any], str | None],
+    Awaitable[None],
+]
+
+# Fired when the approval gate holds a call for the user. Args: (session_id,
+# review_id). The card goes to the channel as well as the web app's queue.
+ApprovalNeededCallback = Callable[[str, str], Awaitable[None]]
 
 
 class BotBackend:
@@ -359,7 +375,7 @@ class BotBackend:
         """Resolve (or create) the copilot session for this conversation.
 
         Called before uploading attachments so they land in the session folder
-        (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
+        (``/sessions/<id>/``) where Otto reads them — the same way the web
         UI uploads into an already-open session. Carries a ``denial`` instead
         of a session when the turn gate refuses the user, so the caller can
         skip the upload entirely.
@@ -381,7 +397,7 @@ class BotBackend:
     ) -> list[WorkspaceUploadResult]:
         """Upload each attachment into the conversation owner's workspace.
 
-        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        ``session_id`` scopes the files to the turn's session so Otto can
         read them, matching the web upload. Returns one result per file (with a
         ``file_id`` on success or an ``error`` code) so the caller can attach
         the successes to the turn and tell the user about any that were
@@ -428,6 +444,40 @@ class BotBackend:
             session_id=session_id, file_id=file_id, max_bytes=max_bytes
         )
 
+    async def open_card(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        platform_user_id: str,
+        session_id: str,
+        review_id: str,
+    ) -> ChannelCard | None:
+        """The card for a call held in this conversation, or None when there
+        is nothing in it to answer."""
+        return await self._client.open_channel_card(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            platform_user_id=platform_user_id,
+            session_id=session_id,
+            review_id=review_id,
+        )
+
+    async def answer_card(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        clicker_id: str,
+        token: str,
+        index: int,
+    ) -> CardAnswer:
+        return await self._client.answer_channel_card(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            clicker_id=clicker_id,
+            token=token,
+            index=index,
+        )
+
     async def stream_chat(
         self,
         platform: str,
@@ -439,6 +489,8 @@ class BotBackend:
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
+        on_clarification_needed: ClarificationNeededCallback | None = None,
+        on_approval_needed: ApprovalNeededCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -478,7 +530,10 @@ class BotBackend:
 
         setup_notified = False
         setup_drop_notified = False
-        # Track which text block each delta belongs to. AutoPilot emits text in
+        clarification_notified = False
+        # A retried held call names its card again; the channel shows it once.
+        cards_posted: set[str] = set()
+        # Track which text block each delta belongs to. Otto emits text in
         # separate blocks around tool calls / reasoning (each with its own id);
         # the frontend renders them as distinct parts, but here we concatenate
         # into one message, so insert a paragraph break when the block changes —
@@ -532,6 +587,26 @@ class BotBackend:
                         # prompt that will never arrive.
                         setup_drop_notified = True
                         await on_setup_dropped(handle.session_id, chunk.toolName)
+                    clarification_output = _extract_clarification_needed(chunk.output)
+                    if (
+                        clarification_output
+                        and on_clarification_needed
+                        and not clarification_notified
+                    ):
+                        clarification_notified = True
+                        await on_clarification_needed(
+                            handle.session_id,
+                            clarification_output,
+                            chunk.toolName,
+                        )
+                    review_id = _extract_held_review_id(chunk.output)
+                    if (
+                        review_id
+                        and on_approval_needed
+                        and review_id not in cards_posted
+                    ):
+                        cards_posted.add(review_id)
+                        await on_approval_needed(handle.session_id, review_id)
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
@@ -592,3 +667,55 @@ def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] 
     if parsed.get("type") != "setup_requirements":
         return None
     return parsed
+
+
+def _extract_clarification_needed(
+    output: str | dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return clarification-needed payloads from structured tool output.
+
+    ``ask_question`` pauses the turn on a question for the user; if this
+    returns ``None`` for well-formed output, the bot conversation ends with
+    nothing to reply to and the user never sees why AutoPilot stopped.
+    """
+    if isinstance(output, str):
+        try:
+            parsed: Any = json.loads(output)
+        except json.JSONDecodeError:
+            if '"agent_builder_clarification_needed"' in output:
+                logger.warning(
+                    "Dropping unparseable clarification tool output "
+                    "(%d chars) — question will not be sent",
+                    len(output),
+                )
+            return None
+    else:
+        parsed = output
+
+    if not isinstance(parsed, dict):
+        return None
+    if parsed.get("type") != "agent_builder_clarification_needed":
+        return None
+    # A truthy non-list `questions` (a bare string, say) would be handed on
+    # and then iterated by the renderer, raising TypeError inside the stream
+    # callback — which surfaces as the generic "something went wrong" and
+    # loses the question entirely, the same failure the native-choice
+    # fallback exists to prevent.
+    questions = parsed.get("questions")
+    if not isinstance(questions, list) or not questions:
+        return None
+    return parsed
+
+
+def _extract_held_review_id(output: str | dict[str, Any]) -> str | None:
+    """The review a held call's card answers, from the gate's refusal."""
+    parsed: Any = output
+    if isinstance(output, str):
+        try:
+            parsed = json.loads(output)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(parsed, dict) or parsed.get("type") != "approval_required":
+        return None
+    review_id = parsed.get("review_id")
+    return review_id if isinstance(review_id, str) and review_id else None

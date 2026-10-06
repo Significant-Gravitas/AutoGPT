@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   render,
   screen,
@@ -68,5 +69,43 @@ describe("SignupPage", () => {
     expect(
       await screen.findByText("User with this email already exists"),
     ).toBeDefined();
+  });
+
+  test("does not link to the demo tour", () => {
+    render(<SignupPage />);
+
+    expect(screen.getByRole("button", { name: "Sign up" })).toBeDefined();
+    expect(screen.queryByText(/watch the demo/i)).toBeNull();
+    expect(
+      screen
+        .queryAllByRole("link")
+        .some((link) => link.getAttribute("href")?.startsWith("/tour")),
+    ).toBe(false);
+  });
+
+  test("does not server-render an interactive form before auth initializes", () => {
+    const markup = renderToStaticMarkup(<SignupPage />);
+
+    expect(markup).not.toContain('id="password"');
+    expect(markup).not.toContain('type="submit"');
+  });
+
+  test("preserves form input during a background auth refresh", () => {
+    const { rerender } = render(<SignupPage />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "draft@example.com" },
+    });
+
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isUserLoading: true,
+      isLoggedIn: false,
+    });
+    rerender(<SignupPage />);
+
+    expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe(
+      "draft@example.com",
+    );
   });
 });

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -16,9 +17,12 @@ from backend.copilot.context import (
     get_execution_context,
     get_sdk_cwd,
     is_allowed_local_path,
+    is_unattended_turn,
     resolve_sandbox_path,
     set_execution_context,
+    set_turn_unattended,
 )
+from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import CopilotPermissions
 
 
@@ -295,3 +299,93 @@ class TestSdkToolResultRedirectHint:
         # echoes an empty fragment.
         msg = sdk_tool_result_redirect_hint("")
         assert "Offending fragment: ''" in msg
+
+
+class TestEnvelopeDoesNotEscapeItsTurn:
+    """The turn envelope must not outlive the turn that set it.
+
+    ``mark_session_completed`` → ``dispatch_next_for_user`` → ``dispatch_turn``
+    runs inside the driver stream's own ``finally``. If the finished turn's
+    envelope were still visible there, the user's *queued* message would be
+    promoted as a depth-1 child and silently lose the descent-denied tools.
+
+    What prevents it is that the driver is consumed inside
+    ``asyncio.create_task`` (``stream_heartbeat``), which copies the context so
+    a ``ContextVar.set`` inside the generator cannot propagate to the caller.
+    That is load-bearing and non-obvious — inline the wrapper and every queued
+    turn quietly becomes a narrowed child — so it is pinned here.
+    """
+
+    @staticmethod
+    async def _drive(gen) -> None:
+        async for _ in gen:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_envelope_set_inside_a_task_driven_stream_does_not_leak(self):
+        import asyncio
+
+        from backend.copilot.context import get_current_envelope, set_execution_context
+        from backend.copilot.tree import root_envelope
+
+        async def driver():
+            set_execution_context(None, None, envelope=root_envelope("inner-turn"))
+            yield 1
+
+        assert get_current_envelope() is None
+        # The task boundary is what isolates it — same shape as stream_heartbeat.
+        await asyncio.create_task(self._drive(driver()))
+        assert get_current_envelope() is None, (
+            "the envelope escaped its turn; a queued user message would now be "
+            "promoted as a narrowed child"
+        )
+
+    @pytest.mark.asyncio
+    async def test_control_generator_driven_without_a_task_does_leak(self):
+        """The control that makes the test above meaningful: drive the same
+        generator with no task boundary and the envelope *does* escape."""
+        from backend.copilot.context import get_current_envelope, set_execution_context
+        from backend.copilot.tree import root_envelope
+
+        async def driver():
+            set_execution_context(None, None, envelope=root_envelope("leaked"))
+            yield 1
+
+        assert get_current_envelope() is None
+        try:
+            await self._drive(driver())
+            leaked = get_current_envelope()
+            assert leaked is not None and leaked.tree_id == "leaked"
+        finally:
+            # An assertion failure here must not cascade into the sibling
+            # test: this generator leaks the contextvar deliberately.
+            set_execution_context(None, None, envelope=None)
+
+
+# ---------------------------------------------------------------------------
+# Whether anyone is watching the turn (SECRT-2804)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "origin, scheduled, unattended",
+    [
+        ("automation", False, True),
+        ("interactive", True, True),
+        ("interactive", False, False),
+        (None, False, False),
+    ],
+    ids=["automation chat", "scheduled into a user chat", "user chat", "legacy chat"],
+)
+def test_set_turn_unattended(origin, scheduled, unattended):
+    session = MagicMock(metadata=ChatSessionMetadata(origin=origin))
+
+    def turn() -> bool:
+        set_turn_unattended(session, scheduled=scheduled)
+        return is_unattended_turn()
+
+    assert contextvars.copy_context().run(turn) is unattended
+
+
+def test_a_turn_is_watched_until_the_executor_says_otherwise():
+    assert contextvars.copy_context().run(is_unattended_turn) is False

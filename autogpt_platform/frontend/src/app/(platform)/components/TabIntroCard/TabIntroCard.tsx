@@ -8,6 +8,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { getFocusableElements } from "./helpers";
+import { isKey, isKeyIgnoringComposition } from "@/lib/keyboard";
 
 interface Action {
   label: string;
@@ -61,11 +62,13 @@ export function TabIntroCard({
     dialogRef.current?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      if (isKey(event, "Escape")) {
         dismissRef.current();
         return;
       }
-      if (event.key !== "Tab") return;
+      // Containment, not a shortcut: the trap has to keep holding Tab while an
+      // IME composes, since letting it through moves focus out of the dialog.
+      if (!isKeyIgnoringComposition(event, "Tab")) return;
 
       const dialog = dialogRef.current;
       if (!dialog) return;
