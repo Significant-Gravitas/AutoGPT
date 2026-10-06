@@ -45,7 +45,7 @@ async def authenticate(raw: Any, username: str = USERNAME, secret: str = SECRET)
 async def test_the_right_secret_for_a_minted_username_is_its_owner():
     reader = Reader(record())
     owner = await OwnerDirectory(reader).authenticate(USERNAME, SECRET)
-    assert owner == Owner("session:s-a", "user-a", "sb-1", swaps=True)
+    assert owner == Owner("session:s-a", "user-a", "sb-1", swaps=True, box=USERNAME)
     assert owner is not None and owner.swap_user_id == "user-a"
     assert reader.asked == [CREDENTIAL_KEY_PREFIX + USERNAME]
 
