@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 UNKNOWN_MCP_SERVICE = "mcp:unknown"
 
+_warned_credential_ids: set[str] = set()
+
 
 class ServiceIdentity(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -60,16 +62,23 @@ def service_for_credential(credential: Credentials) -> ServiceIdentity:
         return service_for_provider(provider)
     url = (credential.metadata or {}).get("mcp_server_url")
     if not isinstance(url, str) or not url.strip():
-        logger.warning("MCP credential %s has no server URL", credential.id)
+        _warn_once(credential.id, "has no server URL")
         return ServiceIdentity(service=UNKNOWN_MCP_SERVICE)
     entry = get_mcp_catalog_entry_for_url(url)
     if entry is not None:
         return service_for_catalog_entry(entry)
     host = _hostname(url)
     if host is None:
-        logger.warning("MCP credential %s has an unparseable server URL", credential.id)
+        _warn_once(credential.id, "has an unparseable server URL")
         return ServiceIdentity(service=UNKNOWN_MCP_SERVICE)
     return ServiceIdentity(service=f"mcp:{host}", name=host)
+
+
+def _warn_once(credential_id: str, reason: str) -> None:
+    if credential_id in _warned_credential_ids:
+        return
+    _warned_credential_ids.add(credential_id)
+    logger.warning("MCP credential %s %s", credential_id, reason)
 
 
 def _hostname(url: str) -> str | None:

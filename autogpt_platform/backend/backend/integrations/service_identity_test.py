@@ -1,9 +1,12 @@
 """One grouping key for a provider, a catalog server and a stored credential."""
 
+import logging
+
+import pytest
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
-from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.mcp_catalog import MCPCatalogEntry, get_mcp_catalog
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
     service_for_credential,
@@ -11,13 +14,15 @@ from backend.integrations.service_identity import (
 )
 
 
-def _entry(name: str):
+def _entry(name: str) -> MCPCatalogEntry:
     return next(e for e in get_mcp_catalog() if e.name == name)
 
 
-def _mcp_credential(url: str | None, provider: str = "mcp") -> OAuth2Credentials:
+def _mcp_credential(
+    url: str | None, provider: str = "mcp", credential_id: str = "cred-mcp"
+) -> OAuth2Credentials:
     return OAuth2Credentials(
-        id="cred-mcp",
+        id=credential_id,
         provider=provider,
         title=f"MCP: {url}",
         access_token=SecretStr("t"),
@@ -34,10 +39,11 @@ def test_block_provider_is_its_own_service():
 
 
 def test_catalog_entry_with_a_block_provider_uses_that_provider():
-    identity = service_for_catalog_entry(_entry("mcp_linear"))
-    assert identity.service == "linear"
-    assert identity.name == "Linear"
-    assert identity.icon == _entry("mcp_linear").mcp_server.icon_id
+    entry = _entry("mcp_apollo_io")
+    identity = service_for_catalog_entry(entry)
+    assert identity.service == "apollo"
+    assert identity.name == "Apollo.io"
+    assert identity.icon == entry.mcp_server.icon_id
 
 
 def test_catalog_entry_without_a_block_provider_uses_its_slug():
@@ -89,3 +95,16 @@ def test_mcp_credential_with_a_malformed_url_never_raises():
     assert identity.service == "mcp:unknown"
     identity = service_for_credential(_mcp_credential(None))
     assert identity.service == "mcp:unknown"
+
+
+def test_a_malformed_credential_is_warned_about_once(
+    caplog: pytest.LogCaptureFixture,
+):
+    credential = _mcp_credential("not a url", credential_id="cred-warn-once")
+    with caplog.at_level(
+        logging.WARNING, logger="backend.integrations.service_identity"
+    ):
+        service_for_credential(credential)
+        service_for_credential(credential)
+    warnings = [r for r in caplog.records if "cred-warn-once" in r.getMessage()]
+    assert len(warnings) == 1
