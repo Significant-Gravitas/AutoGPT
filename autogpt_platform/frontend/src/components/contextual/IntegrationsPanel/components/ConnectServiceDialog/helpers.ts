@@ -15,6 +15,7 @@ export interface ConnectableProvider {
   authProviderByType?: Partial<Record<AuthMethod, string>>;
   searchTerms?: string[];
   mcpServer?: ProviderMetadata["mcp_server"];
+  iconId?: string;
 }
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
@@ -45,6 +46,7 @@ export function toConnectableProviders(
       name: item.display_name ?? formatProviderName(displayProvider),
       description: item.description,
       supportedAuthTypes: [],
+      iconId: item.service_icon ?? displayProvider,
     };
     if (item.mcp_server) provider.mcpServer = item.mcp_server;
 

@@ -62,6 +62,7 @@ describe("toConnectableProviders", () => {
         name: "GitHub",
         description: "Issues and PRs",
         supportedAuthTypes: ["oauth2", "api_key"],
+        iconId: "github",
       },
     ]);
   });

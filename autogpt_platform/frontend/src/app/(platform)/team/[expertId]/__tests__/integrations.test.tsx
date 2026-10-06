@@ -106,6 +106,9 @@ const linkedin: ExpertCredentialRef = {
   provider: "linkedin",
   title: "Work LinkedIn",
   type: "oauth2",
+  service: "linkedin",
+  service_name: null,
+  service_icon: "linkedin",
 };
 
 beforeEach(() => {
@@ -739,25 +742,95 @@ describe("managing an expert's integrations", () => {
     expect(grantAttempts).toBe(0);
   });
 
-  it("names an MCP credential after the service behind it", async () => {
+  it("files an MCP credential under its service, with no MCP wording", async () => {
     server.use(
       getListExpertCredentialsMockHandler([
         {
           credential_id: "cred-mcp",
           provider: "mcp",
           title: "MCP: mcp.sentry.dev",
-          type: "host_scoped",
+          type: "oauth2",
+          service: "sentry",
+          service_name: "Sentry",
+          service_icon: "sentry",
         },
       ]),
     );
 
     render(<ExpertDetailPage />);
-
     await openIntegrationsTab();
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(await within(section).findByText("Sentry")).toBeDefined();
-    expect(within(section).getByText("MCP server")).toBeDefined();
+    expect(within(section).queryByText(/MCP/)).toBeNull();
     expect(within(section).getByText("Ready")).toBeDefined();
+    expect(
+      within(section)
+        .getByRole("img", { name: "Sentry logo" })
+        .getAttribute("src"),
+    ).toContain("sentry.png");
+  });
+
+  it("files a self-hosted MCP credential under its hostname", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        {
+          credential_id: "cred-mcp-custom",
+          provider: "mcp",
+          title: "MCP: mcp.internal.example",
+          type: "oauth2",
+          service: "mcp:mcp.internal.example",
+          service_name: "mcp.internal.example",
+          service_icon: null,
+        },
+      ]),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+
+    const section = await screen.findByTestId("expert-integrations-section");
+    expect(
+      await within(section).findAllByText("mcp.internal.example"),
+    ).toHaveLength(2);
+    expect(
+      within(section).getByRole("img", { name: "mcp.internal.example logo" }),
+    ).toBeDefined();
+    expect(within(section).queryByText(/MCP server/)).toBeNull();
+  });
+
+  it("groups an MCP credential and an API key for the same vendor together", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        {
+          credential_id: "cred-linear-key",
+          provider: "linear",
+          title: "Linear key",
+          type: "api_key",
+          service: "linear",
+          service_name: null,
+          service_icon: "linear",
+        },
+        {
+          credential_id: "cred-linear-mcp",
+          provider: "mcp",
+          title: "MCP: mcp.linear.app",
+          type: "oauth2",
+          service: "linear",
+          service_name: "Linear",
+          service_icon: "linear",
+        },
+      ]),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+
+    const section = await screen.findByTestId("expert-integrations-section");
+    const rows = await within(section).findAllByTestId(
+      "expert-integration-row",
+    );
+    expect(rows).toHaveLength(2);
+    expect(within(section).getAllByText("Linear")).toHaveLength(1);
   });
 });

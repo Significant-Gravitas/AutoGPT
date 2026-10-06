@@ -7,7 +7,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   formatCredentialName,
-  formatProviderName,
+  serviceIcon,
+  serviceKey,
+  serviceName,
 } from "@/components/contextual/IntegrationsPanel/helpers";
 import type { ConnectableProvider } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -38,14 +40,17 @@ function groupByProvider(
 ): ProviderGroup[] {
   const groups = new Map<string, CredentialsMetaResponse[]>();
   for (const credential of credentials) {
-    groups.set(credential.provider, [
-      ...(groups.get(credential.provider) ?? []),
-      credential,
-    ]);
+    const id = serviceKey(credential);
+    groups.set(id, [...(groups.get(id) ?? []), credential]);
   }
   return [...groups.entries()]
     .map(([id, list]) => ({
-      provider: { id, name: formatProviderName(id), supportedAuthTypes: [] },
+      provider: {
+        id,
+        name: serviceName(list[0]),
+        supportedAuthTypes: [],
+        iconId: serviceIcon(list[0]),
+      },
       credentials: list,
     }))
     .sort((a, b) => a.provider.name.localeCompare(b.provider.name));
@@ -140,7 +145,7 @@ export function UseExistingCredentialsDialog({
                       className="flex items-center gap-3 rounded-xl bg-neutral-100 px-3 py-2.5"
                     >
                       <IntegrationLogo
-                        provider={credential.provider}
+                        provider={serviceIcon(credential)}
                         size={24}
                       />
                       <Text
@@ -202,7 +207,7 @@ export function UseExistingCredentialsDialog({
                               ? formatCredentialName(
                                   group.credentials[0].title ??
                                     group.provider.name,
-                                  group.provider.id,
+                                  group.credentials[0].provider,
                                 )
                               : `${group.credentials.length} connections · choose one`
                           }
