@@ -38,17 +38,35 @@ _SUBJECTS: dict[str, str] = {
     "reset_password": "Reset your AutoGPT Platform password",
     "verify_email": "Verify your AutoGPT Platform email",
     "change_email": "Confirm your new AutoGPT Platform email",
+    "set_password": "Set your AutoGPT Platform password",
 }
 
 _ACTIONS: dict[str, str] = {
     "reset_password": "reset your password",
     "verify_email": "verify your email",
     "change_email": "confirm your new email address",
+    "set_password": "set a password and finish signing up",
+}
+
+# Sent for an unverified account when a sign-up or resend can't safely send a
+# verification link, so the email has to say why it came.
+_REASONS: dict[str, str] = {
+    "set_password": (
+        "Someone asked to sign up for, or verify, an AutoGPT Platform account "
+        "with this email address."
+    ),
+}
+
+# Must match the links the frontend issues.
+_EXPIRY: dict[str, str] = {
+    "reset_password": "1 hour",
+    "verify_email": "24 hours",
+    "set_password": "1 hour",
 }
 
 
 class AuthEmailRequest(BaseModel):
-    type: Literal["reset_password", "verify_email", "change_email"]
+    type: Literal["reset_password", "verify_email", "change_email", "set_password"]
     to: EmailStr
     url: str
 
@@ -81,10 +99,14 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     # Escape the (host-validated) URL before embedding it in HTML — a path or
     # query on an allowed host could still carry markup-breaking characters.
     safe_url = html.escape(request.url, quote=True)
+    reason = _REASONS.get(request.type)
+    expiry = _EXPIRY.get(request.type)
     body = (
-        f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
-        f'<p><a href="{safe_url}">{safe_url}</a></p>'
-        "<p>If you didn't request this, you can safely ignore this email.</p>"
+        (f"<p>{reason}</p>" if reason else "")
+        + f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
+        + f'<p><a href="{safe_url}">{safe_url}</a></p>'
+        + (f"<p>The link expires in {expiry}.</p>" if expiry else "")
+        + "<p>If you didn't request this, you can safely ignore this email.</p>"
     )
 
     # The blocking RPC to the notification service runs off the event loop; a

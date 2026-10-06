@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { sendAuthEmail } from "./email";
 
 // At most one email of a kind per address per window, however often whatever
 // sends it is repeated.
 const AUTH_EMAIL_COOLDOWN_SECONDS = 10 * 60;
+// And at most this many sign-ups and resends per IP per window, so fresh
+// addresses (or +aliases of one mailbox) can't each be mailed.
+export const AUTH_EMAILS_PER_IP = 5;
 
 interface Where {
   field: string;
@@ -37,50 +39,6 @@ export interface AuthEmailContext {
     }) => Promise<unknown>;
   };
   password: { hash: (password: string) => Promise<string> };
-}
-
-interface VerificationLinkArgs {
-  user: { email: string };
-  url: string;
-  request?: Request;
-  getAuthContext: () => Promise<AuthEmailContext>;
-}
-
-/**
- * Better Auth's sendVerificationEmail. Sign-in sends one every time an
- * unverified account signs in, and the login page calls auth.api directly,
- * which Better Auth's rate limiter never sees, so whoever set the password
- * could have us mail the address without limit. Sign-in and sign-up therefore
- * share one email per address per window.
- *
- * The resend button's own route is left alone: Better Auth rate-limits it per
- * IP, the button waits a minute between sends, and its answer has to say
- * whether the email went. If the cooldown can't be checked, the email still
- * goes: a verification link matters more than the cap.
- */
-export async function sendVerificationLink({
-  user,
-  url,
-  request,
-  getAuthContext,
-}: VerificationLinkArgs) {
-  if (!isResendRequest(request)) {
-    const claimed = await getAuthContext()
-      .then((context) => claimEmailSlot(context, "verify-email", user.email))
-      .catch((error: unknown) => {
-        console.error("Failed to check the verification email cooldown", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return true;
-      });
-    if (!claimed) return;
-  }
-  await sendAuthEmail({ to: user.email, type: "verify_email", url });
-}
-
-function isResendRequest(request: Request | undefined) {
-  if (!request) return false;
-  return new URL(request.url).pathname.endsWith("/send-verification-email");
 }
 
 // Kept in Better Auth's verification table, which every server shares and
@@ -121,9 +79,50 @@ async function hasLiveSlot(context: AuthEmailContext, identifier: string) {
   return live.length > 0;
 }
 
-function slotID(identifier: string) {
-  const window = Math.floor(Date.now() / (AUTH_EMAIL_COOLDOWN_SECONDS * 1000));
-  return createHash("sha256").update(`${identifier}#${window}`).digest("hex");
+function slotID(identifier: string, index?: number) {
+  const window = currentWindow();
+  const key =
+    index === undefined
+      ? `${identifier}#${window}`
+      : `${identifier}#${window}#${index}`;
+  return createHash("sha256").update(key).digest("hex");
+}
+
+function currentWindow() {
+  return Math.floor(Date.now() / (AUTH_EMAIL_COOLDOWN_SECONDS * 1000));
+}
+
+// One of AUTH_EMAILS_PER_IP fixed rows per IP and window; each id can only be
+// inserted once, so a burst from one IP can't take more than that many. A
+// failed insert whose row now exists lost the race and tries the next slot.
+export async function claimIPEmailSlot(context: AuthEmailContext, ip: string) {
+  const identifier = `auth-email-ip:${ip}`;
+  const windowEndsAt = (currentWindow() + 1) * AUTH_EMAIL_COOLDOWN_SECONDS;
+  for (let index = 0; index < AUTH_EMAILS_PER_IP; index++) {
+    const id = slotID(identifier, index);
+    if (await rowExists(context, id)) continue;
+    try {
+      await createVerification(context, {
+        id,
+        identifier,
+        value: "sent",
+        expiresInSeconds: windowEndsAt - Date.now() / 1000,
+      });
+      return true;
+    } catch (error) {
+      if (!(await rowExists(context, id))) throw error;
+    }
+  }
+  return false;
+}
+
+async function rowExists(context: AuthEmailContext, id: string) {
+  const rows = await context.adapter.findMany({
+    model: "verification",
+    where: [{ field: "id", value: id }],
+    limit: 1,
+  });
+  return rows.length > 0;
 }
 
 export function createVerification(

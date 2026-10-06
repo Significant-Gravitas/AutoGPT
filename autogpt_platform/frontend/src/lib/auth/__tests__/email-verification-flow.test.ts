@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AUTH_EMAILS_PER_IP } from "../auth-email-cooldown";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database, so the HTTP behaviour of sign-up, sign-in
@@ -44,8 +45,20 @@ vi.mock("../email-mirror", () => ({
   mirrorVerifiedEmailToPlatformUser: vi.fn(),
 }));
 
-const provisionPlatformUser = vi.hoisted(() => vi.fn());
-vi.mock("../provision-platform-user", () => ({ provisionPlatformUser }));
+// The platform `User` rows the auth hook has written, as the real
+// provisionPlatformUser and platformUserExists would see them.
+const platformUsers = vi.hoisted(() => new Set<string>());
+const provisionPlatformUser = vi.hoisted(() =>
+  vi.fn(async (_pool: unknown, user: { id: string }) => {
+    platformUsers.add(user.id);
+    return "created";
+  }),
+);
+vi.mock("../provision-platform-user", () => ({
+  provisionPlatformUser,
+  platformUserExists: async (_pool: unknown, userId: string) =>
+    platformUsers.has(userId),
+}));
 
 const sentEmails = vi.hoisted(
   () => [] as Array<{ to: string; type: string; url: string }>,
@@ -62,7 +75,17 @@ const callbackURL = "/auth/callback?method=email";
 
 type Handler = (request: Request) => Promise<Response>;
 
-async function createAuthHandler(requireVerification: boolean) {
+function emptyDB() {
+  return {
+    UserAuthIdentity: [] as Array<Record<string, unknown>>,
+    UserAuthSession: [] as Array<Record<string, unknown>>,
+    UserAuthAccount: [] as Array<Record<string, unknown>>,
+    UserAuthVerification: [] as Array<Record<string, unknown>>,
+  };
+}
+
+// Pass the db of an earlier handler to flip the flag on the same accounts.
+async function createAuthHandler(requireVerification: boolean, db = emptyDB()) {
   vi.stubEnv(
     "AUTH_REQUIRE_EMAIL_VERIFICATION",
     requireVerification ? "true" : "false",
@@ -72,12 +95,6 @@ async function createAuthHandler(requireVerification: boolean) {
   vi.doUnmock("../auth");
   vi.resetModules();
 
-  const db = {
-    UserAuthIdentity: [] as Array<Record<string, unknown>>,
-    UserAuthSession: [] as Array<Record<string, unknown>>,
-    UserAuthAccount: [] as Array<Record<string, unknown>>,
-    UserAuthVerification: [] as Array<Record<string, unknown>>,
-  };
   testDB.current = db;
   const { auth } = await import("../auth");
   return { handler: auth.handler as Handler, api: auth.api, db };
@@ -154,9 +171,25 @@ function signUpAs(handler: Handler, email: string, as: string) {
   });
 }
 
-function lastResetToken(to: string) {
+type API = Awaited<ReturnType<typeof createAuthHandler>>["api"];
+
+// A real sign-out, which deletes the session row.
+async function signUpAndSignOut(api: API, email: string, as: string) {
+  const { headers } = await api.signUpEmail({
+    body: { email, password: as, name: email.split("@")[0], callbackURL },
+    returnHeaders: true,
+  });
+  const cookie = headers.get("set-cookie")?.split(";")[0] ?? "";
+  await api.signOut({ headers: new Headers({ cookie }) });
+}
+
+function fromIP(ip: string) {
+  return new Headers({ "x-forwarded-for": ip });
+}
+
+function lastResetToken(to: string, type = "set_password") {
   const email = sentEmails.filter(
-    (sent) => sent.to === to && sent.type === "reset_password",
+    (sent) => sent.to === to && sent.type === type,
   );
   const url = email.at(-1)?.url;
   return url ? new URL(url).pathname.split("/").at(-1) : undefined;
@@ -172,7 +205,8 @@ function lastVerifyLink(to: string) {
 beforeEach(() => {
   sentEmails.length = 0;
   pendingAfterResponse.length = 0;
-  provisionPlatformUser.mockReset();
+  provisionPlatformUser.mockClear();
+  platformUsers.clear();
 });
 
 afterEach(() => {
@@ -278,7 +312,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     );
   });
 
-  it("emails a reset link, not a verify link, when an unverified address signs up again", async () => {
+  it("emails a set-password link, not a verify link, when an unverified address signs up again", async () => {
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "again@example.com");
     await emailsSent();
@@ -292,7 +326,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect((await response.json()).token).toBeNull();
     expect(db.UserAuthIdentity).toHaveLength(1);
     await emailsSent();
-    expect(sentEmails.map((sent) => sent.type)).toEqual(["reset_password"]);
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
     expect(lastResetToken("again@example.com")).toEqual(expect.any(String));
   });
 
@@ -364,15 +398,15 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
       expect(response.status).toBe(200);
       await emailsSent();
     }
-    expect(sentEmails.map((sent) => sent.type)).toEqual(["reset_password"]);
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
 
     // Once the window has passed, the next repeat sign-up emails again.
     expireCooldowns(db);
     await signUp(handler, "spam@example.com");
     await emailsSent();
     expect(sentEmails.map((sent) => sent.type)).toEqual([
-      "reset_password",
-      "reset_password",
+      "set_password",
+      "set_password",
     ]);
   });
 
@@ -392,7 +426,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sendAuthEmail).toHaveBeenLastCalledWith(
       expect.objectContaining({
         to: "again@example.com",
-        type: "reset_password",
+        type: "set_password",
       }),
     );
   });
@@ -465,7 +499,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     await signUpAs(handler, "legacy@example.com", "a-strangers-password");
     await emailsSent();
 
-    expect(sentEmails.map((sent) => sent.type)).toEqual(["reset_password"]);
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
     expireCooldowns(db);
     const asOwner = await signIn(
       handler,
@@ -474,6 +508,126 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     );
     expect(asOwner.status).toBe(403);
     expect((await asOwner.json()).code).toBe("EMAIL_NOT_VERIFIED");
+  });
+
+  it("keeps the password of an owner from before the flag who has signed out", async () => {
+    const before = await createAuthHandler(false);
+    await signUpAndSignOut(
+      before.api,
+      "legacy@example.com",
+      "the-owners-own-password",
+    );
+    expect(before.db.UserAuthSession).toHaveLength(0);
+    const { handler, db } = await createAuthHandler(true, before.db);
+
+    await signUpAs(handler, "legacy@example.com", "a-strangers-password");
+    await emailsSent();
+
+    expireCooldowns(db);
+    const asOwner = await signIn(
+      handler,
+      "legacy@example.com",
+      "the-owners-own-password",
+    );
+    expect(asOwner.status).toBe(403);
+  });
+
+  it("answers a used account's resend with a set-password link, not one that signs in", async () => {
+    // Someone registers the owner's address while the flag is off, and so
+    // gets a session; then the flag goes on and the owner signs up too.
+    const before = await createAuthHandler(false);
+    await signUpAs(
+      before.handler,
+      "owner@example.com",
+      "the-first-sign-ups-password",
+    );
+    const { handler } = await createAuthHandler(true, before.db);
+    await signUpAs(handler, "owner@example.com", "the-owners-own-password");
+    await emailsSent();
+    sentEmails.length = 0;
+
+    const resend = await post(handler, "/send-verification-email", {
+      email: "owner@example.com",
+      callbackURL,
+    });
+    await emailsSent();
+
+    expect(resend.status).toBe(200);
+    expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
+    const reset = await post(handler, "/reset-password", {
+      token: lastResetToken("owner@example.com"),
+      newPassword: "the-owners-new-password",
+    });
+    expect(reset.status).toBe(200);
+    const asFirst = await signIn(
+      handler,
+      "owner@example.com",
+      "the-first-sign-ups-password",
+    );
+    expect(asFirst.status).toBe(401);
+    const asOwner = await signIn(
+      handler,
+      "owner@example.com",
+      "the-owners-new-password",
+    );
+    expect(asOwner.status).toBe(200);
+  });
+
+  it("lets one IP have only a few addresses emailed through the sign-up page", async () => {
+    const { api } = await createAuthHandler(true);
+
+    // The page's server action calls auth.api, which Better Auth's own per-IP
+    // limiter never sees. +aliases all reach one mailbox.
+    const outcomes = [];
+    for (let i = 0; i < 20; i++) {
+      outcomes.push(
+        await api
+          .signUpEmail({
+            body: {
+              email: `mailbox+${i}@example.com`,
+              password,
+              name: "mailbox",
+              callbackURL,
+            },
+            headers: fromIP("203.0.113.7"),
+          })
+          .then(
+            () => "sent",
+            (error: { statusCode?: number }) => error.statusCode,
+          ),
+      );
+    }
+    await emailsSent();
+
+    expect(sentEmails).toHaveLength(AUTH_EMAILS_PER_IP);
+    expect(outcomes.filter((outcome) => outcome === 429)).toHaveLength(
+      20 - AUTH_EMAILS_PER_IP,
+    );
+    await api.signUpEmail({
+      body: { email: "someone@example.com", password, name: "x", callbackURL },
+      headers: fromIP("198.51.100.9"),
+    });
+    await emailsSent();
+    expect(lastVerifyLink("someone@example.com")).toBeDefined();
+  });
+
+  it("counts the resend button against the same per-IP cap", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "resends@example.com");
+
+    const statuses = [];
+    for (let i = 0; i < AUTH_EMAILS_PER_IP; i++) {
+      const response = await post(handler, "/send-verification-email", {
+        email: "resends@example.com",
+        callbackURL,
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses.filter((status) => status === 200)).toHaveLength(
+      AUTH_EMAILS_PER_IP - 1,
+    );
+    expect(statuses.at(-1)).toBe(429);
   });
 
   it("emails an unverified address once per cooldown however often it signs in", async () => {
@@ -528,15 +682,23 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
       redirectTo: `${baseURL}/reset-password`,
     });
     await emailsSent();
+    const [identity] = db.UserAuthIdentity;
+    const untouchedSince = new Date("2020-01-01T00:00:00Z");
+    identity.updatedAt = untouchedSince;
 
     const reset = await post(handler, "/reset-password", {
-      token: lastResetToken("verified@example.com"),
+      token: lastResetToken("verified@example.com", "reset_password"),
       newPassword: "a-new-long-enough-password",
     });
 
     expect(reset.status).toBe(200);
+    // The reset writes the password, not the identity: a verified address
+    // has nothing to update.
     expect(db.UserAuthIdentity).toEqual([
-      expect.objectContaining({ emailVerified: true }),
+      expect.objectContaining({
+        emailVerified: true,
+        updatedAt: untouchedSince,
+      }),
     ]);
     const signedIn = await signIn(
       handler,
@@ -560,83 +722,6 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(lastVerifyLink("new@example.com")).toContain(
       encodeURIComponent(callbackURL),
     );
-  });
-});
-
-// The independent audit's red tests (audit-1005, scripts/audit-findings.test.ts),
-// in this harness.
-describe("audit: repeat sign-ups with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
-  it("does not sign the address owner into an account whose password someone else set", async () => {
-    const { handler } = await createAuthHandler(true);
-    const victim = "victim@example.com";
-    const attackerPassword = "attacker-chose-this-password";
-
-    // Someone who does not own the mailbox registers it first; the owner is
-    // emailed a verification link for that sign-up.
-    await post(handler, "/sign-up/email", {
-      email: victim,
-      password: attackerPassword,
-      name: "victim",
-      callbackURL,
-    });
-    await emailsSent();
-    const link = lastVerifyLink(victim);
-    expect(link).toBeDefined();
-
-    // The owner then signs up with their own password, and opens the link.
-    await signUp(handler, victim);
-    await emailsSent();
-    const verified = await handler(new Request(link ?? ""));
-    expect(verified.status).toBe(302);
-
-    // The person who set the first password must not be able to sign in.
-    const attacker = await post(handler, "/sign-in/email", {
-      email: victim,
-      password: attackerPassword,
-    });
-    expect(attacker.status).not.toBe(200);
-  });
-
-  it("does not email one unverified address on every repeat sign-up", async () => {
-    const { handler, api } = await createAuthHandler(true);
-    const email = "target@example.com";
-    await signUp(handler, email);
-    await emailsSent();
-    sentEmails.length = 0;
-
-    // The sign-up page's server action calls auth.api directly, which skips
-    // Better Auth's per-IP HTTP rate limit.
-    for (let i = 0; i < 5; i++) {
-      await api.signUpEmail({
-        body: { email, password, name: "target", callbackURL },
-      });
-    }
-    await emailsSent();
-
-    expect(
-      sentEmails.filter((sent) => sent.to === email).length,
-    ).toBeLessThanOrEqual(1);
-  });
-
-  it("does not email an unverified address on every sign-in", async () => {
-    const { handler, api } = await createAuthHandler(true);
-    const email = "pre-registered@example.com";
-    await signUp(handler, email);
-    await emailsSent();
-    sentEmails.length = 0;
-
-    // Whoever set the password (possibly not the address owner) signs in
-    // through the login page's server action, which calls auth.api directly.
-    for (let i = 0; i < 5; i++) {
-      await api
-        .signInEmail({ body: { email, password, callbackURL } })
-        .catch(() => undefined);
-    }
-    await emailsSent();
-
-    expect(
-      sentEmails.filter((sent) => sent.to === email).length,
-    ).toBeLessThanOrEqual(1);
   });
 });
 
@@ -664,6 +749,14 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
         emailVerified: false,
       }),
     );
+  });
+
+  it("does not cap sign-ups per IP", async () => {
+    const { handler } = await createAuthHandler(false);
+
+    for (let i = 0; i <= AUTH_EMAILS_PER_IP; i++) {
+      expect((await signUp(handler, `user${i}@example.com`)).status).toBe(200);
+    }
   });
 
   it("verifies the address from a resent link without signing its opener in", async () => {

@@ -63,6 +63,24 @@ def test_valid_request_sends_and_returns_204(send_mock):
     assert VALID_BODY["url"] in body
 
 
+def test_set_password_email_says_why_it_came_and_when_it_expires(send_mock):
+    res = _post({**VALID_BODY, "type": "set_password"})
+
+    assert res.status_code == 204
+    _, subject, body = send_mock.call_args.args
+    assert subject == "Set your AutoGPT Platform password"
+    assert "asked to sign up for, or verify" in body
+    assert "set a password and finish signing up" in body
+    assert "expires in 1 hour" in body
+
+
+def test_verify_email_states_its_24_hour_expiry(send_mock):
+    _post({**VALID_BODY, "type": "verify_email"})
+
+    _, _, body = send_mock.call_args.args
+    assert "expires in 24 hours" in body
+
+
 def test_rejects_link_on_untrusted_host(send_mock):
     res = _post({**VALID_BODY, "url": "https://evil.example.com/reset"})
     assert res.status_code == 400

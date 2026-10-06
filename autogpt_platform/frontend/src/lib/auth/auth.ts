@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
@@ -8,20 +8,22 @@ import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
-import {
-  type AuthEmailContext,
-  sendVerificationLink,
-} from "./auth-email-cooldown";
+import type { AuthEmailContext } from "./auth-email-cooldown";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
+import { capAuthEmailsPerIP } from "./ip-email-cap";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
 } from "./password-policy";
-import { provisionPlatformUser } from "./provision-platform-user";
+import {
+  platformUserExists,
+  provisionPlatformUser,
+} from "./provision-platform-user";
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
+import { sendVerificationLink } from "./verification-link";
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -78,11 +80,29 @@ const emailVerificationExpiresIn = 60 * 60 * 24;
 
 const authSecret = process.env.BETTER_AUTH_SECRET;
 
+const resetRedirectTo = new URL("/reset-password", baseURL).toString();
+
+function hasPlatformUser(userId: string) {
+  return platformUserExists(authDbPool, userId);
+}
+
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
   database: authDbPool,
   telemetry: { enabled: false },
+  hooks: {
+    // With verification required, sign-up and resend email an address with
+    // no session yet: at most a few per IP per window (ip-email-cap.ts).
+    before: createAuthMiddleware(async (ctx) => {
+      if (!requireEmailVerification) return;
+      await capAuthEmailsPerIP({
+        path: ctx.path,
+        headers: ctx.headers,
+        context: ctx.context,
+      });
+    }),
+  },
   databaseHooks: {
     user: {
       create: {
@@ -177,7 +197,8 @@ export const auth = betterAuth({
       await emailRepeatSignUp({
         user,
         getAuthContext,
-        resetRedirectTo: new URL("/reset-password", baseURL).toString(),
+        hasPlatformUser,
+        resetRedirectTo,
       });
     },
     // A reset link only reaches whoever holds the address, so opening one
@@ -212,9 +233,17 @@ export const auth = betterAuth({
     autoSignInAfterVerification: requireEmailVerification,
     expiresIn: emailVerificationExpiresIn,
     // Throttled per address, except for the resend button's own route: see
-    // auth-email-cooldown.ts.
+    // verification-link.ts.
     sendVerificationEmail: async ({ user, url }, request) => {
-      await sendVerificationLink({ user, url, request, getAuthContext });
+      await sendVerificationLink({
+        user,
+        url,
+        request,
+        getAuthContext,
+        hasPlatformUser,
+        requireEmailVerification,
+        resetRedirectTo,
+      });
     },
   },
   user: {

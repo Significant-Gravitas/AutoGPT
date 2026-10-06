@@ -59,3 +59,23 @@ function describePgError(error: unknown): {
       typeof fields.constraint === "string" ? fields.constraint : "unknown",
   };
 }
+
+// Whether the platform `User` row exists. If it can't be read, assume it does:
+// the caller then keeps an account's password rather than replacing it.
+export async function platformUserExists(
+  pool: Pick<Pool, "query">,
+  userId: string,
+) {
+  try {
+    const result = await pool.query('SELECT 1 FROM "User" WHERE id = $1', [
+      userId,
+    ]);
+    return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    console.error("Failed to look up the platform User", {
+      userId,
+      code: describePgError(error).code,
+    });
+    return true;
+  }
+}

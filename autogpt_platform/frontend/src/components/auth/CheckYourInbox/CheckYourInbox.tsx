@@ -42,14 +42,13 @@ export function CheckYourInbox({ email, reason, next, onBack }: Props) {
       </Text>
 
       <Text variant="body" tone="secondary" unmask={false} className="mt-3">
-        We sent a verification link to{" "}
+        We sent an email to{" "}
         <span className="break-all font-medium text-slate-950">{email}</span>.
-        Click it to {copy.action}.
+        Open the link in it to {copy.action}.
       </Text>
 
       <Text variant="small" tone="muted" className="mt-2">
-        The link expires in 24 hours. Can&apos;t find it? Check your spam
-        folder.
+        Can&apos;t find it? Check your spam folder.
       </Text>
 
       <Button

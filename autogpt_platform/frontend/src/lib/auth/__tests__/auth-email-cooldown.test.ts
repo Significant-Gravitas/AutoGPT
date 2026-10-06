@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { type AuthEmailContext, claimEmailSlot } from "../auth-email-cooldown";
+import {
+  AUTH_EMAILS_PER_IP,
+  type AuthEmailContext,
+  claimEmailSlot,
+  claimIPEmailSlot,
+} from "../auth-email-cooldown";
+import { sendAuthEmail } from "../email";
+import { capAuthEmailsPerIP } from "../ip-email-cap";
+import { sendVerificationLink } from "../verification-link";
 
 vi.mock("../email", () => ({ sendAuthEmail: vi.fn() }));
 
@@ -25,10 +33,11 @@ function verificationTable(burst: number) {
     password: { hash: async (password) => password },
     adapter: {
       findMany: async ({ where }) => {
-        const [identifier] = where;
-        const found = rows.filter(
-          (row) =>
-            row.identifier === identifier.value && row.expiresAt > new Date(),
+        const [match] = where;
+        const found = rows.filter((row) =>
+          match.field === "id"
+            ? row.id === match.value
+            : row.identifier === match.value && row.expiresAt > new Date(),
         );
         if (++checked === burst) releaseChecks();
         if (checked <= burst) await allChecked;
@@ -91,5 +100,70 @@ describe("claimEmailSlot", () => {
     await expect(
       claimEmailSlot(context, "verify-email", "down@example.com"),
     ).rejects.toThrow("database is down");
+  });
+});
+
+describe("claimIPEmailSlot", () => {
+  it("lets a burst from one IP take only its share of slots", async () => {
+    const { context } = verificationTable(0);
+
+    const claims = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        claimIPEmailSlot(context, "203.0.113.7"),
+      ),
+    );
+
+    expect(claims.filter(Boolean)).toHaveLength(AUTH_EMAILS_PER_IP);
+    expect(await claimIPEmailSlot(context, "198.51.100.9")).toBe(true);
+  });
+
+  it("passes on a failure that is not a taken slot", async () => {
+    const { context } = verificationTable(0);
+    context.adapter.create = async () => {
+      throw new Error("database is down");
+    };
+
+    await expect(claimIPEmailSlot(context, "203.0.113.7")).rejects.toThrow(
+      "database is down",
+    );
+  });
+});
+
+describe("when a cap can't be checked", () => {
+  function brokenContext() {
+    const { context } = verificationTable(0);
+    const down = async () => {
+      throw new Error("database is down");
+    };
+    context.adapter.findMany = down;
+    context.adapter.create = down;
+    return context;
+  }
+
+  it("still sends the verification email", async () => {
+    vi.mocked(sendAuthEmail).mockClear();
+
+    await sendVerificationLink({
+      user: { id: "user-1", email: "down@example.com" },
+      url: "http://localhost:3000/api/auth/verify-email?token=t",
+      getAuthContext: async () => brokenContext(),
+      hasPlatformUser: async () => false,
+      requireEmailVerification: true,
+      resetRedirectTo: "http://localhost:3000/reset-password",
+    });
+
+    expect(sendAuthEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "down@example.com", type: "verify_email" }),
+    );
+  });
+
+  it("lets the sign-up through", async () => {
+    await expect(
+      capAuthEmailsPerIP({
+        path: "/sign-up/email",
+        headers: new Headers({ "x-forwarded-for": "203.0.113.7" }),
+        context: { ...brokenContext(), options: {} },
+      }),
+    ).resolves.toBeUndefined();
   });
 });

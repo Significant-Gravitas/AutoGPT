@@ -8,13 +8,13 @@ export const CHECK_YOUR_INBOX_HEADING_ID = "check-your-inbox-heading";
 export const CHECK_YOUR_INBOX_COPY = {
   signup: {
     title: "Check your inbox",
-    action: "finish creating your account",
+    action: "continue",
     backPrompt: "Wrong address?",
     backLabel: "Start again",
   },
   login: {
     title: "Verify your email to log in",
-    action: "verify your email and log in",
+    action: "log in",
     backPrompt: "Wrong account?",
     backLabel: "Back to log in",
   },
