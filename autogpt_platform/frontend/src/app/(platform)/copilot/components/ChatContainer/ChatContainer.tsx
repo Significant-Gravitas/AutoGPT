@@ -22,6 +22,7 @@ import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
+import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
 import { SharedChatNotice } from "./components/SharedChatNotice";
@@ -196,6 +197,11 @@ export const ChatContainer = ({
     ? expertIdentity
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
+  const chatExpert =
+    expertIdentity && !expertIdentity.isArchived
+      ? { id: expertIdentity.id, name: expertIdentity.name }
+      : null;
+  useShareChatExpert(chatExpert);
   const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
   // NO_OP is module-level so a locked composer keeps a stable function identity
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
@@ -327,11 +333,7 @@ export const ChatContainer = ({
                 <div className="absolute right-0 top-0 z-30">
                   <ContextPanelToggle
                     sessionId={sessionId}
-                    expert={
-                      expertIdentity && !expertIdentity.isArchived
-                        ? { id: expertIdentity.id, name: expertIdentity.name }
-                        : null
-                    }
+                    expert={chatExpert}
                   />
                 </div>
                 <NewChatOnboarding
