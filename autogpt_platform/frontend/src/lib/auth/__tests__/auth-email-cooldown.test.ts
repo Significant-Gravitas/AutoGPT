@@ -117,6 +117,30 @@ describe("claimIPEmailSlot", () => {
     expect(await claimIPEmailSlot(context, "198.51.100.9")).toBe(true);
   });
 
+  it.each([
+    ["at the start of a window", 0],
+    ["midway", 300_000],
+    ["just before it ends", 599_999],
+  ])(
+    "keeps a slot until its window ends, claimed %s",
+    async (_, intoWindow) => {
+      const windowStart = Date.UTC(2026, 9, 6, 17, 10);
+      const windowEnd = windowStart + 10 * 60 * 1000;
+      vi.useFakeTimers({ now: windowStart + intoWindow });
+      try {
+        const { context, rows } = verificationTable(0);
+
+        await claimIPEmailSlot(context, "203.0.113.7");
+
+        const expiresAt = rows[0].expiresAt.getTime();
+        expect(expiresAt).toBeGreaterThan(Date.now());
+        expect(Math.abs(expiresAt - windowEnd)).toBeLessThan(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("passes on a failure that is not a taken slot", async () => {
     const { context } = verificationTable(0);
     context.adapter.create = async () => {
