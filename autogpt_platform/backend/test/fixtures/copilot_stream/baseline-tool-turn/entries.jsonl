@@ -17,5 +17,6 @@
 {"id": "17-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "Example Domain."}}
 {"id": "18-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000003"}}
 {"id": "19-0", "data": {"type": "finish-step"}}
-{"id": "20-0", "data": {"type": "usage", "prompt_tokens": 200, "completion_tokens": 40, "total_tokens": 240, "cache_read_tokens": 0, "cache_creation_tokens": 0}}
-{"id": "21-0", "data": {"type": "finish"}}
+{"id": "20-0", "data": {"type": "data-checkpoint", "rows": 3, "sequence": 1, "digest": "6a90701268140af70592a86f2bad0894e0a3a74acbcf38c65e449021d177b974"}}
+{"id": "21-0", "data": {"type": "usage", "prompt_tokens": 200, "completion_tokens": 40, "total_tokens": 240, "cache_read_tokens": 0, "cache_creation_tokens": 0}}
+{"id": "22-0", "data": {"type": "finish"}}
