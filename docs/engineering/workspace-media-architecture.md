@@ -143,6 +143,29 @@ An upload caller cannot select the public destination. Publication is a
 separate privileged operation; sharing a private resource grants access through
 its opaque application URL and does not make its storage prefix public.
 
+### Moving a single-bucket deployment to split buckets
+
+Stored rows hold `gcs://<bucket>/...` paths and full GCS URLs, and the storage
+code only reads from the configured private bucket, so the existing bucket must
+become the private one:
+
+1. Create the new public bucket. Deploy with `PRIVATE_USER_DATA_BUCKET` set to
+   the existing `MEDIA_GCS_BUCKET_NAME` bucket and `PUBLIC_SITE_MEDIA_BUCKET`
+   set to the new one. Pointing `PRIVATE_USER_DATA_BUCKET` at a new bucket
+   instead makes every existing workspace file and transcript unreadable.
+2. Copy everything that is already public to the public bucket and repoint its
+   rows: `poetry run python scripts/publish_live_media.py` (dry run), then
+   again with `--apply` until it reports no copy failures or conflicts. This
+   covers approved listing media, the avatars of creators with a public
+   listing, library copies of listing images and OAuth app logos. It is also
+   the repair tool when a copy at approval time failed.
+3. Rewrite the remaining private media URLs to the authenticated API path:
+   `poetry run python scripts/backfill_private_media_urls.py` (dry run), then
+   `--apply` until it reports no conflicts. Both scripts commit in small
+   batches and can be re-run.
+4. Run step 2's dry run once more, then remove public access from the old
+   bucket.
+
 ---
 
 ## store_media_file()

@@ -1,5 +1,6 @@
 import pytest
 
+import backend.util.settings as settings_module
 from backend.util.settings import Config
 
 
@@ -81,3 +82,13 @@ def test_cloud_split_configuration_accepts_distinct_buckets():
 
     assert config.resolved_public_site_media_bucket == "public-media"
     assert config.resolved_private_user_data_bucket == "private-data"
+
+
+def test_cloud_deployment_on_the_legacy_bucket_warns_once(caplog):
+    settings_module._warn_single_cloud_bucket.cache_clear()
+
+    for _ in range(2):
+        Config(_env_file=None, BEHAVE_AS="cloud", MEDIA_GCS_BUCKET_NAME="legacy-media")
+
+    warnings = [r for r in caplog.records if "PRIVATE_USER_DATA_BUCKET" in r.message]
+    assert len(warnings) == 1

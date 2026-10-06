@@ -44,7 +44,7 @@ def public_bucket(mock_settings):
 
 async def test_publish_urls_is_a_noop_when_unset(mock_settings, mock_storage_client):
     result = await public_media.publish_urls(
-        [f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"], OWNER
+        [f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"], [OWNER]
     )
 
     assert result == {}
@@ -57,7 +57,7 @@ async def test_publish_urls_copies_own_media_to_the_same_path(
     image = f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"
     video = f"https://storage.googleapis.com/test-bucket/{OWN_VIDEO}"
 
-    result = await public_media.publish_urls([image, video, None, image], OWNER)
+    result = await public_media.publish_urls([image, video, None, image], [OWNER])
 
     assert result == {
         image: f"https://storage.googleapis.com/public-bucket/{OWN_IMAGE}",
@@ -92,7 +92,7 @@ async def test_publish_urls_copies_own_media_to_the_same_path(
 async def test_publish_urls_accepts_every_managed_url_form(
     public_bucket, mock_storage_client, url
 ):
-    result = await public_media.publish_urls([url], OWNER)
+    result = await public_media.publish_urls([url], [OWNER])
 
     assert result == {url: f"https://storage.googleapis.com/public-bucket/{OWN_IMAGE}"}
     mock_storage_client.copy.assert_awaited_once_with(
@@ -124,7 +124,7 @@ async def test_publish_urls_accepts_every_managed_url_form(
 async def test_publish_urls_refuses_everything_else(
     public_bucket, mock_storage_client, url
 ):
-    assert await public_media.publish_urls([url], OWNER) == {}
+    assert await public_media.publish_urls([url], [OWNER]) == {}
     mock_storage_client.copy.assert_not_called()
 
 
@@ -135,7 +135,7 @@ async def test_publish_urls_skips_objects_that_fail_to_copy(
     video = f"https://storage.googleapis.com/test-bucket/{OWN_VIDEO}"
     mock_storage_client.copy.side_effect = [Exception("404 not found"), {}]
 
-    result = await public_media.publish_urls([image, video], OWNER)
+    result = await public_media.publish_urls([image, video], [OWNER])
 
     assert result == {
         video: f"https://storage.googleapis.com/public-bucket/{OWN_VIDEO}"
@@ -145,8 +145,35 @@ async def test_publish_urls_skips_objects_that_fail_to_copy(
 async def test_publish_urls_is_idempotent(public_bucket, mock_storage_client):
     image = f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"
 
-    first = await public_media.publish_urls([image], OWNER)
-    second = await public_media.publish_urls(list(first.values()), OWNER)
+    first = await public_media.publish_urls([image], [OWNER])
+    second = await public_media.publish_urls(list(first.values()), [OWNER])
 
     assert second == {}
     mock_storage_client.copy.assert_awaited_once()
+
+
+async def test_publish_urls_accepts_media_of_every_listed_owner(
+    public_bucket, mock_storage_client
+):
+    member_image = "users/member-2/images/shot.png"
+    url = f"https://storage.googleapis.com/test-bucket/{member_image}"
+
+    result = await public_media.publish_urls([url], [OWNER, "member-2"])
+
+    assert result == {
+        url: f"https://storage.googleapis.com/public-bucket/{member_image}"
+    }
+
+
+async def test_publish_urls_falls_back_to_the_legacy_bucket_as_public(
+    mock_settings, mock_storage_client
+):
+    mock_settings.config.private_user_data_bucket = "private-bucket"
+    image = f"https://storage.googleapis.com/private-bucket/{OWN_IMAGE}"
+
+    result = await public_media.publish_urls([image], [OWNER])
+
+    assert result == {image: f"https://storage.googleapis.com/test-bucket/{OWN_IMAGE}"}
+    mock_storage_client.copy.assert_awaited_once_with(
+        "private-bucket", OWN_IMAGE, "test-bucket", new_name=OWN_IMAGE
+    )

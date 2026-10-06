@@ -35,14 +35,28 @@ _PUBLISHABLE_MEDIA_PATH = re.compile(
 )
 
 
-async def publish_urls(urls: Iterable[str | None], owner_id: str) -> dict[str, str]:
-    settings = Settings()
-    private_bucket = settings.config.resolved_private_user_data_bucket
-    public_bucket = settings.config.public_site_media_bucket
-    if not private_bucket or not public_bucket or private_bucket == public_bucket:
-        return {}
+def publishing_enabled() -> bool:
+    """True when public and private media live in different buckets."""
+    config = Settings().config
+    private_bucket = config.resolved_private_user_data_bucket
+    public_bucket = config.resolved_public_site_media_bucket
+    return bool(private_bucket and public_bucket and private_bucket != public_bucket)
 
-    paths = _publishable_paths(urls, owner_id, private_bucket)
+
+async def publish_urls(
+    urls: Iterable[str | None], owner_ids: Iterable[str]
+) -> dict[str, str]:
+    """
+    Copy the private media among `urls` that belongs to one of `owner_ids` to
+    the public bucket and map each published source URL to its public URL.
+    """
+    if not publishing_enabled():
+        return {}
+    config = Settings().config
+    private_bucket = config.resolved_private_user_data_bucket
+    public_bucket = config.resolved_public_site_media_bucket
+
+    paths = _publishable_paths(urls, frozenset(owner_ids), private_bucket)
     if not paths:
         return {}
 
@@ -64,16 +78,20 @@ async def publish_urls(urls: Iterable[str | None], owner_id: str) -> dict[str, s
 
 
 def _publishable_paths(
-    urls: Iterable[str | None], owner_id: str, private_bucket: str
+    urls: Iterable[str | None], owner_ids: frozenset[str], private_bucket: str
 ) -> dict[str, str]:
     paths: dict[str, str] = {}
     for source_url in dict.fromkeys(url for url in urls if url):
-        path = _object_path(source_url, private_bucket)
+        path = object_path_from_url(source_url, private_bucket)
         if path is None:
             continue
         match = _PUBLISHABLE_MEDIA_PATH.fullmatch(path)
-        if not match or match["owner"] != owner_id or not _is_valid_path(match, path):
-            logger.warning(f"Not publishing {path!r}: not media owned by {owner_id}")
+        if (
+            not match
+            or match["owner"] not in owner_ids
+            or not _is_valid_path(match, path)
+        ):
+            logger.warning(f"Not publishing {path!r}: not media of the listing owners")
             continue
         paths[source_url] = path
     return paths
@@ -89,7 +107,7 @@ def _is_valid_path(match: re.Match[str], path: str) -> bool:
     return canonical == path
 
 
-def _object_path(url: str, bucket: str) -> str | None:
+def object_path_from_url(url: str, bucket: str) -> str | None:
     url = url.strip()
     wrapped = urlsplit(url)
     if wrapped.path == "/_next/image":

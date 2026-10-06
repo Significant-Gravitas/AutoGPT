@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator, Mapping
 
+import aiohttp
 from gcloud.aio import storage as async_storage
 
 from backend.util.gcs_utils import is_not_found_error
@@ -8,6 +9,10 @@ from backend.util.settings import Settings
 from . import local_media
 
 PRIVATE_MEDIA_PREFIX = "/api/store/submissions/media/"
+
+# The library's default is a 10-second total timeout, which covers the whole
+# body and so cuts off any video a client can't download in 10 seconds.
+_STREAM_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=60)
 
 
 def url(user_id: str, media_type: str, filename: str) -> str:
@@ -50,16 +55,17 @@ async def stream(
         return
 
     storage_path = object_path(user_id, media_type, filename)
+    headers = None
+    if byte_range is not None:
+        start, end = byte_range
+        headers = {"Range": f"bytes={start}-{end}"}
     async with async_storage.Storage() as async_client:
-        if byte_range is None:
-            stream = await async_client.download_stream(bucket_name, storage_path)
-        else:
-            start, end = byte_range
-            stream = await async_client.download_stream(
-                bucket_name,
-                storage_path,
-                headers={"Range": f"bytes={start}-{end}"},
-            )
+        stream = await async_client.download_stream(
+            bucket_name,
+            storage_path,
+            headers=headers,
+            timeout=_STREAM_TIMEOUT,  # type: ignore[arg-type]
+        )
         while chunk := await stream.read(64 * 1024):
             yield chunk
 

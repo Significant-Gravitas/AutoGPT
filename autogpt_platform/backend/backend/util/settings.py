@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import os
@@ -24,6 +25,16 @@ from pydantic_settings import (
 from backend.util.data import get_data_path
 
 logger = logging.getLogger(__name__)
+
+
+@functools.cache
+def _warn_single_cloud_bucket() -> None:
+    logger.warning(
+        "Cloud deployment stores private user data in the legacy "
+        "MEDIA_GCS_BUCKET_NAME bucket. Configure PRIVATE_USER_DATA_BUCKET and "
+        "PUBLIC_SITE_MEDIA_BUCKET to keep user data out of the public bucket."
+    )
+
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -511,7 +522,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         split_configured = bool(
             self.public_site_media_bucket or self.private_user_data_bucket
         )
-        if self.behave_as != BehaveAs.CLOUD or not split_configured:
+        if self.behave_as != BehaveAs.CLOUD:
+            return self
+        if not split_configured:
+            if self.media_gcs_bucket_name:
+                _warn_single_cloud_bucket()
             return self
         if not self.public_site_media_bucket or not self.private_user_data_bucket:
             raise ValueError(

@@ -1563,6 +1563,14 @@ async def review_store_submission(
                         "ActiveVersion": {"connect": {"id": other_approved.id}},
                     },
                 )
+                reactivated = (
+                    await prisma.models.StoreListingVersion.prisma().find_unique(
+                        where={"id": other_approved.id},
+                        include={"StoreListing": True},
+                    )
+                )
+                if reactivated:
+                    await _publish_approved_media(reactivated)
 
         submission_status = (
             prisma.enums.SubmissionStatus.APPROVED
@@ -1628,30 +1636,16 @@ async def _publish_approved_media(
     profile and the version are written separately on purpose: each copy is
     valid on its own, so a failed version write keeps the published avatar.
     """
-    if not Settings().config.public_site_media_bucket:
+    if not public_media.publishing_enabled():
         return version
     try:
         assert version.StoreListing is not None
         owner_id = version.StoreListing.owningUserId
-        profile = await prisma.models.Profile.prisma().find_unique(
-            where={"userId": owner_id}
-        )
-        avatar_url = profile.avatarUrl if profile else None
+        await publish_creator_avatar(owner_id)
         published = await public_media.publish_urls(
-            [
-                *version.imageUrls,
-                version.videoUrl,
-                version.agentOutputDemoUrl,
-                avatar_url,
-            ],
-            owner_id,
+            [*version.imageUrls, version.videoUrl, version.agentOutputDemoUrl],
+            await _listing_media_owner_ids(version.StoreListing),
         )
-
-        if avatar_url in published:
-            await prisma.models.Profile.prisma().update_many(
-                where={"userId": owner_id, "avatarUrl": avatar_url},
-                data={"avatarUrl": published[avatar_url]},
-            )
 
         media_update = _published_media_update(version, published)
         if not media_update:
@@ -1686,34 +1680,81 @@ def _published_media_update(
     return media_update
 
 
+async def _listing_media_owner_ids(listing: prisma.models.StoreListing) -> set[str]:
+    """
+    Users whose uploads a listing may publish: its owner and, for an org listing,
+    the org's active members, who can edit it and upload under their own path.
+    """
+    owner_ids = {listing.owningUserId}
+    if listing.owningOrgId:
+        members = await prisma.models.OrgMember.prisma().find_many(
+            where={
+                "orgId": listing.owningOrgId,
+                "status": prisma.enums.OrgMemberStatus.ACTIVE,
+            }
+        )
+        owner_ids.update(member.userId for member in members)
+    return owner_ids
+
+
+async def publish_creator_avatar(user_id: str) -> None:
+    """Publish the avatar of a creator who has just gained a public listing."""
+    if not public_media.publishing_enabled():
+        return
+    try:
+        profile = await prisma.models.Profile.prisma().find_unique(
+            where={"userId": user_id}
+        )
+    except Exception:
+        logger.exception(f"Failed to load the profile of user {user_id}")
+        return
+    if profile:
+        await _publish_live_creator_avatar(user_id, profile)
+
+
+async def _has_public_listing(user_id: str) -> bool:
+    """Whether the marketplace shows this user as a creator to anyone."""
+    store_listing = await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "owningUserId": user_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        }
+    )
+    if store_listing:
+        return True
+    skill_listing = await prisma.models.SkillListing.prisma().find_first(
+        where={
+            "owningUserId": user_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+            "ActiveVersion": {
+                "is": {
+                    "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    "isDeleted": False,
+                    "isAvailable": True,
+                }
+            },
+        }
+    )
+    return skill_listing is not None
+
+
 async def _publish_live_creator_avatar(
     user_id: str, profile: prisma.models.Profile
 ) -> prisma.models.Profile:
     """
-    Copy the avatar of a creator with a live listing to the public site media
-    bucket and point the profile at the copy. Never fails the profile update.
+    Copy the avatar of a creator with a public listing to the public site media
+    bucket and point the profile at the copy. Only writes while the profile
+    still holds the avatar it copied. Never fails the caller.
     """
-    if not profile.avatarUrl or not Settings().config.public_site_media_bucket:
+    if not profile.avatarUrl or not public_media.publishing_enabled():
         return profile
     try:
-        live_listing = await prisma.models.StoreListing.prisma().find_first(
-            where={
-                "owningUserId": user_id,
-                "isDeleted": False,
-                "hasApprovedVersion": True,
-                "ActiveVersion": {
-                    "is": {
-                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                        "isDeleted": False,
-                        "isAvailable": True,
-                    }
-                },
-            }
-        )
-        if not live_listing:
+        if not await _has_public_listing(user_id):
             return profile
 
-        published = await public_media.publish_urls([profile.avatarUrl], user_id)
+        published = await public_media.publish_urls([profile.avatarUrl], [user_id])
         if profile.avatarUrl not in published:
             return profile
         await prisma.models.Profile.prisma().update_many(

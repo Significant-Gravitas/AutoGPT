@@ -207,12 +207,13 @@ class CloudStorageHandler:
             self.config.gcs_bucket_name,
             blob_name,
             content,
+            # Top-level keys are not stored as custom metadata, so the expiry
+            # cleanup never fires. Nesting them under "metadata" would switch it
+            # on and delete files that saved schedules and presets still use.
             metadata={
-                "metadata": {
-                    "uploaded_at": upload_time.isoformat(),
-                    "expires_at": expiration_time.isoformat(),
-                    "expiration_hours": str(expiration_hours),
-                }
+                "uploaded_at": upload_time.isoformat(),
+                "expires_at": expiration_time.isoformat(),
+                "expiration_hours": str(expiration_hours),
             },
         )
 

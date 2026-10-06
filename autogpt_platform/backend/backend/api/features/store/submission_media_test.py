@@ -185,8 +185,13 @@ async def test_private_media_stream_reads_only_from_private_bucket(
 
     assert b"".join(chunks) == b"private-image"
     mock_storage_client.download_stream.assert_awaited_once_with(
-        "private-media", "users/owner/images/image.jpeg"
+        "private-media",
+        "users/owner/images/image.jpeg",
+        headers=None,
+        timeout=submission_media._STREAM_TIMEOUT,
     )
+    # A total timeout would cut off any body the client reads slowly.
+    assert submission_media._STREAM_TIMEOUT.total is None
 
 
 async def test_private_media_range_stream_uses_gcs_range_header(
@@ -213,4 +218,5 @@ async def test_private_media_range_stream_uses_gcs_range_header(
         "private-media",
         "users/owner/videos/preview.mp4",
         headers={"Range": "bytes=2-5"},
+        timeout=submission_media._STREAM_TIMEOUT,
     )
