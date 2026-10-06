@@ -14,7 +14,7 @@ import math
 import re
 import secrets
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal, Sequence
 
 from pydantic import BaseModel
 
@@ -38,6 +38,9 @@ _OMITTED = "\n[… part of the user's message omitted by the system …]\n"
 _PARTIAL_LAST_WORD = re.compile(r"(?<=\s)\S{1,40}\Z")
 _PARTIAL_FIRST_WORD = re.compile(r"\A\S{1,40}(?=\s)")
 _FALLBACK_REASON = "Could not verify this action automatically."
+# A chat's messages are labelled; a lone message goes bare, as the eval measured it.
+_EARLIER = "[earlier message]"
+_LATEST = "[latest message]"
 
 DecidedBy = Literal["llm", "jev", "jev+llm"]
 
@@ -55,9 +58,11 @@ async def supervise(
     tool_name: str,
     args: dict[str, Any],
     user_message: str,
+    earlier: Sequence[str] = (),
 ) -> Judgement:
     """Jev decides when it can; the LLM then only writes an ask's reason and
-    cannot turn it into an allow. Without Jev the LLM decides, as before."""
+    cannot turn it into an allow. Without Jev the LLM decides, as before.
+    ``earlier`` is what the user wrote before ``user_message``, oldest first."""
     call = json.dumps(
         {"tool": tool_name, "arguments": args},
         indent=1,
@@ -68,7 +73,11 @@ async def supervise(
     # the ceiling even with Jev off: Haiku alone missed a buried `curl | sh` 1 in
     # 10 past it (40k chars), and caught it every time within it.
     try:
-        prompt, over = _fit(_utf8(user_message), fence("PROPOSED CALL", _utf8(call)))
+        prompt, over = _fit_chat(
+            [_utf8(m) for m in earlier],
+            _utf8(user_message),
+            fence("PROPOSED CALL", _utf8(call)),
+        )
     except Exception:
         logger.warning(f"Gate could not size the call for {tool_name}", exc_info=True)
         return Judgement(allowed=False, reason=_FALLBACK_REASON)
@@ -154,23 +163,36 @@ def _utf8(text: str) -> str:
     return text.encode("utf-8", "backslashreplace").decode("utf-8")
 
 
-def _fit(request: str, proposed: str) -> tuple[str, int]:
-    """The prompt with as much of ``request`` as Jev reads beside the whole call,
+def _fit_chat(earlier: list[str], latest: str, proposed: str) -> tuple[str, int]:
+    """Earlier messages give way first: ``latest`` is read whole beside them while
+    ``_MIN_REQUEST_CHARS`` of them still fits, and is fitted alone otherwise."""
+    if earlier:
+        history = "\n\n".join(f"{_EARLIER}\n{message}" for message in earlier)
+        prompt, over = _fit(
+            history, lambda h: _prompt(f"{h}\n\n{_LATEST}\n{latest}", proposed)
+        )
+        if not over:
+            return prompt, 0
+    return _fit(latest, lambda request: _prompt(request, proposed))
+
+
+def _fit(text: str, render: Callable[[str], str]) -> tuple[str, int]:
+    """The prompt with as much of ``text`` as Jev reads beside the whole call,
     and the bytes still over when even ``_MIN_REQUEST_CHARS`` of it does not fit."""
-    whole = _prompt(request, proposed)
+    whole = render(text)
     if not jev.overflow(whole):
         return whole, 0
-    low = min(len(request), _MIN_REQUEST_CHARS)
-    if over := jev.overflow(_prompt(_shorten(request, low), proposed)):
+    low = min(len(text), _MIN_REQUEST_CHARS)
+    if over := jev.overflow(render(_shorten(text, low))):
         return whole, over
-    high = len(request) - 1
+    high = len(text) - 1
     while low < high:
         middle = (low + high + 1) // 2
-        if jev.overflow(_prompt(_shorten(request, middle), proposed)):
+        if jev.overflow(render(_shorten(text, middle))):
             high = middle - 1
         else:
             low = middle
-    return _prompt(_shorten(request, low), proposed), 0
+    return render(_shorten(text, low)), 0
 
 
 def _prompt(request: str, proposed: str) -> str:
