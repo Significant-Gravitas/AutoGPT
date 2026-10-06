@@ -1,26 +1,52 @@
 from unittest.mock import AsyncMock
 
 import fastapi
-import fastapi.testclient
+import httpx
 import pytest
+from autogpt_libs.auth import get_user_id, requires_user
 
+from backend.api.features.onboarding import routes
 from backend.api.features.onboarding.routes import router
+from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
 app = fastapi.FastAPI()
 app.include_router(router)
-client = fastapi.testclient.TestClient(app)
+
+
+@pytest.fixture
+async def client():
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as session:
+        yield session
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+def profile_dependencies(mocker):
+    existing = mocker.patch.object(
+        routes, "get_business_understanding", new=AsyncMock(return_value=None)
+    )
+    admission = mocker.patch.object(
+        routes, "enforce_personalization_budget", new=AsyncMock()
+    )
+    return existing, admission
 
-    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+@pytest.fixture(autouse=True)
+def setup_app_auth():
+    async def authenticated_user():
+        return "user-1"
+
+    async def authenticated():
+        return None
+
+    app.dependency_overrides[get_user_id] = authenticated_user
+    app.dependency_overrides[requires_user] = authenticated
     yield
     app.dependency_overrides.clear()
 
 
-def test_onboarding_profile_success(mocker):
+async def test_onboarding_profile_success(mocker, client):
     mock_extract = mocker.patch(
         "backend.api.features.onboarding.routes.extract_business_understanding",
         new_callable=AsyncMock,
@@ -30,8 +56,6 @@ def test_onboarding_profile_success(mocker):
         new_callable=AsyncMock,
     )
 
-    from backend.data.understanding import BusinessUnderstandingInput
-
     mock_extract.return_value = BusinessUnderstandingInput.model_construct(
         user_name="John",
         user_role="Founder/CEO",
@@ -40,7 +64,7 @@ def test_onboarding_profile_success(mocker):
     )
     mock_upsert.return_value = AsyncMock()
 
-    response = client.post(
+    response = await client.post(
         "/onboarding/profile",
         json={
             "user_name": "John",
@@ -53,9 +77,104 @@ def test_onboarding_profile_success(mocker):
     mock_upsert.assert_awaited_once()
 
 
-def test_onboarding_profile_missing_fields():
-    response = client.post(
+async def test_onboarding_profile_missing_fields(client):
+    response = await client.post(
         "/onboarding/profile",
         json={"user_name": "John"},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("length, status", [(2000, 200), (2001, 422)])
+async def test_profile_pain_point_size_is_bounded(
+    mocker, profile_dependencies, length, status, client
+):
+    _, admission = profile_dependencies
+    extract = mocker.patch.object(
+        routes,
+        "extract_business_understanding",
+        new=AsyncMock(return_value=BusinessUnderstandingInput.model_construct()),
+    )
+    mocker.patch.object(routes, "upsert_business_understanding", new=AsyncMock())
+    response = await client.post(
+        "/onboarding/profile",
+        json={
+            "user_name": "John",
+            "user_role": "Founder",
+            "pain_points": ["a" * length],
+        },
+    )
+    assert response.status_code == status
+    if status == 422:
+        admission.assert_not_awaited()
+        extract.assert_not_awaited()
+
+
+async def test_identical_saved_profile_does_not_repeat_personalization(
+    mocker, profile_dependencies, client
+):
+    existing, admission = profile_dependencies
+    existing.return_value = BusinessUnderstanding.model_construct(
+        user_name="John", user_role="Founder/CEO", pain_points=["Finding leads"]
+    )
+    extract = mocker.patch.object(
+        routes, "extract_business_understanding", new=AsyncMock()
+    )
+    response = await client.post(
+        "/onboarding/profile",
+        json={
+            "user_name": "John",
+            "user_role": "Founder/CEO",
+            "pain_points": ["Finding leads"],
+        },
+    )
+    assert response.status_code == 200
+    admission.assert_not_awaited()
+    extract.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [{"user_name": "Jane"}, {"user_role": "Developer"}, {"pain_points": ["Email"]}],
+)
+async def test_changed_profile_still_checks_budget(
+    mocker, profile_dependencies, changed, client
+):
+    existing, admission = profile_dependencies
+    original = {
+        "user_name": "John",
+        "user_role": "Founder/CEO",
+        "pain_points": ["Finding leads"],
+    }
+    existing.return_value = BusinessUnderstanding.model_construct(**original)
+    admission.side_effect = fastapi.HTTPException(429, "Try again")
+    extract = mocker.patch.object(
+        routes, "extract_business_understanding", new=AsyncMock()
+    )
+    response = await client.post("/onboarding/profile", json={**original, **changed})
+    assert response.status_code == 429
+    admission.assert_awaited_once()
+    extract.assert_not_awaited()
+
+
+@pytest.mark.parametrize("status", [429, 503])
+async def test_profile_rejection_is_not_swallowed_by_extraction_fallback(
+    mocker, profile_dependencies, status, client
+):
+    _, admission = profile_dependencies
+    admission.side_effect = fastapi.HTTPException(
+        status, "Try again", headers={"Retry-After": "30"}
+    )
+    extract = mocker.patch.object(
+        routes, "extract_business_understanding", new=AsyncMock()
+    )
+    upsert = mocker.patch.object(
+        routes, "upsert_business_understanding", new=AsyncMock()
+    )
+    response = await client.post(
+        "/onboarding/profile", json={"user_name": "John", "user_role": "Founder/CEO"}
+    )
+    assert response.status_code == status
+    assert response.headers["Retry-After"] == "30"
+    extract.assert_not_awaited()
+    upsert.assert_not_awaited()

@@ -42,6 +42,7 @@ from pydantic_core import (
 from typing_extensions import TypedDict
 
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import ExecutionFailureReason
 from backend.util.json import loads as json_loads
@@ -1094,6 +1095,8 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int = 0
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
     # the frontend (the DB stores plain strings). The rename migration keeps
     # existing rows within the enum, and writes are validated on the completion

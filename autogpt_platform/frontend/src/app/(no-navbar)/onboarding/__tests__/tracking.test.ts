@@ -16,7 +16,7 @@ vi.mock("posthog-js", () => ({ default: posthog }));
 import {
   buildStepLayout,
   NO_PAYWALL_STEPS,
-  PAYWALL_FIRST_STEPS,
+  PAYWALL_LAST_STEPS,
 } from "../store";
 import { onboardingStepKey, trackOnboardingStep } from "../tracking";
 
@@ -25,13 +25,13 @@ describe("onboardingStepKey", () => {
   // number alone can't identify a step across cohorts.
   it("maps the same key across both step layouts", () => {
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.painPoints),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.painPoints),
     ).toBe("pain_points");
     expect(
       onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.painPoints),
     ).toBe("pain_points");
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.preparing),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.preparing),
     ).toBe("preparing");
     expect(
       onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.preparing),
@@ -61,7 +61,7 @@ describe("onboardingStepKey", () => {
   // double-count the top of the funnel.
   it("returns null for the subscription step", () => {
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.subscription),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.subscription),
     ).toBeNull();
   });
 });

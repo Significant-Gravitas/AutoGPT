@@ -319,3 +319,68 @@ test.each(["BASIC", "BUSINESS"] as const)(
     ).toBeNull();
   },
 );
+
+test("saves the personalized onboarding draft before starting trial checkout", async () => {
+  mockStatus();
+  let releaseSave: (() => void) | undefined;
+  const flush = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        releaseSave = resolve;
+      }),
+  );
+  useOnboardingWizardStore.setState({ flushProgress: flush });
+  const checkout = vi.fn();
+  server.use(
+    getPostTrialsStartTrialCheckoutMockHandler200(() => {
+      checkout();
+      return { url: "https://checkout.stripe.com/trial" };
+    }),
+  );
+  render(<SubscriptionStep />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Start 7-day trial" }),
+  );
+  expect(flush).toHaveBeenCalledOnce();
+  expect(checkout).not.toHaveBeenCalled();
+  releaseSave?.();
+  await waitFor(() =>
+    expect(checkoutLocation.assign).toHaveBeenCalledWith(
+      "https://checkout.stripe.com/trial",
+    ),
+  );
+});
+
+test("keeps the trial checkout available for retry if saving the draft fails", async () => {
+  mockStatus();
+  useOnboardingWizardStore.setState({
+    flushProgress: vi.fn().mockRejectedValue(new Error("offline")),
+  });
+  render(<SubscriptionStep />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Start 7-day trial" }),
+  );
+  expect(await screen.findByText(/couldn't save your progress/)).toBeDefined();
+  expect(checkoutLocation.assign).not.toHaveBeenCalled();
+  expect(
+    screen
+      .getByRole("button", { name: "Start 7-day trial" })
+      .hasAttribute("disabled"),
+  ).toBe(false);
+});
+
+test("also flushes the draft from the standalone fallback trial card", async () => {
+  mockStatus(eligible({ ...trialOffer, tier: "BASIC" }));
+  const flush = vi.fn().mockRejectedValue(new Error("offline"));
+  useOnboardingWizardStore.setState({ flushProgress: flush });
+  render(<SubscriptionStep />);
+  const card = within(
+    await screen.findByRole("region", { name: "AutoGPT trial" }),
+  );
+  fireEvent.click(
+    await card.findByRole("button", { name: "Start 7-day trial" }),
+  );
+  expect(flush).toHaveBeenCalledOnce();
+  expect(await card.findByRole("alert")).toBeDefined();
+  expect(checkoutLocation.assign).not.toHaveBeenCalled();
+});

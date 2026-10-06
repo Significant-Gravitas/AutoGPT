@@ -1,275 +1,94 @@
-import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import {
-  getV1OnboardingState,
   postV1CompleteOnboardingStep,
   postV1SubmitOnboardingProfile,
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
-import { resolveResponse } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
-import {
-  Flag,
-  useFlagStatus,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { accountDisplayName, normalizeOnboardingProfile } from "./helpers";
-import { buildStepLayout, Step, useOnboardingWizardStore } from "./store";
+import { Step, useOnboardingWizardStore } from "./store";
 import { onboardingStepKey, trackOnboardingStep } from "./tracking";
-
-// SessionStorage ceiling for the wizard. The backend's `completedSteps`
-// only records ONBOARDING_COMPLETE at the very end (the 5 in-wizard steps
-// aren't tracked individually), so resume / fast-forward guardrails are
-// enforced client-side: the user can only land on a step they've previously
-// reached.
-const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
-
-function parseStepParam(value: string | null, maxStep: number): Step | null {
-  const n = Number(value);
-  if (Number.isInteger(n) && n >= 1 && n <= maxStep) return n as Step;
-  return null;
-}
-
-function readHighestStep(): number {
-  if (typeof window === "undefined") return 1;
-  const raw = window.sessionStorage.getItem(STEP_STORAGE_KEY);
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
-function writeHighestStep(step: number) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(STEP_STORAGE_KEY, String(step));
-}
-
-function clearHighestStep() {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(STEP_STORAGE_KEY);
-}
+import { stepKey } from "./progress";
+import { useWizardProgress } from "./useWizardProgress";
+import { useOnboardingLayout } from "./useOnboardingLayout";
 
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoggedIn, isUserLoading, user } = useAuth();
   const trialConfirmation = useTrialCheckoutReturn();
-  const currentStep = useOnboardingWizardStore((s) => s.currentStep);
+  const storedStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
-  const setSteps = useOnboardingWizardStore((s) => s.setSteps);
 
-  // Wait for the flag vendor before initialising the wizard from the URL.
-  // Without this, the init effect runs against the default flag value
-  // (false) on first render and clamps e.g. ?step=5 down to step 1; once
-  // the flag resolves to true, the hasInitialized guard blocks re-init
-  // and the user is stuck on step 1.
-  //
-  // Snapshot the value once it resolves so an admin toggling
-  // ENABLE_PLATFORM_PAYMENT mid-session can't shuffle steps under a user
-  // who is already inside the wizard.
-  const { enabled: livePaymentEnabled, ready: areFlagsReady } = useFlagStatus(
-    Flag.ENABLE_PLATFORM_PAYMENT,
-  );
-  const paymentEnabledSnapshot = useRef<boolean | null>(null);
-  if (paymentEnabledSnapshot.current === null && areFlagsReady) {
-    paymentEnabledSnapshot.current = livePaymentEnabled;
-  }
-
-  // Snapshotted for the same reason as the paywall flag: the brain dump
-  // and the pillboxes occupy the same step, and swapping them under a
-  // user who is already recording would drop the take.
-  const liveBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const brainDumpEnabledSnapshot = useRef<boolean | null>(null);
-  if (brainDumpEnabledSnapshot.current === null && areFlagsReady) {
-    brainDumpEnabledSnapshot.current = liveBrainDumpEnabled;
-  }
-  const isBrainDumpEnabled = brainDumpEnabledSnapshot.current ?? false;
-
-  // Child of HIRE_EXPERTS: adds the two intro steps up front and makes the
-  // preparing screen wait on the team job. Snapshotted like the others so the
-  // numbering can't shift under a user mid-wizard.
-  const isExpertTeamFlagOn = useGetFlag(Flag.ONBOARDING_EXPERT_TEAM);
-  const isHireExpertsFlagOn = useGetFlag(Flag.HIRE_EXPERTS);
-  const expertTeamSnapshot = useRef<boolean | null>(null);
-  if (expertTeamSnapshot.current === null && areFlagsReady) {
-    expertTeamSnapshot.current = Boolean(
-      isExpertTeamFlagOn && isHireExpertsFlagOn,
-    );
-  }
-  const isExpertTeamEnabled = expertTeamSnapshot.current ?? false;
-
-  // Skip the paywall for users already on a paid tier (admin grants or
-  // pre-ONBOARDING_COMPLETE accounts) so they aren't asked to pay again to escape.
-  const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
-    query: {
-      enabled: isLoggedIn,
-      select: (res) =>
-        res.status === 200
-          ? (res.data as SubscriptionStatusResponse).tier
-          : null,
-    },
+  const {
+    steps,
+    preparingStep,
+    totalSteps,
+    isReady,
+    isPaymentEnabled,
+    isSelfHostConnectEnabled,
+    isBrainDumpEnabled,
+    isExpertTeamEnabled,
+    paidConfirmation,
+  } = useOnboardingLayout({
+    userID: user?.id ?? null,
+    isLoggedIn,
+    isUserLoading,
+    trialConfirmation,
   });
-  const userHasActivePlan =
-    trialConfirmation.active || (!!tier && tier !== "NO_TIER");
 
-  const isPaymentEnabled =
-    (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
-  // A self-host install has no paywall and no model until someone gives it
-  // one, so it leads with the connection instead. Payments and self-host are
-  // mutually exclusive in practice; the check is ordered anyway so a
-  // deployment that somehow had both still only inserts one first step.
-  const isSelfHostConnectEnabled = !isPaymentEnabled && environment.isLocal();
-  // The recommendations are read off the brain dump, and the endpoint that
-  // serves them lives behind the same flag — no dump, no hire step.
-  const isHireStepEnabled = isExpertTeamEnabled && isBrainDumpEnabled;
-  const steps = buildStepLayout({
-    hasIntro: isExpertTeamEnabled,
-    hasHire: isHireStepEnabled,
-    hasPaywall: isPaymentEnabled,
-    hasConnect: isSelfHostConnectEnabled,
+  const progress = useWizardProgress({
+    userID: user?.id ?? null,
+    ready: isReady,
+    steps,
   });
-  const preparingStep = steps.preparing as Step;
-  // Every step before Preparing is one the user acts on and gets a dot for.
-  const totalSteps = steps.preparing - 1;
+  const currentStep =
+    isPaymentEnabled && !environment.isLocal()
+      ? (Math.min(storedStep, steps.subscription!) as Step)
+      : storedStep;
+  const hasSubmitted = useRef<string | null>(null);
+  const isCompleting = useRef(false);
+  const activeUserID = useRef(user?.id);
+  activeUserID.current = user?.id;
+  const [completionError, setCompletionError] = useState<string | null>(null);
 
-  // Wait for auth too — without !isUserLoading, LD can resolve while
-  // isLoggedIn is transiently false, the tier query stays disabled
-  // (isTierLoading=false), and init fires with the wrong preparingStep.
-  const isReady =
-    areFlagsReady &&
-    !isUserLoading &&
-    (!isLoggedIn || !isTierLoading) &&
-    trialConfirmation.ready;
-
-  const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
-    useState(true);
-  const hasSubmitted = useRef(false);
-  const hasInitialized = useRef(false);
-  // Distinct from the `hasInitialized` ref above: that guards init running
-  // once, this says the chosen step has landed. Set in the same batch as the
-  // init effect's `goToStep`, so the first render where it is true already
-  // carries the settled step.
-  const [isStepSettled, setIsStepSettled] = useState(false);
-
-  // Initialise store from URL on mount, clamp ?step= to the highest step
-  // the user has actually reached. No-step URL resumes from the highest
-  // reached so refreshes don't drop the user back to step 1. Form data is
-  // persisted (zustand persist), so we no longer reset on mount — that
-  // would defeat the point of persistence by wiping the user's name/role
-  // every time they refresh mid-wizard.
   useEffect(() => {
-    if (!isReady || hasInitialized.current) return;
-    hasInitialized.current = true;
-    // Read before the URL sync below rewrites the query to `?step=N`.
+    if (!progress.isReady) return;
+    if (currentStep !== storedStep) goToStep(currentStep);
     if (searchParams.get("trial") === "cancelled") {
       trackTrialCheckoutAbandoned("onboarding");
     }
-    const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    // The paywall is the first step, so a successful Stripe checkout return
-    // is a trusted intent to advance past it onto the step after it and start
-    // the actual onboarding — without this, the highestStep ceiling (capped
-    // at the subscription step before redirect) would clamp the user back
-    // onto the paywall they just paid through.
-    const isSubscriptionSuccess =
-      searchParams.get("subscription") === "success" ||
-      trialConfirmation.active;
-    const ceiling =
-      isSubscriptionSuccess && steps.subscription !== undefined
-        ? (Math.min(steps.subscription + 1, preparingStep) as Step)
-        : (Math.min(readHighestStep(), preparingStep) as Step);
-    const target = (
-      urlStep === null ? ceiling : Math.min(urlStep, ceiling)
-    ) as Step;
-    goToStep(target);
-    setIsStepSettled(true);
+    const key = stepKey(steps, currentStep);
+    if (searchParams.get("step") !== key) {
+      router.replace(`/onboarding?step=${key}`, { scroll: false });
+    }
   }, [
-    isReady,
-    searchParams,
+    progress.isReady,
+    currentStep,
+    storedStep,
     goToStep,
-    preparingStep,
-    steps.subscription,
-    trialConfirmation.active,
+    steps,
+    searchParams,
+    router,
   ]);
 
-  // Publish the numbering so steps that must name another step (the
-  // paywall's Stripe return URLs) agree with the page.
+  const trackingKey = onboardingStepKey(steps, currentStep);
   useEffect(() => {
-    if (!isReady) return;
-    setSteps(
-      buildStepLayout({
-        hasIntro: isExpertTeamEnabled,
-        hasHire: isHireStepEnabled,
-        hasPaywall: isPaymentEnabled,
-        hasConnect: isSelfHostConnectEnabled,
-      }),
-    );
-  }, [
-    isReady,
-    setSteps,
-    isExpertTeamEnabled,
-    isHireStepEnabled,
-    isPaymentEnabled,
-    isSelfHostConnectEnabled,
-  ]);
-
-  // Report the step the wizard is actually showing. `isOnboardingStateLoading`
-  // is the same gate the page renders on — it also covers the window holding
-  // the ONBOARDING_COMPLETE check that redirects finished users to /copilot —
-  // and `isStepSettled` means the step above has landed, so a user resuming
-  // at Preparing never reports the store's default of Welcome on the way past.
-  // Repeat visits to a step are dropped by `trackOnboardingStep` itself, so
-  // going back and forward reports nothing new.
-  const stepKey = onboardingStepKey(steps, currentStep);
-  useEffect(() => {
-    if (isOnboardingStateLoading || !isStepSettled) return;
-    if (stepKey) trackOnboardingStep(stepKey);
-  }, [isOnboardingStateLoading, isStepSettled, stepKey]);
-
-  // Sync store → URL when step changes; record the new ceiling.
-  useEffect(() => {
-    if (!isReady) return;
-    const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    if (currentStep !== urlStep) {
-      router.replace(`/onboarding?step=${currentStep}`, { scroll: false });
-    }
-    if (currentStep > readHighestStep()) {
-      writeHighestStep(currentStep);
-    }
-  }, [isReady, currentStep, router, searchParams, preparingStep]);
-
-  // Check if onboarding already completed
-  useEffect(() => {
-    if (!isLoggedIn) return;
-
-    async function checkCompletion() {
-      try {
-        const onboarding = await resolveResponse(getV1OnboardingState());
-        if (onboarding.completedSteps.includes("ONBOARDING_COMPLETE")) {
-          clearHighestStep();
-          // Clear the persisted form data without touching in-memory state.
-          // `reset()` would set currentStep=1 and trip the URL-sync effect
-          // into racing with the /copilot redirect (the spurious
-          // /onboarding?step=1 replace wins, stranding the user on Welcome
-          // until they refresh).
-          useOnboardingWizardStore.persist.clearStorage();
-          router.replace("/copilot");
-          return;
-        }
-      } catch {
-        // If we can't check, show onboarding anyway
-      }
-      setIsOnboardingStateLoading(false);
-    }
-
-    checkCompletion();
-  }, [isLoggedIn, router]);
+    if (progress.isReady && trackingKey) trackOnboardingStep(trackingKey);
+  }, [progress.isReady, trackingKey]);
 
   // Submit profile when entering the Preparing step
   useEffect(() => {
-    if (currentStep !== preparingStep || hasSubmitted.current) return;
+    if (
+      !progress.isReady ||
+      currentStep !== preparingStep ||
+      hasSubmitted.current === user?.id
+    )
+      return;
     const { role, painPoints } = normalizeOnboardingProfile(
       useOnboardingWizardStore.getState(),
     );
@@ -279,7 +98,7 @@ export function useOnboardingPage() {
     // Guard against an empty role so a stray Preparing visit can't blank a
     // previously-saved profile.
     if (!role.trim() || !userName) return;
-    hasSubmitted.current = true;
+    hasSubmitted.current = user?.id ?? null;
 
     postV1SubmitOnboardingProfile({
       user_name: userName,
@@ -288,35 +107,48 @@ export function useOnboardingPage() {
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-  }, [currentStep, preparingStep, user]);
+  }, [currentStep, preparingStep, user, progress.isReady]);
 
   async function handlePreparingComplete() {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await postV1CompleteOnboardingStep({ step: "ONBOARDING_COMPLETE" });
-        // Only a confirmed completion counts: the fall-through below still
-        // sends the user to the copilot after three failures, but the backend
-        // never recorded the milestone.
-        trackAdsConversion("onboarding_complete", {
-          transactionID: user?.id,
-          email: user?.email,
-        });
-        clearHighestStep();
-        useOnboardingWizardStore.persist.clearStorage();
-        router.replace("/copilot");
-        return;
-      } catch {
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
-      }
+    if (
+      !progress.isReady ||
+      isCompleting.current ||
+      (isPaymentEnabled && !environment.isLocal())
+    )
+      return;
+    isCompleting.current = true;
+    setCompletionError(null);
+    try {
+      await useOnboardingWizardStore.getState().flushProgress?.();
+      if (activeUserID.current !== user?.id) return;
+      const result = await postV1CompleteOnboardingStep({
+        step: "ONBOARDING_COMPLETE",
+      });
+      if (activeUserID.current !== user?.id) return;
+      if (result.status !== 200) throw new Error("Completion failed");
+      trackAdsConversion("onboarding_complete", {
+        transactionID: user?.id,
+        email: user?.email,
+      });
+      progress.finish();
+      router.replace("/copilot");
+    } catch {
+      if (activeUserID.current !== user?.id) return;
+      setCompletionError(
+        "We couldn't finish setting up your account. Your progress is saved; please retry.",
+      );
+    } finally {
+      isCompleting.current = false;
     }
-    clearHighestStep();
-    useOnboardingWizardStore.persist.clearStorage();
-    router.replace("/copilot");
   }
 
   return {
     currentStep,
-    isLoading: isOnboardingStateLoading || !isReady,
+    isLoading: !progress.isReady || !isReady,
+    progressError: progress.error,
+    progressConflict: progress.conflict,
+    retryProgress: progress.retry,
+    completionError,
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
@@ -326,5 +158,6 @@ export function useOnboardingPage() {
     preparingStep,
     totalSteps,
     trialConfirmation,
+    paidConfirmation,
   };
 }
