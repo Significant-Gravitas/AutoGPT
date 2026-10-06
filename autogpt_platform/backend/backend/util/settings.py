@@ -1,9 +1,10 @@
+import functools
 import json
 import logging
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Self, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -12,6 +13,7 @@ from pydantic import (
     PrivateAttr,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import (
     BaseSettings,
@@ -23,6 +25,16 @@ from pydantic_settings import (
 from backend.util.data import get_data_path
 
 logger = logging.getLogger(__name__)
+
+
+@functools.cache
+def _warn_single_bucket() -> None:
+    logger.warning(
+        "Private user data and public media share the legacy "
+        "MEDIA_GCS_BUCKET_NAME bucket. Configure PRIVATE_USER_DATA_BUCKET and "
+        "PUBLIC_SITE_MEDIA_BUCKET to keep user data out of the public bucket."
+    )
+
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -481,8 +493,56 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     media_gcs_bucket_name: str = Field(
         default="",
-        description="The name of the Google Cloud Storage bucket for media files",
+        description="Legacy single GCS bucket for public media and private user "
+        "data. Split deployments should configure public_site_media_bucket and "
+        "private_user_data_bucket.",
     )
+
+    public_site_media_bucket: str = Field(
+        default="",
+        description="GCS bucket for approved marketplace media and OAuth app logos",
+    )
+
+    private_user_data_bucket: str = Field(
+        default="",
+        description="Private GCS bucket for user media, workspaces, transcripts, "
+        "and temporary uploads",
+    )
+
+    @property
+    def resolved_public_site_media_bucket(self) -> str:
+        return self.public_site_media_bucket or self.media_gcs_bucket_name
+
+    @property
+    def resolved_private_user_data_bucket(self) -> str:
+        return self.private_user_data_bucket or self.media_gcs_bucket_name
+
+    @model_validator(mode="after")
+    def validate_cloud_storage_bucket_separation(self) -> Self:
+        split_configured = bool(
+            self.public_site_media_bucket or self.private_user_data_bucket
+        )
+        if not split_configured:
+            if self.media_gcs_bucket_name:
+                _warn_single_bucket()
+            return self
+        if self.behave_as != BehaveAs.CLOUD:
+            return self
+        if not self.public_site_media_bucket or not self.private_user_data_bucket:
+            raise ValueError(
+                "Cloud deployments must configure both PUBLIC_SITE_MEDIA_BUCKET "
+                "and PRIVATE_USER_DATA_BUCKET"
+            )
+        if self.public_site_media_bucket == self.private_user_data_bucket:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET and PRIVATE_USER_DATA_BUCKET must be different"
+            )
+        if self.public_site_media_bucket == self.media_gcs_bucket_name:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET must not be the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket, which holds private user data"
+            )
+        return self
 
     workspace_storage_dir: str = Field(
         default="",
@@ -544,6 +604,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Auth mail (verify email, reset password, change email) is not gated by
+    # this: it always sends, so sign-in keeps working with notifications off.
+    enable_user_notifications: bool = Field(
+        default=True,
+        description=(
+            "Send notification emails to users: Briefings, Alerts, Verdicts, "
+            "subscription and trial mail. When false they are dropped, not "
+            "deferred. Auth emails and internal ops mail are unaffected."
+        ),
+    )
+
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
     billing_sender_email: str = Field(
@@ -598,6 +669,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     mailerlite_changelog_group_id: str = Field(
         default="",
         description="MailerLite group that receives the monthly changelog campaign",
+    )
+    mailerlite_trial_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding customers in a card-required trial. "
+            "Blank leaves trial customers out of MailerLite."
+        ),
+    )
+    mailerlite_checkout_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding everyone who opened Stripe checkout, "
+            "which GTM segments for outreach. Blank leaves checkout openers "
+            "out of MailerLite."
+        ),
+    )
+    mailerlite_api_url: str = Field(
+        default="https://connect.mailerlite.com/api",
+        description=(
+            "MailerLite API base URL. Only a test stack changes it, to point "
+            "at a stub."
+        ),
     )
 
     expert_avatar_model: str = Field(
@@ -1222,10 +1315,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
-    posthog_personal_api_key: str = Field(
+    posthog_secret_key: str = Field(
         default="",
-        description="PostHog personal API key. Only used for local feature-flag "
-        "evaluation; without it flag reads fall back to a remote /flags call.",
+        description="PostHog Feature Flags Secure API Key (project settings > "
+        "Feature Flags), for local flag evaluation; without it flag reads fall back "
+        "to a remote /flags call. A personal API key also works, but PostHog is "
+        "deprecating that use.",
     )
 
     # Add more secret fields as needed

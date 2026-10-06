@@ -31,6 +31,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ResultError,
     ResultMessage,
     StreamEvent,
     TextBlock,
@@ -70,6 +71,12 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
+from backend.util.llm.provider_billing import (
+    PROVIDER_UNAVAILABLE_CODE,
+    PROVIDER_UNAVAILABLE_MESSAGE,
+    is_provider_out_of_credits,
+    report_provider_out_of_credits,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
@@ -183,6 +190,7 @@ from ..tools import (
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.seen_capabilities import build_seen_capabilities_notice
 from ..tools.session_context import build_session_context
 from ..tools.skills import build_skills_context, build_skills_update_notice
 from ..tracking import track_user_message
@@ -340,6 +348,9 @@ class _SDKLoopState:
     # error context would be silently dropped.
     stream_error_msg: str | None = None
     stream_error_code: str | None = None
+    # A billing refusal was seen; the loop reads on only to the
+    # ``ResultMessage``, which carries the usage of the rounds already served.
+    provider_refused: bool = False
 
 
 async def _open_sdk_compaction_row(
@@ -426,6 +437,8 @@ async def _consume_sdk_until_done(
 
             # Threshold flips to the long cap while a tool is pending; clock never resets.
             idle_seconds = time.monotonic() - loop_state.last_real_msg_time
+            if loop_state.provider_refused and idle_seconds >= _HEARTBEAT_INTERVAL:
+                break
             threshold = _idle_timeout_threshold(state.adapter)
             if idle_seconds >= threshold:
                 unresolved_tool_names = sorted(
@@ -509,6 +522,35 @@ async def _consume_sdk_until_done(
             observed = getattr(sdk_msg, "model", None)
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
+
+        if loop_state.provider_refused:
+            if isinstance(sdk_msg, ResultMessage):
+                _record_result_usage(sdk_msg, state, ctx.log_prefix)
+                break
+            continue
+
+        # Checked before the message reaches the adapter, which would
+        # otherwise stream the provider's "buy more credits" text as the reply.
+        refusal = _platform_out_of_credits_refusal(sdk_msg, ctx)
+        if refusal is not None:
+            report_provider_out_of_credits(
+                provider=config.effective_transport,
+                model=state.observed_model or getattr(state.options, "model", None),
+                surface="copilot_sdk",
+                error=refusal,
+                session_id=ctx.session_id,
+            )
+            # Not yielded here: the consumer stops at the first StreamError and
+            # closes this generator, so the outer loop yields it only after
+            # the history marker carrying this message is written.
+            loop_state.stream_error_msg = PROVIDER_UNAVAILABLE_MESSAGE
+            loop_state.stream_error_code = PROVIDER_UNAVAILABLE_CODE
+            loop_state.ended_with_stream_error = True
+            if isinstance(sdk_msg, ResultMessage):
+                _record_result_usage(sdk_msg, state, ctx.log_prefix)
+                break
+            loop_state.provider_refused = True
+            continue
 
         # Log AssistantMessage API errors (e.g. invalid_request)
         # so we can debug Anthropic API 400s surfaced by the CLI.
@@ -647,66 +689,7 @@ async def _consume_sdk_until_done(
             if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
                 raise RuntimeError("Prompt is too long")
 
-            # Capture token usage from ResultMessage.
-            # Anthropic reports cached tokens separately:
-            #   input_tokens = uncached only
-            #   cache_read_input_tokens = served from cache
-            #   cache_creation_input_tokens = written to cache
-            if sdk_msg.usage:
-                # Use `or 0` instead of a default in .get() because
-                # OpenRouter may include the key with a null value (e.g.
-                # {"cache_read_input_tokens": null}) for models that don't
-                # yet report cache tokens, making .get("key", 0) return
-                # None rather than the fallback 0.
-                state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
-                state.usage.cache_read_tokens += (
-                    sdk_msg.usage.get("cache_read_input_tokens") or 0
-                )
-                state.usage.cache_creation_tokens += (
-                    sdk_msg.usage.get("cache_creation_input_tokens") or 0
-                )
-                state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
-                logger.info(
-                    "%s Token usage: uncached=%d, cache_read=%d, "
-                    "cache_create=%d, output=%d",
-                    ctx.log_prefix,
-                    state.usage.prompt_tokens,
-                    state.usage.cache_read_tokens,
-                    state.usage.cache_creation_tokens,
-                    state.usage.completion_tokens,
-                )
-            if sdk_msg.total_cost_usd is not None:
-                # Default: trust the CLI-reported value.  Accurate for
-                # Anthropic models (the CLI's bundled pricing table is
-                # Anthropic-authored), and becomes the sync-path cost
-                # when the reconcile is disabled or fails.
-                # Prefer the ACTUALLY executed model
-                # (``state.observed_model`` from ``AssistantMessage.model``)
-                # over the requested primary (``state.options.model``)
-                # so a fallback activation doesn't mis-route pricing.
-                active_model = state.observed_model or getattr(
-                    state.options, "model", None
-                )
-                if _is_moonshot_model(active_model):
-                    # Moonshot slug — the CLI doesn't know Moonshot's
-                    # rate card and silently bills at Sonnet rates
-                    # (~5x over-charge).  Replace with the rate-card
-                    # estimate so the in-stream ``cost_usd`` and the
-                    # reconcile's lookup-fail fallback reflect
-                    # reality.  Reconcile
-                    # (``record_turn_cost_from_openrouter``) still
-                    # overrides this value when every gen-ID lookup
-                    # succeeds.
-                    state.usage.cost_usd = _override_cost_for_moonshot(
-                        model=active_model,
-                        sdk_reported_usd=sdk_msg.total_cost_usd,
-                        prompt_tokens=state.usage.prompt_tokens,
-                        completion_tokens=state.usage.completion_tokens,
-                        cache_read_tokens=state.usage.cache_read_tokens,
-                        cache_creation_tokens=state.usage.cache_creation_tokens,
-                    )
-                else:
-                    state.usage.cost_usd = sdk_msg.total_cost_usd
+            _record_result_usage(sdk_msg, state, ctx.log_prefix)
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
@@ -1178,6 +1161,13 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 
+# Handled-error codes whose StreamError the outer retry loop yields itself,
+# after it has persisted the history marker, rather than the attempt.
+_OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
+    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE}
+)
+
+
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
 # the backoff retry from firing because ``_next_transient_backoff`` returns
@@ -1242,6 +1232,94 @@ def _friendly_error_text(raw: str) -> str:
             return friendly
     # Fallback: sanitize but keep the original text for debugging
     return f"SDK stream error: {raw}"
+
+
+def _record_result_usage(
+    sdk_msg: ResultMessage, state: "_RetryState", log_prefix: str
+) -> None:
+    """Add the turn's token usage and cost from the CLI's ``ResultMessage``."""
+    # Capture token usage from ResultMessage.
+    # Anthropic reports cached tokens separately:
+    #   input_tokens = uncached only
+    #   cache_read_input_tokens = served from cache
+    #   cache_creation_input_tokens = written to cache
+    if sdk_msg.usage:
+        # Use `or 0` instead of a default in .get() because
+        # OpenRouter may include the key with a null value (e.g.
+        # {"cache_read_input_tokens": null}) for models that don't
+        # yet report cache tokens, making .get("key", 0) return
+        # None rather than the fallback 0.
+        state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
+        state.usage.cache_read_tokens += (
+            sdk_msg.usage.get("cache_read_input_tokens") or 0
+        )
+        state.usage.cache_creation_tokens += (
+            sdk_msg.usage.get("cache_creation_input_tokens") or 0
+        )
+        state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
+        logger.info(
+            "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
+            log_prefix,
+            state.usage.prompt_tokens,
+            state.usage.cache_read_tokens,
+            state.usage.cache_creation_tokens,
+            state.usage.completion_tokens,
+        )
+    if sdk_msg.total_cost_usd is not None:
+        # Default: trust the CLI-reported value.  Accurate for
+        # Anthropic models (the CLI's bundled pricing table is
+        # Anthropic-authored), and becomes the sync-path cost
+        # when the reconcile is disabled or fails.
+        # Prefer the ACTUALLY executed model
+        # (``state.observed_model`` from ``AssistantMessage.model``)
+        # over the requested primary (``state.options.model``)
+        # so a fallback activation doesn't mis-route pricing.
+        active_model = state.observed_model or getattr(state.options, "model", None)
+        if _is_moonshot_model(active_model):
+            # Moonshot slug — the CLI doesn't know Moonshot's
+            # rate card and silently bills at Sonnet rates
+            # (~5x over-charge).  Replace with the rate-card
+            # estimate so the in-stream ``cost_usd`` and the
+            # reconcile's lookup-fail fallback reflect
+            # reality.  Reconcile
+            # (``record_turn_cost_from_openrouter``) still
+            # overrides this value when every gen-ID lookup
+            # succeeds.
+            state.usage.cost_usd = _override_cost_for_moonshot(
+                model=active_model,
+                sdk_reported_usd=sdk_msg.total_cost_usd,
+                prompt_tokens=state.usage.prompt_tokens,
+                completion_tokens=state.usage.completion_tokens,
+                cache_read_tokens=state.usage.cache_read_tokens,
+                cache_creation_tokens=state.usage.cache_creation_tokens,
+            )
+        else:
+            state.usage.cost_usd = sdk_msg.total_cost_usd
+
+
+def _platform_out_of_credits_refusal(
+    sdk_msg: object, ctx: "_StreamContext"
+) -> str | None:
+    """The CLI's text for a billing refusal on the platform's own account.
+
+    The CLI reports a provider error as an ``AssistantMessage`` carrying
+    ``error`` (content is the provider's wording) and/or an error
+    ``ResultMessage``. A Codex turn runs on the user's own subscription, whose
+    limit is theirs to hear about, so it is left to the gateway's envelope.
+    """
+    if ctx.codex_gateway is not None:
+        return None
+    if isinstance(sdk_msg, AssistantMessage) and sdk_msg.error:
+        text = f"{sdk_msg.error} {sdk_msg.content}"
+        if sdk_msg.error == "billing_error":
+            return text
+    elif isinstance(sdk_msg, ResultMessage) and (
+        sdk_msg.is_error or sdk_msg.subtype in ("error", "error_during_execution")
+    ):
+        text = str(sdk_msg.result or "")
+    else:
+        return None
+    return text if is_provider_out_of_credits(text) else None
 
 
 def _is_prompt_too_long(err: BaseException) -> bool:
@@ -1908,22 +1986,58 @@ class _FinalFailure:
     retryable: bool
 
 
+def _is_raised_billing_refusal(err: BaseException) -> bool:
+    """A billing refusal that reached us raised rather than streamed.
+
+    Only a typed provider error or the CLI's own error result, which the SDK
+    raises as ``ResultError`` once the CLI exits, is judged; ``str()`` of any
+    other exception can quote the user's input or a page a tool fetched.
+    """
+    if is_provider_out_of_credits(err):
+        return True
+    seen: set[int] = set()
+    current: BaseException | None = err
+    while current is not None and id(current) not in seen:
+        if isinstance(current, ResultError):
+            return current.api_error_status == 402 or is_provider_out_of_credits(
+                current.result
+            )
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def _classify_final_failure(
     interrupted: _InterruptedAttempt,
     attempts_exhausted: bool,
     transient_exhausted: bool,
     stream_err: BaseException | None,
+    platform_route: bool = True,
 ) -> _FinalFailure | None:
     """Pick the display message, stream code, and retryable flag for the exit.
 
     Returns ``None`` when no failure was recorded (success path) — the caller
     should skip both the history marker and the SSE yield in that case.
+    ``platform_route`` is False on a Codex turn, whose billing refusal is the
+    user's own limit and keeps the provider's wording.
     """
     if interrupted.handled_error is not None:
         return _FinalFailure(
             display_msg=interrupted.handled_error.error_msg,
             code=interrupted.handled_error.code,
             retryable=interrupted.handled_error.retryable,
+        )
+    # Judged before the exhausted-retry verdicts: those come from text
+    # patterns that a billing refusal's wording can also match.
+    if (
+        stream_err is not None
+        and platform_route
+        and _is_raised_billing_refusal(stream_err)
+    ):
+        return _FinalFailure(
+            display_msg=PROVIDER_UNAVAILABLE_MESSAGE,
+            code=PROVIDER_UNAVAILABLE_CODE,
+            retryable=True,
         )
     if attempts_exhausted:
         return _FinalFailure(
@@ -4283,7 +4397,9 @@ async def _run_stream_attempt(
             "Stream error handled",
             error_msg=loop_state.stream_error_msg,
             code=loop_state.stream_error_code,
-            already_yielded=(loop_state.stream_error_code != "transient_api_error"),
+            already_yielded=(
+                loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
+            ),
         )
 
 
@@ -4531,6 +4647,26 @@ async def _maybe_prepend_skills_update(
     return notice + query_message if notice else query_message
 
 
+def _maybe_prepend_seen_capabilities(
+    session: ChatSession,
+    is_user_message: bool,
+    query_message: str,
+) -> str:
+    """Prepend the per-turn ``<seen_capabilities>`` notice, if any.
+
+    Derived from the tool calls persisted in ``session.messages`` so the
+    model is told which ids it already described / ran and which skills it
+    already loaded instead of re-discovering them after a resume or a
+    compaction (SECRT-2791). Same query-only contract as the skills-update
+    notice: never persisted, re-derived every turn, no-op for non-user
+    turns and for a first turn with no history.
+    """
+    if not is_user_message:
+        return query_message
+    notice = build_seen_capabilities_notice(session)
+    return notice + query_message if notice else query_message
+
+
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
     session_id: str,
     message: str | None = None,
@@ -4647,7 +4783,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             message_length=len(message or ""),
             expert_id=session.expert_id,
             origin=session.metadata.origin,
-            surface=session.metadata.source_platform,
+            source_platform=session.metadata.source_platform,
         )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
@@ -5484,6 +5620,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_skills_update(
             session, user_id, is_user_message, query_message
         )
+        # Already-seen capability record — same query-only contract.
+        query_message = _maybe_prepend_seen_capabilities(
+            session, is_user_message, query_message
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -5681,6 +5821,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 )
                 state.query_message = await _maybe_prepend_skills_update(
                     session, user_id, is_user_message, state.query_message
+                )
+                state.query_message = _maybe_prepend_seen_capabilities(
+                    session, is_user_message, state.query_message
                 )
                 prior_adapter = state.adapter
                 state.adapter = SDKResponseAdapter(
@@ -5915,8 +6058,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # the re-yield in that case.
         if ended_with_stream_error:
             failure = _classify_final_failure(
-                interrupted, attempts_exhausted, transient_exhausted, stream_err
+                interrupted,
+                attempts_exhausted,
+                transient_exhausted,
+                stream_err,
+                platform_route=stream_ctx.codex_gateway is None,
             )
+            if (
+                failure is not None
+                and failure.code == PROVIDER_UNAVAILABLE_CODE
+                and interrupted.handled_error is None
+            ):
+                report_provider_out_of_credits(
+                    provider=config.effective_transport,
+                    model=state.observed_model if state is not None else None,
+                    surface="copilot_sdk",
+                    error=stream_err or "",
+                    session_id=session_id,
+                )
             if failure is not None:
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []

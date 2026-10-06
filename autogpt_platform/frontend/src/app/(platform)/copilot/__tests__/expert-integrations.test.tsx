@@ -43,7 +43,7 @@ function credential(provider: string): ExpertCredentialRef {
 
 function resetPanel() {
   useCopilotUIStore.setState((s) => ({
-    integrationsPanelExpert: null,
+    contextPanelExpert: null,
     artifactPanel: {
       ...s.artifactPanel,
       isOpen: false,
