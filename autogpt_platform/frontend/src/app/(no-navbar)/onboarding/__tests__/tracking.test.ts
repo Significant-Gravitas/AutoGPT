@@ -8,6 +8,11 @@ vi.mock("@/services/analytics", () => ({
   analytics: { sendDatafastEvent },
 }));
 
+const { posthog } = vi.hoisted(() => ({
+  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
+}));
+vi.mock("posthog-js", () => ({ default: posthog }));
+
 import {
   buildStepLayout,
   NO_PAYWALL_STEPS,
@@ -65,7 +70,33 @@ describe("trackOnboardingStep", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     sendDatafastEvent.mockReset();
+    posthog.capture.mockReset();
     sessionStorage.clear();
+  });
+
+  // PostHog gets one event with the step as a property; DataFast keeps its
+  // goal per step.
+  it("reports each step to PostHog once, as onboarding_step_viewed", () => {
+    trackOnboardingStep("role");
+    trackOnboardingStep("role");
+    trackOnboardingStep("hire");
+
+    expect(posthog.capture.mock.calls).toEqual([
+      ["onboarding_step_viewed", { step: "role" }],
+      ["onboarding_step_viewed", { step: "hire" }],
+    ]);
+  });
+
+  it("still reports to PostHog when the DataFast script throws", () => {
+    sendDatafastEvent.mockImplementation(() => {
+      throw new Error("datafast unavailable");
+    });
+
+    trackOnboardingStep("team");
+
+    expect(posthog.capture).toHaveBeenCalledWith("onboarding_step_viewed", {
+      step: "team",
+    });
   });
 
   it("reports one goal per step name", () => {

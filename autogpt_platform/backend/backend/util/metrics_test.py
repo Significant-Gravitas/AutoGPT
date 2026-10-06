@@ -13,14 +13,16 @@ import json
 import sys
 
 import sentry_sdk
+from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
 from sentry_sdk.serializer import serialize
+from sentry_sdk.transport import Transport
 from sentry_sdk.utils import event_from_exception, json_dumps
 
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
-from backend.util import metrics
+from backend.util import feature_flag, metrics
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -409,3 +411,59 @@ def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> Non
     metrics.sentry_init()
 
     assert calls == []
+
+
+def test_sentry_init_never_hooks_or_opens_a_launchdarkly_client(monkeypatch) -> None:
+    """Sentry once asked feature_flag.get_client() for a LaunchDarklyIntegration,
+    which initialised an LD client in every process that set up Sentry. LD bills
+    per connection, so sentry_init() must neither hook LD nor create a client
+    (SECRT-2708)."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
+    ld_inits: list[str] = []
+    monkeypatch.setattr(
+        feature_flag, "initialize_launchdarkly", lambda: ld_inits.append("init")
+    )
+    monkeypatch.setattr(feature_flag, "_init_attempted", False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    integration_names = {type(i).__name__ for i in calls[0]["integrations"]}
+    assert "LaunchDarklyIntegration" not in integration_names
+    assert ld_inits == []
+
+
+class _DiscardTransport(Transport):
+    def capture_envelope(self, envelope) -> None:
+        pass
+
+
+def test_sentry_sdk_setup_from_sentry_init_hooks_no_launchdarkly(monkeypatch) -> None:
+    """The test above stops at the arguments sentry_init() passes. This builds a
+    real SDK client from them, with sentry-sdk's default and auto-enabling
+    integrations, and checks that SDK setup neither enables the LaunchDarkly
+    integration nor constructs an LD client."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
+    monkeypatch.setattr(feature_flag, "_init_attempted", False)
+    ld_clients: list[str] = []
+
+    def _refuse_ld_client(self, *args, **kwargs) -> None:
+        ld_clients.append("created")
+        raise RuntimeError("Sentry setup constructed a LaunchDarkly client")
+
+    monkeypatch.setattr(LDClient, "__init__", _refuse_ld_client)
+
+    metrics.sentry_init()
+    client = sentry_sdk.Client(**calls[0], transport=_DiscardTransport)
+    try:
+        assert "fastapi" in client.integrations
+        assert "launchdarkly" not in client.integrations
+    finally:
+        client.close()
+    assert ld_clients == []

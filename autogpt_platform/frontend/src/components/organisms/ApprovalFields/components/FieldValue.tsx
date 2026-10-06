@@ -98,7 +98,14 @@ function LongText({ text, shortened }: LongTextProps) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col items-start gap-1">
-      <div className="w-full rounded-lg bg-zinc-50 px-3 py-2">
+      <div
+        tabIndex={open ? 0 : undefined}
+        className={cn(
+          "w-full rounded-lg bg-zinc-50 px-3 py-2",
+          open &&
+            "max-h-96 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300",
+        )}
+      >
         <p
           className={cn("whitespace-pre-wrap", !open && "line-clamp-3")}
           style={{ WebkitLineClamp: open ? undefined : CLAMP_LINES }}
