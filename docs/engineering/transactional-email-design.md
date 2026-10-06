@@ -63,11 +63,12 @@ Deployment overrides still control `POSTMARK_SENDER_EMAIL`,
 `PRODUCT_REPLY_TO_EMAIL` to `hello@agpt.co`. Configure a verified named auth
 sender in deployment; the repository must not invent or activate a sender.
 
-During a rolling deployment, upgrade the notification service before the API.
-The new service accepts the old three-argument auth RPC; the new API supplies
-a fourth argument for the plain-text body. During rollback, roll back the API
-first and wait for its newer instances to stop before rolling back the
-notification service; an older receiver cannot accept the fourth argument.
+The auth RPC remains compatible across old and new API and notification-service
+versions during deployment and rollback. The client sends named JSON fields;
+an older service ignores the new `text_body` field and still sends the HTML,
+while the new service accepts requests without that field. Plain text is
+included when both components use the new code. This change does not require
+a particular service deployment order.
 
 ## Validation
 
