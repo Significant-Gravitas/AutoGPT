@@ -295,7 +295,9 @@ async def test_private_media_range_stream_uses_gcs_range_header(
 
 
 async def test_private_media_signed_url_targets_private_bucket(mock_settings, mocker):
-    client = mocker.patch.object(submission_media.gcs_storage, "Client").return_value
+    client = mocker.patch.object(
+        submission_media.gcs_storage.Client, "create_anonymous_client"
+    ).return_value
     generate = mocker.patch.object(
         submission_media,
         "generate_iam_signed_url",
