@@ -5795,6 +5795,178 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/pro-activation/current": {
+      "get": {
+        "tags": ["subscriptions"],
+        "summary": "Get Current Pro Activation",
+        "operationId": "getSubscriptionsGetCurrentProActivation",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/pro-activation/preview": {
+      "post": {
+        "tags": ["subscriptions"],
+        "summary": "Preview Pro Activation",
+        "operationId": "postSubscriptionsPreviewProActivation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/pro-activation/{attempt_id}": {
+      "get": {
+        "tags": ["subscriptions"],
+        "summary": "Get Pro Activation",
+        "operationId": "getSubscriptionsGetProActivation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Attempt Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        }
+      }
+    },
+    "/api/credits/pro-activation/{attempt_id}/confirm": {
+      "post": {
+        "tags": ["subscriptions"],
+        "summary": "Confirm Pro Activation",
+        "operationId": "postSubscriptionsConfirmProActivation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Attempt Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivationConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        }
+      }
+    },
     "/api/credits/refunds": {
       "get": {
         "tags": ["v1", "credits"],
@@ -17437,6 +17609,154 @@
         "title": "AccuracyTrendsResponse",
         "description": "Response model for accuracy trends and alerts."
       },
+      "ActivationConfirmRequest": {
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirmed"
+          },
+          "terms_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Terms Token"
+          }
+        },
+        "type": "object",
+        "required": ["confirmed", "terms_token"],
+        "title": "ActivationConfirmRequest"
+      },
+      "ActivationPreviewRequest": {
+        "properties": {
+          "return_to": {
+            "type": "string",
+            "title": "Return To",
+            "default": "/settings/billing"
+          }
+        },
+        "type": "object",
+        "title": "ActivationPreviewRequest"
+      },
+      "ActivationResponse": {
+        "properties": {
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmation_required",
+              "payment_required",
+              "action_required",
+              "processing",
+              "ready",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "terms": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ActivationTerms" },
+              { "type": "null" }
+            ]
+          },
+          "terms_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Token"
+          },
+          "return_to": {
+            "type": "string",
+            "title": "Return To",
+            "default": "/settings/billing"
+          },
+          "invoice_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Invoice Id"
+          },
+          "hosted_invoice_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Hosted Invoice Url"
+          },
+          "retry_after_seconds": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Retry After Seconds"
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "ActivationResponse"
+      },
+      "ActivationTerms": {
+        "properties": {
+          "plan": {
+            "type": "string",
+            "const": "PRO",
+            "title": "Plan",
+            "default": "PRO"
+          },
+          "price_id": { "type": "string", "title": "Price Id" },
+          "accepted_offer_token": {
+            "type": "string",
+            "title": "Accepted Offer Token"
+          },
+          "amount_due": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Amount Due"
+          },
+          "currency": { "type": "string", "title": "Currency" },
+          "billing_interval": {
+            "type": "string",
+            "enum": ["month", "year"],
+            "title": "Billing Interval"
+          },
+          "billing_interval_count": {
+            "type": "integer",
+            "title": "Billing Interval Count",
+            "default": 1
+          },
+          "renewal_unit_amount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Renewal Unit Amount"
+          },
+          "renewal_discounts": {
+            "items": { "$ref": "#/components/schemas/RenewalDiscount" },
+            "type": "array",
+            "title": "Renewal Discounts"
+          },
+          "renewal_tax": { "$ref": "#/components/schemas/RenewalTax" },
+          "charge_timing": {
+            "type": "string",
+            "const": "on_confirmation",
+            "title": "Charge Timing",
+            "default": "on_confirmation"
+          },
+          "renewal_terms": { "type": "string", "title": "Renewal Terms" },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "price_id",
+          "accepted_offer_token",
+          "amount_due",
+          "currency",
+          "billing_interval",
+          "renewal_unit_amount",
+          "renewal_terms",
+          "expires_at"
+        ],
+        "title": "ActivationTerms"
+      },
       "ActiveStreamInfo": {
         "properties": {
           "turn_id": { "type": "string", "title": "Turn Id" },
@@ -28569,6 +28889,73 @@
         "type": "object",
         "required": ["name"],
         "title": "RenameFileRequest"
+      },
+      "RenewalDiscount": {
+        "properties": {
+          "amount_off": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Amount Off"
+          },
+          "percent_off": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Percent Off"
+          },
+          "currency": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Currency"
+          },
+          "duration": { "type": "string", "title": "Duration" },
+          "duration_in_months": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Duration In Months"
+          },
+          "ends_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Ends At"
+          }
+        },
+        "type": "object",
+        "required": ["duration"],
+        "title": "RenewalDiscount"
+      },
+      "RenewalTax": {
+        "properties": {
+          "automatic": {
+            "type": "boolean",
+            "title": "Automatic",
+            "default": false
+          },
+          "price_tax_behavior": {
+            "type": "string",
+            "title": "Price Tax Behavior",
+            "default": "unspecified"
+          },
+          "rates": {
+            "items": { "$ref": "#/components/schemas/RenewalTaxRate" },
+            "type": "array",
+            "title": "Rates"
+          }
+        },
+        "type": "object",
+        "title": "RenewalTax"
+      },
+      "RenewalTaxRate": {
+        "properties": {
+          "display_name": { "type": "string", "title": "Display Name" },
+          "percentage": { "type": "number", "title": "Percentage" },
+          "inclusive": { "type": "boolean", "title": "Inclusive" },
+          "country": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Country"
+          },
+          "state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": ["display_name", "percentage", "inclusive"],
+        "title": "RenewalTaxRate"
       },
       "RequestTopUp": {
         "properties": {

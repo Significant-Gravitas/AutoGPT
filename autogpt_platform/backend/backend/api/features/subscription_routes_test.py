@@ -10,7 +10,10 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
+from backend.data.pro_activation import UsageActivationState
+
 from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
+from .billing.subscriptions import routes as subscription_routes
 from .billing.subscriptions.routes import _validate_checkout_redirect_url, router
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
@@ -124,6 +127,20 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     helpers.  Individual tests can override via their own mocker.patch call.
     """
 
+    async def activation_state(user_id: str) -> UsageActivationState:
+        user = await subscription_routes.get_user_by_id(user_id)
+        return UsageActivationState(
+            user_id=user_id,
+            generation=None,
+            trial_id=None,
+            tier=user.subscription_tier or SubscriptionTier.NO_TIER,
+            ready=True,
+        )
+
+    mocker.patch.object(
+        subscription_routes, "get_usage_activation_state", side_effect=activation_state
+    )
+
     async def default_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
@@ -134,6 +151,12 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=default_price_id,
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=0,
     )
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
@@ -219,6 +242,61 @@ def test_validate_checkout_redirect_url(
         subscriptions_mod.settings.config, "frontend_base_url", TEST_FRONTEND_ORIGIN
     )
     assert _validate_checkout_redirect_url(url) is expected
+
+
+def test_subscription_status_reads_ready_tier_over_stale_user_cache(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.TRIAL),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation="activation",
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=True,
+        ),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=1999,
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 200
+    assert response.json()["tier"] == "PRO"
+
+
+def test_subscription_status_does_not_report_ready_during_activation(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(subscription_routes, "get_user_by_id", new_callable=AsyncMock)
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation=None,
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=False,
+        ),
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "3"
 
 
 def test_get_subscription_status_pro(

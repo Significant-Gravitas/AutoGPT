@@ -6,6 +6,7 @@ import stripe
 from prisma import Prisma
 from prisma.enums import SubscriptionTier
 
+from backend.data import subscription_activation
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState, get_subscription_trial
@@ -25,6 +26,7 @@ async def reconcile_trial_subscription(
     if trial is None:
         return None
     async with transaction() as tx:
+        await subscription_activation.lock_activation_user(user_id, tx)
         await query_raw_with_schema(
             'SELECT "id" FROM {schema_prefix}"SubscriptionTrial" '
             'WHERE "userId" = $1 FOR UPDATE',
@@ -38,6 +40,7 @@ async def reconcile_trial_subscription(
 async def _reconcile_locked(
     trial: TrialState, subscription_id: str, tx: Prisma
 ) -> tuple[dict, SubscriptionTier | None] | None:
+    previously_converted = trial.converted_at is not None
     raw = await stripe_call(
         stripe.Subscription.retrieve_async,
         subscription_id,
@@ -115,10 +118,24 @@ async def _reconcile_locked(
         if checkout_complete
         else SubscriptionTier.NO_TIER
     )
+    if tier == SubscriptionTier.PRO and trial.converted_at is None:
+        user = await tx.user.find_unique_or_raise(where={"id": trial.user_id})
+        if not await subscription_activation.publish_initial_pro_activation(
+            user, dict(raw), trial.offer.price_id, tx, trial
+        ):
+            tier = SubscriptionTier.NO_TIER
+        # Preserve the activation's first invoice, even if a later renewal is
+        # already latest_invoice when the delayed event is reconciled.
+        refreshed = await tx.subscriptiontrial.find_unique_or_raise(
+            where={"userId": trial.user_id}
+        )
+        if refreshed.convertedAt:
+            trial.converted_at = refreshed.convertedAt
+            trial.conversion_invoice_id = refreshed.stripeConversionInvoiceId
     await _save_snapshot(
         trial, snapshot, tier, now, tx, checkout_complete, rejection_reason
     )
-    if trial.converted_at:
+    if previously_converted:
         return dict(raw), None
     if tier == SubscriptionTier.NO_TIER:
         for status in ("active", "trialing"):

@@ -151,6 +151,7 @@ async def _remaining_daily_usd(user_id: str | None) -> float | None:
         # Negative is the "Redis said nothing" floor; a real $0.00 comes back
         # as 0.0 and is the one figure worth telling the model.
         floor_usd=-1.0,
+        expected_tier=_tier,
     )
     return None if remaining < 0 or remaining == float("inf") else remaining
 

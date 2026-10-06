@@ -8,6 +8,7 @@ from pytest_mock import MockerFixture
 
 from backend.copilot import rate_limit
 from backend.data import subscription_trial_config
+from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 
@@ -65,6 +66,15 @@ def trial(clock: MagicMock, mocker: MockerFixture) -> TrialState:
         mocker.patch.object(
             rate_limit, name, AsyncMock(return_value=rate_limit.SubscriptionTier.TRIAL)
         )
+    mocker.patch.object(
+        rate_limit,
+        "get_ready_usage_state",
+        AsyncMock(
+            return_value=UsageActivationState(
+                user_id=_USER, trial_id=trial.id, tier="TRIAL", ready=True
+            )
+        ),
+    )
     return trial
 
 
@@ -175,6 +185,13 @@ async def test_paid_tiers_keep_their_daily_and_weekly_limits(
         rate_limit, "_fetch_tier_multipliers_flag", AsyncMock(return_value=None)
     )
     store = mocker.patch.object(rate_limit, "credit_db")
+    mocker.patch.object(
+        rate_limit,
+        "get_ready_usage_state",
+        AsyncMock(
+            return_value=UsageActivationState(user_id=_USER, tier=tier, ready=True)
+        ),
+    )
     daily, weekly, resolved_tier = await rate_limit.get_global_rate_limits(
         _USER, 4_000_000, 20_000_000
     )

@@ -4,6 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
+from urllib.parse import urlsplit, urlunsplit
 
 import stripe
 from prisma.enums import (
@@ -22,9 +23,10 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
+from backend.data import subscription_activation, subscription_trial_stripe
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.credit_history import get_credit_history
-from backend.data.db import query_raw_with_schema
+from backend.data.db import query_raw_with_schema, transaction
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
@@ -42,7 +44,7 @@ from backend.data.subscription_checkout import (
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
-from backend.data.subscription_trial_stripe import reconcile_trial_subscription
+from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
@@ -2684,6 +2686,10 @@ async def _create_subscription_checkout(
     await _expire_open_subscription_sessions(customer_id)
     await ensure_no_unconverted_trial(user_id, customer_id)
     datafast = _datafast_metadata(datafast_visitor_id, datafast_session_id)
+    destination = urlsplit(success_url)
+    return_to = urlunsplit(
+        ("", "", destination.path or "/", destination.query, destination.fragment)
+    )
     session = await stripe_call(
         stripe.checkout.Session.create_async,
         customer=customer_id,
@@ -2696,6 +2702,11 @@ async def _create_subscription_checkout(
                 "user_id": user_id,
                 "tier": tier.value,
                 "billing_cycle": billing_cycle,
+                **(
+                    {"pro_activation_return_to": return_to}
+                    if len(return_to) <= 500
+                    else {}
+                ),
                 **datafast,
             }
         },
@@ -2825,10 +2836,28 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             stripe_subscription.get("status", ""),
         )
         return
-    status = stripe_subscription.get("status", "")
     new_sub_id = stripe_subscription.get("id", "")
-    if metadata.get("trial_enrollment_id") and new_sub_id:
-        trial_result = await reconcile_trial_subscription(user.id, new_sub_id)
+    if not new_sub_id:
+        return
+    # Webhook payloads can be stale. Only current Stripe state changes access.
+    stripe_subscription = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, new_sub_id)
+    )
+    subscription_activation.verify_subscription_owner(user, stripe_subscription)
+    metadata = stripe_subscription.get("metadata") or {}
+    status = stripe_subscription.get("status", "")
+    enrollment = await get_subscription_trial(user.id)
+    owns_trial = enrollment is not None and (
+        enrollment.subscription_id == new_sub_id
+        or (
+            enrollment.converted_at is None
+            and stripe_subscription.get("trial_end") is not None
+        )
+    )
+    if metadata.get("trial_enrollment_id") or owns_trial:
+        trial_result = await subscription_trial_stripe.reconcile_trial_subscription(
+            user.id, new_sub_id
+        )
         if trial_result is None:
             raise ValueError("Stripe trial is missing its matching enrollment")
         stripe_subscription, trial_tier = trial_result
@@ -2836,6 +2865,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         if trial_tier is not None:
             invalidate_subscription_caches(user.id)
             return
+    price_id = ""
     if status in ("active", "trialing"):
         price_id = ""
         items = stripe_subscription.get("items", {}).get("data", [])
@@ -2914,6 +2944,50 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             )
             return
         tier = SubscriptionTier.NO_TIER
+    if tier == SubscriptionTier.PRO:
+        if status != "active":
+            return
+        async with transaction() as tx:
+            locked_user = await subscription_activation.lock_activation_user(
+                user.id, tx
+            )
+            if locked_user.subscriptionTier == SubscriptionTier.ENTERPRISE:
+                return
+            # Refetch after acquiring the lock so competing deliveries cannot
+            # publish an older snapshot over a newer reconciliation.
+            current = dict(
+                await stripe_call(stripe.Subscription.retrieve_async, new_sub_id)
+            )
+            if (
+                current.get("items", {}).get("data", [{}])[0].get("price", {}).get("id")
+                != price_id
+            ):
+                raise ValueError(
+                    "Subscription changed during activation reconciliation"
+                )
+            if not await subscription_activation.publish_initial_pro_activation(
+                locked_user, current, price_id, tx
+            ):
+                return
+            if locked_user.subscriptionTier != tier:
+                await tx.user.update(
+                    where={"id": user.id}, data={"subscriptionTier": tier}
+                )
+        invalidate_subscription_caches(user.id)
+        if locked_user.subscriptionTier != tier:
+            await _cleanup_stale_subscriptions(customer_id, new_sub_id)
+            if is_tier_upgrade(SubscriptionTier(locked_user.subscriptionTier), tier):
+                _track_billing_event(
+                    PostHogEvent.SUBSCRIPTION_CHANGED,
+                    user.id,
+                    {
+                        "change_type": "upgrade",
+                        "previous_subscription_tier": locked_user.subscriptionTier,
+                        "subscription_tier": tier.value,
+                        "billing_cycle": metadata.get("billing_cycle"),
+                    },
+                )
+        return
     # Idempotency: Stripe retries webhooks on delivery failure, and several event
     # types map to the same final tier. Skip the DB write + cache invalidation
     # when the tier is already correct to avoid redundant writes on replay.
@@ -3172,7 +3246,24 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
         return
 
+    trial = await get_subscription_trial(user.id)
+    if (
+        trial
+        and trial.converted_at is None
+        and trial.subscription_id == _invoice_subscription_id(invoice)
+    ):
+        # Initial conversion stays on its existing invoice for authentication or
+        # card repair. Failure must not spend wallet credits or cancel the sub.
+        return
     current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
+    if current_tier in (SubscriptionTier.NO_TIER, SubscriptionTier.TRIAL):
+        return
+    invoice_id: str = invoice.get("id") or ""
+    if not invoice_id:
+        return
+    invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
+    if invoice.get("status") != "open" or invoice.get("customer") != customer_id:
+        return
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
@@ -3184,7 +3275,6 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
     amount_due: int = invoice.get("amount_due", 0)
     sub_id = _invoice_subscription_id(invoice)
-    invoice_id: str = invoice.get("id", "")
 
     if amount_due <= 0:
         logger.info(
@@ -3322,6 +3412,9 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
             customer_id,
         )
         return
+
+    current_subscription = await stripe_call(stripe.Subscription.retrieve_async, sub_id)
+    await sync_subscription_from_stripe(dict(current_subscription))
 
     amount_paid: int = invoice.get("amount_paid", 0)
     invoice_id: str = invoice.get("id", "")

@@ -715,7 +715,7 @@ class CoPilotProcessor:
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             await cost_context_stack.enter_async_context(
-                trial_cost_context(entry.user_id)
+                trial_cost_context(entry.user_id, entry.cost_context)
             )
 
             # Stream chat completion and publish chunks to Redis.
