@@ -185,6 +185,11 @@ anyone else. Published copies are never deleted automatically: when a listing
 is taken down or a creator changes their avatar, the old public copy stays in
 the public bucket until someone removes it by hand.
 
+Hosted private image uploads are limited to 4 MiB so the frontend proxy can
+buffer and deliver the complete authenticated response below Vercel's body
+limit. Private videos retain the general 50 MiB upload limit and are delivered
+in bounded range responses.
+
 ---
 
 ## store_media_file()
