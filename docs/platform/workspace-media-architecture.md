@@ -153,6 +153,9 @@ become the private one:
    the existing `MEDIA_GCS_BUCKET_NAME` bucket and `PUBLIC_SITE_MEDIA_BUCKET`
    set to the new one. Pointing `PRIVATE_USER_DATA_BUCKET` at a new bucket
    instead makes every existing workspace file and transcript unreadable.
+   Cloud startup rejects that unsafe partial migration. After every stored
+   bucket-qualified path has been migrated to a new private bucket, clear
+   `MEDIA_GCS_BUCKET_NAME` before selecting the new private bucket.
    Deploy the frontend first: once the backend has both names set, uploads
    return `/api/store/submissions/media/...`, which a frontend without the new
    rewrite answers with a 404.

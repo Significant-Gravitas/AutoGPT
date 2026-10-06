@@ -219,6 +219,23 @@ async def test_upload_media_missing_credentials(local_storage_settings, tmp_path
     assert files[0].read_bytes() == test_data
 
 
+async def test_local_storage_keeps_general_limit_with_only_public_bucket(
+    local_storage_settings,
+):
+    local_storage_settings.config.public_site_media_bucket = "public-media"
+    test_file = fastapi.UploadFile(
+        filename="large.jpeg",
+        file=io.BytesIO(
+            b"\xff\xd8\xff" + b"x" * (store_media.MAX_PRIVATE_IMAGE_FILE_SIZE + 1)
+        ),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert result.startswith("/api/store/media/test-user/images/")
+
+
 @pytest.mark.parametrize("filename", ["agent_graph-1.jpeg", "agent_graph-1.jpg"])
 async def test_check_media_exists_without_gcs(
     local_storage_settings, tmp_path, filename

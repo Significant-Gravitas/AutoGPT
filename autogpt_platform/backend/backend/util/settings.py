@@ -542,6 +542,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
                 "PUBLIC_SITE_MEDIA_BUCKET must not be the legacy "
                 "MEDIA_GCS_BUCKET_NAME bucket, which holds private user data"
             )
+        if (
+            self.media_gcs_bucket_name
+            and self.private_user_data_bucket != self.media_gcs_bucket_name
+        ):
+            raise ValueError(
+                "PRIVATE_USER_DATA_BUCKET must remain the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket until stored bucket-qualified "
+                "paths are migrated; clear MEDIA_GCS_BUCKET_NAME after migration"
+            )
         return self
 
     workspace_storage_dir: str = Field(

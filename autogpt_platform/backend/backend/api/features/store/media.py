@@ -242,9 +242,9 @@ async def upload_media(
 
 def _serves_private_urls(config: Config) -> bool:
     """Only the legacy single-bucket setup still hands out direct GCS URLs."""
-    return (
-        config.resolved_private_user_data_bucket
-        != config.resolved_public_site_media_bucket
+    private_bucket = config.resolved_private_user_data_bucket
+    return bool(
+        private_bucket and private_bucket != config.resolved_public_site_media_bucket
     )
 
 
