@@ -285,11 +285,14 @@ describe("onboarding before payment", () => {
       render(<OnboardingPage />);
       expect(await screen.findByTestId("step-preparing")).toBeDefined();
       await waitFor(() =>
-        expect(submitProfile).toHaveBeenCalledWith({
-          user_name: "Reinier",
-          user_role: "Engineering",
-          pain_points: ["Reporting"],
-        }),
+        expect(submitProfile).toHaveBeenCalledWith(
+          {
+            user_name: "Reinier",
+            user_role: "Engineering",
+            pain_points: ["Reporting"],
+          },
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        ),
       );
       fireEvent.click(screen.getByTestId("step-preparing"));
       await waitFor(() =>
@@ -376,6 +379,7 @@ describe("onboarding before payment", () => {
     authLoading = true;
     render(<OnboardingPage />);
     expect(screen.queryByTestId("step-role")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Loading your setup…");
     expect(getState).not.toHaveBeenCalled();
   });
 
@@ -451,12 +455,12 @@ describe("draft recovery", () => {
   it("surfaces save failures while allowing continuation", async () => {
     patchState.mockRejectedValue(new Error("offline"));
     render(<OnboardingPage />);
-    expect(await screen.findByTestId("step-role")).toBeDefined();
+    fireEvent.click(await screen.findByTestId("step-role"));
     expect(
       await screen.findByText(/couldn't save your progress/),
     ).toBeDefined();
-    fireEvent.click(screen.getByTestId("step-role"));
-    expect(await screen.findByTestId("step-painpoints")).toBeDefined();
+    fireEvent.click(screen.getByTestId("step-painpoints"));
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
   });
 
   it("discards in-memory answers on account switch and never saves them for the next user", async () => {
@@ -472,6 +476,7 @@ describe("draft recovery", () => {
     view.rerender(<OnboardingPage />);
     expect(await screen.findByTestId("step-role")).toBeDefined();
     expect(useOnboardingWizardStore.getState().role).toBe("");
+    fireEvent.click(screen.getByTestId("step-role"));
     await act(async () => {
       await useOnboardingWizardStore.getState().flushProgress?.();
     });
@@ -512,6 +517,7 @@ it("ignores a late draft response from an account that has been switched away", 
     release?.({
       status: 200,
       data: {
+        userId: "u1",
         completedSteps: [],
         wizardRevision: 0,
         wizardProgress: makeProgress({ role: "Private old answer" }),
@@ -560,6 +566,17 @@ it("recognizes a successful save whose response was lost before navigation", asy
   await act(async () => {
     await useOnboardingWizardStore.getState().flushProgress?.();
   });
+  expect(patchState).not.toHaveBeenCalled();
+  expect(
+    JSON.parse(localStorage.getItem(progressStorageKey("u1"))!),
+  ).toMatchObject({
+    pending: false,
+    revision: 1,
+  });
+  await act(async () => {
+    useOnboardingWizardStore.getState().setRole("Design");
+    await useOnboardingWizardStore.getState().flushProgress?.();
+  });
   expect(patchState).toHaveBeenCalledWith(
     expect.objectContaining({ wizardRevision: 1 }),
     expect.anything(),
@@ -569,6 +586,7 @@ it("recognizes a successful save whose response was lost before navigation", asy
 it("surfaces a revision conflict without overwriting newer server answers", async () => {
   patchState.mockRejectedValue({ status: 409 });
   render(<OnboardingPage />);
+  fireEvent.click(await screen.findByTestId("step-role"));
   expect(
     await screen.findByRole("button", { name: "Reload latest progress" }),
   ).toBeDefined();
@@ -612,17 +630,32 @@ it("reports no Ads completion when the server rejects completion", async () => {
   expect(calls.filter((call) => call[1] === "conversion")).toEqual([]);
 });
 
-it("does not submit an empty profile when resuming completion", async () => {
-  serverDraft = makeProgress({
-    currentStep: "preparing",
-    completedSteps: ["role", "painPoints"],
-    role: "",
-  });
-  tier = "PRO";
-  render(<OnboardingPage />);
-  expect(await screen.findByTestId("step-preparing")).toBeDefined();
-  expect(submitProfile).not.toHaveBeenCalled();
-});
+it.each(["", "Other"])(
+  "returns an incomplete %s role to editing before completing onboarding",
+  async (role) => {
+    serverDraft = makeProgress({
+      currentStep: "preparing",
+      completedSteps: ["role", "painPoints"],
+      role,
+      otherRole: "   ",
+    });
+    tier = "PRO";
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-role")).toBeDefined();
+    expect(submitProfile).not.toHaveBeenCalled();
+    expect(completeStep).not.toHaveBeenCalled();
+    act(() => useOnboardingWizardStore.getState().setRole("Design"));
+    fireEvent.click(screen.getByTestId("step-role"));
+    fireEvent.click(await screen.findByTestId("step-painpoints"));
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    expect(submitProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ user_role: "Design" }),
+      expect.anything(),
+    );
+    expect(completeStep).toHaveBeenCalledOnce();
+  },
+);
 
 it("rejects a response for another signed-in account without hydrating or caching it", async () => {
   getState.mockResolvedValue({
@@ -639,4 +672,116 @@ it("rejects a response for another signed-in account without hydrating or cachin
   expect(useOnboardingWizardStore.getState().role).toBe("");
   expect(localStorage.getItem(progressStorageKey("u1"))).toBeNull();
   expect(patchState).not.toHaveBeenCalled();
+});
+
+describe("profile saving before completion", () => {
+  it("waits for the in-flight profile save before completing or clearing the draft", async () => {
+    atPaywall();
+    tier = "PRO";
+    let release: ((value: unknown) => void) | undefined;
+    submitProfile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await act(async () => {
+      await useOnboardingWizardStore.getState().flushProgress?.();
+    });
+    expect(submitProfile).toHaveBeenCalledOnce();
+    expect(completeStep).not.toHaveBeenCalled();
+    expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
+    expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
+    await act(async () => release?.({ status: 200 }));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    expect(submitProfile).toHaveBeenCalledOnce();
+    expect(completeStep).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(progressStorageKey("u1"))).toBeNull();
+  });
+
+  it.each(["network", "http"])(
+    "keeps a %s profile-save failure visible and retries before completion",
+    async (failure) => {
+      atPaywall();
+      tier = "PRO";
+      if (failure === "network")
+        submitProfile.mockRejectedValue(new Error("offline"));
+      else submitProfile.mockResolvedValue({ status: 503 });
+      render(<OnboardingPage />);
+      expect(
+        await screen.findByText(/couldn't save your profile/i),
+      ).toBeDefined();
+      fireEvent.click(screen.getByTestId("step-preparing"));
+      await waitFor(() => expect(submitProfile).toHaveBeenCalledTimes(2));
+      expect(completeStep).not.toHaveBeenCalled();
+      expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
+      expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
+      submitProfile.mockResolvedValue({ status: 200 });
+      fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+      await waitFor(() =>
+        expect(routerReplace).toHaveBeenCalledWith("/copilot"),
+      );
+      expect(submitProfile).toHaveBeenCalledTimes(3);
+      expect(completeStep).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not complete either account when an old profile save resolves after switching users", async () => {
+    atPaywall();
+    tier = "PRO";
+    let release: ((value: unknown) => void) | undefined;
+    submitProfile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const view = render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await act(async () => {
+      await useOnboardingWizardStore.getState().flushProgress?.();
+    });
+    user = { id: "u2", email: "other@example.com", user_metadata: {} };
+    serverDraft = null;
+    view.rerender(<OnboardingPage />);
+    expect(await screen.findByTestId("step-role")).toBeDefined();
+    await act(async () => release?.({ status: 200 }));
+    expect(completeStep).not.toHaveBeenCalled();
+    expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
+    expect(useOnboardingWizardStore.getState().userID).toBe("u2");
+    expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
+  });
+});
+
+it("lets a new account finish while the previous account's profile save is outstanding", async () => {
+  atPaywall();
+  tier = "PRO";
+  let release: ((value: unknown) => void) | undefined;
+  submitProfile.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  const view = render(<OnboardingPage />);
+  fireEvent.click(await screen.findByTestId("step-preparing"));
+  await act(async () => {
+    await useOnboardingWizardStore.getState().flushProgress?.();
+  });
+  user = { id: "u2", email: "other@example.com", user_metadata: {} };
+  serverDraft = makeProgress({
+    currentStep: "preparing",
+    completedSteps: ["role", "painPoints"],
+    role: "Design",
+  });
+  view.rerender(<OnboardingPage />);
+  await waitFor(() => expect(submitProfile).toHaveBeenCalledTimes(2));
+  fireEvent.click(await screen.findByTestId("step-preparing"));
+  await waitFor(() => expect(completeStep).toHaveBeenCalledOnce());
+  expect(routerReplace).toHaveBeenCalledWith("/copilot");
+  await act(async () => release?.({ status: 200 }));
+  expect(completeStep).toHaveBeenCalledOnce();
+  expect(screen.queryByText(/couldn't save your profile/i)).toBeNull();
 });

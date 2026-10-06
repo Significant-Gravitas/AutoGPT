@@ -1,7 +1,4 @@
-import {
-  postV1CompleteOnboardingStep,
-  postV1SubmitOnboardingProfile,
-} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
@@ -9,12 +6,12 @@ import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { accountDisplayName, normalizeOnboardingProfile } from "./helpers";
 import { Step, useOnboardingWizardStore } from "./store";
 import { onboardingStepKey, trackOnboardingStep } from "./tracking";
 import { stepKey } from "./progress";
 import { useWizardProgress } from "./useWizardProgress";
 import { useOnboardingLayout } from "./useOnboardingLayout";
+import { useOnboardingProfile } from "./useOnboardingProfile";
 
 export function useOnboardingPage() {
   const router = useRouter();
@@ -50,11 +47,23 @@ export function useOnboardingPage() {
     isPaymentEnabled && !environment.isLocal()
       ? (Math.min(storedStep, steps.subscription!) as Step)
       : storedStep;
-  const hasSubmitted = useRef<string | null>(null);
-  const isCompleting = useRef(false);
+  const profile = useOnboardingProfile({
+    user,
+    enabled: progress.isReady && currentStep === preparingStep,
+  });
+  const completion = useRef<{ userID: string | undefined } | null>(null);
   const activeUserID = useRef(user?.id);
   activeUserID.current = user?.id;
-  const [completionError, setCompletionError] = useState<string | null>(null);
+  const [completionError, setCompletionError] = useState<{
+    userID: string | undefined;
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      completion.current = null;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!progress.isReady) return;
@@ -81,50 +90,30 @@ export function useOnboardingPage() {
     if (progress.isReady && trackingKey) trackOnboardingStep(trackingKey);
   }, [progress.isReady, trackingKey]);
 
-  // Submit profile when entering the Preparing step
-  useEffect(() => {
-    if (
-      !progress.isReady ||
-      currentStep !== preparingStep ||
-      hasSubmitted.current === user?.id
-    )
-      return;
-    const { role, painPoints } = normalizeOnboardingProfile(
-      useOnboardingWizardStore.getState(),
-    );
-    const userName = accountDisplayName(user);
-
-    // The profile is only ever submitted here, once, on reaching Preparing.
-    // Guard against an empty role so a stray Preparing visit can't blank a
-    // previously-saved profile.
-    if (!role.trim() || !userName) return;
-    hasSubmitted.current = user?.id ?? null;
-
-    postV1SubmitOnboardingProfile({
-      user_name: userName,
-      user_role: role,
-      pain_points: painPoints,
-    }).catch(() => {
-      // Best effort — profile data is non-critical for accessing copilot
-    });
-  }, [currentStep, preparingStep, user, progress.isReady]);
-
   async function handlePreparingComplete() {
     if (
       !progress.isReady ||
-      isCompleting.current ||
+      completion.current?.userID === user?.id ||
       (isPaymentEnabled && !environment.isLocal())
     )
       return;
-    isCompleting.current = true;
+    const attempt = { userID: user?.id };
+    completion.current = attempt;
+    function isCurrent() {
+      return (
+        completion.current === attempt && activeUserID.current === user?.id
+      );
+    }
     setCompletionError(null);
     try {
       await useOnboardingWizardStore.getState().flushProgress?.();
-      if (activeUserID.current !== user?.id) return;
+      if (!isCurrent()) return;
+      await profile.ensureSaved();
+      if (!isCurrent()) return;
       const result = await postV1CompleteOnboardingStep({
         step: "ONBOARDING_COMPLETE",
       });
-      if (activeUserID.current !== user?.id) return;
+      if (!isCurrent()) return;
       if (result.status !== 200) throw new Error("Completion failed");
       trackAdsConversion("onboarding_complete", {
         transactionID: user?.id,
@@ -133,12 +122,14 @@ export function useOnboardingPage() {
       progress.finish();
       router.replace("/copilot");
     } catch {
-      if (activeUserID.current !== user?.id) return;
-      setCompletionError(
-        "We couldn't finish setting up your account. Your progress is saved; please retry.",
-      );
+      if (!isCurrent()) return;
+      setCompletionError({
+        userID: user?.id,
+        message:
+          "We couldn't finish setting up your account. Your progress is saved; please retry.",
+      });
     } finally {
-      isCompleting.current = false;
+      if (completion.current === attempt) completion.current = null;
     }
   }
 
@@ -148,7 +139,9 @@ export function useOnboardingPage() {
     progressError: progress.error,
     progressConflict: progress.conflict,
     retryProgress: progress.retry,
-    completionError,
+    completionError:
+      profile.error ??
+      (completionError?.userID === user?.id ? completionError?.message : null),
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,

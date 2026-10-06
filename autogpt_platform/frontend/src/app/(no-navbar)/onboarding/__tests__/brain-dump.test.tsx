@@ -13,6 +13,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
 import { NO_PAYWALL_STEPS, PAYWALL_LAST_STEPS } from "../store";
@@ -101,6 +102,21 @@ vi.mock("@/services/environment", async (importOriginal) => {
 
 vi.mock("posthog-js", () => ({
   default: { capture: vi.fn() },
+}));
+
+// AnimatePresence can retain the outgoing timer in happy-dom even after the
+// recovery controls render. These flow tests assert the current headline and
+// actions independently of the decorative exit animation.
+vi.mock("@/components/atoms/SwapFade/SwapFade", () => ({
+  SwapFade: function SwapFade({
+    children,
+    className,
+  }: {
+    children: ReactNode;
+    className?: string;
+  }) {
+    return <div className={className}>{children}</div>;
+  },
 }));
 
 vi.mock("../steps/RoleStep", () => ({

@@ -1,6 +1,7 @@
 import type { OnboardingWizardProgress } from "@/app/api/__generated__/models/onboardingWizardProgress";
 import type { Step, StepLayout } from "./store";
 import { z } from "zod";
+import { normalizeOnboardingProfile } from "./helpers";
 
 export type WizardStepKey = keyof StepLayout;
 const STEP_KEYS: WizardStepKey[] = [
@@ -88,6 +89,8 @@ export function resumeStep({
   // Payment must be confirmed by the subscription query, never by draft data
   // or a success query parameter. A confirmed plan removes this layout slot.
   completed.delete("subscription");
+  if (progress && !normalizeOnboardingProfile(progress).role.trim())
+    completed.delete("role");
   const ceilingKey = order.find((key) => !completed.has(key)) ?? "preparing";
   const ceiling = steps[ceilingKey]!;
   const requested = order.find((key) => key === requestedStep);

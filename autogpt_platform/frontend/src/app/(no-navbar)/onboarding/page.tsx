@@ -64,7 +64,11 @@ export default function OnboardingPage() {
         conflict={progressConflict}
         retry={retryProgress}
       />
-    ) : null;
+    ) : (
+      <Text variant="body" role="status">
+        Loading your setup…
+      </Text>
+    );
 
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
