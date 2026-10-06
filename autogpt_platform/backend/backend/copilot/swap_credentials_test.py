@@ -20,7 +20,14 @@ from backend.copilot.swap_credentials import (
 from backend.util import e2b_network
 
 _M = "backend.copilot.swap_credentials"
-_GITHUB_HOSTS = ["github.com", "api.github.com", "uploads.github.com"]
+_GITHUB_HOSTS = [
+    "github.com",
+    "api.github.com",
+    "uploads.github.com",
+    "raw.githubusercontent.com",
+    "gist.github.com",
+]
+_GITHUB_CONTENT = [".githubusercontent.com"]
 
 
 _BOX = "box-0123456789abcdef"
@@ -68,7 +75,7 @@ def _token(tokens, granted=("cred-a",)):
 
 @pytest.mark.asyncio
 async def test_bindings_carry_hosts_and_no_values():
-    assert await get_swap_bindings() == {"github": _GITHUB_HOSTS}
+    assert await get_swap_bindings() == {"github": _GITHUB_HOSTS + _GITHUB_CONTENT}
 
 
 @pytest.mark.asyncio
@@ -93,7 +100,8 @@ async def test_a_bound_host_gets_the_credential_granted_to_the_box(host):
         "evil.test",
         "api.github.com.evil.test",
         "notgithub.com",
-        "raw.githubusercontent.com",  # serves GitHub content, takes no token
+        "githubusercontent.com.evil.test",
+        "codeload.github.com",  # archives only: binary, nothing to scrub
         "",
     ],
 )
@@ -198,12 +206,58 @@ async def test_only_a_live_box_of_the_users_that_swaps_gets_a_value(record):
     lookup.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    [
+        "objects.githubusercontent.com",
+        "gist.githubusercontent.com",
+        "media.githubusercontent.com",
+    ],
+)
+async def test_a_content_host_gets_the_values_to_scrub_but_may_not_be_sent_them(
+    host,
+):
+    """What a user committed or pasted comes back from these; the proxy needs
+    the values to scrub it, and must never swap one into a request there."""
+    with _token("ghp_real"):
+        credential = await resolve_swap_credential("user-1", "github", host, _BOX)
+    assert credential is not None
+    assert credential.values["cred-a"] == "ghp_real"
+    assert credential.allowed_hosts == _GITHUB_HOSTS
+    assert not _host_is_bound(host, credential.allowed_hosts)
+
+
+_HOSTNAME = re.compile(r"\.?[a-z0-9-]+(\.[a-z0-9-]+)+")
+
+
 def test_every_provider_says_where_its_token_may_go():
     """A new provider must decide this; an empty list means never swapped."""
     for slug, entry in SUPPORTED_PROVIDERS.items():
         assert isinstance(entry["swap_hosts"], list), slug
-        for host in entry["swap_hosts"]:
-            assert host == host.lower() and "/" not in host and "*" not in host, host
+        assert isinstance(entry["content_hosts"], list), slug
+        for host in [*entry["swap_hosts"], *entry["content_hosts"]]:
+            # Names or a leading-dot suffix, as ``host_in_list`` reads them:
+            # no scheme, port, path, wildcard or bare address.
+            assert _HOSTNAME.fullmatch(host), (slug, host)
+            assert not host.replace(".", "").isdigit(), (slug, host)
+        # A content host takes no token: in both lists it would take one.
+        overlap = [
+            h
+            for h in entry["content_hosts"]
+            if _host_is_bound(h.lstrip("."), entry["swap_hosts"])
+        ]
+        assert overlap == [], slug
+
+
+def test_no_host_is_bound_to_two_providers():
+    """A host names one provider's credential; two would make the proxy fetch
+    and scrub both, and leave which one a request meant to the box."""
+    seen: dict[str, str] = {}
+    for slug, entry in SUPPORTED_PROVIDERS.items():
+        for host in [*entry["swap_hosts"], *entry["content_hosts"]]:
+            assert host not in seen, (host, seen.get(host), slug)
+            seen[host] = slug
 
 
 def test_minted_usernames_are_what_the_proxy_accepts():
@@ -255,3 +309,17 @@ def test_the_proxys_own_copy_agrees_on_every_host():
     spec.loader.exec_module(swap)
     for host, entries, _ in HOST_BINDING_TABLE:
         assert swap.host_in_list(host, entries) is _host_is_bound(host, entries), host
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    # A private repo's raw file with ``Authorization: token``; git over HTTPS
+    # to a gist with Basic.
+    ["raw.githubusercontent.com", "gist.github.com"],
+)
+async def test_the_github_content_hosts_that_take_the_token_may_be_sent_it(host):
+    with _token("ghp_real"):
+        credential = await resolve_swap_credential("user-1", "github", host, _BOX)
+    assert credential is not None
+    assert _host_is_bound(host, credential.allowed_hosts)
