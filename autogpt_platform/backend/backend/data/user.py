@@ -359,22 +359,9 @@ async def find_orphaned_auth_identities(
 ) -> list[OrphanedAuthIdentity]:
     """Auth identities created before *older_than* that have no ``User`` row.
 
-    Every auth identity that can sign in must have a platform row with the
-    same id: the auth hook writes it at sign-up, the client's ``POST /auth/user``
-    writes it after sign-in, and every authenticated request self-heals it. An
-    identity that still has none after the grace window is therefore an
-    invariant breach worth both healing and reporting.
-
-    An unverified identity that has never held a session is not one. With
-    ``AUTH_REQUIRE_EMAIL_VERIFICATION`` on, a password sign-up gets no session
-    and no row until its link is opened, and healing it would give an address
-    nobody has proven they own an account (and page about it every sweep).
-    With the flag off every sign-up gets a session at once, so it is still
-    covered.
-
-    Identities whose email another platform User owns sort last: they are
-    never healed, so sorting by age alone would let them fill every batch and
-    starve the healable ones behind them.
+    Only verified identities, or ones with a session: an unverified sign-up
+    gets its row when its link is opened. Identities whose email another
+    platform User owns sort last, so they can't fill every batch.
     """
     rows = await query_raw_with_schema(
         # The owner lookup is case-insensitive on purpose: the auth migration

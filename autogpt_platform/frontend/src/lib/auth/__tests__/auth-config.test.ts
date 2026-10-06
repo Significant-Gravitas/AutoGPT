@@ -276,6 +276,7 @@ describe("email verification", () => {
   });
 
   it("re-sends the link to an unverified sign-in and signs the user in from it", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
     const options = (await loadAuthOptions()) as unknown as {
       emailVerification: Record<string, unknown>;
     };
@@ -288,6 +289,15 @@ describe("email verification", () => {
     // Sign-up sends the link only when verification is required (Better
     // Auth's default), so leaving the flag off changes nothing.
     expect(options.emailVerification.sendOnSignUp).toBeUndefined();
+  });
+
+  it("does not sign in from a verify link with the flag off", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
+    const options = (await loadAuthOptions()) as unknown as {
+      emailVerification: Record<string, unknown>;
+    };
+
+    expect(options.emailVerification.autoSignInAfterVerification).toBe(false);
   });
 });
 

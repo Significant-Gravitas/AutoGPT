@@ -9,22 +9,8 @@ export type AuthIdentity = {
 
 export type ProvisionOutcome = "created" | "exists" | "failed";
 
-// Create the platform `User` row for a freshly created auth identity, from
-// the Better Auth `user.create.after` hook, so that a session can never exist
-// before the row it hangs off. Every first-page-load write with a foreign key
-// to `User` (onboarding state, push subscriptions, experiment assignments)
-// depends on that ordering.
-//
-// Every other column has a database default; `updatedAt` is Prisma-managed and
-// has none, so it is set explicitly, exactly like the email mirror does.
-//
-// Best-effort by design. Better Auth queues `create.after` hooks and awaits
-// them after the transaction commits, so a throw here would surface as a
-// failed sign-up *after* the identity is durable, leaving an identity with no
-// session that rejects every retry with "user already exists". The sign-in
-// flows still call `POST /auth/user` and roll the session back if it fails,
-// and every authenticated backend request self-heals a missing row, so a
-// failure here degrades to those paths rather than creating a new one.
+// From the `user.create.after` hook, so a session never exists before its `User` row. `updatedAt` has
+// no DB default. Never throws: a throw after commit strands an identity that rejects every retry.
 export async function provisionPlatformUser(
   pool: Pick<Pool, "query">,
   user: AuthIdentity,

@@ -99,14 +99,8 @@ export const auth = betterAuth({
             });
           }
         },
-        // Create the platform `User` row the moment the auth identity exists
-        // (email/password sign-up and first OAuth sign-in alike), so a
-        // session can never outrun it. Better Auth runs this after the commit
-        // and awaits it before the sign-up response returns; it must never
-        // throw, see provision-platform-user.ts for why.
-        // With email verification required, an unverified identity gets no
-        // session and no row: /auth/callback?method=email provisions it once
-        // the link is opened.
+        // Writes the platform `User` row (see provision-platform-user.ts). An
+        // unverified identity gets it from /auth/callback?method=email instead.
         after: async (user: {
           id: string;
           email: string;
@@ -198,14 +192,13 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
-    // These only come into play with requireEmailVerification on (sign-up
-    // then sends the link and creates no session). An unverified password
-    // user who signs in is sent a fresh link rather than a dead-end 403, so
-    // accounts created before the flag was flipped can still get in.
+    // Better Auth gates sendOnSignIn on requireEmailVerification itself. An
+    // unverified password user who signs in is sent a fresh link rather than a
+    // dead-end 403, so accounts created before the flag was flipped get in.
     sendOnSignIn: true,
-    // The link signs the user in and redirects to the callbackURL the
-    // sign-up/sign-in action passed, which is /auth/callback?method=email.
-    autoSignInAfterVerification: true,
+    // Not gated by Better Auth: with the flag off, a link from
+    // /send-verification-email would sign in whoever opens it.
+    autoSignInAfterVerification: requireEmailVerification,
     expiresIn: emailVerificationExpiresIn,
     sendVerificationEmail: async ({ user, url }) => {
       await sendAuthEmail({

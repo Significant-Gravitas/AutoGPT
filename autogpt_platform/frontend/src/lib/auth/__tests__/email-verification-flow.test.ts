@@ -435,6 +435,26 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
       }),
     );
   });
+
+  it("verifies the address from a resent link without signing its opener in", async () => {
+    const { handler, db } = await createAuthHandler(false);
+    await signUp(handler, "new@example.com");
+    db.UserAuthSession.length = 0;
+    await post(handler, "/send-verification-email", {
+      email: "new@example.com",
+      callbackURL,
+    });
+
+    const response = await handler(
+      new Request(lastVerifyLink("new@example.com") ?? ""),
+    );
+
+    expect(response.status).toBe(302);
+    expect(db.UserAuthSession).toHaveLength(0);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: true }),
+    ]);
+  });
 });
 
 describe("team addresses", () => {

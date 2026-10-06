@@ -344,6 +344,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     # Auth identity <-> platform User invariant monitoring
+    auth_identity_orphan_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the sweep that heals auth identities with no platform User row. "
+            "Off by default: its first run backfills every such identity, and "
+            "each heal counts as a sign-up in PostHog."
+        ),
+    )
     auth_identity_orphan_check_interval_secs: int = Field(
         default=15 * 60,
         ge=60,

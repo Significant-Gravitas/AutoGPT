@@ -43,8 +43,8 @@ export function CheckYourInbox({ email, reason, next, onBack }: Props) {
 
       <Text variant="body" tone="secondary" unmask={false} className="mt-3">
         We sent a verification link to{" "}
-        <span className="font-medium text-slate-950">{email}</span>. Click it to{" "}
-        {copy.action}.
+        <span className="break-all font-medium text-slate-950">{email}</span>.
+        Click it to {copy.action}.
       </Text>
 
       <Text variant="small" tone="muted" className="mt-2">
