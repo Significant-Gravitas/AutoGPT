@@ -231,7 +231,15 @@ export function RunAgentInputs({
 
     case DataType.MULTI_SELECT: {
       const _schema = schema as BlockIOObjectSubSchema;
-      const allKeys = Object.keys(_schema.properties ?? {});
+      const resolvedProperties: Record<string, BlockIOSubSchema> =
+        _schema.properties ??
+        ("anyOf" in _schema &&
+        Array.isArray((_schema as any).anyOf) &&
+        (_schema as any).anyOf.length > 0 &&
+        "properties" in (_schema as any).anyOf[0]
+          ? ((_schema as any).anyOf[0] as BlockIOObjectSubSchema).properties
+          : {});
+      const allKeys = Object.keys(resolvedProperties);
       const selectedValues = Object.entries(value || {})
         .filter(([_, v]) => v)
         .map(([k]) => k);
@@ -240,7 +248,7 @@ export function RunAgentInputs({
         <MultiToggle
           items={allKeys.map((key) => ({
             value: key,
-            label: _schema.properties[key]?.title ?? key,
+            label: resolvedProperties[key]?.title ?? key,
           }))}
           selectedValues={selectedValues}
           onChange={(values: string[]) =>
