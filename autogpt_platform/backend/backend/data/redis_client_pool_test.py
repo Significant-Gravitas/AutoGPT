@@ -10,8 +10,12 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis import Redis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
+from redis.backoff import NoBackoff
 from redis.cluster import RedisCluster
+from redis.exceptions import RedisError
+from redis.retry import Retry
 
 import backend.data.redis_client as redis_client
 from backend.util.testing import is_tcp_port_reachable
@@ -22,6 +26,30 @@ REDIS_PY_DEFAULT_MAX_CONNECTIONS = 100
 # Lock SETs plus event SPUBLISHes in flight at once, all on one hash slot, as
 # a wide fan-out produces for a single user's graph execution.
 FAN_OUT_COMMANDS = 500
+
+
+def _has_live_cluster() -> bool:
+    """A listening port is not enough: against a standalone Redis,
+    ``get_redis_async`` fails cluster discovery and ``conn_retry`` keeps
+    retrying it, so probe ``CLUSTER INFO`` once without retries instead."""
+    if not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT):
+        return False
+    probe = Redis(
+        host=redis_client.HOST,
+        port=redis_client.PORT,
+        password=redis_client.PASSWORD,
+        socket_timeout=1,
+        socket_connect_timeout=1,
+        retry=Retry(NoBackoff(), 0),
+        decode_responses=True,
+    )
+    try:
+        info = probe.execute_command("CLUSTER INFO")
+    except RedisError:
+        return False
+    finally:
+        probe.close()
+    return isinstance(info, dict) and info.get("cluster_state") == "ok"
 
 
 def test_max_connections_default_is_above_redis_py_default() -> None:
@@ -61,7 +89,7 @@ async def test_connect_async_sets_max_connections() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    not _has_live_cluster(),
     reason="local redis cluster not reachable",
 )
 async def test_wide_fan_out_does_not_exhaust_async_pool() -> None:
