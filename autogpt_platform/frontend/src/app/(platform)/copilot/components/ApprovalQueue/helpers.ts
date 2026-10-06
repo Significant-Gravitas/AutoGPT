@@ -46,8 +46,10 @@ export interface ApprovalItem {
   reason: string;
   reasonKind: ReasonKind;
   mode: string | null;
-  // A held read's flagged passage, which the card quotes.
+  // What a held read's card quotes: the flagged passage, or else what was flagged.
   passage: string | null;
+  // False when the check flagged the read but could not point to a passage.
+  quoted: boolean;
   // Over the task's spend ceiling: what this step costs and what approving adds.
   spend: ApprovalSpend | null;
   // A held read the check could not assess, so it names no passage.
@@ -103,7 +105,8 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     reason: str(payload, "reason") ?? "",
     reasonKind: (str(payload, "reason_kind") as ReasonKind | null) ?? "mode",
     mode: str(payload, "mode"),
-    passage: str(payload, "passage"),
+    passage: str(payload, "passage", "excerpt"),
+    quoted: !!str(payload, "passage"),
     spend: toSpend(payload.spend),
     unjudged: payload.judged === false,
     reader: str(payload, "reader") ?? AUTOPILOT_NAME,
@@ -144,6 +147,8 @@ export function isHeldRead(item: ApprovalItem) {
 export function reasonLine(item: ApprovalItem): string | null {
   if (isHeldRead(item) && item.unjudged)
     return `${AUTOPILOT_NAME} could not check this, so he asks. ${item.reader} hasn't seen it.`;
+  if (isHeldRead(item) && !item.quoted)
+    return `A check flagged this, but couldn't point to an instruction in it. ${item.reader} hasn't seen it.`;
   if (isHeldRead(item))
     return `It contains instructions aimed at ${item.reader}, so it was held back. ${item.reader} hasn't seen it.`;
   if (!item.reason) return null;

@@ -88,6 +88,27 @@ test("a read the check could not assess says so and quotes nothing", async () =>
   expect(screen.queryByText(/contains instructions/)).toBeNull();
 });
 
+test("a read flagged with no quotable passage shows what was flagged and accuses nothing", async () => {
+  const review = heldRead("q", "www.duwo.nl/over-duwo");
+  const payload = review.payload as Record<string, unknown>;
+  const excerpt =
+    "Overzicht gebouwen | DUWO\nKlik hier om naar jouw persoonlijke DUWO account te gaan.";
+  serve([{ ...review, payload: { ...payload, passage: "", excerpt } }]);
+  renderQueue();
+
+  expect(
+    await screen.findByText(
+      "A check flagged this, but couldn't point to an instruction in it. Otto hasn't seen it.",
+    ),
+  ).toBeDefined();
+  expect(
+    screen.getByText(
+      /Klik hier om naar jouw persoonlijke DUWO account te gaan/,
+    ),
+  ).toBeDefined();
+  expect(screen.queryByText(/It contains instructions aimed at/)).toBeNull();
+});
+
 function readBy(reader: string | null, judged: boolean) {
   const review = heldRead("r", "a.example");
   const payload = review.payload as Record<string, unknown>;
