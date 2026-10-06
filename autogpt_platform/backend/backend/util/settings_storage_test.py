@@ -1,7 +1,6 @@
 import pytest
 
-import backend.util.settings as settings_module
-from backend.util.settings import Config
+from backend.util.settings import Config, _warn_single_bucket
 
 
 @pytest.fixture(autouse=True)
@@ -104,7 +103,7 @@ def test_cloud_split_configuration_accepts_distinct_buckets():
 
 @pytest.mark.parametrize("behave_as", ["cloud", "local"])
 def test_a_deployment_on_the_legacy_bucket_warns_once(caplog, behave_as):
-    settings_module._warn_single_bucket.cache_clear()
+    _warn_single_bucket.cache_clear()
 
     for _ in range(2):
         Config(
