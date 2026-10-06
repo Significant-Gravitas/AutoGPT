@@ -994,6 +994,37 @@ async def test_an_mcp_tools_result_is_judged_without_the_platforms_message(rows)
     assert _MARKER not in result.output and len(rows.rows) == 1
 
 
+async def test_an_mcp_error_is_judged_without_the_hint_the_platform_adds(rows):
+    """The hint repeats the tool name the model asked for; only the server's
+    error and its tool names are outside bytes."""
+    from backend.blocks.mcp.client import MCPCallResult, MCPTool
+
+    client = AsyncMock()
+    client.call_tool = AsyncMock(
+        return_value=MCPCallResult(
+            content=[{"type": "text", "text": _MARKER}], is_error=True
+        )
+    )
+    client.list_tools = AsyncMock(
+        return_value=[MCPTool(name="send_mail", description="", input_schema={})]
+    )
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        _resolves_to(_capability("mcp_server", _MCP_URL)),
+        _mcp_server(client),
+    ):
+        result = await _run_capability(
+            {"id": "cap", "input": {"tool": "read_inbox", "arguments": {}}}
+        )
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and "send_mail" in judged
+    assert "read_inbox" not in judged and "No tool named" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
 async def test_an_mcp_sign_in_card_is_not_judged_but_the_providers_refusal_in_one_is(
     rows,
 ):

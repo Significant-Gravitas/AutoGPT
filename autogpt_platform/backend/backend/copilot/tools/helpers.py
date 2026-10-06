@@ -461,9 +461,10 @@ async def execute_block(
             ).from_outside()
         except ValueError as e:
             await _release_credential_leases(credential_leases)
+            # Our wording around the model's own input: nothing from outside.
             return ErrorResponse(
                 message=str(e), error=str(e), session_id=session_id
-            ).from_outside(str(e))
+            ).from_outside()
         except BaseException:
             await _release_credential_leases(credential_leases)
             raise
