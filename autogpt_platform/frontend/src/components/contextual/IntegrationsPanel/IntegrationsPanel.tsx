@@ -1,5 +1,6 @@
 "use client";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { useState } from "react";
 
 import { Text } from "@/components/atoms/Text/Text";
@@ -13,9 +14,14 @@ import { AvailableIntegrations } from "./components/AvailableIntegrations/Availa
 interface Props {
   withHeading?: boolean;
   preferMcp?: boolean;
+  onConnected?: (credential: CredentialsMetaResponse) => void;
 }
 
-export function IntegrationsPanel({ withHeading = true, preferMcp }: Props) {
+export function IntegrationsPanel({
+  withHeading = true,
+  preferMcp,
+  onConnected,
+}: Props) {
   const [isConnectOpen, setIsConnectOpen] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
@@ -51,6 +57,7 @@ export function IntegrationsPanel({ withHeading = true, preferMcp }: Props) {
         onOpenChange={setIsConnectOpen}
         initialProviderId={selectedProviderId}
         preferMcp={preferMcp}
+        onConnected={onConnected}
       />
     </>
   );

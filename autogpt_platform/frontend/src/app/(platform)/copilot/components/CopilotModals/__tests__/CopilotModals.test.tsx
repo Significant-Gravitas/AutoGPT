@@ -86,6 +86,58 @@ async function openLinear(dialog: HTMLElement) {
   );
 }
 
+function arrangeSentryGrantForMaria() {
+  const grants = { granted: [] as string[] };
+  useCopilotUIStore.setState({
+    contextPanelExpert: { id: "expert-maria", name: "Maria" },
+  });
+  server.use(
+    getGetV1ListProvidersMockHandler([
+      {
+        name: "mcp_sentry",
+        display_name: "Sentry",
+        description: "Errors",
+        supported_auth_types: [],
+        service: "sentry",
+        service_name: "Sentry",
+        service_icon: "sentry",
+        mcp_server: {
+          server_url: "https://mcp.sentry.dev/mcp",
+          documentation_url: "https://docs.sentry.io",
+          setup_instructions: "Paste your Sentry token.",
+          connection_mode: "hosted",
+          auth_methods: ["bearer"],
+          oauth_write_scopes: [],
+          server_url_options: [],
+          allow_custom_url: false,
+        },
+      },
+    ]),
+    http.post("*/api/mcp/discover-tools", () =>
+      HttpResponse.json({
+        tools: [],
+        server_url: "https://mcp.sentry.dev/mcp",
+      }),
+    ),
+    http.post("*/api/mcp/token", () =>
+      HttpResponse.json({
+        id: "cred-sentry",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP: mcp.sentry.dev",
+        service: "sentry",
+      }),
+    ),
+    http.post("*/api/experts/expert-maria/credentials", async ({ request }) => {
+      grants.granted = (
+        (await request.json()) as { credential_ids: string[] }
+      ).credential_ids;
+      return HttpResponse.json([]);
+    }),
+  );
+  return grants;
+}
+
 describe("CopilotModals", () => {
   beforeEach(() => {
     useCopilotUIStore.setState({
@@ -283,56 +335,7 @@ describe("CopilotModals", () => {
   });
 
   test("connecting from an expert chat grants the new credential to that expert", async () => {
-    let granted: string[] = [];
-    useCopilotUIStore.setState({
-      contextPanelExpert: { id: "expert-maria", name: "Maria" },
-    });
-    server.use(
-      getGetV1ListProvidersMockHandler([
-        {
-          name: "mcp_sentry",
-          display_name: "Sentry",
-          description: "Errors",
-          supported_auth_types: [],
-          service: "sentry",
-          service_name: "Sentry",
-          service_icon: "sentry",
-          mcp_server: {
-            server_url: "https://mcp.sentry.dev/mcp",
-            documentation_url: "https://docs.sentry.io",
-            setup_instructions: "Paste your Sentry token.",
-            connection_mode: "hosted",
-            auth_methods: ["bearer"],
-            oauth_write_scopes: [],
-            server_url_options: [],
-            allow_custom_url: false,
-          },
-        },
-      ]),
-      http.post("*/api/mcp/discover-tools", () =>
-        HttpResponse.json({
-          tools: [],
-          server_url: "https://mcp.sentry.dev/mcp",
-        }),
-      ),
-      http.post("*/api/mcp/token", () =>
-        HttpResponse.json({
-          id: "cred-sentry",
-          provider: "mcp",
-          type: "oauth2",
-          title: "MCP: mcp.sentry.dev",
-          service: "sentry",
-        }),
-      ),
-      http.post(
-        "*/api/experts/expert-maria/credentials",
-        async ({ request }) => {
-          granted = ((await request.json()) as { credential_ids: string[] })
-            .credential_ids;
-          return HttpResponse.json([]);
-        },
-      ),
-    );
+    const grants = arrangeSentryGrantForMaria();
 
     render(<Harness />);
     fireEvent.click(screen.getByText("open-connect"));
@@ -344,6 +347,27 @@ describe("CopilotModals", () => {
     fireEvent.change(input, { target: { value: "sntrys_token" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save token" }));
 
-    await waitFor(() => expect(granted).toEqual(["cred-sentry"]));
+    await waitFor(() => expect(grants.granted).toEqual(["cred-sentry"]));
+  });
+
+  test("connecting from the integrations modal in an expert chat grants the new credential to that expert", async () => {
+    const grants = arrangeSentryGrantForMaria();
+
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-integrations"));
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Connect Service/ }))[0],
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect a service",
+    });
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /Sentry/ }),
+    );
+    const input = await within(dialog).findByLabelText("API token");
+    fireEvent.change(input, { target: { value: "sntrys_token" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save token" }));
+
+    await waitFor(() => expect(grants.granted).toEqual(["cred-sentry"]));
   });
 });

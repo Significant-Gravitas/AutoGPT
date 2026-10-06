@@ -1,10 +1,12 @@
 "use client";
 
+import { useListExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import { okData } from "@/app/api/helpers";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
@@ -119,20 +121,46 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
   // app-wide, so ``isFetching`` also goes true on window focus and on every
   // credential mutation elsewhere, blanking a genuinely connected card.
-  const liveCredential = !Array.isArray(liveCredsRes)
-    ? null
-    : liveCredsRes.find(
+  // On an expert's card the account's own credential is not enough: only one
+  // granted to the expert counts, so an ungranted one still offers Grant
+  // access. The grant list follows the same tri-state rule as the cred list.
+  const {
+    data: expertGrants,
+    isFetchedAfterMount: expertGrantsFetched,
+    isError: expertGrantsError,
+  } = useListExpertCredentials(expertGrant?.expertId ?? "", {
+    query: {
+      enabled: Boolean(expertGrant),
+      select: (res) => okData(res) ?? [],
+    },
+  });
+  const grantedIds = expertGrant
+    ? new Set((expertGrants ?? []).map((grant) => grant.credential_id))
+    : null;
+  const serverCredentials = !Array.isArray(liveCredsRes)
+    ? []
+    : liveCredsRes.filter(
         (c) =>
           c.provider === "mcp" &&
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
       );
+  const liveCredential = serverCredentials.find(
+    (c) => !grantedIds || grantedIds.has(c.id),
+  );
+  const grantsUnknown =
+    Boolean(expertGrant) && (!expertGrantsFetched || expertGrantsError);
   const liveHasCred: boolean | "unknown" =
-    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+    !liveCredsFetched ||
+    liveCredsError ||
+    !Array.isArray(liveCredsRes) ||
+    grantsUnknown
       ? "unknown"
       : Boolean(liveCredential);
   const storedManualAuthScheme: MCPAuthScheme =
-    liveCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
+    (liveCredential ?? serverCredentials[0])?.mcp_auth_scheme === "basic"
+      ? "basic"
+      : "bearer";
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +186,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthRequest = useRef<AbortController | null>(null);
   const [granting, setGranting] = useState(false);
+  const grantInFlight = useRef(false);
   const [grantError, setGrantError] = useState<string | null>(null);
   const [failedGrantId, setFailedGrantId] = useState<string | null>(null);
   const grantableId = failedGrantId ?? expertGrant?.credentials[0]?.id ?? null;
@@ -171,12 +200,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   //      than defaulting to disconnected.
   const liveSays = liveHasCred === "unknown" ? initiallyConnected : liveHasCred;
   // A rejected credential never counts as connected, whatever a stale cred
-  // list says — only a sign-in completed in this card does. Nor does the
-  // account's own credential while an expert is asking: the expert can use
-  // it only once granted.
+  // list says — only a sign-in completed in this card does.
   const connected =
-    !forceDisconnected &&
-    (localConnected || (!rejection && !expertGrant && liveSays));
+    !forceDisconnected && (localConnected || (!rejection && liveSays));
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
@@ -185,14 +211,21 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
   async function finish(credentialId: string | undefined) {
     if (expertGrant && credentialId) {
+      if (grantInFlight.current) return;
+      grantInFlight.current = true;
       setGranting(true);
       setGrantError(null);
-      const ok = await grantToExpert(
-        queryClient,
-        expertGrant.expertId,
-        credentialId,
-      );
-      setGranting(false);
+      let ok = false;
+      try {
+        ok = await grantToExpert(
+          queryClient,
+          expertGrant.expertId,
+          credentialId,
+        );
+      } finally {
+        grantInFlight.current = false;
+        setGranting(false);
+      }
       if (!ok) {
         setFailedGrantId(credentialId);
         setGrantError(
@@ -215,6 +248,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     oauthRequest.current = controller;
     const { signal } = controller;
     setError(null);
+    setGrantError(null);
     setShowManualToken(false);
     setLoading(true);
     try {
@@ -278,6 +312,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
     setLoading(true);
     setError(null);
+    setGrantError(null);
     try {
       // Probe before storing so a rejected credential never shows as Connected.
       const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({

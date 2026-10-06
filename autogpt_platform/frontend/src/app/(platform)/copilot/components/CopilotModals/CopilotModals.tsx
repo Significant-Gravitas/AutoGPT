@@ -73,7 +73,11 @@ export function CopilotModals() {
         title="Integrations"
       >
         <Dialog.Content>
-          <IntegrationsPanel withHeading={false} preferMcp />
+          <IntegrationsPanel
+            withHeading={false}
+            preferMcp
+            onConnected={expert ? handleConnected : undefined}
+          />
         </Dialog.Content>
       </Dialog>
 
