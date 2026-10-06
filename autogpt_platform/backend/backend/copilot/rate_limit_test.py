@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot import rate_limit
+from backend.copilot.trial_cost_context import TrialCostContext
+from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 
 from .rate_limit import (
@@ -48,6 +51,44 @@ from .rate_limit import (
 )
 
 _USER = "test-user-rl"
+
+
+@pytest.fixture(autouse=True)
+def usage_state_boundary(mocker, request):
+    """Rate arithmetic tests use legacy generation; activation has integration coverage."""
+
+    async def state(user_id):
+        tier = await rate_limit._fetch_user_tier(user_id)
+        return UsageActivationState(user_id=user_id, tier=tier, ready=True)
+
+    # Each tier-specific test can still override the lower boundary explicitly.
+    if not (
+        request.cls
+        and request.cls.__name__
+        in {
+            "TestFetchUserTierErrorPropagation",
+            "TestGetUserTier",
+            "TestSetUserTier",
+            "TestMaybeReconcileStripeTier",
+        }
+    ):
+        mocker.patch.object(
+            rate_limit,
+            "_fetch_user_tier",
+            AsyncMock(
+                return_value=(
+                    SubscriptionTier.NO_TIER
+                    if request.cls and request.cls.__name__ == "TestGetUsageStatus"
+                    else SubscriptionTier.PRO
+                )
+            ),
+        )
+    mocker.patch.object(rate_limit, "get_ready_usage_state", side_effect=state)
+    mocker.patch.object(
+        rate_limit,
+        "capture_cost_context",
+        AsyncMock(return_value=TrialCostContext(user_id=_USER, trial_id=None)),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1364,28 +1405,28 @@ class TestGetUserTier:
         assert tier == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
-    async def test_returns_default_when_user_not_found(self):
+    async def test_unavailable_user_fails_closed(self):
         """Should return DEFAULT_TIER when user is not in the DB."""
         mock_db = self._mock_user_db(raises=Exception("not found"))
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
-    async def test_returns_default_when_tier_is_none(self):
+    async def test_unknown_tier_fails_closed(self):
         """Should return DEFAULT_TIER when subscription_tier is None."""
         mock_db = self._mock_user_db(subscription_tier=None)
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
-    async def test_returns_default_on_db_error(self):
+    async def test_db_error_fails_closed(self):
         """Should fall back to DEFAULT_TIER when DB raises."""
         mock_db = self._mock_user_db(raises=Exception("DB down"))
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
     async def test_db_error_is_not_cached(self):
@@ -1396,8 +1437,8 @@ class TestGetUserTier:
         """
         failing_db = self._mock_user_db(raises=Exception("DB down"))
         with patch("backend.copilot.rate_limit.user_db", return_value=failing_db):
-            tier1 = await get_user_tier(_USER)
-        assert tier1 == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
         # Now DB recovers and returns PRO
         ok_db = self._mock_user_db(subscription_tier="PRO")
@@ -1408,12 +1449,12 @@ class TestGetUserTier:
         assert tier2 == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
-    async def test_returns_default_on_invalid_tier_value(self):
+    async def test_invalid_tier_fails_closed(self):
         """Should fall back to DEFAULT_TIER when stored value is invalid."""
         mock_db = self._mock_user_db(subscription_tier="invalid-tier")
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
     async def test_user_not_found_is_not_cached(self):
@@ -1427,8 +1468,8 @@ class TestGetUserTier:
         # First call: user does not exist yet
         missing_db = self._mock_user_db(raises=Exception("not found"))
         with patch("backend.copilot.rate_limit.user_db", return_value=missing_db):
-            tier1 = await get_user_tier(_USER)
-        assert tier1 == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
         # Second call: user now exists with PRO tier
         ok_db = self._mock_user_db(subscription_tier="PRO")
@@ -1520,7 +1561,7 @@ class TestMaybeReconcileStripeTier:
         still resolves the DB-confirmed NO_TIER instead of raising."""
         get_user_tier.cache_clear()  # type: ignore[attr-defined]
         mock_user = MagicMock()
-        mock_user.subscription_tier = None
+        mock_user.subscription_tier = "NO_TIER"
         mock_db = AsyncMock()
         mock_db.get_user_by_id = AsyncMock(return_value=mock_user)
         redis = self._mock_redis()
@@ -2939,7 +2980,7 @@ class TestBuildBudgetCtx:
     def paid_user_tier(self, mocker):
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(return_value=SubscriptionTier.PRO),
+            new=AsyncMock(return_value=DEFAULT_TIER),
         )
 
     """The helper combines ``get_global_rate_limits`` + ``get_remaining_usd_budget``

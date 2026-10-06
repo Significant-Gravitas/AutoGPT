@@ -51,7 +51,7 @@ def _candidate(
 
 def _patch_stripe_pages(
     mocker: pytest_mock.MockFixture, by_status: dict[str, list[dict]]
-) -> None:
+) -> AsyncMock:
     """Make stripe.Subscription.list return one page per status."""
 
     def _list(*, status: str, limit: int, starting_after: str | None = None):
@@ -63,6 +63,11 @@ def _patch_stripe_pages(
     mocker.patch(
         "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
+    )
+    return mocker.patch(
+        "backend.data.stripe_reconciliation._reconcile_pro_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.PRO,
     )
 
 
@@ -85,7 +90,7 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
         new_callable=AsyncMock,
         return_value={"price_pro": SubscriptionTier.PRO},
     )
-    _patch_stripe_pages(
+    reconcile_pro = _patch_stripe_pages(
         mocker,
         {"active": [_sub("cus_keep", "price_pro"), _sub("cus_up", "price_pro")]},
     )
@@ -112,8 +117,10 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     assert summary.downgrades == 1
     assert summary.unchanged == 1
     assert summary.errors == 0
-    set_tier.assert_any_await("u_up", SubscriptionTier.PRO)
-    set_tier.assert_any_await("u_down", SubscriptionTier.NO_TIER)
+    set_tier.assert_awaited_once_with("u_down", SubscriptionTier.NO_TIER)
+    assert reconcile_pro.await_count == 2
+    reconcile_pro.assert_any_await(candidates[0], _sub("cus_keep", "price_pro"))
+    reconcile_pro.assert_any_await(candidates[1], _sub("cus_up", "price_pro"))
     # Each correction is recorded, and the sweep alerts ops exactly once (not
     # per-user) with the discrepancy counts.
     assert {d.direction for d in summary.discrepancies} == {"upgrade", "downgrade"}

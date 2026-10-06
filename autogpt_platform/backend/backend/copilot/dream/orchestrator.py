@@ -26,6 +26,7 @@ from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.graphiti.client import derive_memory_scope_key
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations, drain_status_from_stats
@@ -737,6 +738,7 @@ def _has_new_episodes_since(episodes: list[EpisodeRow], marker: datetime) -> boo
     return False
 
 
+@attributed_usage
 async def _execute_dream_pass_async(
     user_id: str,
     *,

@@ -41,6 +41,9 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
+
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
     delete_input_bundle,
@@ -274,6 +277,26 @@ async def _release_lock(
 
 
 async def handle_dream_batch_result(
+    entry: PendingEntry, rows: list[BatchResultRow]
+) -> None:
+    payload = entry.payload or {}
+    user_id = str(payload.get("user_id") or "")
+    if (
+        not user_id
+        or not payload.get("pass_id")
+        or payload.get("phase") not in NEXT_PHASE
+    ):
+        await _handle_dream_batch_result(entry, rows)
+        return
+    raw_context = payload.get("cost_context")
+    if raw_context is None:
+        raise UsageActivationUnavailable("Dream batch has no usage attribution")
+    context = TrialCostContext.model_validate(raw_context)
+    with restore_cost_context(user_id, context):
+        await _handle_dream_batch_result(entry, rows)
+
+
+async def _handle_dream_batch_result(
     entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
     """BatchExecutor entry — called once per finished phase batch.

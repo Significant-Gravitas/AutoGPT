@@ -108,14 +108,23 @@ async def test_trial_transitions_schedule_through_the_webhook_choke_point():
     """Trial start, cancel, conversion and expiry are all written by
     ``reconcile_trial_subscription``, which only runs inside
     ``sync_subscription_from_stripe``; its early return still schedules."""
-    user = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.NO_TIER)
+    user = MagicMock(
+        id="user-1", stripeCustomerId="cus_1", subscriptionTier=SubscriptionTier.NO_TIER
+    )
     with (
         patch(
             "backend.data.credit.User.prisma",
             return_value=MagicMock(find_first=AsyncMock(return_value=user)),
         ),
         patch(
-            "backend.data.credit.reconcile_trial_subscription",
+            "backend.data.credit.stripe.Subscription.retrieve_async",
+            AsyncMock(return_value=TRIAL_SUB),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_trial", AsyncMock(return_value=None)
+        ),
+        patch(
+            "backend.data.credit.subscription_trial_stripe.reconcile_trial_subscription",
             new_callable=AsyncMock,
             return_value=(TRIAL_SUB, SubscriptionTier.TRIAL),
         ) as reconcile,

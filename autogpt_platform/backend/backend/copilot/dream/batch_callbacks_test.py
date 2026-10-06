@@ -15,6 +15,8 @@ import pytest
 
 from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
 from backend.copilot.dream.schemas import IngestionDrainStatus
+from backend.copilot.trial_cost_context import get_trial_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.executor.batch_executor import PendingEntry
 from backend.util.llm.providers import BatchResultRow
 
@@ -89,6 +91,7 @@ def _entry(
     custom_id = f"{pass_id}:{phase}"
     payload = {
         "user_id": "u1",
+        "cost_context": {"user_id": "u1", "trial_id": None, "generation": None},
         "pass_id": pass_id,
         "job_id": job_id,
         "phase": phase,
@@ -1155,3 +1158,36 @@ class TestLockTokenWiring:
         await self._dispatch_sanitize()
 
         assert string_store["dream:inflight:u1"] == "tok-newer-pass"
+
+
+@pytest.mark.asyncio
+async def test_callback_restores_original_trial_generation_for_late_result():
+    entry = _entry()
+    entry.payload["cost_context"] = {
+        "user_id": "u1",
+        "trial_id": "trial-original",
+        "generation": None,
+    }
+    seen = []
+
+    async def handle(_entry, _rows):
+        seen.append(get_trial_cost_context("u1"))
+
+    with patch(
+        "backend.copilot.dream.batch_callbacks._handle_dream_batch_result", handle
+    ):
+        await handle_dream_batch_result(entry, [])
+    assert seen[0].trial_id == "trial-original"
+    assert seen[0].generation is None
+    assert get_trial_cost_context("u1") is None
+
+
+@pytest.mark.asyncio
+async def test_callback_refuses_missing_or_foreign_attribution():
+    entry = _entry()
+    del entry.payload["cost_context"]
+    with pytest.raises(UsageActivationUnavailable):
+        await handle_dream_batch_result(entry, [])
+    entry.payload["cost_context"] = {"user_id": "foreign", "trial_id": None}
+    with pytest.raises(ValueError, match="different user"):
+        await handle_dream_batch_result(entry, [])

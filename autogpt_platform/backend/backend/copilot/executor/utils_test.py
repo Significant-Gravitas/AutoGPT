@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
@@ -363,3 +364,6 @@ class TestNarrowPermissions:
         assert merged is not None
         assert merged.tools_exclude is False
         assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
