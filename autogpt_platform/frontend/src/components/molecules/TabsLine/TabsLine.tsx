@@ -30,8 +30,8 @@ interface TabsLineProps extends React.ComponentPropsWithoutRef<
   typeof TabsPrimitive.Root
 > {
   /**
-   * `compact` is the dense neutral style: flush, zinc underline, 14px
-   * triggers with tighter padding. `default` keeps the purple accent.
+   * `compact` is the dense neutral style: flush, foreground underline, 14px
+   * triggers with tighter padding. `default` underlines in the accent.
    */
   variant?: TabsLineVariant;
 }
@@ -59,7 +59,7 @@ interface TabsLineListProps extends React.ComponentPropsWithoutRef<
   flush?: boolean;
   /**
    * Overrides the active-tab underline colour, for surfaces that want a
-   * neutral accent instead of the default purple.
+   * neutral underline instead of the accent.
    */
   indicatorClassName?: string;
 }
@@ -84,7 +84,7 @@ const TabsLineList = React.forwardRef<
           listRef.current = node;
         }}
         className={cn(
-          "inline-flex w-full items-center justify-start border-b border-zinc-100",
+          "inline-flex w-full items-center justify-start border-b border-border",
           isFlush && "[&>button:first-child]:pl-0!",
           className,
         )}
@@ -93,8 +93,8 @@ const TabsLineList = React.forwardRef<
       {activeTabElement && (
         <div
           className={cn(
-            "absolute bottom-0 h-0.5 bg-purple-600 transition-[left,width] duration-200 ease-in-out",
-            isCompact && "bg-zinc-900",
+            "absolute bottom-0 h-0.5 bg-accent transition-[left,width] duration-200 ease-in-out",
+            isCompact && "bg-foreground",
             indicatorClassName,
           )}
           style={{
@@ -153,10 +153,10 @@ const TabsLineTrigger = React.forwardRef<
         elementRef.current = node;
       }}
       className={cn(
-        "relative inline-flex items-center justify-center px-3 py-3 font-sans text-[0.875rem] leading-6 font-medium whitespace-nowrap text-zinc-700 transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-purple-600",
+        "relative inline-flex items-center justify-center px-3 py-3 font-sans text-[0.875rem] leading-6 font-medium whitespace-nowrap text-muted-foreground focus-ring transition-all focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-accent",
         icon && "gap-1.5",
         variant === "compact" &&
-          "px-2.5 py-2 text-sm leading-5 text-zinc-600 data-[state=active]:text-zinc-900",
+          "px-2.5 py-2 text-sm leading-5 data-[state=active]:text-foreground",
         className,
       )}
       {...props}
@@ -179,7 +179,7 @@ const TabsLineContent = React.forwardRef<
       // rule behind it is weaker than any author display utility — a panel
       // styled `flex`/`grid` stays laid out and keeps stealing space from the
       // active one. The data-state variant is specific enough to win.
-      "mt-4 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden data-[state=inactive]:hidden",
+      "mt-4 focus-ring focus-visible:ring-offset-2 data-[state=inactive]:hidden",
       className,
     )}
     {...props}
