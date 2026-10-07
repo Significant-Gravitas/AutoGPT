@@ -28,7 +28,7 @@ const RUN_STATUS: Record<
   },
   FAILED: { icon: CancelCircleIcon, className: "text-red-500", spin: false },
   RUNNING: { icon: Loading03Icon, className: "text-purple-600", spin: true },
-  QUEUED: { icon: ClockIcon, className: "text-amber-600", spin: false },
+  QUEUED: { icon: ClockIcon, className: "text-yellow-600", spin: false },
 };
 
 const FALLBACK_STATUS = {

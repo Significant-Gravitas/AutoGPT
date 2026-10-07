@@ -93,7 +93,7 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
           assumes a {formatTokenCount(MODEL_CONTEXT_WINDOW)} window; the backend
           threshold is configurable
         </p>
-        <p className="pb-2.5 pt-0.5 text-right font-mono text-xs text-amber-500">
+        <p className="pb-2.5 pt-0.5 text-right font-mono text-xs text-yellow-500">
           summarizes ~{formatTokenCount(AUTOCOMPACT_TOKENS)}
         </p>
 

@@ -11,13 +11,13 @@ export function ProgressBar({ value, label, className }: Props) {
 
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <div className="flex items-center justify-between text-xs text-neutral-500">
+      <div className="flex items-center justify-between text-xs text-zinc-500">
         <span>{label ?? "Working on it..."}</span>
         <span>{Math.round(clamped)}%</span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
         <div
-          className="h-full rounded-full bg-neutral-900 transition-[width] duration-300 ease-out"
+          className="h-full rounded-full bg-zinc-900 transition-[width] duration-300 ease-out"
           style={{ width: `${clamped}%` }}
         />
       </div>

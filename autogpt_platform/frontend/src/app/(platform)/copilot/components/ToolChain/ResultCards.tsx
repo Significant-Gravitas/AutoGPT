@@ -47,7 +47,7 @@ const STATUS_STYLES: Record<string, string> = {
   COMPLETED: "bg-green-50 text-green-600",
   FAILED: "bg-red-50 text-red-500",
   RUNNING: "bg-purple-50 text-purple-600",
-  QUEUED: "bg-amber-50 text-amber-600",
+  QUEUED: "bg-yellow-50 text-yellow-600",
 };
 
 export function StatusPill({ status, className }: StatusPillProps) {

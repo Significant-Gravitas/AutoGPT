@@ -496,7 +496,7 @@ export function ExpertChangeGroup({
               "rounded-full transition-all duration-300",
               i === current ? "size-2.5 border-2" : "size-2 border",
               decisions[toolCallId] === "approved"
-                ? "border-emerald-500 bg-emerald-500"
+                ? "border-green-500 bg-green-500"
                 : decisions[toolCallId] === "declined"
                   ? "border-red-400 bg-red-400"
                   : i === current

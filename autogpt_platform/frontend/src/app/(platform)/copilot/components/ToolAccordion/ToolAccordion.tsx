@@ -54,13 +54,13 @@ export function ToolAccordion({
         className="flex w-full items-center justify-between gap-3 py-1 text-left"
       >
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex shrink-0 items-center text-gray-800">
+          <span className="flex shrink-0 items-center text-zinc-800">
             {icon}
           </span>
           <div className="min-w-0">
             <p
               className={cn(
-                "truncate text-sm font-medium text-gray-800",
+                "truncate text-sm font-medium text-zinc-800",
                 titleClassName,
               )}
             >

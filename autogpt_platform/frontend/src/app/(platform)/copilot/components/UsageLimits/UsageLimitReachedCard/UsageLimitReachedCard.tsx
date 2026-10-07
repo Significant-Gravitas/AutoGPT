@@ -29,7 +29,7 @@ export function UsageLimitReachedCard() {
     >
       <div className="flex items-center gap-2">
         <Icon icon={Alert01Icon} className="size-5 text-orange-500" />
-        <Text variant="body-medium" className="text-neutral-900">
+        <Text variant="body-medium" className="text-zinc-900">
           Usage limit reached
         </Text>
         {tierLabel && (

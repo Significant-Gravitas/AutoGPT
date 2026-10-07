@@ -15,13 +15,13 @@ export function ContextBar({ context }: Props) {
       <div
         className={
           "absolute inset-y-0 left-0 rounded-full transition-all " +
-          (isOverAutocompact(context) ? "bg-amber-400" : "bg-zinc-800")
+          (isOverAutocompact(context) ? "bg-yellow-400" : "bg-zinc-800")
         }
         style={{ width: `${windowPercent(context)}%` }}
       />
       <div
         aria-hidden
-        className="absolute inset-y-0 w-px bg-amber-400"
+        className="absolute inset-y-0 w-px bg-yellow-400"
         style={{ left: `${threshold}%` }}
       />
     </div>

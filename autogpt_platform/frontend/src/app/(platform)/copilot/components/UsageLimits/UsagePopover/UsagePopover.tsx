@@ -45,7 +45,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
       <PopoverContent align={align} className="z-[80] w-72 p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" className="text-neutral-800">
+            <Text variant="body-medium" className="text-zinc-800">
               Usage limits
             </Text>
             {tierLabel && (

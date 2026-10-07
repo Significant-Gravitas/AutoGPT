@@ -34,7 +34,7 @@ export function ContentCard({
         className,
       )}
     >
-      <div className="rounded-lg bg-neutral-100 p-3">{children}</div>
+      <div className="rounded-lg bg-zinc-100 p-3">{children}</div>
     </div>
   );
 }
@@ -131,7 +131,7 @@ export function ContentHint({
   className?: string;
 }) {
   return (
-    <Text variant="small" className={cn("text-neutral-500", className)}>
+    <Text variant="small" className={cn("text-zinc-500", className)}>
       {children}
     </Text>
   );
@@ -151,7 +151,7 @@ export function ContentCodeBlock({
   return (
     <pre
       className={cn(
-        "whitespace-pre-wrap rounded-lg border bg-neutral-100 p-3 text-xs text-neutral-800",
+        "whitespace-pre-wrap rounded-lg border bg-zinc-100 p-3 text-xs text-zinc-800",
         className,
       )}
     >

@@ -423,7 +423,7 @@ describe("expert approval", () => {
     expect(screen.getByText("2 of 2")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Go to expert 1" }).className,
-    ).toContain("emerald");
+    ).toContain("green");
 
     await user.click(screen.getByRole("button", { name: "Decline" }));
     expect(screen.getByRole("button", { name: "Undo decline" })).toBeDefined();
@@ -488,7 +488,7 @@ describe("expert approval", () => {
     expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Go to expert 1" }).className,
-    ).not.toContain("emerald");
+    ).not.toContain("green");
   });
 
   it("sends a single expert straight after its decision", async () => {

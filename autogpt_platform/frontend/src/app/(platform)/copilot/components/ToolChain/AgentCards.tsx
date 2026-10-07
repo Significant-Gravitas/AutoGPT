@@ -93,7 +93,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                       <Icon
                         icon={StarIcon}
                         size={10}
-                        className="text-amber-400"
+                        className="text-yellow-400"
                       />
                       {rating.toFixed(1)}
                     </span>

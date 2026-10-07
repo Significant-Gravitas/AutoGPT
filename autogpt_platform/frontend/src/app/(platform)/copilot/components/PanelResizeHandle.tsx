@@ -129,8 +129,8 @@ export function PanelResizeHandle({
     >
       <div
         className={cn(
-          "h-full w-px bg-transparent transition-colors group-hover:w-0.5 group-hover:bg-violet-400",
-          isDragging && "w-0.5 bg-violet-500",
+          "h-full w-px bg-transparent transition-colors group-hover:w-0.5 group-hover:bg-purple-400",
+          isDragging && "w-0.5 bg-purple-500",
         )}
       />
     </div>

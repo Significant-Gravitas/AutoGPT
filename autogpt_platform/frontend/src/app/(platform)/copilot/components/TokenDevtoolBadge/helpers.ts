@@ -16,6 +16,6 @@ export function isOverAutocompact(context: number): boolean {
 export const BREAKDOWN_COLORS = {
   system: "bg-zinc-400",
   user: "bg-sky-400",
-  assistant: "bg-violet-400",
-  tools: "bg-emerald-400",
+  assistant: "bg-purple-400",
+  tools: "bg-green-400",
 };
