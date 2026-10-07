@@ -19,6 +19,7 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { revokeResetLinksOnEmailChange } from "./reset-links";
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
@@ -138,6 +139,9 @@ export const auth = betterAuth({
         },
       },
       update: {
+        // A reset link must not verify an address it was never mailed to:
+        // see reset-links.ts.
+        before: revokeResetLinksOnEmailChange,
         // updateUserByEmail (fired when a change-email link is confirmed)
         // runs this hook post-commit; mirror the now-verified email onto the
         // platform User row so notifications/Stripe track the confirmed

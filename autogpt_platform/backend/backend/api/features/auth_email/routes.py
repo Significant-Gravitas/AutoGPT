@@ -57,6 +57,15 @@ _REASONS: dict[str, str] = {
     ),
 }
 
+# What the recipient may not expect from following the link.
+_NOTES: dict[str, str] = {
+    "set_password": (
+        "If you already finished signing up with an earlier link, the password "
+        "you chose then no longer works: set a new one with this link, or use "
+        '"Forgot password" on the login page.'
+    ),
+}
+
 # Must match the links the frontend issues.
 _EXPIRY: dict[str, str] = {
     "reset_password": "1 hour",
@@ -101,11 +110,13 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     safe_url = html.escape(request.url, quote=True)
     reason = _REASONS.get(request.type)
     expiry = _EXPIRY.get(request.type)
+    note = _NOTES.get(request.type)
     body = (
         (f"<p>{reason}</p>" if reason else "")
         + f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
         + f'<p><a href="{safe_url}">{safe_url}</a></p>'
         + (f"<p>The link expires in {expiry}.</p>" if expiry else "")
+        + (f"<p>{html.escape(note)}</p>" if note else "")
         + "<p>If you didn't request this, you can safely ignore this email.</p>"
     )
 

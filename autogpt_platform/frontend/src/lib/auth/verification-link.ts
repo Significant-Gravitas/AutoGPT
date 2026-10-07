@@ -18,7 +18,9 @@ interface Args {
  * which Better Auth's rate limiter never sees, so whoever set the password
  * could have us mail the address without limit. Sign-in and sign-up therefore
  * share one email per address per window. If the cooldown can't be checked,
- * the email still goes: a verification link matters more than the cap.
+ * the email still goes: a verification link matters more than the cap. With
+ * verification off, neither sends one, and the only sends left are a change of
+ * email's, which keep going out uncapped as they did before.
  *
  * The resend button's own route skips that cap (it is capped per IP instead,
  * see ip-email-cap.ts) because its answer has to say whether the email went.
@@ -31,7 +33,7 @@ export async function sendVerificationLink(args: Args) {
   if (isResendRequest(request)) {
     if (args.requireEmailVerification && (await sendsSetPasswordLink(args)))
       return;
-  } else {
+  } else if (args.requireEmailVerification) {
     const claimed = await getAuthContext()
       .then((context) => claimEmailSlot(context, "verify-email", user.email))
       .catch((error: unknown) => {

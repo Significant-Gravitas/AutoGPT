@@ -929,6 +929,67 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
       expect.objectContaining({ emailVerified: true }),
     ]);
   });
+
+  it("does not hold back a change of email's verification email", async () => {
+    // The per-address cap is for sign-up and sign-in, which send nothing with
+    // verification off; a retried change of email still gets its link.
+    const { api } = await createAuthHandler(false);
+    const { headers } = await api.signUpEmail({
+      body: { email: "a@example.com", password, name: "a", callbackURL },
+      returnHeaders: true,
+    });
+    const session = new Headers({
+      cookie: headers.get("set-cookie")?.split(";")[0] ?? "",
+    });
+
+    for (const newEmail of [
+      "b@example.com",
+      "a@example.com",
+      "b@example.com",
+    ]) {
+      await api.changeEmail({ body: { newEmail }, headers: session });
+    }
+    await emailsSent();
+
+    const toB = sentEmails.filter(
+      (sent) => sent.to === "b@example.com" && sent.type === "verify_email",
+    );
+    expect(toB).toHaveLength(2);
+  });
+
+  it("does not verify an address a reset link was never mailed to", async () => {
+    // A reset token names the account, not the address it went to, and an
+    // unverified account changes address at once. A verified address would
+    // let Better Auth link that address's OAuth sign-in into this account.
+    const { api, handler, db } = await createAuthHandler(false);
+    const { headers } = await api.signUpEmail({
+      body: { email: "attacker@example.com", password, name: "a", callbackURL },
+      returnHeaders: true,
+    });
+    const cookie = headers.get("set-cookie")?.split(";")[0] ?? "";
+    await api.requestPasswordReset({
+      body: { email: "attacker@example.com", redirectTo: "/reset-password" },
+    });
+    await emailsSent();
+    const token = lastResetToken("attacker@example.com", "reset_password");
+    await api.changeEmail({
+      body: { newEmail: "victim@example.com" },
+      headers: new Headers({ cookie }),
+    });
+
+    const response = await post(handler, "/reset-password", {
+      newPassword: "a-new-long-enough-password",
+      token,
+    });
+
+    expect(response.status).toBe(400);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({
+        email: "victim@example.com",
+        emailVerified: false,
+      }),
+    ]);
+  });
 });
 
 describe("team addresses", () => {

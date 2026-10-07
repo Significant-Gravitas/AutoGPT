@@ -74,6 +74,24 @@ def test_set_password_email_says_why_it_came_and_when_it_expires(send_mock):
     assert "expires in 1 hour" in body
 
 
+def test_set_password_email_warns_an_earlier_password_no_longer_works(send_mock):
+    # Someone who resubmits the sign-up form gets this email, and the password
+    # they signed up with stops working, even if they finish through the
+    # first link.
+    _post({**VALID_BODY, "type": "set_password"})
+
+    _, _, body = send_mock.call_args.args
+    assert "the password you chose then no longer works" in body
+    assert "&quot;Forgot password&quot;" in body
+
+
+def test_reset_email_carries_no_set_password_note(send_mock):
+    _post(VALID_BODY)
+
+    _, _, body = send_mock.call_args.args
+    assert "no longer works" not in body
+
+
 def test_verify_email_states_its_24_hour_expiry(send_mock):
     _post({**VALID_BODY, "type": "verify_email"})
 
