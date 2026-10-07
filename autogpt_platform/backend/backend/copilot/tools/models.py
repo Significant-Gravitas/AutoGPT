@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
@@ -159,6 +159,21 @@ class ToolResponseBase(BaseModel):
     type: ResponseType
     message: str
     session_id: str | None = None
+    # None until the producer declares it, and the content judge then reads the
+    # whole response.
+    _outside: tuple[Any, ...] | None = PrivateAttr(default=None)
+
+    def from_outside(self, *parts: Any) -> Self:
+        """Declare the values in this response that came from outside AutoGPT,
+        exactly as placed in it; with none, the response is wholly ours. The
+        content judge reads only these, and every image. An agent's name,
+        description and schema count as ours: discovery returns them unjudged."""
+        self._outside = (*(self._outside or ()), *parts)
+        return self
+
+    @property
+    def outside(self) -> tuple[Any, ...] | None:
+        return self._outside
 
 
 # Agent discovery models
