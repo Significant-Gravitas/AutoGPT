@@ -80,6 +80,12 @@ async def get_trial_status(
             allowance_used_percent=min(
                 100, 100 * trial.cost_microdollars / trial.offer.total_cost_limit
             ),
+            usage_policy=(
+                "lifetime"
+                if trial.offer.daily_cost_limit >= trial.offer.total_cost_limit
+                and trial.offer.weekly_cost_limit >= trial.offer.total_cost_limit
+                else "rolling"
+            ),
         )
     offer = await get_trial_offer(user_id, country=country)
     if offer is None or not await trial_seat_available(offer):

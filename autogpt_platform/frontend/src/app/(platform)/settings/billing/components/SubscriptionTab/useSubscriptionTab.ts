@@ -27,6 +27,7 @@ export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
   const cancelPendingOffer = getCancelPendingOffer(trial);
 
   return {
+    isLoading,
     showPlan:
       !isLoading && (!trial?.active || trial.converted || isSupersededTrial),
     showTrialCard: !(isEndedTrial && isReplaced) && !isSupersededTrial,

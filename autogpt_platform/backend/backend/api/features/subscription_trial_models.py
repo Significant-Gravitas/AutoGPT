@@ -30,6 +30,7 @@ class TrialStatusResponse(BaseModel):
     ends_at: datetime | None = None
     cancel_at_period_end: bool = False
     allowance_used_percent: float | None = None
+    usage_policy: Literal["lifetime", "rolling"] | None = None
     active: bool = False
     converted: bool = False
     onboarding_credits_previously_received: bool = False

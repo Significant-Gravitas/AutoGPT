@@ -246,6 +246,7 @@ export function usePaywallModal() {
     confirmPendingTier,
     cancelPendingTier,
     handleLogout,
+    handleClose: () => router.replace("/settings/billing"),
     trial,
     trialOffer,
   };

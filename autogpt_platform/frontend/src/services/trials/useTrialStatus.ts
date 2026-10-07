@@ -24,7 +24,8 @@ export function useTrialStatus({ refetchInterval }: Options = {}) {
       refetchInterval:
         typeof refetchInterval === "function"
           ? (query) => refetchInterval(readTrial(query.state.data))
-          : refetchInterval,
+          : (refetchInterval ?? 30_000),
+      staleTime: 10_000,
       select: readTrial,
     },
   });

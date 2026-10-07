@@ -471,7 +471,9 @@ describe("YourPlanCard cycle toggle", () => {
       await screen.findByRole("button", { name: /upgrade to max/i }),
     );
 
-    expect(await screen.findByText(/Upgrade to Max\?/i)).toBeDefined();
+    expect(
+      await screen.findByRole("dialog", { name: /Upgrade to Max/i }),
+    ).toBeDefined();
     expect(
       screen.getByText(
         /charged the prorated difference immediately for the rest of your monthly period/i,
@@ -547,11 +549,15 @@ describe("YourPlanCard cycle toggle", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /upgrade to max/i }),
     );
-    expect(await screen.findByText(/Upgrade to Max\?/i)).toBeDefined();
+    expect(
+      await screen.findByRole("dialog", { name: /Upgrade to Max/i }),
+    ).toBeDefined();
     fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
 
     await waitFor(() =>
-      expect(screen.queryByText(/Upgrade to Max\?/i)).toBeNull(),
+      expect(
+        screen.queryByRole("dialog", { name: /Upgrade to Max/i }),
+      ).toBeNull(),
     );
     expect(mutationFired).toBe(false);
   });

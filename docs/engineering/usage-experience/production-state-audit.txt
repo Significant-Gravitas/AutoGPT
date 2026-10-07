@@ -1,0 +1,123 @@
+Production-to-design comparison audit
+=====================================
+
+Production source: f8b0e0a87c38b67f6e6cb21f3ee03ff5584c3588.
+All source paths below are relative to work/autogpt-production-backend/autogpt_platform/frontend/src.
+This is a source-backed state audit, not an authenticated production-account recording.
+Use untouched production components with deterministic data fixtures. Label all panels as
+production components rendered from the verified release, with sample account data.
+
+Production component abbreviations
+----------------------------------
+D: app/(platform)/copilot/components/RateLimitResetDialog/RateLimitResetDialog.tsx
+G: app/(platform)/copilot/components/RateLimitResetDialog/RateLimitGate.tsx
+I: app/(platform)/copilot/components/UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard.tsx
+C: app/(platform)/copilot/components/ChatInput/ChatInput.tsx
+B: app/(platform)/settings/billing/components/SubscriptionTab/SubscriptionTab.tsx
+T: components/organisms/TrialCard/TrialCard.tsx and TrialStatus.tsx
+P: app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/YourPlanCard.tsx
+PH: same directory/useYourPlanCard.ts
+U: app/(platform)/settings/billing/components/SubscriptionTab/AutopilotUsageCard/AutopilotUsageCard.tsx
+UH: same directory/useAutopilotUsageCard.ts
+PM: app/(platform)/settings/billing/components/SubscriptionTab/PaymentMethodCard/PaymentMethodCard.tsx
+W: app/(platform)/PaywallGate/PaywallModal.tsx and PaywallGate.tsx
+S: app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog.tsx
+
+Mapping for all 31 compact design files
+--------------------------------------
+01 trial-popup: D, tier TRIAL, daily cap fixture. Current popup only says Daily usage
+   limit reached / Wait for reset / Upgrade plan. New total-trial semantics depend
+   on incoming allowance PR; do not pretend production currently uses lifetime-only cap.
+02 trial-chat: I + C, tier TRIAL, daily exhausted. Generic warning, two meters,
+   storage, Go to billing. New direct Pro offer removes irrelevant storage here.
+03 trial-billing: B with active unconverted T and U. P hidden during active trial.
+   Current T shows end/billing terms/cancellation, but no lifetime usage meter.
+04 trial-active: same B/T/U with nonexhausted daily+weekly sample data. New lifetime
+   percentage is not numerically equivalent to old daily/weekly percentages.
+05 pro-popup: D, tier PRO, daily exhausted. Generic Upgrade plan routes to billing.
+06 pro-chat: I + C, PRO. Existing plan badge and Go to billing; no inline Max offer.
+07 pro-billing: B/P/U, PRO, daily and weekly both 100%. Current meters already show
+   both reset times, but no prominent later-resume summary. P offers Max.
+08 pro-weekly: D with the production G-provided daily reset if daily data exists.
+   Current title/body remain Daily despite weekly exhaustion. Do not fix prod fixture.
+09 max-popup: D, tier MAX; Wait for reset + Contact us.
+10 max-chat: I + C, MAX; generic Go to billing (no direct contact in current inline card).
+11 max-billing: B/P/U, MAX; manage/downgrade Pro and Talk to sales — Team where allowed.
+12 team-popup: D, tier BUSINESS. Production popup is same generic Contact us variant;
+   it doesn't name Team. Current inline badge would incorrectly say Business plan.
+13 team-billing: B/P/U, BUSINESS. P correctly labels Team, offers downgrade Max,
+   manage subscription; no next-tier upgrade.
+14 enterprise-popup: D, tier ENTERPRISE; generic Contact us, no account-team wording.
+15 enterprise-billing: B/P/U, ENTERPRISE. PH leaves raw ENTERPRISE label and getNextTier
+   falls back to PRO, so current canUpgrade=true when no scheduled change. Cycle toggle
+   hidden. Portal availability remains conditional. Do not quietly improve prod fixture.
+16 basic-chat: I, BASIC; Basic plan badge, two meters/storage/Go to billing.
+17 basic-billing: B/P/U, BASIC. Raw BASIC label, cycle toggle hidden; next tier PRO.
+18 choose-plan: W for payment-enabled NO_TIER without eligible trial. Non-dismissable
+   paywall with SubscriptionPlans, Log out, plan header/demo link. Do not use D.
+19 no-plan-billing: W is normally visible over the billing route. Underlying B/P says
+   No active subscription / Inactive / Pick a plan to continue using AutoGPT / Get Pro.
+   Actual PaywallGate exemption list DOES NOT include /settings/billing despite stale
+   comment. Prefer compare W and label new dedicated billing view. An isolated B capture
+   must be labelled underlying billing, normally covered by the paywall.
+20 trial-ended: Current status is T: Your trial has ended / Paid access requires a
+   successful payment. Review your payment method and plan below. No dedicated inline
+   ended-trial notice. Normally NO_TIER also gives W, which embeds T among plan choices.
+   Compare T as the existing status component and clearly state different location.
+21 trial-canceled: T uses Your trial has ended plus Cancellation confirmed. Trial
+   access has ended and your trial will not convert to a paid plan. Rejection_reason
+   is a different TrialRejection branch; use canceled without rejection for this design.
+   Same W/placement caveat as ended. No dedicated current inline canceled notice.
+22 payment-failed: No current dedicated payment-recovery popup. PM gives generic
+   Manage payment method / Open portal. Initial trial conversion failure is inactive
+   T and may W. A failed paid renewal can retain PRO, so do not assume every failure
+   yields NO_TIER. Use actual PM as existing recovery route and label new popup.
+23 payment-billing: B/P/PM do not have a distinct failed-payment visual. For failed
+   paid renewal with retained PRO, existing B appears unchanged. Label sample explicitly;
+   backend authoritative state will determine whether full recovery is warranted.
+24 usage-unavailable: I returns null without successful data. G falls back to destructive
+   toast title Usage limit reached, description backend rateLimitMessage, then dismisses
+   dialog. No retry notice exists. Use truthful absence/toast explanation, not synthetic
+   error popup, or render exact toast with clearly specified sample backend message.
+25 unavailable-billing: B with UH hasUsage=false; U returns null. No zero meter and no
+   usage-error card. Preserve other billing sections. Comparison highlights missing
+   usage section -> explicit retry status.
+26 linked-provider: I does NOT expose provider continuation. D DOES have existing
+   alternative display_name / Continue on Claude and explanatory paragraph. Compare
+   existing D with new inline card, clearly label that the option moves into chat; or
+   compare I with note that the existing choice is in the popup. Do not fabricate
+   production inline Continue on Claude button.
+27 pro-review: No current early trial-to-Pro paid-activation review. Active trial P is
+   hidden and backend rejects ordinary trial modification. Use labelled evidence
+   panel No current early-activation screen, not a made-up production modal.
+28 max-review: S with target Max and production PH body. Exact monthly body:
+   You'll be charged the prorated difference immediately for the rest of your monthly
+   period. After this period, your plan renews at $320.00 per month.
+   Current confirm modifies existing subscription and may immediately charge; new design
+   routes to secure review. This is a proposed behavior change, not merely visual polish.
+29 payment-pending: No current dedicated early-Pro activation/usage-reset processing
+   screen. TrialCheckoutConfirmation says Confirming your trial and card setup… but
+   that is initial trial setup, NOT equivalent; do not use it as paid activation before.
+30 activation-success: No current early-conversion/fresh-reset success notice. Current
+   conversion retains same user/day/week consumption, so cannot show fresh allowance
+   on production side. Evidence panel is more honest than staged zero meters.
+31 fresh-billing: B/P/U on PRO after current scheduled conversion; U retains trial
+   consumption (percentages may change because tier caps differ). New B zeroes daily/
+   weekly only after reset completion. Use retained-consumption illustrative production
+   data labelled conversion, or No automatic fresh reset evidence panel. Do not assert
+   precise retained percentage without specifying actual cost/plan caps.
+
+Cross-cutting cautions
+---------------------
+- Production G chooses daily reset first even when weekly is the only exhausted window.
+  New later blocking reset is a correctness improvement, not just copy.
+- Comparison dates and account/payment details are fixtures. Do not represent them as
+  real user or real payment data. Same dates/currency/plan pricing should align across panels.
+- Payment-method last4 and invoice quote in new design need actual billing data; current
+  PM does not show these. New exact charge is a sample, not guaranteed $50 tax-free charge.
+- Current paid plans support annual billing and scheduled changes. A monthly sample
+  redesign must retain those supported controls in implementation.
+- No new trials should mention Max. Existing prod paywall can show multiple plans;
+  distinguish active trial upgrade offer from ineligible NO_TIER plan selection.
+- Global shell and unchanged automation-credit components are context, not claimed redesign.
+- No browser resources were created by this read-only audit.

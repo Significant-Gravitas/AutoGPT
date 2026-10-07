@@ -4,216 +4,124 @@ import {
   screen,
   fireEvent,
 } from "@/tests/integrations/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mockPush = vi.fn();
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: mockPush,
-    replace: vi.fn(),
-    prefetch: vi.fn(),
-    back: vi.fn(),
-    forward: vi.fn(),
-    refresh: vi.fn(),
-  }),
-  usePathname: () => "/copilot",
-  useSearchParams: () => new URLSearchParams(),
-  useParams: () => ({}),
-}));
-
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getUsageExperience } from "@/services/usageExperience/helpers";
 import { RateLimitResetDialog } from "../RateLimitResetDialog";
 
-const mockWindowOpen = vi.fn();
+afterEach(cleanup);
+const usage = {
+  tier: "PRO",
+  daily: { percent_used: 100, resets_at: "2099-10-07T00:00:00Z" },
+  weekly: { percent_used: 100, resets_at: "2099-10-12T00:00:00Z" },
+};
 
-beforeEach(() => {
-  // jsdom's window.open returns null and pollutes the test output; spy and
-  // suppress so we can assert the URL the dialog tries to open.
-  vi.spyOn(window, "open").mockImplementation(
-    mockWindowOpen as unknown as typeof window.open,
-  );
-});
-
-afterEach(() => {
-  cleanup();
-  mockPush.mockReset();
-  mockWindowOpen.mockReset();
-  vi.restoreAllMocks();
-});
-
-describe("RateLimitResetDialog", () => {
-  it("renders the dialog title and body when open", () => {
-    render(
-      <RateLimitResetDialog isOpen={true} onClose={vi.fn()} resetsAt={null} />,
+describe("Usage limit dialog", () => {
+  it("offers fresh Pro usage for an exhausted lifetime trial without a reset countdown or Max", () => {
+    const experience = getUsageExperience(
+      { ...usage, tier: "TRIAL" },
+      {
+        active: true,
+        converted: false,
+        usage_policy: "lifetime",
+        allowance_used_percent: 100,
+      },
     );
-
-    expect(screen.getByText("Daily usage limit reached")).toBeDefined();
-    expect(
-      screen.getByText(/You've reached your daily usage limit/),
-    ).toBeDefined();
-  });
-
-  it("shows the reset time when resetsAt is provided", () => {
-    const future = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const onUpgrade = vi.fn();
     render(
       <RateLimitResetDialog
-        isOpen={true}
+        isOpen
         onClose={vi.fn()}
-        resetsAt={future}
+        experience={experience}
+        onUpgrade={onUpgrade}
       />,
     );
-
-    expect(screen.getByText(/Resets in/)).toBeDefined();
+    expect(screen.getByText("Keep your momentum.")).toBeDefined();
+    expect(
+      screen.getByText("One allowance for your trial. It doesn’t refresh."),
+    ).toBeDefined();
+    expect(screen.queryByText(/Wait for reset|Max/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
+    expect(onUpgrade).toHaveBeenCalledOnce();
   });
-
-  it("omits the reset time when resetsAt is null", () => {
-    render(
-      <RateLimitResetDialog isOpen={true} onClose={vi.fn()} resetsAt={null} />,
-    );
-
-    const bodyText = screen.getByText(/You've reached your daily usage limit/);
-    expect(bodyText.textContent).not.toContain("Resets in");
-  });
-
-  it("renders Wait for reset and Upgrade plan buttons by default", () => {
-    render(
-      <RateLimitResetDialog isOpen={true} onClose={vi.fn()} resetsAt={null} />,
-    );
-
-    expect(screen.getByText("Wait for reset")).toBeDefined();
-    expect(screen.getByText("Upgrade plan")).toBeDefined();
-    expect(screen.queryByText("Contact us")).toBeNull();
-  });
-
-  it("calls onClose when Wait for reset is clicked", () => {
-    const onClose = vi.fn();
-    render(
-      <RateLimitResetDialog isOpen={true} onClose={onClose} resetsAt={null} />,
-    );
-
-    fireEvent.click(screen.getByText("Wait for reset"));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("navigates to /settings/billing when Upgrade plan is clicked (no tier)", () => {
-    const onClose = vi.fn();
-    render(
-      <RateLimitResetDialog isOpen={true} onClose={onClose} resetsAt={null} />,
-    );
-
-    fireEvent.click(screen.getByText("Upgrade plan"));
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/settings/billing");
-    expect(mockWindowOpen).not.toHaveBeenCalled();
-  });
-
-  it.each(["NO_TIER", "BASIC", "PRO"] as const)(
-    "shows Upgrade plan and routes to /settings/billing for tier=%s",
-    (tier) => {
-      const onClose = vi.fn();
-      render(
-        <RateLimitResetDialog
-          isOpen={true}
-          onClose={onClose}
-          resetsAt={null}
-          tier={tier}
-        />,
-      );
-
-      expect(screen.getByText("Upgrade plan")).toBeDefined();
-      fireEvent.click(screen.getByText("Upgrade plan"));
-      expect(onClose).toHaveBeenCalledTimes(1);
-      expect(mockPush).toHaveBeenCalledWith("/settings/billing");
-      expect(mockWindowOpen).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(["MAX", "BUSINESS", "ENTERPRISE"] as const)(
-    "shows Contact us and opens mailto for top-tier plan=%s",
-    (tier) => {
-      const onClose = vi.fn();
-      render(
-        <RateLimitResetDialog
-          isOpen={true}
-          onClose={onClose}
-          resetsAt={null}
-          tier={tier}
-        />,
-      );
-
-      expect(screen.getByText("Contact us")).toBeDefined();
-      expect(screen.queryByText("Upgrade plan")).toBeNull();
-
-      fireEvent.click(screen.getByText("Contact us"));
-      expect(onClose).toHaveBeenCalledTimes(1);
-      expect(mockWindowOpen).toHaveBeenCalledWith(
-        "mailto:contact@agpt.co",
-        "_blank",
-        "noopener,noreferrer",
-      );
-      expect(mockPush).not.toHaveBeenCalled();
-    },
-  );
-
-  it("does not render dialog content when closed", () => {
-    render(
-      <RateLimitResetDialog isOpen={false} onClose={vi.fn()} resetsAt={null} />,
-    );
-
-    expect(screen.queryByText("Daily usage limit reached")).toBeNull();
-  });
-
-  it("offers nothing to continue on by default", () => {
-    render(
-      <RateLimitResetDialog isOpen={true} onClose={vi.fn()} resetsAt={null} />,
-    );
-
-    expect(screen.queryByText(/Continue on/)).toBeNull();
-    expect(screen.queryByText(/Or continue on/)).toBeNull();
-  });
-
-  it("offers a linked subscription beside the upgrade, never instead of it", () => {
-    const onClose = vi.fn();
-    const onContinue = vi.fn();
+  it("uses the later weekly reset when both paid limits are reached", () => {
     render(
       <RateLimitResetDialog
-        isOpen={true}
+        isOpen
+        onClose={vi.fn()}
+        experience={getUsageExperience(usage)}
+      />,
+    );
+    expect(screen.getByText("Pro · weekly usage reached")).toBeDefined();
+    expect(screen.getByText(/Oct 12/)).toBeDefined();
+    expect(screen.queryByText(/Oct 7,/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Review Max upgrade" }),
+    ).toBeDefined();
+  });
+  it.each(["MAX", "BUSINESS", "ENTERPRISE"] as const)(
+    "offers support instead of a self-service upgrade for %s",
+    (tier) => {
+      render(
+        <RateLimitResetDialog
+          isOpen
+          onClose={vi.fn()}
+          experience={getUsageExperience({ ...usage, tier })}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: /upgrade/i })).toBeNull();
+      expect(
+        screen.getByRole("link", { name: /Contact/ }).getAttribute("href"),
+      ).toBe("mailto:contact@agpt.co");
+    },
+  );
+  it("keeps linked-provider continuation actionable without discarding the blocked draft", () => {
+    const onContinue = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <RateLimitResetDialog
+        isOpen
         onClose={onClose}
-        resetsAt={null}
-        tier="MAX"
+        experience={getUsageExperience(usage)}
         alternative={{ display_name: "ChatGPT" }}
         onContinue={onContinue}
       />,
     );
-
-    // The cap is still ours, so every answer it always had is still here.
-    expect(screen.getByText("Wait for reset")).toBeDefined();
-    expect(screen.getByText("Contact us")).toBeDefined();
-    expect(screen.getByText(/Or continue on ChatGPT/)).toBeDefined();
-
-    fireEvent.click(screen.getByText("Continue on ChatGPT"));
-    expect(onContinue).toHaveBeenCalledTimes(1);
-    // Closing is the switch's job once it lands, not the click's: the
-    // composer still holds the refused message for the user to resend.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue on ChatGPT" }),
+    );
+    expect(onContinue).toHaveBeenCalledOnce();
     expect(onClose).not.toHaveBeenCalled();
-    expect(mockPush).not.toHaveBeenCalled();
-    expect(mockWindowOpen).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Review Max upgrade" }),
+    ).toBeDefined();
   });
-
-  it("keeps the upgrade path working with a switch on offer", () => {
-    const onClose = vi.fn();
+  it("does not invent an allowance when loading usage fails", () => {
+    const retry = vi.fn();
     render(
       <RateLimitResetDialog
-        isOpen={true}
-        onClose={onClose}
-        resetsAt={null}
-        tier="PRO"
-        alternative={{ display_name: "ChatGPT" }}
-        onContinue={vi.fn()}
+        isOpen
+        onClose={vi.fn()}
+        unavailable
+        onRetry={retry}
       />,
     );
-
-    fireEvent.click(screen.getByText("Upgrade plan"));
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/settings/billing");
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/Upgrade to Pro/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+  it("hides billing actions when platform payments are disabled", () => {
+    render(
+      <RateLimitResetDialog
+        isOpen
+        onClose={vi.fn()}
+        isBillingEnabled={false}
+        experience={getUsageExperience(usage)}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /upgrade/i })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Wait for reset" }),
+    ).toBeDefined();
   });
 });

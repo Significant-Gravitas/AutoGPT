@@ -7,6 +7,8 @@ import { useCopilotPage } from "./useCopilotPage";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
+import { useRateLimitRefresh } from "./components/RateLimitResetDialog/useRateLimitRefresh";
 
 interface Props {
   droppedFiles: File[];
@@ -80,6 +82,12 @@ function ChatHostBody({
     isKickoffStarting,
     followBackendTurn,
   } = useCopilotPage({ isStreamRuntime });
+  const usage = useUsageExperience();
+  const usageRefresh = useRateLimitRefresh(rateLimitMessage, usage.retry);
+  function dismissAfterProviderChange() {
+    usageRefresh.release();
+    dismissRateLimit();
+  }
 
   return (
     <>
@@ -94,6 +102,10 @@ function ChatHostBody({
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
         <ChatContainer
+          isUsageRefused={!!rateLimitMessage || usageRefresh.guarded}
+          usageFailure={platformLimitFailure}
+          onDismissUsage={dismissAfterProviderChange}
+          usageRefresh={usageRefresh}
           messages={messages}
           status={status}
           error={error}
@@ -133,6 +145,7 @@ function ChatHostBody({
         />
       </div>
       <RateLimitGate
+        refreshState={usageRefresh}
         rateLimitMessage={rateLimitMessage}
         failure={platformLimitFailure}
         sessionId={sessionId}

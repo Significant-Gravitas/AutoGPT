@@ -19,6 +19,7 @@ import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
+import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
@@ -54,6 +55,10 @@ import {
 } from "../../expertKickoff";
 
 export interface ChatContainerProps {
+  isUsageRefused?: boolean;
+  usageFailure?: import("../../providerFailure").ProviderFailure | null;
+  onDismissUsage?: () => void;
+  usageRefresh?: UsageNoticeContext["refresh"];
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
   error: Error | undefined;
@@ -159,6 +164,10 @@ export const ChatContainer = ({
   onDroppedFilesConsumed,
   turnStats,
   expertIdentity,
+  isUsageRefused = false,
+  usageFailure,
+  onDismissUsage,
+  usageRefresh,
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
@@ -186,20 +195,14 @@ export const ChatContainer = ({
   // state from the backend).
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
-  const isLimitReached = useIsUsageLimitReached();
-  // Only a hover made while the limit is reached may open the usage tooltip.
-  // Radix reports hovers while `open` holds it shut, and a lifted limit hides
-  // it without a close event; either would pop it open, unhovered, the next
-  // time the limit is reached.
+  const isUsageExhausted = useIsUsageLimitReached(sessionId);
+  const isLimitReached = isUsageExhausted || isUsageRefused;
   const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
   useEffect(() => {
     if (!isLimitReached) setIsUsageTooltipOpen(false);
   }, [isLimitReached]);
   const isInputDisabled =
-    isSessionUnavailable ||
-    isLimitReached ||
-    !!isResolvingExpertIdentity ||
-    !!isKickoffStarting;
+    isSessionUnavailable || !!isResolvingExpertIdentity || !!isKickoffStarting;
   // A fired (archived) expert's threads stay as read-only history — the
   // composer is replaced by a quiet notice so no new turns can be sent.
   const archivedExpertIdentity = expertIdentity?.isArchived
@@ -211,7 +214,8 @@ export const ChatContainer = ({
       ? { id: expertIdentity.id, name: expertIdentity.name }
       : null;
   useShareChatExpert(chatExpert);
-  const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
+  const isSendLocked =
+    isExpertArchived || !!isResolvingExpertIdentity || isLimitReached;
   // NO_OP is module-level so a locked composer keeps a stable function identity
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
@@ -368,6 +372,7 @@ export const ChatContainer = ({
                   enabled={
                     messages.length === 0 &&
                     !isInputDisabled &&
+                    !isLimitReached &&
                     !isStreaming &&
                     !isCreatingSession &&
                     !isExpertArchived
@@ -414,16 +419,13 @@ export const ChatContainer = ({
                         ref={usageCardRef}
                         className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
                       >
-                        <div
-                          aria-hidden="true"
-                          data-testid="usage-limit-backdrop"
-                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
-                        >
-                          <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
-                          <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
-                        </div>
                         <div className="pointer-events-auto relative px-3">
-                          <UsageLimitReachedCard />
+                          <UsageLimitReachedCard
+                            sessionID={sessionId}
+                            failure={usageFailure}
+                            onDismiss={onDismissUsage}
+                            refresh={usageRefresh}
+                          />
                         </div>
                       </div>
                     )}
@@ -446,8 +448,10 @@ export const ChatContainer = ({
                         <div>
                           <ChatInput
                             inputId="chat-input-session"
+                            draftKey={`session:${sessionId}`}
                             onSend={guardedOnSend}
                             disabled={isInputDisabled}
+                            sendDisabled={isLimitReached}
                             isStreaming={isStreaming}
                             isUploadingFiles={isUploadingFiles}
                             onStop={onStop}
@@ -495,9 +499,8 @@ export const ChatContainer = ({
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-sm">
-                        You&apos;ve reached your usage limit. Wait for it to
-                        refresh or upgrade your plan to continue sending
-                        messages.
+                        Sending is paused. Your draft is saved and you can keep
+                        editing it.
                       </TooltipContent>
                     </Tooltip>
                   </motion.div>
