@@ -340,3 +340,19 @@ export function matchesRoute(
   if (!pathname) return false;
   return pathname === base || pathname.startsWith(`${base}/`);
 }
+
+export function getTypeColor(type: string | undefined): string {
+  if (!type) return "#6b7280";
+  return (
+    {
+      string: "#22c55e",
+      number: "#3b82f6",
+      integer: "#3b82f6",
+      boolean: "#eab308",
+      object: "#a855f7",
+      array: "#6366f1",
+      null: "#6b7280",
+      any: "#6b7280",
+    }[type] || "#6b7280"
+  );
+}
