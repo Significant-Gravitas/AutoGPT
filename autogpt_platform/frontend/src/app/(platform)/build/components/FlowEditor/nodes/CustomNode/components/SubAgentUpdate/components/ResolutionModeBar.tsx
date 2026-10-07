@@ -7,6 +7,7 @@ import {
 import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate/types";
 import { Alert01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type ResolutionModeBarProps = {
   incompatibilities: IncompatibilityInfo | null;
@@ -66,7 +67,7 @@ export function ResolutionModeBar({
           {incompatibilities.inputTypeMismatches.map((m, i) => (
             <React.Fragment key={m.name}>
               <code className="font-mono">{m.name}</code>
-              <span className="text-gray-400">
+              <span className="text-zinc-400">
                 {" "}
                 ({m.oldType} → {m.newType})
               </span>
@@ -81,31 +82,30 @@ export function ResolutionModeBar({
   };
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-amber-50 px-3 py-2 dark:bg-amber-900/30">
+    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-yellow-50 px-3 py-2">
       <div className="flex items-center gap-2">
-        <Icon
-          icon={Alert01Icon}
-          className="h-4 w-4 text-amber-600 dark:text-amber-400"
-        />
-        <span className="text-sm text-amber-700 dark:text-amber-300">
+        <Icon icon={Alert01Icon} className="h-4 w-4 text-yellow-600" />
+        <span className="text-sm text-yellow-700">
           Remove incompatible connections
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
             <Icon
               icon={InformationCircleIcon}
-              className="h-4 w-4 cursor-help text-amber-500"
+              className="h-4 w-4 cursor-help text-yellow-500"
             />
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
-            <p className="mb-2 font-semibold">Incompatible changes:</p>
+            <Text variant="small" tone="primary" className="mb-2 font-semibold">
+              Incompatible changes:
+            </Text>
             <div className="text-xs">{renderIncompatibilities()}</div>
-            <p className="mt-2 text-xs text-gray-400">
+            <Text variant="small" className="mt-2 text-zinc-400">
               {(incompatibilities?.newRequiredInputs.length ?? 0) > 0
                 ? "Replace / delete"
                 : "Delete"}{" "}
               the red connections to continue
-            </p>
+            </Text>
           </TooltipContent>
         </Tooltip>
       </div>

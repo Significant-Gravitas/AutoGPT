@@ -10,6 +10,7 @@ import {
   PlusSignCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type IncompatibleUpdateDialogProps = {
   isOpen: boolean;
@@ -44,7 +45,7 @@ export function IncompatibleUpdateDialog({
     <Dialog
       title={
         <div className="flex items-center gap-2">
-          <Icon icon={Alert01Icon} className="h-5 w-5 text-amber-500" />
+          <Icon icon={Alert01Icon} className="h-5 w-5 text-yellow-500" />
           Incompatible Update
         </div>
       }
@@ -59,10 +60,10 @@ export function IncompatibleUpdateDialog({
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <Text variant="body" tone="secondary" unmask={false}>
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
-          </p>
+          </Text>
 
           {/* Input changes - two column layout */}
           {hasInputChanges && (
@@ -131,7 +132,7 @@ export function IncompatibleUpdateDialog({
               icon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-amber-500"
+                  className="h-4 w-4 text-yellow-500"
                 />
               }
               title="New Required Inputs"
@@ -155,7 +156,7 @@ export function IncompatibleUpdateDialog({
               variant="primary"
               size="small"
               onClick={onConfirm}
-              className="border-amber-700 bg-amber-600 hover:bg-amber-700"
+              className="border-yellow-700 bg-yellow-600 hover:bg-yellow-700"
             >
               Update Anyway
             </Button>
@@ -186,57 +187,47 @@ function TwoColumnSection({
   rightItems,
 }: TwoColumnSectionProps) {
   return (
-    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
+    <div className="rounded-md border border-zinc-200 p-3">
       <span className="font-medium">{title}</span>
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-1.5 text-sm text-zinc-500">
             {leftIcon}
             <span>{leftTitle}</span>
           </div>
           <ul className="mt-1.5 space-y-1">
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
-                <li
-                  key={item}
-                  className="text-sm text-gray-700 dark:text-gray-300"
-                >
-                  <code className="rounded bg-red-50 px-1 py-0.5 font-mono text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                <li key={item} className="text-sm text-zinc-700">
+                  <code className="rounded bg-red-50 px-1 py-0.5 font-mono text-xs text-red-700">
                     {item}
                   </code>
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
-                None
-              </li>
+              <li className="text-sm italic text-zinc-400">None</li>
             )}
           </ul>
         </div>
 
         {/* Right column - Possible solutions */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-1.5 text-sm text-zinc-500">
             {rightIcon}
             <span>{rightTitle}</span>
           </div>
           <ul className="mt-1.5 space-y-1">
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
-                <li
-                  key={item}
-                  className="text-sm text-gray-700 dark:text-gray-300"
-                >
-                  <code className="rounded bg-green-50 px-1 py-0.5 font-mono text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                <li key={item} className="text-sm text-zinc-700">
+                  <code className="rounded bg-green-50 px-1 py-0.5 font-mono text-xs text-green-700">
                     {item}
                   </code>
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
-                None
-              </li>
+              <li className="text-sm italic text-zinc-400">None</li>
             )}
           </ul>
         </div>
@@ -259,21 +250,18 @@ function SingleColumnSection({
   items,
 }: SingleColumnSectionProps) {
   return (
-    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
+    <div className="rounded-md border border-zinc-200 p-3">
       <div className="flex items-center gap-2">
         {icon}
         <span className="font-medium">{title}</span>
       </div>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <Text variant="body" tone="muted" className="mt-1">
         {description}
-      </p>
+      </Text>
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
-          <li
-            key={item}
-            className="ml-4 list-disc text-sm text-gray-700 dark:text-gray-300"
-          >
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">
+          <li key={item} className="ml-4 list-disc text-sm text-zinc-700">
+            <code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs">
               {item}
             </code>
           </li>
