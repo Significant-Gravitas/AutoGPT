@@ -1,46 +1,55 @@
-interface ChangeEmailContext {
-  path?: string;
-  context?: {
-    session?: { user?: { id?: string } } | null;
-    adapter?: {
-      deleteMany: (args: {
-        model: string;
-        where: Array<{
-          field: string;
-          value: string;
-          operator?: "eq" | "starts_with";
-        }>;
-      }) => Promise<unknown>;
-    };
-  };
-}
+import type { AuthEmailContext } from "./auth-email-cooldown";
+import {
+  resetLinkAddresses,
+  resetLinkAddressIdentifier,
+} from "./reset-link-address";
+
+const RESET_LINK = "reset-password:";
 
 /**
  * A reset or set-password link is a token naming the account, not the address
- * it was mailed to, and opening one verifies the account's current address
- * (onPasswordReset). An unverified account changes its address at once, so
- * without this a link mailed to its old address would verify the new one, and
- * a verified address lets Better Auth link that address's OAuth sign-in into
- * the account. Its outstanding links are dropped when the address changes, so
- * a link only ever verifies the address it reached.
+ * it was mailed to. An unverified account changes its address at once, so a
+ * link mailed to its old address could verify the new one, and a verified
+ * address lets Better Auth link that address's OAuth sign-in into the account.
+ * And after any change of address, the old address should no longer reset the
+ * account's password.
+ *
+ * So after every update to the account, whatever path made it (/change-email,
+ * a confirmed change on /verify-email, an admin update), its links not mailed
+ * to its current address are dropped. A link with no address recorded counts
+ * as mailed elsewhere. The reset also checks the address itself
+ * (reset-link-address.ts), for a link issued while a change was landing.
  */
-export async function revokeResetLinksOnEmailChange(
-  data: { email?: string },
-  ctx: ChangeEmailContext | null,
+export async function revokeResetLinksMailedElsewhere(
+  context: AuthEmailContext,
+  user: { id: string; email: string },
 ) {
-  if (!data.email || ctx?.path !== "/change-email") return;
-  const userId = ctx.context?.session?.user?.id;
-  const adapter = ctx.context?.adapter;
-  if (!userId || !adapter) return;
-  await adapter.deleteMany({
+  const links = (await context.adapter.findMany({
     model: "verification",
     where: [
-      {
-        field: "identifier",
-        operator: "starts_with",
-        value: "reset-password:",
-      },
-      { field: "value", value: userId },
+      { field: "identifier", value: RESET_LINK, operator: "starts_with" },
+      { field: "value", value: user.id },
     ],
+    limit: 100,
+  })) as Array<{ identifier: string }>;
+  const mailedTo = await resetLinkAddresses(context, user.id);
+  const email = user.email.toLowerCase();
+  for (const { identifier } of links) {
+    if (mailedTo.get(identifier.slice(RESET_LINK.length)) === email) continue;
+    await deleteVerification(context, identifier);
+  }
+  for (const [token, address] of mailedTo) {
+    if (address === email) continue;
+    await deleteVerification(
+      context,
+      resetLinkAddressIdentifier(user.id, token),
+    );
+  }
+}
+
+function deleteVerification(context: AuthEmailContext, identifier: string) {
+  return context.adapter.deleteMany({
+    model: "verification",
+    where: [{ field: "identifier", value: identifier }],
   });
 }

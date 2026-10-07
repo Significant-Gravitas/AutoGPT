@@ -10,7 +10,7 @@ export const AUTH_EMAILS_PER_IP = 5;
 interface Where {
   field: string;
   value: string | Date;
-  operator?: "eq" | "gt";
+  operator?: "eq" | "gt" | "starts_with" | "ends_with";
 }
 
 /**
@@ -37,6 +37,7 @@ export interface AuthEmailContext {
       where: Where[];
       update: Record<string, unknown>;
     }) => Promise<unknown>;
+    deleteMany: (args: { model: string; where: Where[] }) => Promise<unknown>;
   };
   password: { hash: (password: string) => Promise<string> };
 }

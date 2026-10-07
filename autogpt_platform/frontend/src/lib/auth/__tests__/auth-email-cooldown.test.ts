@@ -56,6 +56,7 @@ function verificationTable(burst: number) {
         return data;
       },
       updateMany: async () => 0,
+      deleteMany: async () => 0,
     },
   };
   return { context, rows };

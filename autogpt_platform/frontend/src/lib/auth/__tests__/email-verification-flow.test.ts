@@ -1006,3 +1006,247 @@ describe("team addresses", () => {
     },
   );
 });
+
+// Signed up with verification off, so the account has a session.
+async function signUpSignedIn(api: API, email: string) {
+  const { headers } = await api.signUpEmail({
+    body: { email, password, name: email.split("@")[0], callbackURL },
+    returnHeaders: true,
+  });
+  return new Headers({
+    cookie: headers.get("set-cookie")?.split(";")[0] ?? "",
+  });
+}
+
+function requestReset(handler: Handler, email: string) {
+  return post(handler, "/request-password-reset", {
+    email,
+    redirectTo: `${baseURL}/reset-password`,
+  });
+}
+
+// What Better Auth decides when someone signs in with Google as `email`.
+async function linkGoogle(email: string) {
+  const { auth } = await import("../auth");
+  const { handleOAuthUserInfo } = await import("better-auth/oauth2");
+  const context = await auth.$context;
+  return handleOAuthUserInfo(
+    { context } as never,
+    {
+      userInfo: {
+        id: "google-account-id",
+        email,
+        emailVerified: true,
+        name: "Google user",
+      },
+      account: { providerId: "google", accountId: "google-account-id" },
+      callbackURL: "/",
+    } as never,
+  );
+}
+
+describe("password reset links", () => {
+  // kcze's attack: the reset link goes to an address the attacker holds,
+  // then the account takes the victim's address before the link is opened.
+  it.each([false, true])(
+    "do not verify an address the link was not mailed to (verification %s)",
+    async (requireVerification) => {
+      const { api: signUpAPI, db } = await createAuthHandler(false);
+      const session = await signUpSignedIn(signUpAPI, "attacker@example.com");
+      const { handler, api } = await createAuthHandler(requireVerification, db);
+      await requestReset(handler, "attacker@example.com");
+      await emailsSent();
+      const token = lastResetToken("attacker@example.com", "reset_password");
+
+      // Applied on the spot: the account is unverified.
+      await api.changeEmail({
+        body: { newEmail: "victim@gmail.com" },
+        headers: session,
+      });
+      await post(handler, "/reset-password", {
+        token,
+        newPassword: "the-attackers-new-password",
+      });
+
+      expect(db.UserAuthIdentity).toEqual([
+        expect.objectContaining({
+          email: "victim@gmail.com",
+          emailVerified: false,
+        }),
+      ]);
+      expect(await linkGoogle("victim@gmail.com")).toEqual(
+        expect.objectContaining({ error: "account not linked" }),
+      );
+    },
+  );
+
+  it("stop working once the account's address changes", async () => {
+    const { handler, api, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(api, "first@example.com");
+    await requestReset(handler, "first@example.com");
+    await emailsSent();
+    const token = lastResetToken("first@example.com", "reset_password");
+
+    await api.changeEmail({
+      body: { newEmail: "second@example.com" },
+      headers: session,
+    });
+    const reset = await post(handler, "/reset-password", {
+      token,
+      newPassword: "a-new-long-enough-password",
+    });
+
+    expect(reset.status).toBe(400);
+    expect(
+      db.UserAuthVerification.filter((row) =>
+        String(row.identifier).startsWith("reset-password"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("stop working once a verified account's change of address is confirmed", async () => {
+    const { api: signUpAPI, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(signUpAPI, "old@example.com");
+    db.UserAuthIdentity[0].emailVerified = true;
+    const { handler, api } = await createAuthHandler(false, db);
+    await requestReset(handler, "old@example.com");
+    await emailsSent();
+    const token = lastResetToken("old@example.com", "reset_password");
+
+    // The address changes on /verify-email, when the new address's link is
+    // opened, not on /change-email.
+    await api.changeEmail({
+      body: { newEmail: "new@example.com", callbackURL: "/" },
+      headers: session,
+    });
+    await emailsSent();
+    const confirm = sentEmails.find((sent) => sent.type === "change_email");
+    await handler(new Request(confirm?.url ?? "", { headers: session }));
+    await emailsSent();
+    await handler(
+      new Request(lastVerifyLink("new@example.com") ?? "", {
+        headers: session,
+      }),
+    );
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ email: "new@example.com" }),
+    ]);
+
+    const reset = await post(handler, "/reset-password", {
+      token,
+      newPassword: "a-new-long-enough-password",
+    });
+
+    expect(reset.status).toBe(400);
+    expect(
+      db.UserAuthVerification.filter((row) =>
+        String(row.identifier).startsWith("reset-password"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("verify only the address they were mailed to, even if the link survives a change", async () => {
+    const { handler, db } = await createAuthHandler(false);
+    await signUp(handler, "first@example.com");
+    await requestReset(handler, "first@example.com");
+    await emailsSent();
+    // An address change that skipped Better Auth's hooks, e.g. by hand.
+    db.UserAuthIdentity[0].email = "second@example.com";
+
+    const reset = await post(handler, "/reset-password", {
+      token: lastResetToken("first@example.com", "reset_password"),
+      newPassword: "a-new-long-enough-password",
+    });
+
+    expect(reset.status).toBe(200);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: false }),
+    ]);
+  });
+
+  it.each([false, true])(
+    "verify the address they were mailed to (verification %s)",
+    async (requireVerification) => {
+      const { handler: signUpHandler, db } = await createAuthHandler(false);
+      await signUp(signUpHandler, "owner@example.com");
+      const { handler } = await createAuthHandler(requireVerification, db);
+      await requestReset(handler, "owner@example.com");
+      await emailsSent();
+
+      const reset = await post(handler, "/reset-password", {
+        token: lastResetToken("owner@example.com", "reset_password"),
+        newPassword: "a-new-long-enough-password",
+      });
+
+      expect(reset.status).toBe(200);
+      expect(db.UserAuthIdentity).toEqual([
+        expect.objectContaining({ emailVerified: true }),
+      ]);
+      expect(
+        db.UserAuthVerification.filter((row) =>
+          String(row.identifier).startsWith("reset-password"),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("survive changes to the account that keep its address", async () => {
+    const { handler, api, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(api, "owner@example.com");
+    await requestReset(handler, "owner@example.com");
+    await emailsSent();
+
+    await api.updateUser({ body: { name: "New name" }, headers: session });
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ name: "New name" }),
+    ]);
+    const reset = await post(handler, "/reset-password", {
+      token: lastResetToken("owner@example.com", "reset_password"),
+      newPassword: "a-new-long-enough-password",
+    });
+
+    expect(reset.status).toBe(200);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: true }),
+    ]);
+  });
+});
+
+describe("change-email verification emails", () => {
+  it.each([false, true])(
+    "are not held back by the sign-in cooldown when retried (verification %s)",
+    async (requireVerification) => {
+      const { api: signUpAPI, db } = await createAuthHandler(false);
+      const session = await signUpSignedIn(signUpAPI, "old@example.com");
+      db.UserAuthIdentity[0].emailVerified = true;
+      const { handler, api } = await createAuthHandler(requireVerification, db);
+
+      // The confirmation goes to the current address; opening it sends the
+      // link to the new one. The user doesn't see that one and tries again.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        sentEmails.length = 0;
+        await api.changeEmail({
+          body: { newEmail: "new@example.com", callbackURL: "/" },
+          headers: session,
+        });
+        await emailsSent();
+        const confirm = sentEmails.find((sent) => sent.type === "change_email");
+        await handler(new Request(confirm?.url ?? ""));
+        await emailsSent();
+        expect(lastVerifyLink("new@example.com")).toContain("/verify-email");
+      }
+    },
+  );
+
+  it("still caps sign-in's own sends", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "unverified@example.com");
+    await emailsSent();
+    sentEmails.length = 0;
+
+    await signIn(handler, "unverified@example.com");
+    await emailsSent();
+
+    expect(sentEmails).toEqual([]);
+  });
+});

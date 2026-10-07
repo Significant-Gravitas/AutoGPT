@@ -4,9 +4,10 @@ import {
   createVerification,
 } from "./auth-email-cooldown";
 import { sendAuthEmail } from "./email";
+import { recordResetLinkAddress } from "./reset-link-address";
 
 // Better Auth's own default for a reset link.
-const RESET_LINK_EXPIRES_IN_SECONDS = 60 * 60;
+export const RESET_LINK_EXPIRES_IN_SECONDS = 60 * 60;
 
 /**
  * Whether the account has been used, i.e. its password was set by someone who
@@ -38,8 +39,8 @@ export async function hasAccountBeenUsed(
 }
 
 // The same token and link Better Auth's request-password-reset issues, so its
-// /reset-password endpoint redeems it, and opening it verifies the address
-// (onPasswordReset).
+// /reset-password endpoint redeems it, and opening it verifies the address it
+// was mailed to (reset-link-address.ts).
 export async function sendSetPasswordLink(
   context: AuthEmailContext,
   user: { id: string; email: string },
@@ -49,6 +50,12 @@ export async function sendSetPasswordLink(
   await createVerification(context, {
     identifier: `reset-password:${token}`,
     value: user.id,
+    expiresInSeconds: RESET_LINK_EXPIRES_IN_SECONDS,
+  });
+  await recordResetLinkAddress(context, {
+    token,
+    userId: user.id,
+    email: user.email,
     expiresInSeconds: RESET_LINK_EXPIRES_IN_SECONDS,
   });
   await sendAuthEmail({

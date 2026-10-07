@@ -1,4 +1,5 @@
 import { type AuthEmailContext, claimEmailSlot } from "./auth-email-cooldown";
+import { currentAuthEndpoint } from "./auth-endpoint";
 import { sendAuthEmail } from "./email";
 import { hasAccountBeenUsed, sendSetPasswordLink } from "./set-password-link";
 
@@ -19,8 +20,9 @@ interface Args {
  * could have us mail the address without limit. Sign-in and sign-up therefore
  * share one email per address per window. If the cooldown can't be checked,
  * the email still goes: a verification link matters more than the cap. With
- * verification off, neither sends one, and the only sends left are a change of
- * email's, which keep going out uncapped as they did before.
+ * verification off, neither sends one. Nothing else is capped, flag or no
+ * flag: a change of email sends to the new address, and a retry must not be
+ * dropped while the page reports success.
  *
  * The resend button's own route skips that cap (it is capped per IP instead,
  * see ip-email-cap.ts) because its answer has to say whether the email went.
@@ -33,7 +35,7 @@ export async function sendVerificationLink(args: Args) {
   if (isResendRequest(request)) {
     if (args.requireEmailVerification && (await sendsSetPasswordLink(args)))
       return;
-  } else if (args.requireEmailVerification) {
+  } else if (args.requireEmailVerification && (await isSignUpOrSignIn())) {
     const claimed = await getAuthContext()
       .then((context) => claimEmailSlot(context, "verify-email", user.email))
       .catch((error: unknown) => {
@@ -61,6 +63,13 @@ async function sendsSetPasswordLink(args: Args) {
   if (!used) return false;
   await sendSetPasswordLink(context, args.user, args.resetRedirectTo);
   return true;
+}
+
+// Read from Better Auth's endpoint context: the login page calls auth.api
+// directly, with no request.
+async function isSignUpOrSignIn() {
+  const { path } = await currentAuthEndpoint();
+  return path === "/sign-up/email" || path === "/sign-in/email";
 }
 
 function isResendRequest(request: Request | undefined) {
