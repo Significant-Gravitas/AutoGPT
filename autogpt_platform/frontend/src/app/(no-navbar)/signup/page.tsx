@@ -59,7 +59,7 @@ export default function SignupPage() {
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-slate-950">
+        <Text variant="h3" as="h1">
           Create your account
         </Text>
       </div>
@@ -126,10 +126,7 @@ export default function SignupPage() {
                   </FormControl>
                   <div>
                     <FormLabel className="flex flex-wrap items-center gap-1">
-                      <Text
-                        variant="body-medium"
-                        className="inline-block text-slate-950"
-                      >
+                      <Text variant="body-medium" className="inline-block">
                         I agree to the
                       </Text>
                       <Link
@@ -138,10 +135,7 @@ export default function SignupPage() {
                       >
                         Terms of Use
                       </Link>
-                      <Text
-                        variant="body-medium"
-                        className="inline-block text-slate-950"
-                      >
+                      <Text variant="body-medium" className="inline-block">
                         and
                       </Text>
                       <Link
@@ -156,7 +150,7 @@ export default function SignupPage() {
                 {termsError ? (
                   <div className="flex items-center gap-2">
                     <Icon icon={Alert02Icon} className="h-4 w-4 text-red-500" />
-                    <Text variant="small-medium" className="!text-red-500">
+                    <Text variant="small-medium" className="text-red-500">
                       {termsError}
                     </Text>
                   </div>
@@ -196,7 +190,7 @@ export default function SignupPage() {
       </Form>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
+        <Text variant="body-medium" className="text-slate-500">
           Already a member?
         </Text>
         <Link href={loginHref} variant="secondary">
