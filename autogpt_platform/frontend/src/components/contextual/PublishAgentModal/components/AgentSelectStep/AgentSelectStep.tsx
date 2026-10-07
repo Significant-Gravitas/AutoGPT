@@ -1,13 +1,13 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Text } from "../../../../atoms/Text/Text";
-import { Button } from "../../../../atoms/Button/Button";
-import { Select } from "../../../../atoms/Select/Select";
+import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
+import { Select } from "@/components/atoms/Select/Select";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
@@ -81,12 +81,12 @@ export function AgentSelectStep({
           description="Pick the saved agent version you want to send to marketplace review."
           currentStep="select"
         />
-        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-rose-100 bg-rose-50 px-6 py-8 text-center">
-          <Icon icon={AlertCircleIcon} size={32} className="text-rose-600" />
-          <Text variant="large-medium" className="text-rose-900">
+        <div className="mt-5 flex min-h-80 flex-col items-center justify-center gap-4 rounded-[18px] border border-red-100 bg-red-50 px-6 py-8 text-center">
+          <Icon icon={AlertCircleIcon} size={32} className="text-red-600" />
+          <Text variant="large-medium" className="text-red-900">
             We could not load your agents
           </Text>
-          <Text variant="body" className="max-w-[420px] text-rose-700">
+          <Text variant="body" className="max-w-[420px] text-red-700">
             Refresh the list and try again. Your current marketplace submissions
             are unchanged.
           </Text>
@@ -116,14 +116,12 @@ export function AgentSelectStep({
       />
 
       {showLibraryEmpty ? (
-        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
+        <div className="mt-5 flex min-h-80 flex-col items-center justify-center gap-4 rounded-[18px] border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
           <div className="flex size-11 items-center justify-center rounded-full bg-white text-zinc-700 shadow-[0_1px_2px_rgba(15,15,20,0.06)]">
             <Icon icon={PlusSignIcon} size={20} />
           </div>
-          <Text variant="large-medium" className="text-textBlack">
-            No publishable agents yet
-          </Text>
-          <Text variant="body" className="max-w-[460px] text-zinc-600">
+          <Text variant="large-medium">No publishable agents yet</Text>
+          <Text variant="body" tone="secondary" className="max-w-[460px]">
             Create and save an agent in the builder. It will appear here when a
             version is ready to submit.
           </Text>
@@ -158,7 +156,9 @@ export function AgentSelectStep({
           </div>
 
           <div className="mt-1 flex-grow overflow-hidden pb-3">
-            <h3 className="sr-only">List of agents</h3>
+            <Text variant="body-medium" as="h3" className="sr-only">
+              List of agents
+            </Text>
             <div
               className={cn(
                 scrollbarStyles,
@@ -176,7 +176,7 @@ export function AgentSelectStep({
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-3 rounded-[12px] border border-zinc-200 bg-white p-3"
+                      className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3"
                     >
                       <div className="flex flex-1 flex-col gap-2">
                         <Skeleton className="h-4 w-1/3" />
@@ -190,10 +190,10 @@ export function AgentSelectStep({
                   className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center"
                   data-testid="agent-search-no-matches"
                 >
-                  <Text variant="body-medium" className="text-textBlack">
+                  <Text variant="body-medium" unmask={false}>
                     No agents match &ldquo;{debouncedSearch}&rdquo;
                   </Text>
-                  <Text variant="small" className="text-zinc-500">
+                  <Text variant="small" tone="muted">
                     Try a different name or clear the search.
                   </Text>
                   <Button
@@ -251,7 +251,7 @@ export function AgentSelectStep({
                           key={agent.id}
                           data-testid="agent-card"
                           className={cn(
-                            "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[12px] border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
+                            "group flex w-full cursor-pointer select-none items-center gap-3 rounded-xl border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
                             isSelected
                               ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
                               : "border-zinc-200",
@@ -270,7 +270,8 @@ export function AgentSelectStep({
                               <Text
                                 variant="body-medium"
                                 as="span"
-                                className="truncate text-textBlack"
+                                className="truncate"
+                                unmask={false}
                               >
                                 {agent.name}
                               </Text>
@@ -281,7 +282,9 @@ export function AgentSelectStep({
                             <Text
                               variant="small"
                               as="span"
-                              className="truncate text-zinc-500"
+                              tone="muted"
+                              className="truncate"
+                              unmask={false}
                             >
                               {agent.description
                                 ? agent.description
@@ -366,7 +369,7 @@ function PaginationBar({
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 pb-3 pt-1 text-zinc-500 sm:flex-row">
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" tone="muted">
         {start}–{end} of {totalItems}
       </Text>
       <div className="flex items-center gap-2">

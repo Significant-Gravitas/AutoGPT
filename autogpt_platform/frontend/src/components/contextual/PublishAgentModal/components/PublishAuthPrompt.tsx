@@ -1,9 +1,9 @@
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useRouter } from "next/navigation";
 
-export const PublishAuthPrompt = () => {
+export function PublishAuthPrompt() {
   const router = useRouter();
   return (
     <div>
@@ -12,21 +12,13 @@ export const PublishAuthPrompt = () => {
           <Text variant="h3" className="font-semibold">
             Share your AI creations
           </Text>
-          <Text
-            variant="lead"
-            className="max-w-[80%] text-neutral-600 dark:text-neutral-400"
-          >
+          <Text variant="lead" tone="secondary" className="max-w-[80%]">
             Log in or create an account to publish your agents to the
             marketplace and join a community of creators
           </Text>
         </div>
         <div className="flex flex-col items-center gap-3 sm:flex-row">
-          <Button
-            onClick={() => router.push("/login")}
-            className="bg-neutral-800 text-white hover:bg-neutral-900"
-          >
-            Log in
-          </Button>
+          <Button onClick={() => router.push("/login")}>Log in</Button>
           <Button onClick={() => router.push("/signup")} variant="secondary">
             Create account
           </Button>
@@ -34,9 +26,9 @@ export const PublishAuthPrompt = () => {
       </div>
     </div>
   );
-};
+}
 
-export const PublishAuthPromptSkeleton = () => {
+export function PublishAuthPromptSkeleton() {
   return (
     <div className="mx-auto inline-flex h-[370px] w-full flex-col items-center justify-center gap-6 px-4 py-5 sm:px-6">
       <Skeleton className="h-8 w-64" />
@@ -47,4 +39,4 @@ export const PublishAuthPromptSkeleton = () => {
       </div>
     </div>
   );
-};
+}

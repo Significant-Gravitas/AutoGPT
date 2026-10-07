@@ -129,20 +129,20 @@ export function AgentInfoStep({
       <Form {...form}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 pb-5">
           {isMarketplaceUpdate && (
-            <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4">
+            <section className="rounded-[18px] border border-yellow-200 bg-yellow-50 p-4">
               <div className="mb-4 flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-yellow-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
                   <Icon icon={InformationCircleIcon} size={18} />
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <Text
                     variant="body-medium"
                     as="h3"
-                    className="text-amber-950"
+                    className="text-yellow-950"
                   >
                     Update note
                   </Text>
-                  <Text variant="small" className="text-amber-800">
+                  <Text variant="small" className="text-yellow-800">
                     Reviewers use this to understand why the marketplace listing
                     needs a new version.
                   </Text>
@@ -162,7 +162,7 @@ export function AgentInfoStep({
                     placeholder="Describe what's new or improved in this version..."
                     error={form.formState.errors.changesSummary?.message}
                     required
-                    wrapperClassName="!mb-0"
+                    wrapperClassName="mb-0"
                     {...field}
                   />
                 )}
@@ -179,7 +179,7 @@ export function AgentInfoStep({
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <span className="flex items-center gap-2 text-sm font-medium text-black">
                   <Icon
                     icon={Store01Icon}
                     size={18}
@@ -190,7 +190,7 @@ export function AgentInfoStep({
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
-                      className="text-rose-500"
+                      className="text-red-500"
                     />
                   ) : basicsComplete ? (
                     <Icon
@@ -284,7 +284,7 @@ export function AgentInfoStep({
 
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <span className="flex items-center gap-2 text-sm font-medium text-black">
                   <Icon
                     icon={Album01Icon}
                     size={18}
@@ -295,7 +295,7 @@ export function AgentInfoStep({
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
-                      className="text-rose-500"
+                      className="text-red-500"
                     />
                   ) : thumbnailsComplete ? (
                     <Icon
@@ -319,7 +319,7 @@ export function AgentInfoStep({
 
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <span className="flex items-center gap-2 text-sm font-medium text-black">
                   <Icon
                     icon={SparklesIcon}
                     size={18}
@@ -330,7 +330,7 @@ export function AgentInfoStep({
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
-                      className="text-rose-500"
+                      className="text-red-500"
                     />
                   ) : experienceComplete ? (
                     <Icon
@@ -431,7 +431,7 @@ export function AgentInfoStep({
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-1">
-                          <Text variant="body" as="span" className="text-black">
+                          <Text variant="body" as="span">
                             Recommended schedule
                           </Text>
                           <InformationTooltip

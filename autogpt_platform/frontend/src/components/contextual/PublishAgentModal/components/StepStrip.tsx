@@ -26,7 +26,7 @@ export function StepStrip({ currentStep }: Props) {
   return (
     <div className="flex flex-col gap-6 px-1 pb-6 sm:px-2">
       <div className="flex items-center gap-2 pr-12">
-        <Text variant="lead-medium" as="span" className="text-textBlack">
+        <Text variant="lead-medium" as="span">
           Publish agent
         </Text>
       </div>
@@ -58,7 +58,7 @@ export function StepStrip({ currentStep }: Props) {
                       : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }
                   }
                   className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-medium transition-colors",
+                    "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium transition-colors",
                     isCurrent
                       ? "bg-zinc-900 text-white"
                       : isComplete
@@ -110,13 +110,12 @@ export function StepStrip({ currentStep }: Props) {
                 <Text
                   variant="small-medium"
                   as="span"
+                  tone={
+                    isCurrent ? undefined : isComplete ? "secondary" : "muted"
+                  }
                   className={cn(
-                    "whitespace-nowrap !text-current transition-colors",
-                    isCurrent
-                      ? "text-zinc-950"
-                      : isComplete
-                        ? "text-zinc-700"
-                        : "font-normal text-zinc-400",
+                    "whitespace-nowrap transition-colors",
+                    !isCurrent && !isComplete && "font-normal",
                   )}
                 >
                   {step.label}

@@ -23,14 +23,15 @@ export function SubmissionMetaGrid({ items, shouldReduceMotion }: Props) {
     >
       {items.map((item) => (
         <div key={item.label} className="flex min-w-0 flex-col">
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" tone="muted">
             {item.label}
           </Text>
           <Text
             variant="small-medium"
             as="span"
             title={item.title}
-            className="truncate text-textBlack"
+            className="truncate"
+            unmask={false}
           >
             {item.value}
           </Text>
