@@ -301,18 +301,31 @@ async def test_handle_dispute_ignores_dispute_of_non_topup_payment(
     mock_stripe_modify, server: SpinTestServer
 ):
     """A dispute of a payment that bought no credits is neither accepted nor
-    contested with credit-ledger evidence."""
-    dispute = MagicMock(spec=stripe.Dispute)
-    dispute.id = "du_test_non_topup"
-    dispute.payment_intent = "pi_test_subscription_invoice"
-    dispute.amount = 6000
-    dispute.status = "needs_response"
-    dispute.close = MagicMock()
+    contested, and the user's unrelated top-up is left as it was."""
+    topup_tx = await setup_test_user_with_topup()
 
-    await credit_system.handle_dispute(dispute)
+    try:
+        dispute = MagicMock(spec=stripe.Dispute)
+        dispute.id = "du_test_non_topup"
+        dispute.payment_intent = "pi_test_subscription_invoice"
+        dispute.amount = 6000
+        dispute.status = "needs_response"
+        dispute.close = MagicMock()
 
-    dispute.close.assert_not_called()
-    mock_stripe_modify.assert_not_called()
+        await credit_system.handle_dispute(dispute)
+
+        dispute.close.assert_not_called()
+        mock_stripe_modify.assert_not_called()
+        assert await CreditTransaction.prisma().find_many(
+            where={"userId": REFUND_TEST_USER_ID}
+        ) == [topup_tx]
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
+        assert user_balance.balance == 1000
+    finally:
+        await cleanup_test_user()
 
 
 @pytest.mark.asyncio(loop_scope="session")
