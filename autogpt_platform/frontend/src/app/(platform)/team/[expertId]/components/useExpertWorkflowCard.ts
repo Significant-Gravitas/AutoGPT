@@ -15,15 +15,15 @@ import { getWorkflowCredentialProviders } from "./WorkflowCredentialStack";
 const STATUS = {
   "needs-setup": {
     label: "Needs setup",
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-yellow-50 text-yellow-700",
     icon: Alert01Icon,
-    iconClassName: "bg-amber-50 text-amber-600",
+    iconClassName: "bg-yellow-50 text-yellow-600",
   },
   scheduled: {
     label: "Scheduled",
     className: "bg-white text-zinc-700",
     icon: Calendar03Icon,
-    iconClassName: "bg-violet-50 text-violet-600",
+    iconClassName: "bg-purple-50 text-purple-600",
   },
   trigger: {
     label: "Triggered",

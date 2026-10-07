@@ -86,10 +86,12 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
   );
   const name = workflow.name ?? "Unnamed workflow";
   const row = (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      unmask={false}
       disabled={!agent}
-      className="flex w-full items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-left transition-colors hover:bg-zinc-50 disabled:opacity-60"
+      className="h-auto w-full min-w-0 justify-start gap-3 whitespace-normal rounded-2xl border-zinc-200 px-4 py-3 text-left font-normal hover:border-zinc-200 hover:bg-zinc-50 disabled:opacity-60"
     >
       <Icon
         icon={Calendar03Icon}
@@ -121,7 +123,7 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
         size={16}
         className="shrink-0 text-zinc-400"
       />
-    </button>
+    </Button>
   );
 
   if (!agent) return row;

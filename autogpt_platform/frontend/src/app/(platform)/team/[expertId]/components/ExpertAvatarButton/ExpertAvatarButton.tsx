@@ -1,6 +1,7 @@
 "use client";
 
 import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
+import { Button } from "@/components/atoms/Button/Button";
 
 import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { getExpertVisualCategory } from "@/components/molecules/ExpertAvatar/helpers";
@@ -20,11 +21,13 @@ export function ExpertAvatarButton({ expert }: Props) {
   );
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        unmask={false}
         onClick={() => setIsOpen(true)}
         aria-label={`Change ${expert.name}'s appearance`}
-        className="size-24 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+        className="size-24 min-w-0 shrink-0 rounded-full border-0 p-0 hover:border-transparent hover:bg-transparent focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ExpertAvatar
           name={expert.name}
@@ -37,7 +40,7 @@ export function ExpertAvatarButton({ expert }: Props) {
             role: expert.role,
           })}
         />
-      </button>
+      </Button>
       <Dialog
         title={`Change ${expert.name}'s avatar`}
         controlled={{ isOpen, set: setIsOpen }}

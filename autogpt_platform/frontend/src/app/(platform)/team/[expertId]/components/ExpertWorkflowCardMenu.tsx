@@ -84,7 +84,7 @@ export function ExpertWorkflowCardMenu({
             leadingIcon={MoreHorizontalIcon}
           />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[11rem]">
+        <DropdownMenuContent align="end" className="min-w-44">
           {libraryHref ? (
             <DropdownMenuItem asChild>
               <NextLink href={libraryHref} className="flex items-center gap-2">
