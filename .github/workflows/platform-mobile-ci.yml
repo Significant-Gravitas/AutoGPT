@@ -158,7 +158,7 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          profile: pixel_9_pro
+          profile: pixel_7_pro
           avd-name: AutoGPT_CI
           emulator-port: 5554
           emulator-boot-timeout: 300
