@@ -11,10 +11,10 @@ export function EmptyFollowups() {
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-yellow-50">
         <Icon icon={Calendar03Icon} size={24} className="text-yellow-700" />
       </div>
-      <Text variant="h4" className="text-zinc-900">
+      <Text variant="h4" tone="primary">
         Nothing scheduled yet
       </Text>
-      <Text variant="body" className="max-w-md !text-zinc-500">
+      <Text variant="body" tone="muted" className="max-w-md">
         Your experts&apos; scheduled follow-ups and recurring agent runs show up
         here. Select <strong>New scheduled task</strong> to set one up, or
         schedule an agent from the builder.

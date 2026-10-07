@@ -35,12 +35,14 @@ export function DeviceAuthConnectButton({
   if (phase === "awaiting_user" && !userCode) {
     return (
       <div className="flex flex-col gap-3">
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" tone="secondary">
           Requesting a code from {providerName}…
         </Text>
         <div className="flex items-center gap-2 text-zinc-500">
           <Icon icon={Loading03Icon} size={16} className="animate-spin" />
-          <Text variant="small">Starting device authorization…</Text>
+          <Text variant="small" tone="muted">
+            Starting device authorization…
+          </Text>
         </div>
       </div>
     );
@@ -49,7 +51,7 @@ export function DeviceAuthConnectButton({
   if (phase === "idle" || phase === "error" || phase === "done") {
     return (
       <div className="flex flex-col gap-3">
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" tone="secondary">
           {providerName} uses device authorization. Click below, then follow the
           link to approve access.
         </Text>
@@ -62,7 +64,7 @@ export function DeviceAuthConnectButton({
 
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-zinc-600">
+      <Text variant="body" tone="secondary">
         Open the link below and enter the code to connect your {providerName}{" "}
         account.
       </Text>
@@ -72,14 +74,15 @@ export function DeviceAuthConnectButton({
           and Sentry masks the code (unmask={false}). */}
       <div className="ph-no-capture flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
         <div className="flex flex-col gap-1">
-          <Text variant="small" className="font-medium text-zinc-500">
+          <Text variant="small-medium" tone="muted">
             Your code
           </Text>
           <Text
             variant="h3"
             as="p"
+            tone="primary"
             unmask={false}
-            className="select-all text-center font-mono text-2xl tracking-widest text-zinc-800"
+            className="select-all text-center font-mono text-2xl tracking-widest"
           >
             {userCode}
           </Text>
@@ -99,7 +102,9 @@ export function DeviceAuthConnectButton({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-zinc-500">
           <Icon icon={Loading03Icon} size={16} className="animate-spin" />
-          <Text variant="small">Waiting for approval…</Text>
+          <Text variant="small" tone="muted">
+            Waiting for approval…
+          </Text>
         </div>
         <Button
           type="button"
