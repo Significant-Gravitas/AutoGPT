@@ -147,6 +147,17 @@ def test_a_badly_signed_call_is_refused(record: AsyncMock, signature: str) -> No
     record.assert_not_awaited()
 
 
+def test_a_non_ascii_signature_is_refused_not_a_crash(record: AsyncMock) -> None:
+    response = client.post(
+        PATH,
+        content=json.dumps(_unsubscribed()).encode(),
+        headers={"Content-Type": "application/json", "Signature": b"\xe9"},
+    )
+
+    assert response.status_code == 401
+    record.assert_not_awaited()
+
+
 def test_the_signature_covers_the_exact_body(record: AsyncMock) -> None:
     """Signed over one body and sent with another: refused."""
     signed = json.dumps(_unsubscribed()).encode()

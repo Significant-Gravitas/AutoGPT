@@ -108,4 +108,6 @@ def signature_matches(body: bytes, signature: str | None, secret: str) -> bool:
     if not signature:
         return False
     expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature.strip().lower())
+    # Bytes: compare_digest raises on a non-ASCII str, and headers arrive as
+    # latin-1, so a junk header would otherwise be a 500, not a refusal.
+    return hmac.compare_digest(expected.encode(), signature.strip().lower().encode())

@@ -969,6 +969,11 @@ async def _unsubscribe_from_marketing(user_id: str, email: str) -> None:
         )
 
 
+def _escape_like(value: str) -> str:
+    """`value` as a literal LIKE/ILIKE pattern (backslash is the default escape)."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 async def record_marketing_opt_out_by_email(email: str, source: str) -> str | None:
     """Record that the account at `email` refused marketing, from `source`.
 
@@ -981,9 +986,14 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
     try:
         row = await PrismaUser.prisma().find_unique(where={"email": email})
         if row is None:
-            row = await PrismaUser.prisma().find_first(
-                where={"email": {"equals": email, "mode": "insensitive"}}
+            # Prisma's case-insensitive `equals` is a Postgres ILIKE, where `_`
+            # and `%` are wildcards: escape them so only this address matches,
+            # and act only when exactly one account does.
+            matches = await PrismaUser.prisma().find_many(
+                where={"email": {"equals": _escape_like(email), "mode": "insensitive"}},
+                take=2,
             )
+            row = matches[0] if len(matches) == 1 else None
         if row is None or row.marketingOptOutAt is not None:
             return None
         written = await PrismaUser.prisma().update_many(

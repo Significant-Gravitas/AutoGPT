@@ -115,9 +115,10 @@ export function useSignupPage() {
   }
 
   async function handleSignup(data: z.output<typeof signupFormSchema>) {
-    // A refusal left from an abandoned Google attempt would otherwise be
-    // recorded by /auth/callback on a later Google sign-in.
-    setMarketingOptOutFlag(data.marketingOptOut);
+    // The server action records this signup's choice; the cookie is only for
+    // the Google round trip. Clear it so neither this choice nor one left from
+    // an abandoned Google attempt is applied to a later Google sign-in.
+    setMarketingOptOutFlag(false);
     setIsLoading(true);
 
     if (data.email.includes("@agpt.co")) {

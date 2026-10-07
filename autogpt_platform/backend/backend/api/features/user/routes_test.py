@@ -1,5 +1,6 @@
 import json
 import re
+import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -425,6 +426,25 @@ async def test_a_mailerlite_unsubscribe_is_recorded_in_the_database(
     assert stored.marketingOptOutSource == "email_unsubscribe"
     assert _stored_consent(after) == _stored_consent(stored)
     assert cached.marketing_opt_out_at == stored.marketingOptOutAt
+
+
+async def test_an_unsubscribe_never_matches_another_account_by_wildcard() -> None:
+    """`_` is an ILIKE wildcard: an unsubscribe for `john_smith-…` must not
+    opt out the account `john.smith-…`."""
+    user_id = str(uuid.uuid4())
+    await PrismaUser.prisma().create(
+        data={"id": user_id, "email": f"john.smith-{user_id}@example.com"}
+    )
+    try:
+        recorded = await record_marketing_opt_out_by_email(
+            f"JOHN_SMITH-{user_id}@example.com", "email_unsubscribe"
+        )
+        row = await PrismaUser.prisma().find_unique_or_raise(where={"id": user_id})
+    finally:
+        await PrismaUser.prisma().delete_many(where={"id": user_id})
+
+    assert recorded is None
+    assert row.marketingOptOutAt is None
 
 
 async def test_an_unsubscribe_keeps_a_signup_refusal(

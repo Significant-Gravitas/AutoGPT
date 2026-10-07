@@ -760,7 +760,7 @@ class TestRecordMarketingOptOutByEmail:
         with patch.object(user_module, "PrismaUser") as mock_prisma_user:
             db = mock_prisma_user.prisma.return_value
             db.find_unique = AsyncMock(return_value=_consent_row())
-            db.find_first = AsyncMock(return_value=None)
+            db.find_many = AsyncMock(return_value=[])
             db.update_many = AsyncMock(return_value=1)
             yield db
 
@@ -792,7 +792,7 @@ class TestRecordMarketingOptOutByEmail:
 
         assert result == "user-1"
         db.find_unique.assert_awaited_once_with(where={"email": "user@example.com"})
-        db.find_first.assert_not_awaited()
+        db.find_many.assert_not_awaited()
         data = _opt_out_written(db)
         assert data["marketingOptOutSource"] == "email_unsubscribe"
         assert before <= data["marketingOptOutAt"] <= datetime.now(timezone.utc)
@@ -803,17 +803,59 @@ class TestRecordMarketingOptOutByEmail:
     @pytest.mark.asyncio
     async def test_falls_back_to_a_case_insensitive_match(self, db: MagicMock):
         db.find_unique.return_value = None
-        db.find_first.return_value = _consent_row(email="User@Example.com")
+        db.find_many.return_value = [_consent_row(email="User@Example.com")]
 
         result = await record_marketing_opt_out_by_email(
             "user@example.com", "email_unsubscribe"
         )
 
         assert result == "user-1"
-        db.find_first.assert_awaited_once_with(
-            where={"email": {"equals": "user@example.com", "mode": "insensitive"}}
+        db.find_many.assert_awaited_once_with(
+            where={"email": {"equals": "user@example.com", "mode": "insensitive"}},
+            take=2,
         )
         _opt_out_written(db)
+
+    @pytest.mark.asyncio
+    async def test_like_wildcards_in_the_address_match_only_themselves(
+        self, db: MagicMock
+    ):
+        """The fallback is an ILIKE: unescaped, `john_smith@` would also match
+        `john.smith@` and opt out someone else."""
+        db.find_unique.return_value = None
+
+        await record_marketing_opt_out_by_email(
+            "john_smith%1@example.com", "email_unsubscribe"
+        )
+
+        db.find_many.assert_awaited_once_with(
+            where={
+                "email": {
+                    "equals": "john\\_smith\\%1@example.com",
+                    "mode": "insensitive",
+                }
+            },
+            take=2,
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_ambiguous_case_insensitive_match_writes_nothing(
+        self, db: MagicMock, caches: MagicMock
+    ):
+        db.find_unique.return_value = None
+        db.find_many.return_value = [
+            _consent_row(email="User@example.com"),
+            _consent_row(email="USER@example.com"),
+        ]
+
+        assert (
+            await record_marketing_opt_out_by_email(
+                "user@example.com", "email_unsubscribe"
+            )
+            is None
+        )
+        db.update_many.assert_not_awaited()
+        assert caches.mock_calls == []
 
     @pytest.mark.asyncio
     async def test_an_unknown_address_writes_nothing(

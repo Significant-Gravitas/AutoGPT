@@ -332,10 +332,10 @@ describe("SignupPage", () => {
   });
 
   test.each([
-    { optOut: true, label: "records a refusal" },
-    { optOut: false, label: "clears a stale refusal" },
+    { optOut: true, label: "with an opt-out" },
+    { optOut: false, label: "without an opt-out" },
   ])(
-    "email signup $label in the opt-out cookie before creating the account",
+    "email signup $label clears the Google opt-out cookie before creating the account",
     async ({ optOut }) => {
       const user = userEvent.setup();
       render(<SignupPage />);
@@ -346,7 +346,9 @@ describe("SignupPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 
       await waitFor(() => expect(mockSignupAction).toHaveBeenCalled());
-      expect(setMarketingOptOutFlag.mock.calls).toEqual([[optOut]]);
+      // The server action records the refusal itself; a cookie left set would
+      // be applied to whichever Google sign-in comes next in this browser.
+      expect(setMarketingOptOutFlag.mock.calls).toEqual([[false]]);
       expect(setMarketingOptOutFlag.mock.invocationCallOrder[0]).toBeLessThan(
         mockSignupAction.mock.invocationCallOrder[0],
       );
