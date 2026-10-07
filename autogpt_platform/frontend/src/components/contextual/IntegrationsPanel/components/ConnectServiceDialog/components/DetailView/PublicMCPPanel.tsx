@@ -3,13 +3,15 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import type { ReactNode } from "react";
 import { useCheckMCPConnection } from "./useCheckMCPConnection";
 
 interface Props {
   serverURL: string;
+  actions?: ReactNode;
 }
 
-export function PublicMCPPanel({ serverURL }: Props) {
+export function PublicMCPPanel({ serverURL, actions }: Props) {
   const { check, isPending, toolCount, error } =
     useCheckMCPConnection(serverURL);
   return (
@@ -42,14 +44,17 @@ export function PublicMCPPanel({ serverURL }: Props) {
           {error}
         </Text>
       )}
-      <Button
-        variant="primary"
-        size="small"
-        onClick={check}
-        loading={isPending}
-      >
-        Check connection
-      </Button>
+      <div className="flex items-center justify-end gap-2">
+        {actions}
+        <Button
+          variant="primary"
+          size="small"
+          onClick={check}
+          loading={isPending}
+        >
+          Check connection
+        </Button>
+      </div>
     </div>
   );
 }

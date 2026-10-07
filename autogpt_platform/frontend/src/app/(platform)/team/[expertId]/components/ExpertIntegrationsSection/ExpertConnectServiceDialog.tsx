@@ -69,6 +69,9 @@ export function ExpertConnectServiceDialog({
     connectedServices,
     selectedMethod,
     setSelectedMethod,
+    showNative,
+    setShowNative,
+    isMcpStep,
     apiKeyForm,
     handleApiKeySubmit,
     showContinue,
@@ -99,11 +102,11 @@ export function ExpertConnectServiceDialog({
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <motion.div
-            className="relative overflow-hidden"
+            className="relative -m-1 overflow-hidden"
             animate={{ height: contentHeight ?? "auto" }}
             transition={reduceMotion ? { duration: 0 } : HEIGHT_TRANSITION}
           >
-            <div ref={contentRef}>
+            <div ref={contentRef} className="p-1">
               <AnimatePresence mode="wait" initial={false} custom={direction}>
                 {selectedProvider ? (
                   <motion.div
@@ -116,13 +119,17 @@ export function ExpertConnectServiceDialog({
                     transition={STEP_TRANSITION}
                   >
                     <ConnectMethodView
-                      preferMcp
                       provider={selectedProvider}
                       selectedMethod={selectedMethod}
                       onSelectMethod={setSelectedMethod}
                       apiKeyForm={apiKeyForm}
                       onApiKeySubmit={handleApiKeySubmit}
                       onInlineConnectSuccess={handleSuccess}
+                      mcpSignIn={{
+                        showNative,
+                        onShowNativeChange: setShowNative,
+                        onBack: handleBackToList,
+                      }}
                     />
                   </motion.div>
                 ) : (
@@ -241,34 +248,36 @@ export function ExpertConnectServiceDialog({
             </div>
           </motion.div>
 
-          <div className="flex items-center justify-end gap-3">
-            {selectedProvider ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onClick={handleBackToList}
-                >
-                  Back
-                </Button>
-                {showContinue ? (
+          {isMcpStep ? null : (
+            <div className="flex items-center justify-end gap-3">
+              {selectedProvider ? (
+                <>
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     size="small"
-                    disabled={isContinueDisabled}
-                    loading={isConnecting}
-                    onClick={handleContinue}
+                    onClick={handleBackToList}
                   >
-                    {isConnecting ? "Connecting…" : "Continue"}
+                    Back
                   </Button>
-                ) : null}
-              </>
-            ) : (
-              <Button variant="secondary" size="small" onClick={onClose}>
-                Cancel
-              </Button>
-            )}
-          </div>
+                  {showContinue ? (
+                    <Button
+                      variant="primary"
+                      size="small"
+                      disabled={isContinueDisabled}
+                      loading={isConnecting}
+                      onClick={handleContinue}
+                    >
+                      {isConnecting ? "Connecting…" : "Continue"}
+                    </Button>
+                  ) : null}
+                </>
+              ) : (
+                <Button variant="secondary" size="small" onClick={onClose}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </Dialog.Content>
     </Dialog>

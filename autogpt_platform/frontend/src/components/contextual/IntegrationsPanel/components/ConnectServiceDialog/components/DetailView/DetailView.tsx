@@ -102,7 +102,7 @@ export function DetailView({
       {provider.mcpServer && !showNative ? (
         <McpFirstPanel
           server={provider.mcpServer}
-          hasNativeMethods={tabs.length > 0}
+          nativeMethods={tabs}
           onUseNative={() => setShowNative(true)}
           onSuccess={onSuccess}
         />

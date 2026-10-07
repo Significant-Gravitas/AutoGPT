@@ -1,7 +1,6 @@
 "use client";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { useState } from "react";
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -14,7 +13,6 @@ import { UnsupportedNotice } from "@/components/contextual/IntegrationsPanel/com
 import {
   AuthType,
   getSignInFallbackLabel,
-  opensOnNativeMethods,
   type AuthMethod,
   type ConnectableProvider,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
@@ -43,7 +41,13 @@ interface Props {
   /** A method that completes inside this view rather than through the
    *  panel footer's Continue: device auth, host-scoped, user/password. */
   onInlineConnectSuccess: (credential?: CredentialsMetaResponse) => void;
-  preferMcp?: boolean;
+  /** Offers the vendor's own sign-in beside the block methods. The host
+   *  owns which side shows, since the sign-in carries its own Back. */
+  mcpSignIn?: {
+    showNative: boolean;
+    onShowNativeChange: (showNative: boolean) => void;
+    onBack: () => void;
+  };
 }
 
 export const METHOD_ORDER: AuthMethod[] = [
@@ -102,19 +106,17 @@ export function ConnectMethodView({
   onApiKeySubmit,
   hostScopedHost,
   onInlineConnectSuccess,
-  preferMcp,
+  mcpSignIn,
 }: Props) {
   const methods = METHOD_ORDER.filter((method) =>
     provider.supportedAuthTypes.includes(method),
   );
-  const [showNative, setShowNative] = useState(
-    opensOnNativeMethods(provider, Boolean(preferMcp), methods.length),
-  );
-  const showMcp = Boolean(provider.mcpServer) && !showNative;
+  const offersMcp = Boolean(provider.mcpServer && mcpSignIn);
+  const showMcp = offersMcp && !mcpSignIn?.showNative;
 
   function handleUseSignIn() {
     onSelectMethod(null);
-    setShowNative(false);
+    mcpSignIn?.onShowNativeChange(false);
   }
 
   return (
@@ -162,9 +164,10 @@ export function ConnectMethodView({
         {showMcp && provider.mcpServer ? (
           <McpFirstPanel
             server={provider.mcpServer}
-            hasNativeMethods={methods.length > 0}
-            onUseNative={() => setShowNative(true)}
+            nativeMethods={methods}
+            onUseNative={() => mcpSignIn?.onShowNativeChange(true)}
             onSuccess={onInlineConnectSuccess}
+            onBack={mcpSignIn?.onBack}
           />
         ) : (
           <div className="flex flex-col gap-4">
@@ -272,7 +275,7 @@ export function ConnectMethodView({
                 );
               })}
             </div>
-            {provider.mcpServer ? (
+            {offersMcp ? (
               <Button variant="ghost" size="small" onClick={handleUseSignIn}>
                 {getSignInFallbackLabel(provider)}
               </Button>

@@ -39,6 +39,20 @@ export function opensOnNativeMethods(
   return !preferMcp || Boolean(provider.mcpServer?.read_only);
 }
 
+// A vendor's MCP token and its block API key are the same key, so when the
+// block takes one the server's token method is dropped and the key is asked
+// for once.
+export function withoutDuplicateKeyMethod(
+  server: NonNullable<ProviderMetadata["mcp_server"]>,
+  nativeMethods: readonly AuthMethod[],
+): NonNullable<ProviderMetadata["mcp_server"]> {
+  if (!nativeMethods.includes(AuthType.api_key)) return server;
+  const authMethods = server.auth_methods.filter(
+    (method) => method !== "bearer",
+  );
+  return authMethods.length ? { ...server, auth_methods: authMethods } : server;
+}
+
 export function getSignInFallbackLabel(provider: ConnectableProvider): string {
   if (provider.mcpServer?.auth_methods.includes("oauth")) {
     return `Use the ${provider.name} sign-in instead`;

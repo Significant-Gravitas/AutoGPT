@@ -3,11 +3,13 @@ import {
   useGetV1ListProviders,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 import { useApiKeyConnectForm } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useApiKeyConnectForm";
 import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 import {
   AuthType,
   filterConnectableProviders,
+  opensOnNativeMethods,
   toConnectableProviders,
   type AuthMethod,
   type ConnectableProvider,
@@ -45,6 +47,7 @@ export function useExpertConnectServiceDialog({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<AuthMethod | null>(null);
   const [direction, setDirection] = useState<1 | -1>(1);
+  const [nativeOverride, setNativeOverride] = useState<boolean | null>(null);
 
   const providersQuery = useGetV1ListProviders({
     query: {
@@ -65,17 +68,19 @@ export function useExpertConnectServiceDialog({
       setFilter("all");
       setSelectedId(null);
       setSelectedMethod(null);
+      setNativeOverride(null);
       return;
     }
     if (initialProviderId) {
       setDirection(1);
       setSelectedId(initialProviderId);
       setSelectedMethod(null);
+      setNativeOverride(null);
     }
   }, [open, initialProviderId]);
 
   const allProviders = toConnectableProviders(providersQuery.data ?? []);
-  const credentials = credentialsQuery.data ?? [];
+  const credentials = filterSystemCredentials(credentialsQuery.data ?? []);
   const connectedServices = new Set(credentials.map(serviceKey));
   const providers = filterConnectableProviders(
     allProviders,
@@ -88,11 +93,22 @@ export function useExpertConnectServiceDialog({
   const selectedProvider: ConnectableProvider | null = selectedId
     ? (allProviders.find((provider) => provider.id === selectedId) ?? null)
     : null;
-  const isMcpStep = Boolean(selectedProvider?.mcpServer) && !selectedMethod;
+  const showNative =
+    nativeOverride ??
+    (selectedProvider
+      ? opensOnNativeMethods(
+          selectedProvider,
+          true,
+          selectedProvider.supportedAuthTypes.length,
+        )
+      : false);
+  const isMcpStep = Boolean(selectedProvider?.mcpServer) && !showNative;
+
   function handleSuccess(credential?: CredentialsMetaResponse) {
     setDirection(-1);
     setSelectedId(null);
     setSelectedMethod(null);
+    setNativeOverride(null);
     if (credential) onConnected(credential);
   }
 
@@ -109,6 +125,7 @@ export function useExpertConnectServiceDialog({
     setDirection(1);
     setSelectedId(providerId);
     setSelectedMethod(null);
+    setNativeOverride(null);
     apiKey.form.reset();
   }
 
@@ -116,6 +133,7 @@ export function useExpertConnectServiceDialog({
     setDirection(-1);
     setSelectedId(null);
     setSelectedMethod(null);
+    setNativeOverride(null);
   }
 
   function handleContinue() {
@@ -142,6 +160,9 @@ export function useExpertConnectServiceDialog({
     connectedServices,
     selectedMethod,
     setSelectedMethod,
+    showNative,
+    setShowNative: setNativeOverride,
+    isMcpStep,
     apiKeyForm: apiKey.form,
     handleApiKeySubmit: apiKey.handleSubmit,
     showContinue:
