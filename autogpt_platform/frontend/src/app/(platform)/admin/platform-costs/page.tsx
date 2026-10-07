@@ -1,6 +1,7 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 import { PlatformCostContent } from "./components/PlatformCostContent";
+import { Text } from "@/components/atoms/Text/Text";
 
 type SearchParams = {
   start?: string;
@@ -24,10 +25,12 @@ function PlatformCostDashboard({
     <div className="mx-auto p-6">
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Platform Costs</h1>
-          <p className="text-muted-foreground">
+          <Text variant="h3" as="h1">
+            Platform Costs
+          </Text>
+          <Text variant="large" tone="muted">
             Track real API costs incurred by system credentials across providers
-          </p>
+          </Text>
         </div>
 
         <Suspense

@@ -1,3 +1,4 @@
+import { Button } from "@/components/atoms/Button/Button";
 import type { CostLogRow } from "@/app/api/__generated__/models/costLogRow";
 import type { Pagination } from "@/app/api/__generated__/models/pagination";
 import { formatDuration, formatMicrodollars, formatTokens } from "../helpers";
@@ -34,13 +35,14 @@ function LogsTable({
             ? `${pagination.total_items.toLocaleString()} total rows`
             : ""}
         </span>
-        <button
+        <Button
+          variant="secondary"
+          size="small"
           onClick={onExport}
           disabled={exporting}
-          className="rounded border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
         >
           {exporting ? "Exporting…" : "Export CSV"}
-        </button>
+        </Button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -155,20 +157,22 @@ function LogsTable({
             {pagination.total_items} total)
           </span>
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="secondary"
+              size="small"
               disabled={pagination.current_page <= 1}
               onClick={() => onPageChange(pagination.current_page - 1)}
-              className="rounded border px-3 py-1 text-sm disabled:opacity-50"
             >
               Previous
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="small"
               disabled={pagination.current_page >= pagination.total_pages}
               onClick={() => onPageChange(pagination.current_page + 1)}
-              className="rounded border px-3 py-1 text-sm disabled:opacity-50"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}

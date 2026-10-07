@@ -1,5 +1,4 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { IconSliders } from "@/components/__legacy__/ui/icons";
 import {
   BrainIcon,
   Calculator01Icon,
@@ -11,6 +10,7 @@ import {
   ReceiptTextIcon,
   Robot01Icon,
   Search01Icon,
+  SlidersHorizontalIcon,
   UserMultipleIcon,
 } from "@hugeicons/core-free-icons";
 import { ReactNode } from "react";
@@ -77,7 +77,7 @@ function getSidebarLinkGroups() {
         {
           text: "Admin User Management",
           href: "/admin/settings",
-          icon: <IconSliders className="h-6 w-6" />,
+          icon: <Icon icon={SlidersHorizontalIcon} className="h-6 w-6" />,
         },
         // Test data seeding only exists on local stacks; hide the entry point
         // everywhere else so cloud admins don't hit a guaranteed 403/404.

@@ -19,6 +19,7 @@ import {
   formatPercent,
   PLATFORM_OPTIONS,
 } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function BotsContent() {
   const state = useBotsContent();
@@ -96,21 +97,23 @@ export function BotsContent() {
           </div>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">
+            <Text variant="h4" as="h2" className="mb-4">
               Server growth & sharding outlook
-            </h2>
+            </Text>
             <ServerGrowthChart data={state.servers} />
           </Card>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">Message volume</h2>
+            <Text variant="h4" as="h2" className="mb-4">
+              Message volume
+            </Text>
             <MessageVolumeChart data={state.messages} />
           </Card>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">
+            <Text variant="h4" as="h2" className="mb-4">
               Top servers by activity
-            </h2>
+            </Text>
             <SimpleTable
               columns={[
                 ...(showPlatform ? ["Platform"] : []),
@@ -131,7 +134,9 @@ export function BotsContent() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
-              <h2 className="mb-4 text-xl font-semibold">Command usage</h2>
+              <Text variant="h4" as="h2" className="mb-4">
+                Command usage
+              </Text>
               <SimpleTable
                 columns={[
                   ...(showPlatform ? ["Platform"] : []),
@@ -149,7 +154,9 @@ export function BotsContent() {
             </Card>
 
             <Card>
-              <h2 className="mb-4 text-xl font-semibold">Server roster</h2>
+              <Text variant="h4" as="h2" className="mb-4">
+                Server roster
+              </Text>
               <SimpleTable
                 columns={[
                   ...(showPlatform ? ["Platform"] : []),

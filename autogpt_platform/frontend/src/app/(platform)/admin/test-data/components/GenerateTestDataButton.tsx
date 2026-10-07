@@ -49,7 +49,7 @@ export function GenerateTestDataButton() {
         styling={{ maxWidth: "32rem" }}
       >
         <Dialog.Content>
-          <Text variant="body" className="pb-4 text-neutral-600">
+          <Text variant="body" className="pb-4" tone="secondary">
             This will populate the database with sample test data including
             users, agents, graphs, store listings, and more.
           </Text>

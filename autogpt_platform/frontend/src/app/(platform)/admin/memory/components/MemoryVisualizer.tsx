@@ -9,6 +9,11 @@ import { MemoryScopeSelector } from "./MemoryScopeSelector";
 import { MaintenanceControls } from "./MaintenanceControls";
 import { useMemoryScope } from "./useMemoryScope";
 import type { AnyJobStatus } from "./memoryJobStatus";
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
 
 export function MemoryVisualizer() {
   const {
@@ -161,7 +166,7 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
         />
         <div className="col-span-12 rounded-md border bg-white md:col-span-7">
           {graph.isLoading ? (
-            <div className="flex h-[70vh] items-center justify-center text-sm text-gray-500">
+            <div className="flex h-[70vh] items-center justify-center text-sm text-zinc-500">
               Loading graph…
             </div>
           ) : graph.error || scopeMismatchError ? (
@@ -169,7 +174,7 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
               Failed to load graph: {String(graph.error ?? scopeMismatchError)}
             </div>
           ) : nodes.length === 0 ? (
-            <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-gray-500">
+            <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-zinc-500">
               No memory yet. Start a chat session to populate it.
             </div>
           ) : (
@@ -214,7 +219,7 @@ interface OverviewStripProps {
 function OverviewStrip({ loading, error, data }: OverviewStripProps) {
   if (loading) {
     return (
-      <div className="rounded-md border bg-white p-3 text-sm text-gray-500">
+      <div className="rounded-md border bg-white p-3 text-sm text-zinc-500">
         Loading overview…
       </div>
     );
@@ -241,7 +246,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
           className="rounded-md border bg-white p-3 text-center"
         >
           <div className="text-xl font-bold">{stat.value}</div>
-          <div className="text-xs uppercase tracking-wide text-gray-500">
+          <div className="text-xs uppercase tracking-wide text-zinc-500">
             {stat.label}
           </div>
         </div>
@@ -303,7 +308,7 @@ function ControlBar({
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md border bg-white p-3 text-sm">
       {readOnly ? (
-        <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">
+        <span className="rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
           Read-only
         </span>
       ) : (
@@ -323,7 +328,7 @@ function ControlBar({
           nightlyStatus={nightlyStatus}
         />
       )}
-      <label className="flex items-center gap-2 text-gray-700">
+      <label className="flex items-center gap-2 text-zinc-700">
         <input
           type="checkbox"
           checked={includeCommunities}
@@ -331,7 +336,7 @@ function ControlBar({
         />
         Communities
       </label>
-      <label className="flex items-center gap-2 text-gray-700">
+      <label className="flex items-center gap-2 text-zinc-700">
         <input
           type="checkbox"
           checked={includeEpisodes}
@@ -339,10 +344,10 @@ function ControlBar({
         />
         Episodes (noisy)
       </label>
-      <span className="ml-auto text-xs text-gray-500">
+      <span className="ml-auto text-xs text-zinc-500">
         {nodeCount} nodes · {edgeCount} edges
         {truncated && (
-          <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+          <span className="ml-2 rounded bg-yellow-100 px-2 py-0.5 text-yellow-800">
             truncated
           </span>
         )}
@@ -402,57 +407,55 @@ function Sidebar({
   return (
     <div className="col-span-12 space-y-3 md:col-span-3">
       <div className="rounded-md border bg-white p-3">
-        <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
+        <Text variant="eyebrow" as="h3" className="mb-2">
           Labels
-        </h3>
+        </Text>
         <div className="flex flex-wrap gap-1.5">
           {[...nodeTypeCounts.entries()]
             .sort((a, b) => b[1] - a[1])
             .map(([k, count]) => {
               const hidden = hiddenNodeTypes.has(k);
               return (
-                <button
+                <Button
                   key={k}
                   type="button"
+                  variant="toggle"
+                  size="xs"
+                  aria-pressed={!hidden}
                   onClick={() =>
                     setHiddenNodeTypes(togglePill(hiddenNodeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-xs ${
-                    hidden
-                      ? "border-gray-300 text-gray-400 line-through"
-                      : "border-gray-700 text-gray-700"
-                  }`}
+                  className={cn(hidden && "line-through")}
                 >
                   {k} ({count})
-                </button>
+                </Button>
               );
             })}
         </div>
       </div>
       <div className="rounded-md border bg-white p-3">
-        <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
+        <Text variant="eyebrow" as="h3" className="mb-2">
           Relationships
-        </h3>
+        </Text>
         <div className="flex flex-wrap gap-1.5">
           {[...edgeTypeCounts.entries()]
             .sort((a, b) => b[1] - a[1])
             .map(([k, count]) => {
               const hidden = hiddenEdgeTypes.has(k);
               return (
-                <button
+                <Button
                   key={k}
                   type="button"
+                  variant="toggle"
+                  size="xs"
+                  aria-pressed={!hidden}
                   onClick={() =>
                     setHiddenEdgeTypes(togglePill(hiddenEdgeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-xs ${
-                    hidden
-                      ? "border-gray-300 text-gray-400 line-through"
-                      : "border-gray-700 text-gray-700"
-                  }`}
+                  className={cn(hidden && "line-through")}
                 >
                   {k} ({count})
-                </button>
+                </Button>
               );
             })}
         </div>
@@ -518,7 +521,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
     <div className="col-span-12 md:col-span-2">
       <div className="rounded-md border bg-white p-3 text-sm">
         {!node ? (
-          <div className="text-gray-500">Click a node to inspect.</div>
+          <div className="text-zinc-500">Click a node to inspect.</div>
         ) : (
           <>
             <div className="flex items-start justify-between gap-2">
@@ -526,43 +529,45 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                 <div className="truncate text-base font-semibold">
                   {node.name ?? node.uuid.slice(0, 12)}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-zinc-500">
                   {node.type ?? node.label}
                 </div>
               </div>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 onClick={onClear}
-                className="text-xs text-gray-400 hover:text-gray-600"
                 aria-label="Clear selection"
+                withTooltip={false}
               >
-                ✕
-              </button>
+                <Icon icon={Cancel01Icon} size={14} />
+              </Button>
             </div>
-            <div className="mt-2 font-mono text-[10px] text-gray-400">
+            <div className="mt-2 font-mono text-[10px] text-zinc-400">
               {node.uuid}
             </div>
             {node.summary && (
-              <div className="mt-3 whitespace-pre-wrap text-xs text-gray-700">
+              <div className="mt-3 whitespace-pre-wrap text-xs text-zinc-700">
                 {node.summary}
               </div>
             )}
-            <h4 className="mt-4 text-xs font-semibold uppercase text-gray-500">
+            <Text variant="eyebrow" as="h4" className="mt-4">
               {neighbors.length} edges
-            </h4>
+            </Text>
             <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto text-xs">
               {neighbors.map(({ edge, otherUuid }) => (
-                <li key={edge.uuid} className="border-l-2 border-gray-200 pl-2">
-                  <div className="text-gray-700">
+                <li key={edge.uuid} className="border-l-2 border-zinc-200 pl-2">
+                  <div className="text-zinc-700">
                     <span className="font-medium">{edge.label}</span>
                     {edge.name && (
-                      <span className="text-gray-500"> · {edge.name}</span>
+                      <span className="text-zinc-500"> · {edge.name}</span>
                     )}
                   </div>
                   {edge.fact && (
-                    <div className="text-gray-600">{edge.fact}</div>
+                    <div className="text-zinc-600">{edge.fact}</div>
                   )}
-                  <div className="font-mono text-[10px] text-gray-400">
+                  <div className="font-mono text-[10px] text-zinc-400">
                     → {otherUuid.slice(0, 12)}
                   </div>
                 </li>

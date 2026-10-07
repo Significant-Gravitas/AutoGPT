@@ -2,14 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import React, { useState } from "react";
 import {
@@ -21,11 +14,7 @@ import {
   TableCell,
 } from "@/components/__legacy__/ui/table";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   useGetV2ListAllUserSchedules,
   useGetV2ListOrphanedSchedules,
@@ -202,9 +191,11 @@ export function SchedulesTable({
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as "all" | "orphaned")}
         >
-          <CardHeader>
+          <div className="flex flex-col space-y-1.5 p-6">
             <div className="flex items-center justify-between">
-              <CardTitle>Schedules</CardTitle>
+              <Text variant="large-semibold" as="h3">
+                Schedules
+              </Text>
               <div className="flex gap-2">
                 {activeTab === "orphaned" && schedules.length > 0 && (
                   <Button
@@ -255,19 +246,19 @@ export function SchedulesTable({
                 {diagnosticsData && ` (${diagnosticsData.total_orphaned})`}
               </TabsLineTrigger>
             </TabsLineList>
-          </CardHeader>
+          </div>
 
           <TabsLineContent value={activeTab}>
-            <CardContent>
+            <div className="p-6 pt-0">
               {isLoading && schedules.length === 0 ? (
                 <div className="flex h-32 items-center justify-center">
                   <Icon
                     icon={Refresh01Icon}
-                    className="h-6 w-6 animate-spin text-gray-400"
+                    className="h-6 w-6 animate-spin text-zinc-400"
                   />
                 </div>
               ) : schedules.length === 0 ? (
-                <div className="py-8 text-center text-gray-500">
+                <div className="py-8 text-center text-zinc-500">
                   No schedules found
                 </div>
               ) : (
@@ -316,18 +307,18 @@ export function SchedulesTable({
                             <TableCell>{schedule.schedule_name}</TableCell>
                             <TableCell>
                               <div>{schedule.graph_name || "Unknown"}</div>
-                              <div className="font-mono text-xs text-gray-500">
+                              <div className="font-mono text-xs text-zinc-500">
                                 v{schedule.graph_version}
                               </div>
                             </TableCell>
                             <TableCell>
                               <div>
                                 {(schedule as ScheduleDetail).user_email || (
-                                  <span className="text-gray-400">Unknown</span>
+                                  <span className="text-zinc-400">Unknown</span>
                                 )}
                               </div>
                               <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-zinc-500 hover:text-zinc-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     schedule.user_id,
@@ -349,15 +340,15 @@ export function SchedulesTable({
                             <TableCell>
                               {schedule.cron ? (
                                 <>
-                                  <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                                  <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
                                     {schedule.cron}
                                   </code>
-                                  <div className="text-xs text-gray-500">
+                                  <div className="text-xs text-zinc-500">
                                     {schedule.timezone}
                                   </div>
                                 </>
                               ) : (
-                                <span className="text-gray-400">N/A</span>
+                                <span className="text-zinc-400">N/A</span>
                               )}
                             </TableCell>
                             <TableCell>
@@ -387,7 +378,7 @@ export function SchedulesTable({
 
               {totalPages > 1 && activeTab === "all" && (
                 <div className="mt-4 flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-zinc-600">
                     Showing {(currentPage - 1) * pageSize + 1} to{" "}
                     {Math.min(currentPage * pageSize, total)} of {total}{" "}
                     schedules
@@ -415,37 +406,37 @@ export function SchedulesTable({
                   </div>
                 </div>
               )}
-            </CardContent>
+            </div>
           </TabsLineContent>
         </TabsLine>
       </Card>
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm Delete Schedules</DialogTitle>
-            <DialogDescription>
-              {activeTab === "orphaned" && selectedIds.size === 0 ? (
-                <>
-                  Are you sure you want to delete ALL {total} orphaned
-                  schedules?
-                  <br />
-                  <br />
-                  These schedules reference deleted graphs or graphs the user no
-                  longer has access to. Deleting them is safe.
-                </>
-              ) : (
-                <>
-                  Are you sure you want to delete {selectedIds.size} selected
-                  schedule(s)?
-                  <br />
-                  <br />
-                  This will permanently remove the schedules from the system.
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
+      <Dialog
+        title="Confirm Delete Schedules"
+        variant="compact"
+        controlled={{ isOpen: showDeleteDialog, set: setShowDeleteDialog }}
+      >
+        <Dialog.Content>
+          <Text variant="body" as="div" tone="muted">
+            {activeTab === "orphaned" && selectedIds.size === 0 ? (
+              <>
+                Are you sure you want to delete ALL {total} orphaned schedules?
+                <br />
+                <br />
+                These schedules reference deleted graphs or graphs the user no
+                longer has access to. Deleting them is safe.
+              </>
+            ) : (
+              <>
+                Are you sure you want to delete {selectedIds.size} selected
+                schedule(s)?
+                <br />
+                <br />
+                This will permanently remove the schedules from the system.
+              </>
+            )}
+          </Text>
+          <Dialog.Footer>
             <Button
               variant="outline"
               onClick={() => setShowDeleteDialog(false)}
@@ -459,8 +450,8 @@ export function SchedulesTable({
             >
               Delete Schedules
             </Button>
-          </DialogFooter>
-        </DialogContent>
+          </Dialog.Footer>
+        </Dialog.Content>
       </Dialog>
     </>
   );

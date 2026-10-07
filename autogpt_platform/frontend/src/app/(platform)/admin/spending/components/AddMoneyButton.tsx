@@ -1,18 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
-import { Input } from "@/components/__legacy__/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -63,8 +57,8 @@ export function AdminAddMoneyButton({
   return (
     <>
       <Button
-        size="sm"
-        variant="default"
+        size="small"
+        variant="primary"
         onClick={(e) => {
           e.stopPropagation();
           setIsAddMoneyDialogOpen(true);
@@ -75,22 +69,23 @@ export function AdminAddMoneyButton({
 
       {/* Add $$$ Dialog */}
       <Dialog
-        open={isAddMoneyDialogOpen}
-        onOpenChange={setIsAddMoneyDialogOpen}
+        title="Add Dollars"
+        variant="compact"
+        controlled={{
+          isOpen: isAddMoneyDialogOpen,
+          set: setIsAddMoneyDialogOpen,
+        }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Dollars</DialogTitle>
-            <DialogDescription className="pt-2">
-              <div className="mb-2">
-                <span className="font-medium">User:</span> {userEmail}
-              </div>
-              <div>
-                <span className="font-medium">Current balance:</span> $
-                {(currentBalance / 100).toFixed(2)}
-              </div>
-            </DialogDescription>
-          </DialogHeader>
+        <Dialog.Content>
+          <Text variant="body" unmask={false} as="div" tone="muted">
+            <div className="mb-2">
+              <span className="font-medium">User:</span> {userEmail}
+            </div>
+            <div>
+              <span className="font-medium">Current balance:</span> $
+              {(currentBalance / 100).toFixed(2)}
+            </div>
+          </Text>
 
           <form action={handleApproveSubmit}>
             <input type="hidden" name="id" value={userId} />
@@ -101,23 +96,19 @@ export function AdminAddMoneyButton({
             />
 
             <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="dollarAmount">Amount (in dollars)</Label>
-                <div className="flex">
-                  <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-gray-50 px-3 text-gray-500">
-                    $
-                  </div>
-                  <Input
-                    id="dollarAmount"
-                    type="number"
-                    step="0.01"
-                    className="rounded-l-none"
-                    value={dollarAmount}
-                    onChange={(e) => setDollarAmount(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
+              <Input
+                id="dollarAmount"
+                label="Amount (in dollars)"
+                labelVariant="body-medium"
+                size="small"
+                wrapperClassName="mb-0"
+                type="amount"
+                amountPrefix="$"
+                decimalCount={2}
+                value={dollarAmount}
+                onChange={(e) => setDollarAmount(e.target.value)}
+                placeholder="0.00"
+              />
             </div>
 
             <div className="grid gap-4 py-4">
@@ -132,21 +123,27 @@ export function AdminAddMoneyButton({
               </div>
             </div>
 
-            <DialogFooter>
+            <Dialog.Footer>
               <Button
                 type="button"
                 variant="outline"
+                size="small"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="small"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Adding..." : "Add Dollars"}
               </Button>
-            </DialogFooter>
+            </Dialog.Footer>
           </form>
-        </DialogContent>
+        </Dialog.Content>
       </Dialog>
     </>
   );

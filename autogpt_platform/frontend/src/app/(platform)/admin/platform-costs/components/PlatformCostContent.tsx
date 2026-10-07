@@ -2,6 +2,8 @@
 
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import { formatMicrodollars, formatTokens } from "../helpers";
 import { SummaryCard } from "./SummaryCard";
 import { ProviderTable } from "./ProviderTable";
@@ -9,6 +11,7 @@ import { UserTable } from "./UserTable";
 import { LogsTable } from "./LogsTable";
 import { usePlatformCostContent } from "./usePlatformCostContent";
 import type { CostBucket } from "@/app/api/__generated__/models/costBucket";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   searchParams: {
@@ -136,124 +139,113 @@ export function PlatformCostContent({ searchParams }: Props) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-3 rounded-lg border p-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor="start-date" className="text-sm text-muted-foreground">
-            Start Date{" "}
-            <span className="text-xs">
-              (local time — defaults to last 30 days)
-            </span>
-          </label>
-          <input
+          <Input
             id="start-date"
+            label="Start Date"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            hint="(local time — defaults to last 30 days)"
+            size="small"
+            wrapperClassName="mb-0"
             type="datetime-local"
-            className="rounded border px-3 py-1.5 text-sm"
             value={startInput}
             onChange={(e) => setStartInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="end-date" className="text-sm text-muted-foreground">
-            End Date <span className="text-xs">(local time)</span>
-          </label>
-          <input
+          <Input
             id="end-date"
+            label="End Date"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            hint="(local time)"
+            size="small"
+            wrapperClassName="mb-0"
             type="datetime-local"
-            className="rounded border px-3 py-1.5 text-sm"
             value={endInput}
             onChange={(e) => setEndInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label
-            htmlFor="provider-filter"
-            className="text-sm text-muted-foreground"
-          >
-            Provider
-          </label>
-          <input
+          <Input
             id="provider-filter"
+            label="Provider"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            size="small"
+            wrapperClassName="mb-0"
             type="text"
             placeholder="e.g. openai"
-            className="rounded border px-3 py-1.5 text-sm"
             value={providerInput}
             onChange={(e) => setProviderInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label
-            htmlFor="user-id-filter"
-            className="text-sm text-muted-foreground"
-          >
-            User ID
-          </label>
-          <input
+          <Input
             id="user-id-filter"
+            label="User ID"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            size="small"
+            wrapperClassName="mb-0"
             type="text"
             placeholder="Filter by user"
-            className="rounded border px-3 py-1.5 text-sm"
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label
-            htmlFor="model-filter"
-            className="text-sm text-muted-foreground"
-          >
-            Model
-          </label>
-          <input
+          <Input
             id="model-filter"
+            label="Model"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            size="small"
+            wrapperClassName="mb-0"
             type="text"
             placeholder="e.g. gpt-4o"
-            className="rounded border px-3 py-1.5 text-sm"
             value={modelInput}
             onChange={(e) => setModelInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label
-            htmlFor="block-filter"
-            className="text-sm text-muted-foreground"
-          >
-            Block
-          </label>
-          <input
+          <Input
             id="block-filter"
+            label="Block"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            size="small"
+            wrapperClassName="mb-0"
             type="text"
             placeholder="e.g. LLMBlock"
-            className="rounded border px-3 py-1.5 text-sm"
             value={blockInput}
             onChange={(e) => setBlockInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label
-            htmlFor="type-filter"
-            className="text-sm text-muted-foreground"
-          >
-            Type
-          </label>
-          <input
+          <Input
             id="type-filter"
+            label="Type"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            size="small"
+            wrapperClassName="mb-0"
             type="text"
             placeholder="e.g. tokens"
-            className="rounded border px-3 py-1.5 text-sm"
             value={typeInput}
             onChange={(e) => setTypeInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label
-            htmlFor="execution-id-filter"
-            className="text-sm text-muted-foreground"
-          >
-            Execution ID
-          </label>
-          <input
+          <Input
             id="execution-id-filter"
+            label="Execution ID"
+            labelVariant="body"
+            labelClassName="text-muted-foreground"
+            size="small"
+            wrapperClassName="mb-0"
             type="text"
             placeholder="Filter by execution"
-            className="rounded border px-3 py-1.5 text-sm"
             value={executionIDInput}
             onChange={(e) => setExecutionIDInput(e.target.value)}
           />
@@ -297,13 +289,12 @@ export function PlatformCostContent({ searchParams }: Props) {
             <option value="dream_pass">dream_pass</option>
           </select>
         </div>
-        <button
-          onClick={handleFilter}
-          className="rounded bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
-        >
+        <Button variant="primary" size="small" onClick={handleFilter}>
           Apply
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
+          size="small"
           onClick={() => {
             setStartInput("");
             setEndInput("");
@@ -329,10 +320,9 @@ export function PlatformCostContent({ searchParams }: Props) {
               page: "1",
             });
           }}
-          className="rounded border px-4 py-1.5 text-sm hover:bg-muted"
         >
           Clear
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -370,9 +360,9 @@ export function PlatformCostContent({ searchParams }: Props) {
 
               {dashboard.cost_buckets && dashboard.cost_buckets.length > 0 && (
                 <div className="rounded-lg border p-4">
-                  <h3 className="mb-3 text-sm font-medium">
+                  <Text variant="body-medium" as="h3" className="mb-3">
                     Cost Distribution by Bucket
-                  </h3>
+                  </Text>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
                     {dashboard.cost_buckets.map((b: CostBucket) => (
                       <div

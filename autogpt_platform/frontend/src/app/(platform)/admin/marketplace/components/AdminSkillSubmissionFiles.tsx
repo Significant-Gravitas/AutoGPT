@@ -1,8 +1,7 @@
 "use client";
 
 import type { SkillPackageFile } from "@/app/api/__generated__/models/skillPackageFile";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
 import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
 import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
@@ -21,22 +20,17 @@ export function AdminSkillSubmissionFiles({ versionId, files }: Props) {
 
   return (
     <div className="w-full">
-      <button
+      <Button
         type="button"
+        variant="toggle"
+        size="xs"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
-        className="inline-flex items-center gap-1 rounded-md text-zinc-500 transition-colors hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
         data-testid={`files-${versionId}`}
+        leadingIcon={isExpanded ? ArrowDown01Icon : ArrowRight01Icon}
       >
-        <Icon
-          icon={isExpanded ? ArrowDown01Icon : ArrowRight01Icon}
-          size={14}
-          aria-hidden
-        />
-        <Text variant="small" className="!text-inherit">
-          {files.length === 1 ? "1 file" : `${files.length} files`}
-        </Text>
-      </button>
+        {files.length === 1 ? "1 file" : `${files.length} files`}
+      </Button>
 
       {isExpanded ? (
         <div className="mt-2">

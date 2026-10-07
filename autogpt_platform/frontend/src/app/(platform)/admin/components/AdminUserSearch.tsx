@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Input } from "@/components/__legacy__/ui/input";
+import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -52,8 +52,12 @@ export function AdminUserSearch({
   return (
     <div className="flex w-full items-center gap-2">
       <Input
+        id="admin-user-search"
+        label={placeholder}
+        hideLabel
+        size="small"
+        wrapperClassName="mb-0"
         placeholder={placeholder}
-        aria-label={placeholder}
         value={currentValue}
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}

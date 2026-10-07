@@ -3,13 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
+import { Select } from "@/components/atoms/Select/Select";
 import { AdminUserSearch } from "../../components/AdminUserSearch";
 
 export function SearchAndFilterAdminSpending({
@@ -63,6 +57,12 @@ export function SearchAndFilterAdminSpending({
       />
 
       <Select
+        id="spending-status-filter"
+        label="Transaction status"
+        hideLabel
+        size="small"
+        wrapperClassName="mb-0 w-1/4"
+        placeholder="Select Status"
         value={selectedStatus}
         onValueChange={(value: string) => {
           setSelectedStatus(value);
@@ -75,21 +75,15 @@ export function SearchAndFilterAdminSpending({
           params.set("page", "1");
           router.push(`${pathname}?${params.toString()}`);
         }}
-      >
-        <SelectTrigger className="w-1/4">
-          <SelectValue placeholder="Select Status" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">All</SelectItem>
-          <SelectItem value={CreditTransactionType.TOP_UP}>Top Up</SelectItem>
-          <SelectItem value={CreditTransactionType.USAGE}>Usage</SelectItem>
-          <SelectItem value={CreditTransactionType.REFUND}>Refund</SelectItem>
-          <SelectItem value={CreditTransactionType.GRANT}>Grant</SelectItem>
-          <SelectItem value={CreditTransactionType.CARD_CHECK}>
-            Card Check
-          </SelectItem>
-        </SelectContent>
-      </Select>
+        options={[
+          { value: "ALL", label: "All" },
+          { value: CreditTransactionType.TOP_UP, label: "Top Up" },
+          { value: CreditTransactionType.USAGE, label: "Usage" },
+          { value: CreditTransactionType.REFUND, label: "Refund" },
+          { value: CreditTransactionType.GRANT, label: "Grant" },
+          { value: CreditTransactionType.CARD_CHECK, label: "Card Check" },
+        ]}
+      />
     </div>
   );
 }

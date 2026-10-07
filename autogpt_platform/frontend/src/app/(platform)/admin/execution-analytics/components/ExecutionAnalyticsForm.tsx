@@ -12,16 +12,9 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/__legacy__/ui/input";
+import { Input } from "@/components/atoms/Input/Input";
+import { Select } from "@/components/atoms/Select/Select";
 import { Label } from "@/components/__legacy__/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -42,6 +35,7 @@ interface FormData extends Omit<ExecutionAnalyticsRequest, "created_after"> {
 }
 import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
 import { okData } from "@/app/api/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function ExecutionAnalyticsForm() {
   const [results, setResults] = useState<ExecutionAnalyticsResponse | null>(
@@ -302,7 +296,7 @@ export function ExecutionAnalyticsForm() {
   if (configLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-gray-500">Loading configuration...</div>
+        <div className="text-zinc-500">Loading configuration...</div>
       </div>
     );
   }
@@ -321,11 +315,12 @@ export function ExecutionAnalyticsForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="graph_id">
-              Graph ID <span className="text-red-500">*</span>
-            </Label>
             <Input
               id="graph_id"
+              label="Graph ID *"
+              labelVariant="body-medium"
+              size="small"
+              wrapperClassName="mb-0"
               value={formData.graph_id}
               onChange={(e) => handleInputChange("graph_id", e.target.value)}
               placeholder="Enter graph/agent ID"
@@ -334,9 +329,12 @@ export function ExecutionAnalyticsForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="graph_version">Graph Version</Label>
             <Input
               id="graph_version"
+              label="Graph Version"
+              labelVariant="body-medium"
+              size="small"
+              wrapperClassName="mb-0"
               type="number"
               value={formData.graph_version || ""}
               onChange={(e) =>
@@ -350,9 +348,12 @@ export function ExecutionAnalyticsForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="user_id">User ID</Label>
             <Input
               id="user_id"
+              label="User ID"
+              labelVariant="body-medium"
+              size="small"
+              wrapperClassName="mb-0"
               value={formData.user_id || ""}
               onChange={(e) => handleInputChange("user_id", e.target.value)}
               placeholder="Optional - leave empty for all users"
@@ -360,9 +361,12 @@ export function ExecutionAnalyticsForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="created_after">Created After</Label>
             <Input
               id="created_after"
+              label="Created After"
+              labelVariant="body-medium"
+              size="small"
+              wrapperClassName="mb-0"
               type="datetime-local"
               value={formData.created_after || ""}
               onChange={(e) =>
@@ -372,22 +376,20 @@ export function ExecutionAnalyticsForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="model_name">AI Model</Label>
             <Select
+              id="model_name"
+              label="AI Model"
+              labelVariant="body-medium"
+              size="small"
+              wrapperClassName="mb-0"
+              placeholder="Select AI model"
               value={formData.model_name}
               onValueChange={(value) => handleInputChange("model_name", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select AI model" />
-              </SelectTrigger>
-              <SelectContent>
-                {config.available_models.map((model) => (
-                  <SelectItem key={model.value} value={model.value}>
-                    {model.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={config.available_models.map((model) => ({
+                value: model.value,
+                label: model.label,
+              }))}
+            />
           </div>
         </div>
 
@@ -395,9 +397,9 @@ export function ExecutionAnalyticsForm() {
         <div className="border-t pt-6">
           <Collapsible
             trigger={
-              <h3 className="text-lg font-semibold text-gray-700">
+              <Text variant="h5" as="h3" tone="secondary">
                 Advanced Options
-              </h3>
+              </Text>
             }
             defaultOpen={false}
             className="space-y-4"
@@ -432,11 +434,13 @@ export function ExecutionAnalyticsForm() {
 
               {/* Custom System Prompt */}
               <div className="space-y-2">
-                <Label htmlFor="system_prompt">
-                  Custom System Prompt (Optional)
-                </Label>
-                <Textarea
+                <Input
                   id="system_prompt"
+                  type="textarea"
+                  label="Custom System Prompt (Optional)"
+                  labelVariant="body-medium"
+                  size="small"
+                  wrapperClassName="mb-0"
                   value={formData.system_prompt || ""}
                   onChange={(e) =>
                     handleInputChange("system_prompt", e.target.value)
@@ -445,19 +449,21 @@ export function ExecutionAnalyticsForm() {
                   rows={6}
                   className="resize-y"
                 />
-                <p className="text-sm text-gray-600">
+                <Text variant="body" tone="secondary">
                   Customize how the AI evaluates execution success and failure.
                   Leave empty to use the default prompt shown above.
-                </p>
+                </Text>
               </div>
 
               {/* Custom User Prompt */}
               <div className="space-y-2">
-                <Label htmlFor="user_prompt">
-                  Custom User Prompt Template (Optional)
-                </Label>
-                <Textarea
+                <Input
                   id="user_prompt"
+                  type="textarea"
+                  label="Custom User Prompt Template (Optional)"
+                  labelVariant="body-medium"
+                  size="small"
+                  wrapperClassName="mb-0"
                   value={formData.user_prompt || ""}
                   onChange={(e) =>
                     handleInputChange("user_prompt", e.target.value)
@@ -466,18 +472,18 @@ export function ExecutionAnalyticsForm() {
                   rows={8}
                   className="resize-y"
                 />
-                <p className="text-sm text-gray-600">
+                <Text variant="body" tone="secondary">
                   Customize the analysis instructions. Use{" "}
-                  <code className="rounded bg-gray-100 px-1">
+                  <code className="rounded bg-zinc-100 px-1">
                     {"{{GRAPH_NAME}}"}
                   </code>{" "}
                   and{" "}
-                  <code className="rounded bg-gray-100 px-1">
+                  <code className="rounded bg-zinc-100 px-1">
                     {"{{EXECUTION_DATA}}"}
                   </code>{" "}
                   as placeholders. Leave empty to use the default template shown
                   above.
-                </p>
+                </Text>
               </div>
 
               {/* Quick Actions */}
@@ -542,11 +548,13 @@ export function ExecutionAnalyticsForm() {
       {trendsData && (
         <div className="space-y-4">
           <div className="flex items-start justify-between">
-            <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
+            <Text variant="h5" as="h3">
+              Execution Accuracy Trends
+            </Text>
             <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
-              <p className="font-medium">
+              <Text variant="small-medium" className="text-blue-700">
                 Chart Filters (matches monitoring system):
-              </p>
+              </Text>
               <ul className="mt-1 list-inside list-disc space-y-1">
                 <li>Only days with ≥1 execution with correctness score</li>
                 <li>Last 30 days</li>
@@ -561,10 +569,10 @@ export function ExecutionAnalyticsForm() {
               <div className="flex items-start">
                 <span className="text-2xl">🚨</span>
                 <div className="ml-3 space-y-2">
-                  <h4 className="text-lg font-semibold text-red-800">
+                  <Text variant="h5" as="h4" className="text-red-800">
                     Accuracy Alert Detected
-                  </h4>
-                  <p className="text-red-700">
+                  </Text>
+                  <Text variant="large" unmask={false} className="text-red-700">
                     <strong>
                       {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
                     </strong>{" "}
@@ -572,7 +580,7 @@ export function ExecutionAnalyticsForm() {
                     <code className="rounded bg-red-100 px-1 text-sm">
                       {formData.graph_id}
                     </code>
-                  </p>
+                  </Text>
                   <div className="space-y-1 text-sm text-red-600">
                     <p>
                       • 3-day average:{" "}
@@ -606,34 +614,34 @@ export function ExecutionAnalyticsForm() {
               <div className="text-2xl font-bold text-blue-600">
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
               </div>
-              <div className="text-sm text-gray-600">Daily Score</div>
+              <div className="text-sm text-zinc-600">Daily Score</div>
             </div>
             <div className="rounded-lg border bg-white p-4 text-center">
               <div className="text-2xl font-bold text-green-600">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
               </div>
-              <div className="text-sm text-gray-600">3-Day Avg</div>
+              <div className="text-sm text-zinc-600">3-Day Avg</div>
             </div>
             <div className="rounded-lg border bg-white p-4 text-center">
               <div className="text-2xl font-bold text-orange-600">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
               </div>
-              <div className="text-sm text-gray-600">7-Day Avg</div>
+              <div className="text-sm text-zinc-600">7-Day Avg</div>
             </div>
             <div className="rounded-lg border bg-white p-4 text-center">
               <div className="text-2xl font-bold text-purple-600">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
               </div>
-              <div className="text-sm text-gray-600">14-Day Avg</div>
+              <div className="text-sm text-zinc-600">14-Day Avg</div>
             </div>
           </div>
 
           {/* Chart Section - only show when toggle is enabled and historical data exists */}
           {showAccuracyChart && trendsData?.historical_data && (
             <div className="mt-6">
-              <h4 className="mb-4 text-lg font-semibold">
+              <Text variant="h5" as="h4" className="mb-4">
                 Execution Accuracy Trends Chart
-              </h4>
+              </Text>
               <div className="rounded-lg border bg-white p-6">
                 <AccuracyChart data={trendsData.historical_data} />
               </div>

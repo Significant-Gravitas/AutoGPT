@@ -1,16 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
-import { CheckCircle, XCircle } from "lucide-react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
@@ -55,41 +53,45 @@ export function ApproveRejectButtons({
     <>
       {!isApproved && (
         <Button
-          size="sm"
+          size="small"
           variant="outline"
           className="text-green-600 hover:bg-green-50 hover:text-green-700"
+          leadingIcon={CheckmarkCircle02Icon}
           onClick={(e) => {
             e.stopPropagation();
             setIsApproveDialogOpen(true);
           }}
         >
-          <CheckCircle className="mr-2 h-4 w-4" />
           Approve
         </Button>
       )}
       <Button
-        size="sm"
+        size="small"
         variant="outline"
         className="text-red-600 hover:bg-red-50 hover:text-red-700"
+        leadingIcon={CancelCircleIcon}
         onClick={(e) => {
           e.stopPropagation();
           setIsRejectDialogOpen(true);
         }}
       >
-        <XCircle className="mr-2 h-4 w-4" />
         {isApproved ? "Revoke" : "Reject"}
       </Button>
 
       {/* Approve Dialog */}
-      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Approve Agent</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to approve this agent? This will make it
-              available in the marketplace.
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog
+        title="Approve Agent"
+        variant="compact"
+        controlled={{
+          isOpen: isApproveDialogOpen,
+          set: setIsApproveDialogOpen,
+        }}
+      >
+        <Dialog.Content>
+          <Text variant="body" tone="muted">
+            Are you sure you want to approve this agent? This will make it
+            available in the marketplace.
+          </Text>
 
           <form action={handleApproveSubmit}>
             <input
@@ -110,33 +112,38 @@ export function ApproveRejectButtons({
               </div>
             </div>
 
-            <DialogFooter>
+            <Dialog.Footer>
               <Button
                 type="button"
                 variant="outline"
+                size="small"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit">Approve</Button>
-            </DialogFooter>
+              <Button type="submit" variant="primary" size="small">
+                Approve
+              </Button>
+            </Dialog.Footer>
           </form>
-        </DialogContent>
+        </Dialog.Content>
       </Dialog>
 
       {/* Reject Dialog */}
-      <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {isApproved ? "Revoke Approved Agent" : "Reject Agent"}
-            </DialogTitle>
-            <DialogDescription>
-              {isApproved
-                ? "Are you sure you want to revoke approval for this agent? This will remove it from the marketplace."
-                : "Please provide feedback on why this agent is being rejected."}
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog
+        title={isApproved ? "Revoke Approved Agent" : "Reject Agent"}
+        variant="compact"
+        controlled={{
+          isOpen: isRejectDialogOpen,
+          set: setIsRejectDialogOpen,
+        }}
+      >
+        <Dialog.Content>
+          <Text variant="body" tone="muted">
+            {isApproved
+              ? "Are you sure you want to revoke approval for this agent? This will remove it from the marketplace."
+              : "Please provide feedback on why this agent is being rejected."}
+          </Text>
 
           <form action={handleRejectSubmit}>
             <input
@@ -146,40 +153,45 @@ export function ApproveRejectButtons({
             />
 
             <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="comments">Comments for Creator</Label>
-                <Textarea
-                  id="comments"
-                  name="comments"
-                  placeholder="Provide feedback for the agent creator"
-                  required
-                />
-              </div>
+              <Input
+                id="comments"
+                type="textarea"
+                label="Comments for Creator"
+                labelVariant="body-medium"
+                size="small"
+                wrapperClassName="mb-0"
+                name="comments"
+                placeholder="Provide feedback for the agent creator"
+                required
+              />
 
-              <div className="grid gap-2">
-                <Label htmlFor="internal_comments">Internal Comments</Label>
-                <Textarea
-                  id="internal_comments"
-                  name="internal_comments"
-                  placeholder="Add any internal notes (not visible to creator)"
-                />
-              </div>
+              <Input
+                id="internal_comments"
+                type="textarea"
+                label="Internal Comments"
+                labelVariant="body-medium"
+                size="small"
+                wrapperClassName="mb-0"
+                name="internal_comments"
+                placeholder="Add any internal notes (not visible to creator)"
+              />
             </div>
 
-            <DialogFooter>
+            <Dialog.Footer>
               <Button
                 type="button"
                 variant="outline"
+                size="small"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive">
+              <Button type="submit" variant="destructive" size="small">
                 {isApproved ? "Revoke" : "Reject"}
               </Button>
-            </DialogFooter>
+            </Dialog.Footer>
           </form>
-        </DialogContent>
+        </Dialog.Content>
       </Dialog>
     </>
   );
