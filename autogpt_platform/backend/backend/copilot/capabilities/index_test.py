@@ -386,3 +386,43 @@ def test_prefer_mcp_keeps_coverage_first_when_no_server_matches(index):
     result = layered.search("linear issue", prefer_mcp=True)
     assert result.service == "linear"
     assert result.names == ["LinearCreateIssueBlock", "linear-notes"]
+
+
+def test_prefer_mcp_does_not_move_one_service_ahead_of_another():
+    linear_block = _block(
+        LINEAR_ID,
+        "LinearCreateIssueBlock",
+        "Create and triage a GitHub issue from a Linear issue.",
+        provider="linear",
+    )
+    linear_block.service = "linear"
+    github_block = _block(
+        GITHUB_ID,
+        "GithubMakeIssueBlock",
+        "Create a new GitHub repository issue.",
+        provider="github",
+    )
+    github_block.service = "github"
+    index = CapabilityIndex(
+        [
+            linear_block,
+            github_block,
+            _mcp(
+                "mcp.linear.app",
+                "Linear",
+                "linear",
+                "Read Linear issues.",
+            ),
+        ]
+    )
+
+    result = index.search(
+        "create github repository linear read triage issue", prefer_mcp=True
+    )
+
+    assert result.ids.index(f"block:{GITHUB_ID}") < result.ids.index(
+        "mcp:mcp.linear.app"
+    )
+    assert result.ids.index("mcp:mcp.linear.app") < result.ids.index(
+        f"block:{LINEAR_ID}"
+    )

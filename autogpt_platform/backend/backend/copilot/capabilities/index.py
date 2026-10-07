@@ -355,17 +355,42 @@ def _ranked(hits: list[SearchHit], *, mcp_first: bool = False) -> list[SearchHit
     still leads, but within a tier the service's MCP server comes before
     its blocks, which stay listed for what the server cannot do."""
     if mcp_first:
-        return sorted(
+        ranked = sorted(
             hits,
             key=lambda h: (
                 tier(h.entry, h.connected),
-                h.entry.kind != "mcp_server",
                 -h.coverage,
                 h.entry.kind != "tool",
                 -h.score,
                 h.entry.name.lower(),
             ),
         )
+        service_hits: dict[str, list[SearchHit]] = defaultdict(list)
+        for hit in ranked:
+            if hit.entry.service:
+                service_hits[hit.entry.service].append(hit)
+        for service, entries in service_hits.items():
+            service_hits[service] = sorted(
+                entries,
+                key=lambda h: (
+                    tier(h.entry, h.connected),
+                    h.entry.kind != "mcp_server",
+                    -h.coverage,
+                    h.entry.kind != "tool",
+                    -h.score,
+                    h.entry.name.lower(),
+                ),
+            )
+        offsets: dict[str, int] = defaultdict(int)
+        result: list[SearchHit] = []
+        for hit in ranked:
+            service = hit.entry.service
+            if not service:
+                result.append(hit)
+                continue
+            result.append(service_hits[service][offsets[service]])
+            offsets[service] += 1
+        return result
     return sorted(
         hits,
         key=lambda h: (

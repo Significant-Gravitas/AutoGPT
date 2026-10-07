@@ -23,6 +23,7 @@ from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
+from backend.copilot.context import get_current_permissions
 from backend.copilot.gate import METERED, gate_active
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
@@ -230,6 +231,18 @@ async def _run_block(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
     if payload.pop("connect", False):
+        permissions = get_current_permissions()
+        if permissions is not None and not permissions.is_block_allowed(
+            block_id, entry.name
+        ):
+            return ErrorResponse(
+                message=(
+                    f"Block '{entry.name}' ({block_id}) is not permitted by the "
+                    "current execution permissions. Use find_capability to discover "
+                    "blocks that are allowed."
+                ),
+                session_id=session.session_id,
+            )
         prep = await prepare_block_for_execution(
             block_id=block_id,
             input_data=payload,

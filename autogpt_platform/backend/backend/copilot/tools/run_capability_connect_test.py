@@ -9,6 +9,7 @@ from backend.copilot.capabilities.models import (
     Implementation,
 )
 from backend.copilot.gate.subject import NO_OP
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.models import (
     CapabilityDetailsResponse,
@@ -100,6 +101,28 @@ async def test_connect_with_validate_only_still_surfaces_the_card():
     result, prepare = await _connect(_card, validate_only=True)
     assert isinstance(result, SetupRequirementsResponse)
     assert prepare.await_args.kwargs["validate_only"] is False
+
+
+async def test_connect_rejects_a_block_denied_by_permissions():
+    session = make_session(USER)
+    permissions = CopilotPermissions(blocks=[BLOCK_ID])
+    with (
+        patch("backend.copilot.tools.run_capability.gate_denied", return_value=False),
+        patch(
+            "backend.copilot.tools.run_capability.get_current_permissions",
+            return_value=permissions,
+        ),
+        patch(
+            "backend.copilot.tools.run_capability.prepare_block_for_execution",
+            AsyncMock(),
+        ) as prepare,
+    ):
+        result = await _run_block(
+            _entry(), USER, session, {"connect": True}, False, False
+        )
+
+    assert "not permitted" in result.message
+    prepare.assert_not_awaited()
 
 
 async def test_without_connect_the_block_runs_as_before():
