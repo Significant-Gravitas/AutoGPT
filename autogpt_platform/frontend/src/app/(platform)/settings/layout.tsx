@@ -3,7 +3,7 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
 import { SettingsSidebar } from "./components/SettingsSidebar/SettingsSidebar";
 import { SettingsMobileNav } from "./components/SettingsMobileNav/SettingsMobileNav";
 

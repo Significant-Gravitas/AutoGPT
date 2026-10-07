@@ -1,7 +1,7 @@
 "use client";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
 
 import type { ConnectableProvider } from "../helpers";
 import { ProviderRow } from "./ProviderRow";

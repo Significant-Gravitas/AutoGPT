@@ -3,7 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { beautifyString, cn } from "@/lib/utils";
 import { ContentRenderer } from "./ContentRenderer";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
 import { useState } from "react";
 import { NodeDataViewer } from "./NodeDataViewer/NodeDataViewer";
 import { useToast } from "@/components/molecules/Toast/use-toast";

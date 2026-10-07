@@ -2,7 +2,7 @@ import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Label } from "@/components/__legacy__/ui/label";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
 import {
   Sheet,
   SheetContent,
