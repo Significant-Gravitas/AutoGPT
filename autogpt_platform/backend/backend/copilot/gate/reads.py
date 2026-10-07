@@ -6,16 +6,23 @@ user's approval releases exactly those bytes; a rejection leaves them out.
 
 Both seams hand this module the result AS CAPPED for the model, so the judge
 reads what the model would read and the stored bytes are what it would have got.
+A result whose producer declared its outside parts is judged on what of those
+parts the model reads; an undeclared one is judged whole.
 """
 
+import asyncio
 import base64
 import json
 import logging
 import posixpath
 import re
+from collections.abc import Mapping
 from contextvars import ContextVar
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
+from decimal import Decimal
+from enum import Enum
 from typing import Any, Callable
+from uuid import UUID
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
@@ -87,6 +94,9 @@ _SOURCE_KEYS = (
     "session_id",
     "name",
 )
+# The judge's source line sits inside its fence of outside bytes, so it never
+# carries the model's own words (a command, a search query).
+_JUDGED_SOURCE_KEYS = ("url", "file_path", "path")
 # Shipped with the row on every Home poll, so a few KB, never the held bytes.
 _EXCERPT_CHARS = 4_000
 _WAITING = (
@@ -207,26 +217,33 @@ async def screen_read(
     text: str,
     images: tuple[Image, ...] = (),
     tool_call_id: str = "",
+    outside: tuple[Any, ...] | None = None,
+    full: str = "",
 ) -> str | None:
     """A stub to hand the model in place of ``output``, or None to hand it over.
 
     ``output`` is what the model would receive; ``text`` and ``images`` are
-    what of it can be read. Any failure in here withholds the read.
+    what of it can be read. ``outside`` is what the producer declared came from
+    outside AutoGPT, placed in ``full``, the result before any cap; None judges
+    ``text`` whole. Any failure in here withholds the read.
     """
     if tool_name not in JUDGED_READS or trusted_read(tool_name, args, output):
-        return None
-    if platform_setup_card(output):
         return None
     source = source_of(tool_name, args)
     try:
         mode = await active_mode(user_id, session)
         if mode is None or mode == "unsupervised":
             return None
+        if outside is not None:
+            # AutoGPT writes no images, so a declaration narrows only the text.
+            text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
         # Bytes nobody can read are not instructions until something decodes
         # them, and that later read is judged.
         if not text.strip() and not images:
             return None
-        verdict = await judge_content(source=source, text=text, images=images)
+        verdict = await judge_content(
+            source=judged_source(tool_name, args), text=text, images=images
+        )
         if not verdict.held:
             return None
         assert user_id is not None
@@ -267,20 +284,6 @@ def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
     if tool_name == "read_workspace_file":
         return is_skill_path(_opened_path(output))
     return False
-
-
-def platform_setup_card(output: str) -> bool:
-    """A sign-in or setup card the platform wrote: holding it would replace the
-    card with a stub. A provider's rejection text in it is outside, so judged."""
-    try:
-        data = json.loads(output)
-    except ValueError:
-        return False
-    return (
-        isinstance(data, dict)
-        and data.get("type") == ResponseType.SETUP_REQUIREMENTS
-        and not data.get("rejection")
-    )
 
 
 def is_skill_path(path: str | None) -> bool:
@@ -333,13 +336,149 @@ def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
     return f"{output}\n\n{decoded}", ()
 
 
-def source_of(tool_name: str, args: dict[str, Any]) -> str:
+def outside_view(
+    outside: tuple[Any, ...], full: str, text: str, tool_name: str = ""
+) -> str:
+    """What of the declared parts the model reads in ``text``, each as the caps
+    left it; ``text`` whole when a part is not in ``full``, so a mark that
+    misses the bytes it names fails closed."""
+    pieces: dict[str, None] = {}
+    budget = [_MAX_OUTSIDE_VALUES]
+    if not all(_locate(part, full, text, pieces, budget) for part in outside):
+        logger.warning(
+            f"Declared outside parts of {tool_name} not located; judged whole"
+        )
+        return text
+    return "\n".join(pieces)
+
+
+# Past this many values a declaration is judged whole: locating each is a scan
+# of the capped text.
+_MAX_OUTSIDE_VALUES = 5_000
+# A shorter fragment of a cut part is kept only beside the cap's marker, so a
+# stray match of a few characters elsewhere is not judged as the part.
+_MIN_FRAGMENT = 16
+_CUT = "\u2026"
+_OPAQUE = (int, float, bool, type(None), datetime, date, time, UUID, Decimal)
+
+
+def _locate(
+    value: Any, full: str, view: str, pieces: dict[str, None], budget: list[int]
+) -> bool:
+    """Add what of ``value`` shows in ``view``; False when it is not in ``full``."""
+    budget[0] -= 1
+    if budget[0] < 0:
+        return False
+    if isinstance(value, Enum):
+        value = value.value
+    if isinstance(value, BaseModel):
+        value = value.model_dump(mode="json")
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    if isinstance(value, str):
+        return _locate_text(value, full, view, pieces)
+    if isinstance(value, _OPAQUE):
+        return True
+    if isinstance(value, Mapping):
+        # The response is dumped with ``exclude_none``, which drops the key too.
+        children = [part for kv in value.items() if kv[1] is not None for part in kv]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        children = list(value)
+    else:
+        return False
+    for dumped in _dumps(value):
+        if dumped in view:
+            pieces[dumped] = None
+            return True
+    return all(_locate(child, full, view, pieces, budget) for child in children)
+
+
+def _locate_text(value: str, full: str, view: str, pieces: dict[str, None]) -> bool:
+    if not value.strip():
+        return True
+    encodings = list(dict.fromkeys(_encodings(value)))
+    if not any(encoded in full for encoded in encodings):
+        return False
+    for encoded in encodings:
+        if encoded in view:
+            pieces[encoded] = None
+            return True
+    kept = max((_fragments(encoded, view) for encoded in encodings), key=_coverage)
+    pieces.update(dict.fromkeys(kept))
+    return True
+
+
+def _encodings(value: str) -> tuple[str, str, str]:
+    """Raw in an MCP text block, escaped in the JSON a registry tool returns, and
+    ASCII-escaped in a digest's outline."""
+    return (
+        value,
+        json.dumps(value, ensure_ascii=False)[1:-1],
+        json.dumps(value)[1:-1],
+    )
+
+
+def _dumps(value: Any) -> list[str]:
+    """``value`` as the response's JSON serialises it, and as a preview re-dumps it."""
+    try:
+        return [
+            json.dumps(value, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(value, ensure_ascii=False),
+        ]
+    except (TypeError, ValueError):
+        return []
+
+
+def _fragments(encoded: str, view: str) -> list[str]:
+    """The head and tail of a part a cap cut, as far as ``view`` still shows them."""
+    head = encoded[: _longest(encoded, view, head=True)]
+    tail = encoded[len(encoded) - _longest(encoded, view, head=False) :]
+    kept = []
+    if head and (len(head) >= _MIN_FRAGMENT or head + _CUT in view):
+        kept.append(head)
+    if tail and (len(tail) >= _MIN_FRAGMENT or _CUT + tail in view):
+        kept.append(tail)
+    return kept
+
+
+def _coverage(fragments: list[str]) -> int:
+    return sum(len(f) for f in fragments)
+
+
+def _longest(encoded: str, view: str, *, head: bool) -> int:
+    """The longest head (or tail) of ``encoded`` that occurs in ``view``; it is
+    known not to occur whole."""
+
+    def shown(k: int) -> bool:
+        return (encoded[:k] if head else encoded[-k:]) in view
+
+    low, high = 0, 1
+    while high < len(encoded) and shown(high):
+        low, high = high, high * 2
+    high = min(high, len(encoded))
+    while high - low > 1:
+        middle = (low + high) // 2
+        if shown(middle):
+            low = middle
+        else:
+            high = middle
+    return low
+
+
+def source_of(
+    tool_name: str, args: dict[str, Any], keys: tuple[str, ...] = _SOURCE_KEYS
+) -> str:
     """Where the bytes came from, for the stub and the card."""
-    for key in _SOURCE_KEYS:
+    for key in keys:
         value = args.get(key)
         if isinstance(value, str) and value:
             return f"{tool_name} {value[:200]}"
     return tool_name
+
+
+def judged_source(tool_name: str, args: dict[str, Any]) -> str:
+    """Where the bytes came from, for the judge: a URL or a path at most."""
+    return source_of(tool_name, args, _JUDGED_SOURCE_KEYS)
 
 
 def page_words(passage: str, text: str) -> str:
