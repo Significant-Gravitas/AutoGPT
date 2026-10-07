@@ -339,7 +339,12 @@ def _ops() -> list[EmailScenario]:
                 age_label="3 Oct 2026 at 09:26 UTC",
                 requested_at_label="3 Oct 2026 at 09:26 UTC",
                 processed_at_label="3 Oct 2026 at 10:26 UTC",
+                plan_label="AutoGPT Pro (at $50.00 / month)",
+                period_label="3 Sep 2026 to 3 Oct 2026",
+                invoice_id="example-invoice",
+                usage_label="12 AutoPilot chats, 40 workflow runs",
+                evidence_due_label="13 Oct 2026",
             ),
         )
-        for kind in ("request", "processed")
+        for kind in ("request", "processed", "dispute")
     ]

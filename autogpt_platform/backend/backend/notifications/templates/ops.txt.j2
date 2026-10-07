@@ -3,6 +3,46 @@
 {%- set is_request = (kind == 'request') -%}
 {%- set amount_str = '$' ~ '{:,.2f}'.format(amount_cents / 100) -%}
 {%- set balance_str = '$' ~ '{:,.2f}'.format(balance_cents / 100) -%}
+{%- if kind == 'dispute' -%}
+SUBSCRIPTION DISPUTE{% if evidence_due_label %} · RESPONSE DUE {{ evidence_due_label }}{% endif %}
+
+
+{{ amount_str }}
+{{ subject }}
+
+{{ user_name }} disputed a {{ amount_str }} subscription payment with their bank.
+{{ preheader }}
+
+THE BANK'S REASON
+{{ reason or 'None given.' }}
+
+THE RECORD
+Customer:   {{ user_name }}
+Email:      {{ user_email }}
+User ID:    {{ user_id }}
+Plan:       {{ plan_label }}
+Period:     {{ period_label }}
+Usage:      {{ usage_label }}
+Invoice:    {{ invoice_id }}
+Payment:    {{ transaction_id }}
+Dispute ID: {{ refund_request_id }}
+{% if contested %}
+
+Review or add to the evidence in Stripe: {{ stripe_url }}
+{% else %}
+
+TO RESPOND
+Accept it or submit evidence in Stripe: {{ stripe_url }}
+An unanswered dispute is lost at its deadline.
+{% endif %}
+
+--
+Filed automatically when Stripe reported the dispute.
+View the payment in Stripe: {{ stripe_url }}
+
+Internal notification for the AutoGPT refunds team. Not customer-facing. Sent to {{ recipient }}.
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+{%- else -%}
 {{ 'REFUND REQUEST' if is_request else 'REFUND PROCESSED' }}{% if is_request and age_label %} · RAISED {{ age_label }}{% endif %}
 
 
@@ -53,3 +93,4 @@ View the transaction in Stripe: {{ stripe_url }}
 
 Internal notification for the AutoGPT refunds team. Not customer-facing. Sent to {{ recipient }}.
 AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+{%- endif %}

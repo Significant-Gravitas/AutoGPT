@@ -5,14 +5,21 @@ These tests ensure that refund operations (deduct_credits, handle_dispute)
 are atomic and maintain data consistency.
 """
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
 from prisma.enums import CreditRefundRequestStatus, CreditTransactionType
-from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
+from prisma.models import (
+    ChatSession,
+    CreditRefundRequest,
+    CreditTransaction,
+    User,
+    UserBalance,
+)
 
+from backend.data import credit
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -296,13 +303,18 @@ async def test_handle_dispute_with_insufficient_balance(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@patch("backend.data.credit.queue_notification_async", new_callable=AsyncMock)
+@patch("stripe.PaymentIntent.retrieve_async", new_callable=AsyncMock)
 @patch("stripe.Dispute.modify_async")
 async def test_handle_dispute_ignores_dispute_of_non_topup_payment(
-    mock_stripe_modify, server: SpinTestServer
+    mock_stripe_modify, mock_retrieve, mock_notify, server: SpinTestServer
 ):
-    """A dispute of a payment that bought no credits is neither accepted nor
-    contested, and the user's unrelated top-up is left as it was."""
+    """A dispute of a payment that bought neither credits nor a subscription is
+    neither accepted nor contested, and the user's top-up is left as it was."""
     topup_tx = await setup_test_user_with_topup()
+    mock_retrieve.return_value = stripe.PaymentIntent.construct_from(
+        {"id": "pi_test_subscription_invoice", "invoice": None}, "sk_test"
+    )
 
     try:
         dispute = MagicMock(spec=stripe.Dispute)
@@ -316,6 +328,7 @@ async def test_handle_dispute_ignores_dispute_of_non_topup_payment(
 
         dispute.close.assert_not_called()
         mock_stripe_modify.assert_not_called()
+        mock_notify.assert_not_awaited()
         assert await CreditTransaction.prisma().find_many(
             where={"userId": REFUND_TEST_USER_ID}
         ) == [topup_tx]
@@ -324,6 +337,154 @@ async def test_handle_dispute_ignores_dispute_of_non_topup_payment(
         )
         assert user_balance is not None
         assert user_balance.balance == 1000
+    finally:
+        await cleanup_test_user()
+
+
+SUBSCRIPTION_CUSTOMER_ID = "cus_refund_test_user"
+
+
+async def setup_subscriber_with_a_chat():
+    await setup_test_user_with_topup()
+    await User.prisma().update(
+        where={"id": REFUND_TEST_USER_ID},
+        data={"stripeCustomerId": SUBSCRIPTION_CUSTOMER_ID},
+    )
+    await ChatSession.prisma().create(data={"userId": REFUND_TEST_USER_ID})
+
+
+def subscription_dispute(
+    period_start: datetime, period_end: datetime
+) -> tuple[stripe.Dispute, stripe.PaymentIntent, stripe.Subscription]:
+    dispute = stripe.Dispute.construct_from(
+        {
+            "id": "du_test_subscription",
+            "object": "dispute",
+            "payment_intent": "pi_test_subscription_invoice",
+            "amount": 5000,
+            "reason": "fraudulent",
+            "status": "needs_response",
+            "evidence_details": {"due_by": int(period_end.timestamp())},
+        },
+        "sk_test",
+    )
+    payment_intent = stripe.PaymentIntent.construct_from(
+        {
+            "id": "pi_test_subscription_invoice",
+            "object": "payment_intent",
+            "invoice": {
+                "id": "in_test_subscription",
+                "object": "invoice",
+                "customer": SUBSCRIPTION_CUSTOMER_ID,
+                "subscription": "sub_test_pro",
+                "lines": {
+                    "object": "list",
+                    "data": [
+                        {
+                            "object": "line_item",
+                            "description": "1 × AutoGPT Pro (at $50.00 / month)",
+                            "period": {
+                                "start": int(period_start.timestamp()),
+                                "end": int(period_end.timestamp()),
+                            },
+                        }
+                    ],
+                },
+            },
+        },
+        "sk_test",
+    )
+    subscription = stripe.Subscription.construct_from(
+        {
+            "id": "sub_test_pro",
+            "object": "subscription",
+            "status": "active",
+            "start_date": int((period_start - timedelta(days=60)).timestamp()),
+        },
+        "sk_test",
+    )
+    return dispute, payment_intent, subscription
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@patch("backend.data.credit.queue_notification_async", new_callable=AsyncMock)
+@patch("stripe.Subscription.retrieve_async", new_callable=AsyncMock)
+@patch("stripe.PaymentIntent.retrieve_async", new_callable=AsyncMock)
+@patch("stripe.Dispute.modify_async", new_callable=AsyncMock)
+async def test_handle_dispute_of_subscription_payment_notifies_without_contesting(
+    mock_modify, mock_retrieve, mock_subscription, mock_notify, server: SpinTestServer
+):
+    """Under the default settings the refunds team hears about a disputed
+    subscription payment and nothing is submitted to Stripe on its behalf."""
+    now = datetime.now(timezone.utc)
+    start, end = now - timedelta(days=10), now + timedelta(days=20)
+    await setup_subscriber_with_a_chat()
+    dispute, payment_intent, subscription = subscription_dispute(start, end)
+    mock_retrieve.return_value = payment_intent
+    mock_subscription.return_value = subscription
+
+    try:
+        await credit_system.handle_dispute(dispute)
+
+        mock_modify.assert_not_awaited()
+        mock_notify.assert_awaited_once()
+        data = mock_notify.await_args.args[0].data
+        assert data.kind == "dispute"
+        assert data.refund_request_id == "du_test_subscription"
+        assert data.amount_cents == 5000
+        assert data.reason == "fraudulent"
+        assert data.user_id == REFUND_TEST_USER_ID
+        assert data.invoice_id == "in_test_subscription"
+        assert data.plan_label == "1 × AutoGPT Pro (at $50.00 / month)"
+        assert data.period_label == (
+            f"{credit._date_label(start)} to {credit._date_label(end)}"
+        )
+        assert data.usage_label == "1 AutoPilot chat, 0 workflow runs"
+        assert not data.contested
+    finally:
+        await cleanup_test_user()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@patch("backend.data.credit.queue_notification_async", new_callable=AsyncMock)
+@patch("stripe.Subscription.retrieve_async", new_callable=AsyncMock)
+@patch("stripe.PaymentIntent.retrieve_async", new_callable=AsyncMock)
+@patch("stripe.Dispute.modify_async", new_callable=AsyncMock)
+async def test_handle_dispute_of_subscription_payment_contests_when_enabled(
+    mock_modify, mock_retrieve, mock_subscription, mock_notify, server: SpinTestServer
+):
+    """With contesting on, the dispute gets evidence built from the subscription
+    record, and the mail says it was sent."""
+    now = datetime.now(timezone.utc)
+    start, end = now - timedelta(days=10), now + timedelta(days=20)
+    await setup_subscriber_with_a_chat()
+    dispute, payment_intent, subscription = subscription_dispute(start, end)
+    mock_retrieve.return_value = payment_intent
+    mock_subscription.return_value = subscription
+
+    try:
+        with patch.object(
+            credit.settings.config, "contest_subscription_disputes", True
+        ):
+            await credit_system.handle_dispute(dispute)
+
+        mock_modify.assert_awaited_once()
+        assert mock_modify.await_args.args == ("du_test_subscription",)
+        evidence = mock_modify.await_args.kwargs["evidence"]
+        assert evidence["customer_email_address"] == (
+            f"{REFUND_TEST_USER_ID}@example.com"
+        )
+        assert evidence["service_date"] == credit._date_label(start)
+        assert "1 AutoPilot chat, 0 workflow runs" in evidence["access_activity_log"]
+        for fact in (
+            "in_test_subscription",
+            "sub_test_pro",
+            "active",
+            "1 × AutoGPT Pro (at $50.00 / month)",
+            credit._date_label(end),
+        ):
+            assert fact in evidence["uncategorized_text"]
+        assert mock_notify.await_args.args[0].data.contested
     finally:
         await cleanup_test_user()
 

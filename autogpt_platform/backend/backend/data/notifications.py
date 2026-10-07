@@ -169,7 +169,7 @@ class OpsData(BaseNotificationData):
     """Internal refunds-team mail. Not customer-facing, and the only family
     that must NOT carry List-Unsubscribe headers."""
 
-    kind: Literal["request", "processed"]
+    kind: Literal["request", "processed", "dispute"]
     user_name: str
     user_email: str
     user_id: str
@@ -185,6 +185,14 @@ class OpsData(BaseNotificationData):
     age_label: str | None = None
     requested_at_label: str | None = None
     processed_at_label: str | None = None
+    # A dispute: refund_request_id carries the dispute id, transaction_id the
+    # payment intent, and reason Stripe's dispute reason.
+    plan_label: str | None = None
+    period_label: str | None = None
+    invoice_id: str | None = None
+    usage_label: str | None = None
+    evidence_due_label: str | None = None
+    contested: bool = False
 
 
 # ───────────────────── Account & billing messages ─────────────────────

@@ -280,6 +280,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="refund@agpt.co",
         description="Email address to send refund notifications to.",
     )
+    notify_subscription_disputes: bool = Field(
+        default=True,
+        description="Email refund_notification_email when a customer disputes a subscription payment with their bank.",
+    )
+    contest_subscription_disputes: bool = Field(
+        default=False,
+        description="Submit evidence to Stripe for a disputed subscription payment. Off leaves the response to a person; an unanswered dispute is lost at its deadline.",
+    )
     refund_request_time_key_format: str = Field(
         default="%Y-%W",  # This will allow for weekly refunds per user.
         description="Time key format for refund requests.",

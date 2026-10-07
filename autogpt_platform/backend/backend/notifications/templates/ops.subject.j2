@@ -4,6 +4,9 @@
 {%- if kind == 'request' -%}
 Refund needs a decision: {{ amount_str }} for {{ ui.trunc(user_name, 38) }}
 Their balance right now is {{ balance_str }}.
+{%- elif kind == 'dispute' -%}
+Disputed {{ amount_str }} subscription payment from {{ ui.trunc(user_name, 38) }}
+{% if contested %}Evidence from the subscription record went to Stripe automatically.{% else %}Nobody has answered it yet{% if evidence_due_label %}, and Stripe needs a response by {{ evidence_due_label }}{% endif %}.{% endif %}
 {%- else -%}
 Refunded {{ amount_str }} to {{ ui.trunc(user_name, 38) }}
 Their balance after the refund is {{ balance_str }}.

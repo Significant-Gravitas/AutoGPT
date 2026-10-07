@@ -9,6 +9,22 @@
 {{ ui.preheader(preheader) }}
 {{ ui.page_open() }}
 {{ ui.masthead() }}
+{% if kind == 'dispute' %}
+{{ ui.ops_band('SUBSCRIPTION DISPUTE', amount_str,
+    user_name ~ ' · ' ~ user_email,
+    'Evidence submitted' if contested else (('Needs a response by ' ~ evidence_due_label) if evidence_due_label else 'Needs a response'),
+    '#F5F3FC' if contested else '#FFF6E8') }}
+{{ ui.sheet_open() }}
+{% call ui.para() %}{{ user_name }} disputed a {{ amount_str }} subscription payment with their bank.
+{{ preheader }}{% endcall %}
+{{ ui.note_card("The bank's reason", reason or 'None given.') }}
+{{ ui.kvpanel([('Customer', user_name, false), ('Email', user_email, true), ('User ID', user_id, true), ('Plan', plan_label, false), ('Period', period_label, false), ('Usage', usage_label, false), ('Invoice', invoice_id, true), ('Payment', transaction_id, true), ('Dispute ID', refund_request_id, true)]) }}
+{% if not contested %}
+{% call ui.para() %}An unanswered dispute is lost at its deadline.{% endcall %}
+{% endif %}
+{{ ui.cta('Review the evidence in Stripe' if contested else 'Respond in Stripe', stripe_url) }}
+{{ ui.close_row('Filed automatically when Stripe reported the dispute.', 'View the payment in Stripe', stripe_url) }}
+{% else %}
 {{ ui.ops_band('REFUND REQUEST' if is_request else 'REFUND PROCESSED', amount_str,
     user_name ~ ' · ' ~ user_email,
     ('Needs a decision · raised ' ~ age_label) if is_request and age_label else ('Needs a decision' if is_request else 'Completed · no action needed'),
@@ -32,6 +48,7 @@
 {% endif %}
 {{ ui.cta('Open in the admin panel', admin_url) }}
 {{ ui.close_row('This request stays open until someone acts on it.' if is_request else 'Filed automatically when Stripe confirmed the refund.', 'View the transaction in Stripe', stripe_url) }}
+{% endif %}
 {{ ui.sheet_close() }}
 {{ ui.page_close() }}
 {{ ui.internal_footer('Internal notification for the AutoGPT refunds team. Not customer-facing. Sent to ' ~ recipient ~ '.') }}

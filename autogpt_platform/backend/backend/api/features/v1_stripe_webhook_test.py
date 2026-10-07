@@ -8,11 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 import pytest_mock
 import stripe
 from httpx import ASGITransport, AsyncClient
 from prisma.enums import SubscriptionTier
+from prisma.models import User
 
 from backend.data.credit import (
     _expire_open_subscription_sessions,
@@ -321,9 +323,104 @@ async def test_stripe_webhook_acknowledges_refund_or_dispute_of_non_topup_paymen
     event_type: str,
     data_object: dict,
 ) -> None:
-    """A refund or dispute of a payment that bought no credits, such as a
-    subscription invoice, answers 200 and keeps its dedup claim; a 500 makes
-    Stripe redeliver it for days."""
+    """A refund or dispute of a payment that bought neither credits nor a
+    subscription answers 200 and keeps its dedup claim; a 500 makes Stripe
+    redeliver it for days."""
+    mocker.patch(
+        "stripe.PaymentIntent.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=stripe.PaymentIntent.construct_from(
+            {"id": "pi_non_topup_payment", "invoice": None}, "sk_test"
+        ),
+    )
+
+    response, mock_release = await _post_signed_event(
+        mocker,
+        event_type,
+        {**data_object, "payment_intent": "pi_non_topup_payment", "amount": 6000},
+    )
+
+    assert response.status_code == 200
+    mock_release.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_stripe_webhook_reports_dispute_of_subscription_payment(
+    mocker: pytest_mock.MockFixture, server: SpinTestServer
+) -> None:
+    """A dispute of a subscription invoice payment reaches the refunds team,
+    and under the default settings no evidence goes to Stripe."""
+    user_id = "webhook-subscription-dispute-user"
+    await User.prisma().delete_many(where={"id": user_id})
+    await User.prisma().create(
+        data={
+            "id": user_id,
+            "email": f"{user_id}@example.com",
+            "stripeCustomerId": "cus_webhook_dispute",
+        }
+    )
+    mocker.patch(
+        "stripe.PaymentIntent.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=stripe.PaymentIntent.construct_from(
+            {
+                "id": "pi_subscription_payment",
+                "invoice": {
+                    "id": "in_webhook_dispute",
+                    "customer": "cus_webhook_dispute",
+                    "subscription": "sub_webhook_dispute",
+                    "period_start": 1788393600,
+                    "period_end": 1790985600,
+                    "lines": {"data": []},
+                },
+            },
+            "sk_test",
+        ),
+    )
+    mocker.patch(
+        "stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=stripe.Subscription.construct_from(
+            {"id": "sub_webhook_dispute", "status": "active"}, "sk_test"
+        ),
+    )
+    mock_modify = mocker.patch("stripe.Dispute.modify_async", new_callable=AsyncMock)
+    mock_notify = mocker.patch(
+        "backend.data.credit.queue_notification_async", new_callable=AsyncMock
+    )
+
+    try:
+        response, mock_release = await _post_signed_event(
+            mocker,
+            "charge.dispute.created",
+            {
+                "object": "dispute",
+                "id": "du_subscription_payment",
+                "status": "needs_response",
+                "reason": "subscription_canceled",
+                "payment_intent": "pi_subscription_payment",
+                "amount": 5000,
+            },
+        )
+    finally:
+        await User.prisma().delete_many(where={"id": user_id})
+
+    assert response.status_code == 200
+    mock_release.assert_not_awaited()
+    mock_modify.assert_not_awaited()
+    mock_notify.assert_awaited_once()
+    data = mock_notify.await_args.args[0].data
+    assert (data.kind, data.refund_request_id, data.user_id) == (
+        "dispute",
+        "du_subscription_payment",
+        user_id,
+    )
+    assert data.period_label == "3 Sep 2026 to 3 Oct 2026"
+
+
+async def _post_signed_event(
+    mocker: pytest_mock.MockFixture, event_type: str, data_object: dict
+) -> tuple[httpx.Response, AsyncMock]:
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new=SIGNING_SECRET,
@@ -339,16 +436,10 @@ async def test_stripe_webhook_acknowledges_refund_or_dispute_of_non_topup_paymen
     )
     payload = json.dumps(
         {
-            "id": "evt_non_topup",
+            "id": f"evt_{data_object['id']}",
             "object": "event",
             "type": event_type,
-            "data": {
-                "object": {
-                    **data_object,
-                    "payment_intent": "pi_non_topup_payment",
-                    "amount": 6000,
-                }
-            },
+            "data": {"object": data_object},
         }
     )
     timestamp = int(time.time())
@@ -365,9 +456,7 @@ async def test_stripe_webhook_acknowledges_refund_or_dispute_of_non_topup_paymen
             content=payload,
             headers={"stripe-signature": f"t={timestamp},v1={signature}"},
         )
-
-    assert response.status_code == 200
-    mock_release.assert_not_awaited()
+    return response, mock_release
 
 
 # ---------------------------------------------------------------------------

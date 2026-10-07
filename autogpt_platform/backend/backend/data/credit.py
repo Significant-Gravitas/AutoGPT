@@ -13,7 +13,14 @@ from prisma.enums import (
     SubscriptionTier,
 )
 from prisma.errors import PrismaError, UniqueViolationError
-from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
+from prisma.models import (
+    AgentGraphExecution,
+    ChatSession,
+    CreditRefundRequest,
+    CreditTransaction,
+    User,
+    UserBalance,
+)
 from prisma.types import (
     CreditRefundRequestCreateInput,
     CreditTransactionWhereInput,
@@ -957,6 +964,10 @@ class UserCredit(UserCreditBase):
 
         transaction = await self._find_top_up(request)
         if not transaction:
+            logger.warning(
+                f"Ignoring {request.id}: payment intent {request.payment_intent} "
+                "is not a credit top-up"
+            )
             return
         if request.amount <= 0 or request.amount > transaction.amount:
             raise AssertionError(
@@ -999,6 +1010,11 @@ class UserCredit(UserCreditBase):
     async def handle_dispute(self, dispute: stripe.Dispute):
         transaction = await self._find_top_up(dispute)
         if not transaction:
+            if not await handle_subscription_dispute(dispute):
+                logger.warning(
+                    f"Ignoring {dispute.id}: payment intent {dispute.payment_intent} "
+                    "is neither a credit top-up nor a subscription payment"
+                )
             return
         user_id = transaction.userId
         amount = dispute.amount
@@ -1060,19 +1076,13 @@ class UserCredit(UserCreditBase):
     ) -> CreditTransaction | None:
         # Refunds and disputes of subscription payments reach the same webhook;
         # only a credit top-up has a ledger row to act on.
-        transaction = await CreditTransaction.prisma().find_first(
+        return await CreditTransaction.prisma().find_first(
             where={
                 "transactionKey": str(request.payment_intent),
                 "isActive": True,
                 "type": CreditTransactionType.TOP_UP,
             }
         )
-        if not transaction:
-            logger.warning(
-                f"Ignoring {request.id}: payment intent {request.payment_intent} "
-                "is not a credit top-up"
-            )
-        return transaction
 
     async def _top_up_credits(
         self,
@@ -3392,6 +3402,162 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
         # Idempotency key collision — Stripe retried this invoice's webhook and
         # we already granted the credits. Safe to ignore.
         return
+
+
+async def handle_subscription_dispute(dispute: stripe.Dispute) -> bool:
+    """Tell the refunds team about a dispute on a subscription invoice payment,
+    and contest it when `contest_subscription_disputes` is on. Returns False
+    when the disputed payment did not pay a subscription invoice."""
+    if not dispute.payment_intent:
+        return False
+    payment_intent = await stripe_call(
+        stripe.PaymentIntent.retrieve_async,
+        str(dispute.payment_intent),
+        expand=["invoice"],
+    )
+    invoice = payment_intent.get("invoice")
+    if not isinstance(invoice, dict) or not _invoice_subscription_id(invoice):
+        return False
+
+    customer_id = invoice.get("customer")
+    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    if not user:
+        logger.error(
+            f"Subscription payment {dispute.payment_intent} disputed ({dispute.id}), "
+            f"but no user has Stripe customer {customer_id}"
+        )
+        return True
+
+    facts = await _subscription_dispute_facts(user, invoice)
+    logger.warning(
+        f"User {user.id} disputed subscription payment {dispute.payment_intent} "
+        f"({dispute.id}, ${dispute.amount / 100:.2f}, {dispute.reason})"
+    )
+    contested = settings.config.contest_subscription_disputes
+    if contested:
+        await _contest_subscription_dispute(dispute, user, facts)
+    if settings.config.notify_subscription_disputes:
+        await _send_subscription_dispute_notification(dispute, user, facts, contested)
+    return True
+
+
+class _SubscriptionDisputeFacts(BaseModel):
+    invoice_id: str
+    subscription_id: str
+    subscription_status: str
+    plan_label: str
+    period_label: str
+    service_date: str
+    usage_label: str
+
+
+async def _subscription_dispute_facts(
+    user: User, invoice: dict
+) -> _SubscriptionDisputeFacts:
+    subscription_id = _invoice_subscription_id(invoice)
+    subscription = await stripe_call(
+        stripe.Subscription.retrieve_async, subscription_id
+    )
+    # The subscription lines carry the service period; a renewal invoice's own
+    # period_start/period_end describe the period before it.
+    lines = (invoice.get("lines") or {}).get("data") or []
+    periods = [line["period"] for line in lines if line.get("period")]
+    start = datetime.fromtimestamp(
+        min((p["start"] for p in periods), default=invoice.get("period_start", 0)),
+        tz=timezone.utc,
+    )
+    end = datetime.fromtimestamp(
+        max((p["end"] for p in periods), default=invoice.get("period_end", 0)),
+        tz=timezone.utc,
+    )
+    in_period = {"gte": start, "lt": end}
+    chats = await ChatSession.prisma().count(
+        where={"userId": user.id, "createdAt": in_period}
+    )
+    runs = await AgentGraphExecution.prisma().count(
+        where={"userId": user.id, "isDeleted": False, "createdAt": in_period}
+    )
+    descriptions = [line["description"] for line in lines if line.get("description")]
+    return _SubscriptionDisputeFacts(
+        invoice_id=invoice.get("id", ""),
+        subscription_id=subscription_id,
+        subscription_status=str(subscription.get("status", "unknown")),
+        plan_label="; ".join(descriptions)
+        or str(user.subscriptionTier or SubscriptionTier.NO_TIER),
+        period_label=f"{_date_label(start)} to {_date_label(end)}",
+        service_date=_date_label(start),
+        usage_label=(
+            f"{chats} AutoPilot chat{'' if chats == 1 else 's'}, "
+            f"{runs} workflow run{'' if runs == 1 else 's'}"
+        ),
+    )
+
+
+async def _contest_subscription_dispute(
+    dispute: stripe.Dispute, user: User, facts: _SubscriptionDisputeFacts
+) -> None:
+    evidence: stripe.Dispute.ModifyParamsEvidence = {
+        "product_description": f"AutoGPT Platform subscription: {facts.plan_label}",
+        "customer_email_address": user.email,
+        "service_date": facts.service_date,
+        "access_activity_log": (
+            f"Recorded on the customer's account from {facts.period_label}: "
+            f"{facts.usage_label}."
+        ),
+        "uncategorized_text": (
+            f"Invoice {facts.invoice_id} charged the customer for subscription "
+            f"{facts.subscription_id} ({facts.plan_label}) covering "
+            f"{facts.period_label}. The subscription's status is "
+            f"{facts.subscription_status}. The activity log lists the use made of "
+            "the service in that period."
+        ),
+    }
+    await stripe_call(stripe.Dispute.modify_async, dispute.id, evidence=evidence)
+
+
+async def _send_subscription_dispute_notification(
+    dispute: stripe.Dispute,
+    user: User,
+    facts: _SubscriptionDisputeFacts,
+    contested: bool,
+) -> None:
+    due_by = (dispute.get("evidence_details") or {}).get("due_by")
+    await queue_notification_async(
+        NotificationEventModel[OpsData](
+            user_id=user.id,
+            type=NotificationType.OPS,
+            data=OpsData(
+                kind="dispute",
+                user_name=user.name or "AutoGPT Platform User",
+                user_email=user.email,
+                user_id=user.id,
+                transaction_id=str(dispute.payment_intent),
+                refund_request_id=dispute.id,
+                amount_cents=dispute.amount,
+                balance_cents=0,
+                reason=str(dispute.get("reason") or ""),
+                recipient=settings.config.refund_notification_email,
+                stripe_url=(
+                    f"https://dashboard.stripe.com/payments/{dispute.payment_intent}"
+                ),
+                admin_url="",
+                plan_label=facts.plan_label,
+                period_label=facts.period_label,
+                invoice_id=facts.invoice_id,
+                usage_label=facts.usage_label,
+                evidence_due_label=(
+                    _date_label(datetime.fromtimestamp(due_by, tz=timezone.utc))
+                    if due_by
+                    else None
+                ),
+                contested=contested,
+            ),
+        )
+    )
+
+
+def _date_label(moment: datetime) -> str:
+    return f"{moment.day} {moment.strftime('%b %Y')}"
 
 
 async def admin_get_user_history(
