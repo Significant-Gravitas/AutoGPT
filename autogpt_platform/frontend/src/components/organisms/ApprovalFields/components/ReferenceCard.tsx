@@ -20,7 +20,6 @@ export function ReferenceCard({ reference }: Props) {
           <ExpertAvatar
             name={reference.name}
             avatarUrl={reference.avatarURL}
-            color={reference.avatarColor}
             size={36}
             className="shrink-0 rounded-full"
           />

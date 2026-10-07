@@ -14,6 +14,8 @@ import { ManagedExpertImage } from "./components/ManagedExpertImage";
 interface Props {
   name: string | null;
   avatarUrl: string | null;
+  /** @deprecated Ignored: the saved appearance never depends on the color.
+   *  Kept only until the remaining call sites stop passing it. */
   color?: string | null;
   status?: AvatarStatus;
   size?: number;
