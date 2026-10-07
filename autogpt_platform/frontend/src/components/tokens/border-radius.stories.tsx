@@ -63,8 +63,9 @@ export function AllVariants() {
           <Text variant="large" className="text-zinc-600">
             Border radius tokens create visual hierarchy and keep corner
             rounding consistent across components. Every value on this page is
-            read from the resolved Tailwind theme in{" "}
-            <code>tailwind.config.ts</code>, so it always matches the config.
+            read from the <code>@theme</code> blocks of{" "}
+            <code>src/app/globals.css</code> and Tailwind&apos;s default theme,
+            so it always matches the stylesheet.
           </Text>
         </div>
 
@@ -115,7 +116,7 @@ export function AllVariants() {
               <Text variant="body" className="mb-4 text-zinc-600">
                 Use the tokens listed below rather than arbitrary values such as{" "}
                 <code>rounded-[18px]</code>. Tokens marked Custom are added or
-                changed by our config; the rest are Tailwind defaults.
+                changed by globals.css; the rest are Tailwind defaults.
               </Text>
             </div>
           </div>
@@ -162,9 +163,9 @@ export function AllVariants() {
             Border Radius Tokens
           </Text>
           <Text variant="body" className="mb-6 text-zinc-600">
-            Every border radius value in the resolved Tailwind theme. Values
-            defined through <code>--radius</code> are measured in the browser.
-            Each token can be applied to all corners or to specific corners and
+            Every border radius value in the Tailwind theme. Values defined
+            through <code>--radius</code> are measured in the browser. Each
+            token can be applied to all corners or to specific corners and
             sides.
           </Text>
         </div>

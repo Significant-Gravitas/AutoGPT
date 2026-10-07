@@ -96,6 +96,27 @@ const config: StorybookConfig = {
         rule.exclude = [pnpmAwareNodeModulesExclude, ...rule.exclude.slice(1)];
       }
     }
+    // `?raw` imports the file's text (the token stories parse the @theme
+    // blocks of globals.css), as in Vite, ahead of the CSS loaders. Webpack
+    // checks the query against package exports, so Tailwind's default theme
+    // needs an alias to its file.
+    config.resolve ??= {};
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "tailwindcss/theme.css": path.join(
+        frontendRoot,
+        "node_modules/tailwindcss/theme.css",
+      ),
+    };
+    config.module ??= {};
+    config.module.rules = [
+      { resourceQuery: /raw/, type: "asset/source" },
+      ...(config.module.rules ?? []).map((rule) =>
+        rule && typeof rule === "object" && !rule.resourceQuery
+          ? { ...rule, resourceQuery: { not: [/raw/] } }
+          : rule,
+      ),
+    ];
     return config;
   },
 };

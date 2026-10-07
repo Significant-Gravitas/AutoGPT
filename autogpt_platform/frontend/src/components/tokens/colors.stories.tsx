@@ -205,7 +205,7 @@ export function AllVariants() {
                     className="flex items-center gap-4 rounded-lg border border-zinc-200 p-4"
                   >
                     <div
-                      className="h-12 w-12 flex-shrink-0 rounded border border-zinc-300"
+                      className="h-12 w-12 shrink-0 rounded-sm border border-zinc-300"
                       style={{ backgroundColor: color.hex }}
                     ></div>
                     <div className="flex-1 space-y-1">
@@ -257,7 +257,7 @@ export function AllVariants() {
                   className="space-y-3 rounded-lg border border-zinc-200 p-4"
                 >
                   <div
-                    className="h-16 w-full rounded border border-zinc-300"
+                    className="h-16 w-full rounded-sm border border-zinc-300"
                     style={{ backgroundColor: color.hex }}
                   ></div>
                   <div className="space-y-1">

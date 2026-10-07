@@ -3,7 +3,12 @@ import { Text } from "@/components/atoms/Text/Text";
 import { LinkSquare02Icon } from "@hugeicons/core-free-icons";
 import type { Meta } from "@storybook/nextjs";
 import { StoryCode } from "./helpers/StoryCode";
-import { formatPx, getSpacingScale, utilityClass } from "./helpers/theme";
+import {
+  formatPx,
+  getSpacingScale,
+  SPACING_UNIT,
+  utilityClass,
+} from "./helpers/theme";
 
 const meta: Meta = {
   title: "Tokens /Spacing",
@@ -152,11 +157,12 @@ export function AllVariants() {
             Complete Spacing Scale
           </Text>
           <Text variant="body" className="mb-6 text-zinc-600">
-            Every spacing value in the resolved Tailwind theme, read from{" "}
-            <code>tailwind.config.ts</code> so this list cannot drift from the
-            config. Rows marked Custom are added or changed by the config; the
-            rest are Tailwind defaults. Each value works for margin, padding,
-            gap, width and height.
+            Tailwind derives every spacing step from one variable,{" "}
+            <code>--spacing</code> ({SPACING_UNIT}): <code>p-4</code> is{" "}
+            <code>calc(var(--spacing) * 4)</code>. Any multiple of 0.25 is a
+            valid step, so <code>h-4.5</code> and <code>w-18</code> work without
+            configuration; the rows below are the common steps. Each value works
+            for margin, padding, gap, width and height.
           </Text>
         </div>
 
@@ -182,17 +188,10 @@ export function AllVariants() {
                   {formatPx(space.px)}
                 </Text>
               </div>
-              <div className="flex w-24 justify-center">
-                {space.isCustom ? (
-                  <Text variant="label" className="text-purple-600">
-                    Custom
-                  </Text>
-                ) : null}
-              </div>
               <div className="ml-8 flex-1">
                 <div className="relative h-6 bg-zinc-50">
                   <div
-                    className="absolute left-0 top-0 h-full bg-blue-500"
+                    className="absolute top-0 left-0 h-full bg-blue-500"
                     style={{ width: space.value }}
                   ></div>
                 </div>

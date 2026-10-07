@@ -126,14 +126,14 @@ describe("Tailwind class checks", () => {
       import { cva } from "class-variance-authority";
       import { cn } from "@/lib/utils";
       export const modalStyles = { content: "animate-fadein p-6" };
-      const variants = cva("disabled:opacity-1 rounded-full");
+      const variants = cva("disabled:transition-left rounded-full");
       export function A() {
         return <div className={cn("flex-end", variants())}><p className="text-md" /></div>;
       }
     `;
     expect((await unknownClasses(source)).sort()).toEqual([
       "animate-fadein",
-      "disabled:opacity-1",
+      "disabled:transition-left",
       "flex-end",
       "text-md",
     ]);
@@ -152,13 +152,16 @@ describe("Tailwind class checks", () => {
     expect(await unknownClasses(source)).toEqual([]);
   });
 
-  it("turns on no-conflicting-classes, which reports once on Tailwind 4", async () => {
-    const config = await eslint.calculateConfigForFile(
+  it("reports classes that set the same property", async () => {
+    const messages = await lint(
+      'export const A = <div className="p-2 p-4 pt-1" />;',
       "src/app/tailwind-fixture.tsx",
     );
-    expect(config.rules?.["better-tailwindcss/no-conflicting-classes"]).toEqual(
-      [2],
-    );
+    expect(
+      messages.filter(
+        (m) => m.ruleId === "better-tailwindcss/no-conflicting-classes",
+      ),
+    ).toHaveLength(2);
   });
 });
 

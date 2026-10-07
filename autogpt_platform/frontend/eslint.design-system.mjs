@@ -186,7 +186,7 @@ export function importBlocks({ allowlist = true } = {}) {
 
 // Classes that are not Tailwind utilities but are legitimate: hooks read by
 // third-party libraries, selectors for CSS written outside Tailwind, and the
-// component classes in src/app/globals.css.
+// plain CSS classes in src/app/globals.css.
 export const NON_TAILWIND_CLASSES = [
   "^ph-no-capture$", // PostHog: exclude from autocapture
   "^sentry-(un)?mask$", // Sentry session replay
@@ -195,7 +195,6 @@ export const NON_TAILWIND_CLASSES = [
   "^rjsf-", // react-jsonschema-form hooks
   "^is-(user|assistant)$", // ai-elements message selectors (group-[.is-user])
   "^hide-password-toggle$", // PasswordInput's inline <style>
-  "^agpt-", // src/app/globals.css
   "^markdown-output$", // src/app/globals.css
 ];
 
@@ -240,7 +239,7 @@ export function tailwindBlocks({ allowlist = true } = {}) {
       plugins: { "better-tailwindcss": betterTailwind },
       settings: {
         "better-tailwindcss": {
-          tailwindConfig: "./tailwind.config.ts",
+          entryPoint: "src/app/globals.css",
           selectors: [
             ...getDefaultSelectors(),
             // Class maps such as `modalStyles = { content: "..." }` and
@@ -265,8 +264,6 @@ export function tailwindBlocks({ allowlist = true } = {}) {
           "error",
           { ignore: NON_TAILWIND_CLASSES },
         ],
-        // Tailwind 4 only: on 3.4 the plugin cannot detect conflicts and the
-        // rule reports nothing. It starts working with the Tailwind 4 upgrade.
         "better-tailwindcss/no-conflicting-classes": "error",
         "better-tailwindcss/no-restricted-classes": [
           "error",

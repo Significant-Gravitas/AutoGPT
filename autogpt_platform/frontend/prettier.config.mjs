@@ -1,7 +1,7 @@
 /** @type {import("prettier").Config} */
 const config = {
   plugins: ["prettier-plugin-tailwindcss"],
-  tailwindConfig: "./tailwind.config.ts",
+  tailwindStylesheet: "./src/app/globals.css",
   // Sort classes inside these calls too, not only in className attributes.
   tailwindFunctions: ["cn", "cva", "clsx"],
   overrides: [

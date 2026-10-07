@@ -1,16 +1,30 @@
-import defaultTheme from "tailwindcss/defaultTheme";
-import resolveConfig from "tailwindcss/resolveConfig";
-import tailwindConfig from "../../../../tailwind.config";
+import globalsCss from "@/app/globals.css?raw";
+import defaultThemeCss from "tailwindcss/theme.css?raw";
 
 const ROOT_FONT_SIZE_PX = 16;
-
-export const resolvedTheme = resolveConfig(tailwindConfig).theme;
 
 export interface ScaleToken {
   name: string;
   value: string;
   px: number | null;
   isCustom: boolean;
+}
+
+// `--{namespace}-{name}: value;` declarations from the @theme blocks of a
+// stylesheet, by name.
+function themeVariables(css: string, namespace: string) {
+  const declaration = new RegExp(`--${namespace}-([\\w.-]+):\\s*([^;]+);`, "g");
+  const variables: Record<string, string> = {};
+  for (const [, body] of css.matchAll(/@theme[^{]*\{([\s\S]*?)\n\}/g)) {
+    for (const [, name, value] of body.matchAll(declaration)) {
+      variables[name] = value.replace(/\s+/g, " ").trim();
+    }
+  }
+  return variables;
+}
+
+function themeVariable(css: string, name: string) {
+  return new RegExp(`--${name}:\\s*([^;]+);`).exec(css)?.[1].trim();
 }
 
 export function toPx(value: string) {
@@ -51,17 +65,32 @@ export function toScale(
   });
 }
 
+// Tailwind 4 derives every spacing step from one variable, so any multiple
+// of 0.25 is a valid step. These are the steps Tailwind documents.
+const SPACING_STEPS = [
+  0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20, 24,
+  28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 72, 80, 96,
+];
+
+export const SPACING_UNIT =
+  themeVariable(globalsCss, "spacing") ??
+  themeVariable(defaultThemeCss, "spacing") ??
+  "0.25rem";
+
 export function getSpacingScale() {
-  return toScale(
-    resolvedTheme.spacing as Record<string, string>,
-    defaultTheme.spacing as Record<string, string>,
-  );
+  const unitPx = toPx(SPACING_UNIT) ?? 4;
+  return SPACING_STEPS.map((step) => ({
+    name: String(step),
+    value: `${step * (unitPx / ROOT_FONT_SIZE_PX)}rem`,
+    px: step * unitPx,
+  }));
 }
 
 export function getBorderRadiusScale() {
+  const defaults = themeVariables(defaultThemeCss, "radius");
   return toScale(
-    resolvedTheme.borderRadius as Record<string, string>,
-    defaultTheme.borderRadius as Record<string, string>,
+    { ...defaults, ...themeVariables(globalsCss, "radius") },
+    defaults,
   );
 }
 

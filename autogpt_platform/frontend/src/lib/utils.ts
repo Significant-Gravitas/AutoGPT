@@ -10,16 +10,14 @@ import {
   GraphOutputSubSchema,
 } from "@/lib/autogpt-server-api/types";
 
-// Teach tailwind-merge the custom theme keys in tailwind.config.ts, so a
+// Teach tailwind-merge the custom theme keys in src/app/globals.css, so a
 // later `rounded-md` replaces `rounded-large` instead of both being kept and
 // stylesheet order deciding which one wins.
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      borderRadius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
-    },
-    classGroups: {
-      shadow: [{ shadow: ["subtle"] }],
+      radius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
+      shadow: ["subtle"],
     },
   },
 });

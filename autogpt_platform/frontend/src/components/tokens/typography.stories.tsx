@@ -142,19 +142,19 @@ export function AllVariants() {
                 <div className="space-y-3 text-zinc-600">
                   <Text variant="body" className="text-zinc-600">
                     Always use the{" "}
-                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
+                    <code className="rounded-sm bg-zinc-100 px-2 py-1 text-xs">
                       &lt;Text /&gt;
                     </code>{" "}
                     component instead of plain HTML elements like{" "}
-                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
+                    <code className="rounded-sm bg-zinc-100 px-2 py-1 text-xs">
                       &lt;h1&gt;
                     </code>
                     ,{" "}
-                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
+                    <code className="rounded-sm bg-zinc-100 px-2 py-1 text-xs">
                       &lt;p&gt;
                     </code>
                     ,{" "}
-                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
+                    <code className="rounded-sm bg-zinc-100 px-2 py-1 text-xs">
                       &lt;span&gt;
                     </code>
                     , etc... Reasons:

@@ -196,6 +196,8 @@ describe("cn", () => {
     ["rounded-t-xlarge", "rounded-t-none", "rounded-t-none"],
     ["shadow-subtle", "shadow-md", "shadow-md"],
     ["shadow-none", "shadow-subtle", "shadow-subtle"],
+    ["shadow-subtle", "shadow-xs", "shadow-xs"],
+    ["p-2!", "p-4!", "p-4!"],
   ])("lets %s be overridden by %s", (base, override, expected) => {
     expect(cn(base, override)).toBe(expected);
   });
