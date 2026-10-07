@@ -106,6 +106,7 @@ export function PendingReviewCard({
           </span>
           <Switch
             className="ml-auto"
+            aria-label="Value"
             checked={data}
             onCheckedChange={(checked: boolean) => handleDataChange(checked)}
           />
@@ -172,6 +173,7 @@ export function PendingReviewCard({
         <div className="space-y-2 pt-2">
           <div className="flex items-center gap-3">
             <Switch
+              aria-label="Auto-approve future executions of this block"
               checked={autoApproveFuture}
               onCheckedChange={(enabled: boolean) =>
                 onAutoApproveFutureChange(review.node_exec_id, enabled)

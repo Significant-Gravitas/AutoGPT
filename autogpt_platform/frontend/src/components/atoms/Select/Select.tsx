@@ -10,7 +10,7 @@ import {
 } from "@/components/__legacy__/ui/select";
 import { cn } from "@/lib/utils";
 import * as React from "react";
-import { ReactNode, useState } from "react";
+import { ReactNode, useId, useState } from "react";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
@@ -28,7 +28,8 @@ export interface SelectOption {
 
 export interface SelectFieldProps {
   label: string;
-  id: string;
+  /** Links the visible label to the trigger. Generated when omitted. */
+  id?: string;
   hideLabel?: boolean;
   error?: string;
   hint?: ReactNode;
@@ -77,6 +78,8 @@ export function Select({
     className,
   );
 
+  const generatedId = useId();
+  const triggerId = id ?? generatedId;
   const [uncontrolledValue, setUncontrolledValue] = useState<string>();
   const currentValue = value ?? uncontrolledValue ?? "";
 
@@ -104,7 +107,7 @@ export function Select({
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         aria-invalid={error ? true : undefined}
-        id={id}
+        id={triggerId}
       >
         <SelectValue placeholder={placeholder || label} />
       </SelectTrigger>
@@ -157,7 +160,7 @@ export function Select({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <label htmlFor={id}>
+          <label htmlFor={triggerId}>
             <Text variant={labelVariant} as="span" className={labelClassName}>
               {label}
             </Text>

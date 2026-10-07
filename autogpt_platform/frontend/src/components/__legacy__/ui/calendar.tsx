@@ -97,6 +97,7 @@ const CustomDropdown = ({
   onChange,
   name,
   disabled,
+  "aria-label": ariaLabel,
 }: DropdownProps) => {
   const handleValueChange = (newValue: string) => {
     if (onChange) {
@@ -116,7 +117,10 @@ const CustomDropdown = ({
       onValueChange={handleValueChange}
       disabled={disabled}
     >
-      <SelectTrigger className="w-[120px] space-x-2 bg-white text-sm">
+      <SelectTrigger
+        aria-label={ariaLabel}
+        className="w-[120px] space-x-2 bg-white text-sm"
+      >
         <SelectValue placeholder="Select" />
       </SelectTrigger>
       <SelectContent className="bg-white">

@@ -163,7 +163,11 @@ export const DateTimeInput = ({
             {buttonText}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" sideOffset={6}>
+        <PopoverContent
+          className="w-auto p-0"
+          sideOffset={6}
+          aria-label="Choose a date and time"
+        >
           <div className="p-3">
             <Calendar
               mode="single"

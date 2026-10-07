@@ -59,7 +59,11 @@ export function Table({
                   {formatColumnTitle(column)}
                 </TableHead>
               ))}
-              {showDeleteColumn && <TableHead className="w-[50px]" />}
+              {showDeleteColumn && (
+                <TableHead className="w-[50px]">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>

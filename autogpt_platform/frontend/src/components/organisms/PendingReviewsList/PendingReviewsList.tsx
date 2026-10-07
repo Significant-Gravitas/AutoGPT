@@ -311,6 +311,7 @@ export function PendingReviewsList({
                   {!isGateReview(nodeId) && (
                     <div className="flex items-center gap-3 pt-2">
                       <Switch
+                        aria-label="Auto-approve future executions of this node"
                         checked={autoApproveFutureMap[nodeId] || false}
                         onCheckedChange={(enabled: boolean) =>
                           handleAutoApproveFutureToggle(nodeId, enabled)
