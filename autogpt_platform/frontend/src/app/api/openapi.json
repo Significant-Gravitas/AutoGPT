@@ -4735,7 +4735,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
-        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nAlways replays the active turn from ``0-0``. The AI SDK UI-message parser\nkeeps text/reasoning part state inside a single parser instance; resuming\nfrom a Redis cursor can skip the ``*-start`` events required by later\n``*-delta`` chunks.",
+        "description": "Resume a session's stream.\n\nWith ``turn``, serves exactly that turn's stored entries after ``after``\n(``0-0`` for all of them) and then its live ones: 409 when entries after\nthe cursor were trimmed, 410 when the stream is gone. Every entry frame\ncarries ``id: <turn>:<entry>``.\n\nWithout ``turn``, replays the active turn from ``0-0``, or returns 204\nwhen nothing is running: the AI SDK's parser cannot continue a block it\ndid not see start.",
         "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4744,6 +4744,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "turn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Turn to read; with it, only its stored entries",
+              "title": "Turn"
+            },
+            "description": "Turn to read; with it, only its stored entries"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+-\\d+$",
+              "description": "Stream entry id the client last applied",
+              "default": "0-0",
+              "title": "After"
+            },
+            "description": "Stream entry id the client last applied"
           }
         ],
         "responses": {
@@ -4753,6 +4777,22 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Cursor was trimmed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
+          },
+          "410": {
+            "description": "Stream expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -16138,6 +16178,96 @@
         }
       }
     },
+    "/api/store/submissions/media/{owner_user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Read private submission media",
+        "description": "Serve a user's private media to them, to members of an organization they\nshare, and to admins. Anyone else gets a 404, as if it did not exist.",
+        "operationId": "getV2Read private submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "owner_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Owner User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested byte range",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Media not found" },
+          "416": { "description": "Requested range is not satisfiable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/submissions/{store_listing_version_id}": {
       "put": {
         "tags": ["v2", "store", "private"],
@@ -17314,6 +17444,12 @@
           "started_at": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Started At"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -19739,6 +19875,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
           },
+          "credential_pins": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialPin"
+            },
+            "type": "object",
+            "title": "Credential Pins"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -20263,6 +20406,16 @@
         "type": "object",
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
+      },
+      "CredentialPin": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title", "default": "" }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "CredentialPin",
+        "description": "The account a schedule runs one provider on, chosen when it was made.\n\nThe title is kept so a run can still name the account after it was\ndeleted, which is when the name matters most."
       },
       "CredentialRejection": {
         "properties": {
@@ -30486,6 +30639,25 @@
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
       },
+      "StreamResumeRefusal": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["trimmed", "expired"],
+            "title": "Reason"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["reason"],
+        "title": "StreamResumeRefusal",
+        "description": "Why a resume at a cursor cannot be served from the stream."
+      },
       "SubmissionStats": {
         "properties": {
           "total": { "type": "integer", "title": "Total" },
@@ -31931,6 +32103,17 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "TurnCheckpoint": {
+        "properties": {
+          "entry_id": { "type": "string", "title": "Entry Id" },
+          "rows": { "type": "integer", "title": "Rows" },
+          "sequence": { "type": "integer", "title": "Sequence" }
+        },
+        "type": "object",
+        "required": ["entry_id", "rows", "sequence"],
+        "title": "TurnCheckpoint",
+        "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
       },
       "UnderstandingUpdatedResponse": {
         "properties": {
