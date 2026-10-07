@@ -27,12 +27,12 @@ export function AdminSidebar() {
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as const }}
-      className="hidden h-full w-[268px] shrink-0 overflow-y-auto border-r border-[#DADADC] bg-[#F9F9FA] px-[10px] pt-[13px] md:block"
+      className="hidden h-full w-[268px] shrink-0 overflow-y-auto border-r border-zinc-200 bg-zinc-50 px-[10px] pt-[13px] md:block"
     >
       <Link
         href="/copilot"
         aria-label="Back to home"
-        className="mb-[16px] flex w-fit items-center gap-2 rounded-[8px] px-4 py-1 text-[#505057] transition-colors hover:text-[#1F1F20]"
+        className="mb-[16px] flex w-fit items-center gap-2 rounded-lg px-4 py-1 text-zinc-700 transition-colors hover:text-black"
       >
         <Icon icon={ArrowLeft02Icon} size={16} />
         <Text variant="body" as="span" className="font-medium">

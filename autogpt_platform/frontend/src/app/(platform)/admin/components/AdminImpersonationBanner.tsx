@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { useAdminImpersonation } from "./useAdminImpersonation";
 
 export function AdminImpersonationBanner() {
@@ -11,7 +12,7 @@ export function AdminImpersonationBanner() {
   }
 
   return (
-    <div className="mb-4 rounded-md border border-amber-500 bg-amber-50 p-4 text-amber-900">
+    <div className="mb-4 rounded-md border border-yellow-500 bg-yellow-50 p-4 text-yellow-900">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <strong className="font-semibold">
@@ -19,17 +20,19 @@ export function AdminImpersonationBanner() {
           </strong>
           <span>
             You are currently acting as user:{" "}
-            <code className="rounded bg-amber-100 px-1 font-mono text-sm">
+            <code className="rounded bg-yellow-100 px-1 font-mono text-sm">
               {impersonatedUserId}
             </code>
           </span>
         </div>
-        <button
+        <Button
+          variant="outline"
+          size="small"
           onClick={stopImpersonating}
-          className="ml-4 flex h-8 items-center rounded-md border border-amber-300 bg-transparent px-3 text-sm hover:bg-amber-100"
+          className="ml-4"
         >
           Stop Impersonation
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -19,11 +19,11 @@ export function AdminMobileNav() {
   const current = items.find((i) => i.isActive) ?? items[0];
 
   return (
-    <div className="flex items-center gap-2 bg-[#F9F9FA] px-4 py-3 md:hidden">
+    <div className="flex items-center gap-2 bg-zinc-50 px-4 py-3 md:hidden">
       <Link
         href="/copilot"
         aria-label="Back to home"
-        className="flex items-center gap-1 rounded-[8px] py-1 pr-2 text-[#505057] transition-colors hover:text-[#1F1F20]"
+        className="flex items-center gap-1 rounded-lg py-1 pr-2 text-zinc-700 transition-colors hover:text-black"
       >
         <UIIcon icon={ArrowLeft02Icon} size={16} />
       </Link>
@@ -31,16 +31,12 @@ export function AdminMobileNav() {
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex w-fit items-center gap-2 rounded-full border border-[#DADADC] bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#3E3E43]"
+            className="flex w-fit items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
             aria-label={`Admin navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">
               <UIIcon icon={current.Icon} size={16} className="text-black" />
-              <Text
-                variant="body"
-                as="span"
-                className="font-medium text-[#1F1F20]"
-              >
+              <Text variant="body-medium" as="span">
                 {current.label}
               </Text>
             </span>
@@ -48,7 +44,7 @@ export function AdminMobileNav() {
               icon={ArrowDown01Icon}
               size={16}
               className={cn(
-                "text-[#505057] transition-transform",
+                "text-zinc-700 transition-transform",
                 open && "rotate-180",
               )}
             />
@@ -67,24 +63,16 @@ export function AdminMobileNav() {
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "flex h-[38px] items-center gap-2 rounded-[8px] px-3",
-                  isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
+                  "flex h-[38px] items-center gap-2 rounded-lg px-3",
+                  isActive ? "bg-zinc-100" : "hover:bg-zinc-50",
                 )}
               >
-                <UIIcon
-                  icon={Icon}
-                  size={16}
-                  className={isActive ? "text-black" : "text-[#1F1F20]"}
-                />
+                <UIIcon icon={Icon} size={16} className="text-black" />
                 <Text
-                  variant="body"
+                  variant={isActive ? "body-medium" : "body"}
                   as="span"
-                  className={cn(
-                    "flex-1",
-                    isActive
-                      ? "font-medium text-[#1F1F20]"
-                      : "font-normal text-[#505057]",
-                  )}
+                  tone={isActive ? undefined : "secondary"}
+                  className="flex-1"
                 >
                   {label}
                 </Text>

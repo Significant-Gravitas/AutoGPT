@@ -13,6 +13,7 @@ import {
   UserRemove01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function AdminImpersonationPanel() {
   const [userIdInput, setUserIdInput] = useState("");
@@ -66,11 +67,13 @@ export function AdminImpersonationPanel() {
         <div className="border-b pb-4">
           <div className="mb-2 flex items-center space-x-2">
             <Icon icon={UserCheck01Icon} className="h-5 w-5" />
-            <h2 className="text-xl font-semibold">Admin User Impersonation</h2>
+            <Text variant="h4" as="h2">
+              Admin User Impersonation
+            </Text>
           </div>
-          <p className="text-sm text-gray-600">
+          <Text variant="body" tone="secondary">
             Act on behalf of another user for debugging and support purposes
-          </p>
+          </Text>
         </div>
 
         {/* Security Warning */}
@@ -87,7 +90,7 @@ export function AdminImpersonationPanel() {
           <Alert variant="warning">
             <AlertDescription>
               <strong>Currently impersonating:</strong>{" "}
-              <code className="rounded bg-amber-100 px-1 font-mono text-sm">
+              <code className="rounded bg-yellow-100 px-1 font-mono text-sm">
                 {impersonatedUserId}
               </code>
             </AlertDescription>
@@ -128,15 +131,19 @@ export function AdminImpersonationPanel() {
         </div>
 
         {/* Demo: Live Credits Display */}
-        <Card className="bg-gray-50">
+        <Card className="bg-zinc-50">
           <div className="space-y-3">
             <div className="flex items-center space-x-2">
               <Icon icon={CreditCardIcon} className="h-4 w-4" />
-              <h3 className="text-sm font-medium">Live Demo: User Credits</h3>
+              <Text variant="body-medium" as="h3">
+                Live Demo: User Credits
+              </Text>
             </div>
 
             {creditsLoading ? (
-              <p className="text-sm text-gray-600">Loading credits...</p>
+              <Text variant="body" tone="secondary">
+                Loading credits...
+              </Text>
             ) : creditsError ? (
               <Alert variant="error">
                 <AlertDescription className="text-sm">
@@ -150,7 +157,7 @@ export function AdminImpersonationPanel() {
               </Alert>
             ) : creditsResponse?.data ? (
               <div className="space-y-1">
-                <p className="text-sm">
+                <Text variant="body">
                   <strong>
                     {creditsResponse.data &&
                     typeof creditsResponse.data === "object" &&
@@ -160,25 +167,27 @@ export function AdminImpersonationPanel() {
                   </strong>{" "}
                   credits available
                   {isImpersonating && (
-                    <span className="ml-2 text-amber-600">
+                    <span className="ml-2 text-yellow-600">
                       (via impersonation)
                     </span>
                   )}
-                </p>
-                <p className="text-xs text-gray-500">
+                </Text>
+                <Text variant="small" tone="muted">
                   {isImpersonating
                     ? `Showing credits for user ${impersonatedUserId}`
                     : "Showing your own credits"}
-                </p>
+                </Text>
               </div>
             ) : (
-              <p className="text-sm text-gray-600">No credits data available</p>
+              <Text variant="body" tone="secondary">
+                No credits data available
+              </Text>
             )}
           </div>
         </Card>
 
         {/* Instructions */}
-        <div className="space-y-1 text-sm text-gray-600">
+        <div className="space-y-1 text-sm text-zinc-600">
           <p>
             <strong>Instructions:</strong>
           </p>
