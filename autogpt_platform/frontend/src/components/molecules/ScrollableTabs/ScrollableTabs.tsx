@@ -50,7 +50,7 @@ export function ScrollableTabs({ children, className, defaultValue }: Props) {
           // Keyboard users scroll the panel with the arrow keys once it has
           // focus; its content may hold nothing focusable.
           tabIndex={0}
-          className="focus-ring scrollbar-thin max-h-256 scrollbar-thumb-zinc-300 scrollbar-track-transparent overflow-y-auto"
+          className="scrollbar-thin max-h-256 scrollbar-thumb-zinc-300 scrollbar-track-transparent overflow-y-auto focus-ring"
         >
           <div className="min-h-full pb-[200px]">{contentElements}</div>
         </div>
