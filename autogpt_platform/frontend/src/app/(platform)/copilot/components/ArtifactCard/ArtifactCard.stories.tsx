@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { ArtifactCard } from "./ArtifactCard";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";

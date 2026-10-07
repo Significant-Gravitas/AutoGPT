@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { LLMItem } from "./LLMItem";
 
 const meta: Meta<typeof LLMItem> = {

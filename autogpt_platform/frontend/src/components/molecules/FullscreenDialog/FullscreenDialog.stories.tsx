@@ -3,7 +3,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { useState } from "react";
 import { fn, userEvent, within } from "storybook/test";
 import { FullscreenDialog } from "./FullscreenDialog";

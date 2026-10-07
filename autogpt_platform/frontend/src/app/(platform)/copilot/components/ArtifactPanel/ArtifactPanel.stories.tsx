@@ -1,6 +1,6 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { http, HttpResponse } from "msw";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { DEFAULT_ARTIFACT_PANEL_WIDTH, useCopilotUIStore } from "../../store";

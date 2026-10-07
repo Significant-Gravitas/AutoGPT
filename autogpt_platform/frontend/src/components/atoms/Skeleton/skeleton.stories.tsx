@@ -1,5 +1,5 @@
 import { Skeleton } from "./Skeleton";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 const meta: Meta<typeof Skeleton> = {
   title: "Atoms/Skeleton",

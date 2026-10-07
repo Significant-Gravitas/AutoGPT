@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { fn, screen, userEvent, within } from "storybook/test";
 import { CancelTrialDialog } from "./CancelTrialDialog";
 

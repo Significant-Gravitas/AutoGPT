@@ -1,5 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { useState } from "react";
 import { Dialog } from "./Dialog";
 

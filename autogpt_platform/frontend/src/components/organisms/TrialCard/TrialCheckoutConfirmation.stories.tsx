@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { delay, http, HttpResponse } from "msw";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { TrialCheckoutConfirmation } from "./TrialCheckoutConfirmation";

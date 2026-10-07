@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { GlassOrb } from "./GlassOrb";
 
 const meta: Meta<typeof GlassOrb> = {

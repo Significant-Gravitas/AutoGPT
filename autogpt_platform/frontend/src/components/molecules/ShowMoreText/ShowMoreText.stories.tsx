@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { ShowMoreText } from "./ShowMoreText";
 
 const meta: Meta<typeof ShowMoreText> = {

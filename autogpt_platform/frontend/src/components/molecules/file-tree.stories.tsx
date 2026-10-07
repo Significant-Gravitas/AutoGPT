@@ -1,4 +1,4 @@
-import type { Meta } from "@storybook/nextjs";
+import type { Meta } from "@storybook/nextjs-vite";
 import type { ComponentProps } from "react";
 import { Tree, Folder, File, type TreeViewElement } from "./file-tree";
 

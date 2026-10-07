@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, waitFor } from "storybook/test";
 import { Text } from "@/components/atoms/Text/Text";
 import { TallyPopupSimple } from "./TallyPopup";

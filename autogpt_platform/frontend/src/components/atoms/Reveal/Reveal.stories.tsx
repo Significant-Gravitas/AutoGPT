@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { RevealGroup, RevealItem } from "./Reveal";
 
 const meta: Meta<typeof RevealGroup> = {

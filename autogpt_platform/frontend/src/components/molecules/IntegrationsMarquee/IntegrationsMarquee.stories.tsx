@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { IntegrationsMarquee } from "./IntegrationsMarquee";
 
 const meta = {

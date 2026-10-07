@@ -1,5 +1,5 @@
 import { IconType } from "@/components/layout/Navbar/helpers";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { AccountMenu } from "./AccountMenu";
 
 const meta: Meta<typeof AccountMenu> = {

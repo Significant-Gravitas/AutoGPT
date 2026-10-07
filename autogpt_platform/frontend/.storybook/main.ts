@@ -1,46 +1,43 @@
-import type { StorybookConfig } from "@storybook/nextjs";
+import type { StorybookConfig } from "@storybook/nextjs-vite";
 import fs from "node:fs";
 import path from "node:path";
-import webpack from "webpack";
+import { fileURLToPath } from "node:url";
+import type { Plugin } from "vite";
 
-// Packages that ship next/font calls and must go through Next's SWC
-// transform, mirroring transpilePackages in next.config.mjs.
-const NEXT_FONT_PACKAGES = ["geist"];
+const storybookDir = path.dirname(fileURLToPath(import.meta.url));
+const frontendRoot = path.resolve(storybookDir, "..");
 
-// Storybook excludes node_modules from its SWC rule except for
-// transpilePackages, but its regex only allows packages that sit directly
-// under node_modules. pnpm nests them under node_modules/.pnpm/<id>/, so
-// geist's next/font/local call reached the browser untransformed.
-const pnpmAwareNodeModulesExclude = new RegExp(
-  `node_modules/(?!(\\.pnpm/[^/]+/node_modules/)?(${NEXT_FONT_PACKAGES.join("|")})/)`,
-);
-
-// Storybook's next/font/local shim points @font-face at the font file's path
-// relative to the project root, which is only reachable if that folder is
-// served. Serve geist's fonts at the same (pnpm) path.
-const frontendRoot = path.resolve(__dirname, "..");
+// geist calls next/font/local from inside node_modules, which the Next.js
+// Vite plugin leaves untransformed. Stories import a stand-in
+// (mocks/geist.ts) that loads the same font files, served from here.
 const geistFontsDir = path.join(
   fs.realpathSync(path.join(frontendRoot, "node_modules/geist")),
   "dist/fonts",
 );
 
-interface NextSwcRule {
-  use: { loader: string };
-  exclude: unknown[];
-}
-
-function isNextSwcRule(rule: unknown): rule is NextSwcRule {
-  if (!rule || typeof rule !== "object") return false;
-  if (!("use" in rule) || !("exclude" in rule)) return false;
-  const { use, exclude } = rule;
-  return (
-    Array.isArray(exclude) &&
-    !!use &&
-    typeof use === "object" &&
-    "loader" in use &&
-    typeof use.loader === "string" &&
-    use.loader.includes("next-swc-loader-patch")
-  );
+// Client code reaches the auth server actions (API client, avatar upload),
+// and importing that module drags the database client into the preview
+// bundle. Stories get a signed-out stand-in instead, whatever the import
+// specifier.
+function mockAuthActions(): Plugin {
+  const mock = path.join(storybookDir, "mocks/auth-actions.ts");
+  return {
+    name: "autogpt:mock-auth-actions",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      const resolved = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
+      if (
+        resolved &&
+        /[\\/]src[\\/]lib[\\/]auth[\\/]actions\.ts$/.test(resolved.id)
+      ) {
+        return mock;
+      }
+      return null;
+    },
+  };
 }
 
 const config: StorybookConfig = {
@@ -64,58 +61,30 @@ const config: StorybookConfig = {
     "@storybook/addon-onboarding",
     "@storybook/addon-links",
     "@storybook/addon-docs",
+    "@storybook/addon-vitest",
     "msw-storybook-addon",
   ],
   features: {
     experimentalRSC: true,
   },
   framework: {
-    name: "@storybook/nextjs",
-    options: { builder: { useSWC: true } },
+    name: "@storybook/nextjs-vite",
+    options: {},
   },
-  staticDirs: [
-    "../public",
-    {
-      from: geistFontsDir,
-      to: path.relative(frontendRoot, geistFontsDir),
-    },
-  ],
-  webpackFinal: async (config) => {
-    // Client code reaches the auth server actions (API client, avatar
-    // upload), and importing that module drags the database client into the
-    // preview bundle. Stories get a signed-out stand-in instead.
-    config.plugins ??= [];
-    config.plugins.push(
-      new webpack.NormalModuleReplacementPlugin(
-        /(^|[\\/])lib[\\/]auth[\\/]actions(\.ts)?$/,
-        path.resolve(__dirname, "mocks/auth-actions.ts"),
-      ),
-    );
-    for (const rule of config.module?.rules ?? []) {
-      if (isNextSwcRule(rule)) {
-        rule.exclude = [pnpmAwareNodeModulesExclude, ...rule.exclude.slice(1)];
-      }
-    }
-    // `?raw` imports the file's text (the token stories parse the @theme
-    // blocks of globals.css), as in Vite, ahead of the CSS loaders. Webpack
-    // checks the query against package exports, so Tailwind's default theme
-    // needs an alias to its file.
+  staticDirs: ["../public", { from: geistFontsDir, to: "/geist-fonts" }],
+  viteFinal: async (config) => {
+    config.plugins = [...(config.plugins ?? []), mockAuthActions()];
     config.resolve ??= {};
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "tailwindcss/theme.css": path.join(
-        frontendRoot,
-        "node_modules/tailwindcss/theme.css",
-      ),
-    };
-    config.module ??= {};
-    config.module.rules = [
-      { resourceQuery: /raw/, type: "asset/source" },
-      ...(config.module.rules ?? []).map((rule) =>
-        rule && typeof rule === "object" && !rule.resourceQuery
-          ? { ...rule, resourceQuery: { not: [/raw/] } }
-          : rule,
-      ),
+    config.resolve.alias = [
+      ...(Array.isArray(config.resolve.alias)
+        ? config.resolve.alias
+        : Object.entries(config.resolve.alias ?? {}).map(
+            ([find, replacement]) => ({ find, replacement }),
+          )),
+      {
+        find: /^geist\/font\/(sans|mono)$/,
+        replacement: path.join(storybookDir, "mocks/geist.ts"),
+      },
     ];
     return config;
   },

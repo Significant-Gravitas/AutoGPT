@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { fn, userEvent, within } from "storybook/test";
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { VoicePicker } from "./VoicePicker";

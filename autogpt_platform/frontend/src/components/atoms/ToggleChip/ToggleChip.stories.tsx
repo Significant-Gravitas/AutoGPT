@@ -1,7 +1,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrainIcon } from "@hugeicons/core-free-icons";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { useState } from "react";
 import { ToggleChip } from "./ToggleChip";
 

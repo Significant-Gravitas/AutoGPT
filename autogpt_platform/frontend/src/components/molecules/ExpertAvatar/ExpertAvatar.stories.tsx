@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { ExpertAvatar } from "./ExpertAvatar";
 import { MANAGED_IDENTITIES } from "./helpers";
 import { getExpertTopicHex } from "./colors";

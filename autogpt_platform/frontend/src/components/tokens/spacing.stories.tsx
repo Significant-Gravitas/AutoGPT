@@ -1,7 +1,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { LinkSquare02Icon } from "@hugeicons/core-free-icons";
-import type { Meta } from "@storybook/nextjs";
+import type { Meta } from "@storybook/nextjs-vite";
 import { StoryCode } from "./helpers/StoryCode";
 import {
   formatPx,

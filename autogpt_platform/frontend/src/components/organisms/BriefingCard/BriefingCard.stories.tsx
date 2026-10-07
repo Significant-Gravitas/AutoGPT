@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, userEvent, within } from "storybook/test";
 import type { BriefingResponse } from "@/app/api/__generated__/models/briefingResponse";
 import type { BriefingRunItem } from "@/app/api/__generated__/models/briefingRunItem";

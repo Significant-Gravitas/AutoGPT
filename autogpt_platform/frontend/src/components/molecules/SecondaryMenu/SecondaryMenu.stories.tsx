@@ -4,7 +4,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import {
   SecondaryDropdownMenuContent,
   SecondaryDropdownMenuItem,

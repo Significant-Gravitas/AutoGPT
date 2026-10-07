@@ -1,5 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
-import type { Meta } from "@storybook/nextjs";
+import type { Meta } from "@storybook/nextjs-vite";
 import { StoryCode } from "./helpers/StoryCode";
 import {
   Alert01Icon,

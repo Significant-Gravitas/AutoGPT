@@ -1,0 +1,14 @@
+/* Geist from the geist package, served by staticDirs in main.ts. */
+@font-face {
+  font-family: "Geist";
+  src: url("/geist-fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/geist-fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}

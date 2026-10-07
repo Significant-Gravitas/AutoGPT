@@ -1,5 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { useState } from "react";
 import { fn, userEvent, within } from "storybook/test";
 import { DateInput } from "./DateInput";

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { Text } from "@/components/atoms/Text/Text";
 import { WorkflowAvatar } from "./WorkflowAvatar";
 

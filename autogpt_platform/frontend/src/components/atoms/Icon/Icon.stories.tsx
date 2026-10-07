@@ -21,7 +21,7 @@ import {
   Tick02Icon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { Icon } from "./Icon";
 
 const meta = {

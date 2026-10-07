@@ -1,5 +1,5 @@
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { TaskProgressBar } from "./TaskProgressBar";
 import type { TodoItem } from "./helpers";

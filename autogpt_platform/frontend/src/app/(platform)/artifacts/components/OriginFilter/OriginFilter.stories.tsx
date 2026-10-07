@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { useState } from "react";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
 import { OriginFilter } from "./OriginFilter";

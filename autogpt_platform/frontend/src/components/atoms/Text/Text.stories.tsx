@@ -1,5 +1,5 @@
 import { StoryCode } from "@/components/tokens/helpers/StoryCode";
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { Text, textTones, textVariants } from "./Text";
 
 const meta: Meta<typeof Text> = {

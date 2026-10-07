@@ -6,7 +6,7 @@ import {
   type Variant,
 } from "@/components/atoms/Text/helpers";
 import { Text } from "@/components/atoms/Text/Text";
-import type { Meta } from "@storybook/nextjs";
+import type { Meta } from "@storybook/nextjs-vite";
 import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta<typeof Text> = {

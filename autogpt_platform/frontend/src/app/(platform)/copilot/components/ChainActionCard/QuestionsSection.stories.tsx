@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { domAnimation, LazyMotion } from "framer-motion";
 import { useState } from "react";
 import {

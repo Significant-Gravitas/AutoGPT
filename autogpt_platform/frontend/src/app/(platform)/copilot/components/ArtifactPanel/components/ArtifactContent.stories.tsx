@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { http, HttpResponse } from "msw";
 import { ArtifactContent } from "./ArtifactContent";
 import type { ArtifactRef } from "../../../store";

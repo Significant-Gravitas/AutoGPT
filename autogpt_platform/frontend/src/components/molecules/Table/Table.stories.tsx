@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Table } from "./Table";
 

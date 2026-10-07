@@ -6,9 +6,10 @@ import {
   Subtitle,
   Title,
 } from "@storybook/addon-docs/blocks";
-import { Preview } from "@storybook/nextjs";
+import { Preview } from "@storybook/nextjs-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswLoader } from "msw-storybook-addon/csf3";
+import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import React from "react";
 import "../src/app/globals.css";
 import { fonts } from "../src/components/styles/fonts";
@@ -67,9 +68,13 @@ const preview: Preview = {
   decorators: [
     (Story, context) => (
       <QueryClientProvider client={getStoryQueryClient(context.id)}>
-        <div className="bg-background p-8">
-          <Story />
-        </div>
+        {/* Components that keep state in the URL (useQueryState) need an
+            adapter; stories get an in-memory one. */}
+        <NuqsTestingAdapter>
+          <div className="bg-background p-8">
+            <Story />
+          </div>
+        </NuqsTestingAdapter>
       </QueryClientProvider>
     ),
   ],

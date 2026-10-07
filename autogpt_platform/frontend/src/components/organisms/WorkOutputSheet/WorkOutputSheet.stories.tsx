@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { delay, http, HttpResponse } from "msw";
 import { fn } from "storybook/test";
 import { getGetV1GetExecutionDetailsMockHandler200 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
