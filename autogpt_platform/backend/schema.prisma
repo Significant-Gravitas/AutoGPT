@@ -1363,6 +1363,10 @@ model ExpertRoutine {
   // Seeded and shared rows always arrive false; only an owner binding this
   // routine to their connections sets it.
   grantsCredentials     Boolean   @default(false)
+  // {provider: {id, title}}: the account each turn uses where the owner has
+  // several for one provider, chosen in the chat that set the routine up. A
+  // pinned account that is gone fails the step instead of switching accounts.
+  credentialPins        Json?
   // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
   // what archiving paused, never one the owner had switched off themselves.
   pausedByExpertArchive Boolean   @default(false)

@@ -47,6 +47,7 @@ from backend.notifications.queue import (
     create_notification_config,
     queue_notification_async,
 )
+from backend.notifications.recipient import greeting_name
 from backend.notifications.trial import trial_notice_disposition
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -258,12 +259,14 @@ class NotificationManager(AppService):
             logger.warning(f"Failed to send Discord system alert: {e}")
 
     @expose
-    async def send_email_or_raise(self, to: str, subject: str, body: str):
+    async def send_email_or_raise(
+        self, to: str, subject: str, body: str, text_body: str | None = None
+    ):
         """One-off transactional email (e.g. Better Auth password-reset links
         forwarded by the REST API). Deliberately not wrapped in try/except: a
         delivery failure must reach the RPC caller."""
         await asyncio.to_thread(
-            self.email_sender.send_email_or_raise, to, subject, body
+            self.email_sender.send_email_or_raise, to, subject, body, text_body
         )
 
     # ── consumers ───────────────────────────────────────────────────────
@@ -330,6 +333,11 @@ class NotificationManager(AppService):
         await self.email_sender.send_notification(
             notification_type=event.type,
             user_email=preference.email,
+            first_name=(
+                await greeting_name(event.user_id)
+                if event.type not in SERVICE_MESSAGES
+                else None
+            ),
             data=event.data,
             unsubscribe_link=generate_unsubscribe_link(event.user_id),
             volume_links={
