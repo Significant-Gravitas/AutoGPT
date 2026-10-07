@@ -226,7 +226,7 @@ export function PendingReviewsList({
           />
           <Text
             variant="large-semibold"
-            className="overflow-hidden text-ellipsis text-zinc-900"
+            className="overflow-hidden text-ellipsis text-foreground"
           >
             Your review is needed
           </Text>
@@ -265,29 +265,32 @@ export function PendingReviewsList({
                   <Icon
                     icon={ArrowRight01Icon}
                     size={20}
-                    className="text-zinc-600"
+                    className="text-muted-foreground"
                   />
                 ) : (
                   <Icon
                     icon={ArrowDown01Icon}
                     size={20}
-                    className="text-zinc-600"
+                    className="text-muted-foreground"
                   />
                 )}
                 <div className="flex-1">
-                  <Text variant="body" className="font-semibold text-zinc-900">
+                  <Text
+                    variant="body"
+                    className="font-semibold text-foreground"
+                  >
                     {reviewTitle}
                   </Text>
                   {(workflowName ||
                     (!firstReview?.action && !isGateReview(nodeId))) && (
-                    <Text variant="small" className="text-zinc-500">
+                    <Text variant="small" className="text-muted-foreground">
                       {workflowName
                         ? `In workflow “${workflowName}”`
                         : `Node #${getShortenedNodeId(nodeId)}`}
                     </Text>
                   )}
                 </div>
-                <span className="text-xs text-zinc-600">
+                <span className="text-xs text-muted-foreground">
                   {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
                 </span>
               </button>
@@ -335,7 +338,7 @@ export function PendingReviewsList({
                       onClick={() => processGroup(nodeId, false)}
                       disabled={isProcessing}
                       variant="destructive"
-                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
+                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-destructive px-4 py-3"
                       loading={groupAction === "reject" && isProcessing}
                     >
                       {reviewCount === 1

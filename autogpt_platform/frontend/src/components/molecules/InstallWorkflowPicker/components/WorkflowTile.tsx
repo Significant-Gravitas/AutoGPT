@@ -18,7 +18,7 @@ export function WorkflowTile({ imageUrl }: Props) {
     return (
       <span
         aria-hidden="true"
-        className="size-9 shrink-0 rounded-lg bg-zinc-100"
+        className="size-9 shrink-0 rounded-lg bg-muted"
       />
     );
   }
@@ -30,7 +30,7 @@ export function WorkflowTile({ imageUrl }: Props) {
       width={36}
       height={36}
       onError={() => setHasError(true)}
-      className="size-9 shrink-0 rounded-lg bg-zinc-100 object-cover"
+      className="size-9 shrink-0 rounded-lg bg-muted object-cover"
     />
   );
 }

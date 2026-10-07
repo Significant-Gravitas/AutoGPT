@@ -38,8 +38,8 @@ export const ScrollableTabsTrigger = React.forwardRef<HTMLButtonElement, Props>(
         data-value={value}
         onClick={handleClick}
         className={cn(
-          "relative inline-flex items-center justify-center px-3 py-3 font-sans text-[0.875rem] leading-6 font-medium whitespace-nowrap text-zinc-700 transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50",
-          isActive && "text-purple-600",
+          "relative inline-flex items-center justify-center px-3 py-3 font-sans text-[0.875rem] leading-6 font-medium whitespace-nowrap text-zinc-700 transition-all focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50",
+          isActive && "text-accent",
           className,
         )}
         {...props}

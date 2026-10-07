@@ -16,7 +16,7 @@ export function BillingToggle({
     <div
       role="group"
       aria-label="Billing period"
-      className="mt-3 flex rounded-full border border-zinc-200 bg-zinc-100 p-1"
+      className="mt-3 flex rounded-full border border-border bg-muted p-1"
     >
       {(["monthly", "yearly"] as const).map((cycle) => (
         <Button
@@ -32,13 +32,13 @@ export function BillingToggle({
           className={cn(
             "rounded-full px-4 text-xs",
             billing === cycle
-              ? "bg-white text-zinc-900 shadow-xs hover:bg-white"
-              : "text-zinc-500",
+              ? "bg-card text-foreground shadow-xs hover:bg-card"
+              : "text-muted-foreground",
           )}
         >
           {cycle === "monthly" ? "Monthly billing" : "Yearly billing"}
           {cycle === "yearly" && (
-            <span className="text-xs text-green-600">Save 15%</span>
+            <span className="text-xs text-success">Save 15%</span>
           )}
         </Button>
       ))}

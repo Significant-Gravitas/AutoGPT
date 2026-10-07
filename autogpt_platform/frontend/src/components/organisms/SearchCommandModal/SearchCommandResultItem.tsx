@@ -42,7 +42,7 @@ export function SearchCommandResultItem({
       onClick={onSelect}
       className={cn(
         "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        isHighlighted ? "bg-zinc-100 hover:bg-zinc-100" : "hover:bg-zinc-50",
+        isHighlighted ? "bg-muted hover:bg-muted" : "hover:bg-muted/50",
       )}
     >
       <span
@@ -58,7 +58,7 @@ export function SearchCommandResultItem({
             <Icon
               className={cn(
                 "h-4 w-4 shrink-0 transition-colors duration-150",
-                isHighlighted ? "text-zinc-900" : "text-zinc-500",
+                isHighlighted ? "text-foreground" : "text-muted-foreground",
               )}
             />
           </span>
@@ -67,7 +67,7 @@ export function SearchCommandResultItem({
           <div
             className={cn(
               "truncate text-sm font-normal transition-colors duration-150",
-              isHighlighted ? "text-black" : "text-zinc-800",
+              isHighlighted ? "text-foreground" : "text-foreground",
             )}
           >
             {highlightMatch(item.title, query).map((part, partIndex) => (
@@ -80,7 +80,7 @@ export function SearchCommandResultItem({
             ))}
           </div>
           {item.subtitle ? (
-            <div className="mt-0.5 truncate text-xs text-zinc-500">
+            <div className="mt-0.5 truncate text-xs text-muted-foreground">
               {item.subtitle}
             </div>
           ) : null}
@@ -89,13 +89,13 @@ export function SearchCommandResultItem({
           <LoadingSpinner
             size="small"
             aria-label="Opening"
-            className="shrink-0 text-zinc-500"
+            className="shrink-0 text-muted-foreground"
           />
         ) : (
           <Kbd
             aria-hidden="true"
             className={cn(
-              "text-zinc-600 transition-opacity duration-150",
+              "text-muted-foreground transition-opacity duration-150",
               isHighlighted ? "opacity-100" : "opacity-0",
             )}
           >

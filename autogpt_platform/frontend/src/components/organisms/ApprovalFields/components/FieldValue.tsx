@@ -23,7 +23,7 @@ interface Props {
 export function FieldValue({ name, value, clipped }: Props) {
   const kind = fieldKind(name, value);
   const shortened = clipped ? (
-    <span className="ml-1 text-zinc-400">(shortened)</span>
+    <span className="ml-1 text-muted-foreground">(shortened)</span>
   ) : null;
 
   switch (kind) {
@@ -51,10 +51,10 @@ export function FieldValue({ name, value, clipped }: Props) {
       );
     case "object":
       return (
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-l border-zinc-200 pl-3">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-l border-border pl-3">
           {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
             <div key={k} className="contents">
-              <dt className="text-zinc-500">{humanize(k)}</dt>
+              <dt className="text-muted-foreground">{humanize(k)}</dt>
               <dd className="min-w-0">
                 {v === REDACTED ? (
                   <Hidden />
@@ -71,10 +71,10 @@ export function FieldValue({ name, value, clipped }: Props) {
     case "json":
       return (
         <details className="group">
-          <summary className="cursor-pointer text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
+          <summary className="cursor-pointer text-muted-foreground underline decoration-zinc-300 underline-offset-2 hover:text-foreground">
             View as JSON
           </summary>
-          <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-800">
+          <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-muted/50 px-3 py-2 font-mono text-xs text-foreground">
             {JSON.stringify(value, null, 2)}
           </pre>
         </details>
@@ -101,9 +101,9 @@ function LongText({ text, shortened }: LongTextProps) {
       <div
         tabIndex={open ? 0 : undefined}
         className={cn(
-          "w-full rounded-lg bg-zinc-50 px-3 py-2",
+          "w-full rounded-lg bg-muted/50 px-3 py-2",
           open &&
-            "max-h-96 overflow-y-auto focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden",
+            "max-h-96 overflow-y-auto focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
         )}
       >
         <p
@@ -132,7 +132,7 @@ function LongText({ text, shortened }: LongTextProps) {
 
 function Hidden() {
   return (
-    <span className="text-zinc-500">
+    <span className="text-muted-foreground">
       <span aria-hidden="true">•••••••• </span>hidden
     </span>
   );

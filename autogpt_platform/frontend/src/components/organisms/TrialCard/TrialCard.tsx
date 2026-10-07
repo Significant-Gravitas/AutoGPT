@@ -81,11 +81,11 @@ export function TrialCardContent({
         className="flex w-full flex-col gap-2"
       >
         <div className="flex items-center gap-2 px-4">
-          <Text variant="body-medium" as="span" className="text-zinc-900">
+          <Text variant="body-medium" as="span" className="text-foreground">
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>
-        <div className="rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+        <div className="rounded-[18px] border border-border bg-card p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
           {body}
         </div>
       </section>
@@ -95,7 +95,7 @@ export function TrialCardContent({
       aria-label="AutoGPT trial"
       className="w-full rounded-2xl bg-linear-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px"
     >
-      <div className="relative overflow-hidden rounded-[15px] bg-white p-5 md:p-6">
+      <div className="relative overflow-hidden rounded-[15px] bg-card p-5 md:p-6">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(168,85,247,0.10),transparent_60%),radial-gradient(120%_60%_at_100%_100%,rgba(99,102,241,0.06),transparent_60%)]"

@@ -46,7 +46,7 @@ export function BriefingCard({ briefing, className }: Props) {
   return (
     <section className={cn("text-left", className)}>
       <div className="mb-2 flex items-center gap-2 px-2">
-        <Icon icon={News01Icon} size={16} className="text-zinc-400" />
+        <Icon icon={News01Icon} size={16} className="text-muted-foreground" />
         <Text variant="body" className="text-zinc-700">
           Recap
         </Text>
@@ -60,7 +60,7 @@ export function BriefingCard({ briefing, className }: Props) {
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-3xl bg-white smooth-shadow-ring-sm shadow-black">
+      <div className="overflow-hidden rounded-3xl bg-card smooth-shadow-ring-sm shadow-black">
         <motion.div
           // Real height, not a layout transform: the page below has to reflow
           // with the card, and a transform would scale the rows' text.
@@ -72,7 +72,7 @@ export function BriefingCard({ briefing, className }: Props) {
           <ul
             ref={listRef}
             className={cn(
-              "h-full divide-y divide-zinc-100",
+              "h-full divide-y divide-border",
               isShowingAll
                 ? "scrollbar-none overflow-y-auto"
                 : "overflow-hidden",
@@ -106,7 +106,7 @@ export function BriefingCard({ briefing, className }: Props) {
           <button
             type="button"
             onClick={toggleShowAll}
-            className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-3 text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+            className="flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-3 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
           >
             <Text variant="small-medium" className="text-inherit">
               {isShowingAll
@@ -159,7 +159,7 @@ function ScrollArrow({
         aria-hidden={!isVisible}
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         className={cn(
-          "flex size-8 items-center justify-center rounded-full bg-white text-zinc-500 smooth-shadow-ring-sm shadow-black transition-colors hover:text-zinc-900",
+          "flex size-8 items-center justify-center rounded-full bg-card text-muted-foreground smooth-shadow-ring-sm shadow-black transition-colors hover:text-foreground",
           isVisible && "pointer-events-auto",
         )}
       >

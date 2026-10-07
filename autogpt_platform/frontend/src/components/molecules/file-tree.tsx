@@ -247,7 +247,7 @@ const Folder = forwardRef<
             `flex items-center gap-1 rounded-md text-sm`,
             className,
             {
-              "rounded-md bg-zinc-100": isSelect && isSelectable,
+              "rounded-md bg-muted": isSelect && isSelectable,
               "cursor-pointer": isSelectable,
               "cursor-not-allowed opacity-50": !isSelectable,
             },
@@ -315,7 +315,7 @@ const File = forwardRef<
         className={cn(
           "flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pr-0 rtl:pl-1",
           {
-            "bg-zinc-100": isSelected && isSelectable,
+            "bg-muted": isSelected && isSelectable,
           },
           isSelectable ? "cursor-pointer" : "cursor-not-allowed opacity-50",
           direction === "rtl" ? "rtl" : "ltr",

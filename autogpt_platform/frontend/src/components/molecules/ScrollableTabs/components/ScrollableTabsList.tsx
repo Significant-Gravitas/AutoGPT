@@ -28,7 +28,7 @@ export const ScrollableTabsList = React.forwardRef<
     <div className="relative" ref={ref}>
       <div
         className={cn(
-          "inline-flex w-full items-center justify-start border-b border-zinc-100",
+          "inline-flex w-full items-center justify-start border-b border-border",
           className,
         )}
         {...props}
@@ -37,7 +37,7 @@ export const ScrollableTabsList = React.forwardRef<
       </div>
       {activeTabElement && (
         <div
-          className="absolute bottom-0 h-0.5 bg-purple-600 transition-[left,width] duration-200 ease-in-out"
+          className="absolute bottom-0 h-0.5 bg-accent transition-[left,width] duration-200 ease-in-out"
           style={{
             left: activeTabElement.offsetLeft,
             width: activeTabElement.offsetWidth,

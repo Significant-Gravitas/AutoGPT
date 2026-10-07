@@ -23,8 +23,8 @@ export function SubscriptionOffer({ plan, onTrialDetails, ...props }: Props) {
     <section aria-label={`${plan.name} plan`} className="h-full">
       <Card
         className={cn(
-          "flex h-full flex-col rounded-2xl border border-zinc-300 bg-white p-5 shadow-none",
-          (presentation.trial || plan.highlighted) && "border-purple-300",
+          "flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-none",
+          (presentation.trial || plan.highlighted) && "border-accent/40",
         )}
       >
         <OfferHeading plan={plan} trial={presentation.trial} />
@@ -48,11 +48,11 @@ function OfferHeading({
 }) {
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
-      <Text variant="h5" as="h2" className="font-semibold text-zinc-800">
+      <Text variant="h5" as="h2" className="font-semibold text-foreground">
         {plan.name}
       </Text>
       {plan.usage && (
-        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">
+        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
           {plan.usage} usage
         </span>
       )}
@@ -61,15 +61,15 @@ function OfferHeading({
           className={cn(
             "rounded-full px-2 py-0.5 text-xs",
             plan.highlighted
-              ? "bg-purple-50 text-purple-700"
-              : "bg-zinc-100 text-zinc-500",
+              ? "bg-accent/10 text-accent"
+              : "bg-muted text-muted-foreground",
           )}
         >
           {plan.badge}
         </span>
       )}
       {trial && (
-        <span className="ml-auto rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+        <span className="ml-auto rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
           {trial.duration_days} days free
         </span>
       )}
@@ -90,7 +90,7 @@ function OfferPrice({
           as="span"
           aria-label={presentation.price}
           unmask={false}
-          className="leading-9 text-zinc-800"
+          className="leading-9 text-foreground"
         >
           {presentation.price}
         </Text>
@@ -103,7 +103,7 @@ function OfferPrice({
       <Text
         variant="small"
         tone={presentation.trial ? undefined : "muted"}
-        className={cn("mb-2 min-h-4", presentation.trial && "text-purple-700")}
+        className={cn("mb-2 min-h-4", presentation.trial && "text-accent")}
       >
         {presentation.caption || "\u00a0"}
       </Text>
@@ -119,20 +119,20 @@ function OfferFeatures({
   isTeam: boolean;
 }) {
   return (
-    <ul className="mt-3 mb-4 flex-1 space-y-1.5 border-t border-zinc-100 pt-3">
+    <ul className="mt-3 mb-4 flex-1 space-y-1.5 border-t border-border pt-3">
       {features.map((feature) => (
         <li key={feature} className="flex items-start gap-2">
           <span
             className={cn(
               "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
-              isTeam ? "bg-zinc-100" : "bg-purple-50",
+              isTeam ? "bg-muted" : "bg-accent/10",
             )}
           >
             <Icon
               icon={Tick02Icon}
               size={10}
               aria-hidden
-              className={isTeam ? "text-zinc-500" : "text-purple-500"}
+              className={isTeam ? "text-muted-foreground" : "text-accent"}
             />
           </span>
           <Text

@@ -18,7 +18,7 @@ export function ReferenceValue({ refs, total }: Props) {
           <ReferenceName reference={ref} />
         </Fragment>
       ))}
-      {more > 0 && <span className="text-zinc-500"> +{more} more</span>}
+      {more > 0 && <span className="text-muted-foreground"> +{more} more</span>}
     </span>
   );
 }

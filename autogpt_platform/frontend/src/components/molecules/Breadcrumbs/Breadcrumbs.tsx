@@ -19,17 +19,17 @@ export function Breadcrumbs({ items }: Props) {
           {item.link ? (
             <Link
               href={item.link}
-              className="text-sm font-normal text-zinc-600 transition-colors hover:text-zinc-900 hover:no-underline"
+              className="text-sm font-normal text-muted-foreground transition-colors hover:text-foreground hover:no-underline"
             >
               {item.name}
             </Link>
           ) : (
-            <span className="text-sm font-normal text-zinc-900">
+            <span className="text-sm font-normal text-foreground">
               {item.name}
             </span>
           )}
           {index < items.length - 1 && (
-            <Text variant="small-medium" className="text-zinc-600">
+            <Text variant="small-medium" className="text-muted-foreground">
               /
             </Text>
           )}

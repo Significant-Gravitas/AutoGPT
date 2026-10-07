@@ -8,7 +8,7 @@ interface Props {
 export function PlanComparison({ plans }: Props) {
   return (
     <div className="space-y-4">
-      <table className="w-full table-fixed text-left font-sans text-sm text-zinc-800">
+      <table className="w-full table-fixed text-left font-sans text-sm text-foreground">
         <thead>
           <tr>
             {plans.map((plan) => (
@@ -20,7 +20,7 @@ export function PlanComparison({ plans }: Props) {
           </tr>
         </thead>
         <tbody>
-          <tr className="border-t border-zinc-200">
+          <tr className="border-t border-border">
             {plans.map((plan) => (
               <td key={plan.key} className="py-3 pr-3 align-top">
                 <ul className="space-y-3">

@@ -4,7 +4,7 @@ import { cva } from "class-variance-authority";
 // DateInput and DateTimeInput all start from it, and put the consumer's
 // className last.
 export const FIELD_BASE =
-  "focus-ring w-full rounded-lg border border-input bg-background font-sans font-normal text-foreground shadow-none transition-colors placeholder:font-normal placeholder:text-zinc-500 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50";
+  "focus-ring w-full rounded-lg border border-input bg-background font-sans font-normal text-foreground shadow-none transition-colors placeholder:font-normal placeholder:text-muted-foreground focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50";
 
 export const FIELD_INVALID =
   "border-destructive focus-visible:ring-destructive";

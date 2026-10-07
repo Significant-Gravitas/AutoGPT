@@ -21,16 +21,16 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
             Try AutoGPT {trialPlanLabels[offer.tier]} for {offer.duration_days}{" "}
             days
           </TrialTitle>
-          <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">
+          <span className="inline-flex items-center rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
             No charge today
           </span>
         </div>
-        <Text variant="body" unmask={false} className="text-zinc-800!">
+        <Text variant="body" unmask={false} className="text-foreground!">
           Card required. No subscription charge today. Then{" "}
           {formatTrialPrice(offer)}, plus applicable tax, unless you cancel
           before the trial ends.
         </Text>
-        <Text variant="small" className="text-zinc-500!">
+        <Text variant="small" className="text-muted-foreground!">
           Trial usage is limited. Canceling ends trial access immediately. You
           can manage your plan in billing.
         </Text>

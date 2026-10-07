@@ -88,7 +88,7 @@ export const DateInput = ({
   const triggerStyles = cn(
     fieldVariants({ size, invalid: Boolean(error) }),
     "min-w-0 justify-start gap-2 text-left",
-    !selected && "text-zinc-500",
+    !selected && "text-muted-foreground",
     className,
   );
 

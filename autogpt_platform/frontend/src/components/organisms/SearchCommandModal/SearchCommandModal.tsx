@@ -121,17 +121,17 @@ export function SearchCommandModal({
         <RXDialog.Overlay className="fixed inset-0 z-80 bg-black/20 backdrop-blur-xs" />
         <RXDialog.Content
           onOpenAutoFocus={handleOpenAutoFocus}
-          className="fixed top-[18vh] left-1/2 z-80 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-zinc-200 focus:outline-hidden"
+          className="fixed top-[18vh] left-1/2 z-80 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-border focus:outline-hidden"
           onKeyDown={handleKeyDown}
         >
           <RXDialog.Title className="sr-only">Search</RXDialog.Title>
           <RXDialog.Description className="sr-only">
             Search commands and results.
           </RXDialog.Description>
-          <div className="flex items-center gap-3 bg-zinc-50 p-3">
+          <div className="flex items-center gap-3 bg-muted/50 p-3">
             <Icon
               icon={Search01Icon}
-              className="h-5 w-5 shrink-0 text-zinc-800"
+              className="h-5 w-5 shrink-0 text-foreground"
             />
             <Input
               ref={inputRef}
@@ -146,13 +146,13 @@ export function SearchCommandModal({
                   : undefined
               }
               autoComplete="off"
-              className="h-9 border-0 bg-transparent px-0 text-base text-black shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
+              className="h-9 border-0 bg-transparent px-0 text-base text-foreground shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
             />
             {isLoading && isSearching ? (
               <LoadingSpinner
                 size="small"
                 aria-label="Searching"
-                className="shrink-0 text-zinc-500"
+                className="shrink-0 text-muted-foreground"
               />
             ) : null}
             {query ? (
@@ -178,7 +178,7 @@ export function SearchCommandModal({
               )}
             >
               {isError ? (
-                <div className="px-3 py-8 text-center text-sm text-red-500">
+                <div className="px-3 py-8 text-center text-sm text-destructive">
                   {errorLabel}
                 </div>
               ) : showResults ? (
@@ -200,14 +200,14 @@ export function SearchCommandModal({
                 // Kowalski's strategy-feedback-immediate rule.
                 <SearchCommandSkeleton />
               ) : showEmptyState ? (
-                <div className="px-3 py-8 text-center text-sm text-zinc-500">
+                <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                   {isSearching ? searchingEmptyLabel : idleEmptyLabel}
                 </div>
               ) : null}
             </div>
           </div>
           <Separator />
-          <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4 text-xs text-zinc-700">
+          <div className="flex items-center justify-between gap-4 bg-muted/50 px-4 py-4 text-xs text-zinc-700">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <Kbd>↑</Kbd>

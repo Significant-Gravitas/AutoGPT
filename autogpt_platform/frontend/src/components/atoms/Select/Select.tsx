@@ -73,7 +73,7 @@ export function Select({
 }: SelectFieldProps) {
   const triggerStyles = cn(
     fieldVariants({ size, invalid: Boolean(error) }),
-    "[&[data-placeholder]>span]:font-normal [&[data-placeholder]>span]:text-zinc-500",
+    "[&[data-placeholder]>span]:font-normal [&[data-placeholder]>span]:text-muted-foreground",
     className,
   );
 

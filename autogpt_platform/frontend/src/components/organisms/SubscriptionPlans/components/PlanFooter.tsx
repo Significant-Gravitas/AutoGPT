@@ -12,7 +12,7 @@ export function PlanFooter({ onCompare }: Props) {
         Need something custom?{" "}
         <a
           href="mailto:sales@agpt.co"
-          className="font-medium text-purple-500 no-underline hover:text-purple-600"
+          className="font-medium text-accent no-underline hover:text-accent"
         >
           Talk to sales.
         </a>
@@ -20,7 +20,7 @@ export function PlanFooter({ onCompare }: Props) {
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-zinc-500"
+        className="h-auto min-w-0 p-0 text-xs text-muted-foreground"
         onClick={onCompare}
       >
         Compare plans

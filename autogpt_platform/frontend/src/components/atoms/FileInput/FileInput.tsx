@@ -34,7 +34,7 @@ function PreviewButton({
         <Button
           variant="outline"
           size="md"
-          className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-zinc-500 hover:text-blue-600"
+          className="h-7 w-7 min-w-0 shrink-0 border-border p-0 text-muted-foreground hover:text-blue-600"
           type="button"
           aria-label="Preview file"
         >
@@ -336,19 +336,22 @@ export function FileInput(props: Props) {
             </div>
           ) : value ? (
             <div className="flex items-center gap-2">
-              <div className="flex flex-1 items-center gap-2 rounded-2xl border border-zinc-300 bg-zinc-50 p-2">
+              <div className="flex flex-1 items-center gap-2 rounded-2xl border border-border bg-muted/50 p-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-4 w-4 shrink-0 text-zinc-600"
+                  className="h-4 w-4 shrink-0 text-muted-foreground"
                 />
 
-                <Text variant="small-medium" className="truncate text-zinc-900">
+                <Text
+                  variant="small-medium"
+                  className="truncate text-foreground"
+                >
                   {fileInfo
                     ? getFileLabel(fileInfo.name, fileInfo.content_type)
                     : getFileLabelFromValue(value)}
                 </Text>
                 {fileInfo && (
-                  <Text variant="small" className="text-zinc-500">
+                  <Text variant="small" className="text-muted-foreground">
                     {formatFileSize(fileInfo.size)}
                   </Text>
                 )}
@@ -367,7 +370,7 @@ export function FileInput(props: Props) {
               <Button
                 variant="outline"
                 size="md"
-                className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-zinc-500 hover:text-red-600"
+                className="h-7 w-7 min-w-0 shrink-0 border-border p-0 text-muted-foreground hover:text-destructive"
                 onClick={handleClear}
                 type="button"
                 aria-label="Clear file"
@@ -381,7 +384,7 @@ export function FileInput(props: Props) {
                 variant="outline"
                 size="md"
                 onClick={() => inputRef.current?.click()}
-                className="flex-1 border-zinc-300 text-xs"
+                className="flex-1 border-border text-xs"
                 disabled={isUploading}
                 type="button"
               >
@@ -400,7 +403,7 @@ export function FileInput(props: Props) {
           />
         </div>
         {uploadError && (
-          <Text variant="small" className="text-red-600">
+          <Text variant="small" className="text-destructive">
             {uploadError}
           </Text>
         )}
@@ -413,7 +416,7 @@ export function FileInput(props: Props) {
       {isUploading ? (
         <div className="space-y-2">
           <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
+            <div className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-muted/50 p-4 text-sm">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
               <span className="text-zinc-700">
                 {mode === "base64" ? "Processing..." : "Uploading..."}
@@ -424,11 +427,11 @@ export function FileInput(props: Props) {
       ) : value ? (
         <div className="space-y-2">
           <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
+            <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
-                <Icon icon={File02Icon} className="h-7 w-7 text-black" />
+                <Icon icon={File02Icon} className="h-7 w-7 text-foreground" />
                 <div className="flex flex-col gap-0.5">
-                  <span className="font-normal text-black">
+                  <span className="font-normal text-foreground">
                     {fileInfo
                       ? getFileLabel(fileInfo.name, fileInfo.content_type)
                       : getFileLabelFromValue(value)}
@@ -454,7 +457,7 @@ export function FileInput(props: Props) {
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear file"
-                  className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-zinc-500 hover:text-red-600"
+                  className="h-7 w-7 min-w-0 shrink-0 border-border p-0 text-muted-foreground hover:text-destructive"
                 >
                   <Icon icon={Delete02Icon} className="h-5 w-5" />
                 </Button>
@@ -462,7 +465,7 @@ export function FileInput(props: Props) {
             </div>
           </div>
           {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-zinc-500">{storageNote}</p>
+            <p className="text-xs text-muted-foreground">{storageNote}</p>
           )}
         </div>
       ) : (
@@ -471,7 +474,7 @@ export function FileInput(props: Props) {
             <div
               onDrop={handleFileDrop}
               onDragOver={(e) => e.preventDefault()}
-              className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-zinc-50 text-sm text-zinc-500"
+              className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-muted/50 text-sm text-muted-foreground"
             >
               Choose a file or drag and drop it here
             </div>
@@ -486,11 +489,11 @@ export function FileInput(props: Props) {
           </div>
 
           {uploadError && (
-            <div className="text-sm text-red-600">Error: {uploadError}</div>
+            <div className="text-sm text-destructive">Error: {uploadError}</div>
           )}
 
           {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-zinc-500">{storageNote}</p>
+            <p className="text-xs text-muted-foreground">{storageNote}</p>
           )}
         </div>
       )}

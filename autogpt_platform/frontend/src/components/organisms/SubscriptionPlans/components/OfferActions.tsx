@@ -73,7 +73,9 @@ function PaidPlanAction({
       type="button"
       variant={inline ? "link" : plan.highlighted ? "primary" : "secondary"}
       size="md"
-      className={inline ? "h-auto min-w-0 p-0 text-xs text-zinc-500" : "w-full"}
+      className={
+        inline ? "h-auto min-w-0 p-0 text-xs text-muted-foreground" : "w-full"
+      }
       unmask={!inline}
       loading={isUpdatingTier && selectedPlan === plan.key}
       disabled={isUpdatingTier}
@@ -97,7 +99,7 @@ function TrialActionDetails(props: Props) {
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-zinc-500"
+        className="h-auto min-w-0 p-0 text-xs text-muted-foreground"
         onClick={props.onTrialDetails}
       >
         Trial details
@@ -126,7 +128,7 @@ function AlternativeTrial({
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-purple-500"
+        className="h-auto min-w-0 p-0 text-xs text-accent"
         disabled={isStartingTrial}
         onClick={handleSwitchCycle}
         data-fast-goal="paywall_billing_toggle"

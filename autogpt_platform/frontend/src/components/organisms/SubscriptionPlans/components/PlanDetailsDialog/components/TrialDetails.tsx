@@ -13,7 +13,7 @@ export function TrialDetails({ offer }: Props) {
       <Text variant="body" tone="secondary">
         {offer.duration_days} days to put AutoGPT to work.
       </Text>
-      <dl className="divide-y divide-zinc-200 border-y border-zinc-200">
+      <dl className="divide-y divide-border border-y border-border">
         <div className="flex justify-between gap-4 py-4">
           <Text as="dt" variant="body">
             Today

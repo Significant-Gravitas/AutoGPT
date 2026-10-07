@@ -48,7 +48,7 @@ export function SearchCommandResults({
         if (entries.length === 0) return null;
         return (
           <div key={bucket.key} className="px-2">
-            <div className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+            <div className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
               {bucket.label}
             </div>
             <div className="flex flex-col">

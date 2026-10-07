@@ -25,8 +25,10 @@ export function ReferenceCard({ reference }: Props) {
           />
         )}
         <div className="min-w-0">
-          {reference.kind && <p className="text-zinc-500">{reference.kind}</p>}
-          <p translate="no" className="text-sm font-semibold text-zinc-900">
+          {reference.kind && (
+            <p className="text-muted-foreground">{reference.kind}</p>
+          )}
+          <p translate="no" className="text-sm font-semibold text-foreground">
             {reference.name}
           </p>
         </div>
@@ -36,16 +38,16 @@ export function ReferenceCard({ reference }: Props) {
           {reference.description}
         </p>
       )}
-      {facts && <p className="mt-1.5 text-zinc-500">{facts}</p>}
+      {facts && <p className="mt-1.5 text-muted-foreground">{facts}</p>}
       {reference.skills.length > 0 && (
         <p className="mt-1.5 text-zinc-700">
-          <span className="text-zinc-500">Skills: </span>
+          <span className="text-muted-foreground">Skills: </span>
           {skillsText(reference.skills)}
         </p>
       )}
       <p
         translate="no"
-        className="mt-1.5 font-mono text-[0.6875rem] text-zinc-400"
+        className="mt-1.5 font-mono text-[0.6875rem] text-muted-foreground"
       >
         {reference.id}
       </p>

@@ -57,7 +57,7 @@ function ReviewInputField({
       );
     case "group":
       return (
-        <fieldset className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3">
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-border p-3">
           <legend className="px-1 text-sm font-medium">{field.label}</legend>
           <ReviewInputFields
             fields={field.fields}

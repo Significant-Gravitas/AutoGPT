@@ -47,14 +47,14 @@ export function Table({
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <BaseTable>
           <TableHeader>
-            <TableRow className="border-b border-zinc-100 bg-zinc-50/50">
+            <TableRow className="border-b border-border bg-muted/50">
               {columns.map((column) => (
                 <TableHead
                   key={column}
-                  className="h-10 px-3 text-sm font-medium text-zinc-600"
+                  className="h-10 px-3 text-sm font-medium text-muted-foreground"
                 >
                   {formatColumnTitle(column)}
                 </TableHead>
@@ -70,7 +70,7 @@ export function Table({
                     {readOnly ? (
                       <Text
                         variant="body"
-                        className="px-3 py-2 text-sm text-zinc-800"
+                        className="px-3 py-2 text-sm text-foreground"
                       >
                         {row[column] || "-"}
                       </Text>
@@ -97,7 +97,7 @@ export function Table({
                       size="icon-lg"
                       onClick={() => handleDeleteRow(rowIndex)}
                       aria-label="Delete row"
-                      className="text-zinc-400 transition-colors hover:text-red-500"
+                      className="text-muted-foreground transition-colors hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

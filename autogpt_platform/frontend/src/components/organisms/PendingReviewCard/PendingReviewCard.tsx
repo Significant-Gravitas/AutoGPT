@@ -101,7 +101,7 @@ export function PendingReviewCard({
     } else if (typeof data === "boolean") {
       return (
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-500">
+          <span className="text-sm text-muted-foreground">
             {data ? "Enabled" : "Disabled"}
           </span>
           <Switch
@@ -142,14 +142,14 @@ export function PendingReviewCard({
   return (
     <div className="space-y-4">
       {nodeId && (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-muted-foreground">
           Node #{getShortenedNodeId(nodeId)}
         </Text>
       )}
 
       <div className="space-y-3">
         {instructions && (
-          <Text variant="body" className="font-semibold text-zinc-900">
+          <Text variant="body" className="font-semibold text-foreground">
             {instructions}
           </Text>
         )}
@@ -159,8 +159,8 @@ export function PendingReviewCard({
         ) : isDataEditable && !autoApproveFuture ? (
           renderDataInput()
         ) : (
-          <div className="rounded-lg border border-zinc-200 bg-white p-3">
-            <Text variant="small" className="text-zinc-600">
+          <div className="rounded-lg border border-border bg-card p-3">
+            <Text variant="small" className="text-muted-foreground">
               {JSON.stringify(currentData, null, 2)}
             </Text>
           </div>
@@ -182,7 +182,7 @@ export function PendingReviewCard({
             </Text>
           </div>
           {autoApproveFuture && (
-            <Text variant="small" className="pl-11 text-zinc-500">
+            <Text variant="small" className="pl-11 text-muted-foreground">
               Original data will be used for this and all future reviews from
               this block.
             </Text>

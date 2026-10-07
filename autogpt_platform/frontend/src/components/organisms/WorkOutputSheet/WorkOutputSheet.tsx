@@ -210,12 +210,15 @@ interface OutputTablePreviewProps {
 
 function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
   return (
-    <div className="overflow-x-auto rounded-xl ring-1 ring-zinc-200 ring-inset">
+    <div className="overflow-x-auto rounded-xl ring-1 ring-border ring-inset">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="bg-zinc-50 text-left">
+          <tr className="bg-muted/50 text-left">
             {columns.map((column) => (
-              <th key={column} className="px-3 py-2 font-medium text-zinc-600">
+              <th
+                key={column}
+                className="px-3 py-2 font-medium text-muted-foreground"
+              >
                 {column}
               </th>
             ))}
@@ -223,7 +226,7 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={index} className="border-t border-zinc-100">
+            <tr key={index} className="border-t border-border">
               {columns.map((column) => (
                 <td key={column} className="px-3 py-2 text-zinc-700">
                   {cellText(row[column])}
@@ -253,7 +256,7 @@ function OutputTableTruncationNotice({
   runLink,
 }: OutputTableTruncationNoticeProps) {
   return (
-    <Text variant="small" className="text-zinc-500">
+    <Text variant="small" className="text-muted-foreground">
       Showing the first {visibleRowCount} of {rowCount} rows and{" "}
       {visibleColumnCount} of {columnCount} columns. The CSV export matches this
       preview
@@ -274,14 +277,14 @@ function OutputTableTruncationNotice({
 function RunLinkFallback({ runLink }: { runLink?: string | null }) {
   if (!runLink) {
     return (
-      <Text variant="body" className="text-zinc-500">
+      <Text variant="body" className="text-muted-foreground">
         This run has no preview available.
       </Text>
     );
   }
   return (
     <div className="space-y-3">
-      <Text variant="body" className="text-zinc-500">
+      <Text variant="body" className="text-muted-foreground">
         Open the full run to inspect its output.
       </Text>
       <Button as="NextLink" href={runLink} variant="primary" size="md">

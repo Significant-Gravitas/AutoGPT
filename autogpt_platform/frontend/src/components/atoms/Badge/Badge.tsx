@@ -14,7 +14,7 @@ interface BadgeProps {
 // same hue: the token colours are below 4.5:1 on their own tint.
 const badgeVariants: Record<BadgeVariant, string> = {
   success: "bg-success/10 text-green-700 ring-success/20",
-  error: "bg-destructive/10 text-red-700 ring-destructive/20",
+  error: "bg-destructive/10 text-destructive ring-destructive/20",
   warning: "bg-warning/10 text-yellow-800 ring-warning/30",
   info: "bg-info-foreground text-info ring-info/10",
 };

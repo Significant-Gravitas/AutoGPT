@@ -68,17 +68,17 @@ export function MultiToggle({
             className={cn(
               // Base button styles similar to outline variant
               "inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors",
-              "focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 focus-visible:outline-hidden",
+              "focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:outline-hidden",
               "disabled:pointer-events-none disabled:opacity-50",
               "rounded-full border font-sans",
               "h-9 px-4 py-2 text-sm leading-[22px]",
               // Default outline styles
-              "border-zinc-700 bg-transparent text-black hover:bg-zinc-100",
+              "border-zinc-700 bg-transparent text-foreground hover:bg-muted",
               // Selected styles with purple-600
               isSelected &&
-                "border-purple-600 bg-purple-50 text-purple-600 hover:bg-purple-100",
+                "border-accent bg-accent/10 text-accent hover:bg-accent/15",
               // Disabled styles
-              item.disabled && "border-zinc-200 text-zinc-200 opacity-50",
+              item.disabled && "border-border text-zinc-200 opacity-50",
             )}
           >
             {item.label}
