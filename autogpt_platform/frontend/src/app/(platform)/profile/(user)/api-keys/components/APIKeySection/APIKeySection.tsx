@@ -1,103 +1,100 @@
 "use client";
 
-import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
-import { Button } from "@/components/atoms/Button/Button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/__legacy__/ui/table";
+import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { DataTable } from "@/components/molecules/DataTable/DataTable";
+import type { DataTableColumn } from "@/components/molecules/DataTable/helpers";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
 import { useAPISection } from "./useAPISection";
 
 export function APIKeysSection() {
   const { apiKeys, isLoading, isDeleting, handleRevokeKey } = useAPISection();
 
-  return (
-    <>
-      {isLoading ? (
-        <div className="flex justify-center p-4">
-          <LoadingSpinner size="medium" />
+  const columns: DataTableColumn<APIKeyInfo>[] = [
+    { key: "name", header: "Name", cell: (key) => key.name },
+    {
+      key: "key",
+      header: "API Key",
+      cell: (key) => (
+        <div
+          data-testid="api-key-id"
+          className="rounded-md border border-border p-1 px-2 text-xs"
+        >
+          {`${key.head}******************${key.tail}`}
         </div>
-      ) : (
-        apiKeys &&
-        apiKeys.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>API Key</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Last Used</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {apiKeys.map((key) => (
-                <TableRow key={key.id} data-testid="api-key-row">
-                  <TableCell>{key.name}</TableCell>
-                  <TableCell data-testid="api-key-id">
-                    <div className="rounded-md border p-1 px-2 text-xs">
-                      {`${key.head}******************${key.tail}`}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={key.status === "ACTIVE" ? "success" : "error"}
-                    >
-                      {key.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(key.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    {key.last_used_at
-                      ? new Date(key.last_used_at).toLocaleDateString()
-                      : "Never"}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          data-testid="api-key-actions"
-                          variant="ghost"
-                          size="icon-sm"
-                          withTooltip={false}
-                          aria-label="API key actions"
-                        >
-                          <Icon icon={MoreVerticalIcon} size={16} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleRevokeKey(key.id)}
-                          disabled={isDeleting}
-                        >
-                          Revoke
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )
-      )}
-    </>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (key) => (
+        <Badge variant={key.status === "ACTIVE" ? "success" : "error"}>
+          {key.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "created",
+      header: "Created",
+      cell: (key) => new Date(key.created_at).toLocaleDateString(),
+    },
+    {
+      key: "lastUsed",
+      header: "Last Used",
+      cell: (key) =>
+        key.last_used_at
+          ? new Date(key.last_used_at).toLocaleDateString()
+          : "Never",
+    },
+    {
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      cell: (key) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              data-testid="api-key-actions"
+              variant="ghost"
+              size="icon-sm"
+              withTooltip={false}
+              aria-label="API key actions"
+            >
+              <Icon icon={MoreVerticalIcon} size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              className="text-destructive"
+              onClick={() => handleRevokeKey(key.id)}
+              disabled={isDeleting}
+            >
+              Revoke
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  if (!isLoading && !apiKeys?.length) return null;
+
+  return (
+    <DataTable
+      columns={columns}
+      rows={apiKeys ?? []}
+      getRowKey={(key) => key.id}
+      caption="API keys"
+      isLoading={isLoading}
+      loadingRowCount={3}
+    />
   );
 }
