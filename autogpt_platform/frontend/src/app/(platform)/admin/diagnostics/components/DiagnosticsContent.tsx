@@ -3,18 +3,13 @@
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
-import {
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/__legacy__/ui/card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
 import { ExecutionsTable } from "./ExecutionsTable";
 import { SchedulesTable } from "./SchedulesTable";
 import { Refresh01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function DiagnosticsContent() {
   const {
@@ -37,9 +32,11 @@ export function DiagnosticsContent() {
         <div className="text-center">
           <Icon
             icon={Refresh01Icon}
-            className="mx-auto h-8 w-8 animate-spin text-gray-400"
+            className="mx-auto h-8 w-8 animate-spin text-zinc-400"
           />
-          <p className="mt-2 text-gray-500">Loading diagnostics...</p>
+          <Text variant="large" tone="muted" className="mt-2">
+            Loading diagnostics...
+          </Text>
         </div>
       </div>
     );
@@ -59,10 +56,12 @@ export function DiagnosticsContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">System Diagnostics</h1>
-          <p className="text-gray-500">
+          <Text variant="h3" as="h1">
+            System Diagnostics
+          </Text>
+          <Text variant="large" tone="muted">
             Monitor execution and agent system health
-          </p>
+          </Text>
         </div>
         <Button
           onClick={refresh}
@@ -90,24 +89,28 @@ export function DiagnosticsContent() {
                 onClick={() => setActiveTab("orphaned")}
               >
                 <Card className="border-orange-300 bg-orange-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-orange-800">
+                  <div className="flex flex-col space-y-1.5 p-6 pb-3">
+                    <Text
+                      variant="large-semibold"
+                      as="h3"
+                      className="text-orange-800"
+                    >
                       Orphaned Executions
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-orange-900">
+                    </Text>
+                  </div>
+                  <div className="p-6 pt-0">
+                    <Text variant="h3" as="p" className="text-orange-900">
                       {executionData.orphaned_running +
                         executionData.orphaned_queued}
-                    </p>
-                    <p className="text-sm text-orange-700">
+                    </Text>
+                    <Text variant="body" className="text-orange-700">
                       {executionData.orphaned_running} running,{" "}
                       {executionData.orphaned_queued} queued ({">"}24h old)
-                    </p>
-                    <p className="mt-2 text-xs text-orange-600">
+                    </Text>
+                    <Text variant="small" className="mt-2 text-orange-600">
                       Click to view →
-                    </p>
-                  </CardContent>
+                    </Text>
+                  </div>
                 </Card>
               </div>
             )}
@@ -119,21 +122,27 @@ export function DiagnosticsContent() {
                 onClick={() => setActiveTab("failed")}
               >
                 <Card className="border-red-300 bg-red-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-red-800">
+                  <div className="flex flex-col space-y-1.5 p-6 pb-3">
+                    <Text
+                      variant="large-semibold"
+                      as="h3"
+                      className="text-red-800"
+                    >
                       Failed Executions (24h)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-red-900">
+                    </Text>
+                  </div>
+                  <div className="p-6 pt-0">
+                    <Text variant="h3" as="p" className="text-red-900">
                       {executionData.failed_count_24h}
-                    </p>
-                    <p className="text-sm text-red-700">
+                    </Text>
+                    <Text variant="body" className="text-red-700">
                       {executionData.failed_count_1h} in last hour (
                       {executionData.failure_rate_24h.toFixed(1)}/hr rate)
-                    </p>
-                    <p className="mt-2 text-xs text-red-600">Click to view →</p>
-                  </CardContent>
+                    </Text>
+                    <Text variant="small" className="mt-2 text-red-600">
+                      Click to view →
+                    </Text>
+                  </div>
                 </Card>
               </div>
             )}
@@ -146,26 +155,30 @@ export function DiagnosticsContent() {
                   onClick={() => setActiveTab("long-running")}
                 >
                   <Card className="border-yellow-300 bg-yellow-50">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-yellow-800">
+                    <div className="flex flex-col space-y-1.5 p-6 pb-3">
+                      <Text
+                        variant="large-semibold"
+                        as="h3"
+                        className="text-yellow-800"
+                      >
                         Long-Running Executions
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-3xl font-bold text-yellow-900">
+                      </Text>
+                    </div>
+                    <div className="p-6 pt-0">
+                      <Text variant="h3" as="p" className="text-yellow-900">
                         {executionData.stuck_running_24h}
-                      </p>
-                      <p className="text-sm text-yellow-700">
+                      </Text>
+                      <Text variant="body" className="text-yellow-700">
                         Running {">"}24h (oldest:{" "}
                         {executionData.oldest_running_hours
                           ? `${Math.floor(executionData.oldest_running_hours)}h`
                           : "N/A"}
                         )
-                      </p>
-                      <p className="mt-2 text-xs text-yellow-600">
+                      </Text>
+                      <Text variant="small" className="mt-2 text-yellow-600">
                         Click to view →
-                      </p>
-                    </CardContent>
+                      </Text>
+                    </div>
                   </Card>
                 </div>
               </>
@@ -178,25 +191,29 @@ export function DiagnosticsContent() {
                 onClick={() => setActiveTab("all")}
               >
                 <Card className="border-purple-300 bg-purple-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-purple-800">
+                  <div className="flex flex-col space-y-1.5 p-6 pb-3">
+                    <Text
+                      variant="large-semibold"
+                      as="h3"
+                      className="text-purple-800"
+                    >
                       Orphaned Schedules
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-purple-900">
+                    </Text>
+                  </div>
+                  <div className="p-6 pt-0">
+                    <Text variant="h3" as="p" className="text-purple-900">
                       {scheduleData.total_orphaned}
-                    </p>
-                    <p className="text-sm text-purple-700">
+                    </Text>
+                    <Text variant="body" className="text-purple-700">
                       {scheduleData.orphaned_deleted_graph > 0 &&
                         `${scheduleData.orphaned_deleted_graph} deleted graph, `}
                       {scheduleData.orphaned_no_library_access > 0 &&
                         `${scheduleData.orphaned_no_library_access} no access`}
-                    </p>
-                    <p className="mt-2 text-xs text-purple-600">
+                    </Text>
+                    <Text variant="small" className="mt-2 text-purple-600">
                       Click to view schedules →
-                    </p>
-                  </CardContent>
+                    </Text>
+                  </div>
                 </Card>
               </div>
             )}
@@ -209,23 +226,27 @@ export function DiagnosticsContent() {
                 onClick={() => setActiveTab("invalid")}
               >
                 <Card className="border-pink-300 bg-pink-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-pink-800">
+                  <div className="flex flex-col space-y-1.5 p-6 pb-3">
+                    <Text
+                      variant="large-semibold"
+                      as="h3"
+                      className="text-pink-800"
+                    >
                       Invalid States (Data Corruption)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-pink-900">
+                    </Text>
+                  </div>
+                  <div className="p-6 pt-0">
+                    <Text variant="h3" as="p" className="text-pink-900">
                       {executionData.invalid_queued_with_start +
                         executionData.invalid_running_without_start}
-                    </p>
-                    <p className="text-sm text-pink-700">
+                    </Text>
+                    <Text variant="body" className="text-pink-700">
                       Requires manual investigation
-                    </p>
-                    <p className="mt-2 text-xs text-pink-600">
+                    </Text>
+                    <Text variant="small" className="mt-2 text-pink-600">
                       Click to view (read-only) →
-                    </p>
-                  </CardContent>
+                    </Text>
+                  </div>
                 </Card>
               </div>
             )}
@@ -235,23 +256,25 @@ export function DiagnosticsContent() {
 
       <div className="grid gap-6 md:grid-cols-3">
         <Card>
-          <CardHeader>
-            <CardTitle>Execution Queue Status</CardTitle>
-            <CardDescription>
+          <div className="flex flex-col space-y-1.5 p-6">
+            <Text variant="large-semibold" as="h3">
+              Execution Queue Status
+            </Text>
+            <Text variant="body" tone="muted">
               Current execution and queue metrics
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </Text>
+          </div>
+          <div className="p-6 pt-0">
             {executionData ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Running Executions
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {executionData.running_executions}
-                    </p>
+                    </Text>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
                     <div className="h-6 w-6 rounded-full bg-green-500"></div>
@@ -260,16 +283,16 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Queued in Database
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {executionData.queued_executions_db}
-                    </p>
+                    </Text>
                     {executionData.stuck_queued_1h > 0 && (
-                      <p className="text-xs text-orange-600">
+                      <Text variant="small" className="text-orange-600">
                         {executionData.stuck_queued_1h} stuck {">"}1h
-                      </p>
+                      </Text>
                     )}
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
@@ -279,16 +302,16 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Queued in RabbitMQ
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {executionData.queued_executions_rabbitmq === -1 ? (
                         <span className="text-xl text-red-500">Error</span>
                       ) : (
                         executionData.queued_executions_rabbitmq
                       )}
-                    </p>
+                    </Text>
                   </div>
                   <div
                     className={`flex h-12 w-12 items-center justify-center rounded-full ${
@@ -307,38 +330,42 @@ export function DiagnosticsContent() {
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-zinc-400">
                   Last updated:{" "}
                   {new Date(executionData.timestamp).toLocaleString()}
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">No data available</p>
+              <Text variant="large" tone="muted">
+                No data available
+              </Text>
             )}
-          </CardContent>
+          </div>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>System Throughput</CardTitle>
-            <CardDescription>
+          <div className="flex flex-col space-y-1.5 p-6">
+            <Text variant="large-semibold" as="h3">
+              System Throughput
+            </Text>
+            <Text variant="body" tone="muted">
               Execution completion and processing rates
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </Text>
+          </div>
+          <div className="p-6 pt-0">
             {executionData ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Completed (24h)
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {executionData.completed_24h}
-                    </p>
-                    <p className="text-xs text-gray-600">
+                    </Text>
+                    <Text variant="small" tone="secondary">
                       {executionData.completed_1h} in last hour
-                    </p>
+                    </Text>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
                     <div className="h-6 w-6 rounded-full bg-green-500"></div>
@@ -347,15 +374,15 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Throughput Rate
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {executionData.throughput_per_hour.toFixed(1)}
-                    </p>
-                    <p className="text-xs text-gray-600">
+                    </Text>
+                    <Text variant="small" tone="secondary">
                       completions per hour
-                    </p>
+                    </Text>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
                     <div className="h-6 w-6 rounded-full bg-blue-500"></div>
@@ -364,55 +391,59 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Cancel Queue Depth
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {executionData.cancel_queue_depth === -1 ? (
                         <span className="text-xl text-red-500">Error</span>
                       ) : (
                         executionData.cancel_queue_depth
                       )}
-                    </p>
+                    </Text>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
                     <div className="h-6 w-6 rounded-full bg-purple-500"></div>
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-zinc-400">
                   Last updated:{" "}
                   {new Date(executionData.timestamp).toLocaleString()}
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">No data available</p>
+              <Text variant="large" tone="muted">
+                No data available
+              </Text>
             )}
-          </CardContent>
+          </div>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Schedules</CardTitle>
-            <CardDescription>
+          <div className="flex flex-col space-y-1.5 p-6">
+            <Text variant="large-semibold" as="h3">
+              Schedules
+            </Text>
+            <Text variant="body" tone="muted">
               Scheduled agent executions and health
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </Text>
+          </div>
+          <div className="p-6 pt-0">
             {scheduleData ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       User Schedules
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {scheduleData.user_schedules}
-                    </p>
+                    </Text>
                     {scheduleData.total_orphaned > 0 && (
-                      <p className="text-xs text-orange-600">
+                      <Text variant="small" className="text-orange-600">
                         {scheduleData.total_orphaned} orphaned
-                      </p>
+                      </Text>
                     )}
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
@@ -422,16 +453,16 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Upcoming Runs (1h)
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {scheduleData.total_runs_next_hour}
-                    </p>
-                    <p className="text-xs text-gray-600">
+                    </Text>
+                    <Text variant="small" tone="secondary">
                       from {scheduleData.schedules_next_hour} schedule
                       {scheduleData.schedules_next_hour !== 1 ? "s" : ""}
-                    </p>
+                    </Text>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
                     <div className="h-6 w-6 rounded-full bg-blue-500"></div>
@@ -440,109 +471,113 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium" tone="muted">
                       Upcoming Runs (24h)
-                    </p>
-                    <p className="text-3xl font-bold">
+                    </Text>
+                    <Text variant="h3" as="p">
                       {scheduleData.total_runs_next_24h}
-                    </p>
-                    <p className="text-xs text-gray-600">
+                    </Text>
+                    <Text variant="small" tone="secondary">
                       from {scheduleData.schedules_next_24h} schedule
                       {scheduleData.schedules_next_24h !== 1 ? "s" : ""}
-                    </p>
+                    </Text>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
                     <div className="h-6 w-6 rounded-full bg-green-500"></div>
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-zinc-400">
                   Last updated:{" "}
                   {new Date(scheduleData.timestamp).toLocaleString()}
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">No data available</p>
+              <Text variant="large" tone="muted">
+                No data available
+              </Text>
             )}
-          </CardContent>
+          </div>
         </Card>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Diagnostic Information</CardTitle>
-          <CardDescription>
+        <div className="flex flex-col space-y-1.5 p-6">
+          <Text variant="large-semibold" as="h3">
+            Diagnostic Information
+          </Text>
+          <Text variant="body" tone="muted">
             Understanding metrics and tabs for on-call diagnostics
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </Text>
+        </div>
+        <div className="p-6 pt-0">
           <div className="space-y-3 text-sm">
             <div>
-              <p className="font-semibold text-orange-700">
+              <Text variant="body-medium" className="text-orange-700">
                 🟠 Orphaned Executions:
-              </p>
-              <p className="text-gray-600">
+              </Text>
+              <Text variant="body" tone="secondary">
                 Executions {">"}24h old in database but not actually running in
                 executor. Usually from executor restarts/crashes. Safe to
                 cleanup (marks as FAILED in DB).
-              </p>
+              </Text>
             </div>
             <div>
-              <p className="font-semibold text-blue-700">
+              <Text variant="body-medium" className="text-blue-700">
                 🔵 Stuck Queued Executions:
-              </p>
-              <p className="text-gray-600">
+              </Text>
+              <Text variant="body" tone="secondary">
                 QUEUED {">"}1h but never started. Not in RabbitMQ queue. Can
                 cleanup (safe) or requeue (⚠️ costs credits - only if temporary
                 issue like RabbitMQ purge).
-              </p>
+              </Text>
             </div>
             <div>
-              <p className="font-semibold text-yellow-700">
+              <Text variant="body-medium" className="text-yellow-700">
                 🟡 Long-Running Executions:
-              </p>
-              <p className="text-gray-600">
+              </Text>
+              <Text variant="body" tone="secondary">
                 RUNNING status {">"}24h. May be legitimately long jobs or stuck.
                 Review before stopping. Sends cancel signal to executor.
-              </p>
+              </Text>
             </div>
             <div>
-              <p className="font-semibold text-red-700">
+              <Text variant="body-medium" className="text-red-700">
                 🔴 Failed Executions:
-              </p>
-              <p className="text-gray-600">
+              </Text>
+              <Text variant="body" tone="secondary">
                 Executions that failed in last 24h. View error messages to
                 identify patterns. Spike in failures indicates system issues.
-              </p>
+              </Text>
             </div>
             <div>
-              <p className="font-semibold text-pink-700">
+              <Text variant="body-medium" className="text-pink-700">
                 🩷 Invalid States (Data Corruption):
-              </p>
-              <p className="text-gray-600">
+              </Text>
+              <Text variant="body" tone="secondary">
                 Executions in impossible states (QUEUED with startedAt, RUNNING
                 without startedAt). Indicates DB corruption, race conditions, or
                 crashes. Each requires manual investigation - no bulk actions
                 provided.
-              </p>
+              </Text>
             </div>
             <div>
-              <p className="font-semibold">Throughput Metrics:</p>
-              <p className="text-gray-600">
+              <Text variant="body-medium">Throughput Metrics:</Text>
+              <Text variant="body" tone="secondary">
                 Completions per hour shows system productivity. Declining
                 throughput indicates performance degradation or executor issues.
-              </p>
+              </Text>
             </div>
             <div>
-              <p className="font-semibold">Queue Health:</p>
-              <p className="text-gray-600">
+              <Text variant="body-medium">Queue Health:</Text>
+              <Text variant="body" tone="secondary">
                 RabbitMQ depths should be low ({"<"}100). High queues indicate
                 executor can&apos;t keep up. Cancel queue backlog indicates
                 executor processing issues.
-              </p>
+              </Text>
             </div>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* Add Executions Table with tab counts */}
