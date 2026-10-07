@@ -19,7 +19,7 @@ export function SelectedAttachments({ attachments, color, onRemove }: Props) {
     <div
       role="list"
       aria-label="Selected tools"
-      className="flex w-full max-w-[42rem] flex-wrap justify-end gap-2"
+      className="flex w-full max-w-2xl flex-wrap justify-end gap-2"
     >
       {attachments.map((attachment) => (
         <button

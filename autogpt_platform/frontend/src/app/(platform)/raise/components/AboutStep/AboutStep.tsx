@@ -71,7 +71,7 @@ export function AboutStep({
         placeholder={aboutPlaceholderFor(name)}
         rows={4}
         maxLength={2000}
-        wrapperClassName="mb-0 w-full max-w-[42rem]"
+        wrapperClassName="mb-0 w-full max-w-2xl"
       />
       <div className="flex items-center gap-2">
         <Button

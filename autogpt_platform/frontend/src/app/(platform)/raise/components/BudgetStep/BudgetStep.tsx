@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Forward02Icon } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
@@ -39,10 +40,10 @@ export function BudgetStep({
         onSelect={budget.selectPreset}
         onCustomChange={budget.changeCustomAmount}
       />
-      <p className="max-w-[42rem] text-right text-xs text-muted-foreground">
+      <Text variant="small" tone="muted" className="max-w-2xl text-right">
         Skip to use the default {creditsToUsdLabel(DEFAULT_BUDGET_CREDITS)} a
         week. $0 disables the weekly limit.
-      </p>
+      </Text>
       <div className="flex items-center gap-2">
         {budget.canSubmitCustom ? (
           <Button

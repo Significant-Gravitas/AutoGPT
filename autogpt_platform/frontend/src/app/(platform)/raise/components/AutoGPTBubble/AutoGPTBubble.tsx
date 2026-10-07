@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { useTypewriter } from "./useTypewriter";
@@ -30,7 +31,11 @@ export function AutoGPTBubble({
           {AUTOPILOT_NAME}
         </span>
       </div>
-      <p className="text-[15px] leading-relaxed text-foreground">
+      <Text
+        variant="large"
+        unmask={false}
+        className="text-[15px] leading-relaxed text-foreground"
+      >
         <span aria-hidden>{typed}</span>
         {isTyping ? (
           <span
@@ -41,7 +46,7 @@ export function AutoGPTBubble({
         {/* The visible text arrives a character at a time; the live region
             should announce the whole line once instead of stuttering. */}
         <span className="sr-only">{text}</span>
-      </p>
+      </Text>
     </div>
   );
 }

@@ -49,7 +49,7 @@ export function SoulPreviewPanel({
   ].filter((detail): detail is SoulDetail => Boolean(detail.value));
 
   return (
-    <div className="flex w-full max-w-[19rem] flex-col items-center gap-3">
+    <div className="flex w-full max-w-76 flex-col items-center gap-3">
       <aside className="flex w-full flex-col items-center gap-8 rounded-[2rem] border border-border bg-background px-8 py-12 shadow-2xl">
         <div className="size-28 shrink-0 overflow-hidden rounded-full">
           {avatarUrl ? (

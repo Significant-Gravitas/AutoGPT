@@ -34,21 +34,23 @@ export function NameStep({
         className="flex flex-wrap justify-end gap-2.5"
       >
         {chips.map((chip) => (
-          <button
+          <Button
             key={chip}
             type="button"
+            variant="ghost"
             onClick={() => onSubmit(chip)}
             disabled={Boolean(selectedName)}
             aria-pressed={selectedName ? true : undefined}
+            unmask={!selectedName}
             className={cn(
-              "rounded-full border px-5 py-2.5 text-sm font-medium text-foreground transition-colors",
+              "h-auto min-w-0 px-5 py-2.5 leading-5 text-foreground disabled:text-foreground",
               selectedName
                 ? (bubbleClassFor(color) ?? "border-accent bg-accent/5")
                 : "border-border bg-background hover:border-accent hover:bg-accent/5",
             )}
           >
             {chip}
-          </button>
+          </Button>
         ))}
       </div>
       {selectedName ? null : (
@@ -70,7 +72,7 @@ export function NameStep({
             onChange={(event) => setCustom(event.target.value)}
             placeholder="Type a name…"
             maxLength={100}
-            wrapperClassName="mb-0 w-full max-w-[16rem] [&_input]:h-[2.625rem] [&_input]:py-3"
+            wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-[2.625rem] [&_input]:py-3"
           />
           <Button
             type="submit"
