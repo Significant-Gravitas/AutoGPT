@@ -29,7 +29,7 @@ function Pill({ tone, label }: PillProps) {
       className={cn(
         "rounded-full px-2 py-0.5 text-xs font-medium",
         tone === "on"
-          ? "bg-emerald-50 text-emerald-700"
+          ? "bg-green-50 text-green-700"
           : tone === "off"
             ? "bg-zinc-100 text-zinc-600"
             : "bg-zinc-50 text-zinc-500",
@@ -139,7 +139,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
       )}
 
       {computer && !computer.e2b_active ? (
-        <Text variant="small" className="text-amber-700">
+        <Text variant="small" className="text-yellow-700">
           Cloud sandboxes are not configured on this deployment.
         </Text>
       ) : null}

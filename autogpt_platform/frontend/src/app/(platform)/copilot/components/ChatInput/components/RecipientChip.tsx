@@ -30,7 +30,7 @@ interface Props {
 }
 
 const CHIP_CLASSNAME =
-  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-2xl border border-neutral-200 bg-white pl-1.5 pr-2 text-sm font-medium text-zinc-700 shadow-sm";
+  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white pl-1.5 pr-2 text-sm font-medium text-zinc-700 shadow-sm";
 
 export function RecipientChip({
   recipient,
@@ -59,7 +59,7 @@ export function RecipientChip({
           aria-label={`Sending to ${recipient.name} — change recipient`}
           className={cn(
             CHIP_CLASSNAME,
-            "group transition-colors hover:bg-neutral-50",
+            "group transition-colors hover:bg-zinc-50",
           )}
         >
           <RecipientAvatar option={recipient} />

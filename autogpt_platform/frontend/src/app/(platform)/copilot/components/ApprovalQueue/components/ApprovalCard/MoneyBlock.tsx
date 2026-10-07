@@ -37,7 +37,7 @@ export function MoneyBlock({ spend }: Props) {
         className="h-1 overflow-hidden rounded-full bg-zinc-100"
       >
         <div
-          className="h-full rounded-full bg-amber-500"
+          className="h-full rounded-full bg-yellow-500"
           style={{ width: `${share * 100}%` }}
         />
       </div>

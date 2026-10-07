@@ -436,10 +436,10 @@ export function ChatSidebar() {
             >
               {isLoadingSessions ? (
                 <div className="flex min-h-[30rem] items-center justify-center py-4">
-                  <LoadingSpinner size="small" className="text-neutral-600" />
+                  <LoadingSpinner size="small" className="text-zinc-600" />
                 </div>
               ) : !sessions?.length ? (
-                <p className="py-4 text-center text-sm text-neutral-500">
+                <p className="py-4 text-center text-sm text-zinc-500">
                   No conversations yet
                 </p>
               ) : sessionSections ? (

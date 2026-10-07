@@ -107,7 +107,7 @@ export const OpenWithHTMLArtifact: Story = {
       handlers: [
         http.get(`${PROXY_BASE}/html-panel/download`, () => {
           return HttpResponse.text(
-            `<!DOCTYPE html><html><body class="p-8 font-sans"><h1 class="text-2xl font-bold text-indigo-600">Dashboard</h1><p class="mt-2 text-gray-600">HTML artifact in the panel.</p></body></html>`,
+            `<!DOCTYPE html><html><body class="p-8 font-sans"><h1 class="text-2xl font-bold text-purple-600">Dashboard</h1><p class="mt-2 text-zinc-600">HTML artifact in the panel.</p></body></html>`,
           );
         }),
       ],

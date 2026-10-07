@@ -134,7 +134,7 @@ export function WorkspaceFileList({
                 className={cn(
                   "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors",
                   isSelected
-                    ? "border-violet-300 ring-1 ring-violet-200"
+                    ? "border-purple-300 ring-1 ring-purple-200"
                     : "border-zinc-200 hover:border-zinc-300",
                 )}
               >
@@ -160,7 +160,7 @@ export function WorkspaceFileList({
                 {isSelected && (
                   <Icon
                     icon={CheckmarkCircle02Icon}
-                    className="h-5 w-5 shrink-0 text-violet-600"
+                    className="h-5 w-5 shrink-0 text-purple-600"
                   />
                 )}
               </button>

@@ -301,7 +301,7 @@ export function ConnectionPicker({
             <SectionLabel>Model tier</SectionLabel>
             <div
               className={cn(
-                "overflow-hidden rounded-xl border border-neutral-200 bg-white",
+                "overflow-hidden rounded-xl border border-zinc-200 bg-white",
                 showMaxUpgrade && "border-0",
               )}
             >

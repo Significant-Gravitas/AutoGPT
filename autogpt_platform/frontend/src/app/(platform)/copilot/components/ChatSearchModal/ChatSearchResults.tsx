@@ -118,7 +118,7 @@ export function ChatSearchResults({
                   aria-label="Session running"
                   className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
                 >
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
                 </span>
               )}
               {session.chat_status === "queued" && (

@@ -54,7 +54,7 @@ export function WorkspaceFolderRows({
             className={cn(
               "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 transition-colors",
               isSelected
-                ? "border-violet-300 ring-1 ring-violet-200"
+                ? "border-purple-300 ring-1 ring-purple-200"
                 : "border-zinc-200 hover:border-zinc-300",
             )}
           >
@@ -67,7 +67,7 @@ export function WorkspaceFolderRows({
                 e.preventDefault();
                 onOpen(folder.id);
               }}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
             >
               <div
                 className={cn(
@@ -104,9 +104,9 @@ export function WorkspaceFolderRows({
               }}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300",
                 isSelected
-                  ? "text-violet-600"
+                  ? "text-purple-600"
                   : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700",
               )}
             >

@@ -34,7 +34,7 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
           className={cn(
             "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
             isDryRun
-              ? "text-amber-600 hover:text-amber-700"
+              ? "text-yellow-600 hover:text-yellow-700"
               : "text-zinc-500 hover:text-zinc-700",
           )}
           aria-label={ariaLabel}

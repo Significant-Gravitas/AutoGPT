@@ -96,13 +96,13 @@ export function MessageAttachments({
             className={`inline-block rounded-lg border p-1.5 ${
               isUser
                 ? "border-purple-300 bg-purple-50"
-                : "border-neutral-200 bg-neutral-50"
+                : "border-zinc-200 bg-zinc-50"
             }`}
           >
             {rendered}
             <div
               className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
-                isUser ? "text-zinc-600" : "text-neutral-500"
+                isUser ? "text-zinc-600" : "text-zinc-500"
               }`}
             >
               <span className="truncate">{file.filename || "file"}</span>
@@ -127,7 +127,7 @@ export function MessageAttachments({
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-zinc-400"
                 />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-zinc-800">
@@ -159,7 +159,7 @@ export function MessageAttachments({
                     href={file.url}
                     download
                     aria-label="Download file"
-                    className="shrink-0 text-neutral-400 hover:text-neutral-600"
+                    className="shrink-0 text-zinc-400 hover:text-zinc-600"
                   >
                     <Icon icon={Download04Icon} className="h-5 w-5" />
                   </a>
@@ -169,7 +169,7 @@ export function MessageAttachments({
               <div className="flex items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-zinc-400"
                 />
                 <div className="min-w-0">
                   <ContentCardTitle>{file.filename || "file"}</ContentCardTitle>

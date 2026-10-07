@@ -207,7 +207,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+            className="my-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm italic text-zinc-600"
           >
             {markerText}
           </div>

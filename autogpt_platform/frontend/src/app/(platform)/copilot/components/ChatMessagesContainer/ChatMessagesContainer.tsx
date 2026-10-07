@@ -258,7 +258,7 @@ export function LoadMoreSentinel({
       {isLoading ? (
         <LoadingSpinner
           data-testid="load-more-spinner"
-          className="h-5 w-5 text-neutral-400"
+          className="h-5 w-5 text-zinc-400"
         />
       ) : (
         hasMore && (
@@ -518,7 +518,7 @@ export function ChatMessagesContainer({
             !isRestoringActiveSession &&
             !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
-                <LoadingSpinner className="text-neutral-600" />
+                <LoadingSpinner className="text-zinc-600" />
               </div>
             )}
           {renderRows.map((message, rowIndex) => {
@@ -734,7 +734,7 @@ export function ChatMessagesContainer({
                       const date = new Date(createdAt);
                       if (Number.isNaN(date.getTime())) return null;
                       return (
-                        <span className="text-[11px] tabular-nums text-neutral-500">
+                        <span className="text-[11px] tabular-nums text-zinc-500">
                           {date.toLocaleString(undefined, {
                             dateStyle: "medium",
                             timeStyle: "short",
@@ -816,7 +816,7 @@ export function ChatMessagesContainer({
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                    <LoadingSpinner className="h-4 w-4 text-zinc-500" />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}

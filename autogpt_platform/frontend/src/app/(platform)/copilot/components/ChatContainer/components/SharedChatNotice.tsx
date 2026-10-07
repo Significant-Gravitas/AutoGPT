@@ -40,7 +40,7 @@ export function SharedChatNotice({ sessionId }: Props) {
   }
 
   return (
-    <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+    <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-900">
       <span className="font-medium">This chat is shared</span>
       <Button
         size="small"
