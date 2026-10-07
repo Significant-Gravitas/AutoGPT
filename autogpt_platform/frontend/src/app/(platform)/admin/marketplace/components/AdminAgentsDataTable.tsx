@@ -8,7 +8,7 @@ import {
 } from "@/components/__legacy__/ui/table";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
+import { UrlPagination } from "@/app/(platform)/admin/components/UrlPagination/UrlPagination";
 import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
 import { ExpandableRow } from "./ExpandleRow";
 import { SearchAndFilterAdminMarketplace } from "./SearchFilterForm";
@@ -92,9 +92,9 @@ export async function AdminAgentsDataTable({
         </Table>
       </div>
 
-      <PaginationControls
-        currentPage={initialPage}
-        totalPages={pagination?.total_pages ?? 1}
+      <UrlPagination
+        page={initialPage}
+        pageCount={pagination?.total_pages ?? 1}
       />
     </div>
   );

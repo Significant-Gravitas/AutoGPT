@@ -7,7 +7,7 @@ import {
   TableRow,
 } from "@/components/__legacy__/ui/table";
 
-import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
+import { UrlPagination } from "@/app/(platform)/admin/components/UrlPagination/UrlPagination";
 import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./AddMoneyButton";
@@ -179,10 +179,7 @@ export async function AdminUserGrantHistory({
         </Table>
       </div>
 
-      <PaginationControls
-        currentPage={initialPage}
-        totalPages={pagination.total_pages}
-      />
+      <UrlPagination page={initialPage} pageCount={pagination.total_pages} />
     </div>
   );
 }
