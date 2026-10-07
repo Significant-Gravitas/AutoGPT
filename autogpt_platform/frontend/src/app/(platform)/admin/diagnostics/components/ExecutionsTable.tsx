@@ -3,14 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import React, { useState } from "react";
 import {
@@ -22,11 +15,7 @@ import {
   TableCell,
 } from "@/components/__legacy__/ui/table";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   useGetV2ListRunningExecutions,
   useGetV2ListOrphanedExecutions,
@@ -529,9 +518,11 @@ export function ExecutionsTable({
     <>
       <Card>
         <TabsLine value={activeTab} onValueChange={handleTabChange}>
-          <CardHeader>
+          <div className="flex flex-col space-y-1.5 p-6">
             <div className="flex items-center justify-between">
-              <CardTitle>Executions</CardTitle>
+              <Text variant="large-semibold" as="h3">
+                Executions
+              </Text>
               <div className="flex gap-2">
                 {/* Show Cleanup and Requeue buttons for stuck-queued tab */}
                 {activeTab === "stuck-queued" && total > 0 && (
@@ -589,7 +580,7 @@ export function ExecutionsTable({
                   </Button>
                 )}
                 {activeTab === "failed" && selectedIds.size === 0 && (
-                  <div className="px-3 text-sm text-gray-500">
+                  <div className="px-3 text-sm text-zinc-500">
                     View-only (select to delete)
                   </div>
                 )}
@@ -644,10 +635,10 @@ export function ExecutionsTable({
                   ` (${diagnosticsData.invalid_queued_with_start + diagnosticsData.invalid_running_without_start})`}
               </TabsLineTrigger>
             </TabsLineList>
-          </CardHeader>
+          </div>
 
           <TabsLineContent value={activeTab}>
-            <CardContent>
+            <div className="p-6 pt-0">
               {error ? (
                 <ErrorCard
                   httpError={error as { status?: number; message?: string }}
@@ -658,11 +649,11 @@ export function ExecutionsTable({
                 <div className="flex h-32 items-center justify-center">
                   <Icon
                     icon={Refresh01Icon}
-                    className="h-6 w-6 animate-spin text-gray-400"
+                    className="h-6 w-6 animate-spin text-zinc-400"
                   />
                 </div>
               ) : executions.length === 0 ? (
-                <div className="py-8 text-center text-gray-500">
+                <div className="py-8 text-center text-zinc-500">
                   No running executions
                 </div>
               ) : (
@@ -725,7 +716,7 @@ export function ExecutionsTable({
                             </TableCell>
                             <TableCell className="font-mono text-xs">
                               <div
-                                className="group flex cursor-pointer items-center gap-1 hover:text-gray-700"
+                                className="group flex cursor-pointer items-center gap-1 hover:text-zinc-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     execution.execution_id,
@@ -750,11 +741,11 @@ export function ExecutionsTable({
                             <TableCell>
                               <div>
                                 {execution.user_email || (
-                                  <span className="text-gray-400">Unknown</span>
+                                  <span className="text-zinc-400">Unknown</span>
                                 )}
                               </div>
                               <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-zinc-500 hover:text-zinc-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     execution.user_id,
@@ -915,7 +906,7 @@ export function ExecutionsTable({
 
                   {totalPages > 1 && (
                     <div className="mt-4 flex items-center justify-between">
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-zinc-600">
                         Showing {(currentPage - 1) * pageSize + 1} to{" "}
                         {Math.min(currentPage * pageSize, total)} of {total}{" "}
                         executions
@@ -947,127 +938,126 @@ export function ExecutionsTable({
                   )}
                 </>
               )}
-            </CardContent>
+            </div>
           </TabsLineContent>
         </TabsLine>
       </Card>
 
-      <Dialog open={showStopDialog} onOpenChange={setShowStopDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {stopMode === "cleanup"
-                ? "Confirm Cleanup Orphaned Executions"
-                : stopMode === "requeue"
-                  ? "Confirm Requeue Stuck Executions"
-                  : "Confirm Stop Executions"}
-            </DialogTitle>
-            <DialogDescription>
-              {stopMode === "requeue" ? (
-                <>
-                  {stopTarget === "single" && (
-                    <>Are you sure you want to requeue this stuck execution?</>
-                  )}
-                  {stopTarget === "selected" && (
-                    <>
-                      Are you sure you want to requeue {selectedIds.size}{" "}
-                      selected execution(s)?
-                    </>
-                  )}
-                  {stopTarget === "all" && (
-                    <>
-                      Are you sure you want to requeue ALL {total} stuck
-                      executions?
-                    </>
-                  )}
-                  <br />
-                  <br />
-                  <strong className="text-blue-700">⚠️ Warning:</strong> This
-                  will publish these executions to RabbitMQ to be processed
-                  again. This <strong>will cost credits</strong> and may fail
-                  again if the original issue persists.
-                  <br />
-                  <br />
-                  Only requeue if you believe the executions are stuck due to a
-                  temporary issue (executor restart, RabbitMQ purge, etc).
-                </>
-              ) : stopMode === "cleanup" ? (
-                <>
-                  {stopTarget === "single" && (
-                    <>
-                      Are you sure you want to cleanup this orphaned execution?
-                    </>
-                  )}
-                  {stopTarget === "selected" && (
-                    <>
-                      Are you sure you want to cleanup{" "}
-                      {selectedOrphanedIds.length} orphaned execution(s)?
-                    </>
-                  )}
-                  {stopTarget === "all" && (
-                    <>
-                      Are you sure you want to cleanup ALL {orphanedIds.size}{" "}
-                      orphaned executions?
-                    </>
-                  )}
-                  <br />
-                  <br />
-                  <strong>Orphaned executions</strong> are {">"}24h old and not
-                  actually running in the executor. This will mark them as
-                  FAILED in the database only (no cancel signal sent).
-                </>
-              ) : (
-                <>
-                  {stopTarget === "single" && (
-                    <>Are you sure you want to stop this execution?</>
-                  )}
-                  {stopTarget === "selected" && (
-                    <>
-                      Are you sure you want to stop {selectedIds.size} selected
-                      execution(s)?
-                      {hasOrphanedSelected && (
-                        <>
-                          <br />
-                          <br />
-                          <span className="text-orange-600">
-                            Includes {selectedOrphanedIds.length} orphaned
-                            execution(s) that will be cleaned up directly.
-                          </span>
-                        </>
-                      )}
-                    </>
-                  )}
-                  {stopTarget === "all" && (
-                    <>
-                      Are you sure you want to stop ALL {executions.length}{" "}
-                      execution(s)?
-                      {orphanedIds.size > 0 && (
-                        <>
-                          <br />
-                          <br />
-                          <span className="text-orange-600">
-                            Includes {orphanedIds.size} orphaned execution(s) (
-                            {">"}24h old) that will be cleaned up directly.
-                          </span>
-                        </>
-                      )}
-                    </>
-                  )}
-                  <br />
-                  <br />
-                  This will automatically:
-                  <ul className="mt-2 list-disc pl-5 text-sm">
-                    <li>Send cancel signals for active executions</li>
-                    <li>
-                      Clean up orphaned executions ({">"}24h old) directly in DB
-                    </li>
-                    <li>Mark all as FAILED</li>
-                  </ul>
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
+      <Dialog
+        title={
+          stopMode === "cleanup"
+            ? "Confirm Cleanup Orphaned Executions"
+            : stopMode === "requeue"
+              ? "Confirm Requeue Stuck Executions"
+              : "Confirm Stop Executions"
+        }
+        variant="compact"
+        controlled={{ isOpen: showStopDialog, set: setShowStopDialog }}
+      >
+        <Dialog.Content>
+          <Text variant="body" as="div" tone="muted">
+            {stopMode === "requeue" ? (
+              <>
+                {stopTarget === "single" && (
+                  <>Are you sure you want to requeue this stuck execution?</>
+                )}
+                {stopTarget === "selected" && (
+                  <>
+                    Are you sure you want to requeue {selectedIds.size} selected
+                    execution(s)?
+                  </>
+                )}
+                {stopTarget === "all" && (
+                  <>
+                    Are you sure you want to requeue ALL {total} stuck
+                    executions?
+                  </>
+                )}
+                <br />
+                <br />
+                <strong className="text-blue-700">⚠️ Warning:</strong> This will
+                publish these executions to RabbitMQ to be processed again. This{" "}
+                <strong>will cost credits</strong> and may fail again if the
+                original issue persists.
+                <br />
+                <br />
+                Only requeue if you believe the executions are stuck due to a
+                temporary issue (executor restart, RabbitMQ purge, etc).
+              </>
+            ) : stopMode === "cleanup" ? (
+              <>
+                {stopTarget === "single" && (
+                  <>Are you sure you want to cleanup this orphaned execution?</>
+                )}
+                {stopTarget === "selected" && (
+                  <>
+                    Are you sure you want to cleanup{" "}
+                    {selectedOrphanedIds.length} orphaned execution(s)?
+                  </>
+                )}
+                {stopTarget === "all" && (
+                  <>
+                    Are you sure you want to cleanup ALL {orphanedIds.size}{" "}
+                    orphaned executions?
+                  </>
+                )}
+                <br />
+                <br />
+                <strong>Orphaned executions</strong> are {">"}24h old and not
+                actually running in the executor. This will mark them as FAILED
+                in the database only (no cancel signal sent).
+              </>
+            ) : (
+              <>
+                {stopTarget === "single" && (
+                  <>Are you sure you want to stop this execution?</>
+                )}
+                {stopTarget === "selected" && (
+                  <>
+                    Are you sure you want to stop {selectedIds.size} selected
+                    execution(s)?
+                    {hasOrphanedSelected && (
+                      <>
+                        <br />
+                        <br />
+                        <span className="text-orange-600">
+                          Includes {selectedOrphanedIds.length} orphaned
+                          execution(s) that will be cleaned up directly.
+                        </span>
+                      </>
+                    )}
+                  </>
+                )}
+                {stopTarget === "all" && (
+                  <>
+                    Are you sure you want to stop ALL {executions.length}{" "}
+                    execution(s)?
+                    {orphanedIds.size > 0 && (
+                      <>
+                        <br />
+                        <br />
+                        <span className="text-orange-600">
+                          Includes {orphanedIds.size} orphaned execution(s) (
+                          {">"}24h old) that will be cleaned up directly.
+                        </span>
+                      </>
+                    )}
+                  </>
+                )}
+                <br />
+                <br />
+                This will automatically:
+                <ul className="mt-2 list-disc pl-5 text-sm">
+                  <li>Send cancel signals for active executions</li>
+                  <li>
+                    Clean up orphaned executions ({">"}24h old) directly in DB
+                  </li>
+                  <li>Mark all as FAILED</li>
+                </ul>
+              </>
+            )}
+          </Text>
+          <Dialog.Footer>
             <Button variant="outline" onClick={() => setShowStopDialog(false)}>
               Cancel
             </Button>
@@ -1088,8 +1078,8 @@ export function ExecutionsTable({
                   ? "Requeue Executions"
                   : "Stop Executions"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
+          </Dialog.Footer>
+        </Dialog.Content>
       </Dialog>
     </>
   );
