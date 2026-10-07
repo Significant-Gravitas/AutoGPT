@@ -1,3 +1,4 @@
+import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { CredentialsMetaResponseType } from "@/app/api/__generated__/models/credentialsMetaResponseType";
 import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
@@ -12,6 +13,10 @@ export interface CredentialView {
   username: string | null;
   host: string | null;
   isManaged: boolean;
+  /** A vendor sign-in (MCP) rather than a block credential. */
+  isSignIn: boolean;
+  /** Set when the vendor also has blocks, which this sign-in does not cover. */
+  blocksNote: string | null;
 }
 
 export interface ProviderGroupView {
@@ -123,8 +128,15 @@ export function formatCredentialName(title: string, provider: string): string {
   return stripProviderPrefix(title, provider);
 }
 
-function toCredentialView(cred: CredentialsMetaResponse): CredentialView {
+const SIGN_IN_PROVIDER = "mcp";
+
+function toCredentialView(
+  cred: CredentialsMetaResponse,
+  serviceLabel: string,
+  hasBlocks: boolean,
+): CredentialView {
   const rawTitle = cred.title ?? serviceName(cred);
+  const isSignIn = cred.provider === SIGN_IN_PROVIDER;
   return {
     id: cred.id,
     provider: cred.provider,
@@ -133,11 +145,29 @@ function toCredentialView(cred: CredentialsMetaResponse): CredentialView {
     username: cred.username ?? null,
     host: cred.host ?? null,
     isManaged: cred.is_managed ?? false,
+    isSignIn,
+    blocksNote:
+      isSignIn && hasBlocks
+        ? `${serviceLabel} blocks in agents need their own connection.`
+        : null,
   };
+}
+
+// The services a block provider covers, so a sign-in for one of them can say
+// it does not connect those blocks.
+export function blockServiceKeys(providers: ProviderMetadata[]): Set<string> {
+  return new Set(
+    providers
+      .filter((item) => !item.mcp_server)
+      .map((item) =>
+        serviceKey({ provider: item.name, service: item.service }),
+      ),
+  );
 }
 
 export function groupCredentialsByProvider(
   credentials: CredentialsMetaResponse[],
+  blockServices: ReadonlySet<string> = new Set(),
 ): ProviderGroupView[] {
   const byService = new Map<string, CredentialsMetaResponse[]>();
   for (const cred of credentials) {
@@ -152,7 +182,9 @@ export function groupCredentialsByProvider(
       id,
       name: identity.name,
       logoUrl: integrationIconSrc(identity.icon) ?? undefined,
-      credentials: creds.map(toCredentialView),
+      credentials: creds.map((cred) =>
+        toCredentialView(cred, identity.name, blockServices.has(id)),
+      ),
     });
   }
   groups.sort((a, b) => a.name.localeCompare(b.name));

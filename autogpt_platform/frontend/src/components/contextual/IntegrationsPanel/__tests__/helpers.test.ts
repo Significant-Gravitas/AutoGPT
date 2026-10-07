@@ -36,6 +36,8 @@ function makeView(overrides: Partial<CredentialView> = {}): CredentialView {
     username: null,
     host: null,
     isManaged: false,
+    isSignIn: false,
+    blocksNote: null,
     ...overrides,
   };
 }
