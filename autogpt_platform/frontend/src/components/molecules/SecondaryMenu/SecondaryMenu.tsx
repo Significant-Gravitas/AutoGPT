@@ -6,13 +6,12 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import React from "react";
 
 const secondaryMenuContentClassName =
-  "z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800";
+  "z-10 rounded-xl border bg-white p-1 shadow-md";
 
 const secondaryMenuItemClassName =
-  "flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700";
+  "flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100";
 
-const secondaryMenuSeparatorClassName =
-  "my-1 h-px bg-gray-300 dark:bg-gray-600";
+const secondaryMenuSeparatorClassName = "my-1 h-px bg-gray-300";
 
 export const SecondaryMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenu.Content>,
@@ -36,8 +35,7 @@ export const SecondaryMenuItem = React.forwardRef<
     ref={ref}
     className={cn(
       secondaryMenuItemClassName,
-      variant === "destructive" &&
-        "text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700",
+      variant === "destructive" && "text-red-500 hover:bg-gray-100",
       className,
     )}
     {...props}
@@ -81,8 +79,7 @@ export const SecondaryDropdownMenuItem = React.forwardRef<
     ref={ref}
     className={cn(
       secondaryMenuItemClassName,
-      variant === "destructive" &&
-        "text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700",
+      variant === "destructive" && "text-red-500 hover:bg-gray-100",
       className,
     )}
     {...props}
