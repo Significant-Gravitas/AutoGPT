@@ -5,7 +5,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import NextLink, { type LinkProps } from "next/link";
-import React from "react";
+import React, { forwardRef } from "react";
 import {
   BUTTON_ICON_SIZE,
   ButtonProps,
@@ -15,7 +15,12 @@ import {
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function Button(props: ButtonProps) {
+export const Button = forwardRef<
+  HTMLButtonElement | HTMLAnchorElement,
+  ButtonProps
+>(function Button(props, ref) {
+  const buttonRef = ref as React.ForwardedRef<HTMLButtonElement>;
+  const anchorRef = ref as React.ForwardedRef<HTMLAnchorElement>;
   const {
     className,
     variant,
@@ -88,6 +93,7 @@ export function Button(props: ButtonProps) {
 
     const linkButton = (
       <button
+        ref={buttonRef}
         className={applyUnmask(
           extendedButtonVariants({ variant: "link", className }),
           loading && "pointer-events-none opacity-60",
@@ -118,6 +124,7 @@ export function Button(props: ButtonProps) {
     if (as === "NextLink") {
       return (
         <NextLink
+          ref={anchorRef}
           {...(restProps as LinkProps)}
           className={loadingClassName}
           aria-disabled="true"
@@ -134,6 +141,7 @@ export function Button(props: ButtonProps) {
     // into loading, which is exactly when a click listener needs to read them.
     const loadingButton = (
       <button
+        ref={buttonRef}
         {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         className={loadingClassName}
         disabled
@@ -149,6 +157,7 @@ export function Button(props: ButtonProps) {
   if (as === "NextLink") {
     const nextLinkButton = (
       <NextLink
+        ref={anchorRef}
         {...(restProps as LinkProps)}
         className={applyUnmask(
           extendedButtonVariants({ variant, size, className }),
@@ -166,6 +175,7 @@ export function Button(props: ButtonProps) {
 
   const regularButton = (
     <button
+      ref={buttonRef}
       className={applyUnmask(
         extendedButtonVariants({ variant, size, className }),
         loading && "pointer-events-none",
@@ -178,4 +188,4 @@ export function Button(props: ButtonProps) {
   );
 
   return wrapWithTooltip(regularButton);
-}
+});

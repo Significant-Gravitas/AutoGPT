@@ -1,9 +1,13 @@
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { render, screen, cleanup } from "@testing-library/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
-import { afterEach, describe, expect, it } from "vitest";
+import { createRef } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Button } from "./Button";
 import { ButtonProps } from "./helpers";
+
+// The shared setup mocks next/link with a component that drops refs.
+vi.mock("next/link", async () => await vi.importActual("next/link"));
 
 function renderButton(
   props: Partial<ButtonProps> & { children?: React.ReactNode } = {},
@@ -156,5 +160,40 @@ describe("Button compact sizes", () => {
       pressed: true,
     });
     expect(el.className).toContain("aria-pressed:bg-zinc-100");
+  });
+});
+
+describe("Button ref forwarding", () => {
+  it("forwards the ref to the button element", () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>Save</Button>);
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement);
+    expect(ref.current).toBe(screen.getByRole("button", { name: "Save" }));
+  });
+
+  it("forwards the ref through the icon tooltip wrapper", () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(
+      <TooltipProvider>
+        <Button
+          ref={ref}
+          variant="icon"
+          aria-label="Edit"
+          leadingIcon={PencilEdit02Icon}
+        />
+      </TooltipProvider>,
+    );
+    expect(ref.current).toBe(screen.getByRole("button", { name: "Edit" }));
+  });
+
+  it("forwards the ref to the anchor element for NextLink", () => {
+    const ref = createRef<HTMLAnchorElement>();
+    render(
+      <Button ref={ref} as="NextLink" href="/library">
+        Library
+      </Button>,
+    );
+    expect(ref.current).toBeInstanceOf(HTMLAnchorElement);
+    expect(ref.current).toBe(screen.getByRole("link", { name: "Library" }));
   });
 });
