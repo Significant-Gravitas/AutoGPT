@@ -3,6 +3,7 @@
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import { Button } from "@/components/atoms/Button/Button";
+import { MoreHorizontalCircle01Icon } from "@hugeicons/core-free-icons";
 import { withoutDuplicateKeyMethod, type AuthMethod } from "../../helpers";
 import { MCPPresetPanel } from "./MCPPresetPanel";
 
@@ -36,6 +37,7 @@ export function McpFirstPanel({
               variant="ghost"
               size="small"
               className="mr-auto"
+              leadingIcon={MoreHorizontalCircle01Icon}
               onClick={onUseNative}
             >
               More ways to connect

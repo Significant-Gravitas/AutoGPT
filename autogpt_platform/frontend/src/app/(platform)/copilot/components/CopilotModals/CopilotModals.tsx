@@ -75,6 +75,7 @@ export function CopilotModals() {
         <Dialog.Content>
           <IntegrationsPanel
             withHeading={false}
+            surface="dialog"
             preferMcp
             onConnected={expert ? handleConnected : undefined}
           />

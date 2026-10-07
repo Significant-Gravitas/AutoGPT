@@ -91,7 +91,7 @@ export function ExpertConnectServiceDialog({
   return (
     <Dialog
       variant="compact"
-      styling={{ maxWidth: "40rem", maxHeight: "60vh" }}
+      styling={{ maxWidth: "40rem", maxHeight: "85vh" }}
       controlled={{
         isOpen: open,
         set: (next) => {

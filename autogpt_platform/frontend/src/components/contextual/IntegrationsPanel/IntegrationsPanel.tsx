@@ -11,14 +11,22 @@ import { IntegrationsHeader } from "./components/IntegrationsHeader/Integrations
 import { IntegrationsList } from "./components/IntegrationsList/IntegrationsList";
 import { AvailableIntegrations } from "./components/AvailableIntegrations/AvailableIntegrations";
 
+const SURFACE_BACKGROUND = {
+  page: "bg-[#F9F9FA]",
+  dialog: "bg-white",
+} as const;
+
 interface Props {
   withHeading?: boolean;
+  /** What the panel sits on, so the sticky search matches it. */
+  surface?: keyof typeof SURFACE_BACKGROUND;
   preferMcp?: boolean;
   onConnected?: (credential: CredentialsMetaResponse) => void;
 }
 
 export function IntegrationsPanel({
   withHeading = true,
+  surface = "page",
   preferMcp,
   onConnected,
 }: Props) {
@@ -49,7 +57,11 @@ export function IntegrationsPanel({
         >
           Tools your agents use
         </Text>
-        <IntegrationsList query={query} onQueryChange={setQuery} />
+        <IntegrationsList
+          query={query}
+          onQueryChange={setQuery}
+          stickyClassName={SURFACE_BACKGROUND[surface]}
+        />
       </section>
       <AvailableIntegrations query={query} onSelect={openConnect} />
       <ConnectServiceDialog
