@@ -168,12 +168,6 @@
     "src/components/ui/sheet.tsx": ["exports"],
     "src/contexts/AutoPilotBridgeContext.tsx": ["exports"],
     "src/hooks/usePendingReviews.ts": ["exports"],
-    "src/lib/autogpt-server-api/helpers.ts": ["exports"],
-    "src/lib/autogpt-server-api/types.ts": ["exports", "types", "enumMembers"],
-    "src/lib/autogpt-server-api/utils.ts": ["exports"],
-    "src/lib/constants.ts": ["exports"],
-    "src/lib/timezone-utils.ts": ["exports"],
-    "src/lib/utils.ts": ["exports"],
     "src/types/google.ts": ["types"]
   },
   "ignoreExportsUsedInFile": true

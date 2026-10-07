@@ -63,31 +63,6 @@ export function getTimezoneAbbreviation(timezone: string): string {
 }
 
 /**
- * Format time for schedule display with timezone context
- * @param nextRunTime - The next run time (UTC)
- * @param displayTimezone - The timezone to display the time in (typically user's timezone)
- * @returns Formatted string in the specified timezone
- */
-export function formatScheduleTime(
-  nextRunTime: string | Date,
-  displayTimezone: string = "UTC",
-): string {
-  const date =
-    typeof nextRunTime === "string" ? new Date(nextRunTime) : nextRunTime;
-
-  // Use provided timezone for display, fallback to UTC
-  const formatted = formatInTimezone(date, displayTimezone, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
-
-  return formatted;
-}
-
-/**
  * Get a human-readable timezone name
  * @param timezone - IANA timezone identifier
  * @returns Human-readable name
@@ -114,25 +89,5 @@ export function getTimezoneDisplayName(timezone: string): string {
     return `${city} (${timezoneDisplay})`;
   } catch {
     return timezone.replace(/_/g, " ");
-  }
-}
-
-/**
- * Get the GMT offset for a given timezone, e.g. "GMT+9" or "UTC"
- */
-export function getTimezoneGmtOffset(timezone: string): string {
-  if (timezone === "not-set" || !timezone) return "";
-  try {
-    const date = new Date();
-    const formatted = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      timeZoneName: "short",
-    }).format(date);
-
-    // Common outputs look like "1/1/2024, GMT+9" or "1/1/2024, UTC"
-    const match = formatted.match(/(GMT[+\-]\d{1,2}|UTC)/i);
-    return match ? match[0].toUpperCase() : "";
-  } catch {
-    return "";
   }
 }
