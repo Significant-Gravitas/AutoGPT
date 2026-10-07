@@ -117,6 +117,8 @@
 * [Linear Comment](block-integrations/linear/comment.md)
 * [Linear Issues](block-integrations/linear/issues.md)
 * [Linear Projects](block-integrations/linear/projects.md)
+* [Linkup Fetch](block-integrations/linkup/fetch.md)
+* [Linkup Search](block-integrations/linkup/search.md)
 * [LLM](block-integrations/llm.md)
 * [Logic](block-integrations/logic.md)
 * [Mcp Block](block-integrations/mcp/block.md)
