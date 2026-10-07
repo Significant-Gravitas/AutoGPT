@@ -30,9 +30,13 @@
     "public/push-sw.js",
     ".storybook/mocks/auth-actions.ts",
     "scripts/vendor-notion-avatar.mjs",
-    // Backlog: unused files.
+    // Runs shared-file-security-happy-path.spec.ts on its own, without the
+    // seeding global setup: `npx playwright test -c playwright.security.config.ts`.
     "playwright.security.config.ts",
+    // Source of the ProfilePageExample snippet in docs/engineering/tests.md.
     "src/playwright/pages/profile.page.ts",
+    // Backlog: config for the uninstalled @storybook/test-runner; delete it
+    // with the test-storybook scripts in package.json.
     "test-runner-jest.config.js"
   ],
   // Backlog: unused exports, types, enum members and duplicate exports.
