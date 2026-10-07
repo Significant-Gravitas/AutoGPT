@@ -69,7 +69,7 @@ export function VoiceTrace({ source, className, color }: Props) {
   return (
     <div
       className={cn(
-        "flex h-6 items-center justify-center gap-[4px] overflow-hidden",
+        "flex h-6 items-center justify-center gap-1 overflow-hidden",
         className,
       )}
       aria-hidden="true"
@@ -77,7 +77,7 @@ export function VoiceTrace({ source, className, color }: Props) {
       {columns.map(({ level, color: recorded }, index) => (
         <span
           key={index}
-          className={cn("w-[4px] shrink-0 rounded-full", recorded)}
+          className={cn("w-1 shrink-0 rounded-full", recorded)}
           style={{ height: `${Math.max(MIN_SCALE, level) * 100}%` }}
         />
       ))}

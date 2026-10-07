@@ -7,6 +7,7 @@ import {
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
   mcpAuthTokenHint,
@@ -408,9 +409,15 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </label>
-            <p id={manualTokenHintId} className="text-xs text-zinc-500">
+            <Text
+              variant="small"
+              as="p"
+              tone="muted"
+              unmask={false}
+              id={manualTokenHintId}
+            >
               {mcpAuthTokenHint(manualAuthScheme)}
-            </p>
+            </Text>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}

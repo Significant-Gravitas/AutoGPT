@@ -3,6 +3,7 @@
 import React from "react";
 import { ToolUIPart } from "ai";
 import { cn } from "@/lib/utils";
+import { Text } from "@/components/atoms/Text/Text";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -265,19 +266,25 @@ function getBashAccordionData(
       <div className="space-y-2">
         {command && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">command</p>
+            <Text variant="small-medium" as="p" className="mb-1 text-slate-500">
+              command
+            </Text>
             <ContentCodeBlock>{command}</ContentCodeBlock>
           </div>
         )}
         {stdout && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
+            <Text variant="small-medium" as="p" className="mb-1 text-slate-500">
+              stdout
+            </Text>
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
+            <Text variant="small-medium" as="p" className="mb-1 text-slate-500">
+              stderr
+            </Text>
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
         )}
@@ -342,7 +349,16 @@ function getWebAccordionData(
                     {truncate(href, 100)}
                   </div>
                 )}
-                {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
+                {snippet && (
+                  <Text
+                    variant="body"
+                    as="p"
+                    unmask={false}
+                    className="mt-0.5 text-slate-700"
+                  >
+                    {snippet}
+                  </Text>
+                )}
                 {pageAge && (
                   <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
                 )}
@@ -530,11 +546,19 @@ function getFileAccordionData(
         {oldString && newString != null ? (
           <>
             <div>
-              <p className="mb-1 text-xs font-medium text-red-400">removed</p>
+              <Text variant="small-medium" as="p" className="mb-1 text-red-400">
+                removed
+              </Text>
               <ContentCodeBlock>{oldString}</ContentCodeBlock>
             </div>
             <div>
-              <p className="mb-1 text-xs font-medium text-green-400">added</p>
+              <Text
+                variant="small-medium"
+                as="p"
+                className="mb-1 text-green-400"
+              >
+                added
+              </Text>
               <ContentCodeBlock>{newString}</ContentCodeBlock>
             </div>
           </>
