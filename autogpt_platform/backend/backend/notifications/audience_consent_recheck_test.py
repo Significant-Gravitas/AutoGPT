@@ -62,7 +62,7 @@ async def test_a_change_for_an_opted_out_account_is_dropped(
 
     audience_consent.is_marketing_opted_out.assert_awaited_once_with("user-1")
     handlers[action].assert_not_awaited()
-    assert mailerlite._pseudonym(EMAIL) in caplog.text
+    assert mailerlite.pseudonym(EMAIL) in caplog.text
     assert EMAIL not in caplog.text
 
 

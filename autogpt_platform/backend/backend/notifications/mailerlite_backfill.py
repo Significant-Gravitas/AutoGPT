@@ -33,8 +33,8 @@ from backend.notifications.mailerlite import (
     MailerLiteError,
     _client,
     _headers,
-    _pseudonym,
     _require_config,
+    pseudonym,
 )
 from backend.util.settings import Settings
 
@@ -295,7 +295,7 @@ def _refusal(email: str, answer: BatchAnswer) -> str:
     """A refused call, for the log: the pseudonym, the top-level domain and
     MailerLite's reason. Enough to spot a pattern without naming anyone."""
     return (
-        f"{_pseudonym(email)} at {_top_level_domain(email)} with {answer.code} "
+        f"{pseudonym(email)} at {_top_level_domain(email)} with {answer.code} "
         f"({_failure_reason(answer.body, email)})"
     )
 
@@ -326,7 +326,7 @@ def _failure_reason(body: Any, email: str) -> str:
             listed = problems if isinstance(problems, list) else [problems]
             parts.append(f"{field}: {'; '.join(str(p) for p in listed)}")
     reason = " | ".join(parts) or "no reason given"
-    return re.sub(re.escape(email.strip()), _pseudonym(email), reason, flags=re.I)
+    return re.sub(re.escape(email.strip()), pseudonym(email), reason, flags=re.I)
 
 
 async def _send_batch(requests: list[dict]) -> list[BatchAnswer]:

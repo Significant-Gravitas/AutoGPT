@@ -11,7 +11,7 @@ from backend.data.model import User
 from backend.data.notifications import AudienceAction
 from backend.data.user import BillingEmailRecipient
 from backend.notifications import consent
-from backend.notifications.mailerlite import _pseudonym
+from backend.notifications.mailerlite import pseudonym
 
 EMAIL = "sam@example.com"
 OPTED_OUT = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
@@ -69,7 +69,7 @@ def test_a_refused_change_is_logged_by_pseudonym_at_debug(caplog, action):
         assert not consent.audience_change_allowed(_user(OPTED_OUT), action)
     (record,) = caplog.records
     assert record.levelno == logging.DEBUG
-    assert _pseudonym(EMAIL) in record.getMessage()
+    assert pseudonym(EMAIL) in record.getMessage()
     assert action.value in record.getMessage()
     assert EMAIL not in caplog.text
 

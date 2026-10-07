@@ -12,7 +12,7 @@ from urllib.parse import quote_plus
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import BriefingFrequency, SubscriptionTier
-from prisma.errors import UniqueViolationError
+from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import AuthAccount, AuthUser
 from prisma.models import User as PrismaUser
 from prisma.types import (
@@ -905,6 +905,11 @@ async def record_signup_consent(
         return User.from_db(user)
     except NotFoundError:
         raise
+    except RecordNotFoundError as e:
+        # The account was deleted between the read and the write. Prisma's
+        # `update` returns None for that, but a write that requires the row
+        # can raise it instead; either way it is a 404, not a database error.
+        raise NotFoundError(f"User not found with ID: {user_id}") from e
     except Exception as e:
         raise DatabaseError(
             f"Failed to record signup consent for user {user_id}: {e}"

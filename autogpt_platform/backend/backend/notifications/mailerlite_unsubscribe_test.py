@@ -118,7 +118,7 @@ async def test_a_failed_write_raises_so_the_queue_retries():
         await mailerlite.unsubscribe(EMAIL)
 
     assert EMAIL not in str(raised.value)
-    assert mailerlite._pseudonym(EMAIL) in str(raised.value)
+    assert mailerlite.pseudonym(EMAIL) in str(raised.value)
 
 
 @pytest.mark.asyncio

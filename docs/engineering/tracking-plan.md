@@ -143,7 +143,7 @@ what replaced them.
 | `tour_scenario_started` | browser | live | `scenario` | A tour scenario starts playing. |
 | `tour_scenario_completed` | browser | live | `scenario` | A tour scenario reaches its end. |
 | `tour_cta_clicked` | browser | live | `label` (`free-trial`, `signup`, `pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one, `surface` (`tour`, `marketplace`) on sidebar-card clicks | A tour or logged-out marketplace call to action is clicked. |
-| `signup_marketing_opt_out` | browser | live | — | "opt out" is clicked in the legal line under the signup buttons (not "Undo"). No properties: there is no user yet, so it only gives the opt-out rate. The refusal itself is stored on the user (`marketingOptOutAt`) when the account is created. |
+| `marketing_opted_out` | browser | live | `surface` (`signup`) | Someone refuses marketing email in the app. `signup`: "opt out" is clicked in the legal line under the signup buttons (not "Undo"); nothing else is sent, since there is no user yet, so it only gives the opt-out rate. The refusal itself is stored on the user (`marketingOptOutAt`). |
 | `signup_completed` | backend | live | `signup_method` (the auth provider, e.g. `email`, `google`: from the user's first Better Auth account row, where `credential` is reported as `email`, else from a Supabase token's `app_metadata.provider`; omitted when neither has it) | The user row is created (`data/user.py`), whichever request creates it. |
 
 Sidebar CTA clicks retain the tour event names for compatibility. Filter
@@ -417,7 +417,7 @@ line:
   families, ...) come with the plan's phases, not with this list.
 - **Events the plan has no name for keep their own**, e.g.
   `integration_connected`, `schedule_created`, `hire_started`,
-  `billing_portal_opened`, `signup_marketing_opt_out`, `tour_*`,
+  `billing_portal_opened`, `marketing_opted_out`, `tour_*`,
   `tab_intro_*`, `voice_*` and `credential_*`. `briefing_opened` is the
   briefing shown on home, a different action from the plan's
   `briefing_opened_in_chat`.

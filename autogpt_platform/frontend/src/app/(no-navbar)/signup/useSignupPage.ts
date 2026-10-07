@@ -115,6 +115,9 @@ export function useSignupPage() {
   }
 
   async function handleSignup(data: z.output<typeof signupFormSchema>) {
+    // A refusal left from an abandoned Google attempt would otherwise be
+    // recorded by /auth/callback on a later Google sign-in.
+    setMarketingOptOutFlag(data.marketingOptOut);
     setIsLoading(true);
 
     if (data.email.includes("@agpt.co")) {

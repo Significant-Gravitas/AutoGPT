@@ -50,7 +50,7 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 
-def _pseudonym(email: str) -> str:
+def pseudonym(email: str) -> str:
     """A stable, non-reversible handle for logs.
 
     A subscriber's address is personal data; putting it in a log line or an
@@ -232,7 +232,7 @@ async def unsubscribe(email: str, fields: Fields | None = None) -> None:
     subscriber = await _find_subscriber(email)
     if subscriber is None or not subscriber.get("id"):
         logger.info(
-            f"No MailerLite subscriber for {_pseudonym(email)}; nothing to unsubscribe"
+            f"No MailerLite subscriber for {pseudonym(email)}; nothing to unsubscribe"
         )
         return
     if subscriber.get("status") in _NOT_MAILED_STATUSES:
@@ -245,10 +245,10 @@ async def unsubscribe(email: str, fields: Fields | None = None) -> None:
     # 404 means the subscriber was deleted since the lookup: nobody to mail.
     if response.status not in _OK_STATUSES and response.status != 404:
         raise MailerLiteError(
-            f"Unsubscribing MailerLite subscriber {_pseudonym(email)} failed with "
+            f"Unsubscribing MailerLite subscriber {pseudonym(email)} failed with "
             f"{response.status}"
         )
-    logger.info(f"Unsubscribed {_pseudonym(email)} in MailerLite")
+    logger.info(f"Unsubscribed {pseudonym(email)} in MailerLite")
 
 
 async def ensure_fields() -> list[SubscriberField]:
@@ -322,7 +322,7 @@ async def _remove_from_group(
     subscriber_id = await _find_subscriber_id(email)
     if subscriber_id is None:
         logger.info(
-            "No MailerLite subscriber for %s; nothing to remove", _pseudonym(email)
+            "No MailerLite subscriber for %s; nothing to remove", pseudonym(email)
         )
         return
 
@@ -333,10 +333,10 @@ async def _remove_from_group(
     # 404 means they are already out of the group, which is the desired state.
     if response.status not in _OK_STATUSES and response.status != 404:
         raise MailerLiteError(
-            f"Removing subscriber {_pseudonym(email)} from the {description} group "
+            f"Removing subscriber {pseudonym(email)} from the {description} group "
             f"failed with {response.status}"
         )
-    logger.info(f"Removed {_pseudonym(email)} from the MailerLite {description} group")
+    logger.info(f"Removed {pseudonym(email)} from the MailerLite {description} group")
 
 
 async def _add_to_group(
@@ -351,7 +351,7 @@ async def _add_to_group(
         await ensure_fields()
         body["fields"] = _payload(fields)
     await _upsert(email, body, f"{description} group")
-    logger.info("Added %s to the MailerLite %s group", _pseudonym(email), description)
+    logger.info("Added %s to the MailerLite %s group", pseudonym(email), description)
 
 
 async def _upsert(email: str, body: dict, description: str) -> None:
@@ -360,7 +360,7 @@ async def _upsert(email: str, body: dict, description: str) -> None:
     )
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"MailerLite {description} for subscriber {_pseudonym(email)} "
+            f"MailerLite {description} for subscriber {pseudonym(email)} "
             f"failed with {response.status}"
         )
 
@@ -381,7 +381,7 @@ async def _find_subscriber(email: str) -> dict | None:
         return None
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"Looking up MailerLite subscriber {_pseudonym(email)} failed with "
+            f"Looking up MailerLite subscriber {pseudonym(email)} failed with "
             f"{response.status}"
         )
     return (response.json() or {}).get("data") or {}

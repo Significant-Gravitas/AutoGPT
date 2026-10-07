@@ -10,6 +10,7 @@ import fastapi.testclient
 import httpx
 import pytest
 import pytest_mock
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.routing import APIRoute
 from prisma.actions import UserActions
 from prisma.models import User as PrismaUser
@@ -26,7 +27,7 @@ from backend.data.user import (
     record_marketing_opt_out_by_email,
     record_signup_consent,
 )
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .routes import router
 
@@ -200,6 +201,27 @@ def test_record_user_consent_route(
         "marketing_opt_out_at": "2026-10-02T12:01:00Z",
         "marketing_opt_out_source": "signup",
     }
+
+
+def test_record_user_consent_route_answers_404_for_a_deleted_account(
+    mocker: pytest_mock.MockFixture, mock_jwt_user
+) -> None:
+    """Through the real application, whose handlers turn NotFoundError into a
+    404 rather than a 500."""
+    mocker.patch(
+        "backend.api.features.user.routes.record_signup_consent",
+        new=AsyncMock(side_effect=NotFoundError("User not found with ID: x")),
+    )
+    real_app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    try:
+        response = fastapi.testclient.TestClient(real_app).post(
+            "/api/auth/user/consent",
+            json={"terms_version": "2026-10", "marketing_opt_out": True},
+        )
+    finally:
+        real_app.dependency_overrides.pop(get_jwt_payload, None)
+
+    assert response.status_code == 404
 
 
 @pytest.mark.parametrize("terms_version", sorted(RECOGNIZED_TERMS_VERSIONS))

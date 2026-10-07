@@ -36,7 +36,9 @@ vi.mock("../actions", () => ({
   signup: mockSignupAction,
 }));
 
-vi.mock("posthog-js", () => ({ default: { capture } }));
+vi.mock("posthog-js", () => ({
+  default: { __loaded: true, is_capturing: () => true, capture },
+}));
 
 vi.mock("@/services/analytics/marketing-opt-out-cookie", () => ({
   setMarketingOptOutFlag,
@@ -268,14 +270,16 @@ describe("SignupPage", () => {
     });
   });
 
-  test("captures the opt-out once with no properties and never on Undo", async () => {
+  test("captures the opt-out once with only its surface and never on Undo", async () => {
     const user = userEvent.setup();
     render(<SignupPage />);
 
     expect(capture).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "opt out" }));
-    expect(capture.mock.calls).toEqual([["signup_marketing_opt_out"]]);
+    expect(capture.mock.calls).toEqual([
+      ["marketing_opted_out", { surface: "signup" }],
+    ]);
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(capture).toHaveBeenCalledTimes(1);
@@ -327,6 +331,28 @@ describe("SignupPage", () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
+  test.each([
+    { optOut: true, label: "records a refusal" },
+    { optOut: false, label: "clears a stale refusal" },
+  ])(
+    "email signup $label in the opt-out cookie before creating the account",
+    async ({ optOut }) => {
+      const user = userEvent.setup();
+      render(<SignupPage />);
+
+      if (optOut)
+        await user.click(screen.getByRole("button", { name: "opt out" }));
+      fillValidForm();
+      fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+      await waitFor(() => expect(mockSignupAction).toHaveBeenCalled());
+      expect(setMarketingOptOutFlag.mock.calls).toEqual([[optOut]]);
+      expect(setMarketingOptOutFlag.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSignupAction.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
   test("locks the opt-out toggle while an email signup is pending and frees it on failure", async () => {
     let finishSignup: (result: unknown) => void = () => undefined;
     mockSignupAction.mockReturnValue(
@@ -368,7 +394,9 @@ describe("SignupPage", () => {
     expect(getLegalLine().textContent).toBe(
       "By continuing you agree to our Terms of Use and Privacy Policy. You won't get marketing emails. Undo.",
     );
-    expect(capture.mock.calls).toEqual([["signup_marketing_opt_out"]]);
+    expect(capture.mock.calls).toEqual([
+      ["marketing_opted_out", { surface: "signup" }],
+    ]);
   });
 
   test("locks the opt-out toggle while a Google signup is starting and frees it on failure", async () => {
@@ -413,7 +441,9 @@ describe("SignupPage", () => {
     expect(getLegalLine().textContent).toBe(
       "By continuing you agree to our Terms of Use and Privacy Policy. You won't get marketing emails. Undo.",
     );
-    expect(capture.mock.calls).toEqual([["signup_marketing_opt_out"]]);
+    expect(capture.mock.calls).toEqual([
+      ["marketing_opted_out", { surface: "signup" }],
+    ]);
   });
 
   test("does not link to the demo tour", () => {

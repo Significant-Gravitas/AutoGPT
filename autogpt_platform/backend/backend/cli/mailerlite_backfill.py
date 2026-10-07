@@ -297,11 +297,11 @@ def _customer(person: "Person") -> "Customer":
 def _report(changes: "list[PlannedChange]", unmatched: int) -> None:
     from collections import Counter
 
-    from backend.notifications.mailerlite import _pseudonym
+    from backend.notifications.mailerlite import pseudonym
 
     for change in changes:
         click.echo(
-            f"{_pseudonym(change.customer.email)}  {change.standing.value:<16}  "
+            f"{pseudonym(change.customer.email)}  {change.standing.value:<16}  "
             + ", ".join(d.value for d in change.decisions)
         )
     counts = Counter(d.value for c in changes for d in c.decisions)

@@ -1,11 +1,10 @@
-import { SignupEvent } from "@/services/analytics/posthog-events";
-import posthog from "posthog-js";
+import { MarketingConsentEvent } from "@/services/analytics/posthog-events";
+import { capturePostHogEvent } from "./posthog-capture";
 
-// Sent without properties: there is no user yet, and no email may ride along.
+// Only the surface: there is no user yet, and no email may ride along. Held
+// until the cookie banner is answered, like every other browser event.
 export function trackSignupMarketingOptOut() {
-  try {
-    posthog.capture(SignupEvent.SIGNUP_MARKETING_OPT_OUT);
-  } catch {
-    // A blocked analytics host must never break signup.
-  }
+  capturePostHogEvent(MarketingConsentEvent.MARKETING_OPTED_OUT, {
+    surface: "signup",
+  });
 }

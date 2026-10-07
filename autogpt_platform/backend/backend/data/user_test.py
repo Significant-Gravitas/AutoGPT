@@ -527,9 +527,27 @@ class TestRecordSignupConsent:
     async def test_user_deleted_before_the_write_raises_not_found(
         self, db: MagicMock, caches: MagicMock
     ):
+        """prisma-client-py's `update` catches Prisma's P2025 and returns None
+        (prisma/actions.py), so this is what a deleted row looks like."""
         db.find_unique.side_effect = [_consent_row(), None]
         db.update.return_value = None
         db.update_many.return_value = 0
+
+        with pytest.raises(NotFoundError, match="user-1"):
+            await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        assert caches.mock_calls == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failing_call", ["update", "update_many"])
+    async def test_a_record_not_found_error_is_a_not_found(
+        self, db: MagicMock, caches: MagicMock, failing_call: str
+    ):
+        """Prisma's own error for a row that vanished mid-write maps to the
+        404, not to a database failure."""
+        getattr(db, failing_call).side_effect = prisma.errors.RecordNotFoundError(
+            {"user_facing_error": {"message": "Record to update not found."}}
+        )
 
         with pytest.raises(NotFoundError, match="user-1"):
             await record_signup_consent("user-1", TERMS_VERSION, True)

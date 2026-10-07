@@ -23,13 +23,13 @@ export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
-// Signup page interactions. The account itself is the backend's
-// `signup_completed`.
-export const SignupEvent = {
-  // "opt out" in the legal line under the signup buttons was clicked (not
-  // Undo). No properties: there is no user yet, and it only measures the
-  // opt-out rate. The refusal itself is stored on the user at signup.
-  SIGNUP_MARKETING_OPT_OUT: "signup_marketing_opt_out",
+// Marketing email refusals made in the app. `surface` says where; the
+// refusal itself is stored on the user (`marketingOptOutAt`).
+export const MarketingConsentEvent = {
+  // `surface: "signup"`: "opt out" in the legal line under the signup buttons
+  // was clicked (not Undo). Nothing else rides along: there is no user yet,
+  // so it only measures the opt-out rate.
+  MARKETING_OPTED_OUT: "marketing_opted_out",
 } as const;
 
 export const ExpertsFunnelEvent = {
@@ -172,7 +172,7 @@ export const MonetizationEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
-  ...SignupEvent,
+  ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,

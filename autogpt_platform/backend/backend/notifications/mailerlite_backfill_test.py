@@ -284,7 +284,7 @@ async def test_apply_counts_failures_and_treats_gone_as_removed(
     assert result.failed[Decision.ADD_CHANGELOG] == 1
     assert result.succeeded[Decision.REMOVE_CHANGELOG] == 1
     assert "bad@x.io" not in caplog.text.lower()
-    assert f"{mailerlite._pseudonym('bad@x.io')} at .io with 422" in caplog.text
+    assert f"{mailerlite.pseudonym('bad@x.io')} at .io with 422" in caplog.text
     assert "The given data was invalid." in caplog.text
     assert "is not a deliverable address" in caplog.text
 

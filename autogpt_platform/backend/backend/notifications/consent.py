@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Protocol
 
 from backend.data.notifications import AudienceAction
-from backend.notifications.mailerlite import _pseudonym
+from backend.notifications.mailerlite import pseudonym
 
 logger = logging.getLogger(__name__)
 
@@ -57,5 +57,5 @@ def audience_change_allowed(user: MarketingContact, action: AudienceAction) -> b
 def log_opted_out_skip(email: str, what: str) -> None:
     """At debug level and by pseudonym, so the address never reaches a log."""
     logger.debug(
-        "Skipping MailerLite %s for %s: opted out of marketing", what, _pseudonym(email)
+        "Skipping MailerLite %s for %s: opted out of marketing", what, pseudonym(email)
     )

@@ -25,7 +25,7 @@ from backend.data.notifications import (
 from backend.data.subscription_trial_checkout import TrialUnavailable
 from backend.notifications import consent, subscriber_fields
 from backend.notifications.consent_test import _cached_before_consent
-from backend.notifications.mailerlite import _pseudonym
+from backend.notifications.mailerlite import pseudonym
 
 EMAIL = "sam@example.com"
 CREATED = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
@@ -115,7 +115,7 @@ async def test_an_opted_out_opener_is_never_queued(queued, monkeypatch, caplog):
         await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
     queued.assert_not_awaited()
     providers.assert_not_awaited()
-    assert _pseudonym(EMAIL) in caplog.text
+    assert pseudonym(EMAIL) in caplog.text
     assert EMAIL not in caplog.text
 
 
