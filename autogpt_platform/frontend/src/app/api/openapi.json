@@ -27312,6 +27312,12 @@
               { "type": "null" }
             ]
           },
+          "learning": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SkillLearningResult" },
+              { "type": "null" }
+            ]
+          },
           "dream_in_flight": {
             "type": "boolean",
             "title": "Dream In Flight",

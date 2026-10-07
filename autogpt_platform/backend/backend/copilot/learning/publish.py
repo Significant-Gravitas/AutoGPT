@@ -156,6 +156,15 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         request.user_id, request.skill_name, expert_id=request.expert_id
     )
     current = parse_skill_markdown(current_text) if current_text else None
+    if current_text:
+        failure = check_skill_bundle({"SKILL.md": current_text})
+        if failure is not None:
+            return PublishOutcome(
+                status="blocked_content",
+                reason=failure.describe(),
+                pattern_class=failure.pattern_class,
+                blocked_step=failure.step,
+            )
     parsed = canonicalize_skill(
         ParsedSkill(
             name=request.skill_name,
@@ -358,19 +367,27 @@ async def _record_untracked_edit(
     current = parse_skill_markdown(raw, fallback_name=request.skill_name)
     if current is None:
         return None
-    await store_user_skill(
-        request.user_id,
-        name=current.name,
-        description=current.description,
-        body=current.body,
-        triggers=list(current.triggers),
-        version=current.version,
-        extra=current.extra,
-        expert_id=request.expert_id,
-        version_origin="edited",
-        actor_user_id=request.user_id,
-        summary="Edited outside version tracking",
-    )
+    try:
+        await store_user_skill(
+            request.user_id,
+            name=current.name,
+            description=current.description,
+            body=current.body,
+            triggers=list(current.triggers),
+            version=current.version,
+            extra=current.extra,
+            expert_id=request.expert_id,
+            version_origin="edited",
+            actor_user_id=request.user_id,
+            summary="Edited outside version tracking",
+        )
+    except SkillContentBlockedError as exc:
+        return PublishOutcome(
+            status="blocked_content",
+            reason=str(exc),
+            pattern_class=exc.failure.pattern_class,
+            blocked_step=exc.failure.step,
+        )
     return PublishOutcome(
         status="conflict",
         reason="the skill was edited concurrently; the edit was kept",

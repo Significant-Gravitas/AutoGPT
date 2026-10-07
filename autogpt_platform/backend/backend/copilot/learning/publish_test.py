@@ -6,11 +6,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot.tools.skills import ParsedSkill, render_skill_markdown
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    SkillContentBlockedError,
+    render_skill_markdown,
+)
 from backend.data.skill_publication import VersionDraft
 
 from . import owner_actions, publish, revocation
 from ._fake_store import FakeLearningStore
+from .content_checks import ContentCheckFailure
 from .contract import (
     Eligibility,
     EligibilityState,
@@ -123,6 +128,70 @@ async def test_existing_untracked_skill_becomes_a_decision(
     assert head is not None and not head.auto_improve
     current = await fake_store.get_version(USER, head.current_version_id)
     assert current.content == existing
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tracked", [False, True])
+async def test_existing_unsafe_content_is_never_copied_into_version_history(
+    fake_store, workspace, monkeypatch, tracked
+):
+    if tracked:
+        await _seed(fake_store)
+    rejected_value = "sk-" + "x" * 30
+    monkeypatch.setattr(
+        publish,
+        "read_user_skill_markdown",
+        AsyncMock(return_value=_content(BODY_V1 + rejected_value)),
+    )
+    outcome = await publish.publish_learned_version(
+        publish.PublishRequest(
+            user_id=USER,
+            expert_id=EXPERT,
+            skill_name=NAME,
+            description="Import a CSV",
+            body=BODY_V2,
+            summary="Validate row counts",
+            origin="saved_overnight",
+        )
+    )
+    assert outcome.status == "blocked_content"
+    assert outcome.pattern_class == "openai_style_key"
+    assert rejected_value not in outcome.model_dump_json()
+    workspace.assert_not_awaited()
+    versions = await fake_store.list_versions(USER, EXPERT, NAME)
+    assert len(versions) == (2 if tracked else 0)
+    assert all(rejected_value not in version.content for version in versions)
+
+
+@pytest.mark.asyncio
+async def test_untracked_edit_block_is_reported_without_persisting_content(
+    fake_store, workspace, monkeypatch
+):
+    await _seed(fake_store)
+    head = await fake_store.get_head(USER, EXPERT, NAME)
+    monkeypatch.setattr(
+        publish, "read_user_skill_markdown", AsyncMock(return_value=_content(BODY_V1))
+    )
+    workspace.side_effect = SkillContentBlockedError(
+        ContentCheckFailure(pattern_class="credential", step="step 1")
+    )
+    outcome = await publish.publish_learned_version(
+        publish.PublishRequest(
+            user_id=USER,
+            expert_id=EXPERT,
+            skill_name=NAME,
+            description="Import a CSV",
+            body=BODY_V2,
+            summary="Validate row counts",
+            origin="saved_overnight",
+        )
+    )
+    assert outcome.status == "blocked_content"
+    assert outcome.pattern_class == "credential"
+    assert (
+        await fake_store.get_head(USER, EXPERT, NAME)
+    ).current_version_id == head.current_version_id
+    assert len(await fake_store.list_versions(USER, EXPERT, NAME)) == 2
 
 
 @pytest.mark.asyncio

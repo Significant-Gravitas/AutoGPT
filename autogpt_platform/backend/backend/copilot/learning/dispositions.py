@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import skill_learning_db, skill_reviews_db
-from backend.data.skill_publication import ReviewStamp
+from backend.data.skill_publication import APPLIED_PENDING_DISPOSITION, ReviewStamp
 
 from .content_checks import safe_diagnostic
 from .contract import EligibilityState, SourceRevision
@@ -75,7 +75,12 @@ async def already_settled(
     review = await skill_reviews_db().get_review_for_revision(
         user_id, source.source_id, source.revision, POLICY_VERSION
     )
-    if review is None or review.disposition not in _TERMINAL_DISPOSITIONS:
+    if review is None:
+        return None
+    if review.disposition == APPLIED_PENDING_DISPOSITION:
+        result.reviewed += 1
+        return APPLIED_PENDING_DISPOSITION
+    if review.disposition not in _TERMINAL_DISPOSITIONS:
         return None
     await skill_learning_db().advance_source_cursor(
         user_id, source.source_id, source.revision
@@ -127,6 +132,9 @@ async def settle_outcome(
     if outcome.status == "needs_decision":
         result.proposed += 1
     if outcome.status in ("conflict", "write_failed", "paused"):
+        settled = await already_settled(user_id, source, result)
+        if settled is not None:
+            return outcome.status if settled == APPLIED_PENDING_DISPOSITION else settled
         return await record(
             user_id,
             source,

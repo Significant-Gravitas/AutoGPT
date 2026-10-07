@@ -572,6 +572,31 @@ async def test_unsupported_or_questionable_proposals_are_rejected_deterministica
 
 
 @pytest.mark.asyncio
+async def test_failed_publication_retries_only_the_write_until_storage_recovers(
+    fake_store, adapter, boundaries
+):
+    source = await _source(fake_store)
+    boundaries["write"].side_effect = OSError("storage unavailable")
+    first = await _run()
+    assert first.dispositions == {"write_failed": 1}
+    ledger = await fake_store.get_review_for_revision(USER, source.id, "4", 1)
+    assert ledger.disposition == "applied_pending"
+    assert ledger.applied_version_id is not None
+    for _ in range(2):
+        retried = await _run()
+        assert retried.model_calls == 0
+        assert (await fake_store.get_source(USER, source.id)).has_unprocessed_revision
+    assert boundaries["review"].await_count == 1
+    versions = await fake_store.list_versions(USER, EXPERT, "csv-import-checks")
+    assert len(versions) == 1 and versions[0].state == "pending_write"
+    boundaries["write"].side_effect = None
+    recovered = await _run()
+    assert recovered.reconciled_writes == 1 and recovered.model_calls == 0
+    assert not (await fake_store.get_source(USER, source.id)).has_unprocessed_revision
+    assert (await fake_store.get_version(USER, versions[0].id)).state == "ready"
+
+
+@pytest.mark.asyncio
 async def test_reconcile_finishes_an_interrupted_publication(
     fake_store, adapter, boundaries
 ):
