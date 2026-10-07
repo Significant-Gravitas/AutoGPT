@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import _isEmpty from "lodash/isEmpty";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
 
 import {
   BlockIOObjectSubSchema,
@@ -10,6 +10,20 @@ import {
   GraphInputSubSchema,
   GraphOutputSubSchema,
 } from "@/lib/autogpt-server-api/types";
+
+// Teach tailwind-merge the custom theme keys in tailwind.config.ts, so a
+// later `rounded-md` replaces `rounded-large` instead of both being kept and
+// stylesheet order deciding which one wins.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      borderRadius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
+    },
+    classGroups: {
+      shadow: [{ shadow: ["subtle"] }],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
