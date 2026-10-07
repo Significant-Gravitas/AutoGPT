@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import SignupPage from "../page";
 
 const mockSignupAction = vi.hoisted(() => vi.fn());
@@ -140,6 +141,45 @@ describe("SignupPage with email verification required", () => {
         screen.getByRole("button", { name: "Resend email" }),
       ).toHaveProperty("disabled", false);
     });
+  });
+
+  test("shows an error and frees the button when the resend can't reach the server", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let networkUp = false;
+    server.use(
+      http.post("*/api/auth/send-verification-email", () =>
+        networkUp ? HttpResponse.json({ status: true }) : HttpResponse.error(),
+      ),
+    );
+    verificationRequired();
+    render(
+      <>
+        <SignupPage />
+        <Toaster />
+      </>,
+    );
+
+    submitSignupForm();
+    await screen.findByRole("heading", { name: "Check your inbox" });
+    await waitOutCooldown();
+    fireEvent.click(screen.getByRole("button", { name: "Resend email" }));
+
+    expect(await screen.findByText("We couldn't send the email")).toBeDefined();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Resend email" }),
+      ).toHaveProperty("disabled", false);
+    });
+
+    networkUp = true;
+    fireEvent.click(screen.getByRole("button", { name: "Resend email" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Resend email in 60s" }),
+    ).toHaveProperty("disabled", true);
+    expect(
+      await screen.findByText(`Verification email sent to ${email}`),
+    ).toBeDefined();
   });
 
   test("start again returns to the form with the address cleared", async () => {
