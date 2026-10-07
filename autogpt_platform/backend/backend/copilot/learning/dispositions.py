@@ -2,8 +2,8 @@
 
 Every source revision the pass touches ends in exactly one disposition
 row; only durable dispositions advance the source cursor, so a provider
-error, a paused Expert, or a clipped evidence bundle is retried on a later
-night instead of being forgotten.
+error or a paused Expert is retried on a later night instead of being
+forgotten. Incomplete verification settles only that source revision.
 """
 
 from __future__ import annotations

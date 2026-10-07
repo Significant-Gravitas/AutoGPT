@@ -473,6 +473,20 @@ def test_detail_includes_requested_version_outside_recent_history(store, test_us
 
 
 @pytest.mark.parametrize("scope", [None, "other-expert"])
+def test_outcome_rejects_version_from_another_owned_scope(store, test_user_id, scope):
+    _, version = run(_publish(store, test_user_id))
+    run(store.ensure_head(test_user_id, scope, "csv-import-checks"))
+    events_before = list(store.use_events)
+    resp = client.post(
+        "/skill-learning/skills/csv-import-checks/outcome",
+        params={"expert_id": scope} if scope else {},
+        json={"version_id": version.id, "outcome": "succeeded"},
+    )
+    assert resp.status_code == 404
+    assert store.use_events == events_before
+
+
+@pytest.mark.parametrize("scope", [None, "other-expert"])
 def test_detail_rejects_version_from_another_owned_scope(store, test_user_id, scope):
     _, version = run(_publish(store, test_user_id))
     run(store.ensure_head(test_user_id, scope, "csv-import-checks"))

@@ -34,6 +34,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
     get_service_client,
+    resolve_type_hints,
 )
 
 TEST_SERVICE_PORT = 8765
@@ -1121,6 +1122,10 @@ class TestForwardRefReturnAnnotation:
         assert adapter.validate_python([{"id": "0"}]) == [ReviewLike(id="0")]
         with pytest.raises(ValidationError):
             adapter.validate_python([{"id": "0"}, {"id": "1"}])
+
+        resolved = resolve_type_hints(_returns_at_most_one_review)["return"]
+        with pytest.raises(ValidationError):
+            TypeAdapter(resolved).validate_python([{"id": "0"}, {"id": "1"}])
 
     def test_annotation_without_a_schema_yields_no_adapter(self, caplog):
         """Resolvable, but pydantic cannot build a schema: warn once, skip validation."""

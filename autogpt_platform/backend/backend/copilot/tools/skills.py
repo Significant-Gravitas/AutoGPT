@@ -43,8 +43,6 @@ from backend.copilot.learning.content_checks import (
 )
 from backend.copilot.learning.history import record_registry_write
 from backend.copilot.learning.retrieval import (
-    IndexEntry,
-    index_revision,
     mark_index_revision_seen,
     origin_label,
     paused_skill_names,
@@ -2306,10 +2304,8 @@ async def read_skill_bundle_files(
         return {}
     try:
         manager = manager or await _get_user_skill_manager(user_id, scope)
-        files = await manager.list_files(
-            path=f"{skill_folder(expert_id)}/{slug}/",
-            limit=50,
-            include_all_sessions=True,
+        files = await _list_package_files(
+            manager, skill_folder(expert_id), slug, cap=None
         )
     except Exception:
         logger.warning("[skills] failed to list bundle for %s", slug, exc_info=True)
@@ -2696,24 +2692,28 @@ async def build_skills_update_notice(
             heads = await skill_versions_db().list_heads(
                 user_id, owner_key_for(expert_id)
             )
-            revision = index_revision(
-                [
-                    IndexEntry(name=h.skill_name, version=h.current_version_id)
-                    for h in heads
-                    if h.skill_name in current_slugs
-                ]
-            )
+            current_versions = {
+                h.skill_name: h.current_version_id
+                for h in heads
+                if h.skill_name in current_slugs
+            }
             previous = await read_seen_index_revision(session_id)
-            if previous is not None and previous != revision:
+            try:
+                previous_versions = json.loads(previous) if previous else {}
+            except ValueError:
+                previous_versions = {}
+            if isinstance(previous_versions, dict):
                 updated = sorted(
                     set(updated)
                     | {
-                        h.skill_name
-                        for h in heads
-                        if h.skill_name in seen & current_slugs
+                        name
+                        for name, version in current_versions.items()
+                        if name in seen
+                        and name in previous_versions
+                        and previous_versions[name] != version
                     }
                 )
-            await mark_index_revision_seen(session_id, revision)
+            await mark_index_revision_seen(session_id, json.dumps(current_versions))
         except Exception:
             logger.warning(
                 "[skills] could not check session skill versions", exc_info=True

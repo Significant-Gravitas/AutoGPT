@@ -8,11 +8,11 @@ overnight change into a lost update.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Literal
 
 from backend.copilot.tools.skills import (
     ExpectedHead,
-    ParsedSkill,
     SkillContentBlockedError,
     SkillVersionConflictError,
     SkillWriteLockError,
@@ -27,6 +27,7 @@ from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import VersionDraft
 from backend.data.skill_versions import SkillVersionRecord
 
+from .content_checks import safe_diagnostic
 from .contract import LearningScope, get_source_adapter
 from .fingerprint import behavior_fingerprint, behavior_tokens, evidence_fingerprint
 from .publish import (
@@ -97,6 +98,8 @@ async def apply_owner_edit(
         )
     except SkillWriteLockError as exc:
         return PublishOutcome(status="write_failed", reason=str(exc))
+    except ValueError as exc:
+        return PublishOutcome(status="write_failed", reason=safe_diagnostic(str(exc)))
     if previous is not None and previous.current_version_id:
         replaced = await skill_versions_db().get_version(
             user_id, previous.current_version_id
@@ -244,17 +247,16 @@ async def decide_proposal(
     body = (
         edited_body if action == "apply_edited" and edited_body else _body_of(proposal)
     )
-    draft = VersionDraft(
-        content=render_skill_markdown(
-            canonicalize_skill(
-                ParsedSkill(
-                    name=skill_name,
-                    description=proposal.description,
-                    body=body,
-                    triggers=tuple(proposal.triggers),
-                )
+    content = proposal.content
+    if action == "apply_edited":
+        parsed = parse_skill_markdown(content, fallback_name=skill_name)
+        if parsed is None:
+            return PublishOutcome(
+                status="conflict", reason="proposal content is invalid"
             )
-        ),
+        content = render_skill_markdown(canonicalize_skill(replace(parsed, body=body)))
+    draft = VersionDraft(
+        content=content,
         description=proposal.description,
         triggers=proposal.triggers,
         origin="edited" if action == "apply_edited" else proposal.origin,
@@ -331,18 +333,26 @@ async def _suppress_replaced_behavior(
         replaced.skill_name, replaced_body
     ) == behavior_fingerprint(replaced.skill_name, _body_of_text(new_body)):
         return
-    await skill_use_db().add_suppression(
-        user_id,
-        expert_id=expert_id,
-        skill_name=replaced.skill_name,
-        behavior_fingerprint=behavior_fingerprint(replaced.skill_name, replaced_body),
-        behavior_tokens=behavior_tokens(replaced_body),
-        evidence_fingerprints=[
-            evidence_fingerprint([str(e.get("ref", "")) for e in replaced.evidence])
-        ],
-        actor_user_id=user_id,
-        reason=reason,
-    )
+    try:
+        await skill_use_db().add_suppression(
+            user_id,
+            expert_id=expert_id,
+            skill_name=replaced.skill_name,
+            behavior_fingerprint=behavior_fingerprint(
+                replaced.skill_name, replaced_body
+            ),
+            behavior_tokens=behavior_tokens(replaced_body),
+            evidence_fingerprints=[
+                evidence_fingerprint([str(e.get("ref", "")) for e in replaced.evidence])
+            ],
+            actor_user_id=user_id,
+            reason=reason,
+        )
+    except Exception:
+        logger.warning(
+            "Skill suppression was not recorded after the owner's completed change",
+            exc_info=True,
+        )
 
 
 def _body_of_text(text: str) -> str:

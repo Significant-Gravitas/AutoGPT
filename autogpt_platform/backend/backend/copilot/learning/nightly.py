@@ -231,13 +231,12 @@ async def _process_source(
             user_id, source, result, "inaccessible_evidence", "no readable evidence"
         )
     if not bundle.verification_complete:
-        return await record(
+        return await settle(
             user_id,
             source,
             result,
-            "deferred",
+            "inaccessible_evidence",
             "verification evidence is clipped or missing; not reviewed",
-            advance=False,
         )
 
     budget_ok, budget_skip = await check_dream_budget(user_id, config=config)

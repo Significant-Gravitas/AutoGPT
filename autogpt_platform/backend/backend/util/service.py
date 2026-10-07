@@ -110,10 +110,10 @@ def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
     target = inspect.unwrap(func)
     target = getattr(target, "__func__", target)
     try:
-        return typing.get_type_hints(target)
+        return typing.get_type_hints(target, include_extras=True)
     except Exception:
         try:
-            return typing.get_type_hints(func)
+            return typing.get_type_hints(func, include_extras=True)
         except Exception:
             return {}
 

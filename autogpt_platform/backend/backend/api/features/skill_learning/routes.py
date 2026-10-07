@@ -392,7 +392,11 @@ async def report_outcome(
     scope = await _require_scope(user_id, expert_id)
     slug = name.strip().lower()
     version = await versions_data.get_version(user_id, body.version_id)
-    if version is None or version.skill_name != slug:
+    if (
+        version is None
+        or version.skill_name != slug
+        or version.owner_key != owner_key_for(scope)
+    ):
         raise HTTPException(status_code=404, detail="Version not found")
     kind = "outcome_unknown" if body.outcome == "unknown" else body.outcome
     await use_data.record_use_event(

@@ -364,15 +364,25 @@ async def test_selection_is_fair_across_owners(fake_store, adapter, boundaries):
 
 
 @pytest.mark.asyncio
-async def test_clipped_verification_span_defers_the_review(
+async def test_clipped_verification_settles_the_revision_without_starving_new_work(
     fake_store, adapter, boundaries
 ):
-    source = await _source(fake_store)
+    sources = [
+        await _source(fake_store, ref=f"clipped-{i}")
+        for i in range(nightly.MAX_REVIEWS_PER_OWNER)
+    ]
+    fresh = await _source(fake_store, ref="fresh")
     adapter.clipped = ["msg:3"]
     result = await _run()
-    assert result.dispositions == {"deferred": 1}
+    assert result.dispositions == {"inaccessible_evidence": len(sources)}
     boundaries["review"].assert_not_called()
-    assert (await fake_store.get_source(USER, source.id)).processed_revision is None
+    for source in sources:
+        assert not (
+            await fake_store.get_source(USER, source.id)
+        ).has_unprocessed_revision
+    adapter.clipped = []
+    assert (await _run()).applied == 1
+    assert not (await fake_store.get_source(USER, fresh.id)).has_unprocessed_revision
 
 
 @pytest.mark.asyncio

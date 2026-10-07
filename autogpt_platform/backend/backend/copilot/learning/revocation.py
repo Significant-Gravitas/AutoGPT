@@ -39,7 +39,7 @@ async def invalidate_versions_for_source(
             )
             await invalidate_skills_index_cache(user_id, expert_id)
             continue
-        await restore_version(
+        outcome = await restore_version(
             user_id=user_id,
             expert_id=expert_id,
             skill_name=skill_name,
@@ -47,6 +47,11 @@ async def invalidate_versions_for_source(
             actor_user_id=user_id,
             reason="Restored after a source became unavailable",
         )
+        if outcome.status != "applied":
+            await versions.update_head_policy(
+                user_id, owner_key, skill_name, use_paused=True
+            )
+            await invalidate_skills_index_cache(user_id, expert_id)
     return [v.id for v in affected]
 
 

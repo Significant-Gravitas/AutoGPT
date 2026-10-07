@@ -267,6 +267,9 @@ async def test_each_conversation_sees_body_updates_even_with_the_same_authored_v
     await store_user_skill(
         USER, name="csv-import", description="Import CSV", body="## Steps\n1. go\n"
     )
+    await store_user_skill(
+        USER, name="unchanged", description="Another skill", body="## Steps\n1. go\n"
+    )
     context = await build_skills_context(USER)
     history = [f"<available_skills>{context}</available_skills>"]
     for session in ["first-chat", "second-chat"]:
@@ -282,10 +285,27 @@ async def test_each_conversation_sees_body_updates_even_with_the_same_authored_v
             USER, None, history, session_id=session
         )
         assert "Updated skills: csv-import" in notice
+        assert "unchanged" not in notice
         assert (
             await build_skills_update_notice(USER, None, history, session_id=session)
             == ""
         )
+
+
+@pytest.mark.asyncio
+async def test_single_file_update_checks_siblings_after_the_first_page(workspace):
+    await store_user_skill(
+        USER, name="package", description="d", body="## Steps\n1. go\n"
+    )
+    workspace.files["/skills/package/older-secret.txt"] = ("sk-" + "x" * 30).encode()
+    for i in range(60):
+        workspace.files[f"/skills/package/references/{i}.md"] = b"Safe reference"
+    before = dict(workspace.files)
+    with pytest.raises(SkillContentBlockedError):
+        await store_user_skill(
+            USER, name="package", description="changed", body="## Steps\n1. go\n"
+        )
+    assert workspace.files == before
 
 
 @pytest.mark.asyncio

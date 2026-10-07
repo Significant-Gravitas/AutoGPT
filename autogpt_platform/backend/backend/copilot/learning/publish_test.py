@@ -195,6 +195,117 @@ async def test_untracked_edit_block_is_reported_without_persisting_content(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["apply", "apply_edited"])
+async def test_applying_proposals_preserves_authored_frontmatter(
+    fake_store, workspace, action
+):
+    await _seed(fake_store)
+    head = await fake_store.get_head(USER, EXPERT, NAME)
+    content = render_skill_markdown(
+        ParsedSkill(
+            name=NAME,
+            description="Import a CSV",
+            body=BODY_V2,
+            version="1.2.3",
+            extra={"license": "MIT"},
+        )
+    )
+    proposal = await fake_store.create_version(
+        USER,
+        head=head,
+        content=content,
+        description="Import a CSV",
+        triggers=[],
+        origin="saved_overnight",
+        state="needs_decision",
+        base_version_id=head.current_version_id,
+    )
+    outcome = await owner_actions.decide_proposal(
+        user_id=USER,
+        expert_id=EXPERT,
+        skill_name=NAME,
+        version_id=proposal.id,
+        action=action,
+        edited_body=BODY_V1,
+        actor_user_id=USER,
+    )
+    assert outcome.status == "applied"
+    parsed = publish.parse_skill_markdown(outcome.version.content)
+    assert parsed.version == "1.2.3" and parsed.extra == {"license": "MIT"}
+    assert parsed.body == (BODY_V1 if action == "apply_edited" else BODY_V2)
+
+
+@pytest.mark.asyncio
+async def test_owner_validation_failure_returns_a_recoverable_outcome(
+    fake_store, workspace
+):
+    workspace.side_effect = ValueError("Trigger exceeds the supported length")
+    outcome = await owner_actions.apply_owner_edit(
+        user_id=USER,
+        expert_id=EXPERT,
+        skill_name=NAME,
+        description="Import CSV",
+        body=BODY_V1,
+        triggers=["x" * 65],
+        keep_auto_improve=False,
+        allowed_pattern_classes=[],
+        expected_version_id=None,
+    )
+    assert outcome.status == "write_failed"
+    assert outcome.reason == "Trigger exceeds the supported length"
+    assert await fake_store.list_versions(USER, EXPERT, NAME) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["conflict", "stale_eligibility", "write_failed"])
+async def test_revocation_pauses_use_if_an_independent_restore_fails(
+    fake_store, workspace, monkeypatch, status
+):
+    source = await fake_store.upsert_source_revision(
+        USER,
+        expert_id=EXPERT,
+        source_kind=KIND,
+        source_id="withdrawn",
+        revision="1",
+        evidence_refs=[],
+        outcome_signals=[],
+    )
+    versions = await _seed(fake_store)
+    current = versions[0]
+    fake_store.versions[current.id] = current.model_copy(
+        update={"sources": [{"source_id": source.id}]}
+    )
+    restore = AsyncMock(return_value=publish.PublishOutcome(status=status))
+    monkeypatch.setattr(revocation, "restore_version", restore)
+    await revocation.invalidate_versions_for_source(USER, source, "excluded")
+    restore.assert_awaited_once()
+    assert (await fake_store.get_head(USER, EXPERT, NAME)).use_paused_at is not None
+
+
+@pytest.mark.asyncio
+async def test_completed_restore_is_acknowledged_if_suppression_recording_fails(
+    fake_store, workspace, monkeypatch, caplog
+):
+    versions = await _seed(fake_store)
+    monkeypatch.setattr(
+        fake_store,
+        "add_suppression",
+        AsyncMock(side_effect=RuntimeError("temporary failure")),
+    )
+    outcome = await owner_actions.restore_version(
+        user_id=USER,
+        expert_id=EXPERT,
+        skill_name=NAME,
+        version_id=versions[1].id,
+        actor_user_id=USER,
+    )
+    assert outcome.status == "applied" and outcome.version.version == 3
+    head = await fake_store.get_head(USER, EXPERT, NAME)
+    assert head.current_version_id == outcome.version.id and not head.auto_improve
+    assert "suppression was not recorded" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_restore_creates_a_new_version_and_blocks_reappearance(
     fake_store, workspace
 ):

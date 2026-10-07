@@ -2950,7 +2950,7 @@ async def stream_chat_completion_baseline(
                 capture_chat_turn(
                     user_id,
                     session,
-                    list(state.session_messages) if state else [],
+                    list(session.messages[turn_start:]),
                     message,
                 )
             )

@@ -3143,6 +3143,20 @@ class Scheduler(AppService):
             user_timezone = "UTC"
 
         job_id = f"skill_learning_nightly_{user_id}"
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if existing is not None and _job_timezone_name(existing) == user_timezone:
+            return {
+                "id": existing.id,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": (
+                    existing.next_run_time.isoformat()
+                    if existing.next_run_time
+                    else None
+                ),
+                "skipped": True,
+                "reason": "already_registered",
+            }
         job = self.scheduler.add_job(
             execute_skill_learning_sync,
             kwargs={"user_id": user_id},
