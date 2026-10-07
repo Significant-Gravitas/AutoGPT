@@ -71,13 +71,29 @@ describe("Text tone and eyebrow", () => {
       </Text>,
     );
     const el = screen.getByText("Meta");
-    expect(el.className).toContain("text-zinc-500");
-    expect(el.className).not.toContain("text-black");
+    expect(el.className).toContain("text-muted-foreground");
+    expect(el.className).not.toContain("text-foreground ");
   });
 
-  it("keeps black when no tone is given", () => {
+  it("uses the foreground colour when no tone is given", () => {
     render(<Text variant="body">Plain</Text>);
-    expect(screen.getByText("Plain").className).toContain("text-black");
+    expect(screen.getByText("Plain").className).toContain("text-foreground");
+  });
+
+  it.each([
+    ["primary", "text-foreground"],
+    ["secondary", "text-zinc-700"],
+    ["danger", "text-destructive"],
+    ["success", "text-success"],
+    ["warning", "text-warning"],
+    ["inherit", "text-inherit"],
+  ] as const)("maps tone %s to %s", (tone, className) => {
+    render(
+      <Text variant="body" tone={tone}>
+        Toned
+      </Text>,
+    );
+    expect(screen.getByText("Toned").className).toContain(className);
   });
 
   it("renders eyebrow as a 12px uppercase span", () => {

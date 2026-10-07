@@ -17,41 +17,48 @@ export type As =
 
 export const variants = {
   // Headings
-  h1: "font-poppins text-[2.75rem] font-semibold leading-14 tracking-[-0.033rem] text-black",
-  h2: "font-poppins text-[2rem] font-medium leading-10 text-black tracking-[-0.02rem]",
-  h3: "font-poppins text-[1.75rem] font-medium leading-10 text-black tracking-[-0.01313rem]",
-  h4: "font-poppins text-[1.375rem] font-medium leading-6 text-black",
-  h5: "font-poppins text-[1rem] font-medium leading-6 text-black",
+  h1: "font-poppins text-[2.75rem] font-semibold leading-14 tracking-[-0.033rem] text-foreground",
+  h2: "font-poppins text-[2rem] font-medium leading-10 text-foreground tracking-[-0.02rem]",
+  h3: "font-poppins text-[1.75rem] font-medium leading-10 text-foreground tracking-[-0.01313rem]",
+  h4: "font-poppins text-[1.375rem] font-medium leading-6 text-foreground",
+  h5: "font-poppins text-[1rem] font-medium leading-6 text-foreground",
 
   // Body Text
-  lead: "font-sans text-[1.25rem] font-normal leading-7 text-black",
-  "lead-medium": "font-sans text-[1.25rem] font-medium leading-7 text-black",
+  lead: "font-sans text-[1.25rem] font-normal leading-7 text-foreground",
+  "lead-medium":
+    "font-sans text-[1.25rem] font-medium leading-7 text-foreground",
   "lead-semibold":
-    "font-sans text-[1.25rem] font-semibold leading-7 text-black",
-  large: "font-sans text-[1rem] font-normal leading-6.5 text-black",
-  "large-medium": "font-sans text-[1rem] font-medium leading-6.5 text-black",
+    "font-sans text-[1.25rem] font-semibold leading-7 text-foreground",
+  large: "font-sans text-[1rem] font-normal leading-6.5 text-foreground",
+  "large-medium":
+    "font-sans text-[1rem] font-medium leading-6.5 text-foreground",
   "large-semibold":
-    "font-sans text-[1rem] font-semibold leading-6.5 text-black",
-  body: "font-sans text-[0.875rem] font-normal leading-5.5 text-black",
-  "body-medium": "font-sans text-[0.875rem] font-medium leading-5.5 text-black",
-  small: "font-sans text-[0.75rem] font-normal leading-4.5 text-black",
-  "small-medium": "font-sans text-[0.75rem] font-medium leading-4.5 text-black",
+    "font-sans text-[1rem] font-semibold leading-6.5 text-foreground",
+  body: "font-sans text-[0.875rem] font-normal leading-5.5 text-foreground",
+  "body-medium":
+    "font-sans text-[0.875rem] font-medium leading-5.5 text-foreground",
+  small: "font-sans text-[0.75rem] font-normal leading-4.5 text-foreground",
+  "small-medium":
+    "font-sans text-[0.75rem] font-medium leading-4.5 text-foreground",
 
   // Label Text
   label:
-    "font-sans text-[0.6875rem] font-medium uppercase leading-5 tracking-[0.06875rem] text-black",
+    "font-sans text-[0.6875rem] font-medium uppercase leading-5 tracking-[0.06875rem] text-foreground",
   eyebrow:
-    "font-sans text-[0.75rem] font-medium uppercase leading-4 tracking-[0.06em] text-zinc-500",
+    "font-sans text-[0.75rem] font-medium uppercase leading-4 tracking-[0.06em] text-muted-foreground",
 } as const;
 
 export type Variant = keyof typeof variants;
 
-/** Semantic colours. Omit for the variant's own colour (black). */
+/** Semantic colours. Omit for the variant's own colour (foreground). */
 export const tones = {
-  primary: "text-zinc-900",
-  secondary: "text-zinc-600",
-  muted: "text-zinc-500",
-  danger: "text-red-600",
+  primary: "text-foreground",
+  secondary: "text-zinc-700",
+  muted: "text-muted-foreground",
+  danger: "text-destructive",
+  success: "text-success",
+  warning: "text-warning",
+  inherit: "text-inherit",
 } as const;
 
 export type Tone = keyof typeof tones;

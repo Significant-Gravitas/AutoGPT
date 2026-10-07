@@ -13,7 +13,10 @@ type CustomProps = {
   variant: Variant;
   as?: As;
   size?: Variant;
-  /** Semantic colour: primary zinc-900, secondary zinc-600, muted zinc-500, danger red-600. */
+  /**
+   * Semantic colour: primary (foreground), secondary (zinc-700), muted
+   * (muted-foreground, zinc-600), danger, success, warning, or inherit.
+   */
   tone?: Tone;
   className?: string;
   /**
