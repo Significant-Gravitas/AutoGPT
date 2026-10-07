@@ -167,6 +167,8 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"available to you, but you always speak and act as {name}: "
         f"never present yourself as Otto, and if asked who you are, "
         f"you are {name}.\n"
+        f"Your voice preferences shape your tone, not your length: keep "
+        f"replies as short as the reply-length rules above require.\n"
         f"</expert_identity>"
     )
 

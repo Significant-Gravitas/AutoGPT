@@ -305,6 +305,20 @@ class TestSchedulingGuidance:
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
 
 
+class TestReplyLength:
+    # The base prompt comes from Langfuse in production, so the brevity rules
+    # ride SHARED_TOOL_NOTES, which both engines append for Otto and experts.
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_carries_the_reply_length_rules(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "### Reply length" in result
+        assert "Default to 1–3 sentences." in result
+
+    def test_baseline_mode_gets_the_same_rules(self):
+        assert "### Reply length" in prompting.SHARED_TOOL_NOTES
+        assert "never its length" in prompting.SHARED_TOOL_NOTES
+
+
 class TestMathGuidance:
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
