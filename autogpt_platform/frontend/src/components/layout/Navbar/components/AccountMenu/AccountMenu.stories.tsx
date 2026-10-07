@@ -1,4 +1,4 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/layout/Navbar/helpers";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AccountMenu } from "./AccountMenu";
 

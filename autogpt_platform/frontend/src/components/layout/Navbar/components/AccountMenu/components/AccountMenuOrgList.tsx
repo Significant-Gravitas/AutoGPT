@@ -29,7 +29,7 @@ export function AccountMenuOrgList() {
   const createOrgButton = (
     <button
       type="button"
-      className="flex w-full items-center gap-2 rounded-lg bg-neutral-100 px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-200"
+      className="flex w-full items-center gap-2 rounded-lg bg-zinc-100 px-2 py-1.5 text-sm text-zinc-700 hover:bg-zinc-200"
       onClick={handleCreateOrganization}
       data-testid="create-organization-button"
     >
@@ -43,7 +43,7 @@ export function AccountMenuOrgList() {
   if (orgs.length === 0) {
     return (
       <div className="flex flex-col gap-2 p-2">
-        <div className="px-2 py-1 text-sm text-neutral-500">
+        <div className="px-2 py-1 text-sm text-zinc-500">
           No organizations yet
         </div>
         {createOrgButton}
@@ -54,14 +54,14 @@ export function AccountMenuOrgList() {
   return (
     <div className="flex flex-col gap-2 p-2">
       <div className="flex flex-col gap-0.5">
-        <span className="px-2 py-1 text-xs font-medium uppercase text-neutral-400">
+        <span className="px-2 py-1 text-xs font-medium uppercase text-zinc-400">
           Organizations
         </span>
         {orgs.map((org) => (
           <button
             key={org.id}
             type="button"
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
             onClick={() => switchOrg(org.id)}
           >
             <Avatar className="h-5 w-5">
@@ -72,7 +72,7 @@ export function AccountMenuOrgList() {
             </Avatar>
             <span className="flex-1 truncate text-left">{org.name}</span>
             {org.isPersonal && (
-              <span className="text-xs text-neutral-400">Personal</span>
+              <span className="text-xs text-zinc-400">Personal</span>
             )}
             {org.id === activeOrg?.id && (
               <Icon icon={Tick02Icon} size={14} className="text-green-600" />
@@ -84,21 +84,21 @@ export function AccountMenuOrgList() {
 
       {teams.length > 0 && (
         <>
-          <div className="border-t border-neutral-100" />
+          <div className="border-t border-zinc-100" />
           <div className="flex flex-col gap-0.5">
-            <span className="px-2 py-1 text-xs font-medium uppercase text-neutral-400">
+            <span className="px-2 py-1 text-xs font-medium uppercase text-zinc-400">
               Teams
             </span>
             {teams.map((team) => (
               <button
                 key={team.id}
                 type="button"
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
                 onClick={() => switchTeam(team.id)}
               >
                 <span className="flex-1 truncate text-left">{team.name}</span>
                 {team.joinPolicy === "PRIVATE" && (
-                  <span className="text-xs text-neutral-400">Private</span>
+                  <span className="text-xs text-zinc-400">Private</span>
                 )}
                 {team.id === activeTeam?.id && (
                   <Icon
@@ -111,7 +111,7 @@ export function AccountMenuOrgList() {
             ))}
             <Link
               href="/org/teams"
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100"
             >
               <Icon icon={Settings02Icon} size={14} />
               <span>Manage teams</span>

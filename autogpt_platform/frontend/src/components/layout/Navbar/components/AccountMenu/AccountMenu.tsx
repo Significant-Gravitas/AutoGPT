@@ -61,7 +61,7 @@ export function AccountMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
@@ -80,7 +80,7 @@ export function AccountMenu({
         id={popupId}
         align="end"
         sideOffset={8}
-        className="w-64 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-0 shadow-lg"
+        className="w-64 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-0 shadow-lg"
         data-testid="account-menu-popover"
       >
         <div className="flex items-center gap-3 px-4 py-3">
@@ -97,12 +97,12 @@ export function AccountMenu({
               </>
             ) : (
               <>
-                <span className="truncate text-sm font-semibold leading-tight text-neutral-900">
+                <span className="truncate text-sm font-semibold leading-tight text-zinc-900">
                   {userName}
                 </span>
                 <span
                   data-testid="account-menu-user-email"
-                  className="truncate text-sm leading-tight text-neutral-700"
+                  className="truncate text-sm leading-tight text-zinc-700"
                 >
                   {userEmail}
                 </span>
@@ -111,7 +111,7 @@ export function AccountMenu({
           </div>
         </div>
 
-        <div className="border-t border-neutral-100 p-2">
+        <div className="border-t border-zinc-100 p-2">
           <ul className="flex flex-col gap-0.5">
             {menuItemGroups.map((group, groupIndex) =>
               group.items.map((item, itemIndex) => {
