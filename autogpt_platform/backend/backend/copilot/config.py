@@ -358,10 +358,6 @@ class ChatConfig(BaseSettings):
         description="TTL in seconds for stream lock (2 minutes). Short timeout allows "
         "reconnection after refresh/crash without long waits.",
     )
-    stream_max_length: int = Field(
-        default=10000,
-        description="Maximum number of messages to store per stream",
-    )
 
     # Redis key prefixes for stream registry
     session_meta_prefix: str = Field(
@@ -590,19 +586,11 @@ class ChatConfig(BaseSettings):
         "``claude_agent_thinking_effort`` for adaptive control — the SDK "
         "ignores ``max_thinking_tokens`` for those models.",
     )
-    render_reasoning_in_ui: bool = Field(
-        default=True,
-        description="Render reasoning as live UI parts "
-        "(``StreamReasoning*`` wire events). False suppresses the live "
-        "wire events only; ``role='reasoning'`` rows are always persisted "
-        "so the reasoning bubble hydrates on reload. Tokens are billed "
-        "upstream regardless.",
-    )
     stream_replay_count: int = Field(
         default=200,
         ge=1,
         le=10000,
-        description="Max Redis stream entries replayed on SSE reconnect.",
+        description="Redis stream entries read per replay batch on SSE reconnect.",
     )
     claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
         # TODO: add xhigh when SDK support catches up
@@ -746,7 +734,7 @@ class ChatConfig(BaseSettings):
         description="E2B API key. Falls back to E2B_API_KEY environment variable.",
     )
     e2b_sandbox_template: str = Field(
-        default="agpt-desktop-1x2",
+        default="agpt-desktop-1x2-004d6e73",
         description="E2B sandbox template for copilot sessions. The default is our "
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "

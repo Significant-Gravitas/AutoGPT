@@ -350,18 +350,20 @@ describe("ExpertDetailPage", () => {
     expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
   });
 
-  test("shows the expert's integrations beside the name", async () => {
+  test("shows the expert's integrations beside the category chip", async () => {
     server.use(
       getGetExpertMockHandler(() => ({
         ...maria,
+        categories: ["marketing"],
         credential_providers: ["github", "openai"],
       })),
     );
 
     render(<ExpertDetailPage />);
 
-    const header = (await screen.findByRole("heading", { name: "Maria" }))
-      .parentElement as HTMLElement;
+    const header = (
+      await screen.findByRole("heading", { name: "Maria" })
+    ).closest("header") as HTMLElement;
     const integrations = within(header).getByRole("list", {
       name: "Integrations",
     });
@@ -370,11 +372,8 @@ describe("ExpertDetailPage", () => {
         .getAllByRole("img")
         .map((logo) => logo.getAttribute("alt")),
     ).toEqual(["GitHub", "OpenAI"]);
-    const name = within(header).getByRole("heading", { name: "Maria" });
-    expect(
-      name.compareDocumentPosition(integrations) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const chip = within(header).getByText("Marketing");
+    expect(integrations.parentElement?.contains(chip)).toBe(true);
   });
 
   test("keeps the budget above the tabs and the summary in Basics", async () => {

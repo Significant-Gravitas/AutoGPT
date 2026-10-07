@@ -16,6 +16,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
@@ -48,6 +50,7 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     UserPaywalledError,
 )
+from backend.util.service import EXPOSED_FLAG
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -332,6 +335,95 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["message"] == "check CI"
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
+    # Marks the turn as scheduled so the executor alerts if it fails later.
+    assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_into_the_users_chat_is_marked_unattended():
+    """A follow-up pinned to the user's own chat still has nobody watching it,
+    so its tools must not hand questions back to the user (SECRT-2804)."""
+    args = _args()
+    mock_schedule_turn = AsyncMock()
+    users_chat = MagicMock(session_id="session-1", expert_id=None)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=users_chat),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_awaited_once()
+    assert mock_schedule_turn.call_args.kwargs["unattended"] is True
+
+
+_WORK_KEY = CredentialPin(id="exa-new", title="Work key")
+
+
+async def _fire_into_users_chat(args: CopilotTurnJobArgs, routine=None) -> dict:
+    mock_schedule_turn = AsyncMock()
+    users_chat = MagicMock(session_id="session-1", expert_id=None)
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=users_chat),
+        ),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+    mock_schedule_turn.assert_awaited_once()
+    return mock_schedule_turn.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_a_followups_turn_runs_on_the_accounts_picked_when_it_was_made():
+    kwargs = await _fire_into_users_chat(_args(credential_pins={"exa": _WORK_KEY}))
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
+
+
+@pytest.mark.asyncio
+async def test_a_routines_turn_runs_on_the_accounts_on_its_row():
+    """A routine keeps its pins on the row, so they survive it being switched
+    off and on, which re-creates its jobs."""
+    routine = ExpertRoutine(
+        id="routine-1",
+        title="Briefing",
+        prompt="Brief me",
+        crons=["0 9 * * *"],
+        enabled=True,
+        grants_credentials=True,
+        credential_pins={"exa": _WORK_KEY},
+    )
+    kwargs = await _fire_into_users_chat(
+        _args(routine_id="routine-1", run_at=None, cron="0 9 * * *"), routine
+    )
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
+
+
+@pytest.mark.asyncio
+async def test_a_schedule_made_before_pins_fires_with_none(caplog):
+    legacy = CopilotTurnJobArgs.model_validate(
+        {"user_id": "user-1", "session_id": "session-1", "message": "check CI"}
+    )
+    with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
+        kwargs = await _fire_into_users_chat(legacy)
+    assert kwargs["credential_pins"] == {}
+    assert "no pinned credentials" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_keeps_the_pinned_accounts():
+    args = _args(cap_retry_count=0, credential_pins={"exa": _WORK_KEY})
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+    kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
 
 
 @pytest.mark.asyncio
@@ -2241,3 +2333,40 @@ def test_graph_schedule_rejects_blank_names_before_validation_or_persistence(nam
         )
     run.assert_not_called()
     persist.assert_not_called()
+
+
+class TestPostHogLifecycleSweepRegistration:
+    """An unchanged daily sweep job is left alone, so a restart after 04:15
+    can't push that day's overdue run to tomorrow."""
+
+    def _register(self, existing=None) -> MagicMock:
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        sched.scheduler.get_job.return_value = existing
+        Scheduler._register_posthog_lifecycle_sweep(sched)
+        return sched.scheduler.add_job
+
+    def test_registers_the_daily_cron_when_missing(self):
+        add_job = self._register()
+
+        add_job.assert_called_once()
+        assert add_job.call_args.kwargs["id"] == "sync_posthog_lifecycles"
+        assert "hour='4', minute='15'" in str(add_job.call_args.args[1])
+
+    def test_leaves_an_unchanged_job_alone(self):
+        existing = MagicMock(trigger=CronTrigger.from_crontab("15 4 * * *"))
+
+        self._register(existing=existing).assert_not_called()
+
+    def test_replaces_a_job_whose_schedule_changed(self):
+        existing = MagicMock(trigger=CronTrigger.from_crontab("0 3 * * *"))
+
+        self._register(existing=existing).assert_called_once()
+
+    def test_morning_briefing_stays_an_rpc_endpoint(self):
+        # The sweep registrar sits next to it; the @expose must stay on the
+        # RPC method, not slide onto the private helper.
+        assert getattr(Scheduler.add_morning_briefing_schedule, EXPOSED_FLAG, False)
+        assert not getattr(
+            Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
+        )

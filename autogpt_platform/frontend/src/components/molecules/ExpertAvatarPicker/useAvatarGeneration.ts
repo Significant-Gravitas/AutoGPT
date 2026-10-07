@@ -3,10 +3,11 @@ import {
   useGetExpertAvatarGeneration,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { ExpertAvatarRequest } from "@/app/api/__generated__/models/expertAvatarRequest";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export function useAvatarGeneration() {
   const [jobID, setJobID] = useState("");
+  const requestVersion = useRef(0);
   const mutation = useGenerateExpertAvatar<Error>({
     mutation: { retry: false },
   });
@@ -35,12 +36,17 @@ export function useAvatarGeneration() {
       : job?.error);
 
   function generate(request: ExpertAvatarRequest) {
+    const version = ++requestVersion.current;
     setJobID("");
     mutation.mutate(
       { data: request },
       {
         onSuccess: (response) => {
-          if (response.status === 202 && response.data.id)
+          if (
+            version === requestVersion.current &&
+            response.status === 202 &&
+            response.data.id
+          )
             setJobID(response.data.id);
         },
       },
@@ -48,6 +54,7 @@ export function useAvatarGeneration() {
   }
 
   function reset() {
+    requestVersion.current += 1;
     setJobID("");
     mutation.reset();
   }

@@ -28,6 +28,8 @@ from backend.platform_linking.models import (
     BotChatRequest,
     BotEventInput,
     BotGuildInput,
+    CardAnswer,
+    ChannelCard,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     EnsureSessionResult,
@@ -132,6 +134,10 @@ ClarificationNeededCallback = Callable[
     [str, dict[str, Any], str | None],
     Awaitable[None],
 ]
+
+# Fired when the approval gate holds a call for the user. Args: (session_id,
+# review_id). The card goes to the channel as well as the web app's queue.
+ApprovalNeededCallback = Callable[[str, str], Awaitable[None]]
 
 
 class BotBackend:
@@ -438,6 +444,40 @@ class BotBackend:
             session_id=session_id, file_id=file_id, max_bytes=max_bytes
         )
 
+    async def open_card(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        platform_user_id: str,
+        session_id: str,
+        review_id: str,
+    ) -> ChannelCard | None:
+        """The card for a call held in this conversation, or None when there
+        is nothing in it to answer."""
+        return await self._client.open_channel_card(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            platform_user_id=platform_user_id,
+            session_id=session_id,
+            review_id=review_id,
+        )
+
+    async def answer_card(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        clicker_id: str,
+        token: str,
+        index: int,
+    ) -> CardAnswer:
+        return await self._client.answer_channel_card(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            clicker_id=clicker_id,
+            token=token,
+            index=index,
+        )
+
     async def stream_chat(
         self,
         platform: str,
@@ -450,6 +490,7 @@ class BotBackend:
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
         on_clarification_needed: ClarificationNeededCallback | None = None,
+        on_approval_needed: ApprovalNeededCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -490,6 +531,8 @@ class BotBackend:
         setup_notified = False
         setup_drop_notified = False
         clarification_notified = False
+        # A retried held call names its card again; the channel shows it once.
+        cards_posted: set[str] = set()
         # Track which text block each delta belongs to. Otto emits text in
         # separate blocks around tool calls / reasoning (each with its own id);
         # the frontend renders them as distinct parts, but here we concatenate
@@ -501,7 +544,7 @@ class BotBackend:
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(
+                    _, chunk = await asyncio.wait_for(
                         queue.get(), timeout=STREAM_CHUNK_TIMEOUT_SECONDS
                     )
                 except asyncio.TimeoutError:
@@ -556,6 +599,14 @@ class BotBackend:
                             clarification_output,
                             chunk.toolName,
                         )
+                    review_id = _extract_held_review_id(chunk.output)
+                    if (
+                        review_id
+                        and on_approval_needed
+                        and review_id not in cards_posted
+                    ):
+                        cards_posted.add(review_id)
+                        await on_approval_needed(handle.session_id, review_id)
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
@@ -654,3 +705,17 @@ def _extract_clarification_needed(
     if not isinstance(questions, list) or not questions:
         return None
     return parsed
+
+
+def _extract_held_review_id(output: str | dict[str, Any]) -> str | None:
+    """The review a held call's card answers, from the gate's refusal."""
+    parsed: Any = output
+    if isinstance(output, str):
+        try:
+            parsed = json.loads(output)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(parsed, dict) or parsed.get("type") != "approval_required":
+        return None
+    review_id = parsed.get("review_id")
+    return review_id if isinstance(review_id, str) and review_id else None

@@ -45,6 +45,7 @@ export function ExpertIdentityDetails({
       <Container
         className={cn(
           "flex min-w-0 gap-2",
+          size === "page" && "flex-wrap gap-y-0",
           nameAlign === "baseline" ? "items-baseline" : "items-center",
         )}
       >
@@ -54,7 +55,8 @@ export function ExpertIdentityDetails({
           tone="primary"
           unmask={false}
           className={cn(
-            "min-w-0 truncate",
+            "min-w-0",
+            size === "page" ? "max-w-full break-words" : "truncate",
             compact && "leading-[1.125rem]",
             size === "page" && "text-2xl leading-8",
           )}
@@ -67,7 +69,12 @@ export function ExpertIdentityDetails({
             variant="body"
             tone="secondary"
             unmask={false}
-            className={cn("min-w-0 truncate", areaClassName)}
+            className={cn(
+              "min-w-0",
+              size === "page" ? "max-w-full break-words" : "truncate",
+              size === "card" && "text-[13px]",
+              areaClassName,
+            )}
             title={titleOnNameLine}
           >
             {"•"} {titleOnNameLine}
