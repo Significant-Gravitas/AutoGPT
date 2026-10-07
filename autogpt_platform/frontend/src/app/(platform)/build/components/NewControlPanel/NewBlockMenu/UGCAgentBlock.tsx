@@ -1,5 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
@@ -37,15 +37,17 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
   return (
     <Button
+      variant="ghost"
+      unmask={false}
       className={cn(
-        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 p-[0.625rem] pr-[0.875rem] text-start shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
+        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-zinc-50 p-2.5 pr-3.5 text-start shadow-none",
+        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...rest}
     >
       {showImage && image_url && (
-        <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
+        <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-md bg-white">
           <Image
             src={image_url}
             unoptimized={isLocalStoreMediaUrl(image_url)}
@@ -90,7 +92,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
           <span
             className={cn(
-              "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
+              "rounded-xl bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500",
             )}
           >
             Your Agent
@@ -99,7 +101,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-700 group-disabled:bg-zinc-400",
         )}
       >
         {isLoading ? (
@@ -125,11 +127,11 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 p-[0.625rem] pr-[0.875rem]",
+        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-zinc-100 p-2.5 pr-3.5",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-[0.375rem] bg-zinc-200" />
+      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-md bg-zinc-200" />
       <div className="flex flex-1 flex-col items-start gap-0.5">
         <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
         <div className="flex items-center gap-1">
@@ -137,7 +139,7 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
           <Skeleton className="h-5 w-16 rounded bg-zinc-200" />
         </div>
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-7 w-7 rounded-lg bg-zinc-200" />
     </Skeleton>
   );
 };

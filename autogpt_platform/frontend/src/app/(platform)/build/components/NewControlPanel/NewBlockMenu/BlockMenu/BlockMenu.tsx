@@ -3,7 +3,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import {
   Tooltip,
   TooltipContent,
@@ -46,7 +46,7 @@ export const BlockMenu = () => {
         side="right"
         align="start"
         sideOffset={16}
-        className="absolute h-[80vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
+        className="absolute h-[80vh] w-[46.625rem] overflow-hidden rounded-2xl border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="blocks-control-popover-content"
       >
         <BlockMenuContent />

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ArrowLeft02Icon, ArrowRight02Icon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface HorizontalScrollAreaProps {
@@ -77,10 +78,13 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background via-background/80 to-background/0" />
         )}
         {canScrollLeft && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             aria-label="Scroll left"
-            className="pointer-events-none absolute left-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+            withTooltip={false}
+            className="pointer-events-none absolute left-2 top-5 -translate-y-1/2 rounded-full border-0 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-transparent"
             onClick={() => scrollByDelta(-scrollAmount)}
           >
             <Icon
@@ -88,13 +92,16 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
               size={28}
               className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
             />
-          </button>
+          </Button>
         )}
         {canScrollRight && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             aria-label="Scroll right"
-            className="pointer-events-none absolute right-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+            withTooltip={false}
+            className="pointer-events-none absolute right-2 top-5 -translate-y-1/2 rounded-full border-0 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-transparent"
             onClick={() => scrollByDelta(scrollAmount)}
           >
             <Icon
@@ -102,7 +109,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
               size={28}
               className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
             />
-          </button>
+          </Button>
         )}
       </div>
     </div>

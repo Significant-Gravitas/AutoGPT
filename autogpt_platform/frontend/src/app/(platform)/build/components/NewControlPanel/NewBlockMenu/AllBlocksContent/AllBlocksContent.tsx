@@ -1,6 +1,7 @@
 import React, { Fragment } from "react";
 import { Block } from "../Block";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { beautifyString } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
@@ -52,15 +53,15 @@ export const AllBlocksContent = () => {
     <div className={blockMenuContainerStyle}>
       {categories?.map((category, index) => (
         <Fragment key={category.name}>
-          {index > 0 && <Separator className="h-[1px] w-full text-zinc-300" />}
+          {index > 0 && <Separator className="h-px w-full text-zinc-300" />}
 
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              <Text variant="body-medium" className="text-zinc-800">
                 {category.name && beautifyString(category.name)}
-              </p>
-              <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
+              </Text>
+              <span className="rounded-full bg-zinc-100 px-1.5 font-sans text-sm leading-[1.375rem] text-zinc-600">
                 {category.total_blocks}
               </span>
             </div>
@@ -96,8 +97,8 @@ export const AllBlocksContent = () => {
 
               {category.total_blocks > category.blocks.length && (
                 <Button
-                  variant={"link"}
-                  className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
+                  variant="link"
+                  className="h-9 min-w-0 px-0 py-2 font-sans text-sm font-normal leading-[1.375rem] text-zinc-600 underline underline-offset-4 hover:text-zinc-800"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >

@@ -1,6 +1,7 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ButtonHTMLAttributes } from "react";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -18,9 +19,10 @@ export const AiBlock: React.FC<Props> = ({
 }) => {
   return (
     <Button
+      variant="ghost"
       className={cn(
-        "group flex h-[5.625rem] w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
-        "hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
+        "group flex h-[5.625rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-zinc-50 px-3.5 py-2.5 text-start shadow-none",
+        "hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
       {...rest}
@@ -45,7 +47,7 @@ export const AiBlock: React.FC<Props> = ({
 
         <span
           className={cn(
-            "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
+            "rounded-xl bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500",
           )}
         >
           Supports {ai_name}
@@ -53,10 +55,10 @@ export const AiBlock: React.FC<Props> = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-700 group-disabled:bg-zinc-400",
         )}
       >
-        <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+        <Icon icon={PlusSignIcon} className="h-5 w-5 text-zinc-50" />
       </div>
     </Button>
   );
