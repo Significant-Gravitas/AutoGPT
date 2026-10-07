@@ -114,27 +114,16 @@ async def test_a_turn_whose_executor_died_is_not_reported_running(
 
 
 @requires_redis
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "W5: publish_chunk trims a running turn's stream to stream_max_length, "
-        "so a resume replays from mid-block and the client's parser throws"
-    ),
-)
 async def test_a_resume_of_a_long_running_turn_replays_whole_blocks(
-    monkeypatch: pytest.MonkeyPatch, session_id: str, turn_id: str
+    session_id: str, turn_id: str
 ) -> None:
-    monkeypatch.setattr(
-        stream_registry,
-        "config",
-        stream_registry.config.model_copy(update={"stream_max_length": 20}),
-    )
+    """W5: a running turn's stream used to be capped at 10,000 entries, so a
+    resume replayed from mid-block and the client's parser threw."""
     await stream_registry.create_session(session_id, None, "", "", turn_id=turn_id)
     for chunk in [
         StreamStart(messageId="m1"),
         StreamTextStart(id="t1"),
-        *(StreamTextDelta(id="t1", delta=f"{i} ") for i in range(300)),
+        *(StreamTextDelta(id="t1", delta=f"{i} ") for i in range(_PAST_THE_OLD_CAP)),
     ]:
         await stream_registry.publish_chunk(turn_id, chunk, session_id=session_id)
 
@@ -142,11 +131,17 @@ async def test_a_resume_of_a_long_running_turn_replays_whole_blocks(
     if queue is None:
         pytest.fail("harness: the running turn has no subscribable stream")
     try:
-        replay = [queue.get_nowait() for _ in range(queue.qsize())]
+        replay = [queue.get_nowait()[1] for _ in range(queue.qsize())]
     finally:
         await stream_registry.unsubscribe_from_session(session_id, queue)
 
+    assert len(replay) == _PAST_THE_OLD_CAP + 2
     assert _orphan_parts(replay) == []
+
+
+# Past the old 10,000 cap by several of Redis's 100-entry stream nodes, which
+# is where an approximate MAXLEN starts trimming.
+_PAST_THE_OLD_CAP = 10_500
 
 
 @pytest.mark.xfail(
