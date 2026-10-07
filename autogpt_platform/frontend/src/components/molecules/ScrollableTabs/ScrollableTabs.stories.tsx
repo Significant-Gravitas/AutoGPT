@@ -10,6 +10,7 @@ const meta = {
   title: "Molecules/ScrollableTabs",
   component: ScrollableTabs,
   parameters: {
+    a11y: { test: "error" },
     layout: "fullscreen",
   },
   tags: ["autodocs"],

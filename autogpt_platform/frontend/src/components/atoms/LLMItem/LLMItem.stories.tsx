@@ -6,6 +6,7 @@ const meta: Meta<typeof LLMItem> = {
   tags: ["autodocs"],
   component: LLMItem,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

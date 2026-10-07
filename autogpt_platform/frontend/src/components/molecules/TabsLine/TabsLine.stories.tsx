@@ -16,6 +16,7 @@ const meta = {
   title: "Molecules/TabsLine",
   component: TabsLine,
   parameters: {
+    a11y: { test: "error" },
     layout: "fullscreen",
   },
   tags: ["autodocs"],

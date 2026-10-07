@@ -7,6 +7,7 @@ const meta: Meta<typeof TimePicker> = {
   component: TimePicker,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

@@ -6,6 +6,7 @@ const meta: Meta<typeof AccountMenu> = {
   title: "Layout/Navbar/AccountMenu",
   component: AccountMenu,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
   },
 };

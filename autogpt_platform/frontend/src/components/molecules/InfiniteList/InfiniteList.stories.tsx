@@ -5,6 +5,7 @@ import { InfiniteList } from "./InfiniteList";
 const meta: Meta<typeof InfiniteList> = {
   title: "Molecules/InfiniteList",
   component: InfiniteList,
+  parameters: { a11y: { test: "error" } },
 };
 
 export default meta;

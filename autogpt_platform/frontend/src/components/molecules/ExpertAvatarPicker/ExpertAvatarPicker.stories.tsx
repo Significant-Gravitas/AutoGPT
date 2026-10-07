@@ -19,6 +19,7 @@ const meta = {
     ),
   ],
   parameters: {
+    a11y: { test: "error" },
     msw: {
       handlers: [
         http.post("*/api/experts/avatars/generations", () =>

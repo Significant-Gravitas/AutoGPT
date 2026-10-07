@@ -5,6 +5,7 @@ const meta: Meta<typeof Breadcrumbs> = {
   title: "Molecules/Breadcrumbs",
   component: Breadcrumbs,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

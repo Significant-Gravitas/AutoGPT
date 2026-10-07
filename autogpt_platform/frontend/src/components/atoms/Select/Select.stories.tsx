@@ -6,6 +6,7 @@ const meta: Meta<typeof Select> = {
   tags: ["autodocs"],
   component: Select,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

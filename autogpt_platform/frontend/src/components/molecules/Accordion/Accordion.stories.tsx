@@ -10,6 +10,7 @@ const meta: Meta<typeof Accordion> = {
   title: "Molecules/Accordion",
   component: Accordion,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

@@ -7,6 +7,7 @@ const meta = {
   title: "Molecules/Toast",
   component: Toaster,
   parameters: {
+    a11y: { test: "error" },
     layout: "fullscreen",
   },
   tags: ["autodocs"],

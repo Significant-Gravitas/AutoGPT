@@ -13,6 +13,7 @@ const meta = {
     ),
   ],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
   },
   tags: ["autodocs"],

@@ -5,6 +5,7 @@ const meta: Meta<typeof ShowMore> = {
   title: "Molecules/ShowMore",
   component: ShowMore,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

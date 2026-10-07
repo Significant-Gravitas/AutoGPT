@@ -7,6 +7,7 @@ const meta: Meta = {
   tags: ["autodocs"],
   decorators: [storyDecorator],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

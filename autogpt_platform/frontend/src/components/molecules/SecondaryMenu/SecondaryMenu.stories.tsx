@@ -24,6 +24,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 const meta: Meta = {
   title: "Molecules/SecondaryMenu",
   component: SecondaryMenuContent,
+  parameters: { a11y: { test: "error" } },
 };
 
 export default meta;

@@ -6,6 +6,7 @@ const meta: Meta<typeof Emoji> = {
   tags: ["autodocs"],
   component: Emoji,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

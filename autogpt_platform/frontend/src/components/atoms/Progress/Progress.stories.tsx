@@ -7,6 +7,7 @@ const meta: Meta<typeof Progress> = {
   component: Progress,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

@@ -6,6 +6,7 @@ const meta: Meta<typeof GlassPixelBackdrop> = {
   component: GlassPixelBackdrop,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

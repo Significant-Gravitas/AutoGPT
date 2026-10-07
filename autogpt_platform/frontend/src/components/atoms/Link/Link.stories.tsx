@@ -7,6 +7,7 @@ const meta: Meta<typeof Link> = {
   tags: ["autodocs"],
   component: Link,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

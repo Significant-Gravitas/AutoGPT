@@ -7,6 +7,7 @@ const meta: Meta = {
   component: FileInput,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

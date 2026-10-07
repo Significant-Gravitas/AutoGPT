@@ -7,6 +7,7 @@ const meta = {
   title: "Molecules/Confetti",
   component: Confetti,
   parameters: {
+    a11y: { test: "error" },
     layout: "fullscreen",
   },
   tags: ["autodocs"],

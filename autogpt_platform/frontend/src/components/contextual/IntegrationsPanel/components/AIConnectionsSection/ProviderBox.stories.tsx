@@ -5,7 +5,7 @@ import { ProviderBox } from "./ProviderBox";
 const meta = {
   title: "Integrations/Subscription Provider",
   component: ProviderBox,
-  parameters: { layout: "centered" },
+  parameters: { a11y: { test: "error" }, layout: "centered" },
   args: {
     name: "Microsoft 365 Copilot",
     logoSrc: "/integrations/microsoft.webp",

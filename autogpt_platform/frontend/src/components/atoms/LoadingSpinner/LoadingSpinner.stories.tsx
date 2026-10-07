@@ -6,6 +6,7 @@ const meta: Meta<typeof LoadingSpinner> = {
   component: LoadingSpinner,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

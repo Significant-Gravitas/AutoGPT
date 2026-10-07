@@ -6,6 +6,7 @@ const meta: Meta<typeof TypingText> = {
   tags: ["autodocs"],
   component: TypingText,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

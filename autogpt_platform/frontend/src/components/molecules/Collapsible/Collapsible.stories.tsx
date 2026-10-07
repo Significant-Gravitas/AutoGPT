@@ -5,6 +5,7 @@ const meta: Meta<typeof Collapsible> = {
   title: "Molecules/Collapsible",
   component: Collapsible,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

@@ -6,6 +6,7 @@ const meta: Meta<typeof Message> = {
   title: "AI Elements/Message",
   component: Message,
   parameters: {
+    a11y: { test: "error" },
     layout: "padded",
   },
 };

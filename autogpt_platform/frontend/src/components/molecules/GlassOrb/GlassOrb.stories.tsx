@@ -6,6 +6,7 @@ const meta: Meta<typeof GlassOrb> = {
   component: GlassOrb,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {
