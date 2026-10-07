@@ -2879,10 +2879,13 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             and enrollment is not None
             and enrollment.converted_at is not None
             and enrollment.subscription_id == new_sub_id
-            and enrollment.offer.price_id == price_id
-            and enrollment.offer.tier == SubscriptionTier.PRO
         ):
-            matched = SubscriptionTier.PRO
+            async with transaction() as tx:
+                target = await subscription_activation.accepted_conversion_target(
+                    enrollment, stripe_subscription, tx
+                )
+            if target:
+                matched = target[0]
         if matched is not None:
             tier = matched
         else:
@@ -2954,7 +2957,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             )
             return
         tier = SubscriptionTier.NO_TIER
-    if tier == SubscriptionTier.PRO:
+    if tier in subscription_activation.PAID_CONVERSION_TIERS:
         if status != "active":
             return
         async with transaction() as tx:

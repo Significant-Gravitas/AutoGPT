@@ -17628,6 +17628,13 @@
       },
       "ActivationPreviewRequest": {
         "properties": {
+          "plan": {
+            "anyOf": [
+              { "type": "string", "enum": ["PRO", "MAX"] },
+              { "type": "null" }
+            ],
+            "title": "Plan"
+          },
           "return_to": {
             "type": "string",
             "title": "Return To",
@@ -17705,7 +17712,7 @@
         "properties": {
           "plan": {
             "type": "string",
-            "const": "PRO",
+            "enum": ["PRO", "MAX"],
             "title": "Plan",
             "default": "PRO"
           },

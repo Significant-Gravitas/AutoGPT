@@ -266,7 +266,7 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
-// One immutable generation for the first settled Pro activation. Never reset on replay.
+// One immutable generation for the first settled trial-to-Pro/Max conversion. Never reset on replay.
 model PaidUsageActivation {
   id                   String @id @default(uuid())
   userId               String @unique

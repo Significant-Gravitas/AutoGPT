@@ -84,9 +84,9 @@ async def test_current_distinguishes_paid_readiness_from_initial_reset(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tier", [SubscriptionTier.BASIC, SubscriptionTier.MAX])
+@pytest.mark.parametrize("tier", [SubscriptionTier.BASIC, SubscriptionTier.BUSINESS])
 @pytest.mark.parametrize("has_attempt", [False, True])
-async def test_non_pro_recovery_is_terminal(
+async def test_non_target_recovery_is_terminal(
     recovery, live_subscription, attempt, monkeypatch, tier, has_attempt
 ):
     live_subscription.items.data[0].price.id = "price_other"
@@ -101,7 +101,7 @@ async def test_non_pro_recovery_is_terminal(
         response = await checkout.current_activation("user-1")
         assert response.status == "not_applicable"
         assert response.retry_after_seconds is None
-        assert response.error_code == "not_pro_subscription"
+        assert response.error_code == "not_paid_activation_subscription"
         assert not response.usage_reset and response.activation_id is None
         assert response.return_to == (
             attempt.return_to if has_attempt else "/chat/resume"
@@ -126,12 +126,12 @@ async def test_unknown_price_is_processing_without_claiming_failure_or_reset(
 
 
 @pytest.mark.asyncio
-async def test_current_skips_non_pro_to_recover_paid_signup(
+async def test_current_skips_non_target_to_recover_paid_signup(
     recovery, live_subscription, monkeypatch
 ):
     other = live_subscription.model_copy(deep=True)
-    other.id = "sub_max"
-    other.items.data[0].price.id = "price_max"
+    other.id = "sub_business"
+    other.items.data[0].price.id = "price_business"
     recovery.stripe_call.return_value.data = [other, live_subscription]
     recovery.owned_subscription.side_effect = [other, live_subscription]
     recovery.reconcile_paid_activation.return_value = PaidActivationResult(
@@ -141,14 +141,16 @@ async def test_current_skips_non_pro_to_recover_paid_signup(
         "backend.data.credit.build_price_to_tier_map",
         AsyncMock(
             return_value={
-                "price_max": SubscriptionTier.MAX,
+                "price_business": SubscriptionTier.BUSINESS,
                 "price_pro": SubscriptionTier.PRO,
             }
         ),
     )
     response = await checkout.current_activation("user-1")
     assert response.status == "ready" and response.activation_id == "generation-1"
-    recovery.reconcile_paid_activation.assert_awaited_once_with("user-1", "sub_1")
+    recovery.reconcile_paid_activation.assert_awaited_once_with(
+        "user-1", "sub_1", expected_price_id=None
+    )
 
 
 @pytest.mark.asyncio
@@ -187,7 +189,7 @@ async def test_ambiguous_plan_remains_processing(
 @pytest.mark.parametrize(
     "plan,status,error_code",
     [
-        ("non_pro", "not_applicable", "not_pro_subscription"),
+        ("non_pro", "not_applicable", "not_paid_activation_subscription"),
         ("unknown", "processing", "plan_unavailable"),
         ("quantity", "processing", "plan_unavailable"),
         ("multiple", "processing", "plan_unavailable"),
@@ -202,7 +204,7 @@ async def test_unconfirmed_trial_classifies_changed_plan_before_confirmation(
     live_subscription.status = "trialing"
     prices = AsyncMock(
         return_value={
-            "price_other": SubscriptionTier.MAX,
+            "price_other": SubscriptionTier.BUSINESS,
             "price_changed": SubscriptionTier.PRO,
         }
     )
@@ -263,19 +265,19 @@ async def test_current_non_pro_subscription_supersedes_a_failed_old_attempt(
         update={"id": attempt.subscription_id, "status": "canceled"}, deep=True
     )
     live_subscription.id = "sub_new"
-    live_subscription.items.data[0].price.id = "price_max"
+    live_subscription.items.data[0].price.id = "price_business"
     recovery.get_attempt.return_value = attempt
     recovery.owned_subscription.side_effect = [old, live_subscription]
     monkeypatch.setattr(billing, "get_subscription_trial", AsyncMock(return_value=None))
     monkeypatch.setattr(
         "backend.data.credit.build_price_to_tier_map",
-        AsyncMock(return_value={"price_max": SubscriptionTier.MAX}),
+        AsyncMock(return_value={"price_business": SubscriptionTier.BUSINESS}),
     )
 
     response = await checkout.current_activation("user-1")
 
     assert response.status == "not_applicable"
-    assert response.error_code == "not_pro_subscription"
+    assert response.error_code == "not_paid_activation_subscription"
     assert response.return_to == "/chat/resume"
     assert not response.usage_reset and response.activation_id is None
     recovery.reconcile_paid_activation.assert_not_awaited()

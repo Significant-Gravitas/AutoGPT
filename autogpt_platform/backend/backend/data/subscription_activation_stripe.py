@@ -1,109 +1,31 @@
 """Live owned subscription and invoice previews for explicit trial conversion."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import TypedDict
 
 import stripe
 from prisma.enums import SubscriptionTier
 from prisma.models import User
-from pydantic import BaseModel, Field
 
 from backend.data import credit
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_activation_models import (
+    ActivationItem,
+    ActivationPlan,
+    ActivationPrice,
     ActivationTerms,
     ActivationUnavailable,
+    BillingInvoice,
+    BillingSubscription,
+    InvoicePreview,
     RenewalDiscount,
     RenewalTax,
-    RenewalTaxRate,
 )
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 
 
-class InvoicePaymentSource(BaseModel):
-    type: str
-    payment_intent: str | None = None
-
-
-class InvoicePayment(BaseModel):
-    invoice: str
-    is_default: bool = False
-    payment: InvoicePaymentSource
-
-
-class InvoicePayments(BaseModel):
-    data: list[InvoicePayment] = Field(default_factory=list)
-    has_more: bool = False
-
-
-class BillingInvoice(BaseModel):
-    id: str
-    customer: str
-    status: str | None = None
-    amount_remaining: int | None = None
-    hosted_invoice_url: str | None = None
-    payment_intent: str | None = None
-    payments: InvoicePayments | None = None
-
-
-class Coupon(BaseModel):
-    amount_off: int | None = None
-    percent_off: float | None = None
-    currency: str | None = None
-    duration: str
-    duration_in_months: int | None = None
-
-
-class Discount(BaseModel):
-    coupon: Coupon
-    end: int | None = None
-
-
-class InvoicePreview(BaseModel):
-    customer: str
-    currency: str
-    amount_due: int
-    discounts: list[Discount] = Field(default_factory=list)
-
-
-class AutomaticTax(BaseModel):
-    enabled: bool = False
-
-
-class RecurringPrice(BaseModel):
-    interval: Literal["month", "year"]
-    interval_count: int
-
-
-class ActivationPrice(BaseModel):
-    id: str
-    unit_amount: int
-    currency: str
-    recurring: RecurringPrice
-    tax_behavior: str = "unspecified"
-
-
-class ActivationItem(BaseModel):
-    price: ActivationPrice
-    quantity: int
-
-
-class ActivationItems(BaseModel):
-    data: list[ActivationItem]
-    has_more: bool = False
-
-
-class BillingSubscription(BaseModel):
-    id: str
-    customer: str
-    status: str
-    metadata: dict[str, str] = Field(default_factory=dict)
-    cancel_at_period_end: bool = False
-    trial_end: int | None = None
-    items: ActivationItems
-    latest_invoice: BillingInvoice | None = None
-    automatic_tax: AutomaticTax = Field(default_factory=AutomaticTax)
-    default_tax_rates: list[RenewalTaxRate] = Field(default_factory=list)
+class SubscriptionItemsUpdate(TypedDict, total=False):
+    items: list[stripe.Subscription.ModifyParamsItem]
 
 
 async def owned_subscription(user_id: str, subscription_id: str) -> BillingSubscription:
@@ -125,7 +47,7 @@ async def owned_subscription(user_id: str, subscription_id: str) -> BillingSubsc
     return sub
 
 
-async def is_pro_subscription(
+async def is_paid_activation_subscription(
     user_id: str, sub: BillingSubscription, accepted_price_id: str | None = None
 ) -> bool | None:
     if sub.items.has_more or len(sub.items.data) != 1:
@@ -139,12 +61,16 @@ async def is_pro_subscription(
     if (
         trial
         and trial.subscription_id == sub.id
-        and trial.offer.tier == "PRO"
+        and trial.offer.tier in ("PRO", "MAX")
         and trial.offer.price_id == item.price.id
     ):
         return True
     tier = (await credit.build_price_to_tier_map()).get(item.price.id)
-    return tier == SubscriptionTier.PRO if tier is not None else None
+    return (
+        tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
+        if tier is not None
+        else None
+    )
 
 
 async def conversion_trial(user_id: str) -> tuple[TrialState, BillingSubscription]:
@@ -154,9 +80,8 @@ async def conversion_trial(user_id: str) -> tuple[TrialState, BillingSubscriptio
         or not trial.subscription_id
         or not trial.consumed_at
         or trial.converted_at
-        or trial.offer.tier != "PRO"
     ):
-        raise ActivationUnavailable("No unconverted Pro trial is available")
+        raise ActivationUnavailable("No unconverted trial is available")
     sub = await owned_subscription(user_id, trial.subscription_id)
     if (
         sub.status != "trialing"
@@ -168,7 +93,91 @@ async def conversion_trial(user_id: str) -> tuple[TrialState, BillingSubscriptio
     return trial, sub
 
 
-async def quote_terms(trial: TrialState, sub: BillingSubscription) -> ActivationTerms:
+async def quote_terms(
+    trial: TrialState,
+    sub: BillingSubscription,
+    plan: ActivationPlan | None = None,
+    *,
+    accepted_price_id: str | None = None,
+) -> ActivationTerms:
+    item = accepted_trial_item(trial, sub)
+    target = plan or trial.offer.tier
+    if target not in ("PRO", "MAX"):
+        raise ActivationUnavailable("The trial must convert to Pro or Max")
+    price = item.price
+    if target != trial.offer.tier:
+        require_plan_change_window(sub)
+        price = await alternate_price(trial, target, accepted_price_id)
+    updates = subscription_item_update(sub, price.id)
+    raw_preview = await stripe_call(
+        stripe.Invoice.create_preview_async,
+        customer=sub.customer,
+        subscription=sub.id,
+        subscription_details={
+            "trial_end": "now",
+            "proration_behavior": "none",
+            **updates,
+        },
+        expand=["discounts.coupon.applies_to"],
+    )
+    preview = InvoicePreview.model_validate(raw_preview)
+    if preview.customer != sub.customer or preview.currency != price.currency:
+        raise ActivationUnavailable(
+            "The invoice preview does not match the subscription"
+        )
+    return _quoted_terms(trial, sub, target, price, preview)
+
+
+def _quoted_terms(
+    trial: TrialState,
+    sub: BillingSubscription,
+    target: ActivationPlan,
+    price: ActivationPrice,
+    preview: InvoicePreview,
+) -> ActivationTerms:
+    return ActivationTerms(
+        plan=target,
+        price_id=price.id,
+        accepted_offer_token=trial.offer.token,
+        amount_due=preview.amount_due,
+        currency=price.currency,
+        billing_interval=price.recurring.interval,
+        billing_interval_count=price.recurring.interval_count,
+        renewal_unit_amount=price.unit_amount,
+        renewal_discounts=_applicable_discounts(preview, price),
+        renewal_tax=RenewalTax(
+            automatic=sub.automatic_tax.enabled,
+            price_tax_behavior=price.tax_behavior,
+            rates=sub.default_tax_rates,
+        ),
+        renewal_terms=(
+            f"Your {target.title()} subscription renews automatically every "
+            f"{price.recurring.interval} at the "
+            "displayed recurring price. The displayed discount terms and applicable "
+            "taxes apply. Your paid billing period starts when you confirm and end "
+            "the trial. Cancel before the next renewal to avoid the next charge."
+        ),
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
+    )
+
+
+def _applicable_discounts(
+    preview: InvoicePreview, price: ActivationPrice
+) -> list[RenewalDiscount]:
+    if (
+        any(discount.coupon.applies_to for discount in preview.discounts)
+        and not price.product
+    ):
+        raise ActivationUnavailable("Discount applicability could not be established")
+    return [
+        RenewalDiscount(**discount.coupon.model_dump(), ends_at=discount.end)
+        for discount in preview.discounts
+        if discount.coupon.applies_to is None
+        or price.product in discount.coupon.applies_to.products
+    ]
+
+
+def accepted_trial_item(trial: TrialState, sub: BillingSubscription) -> ActivationItem:
     if sub.items.has_more or len(sub.items.data) != 1:
         raise ActivationUnavailable("The subscription must retain its accepted plan")
     item = sub.items.data[0]
@@ -183,43 +192,70 @@ async def quote_terms(trial: TrialState, sub: BillingSubscription) -> Activation
         or price.recurring.interval_count != 1
     ):
         raise ActivationUnavailable("The subscription no longer matches accepted terms")
-    raw_preview = await stripe_call(
-        stripe.Invoice.create_preview_async,
-        customer=sub.customer,
-        subscription=sub.id,
-        subscription_details={"trial_end": "now", "proration_behavior": "none"},
-        expand=["discounts"],
+    return item
+
+
+async def alternate_price(
+    trial: TrialState, plan: ActivationPlan, accepted_price_id: str | None
+) -> ActivationPrice:
+    price_id = accepted_price_id or await credit.get_subscription_price_id(
+        SubscriptionTier(plan), trial.offer.billing_cycle
     )
-    preview = InvoicePreview.model_validate(raw_preview)
-    if preview.customer != sub.customer or preview.currency != price.currency:
+    if not price_id or price_id == trial.offer.price_id:
+        raise ActivationUnavailable("The selected plan price is unavailable")
+    price = ActivationPrice.model_validate(
+        await stripe_call(stripe.Price.retrieve_async, price_id)
+    )
+    interval = "month" if trial.offer.billing_cycle == "monthly" else "year"
+    if (
+        price.id != price_id
+        or price.currency != trial.offer.currency
+        or price.recurring.interval != interval
+        or price.recurring.interval_count != 1
+    ):
         raise ActivationUnavailable(
-            "The invoice preview does not match the subscription"
+            "The selected price does not match the billing cycle"
         )
-    return ActivationTerms(
-        price_id=price.id,
-        accepted_offer_token=trial.offer.token,
-        amount_due=preview.amount_due,
-        currency=price.currency,
-        billing_interval=price.recurring.interval,
-        billing_interval_count=price.recurring.interval_count,
-        renewal_unit_amount=price.unit_amount,
-        renewal_discounts=[
-            RenewalDiscount(**discount.coupon.model_dump(), ends_at=discount.end)
-            for discount in preview.discounts
-        ],
-        renewal_tax=RenewalTax(
-            automatic=sub.automatic_tax.enabled,
-            price_tax_behavior=price.tax_behavior,
-            rates=sub.default_tax_rates,
-        ),
-        renewal_terms=(
-            f"Your Pro subscription renews automatically every {interval} at the "
-            "displayed recurring price. The displayed discount terms and applicable "
-            "taxes apply. Your paid billing period starts when you confirm and end "
-            "the trial. Cancel before the next renewal to avoid the next charge."
-        ),
-        expires_at=datetime.now(UTC) + timedelta(minutes=15),
-    )
+    return price
+
+
+def subscription_item_update(
+    sub: BillingSubscription, price_id: str
+) -> SubscriptionItemsUpdate:
+    item = sub.items.data[0]
+    if item.price.id == price_id:
+        return {}
+    if not item.id:
+        raise ActivationUnavailable("The subscription item could not be established")
+    return {"items": [{"id": item.id, "price": price_id, "quantity": 1}]}
+
+
+def require_plan_change_window(sub: BillingSubscription) -> None:
+    if sub.trial_end is None or sub.trial_end <= datetime.now(UTC).timestamp() + 300:
+        raise ActivationUnavailable(
+            "The trial is ending. Recover its payment before changing plans."
+        )
+
+
+async def matches_trial_source(
+    user_id: str, sub: BillingSubscription, terms: ActivationTerms
+) -> bool:
+    trial = await get_subscription_trial(user_id)
+    if (
+        trial is None
+        or trial.subscription_id != sub.id
+        or trial.customer_id != sub.customer
+        or trial.offer.token != terms.accepted_offer_token
+        or sub.metadata.get("trial_enrollment_id") != trial.id
+        or not trial.consumed_at
+        or trial.converted_at
+    ):
+        return False
+    try:
+        accepted_trial_item(trial, sub)
+    except ActivationUnavailable:
+        return False
+    return True
 
 
 async def invoice_payment_intent(invoice: BillingInvoice) -> str | None:

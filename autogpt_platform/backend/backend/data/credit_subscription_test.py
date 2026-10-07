@@ -141,7 +141,8 @@ def _make_user(
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_active(billing_boundaries):
+@pytest.mark.parametrize("tier", [SubscriptionTier.PRO, SubscriptionTier.MAX])
+async def test_sync_subscription_from_stripe_active(billing_boundaries, tier):
     mock_user = _make_user()
     stripe_sub = {
         "id": "sub_new",
@@ -151,13 +152,13 @@ async def test_sync_subscription_from_stripe_active(billing_boundaries):
     }
 
     async def mock_price_id(
-        tier: SubscriptionTier, billing_cycle: str = "monthly"
+        requested_tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
         if billing_cycle != "monthly":
             return None
-        if tier == SubscriptionTier.PRO:
+        if requested_tier == tier:
             return "price_pro_monthly"
-        if tier == SubscriptionTier.BUSINESS:
+        if requested_tier == SubscriptionTier.BUSINESS:
             return "price_biz_monthly"
         return None
 
@@ -183,8 +184,43 @@ async def test_sync_subscription_from_stripe_active(billing_boundaries):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"}, data={"subscriptionTier": tier}
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", [SubscriptionTier.PRO, SubscriptionTier.MAX])
+async def test_unsettled_paid_subscription_never_grants_tier(billing_boundaries, tier):
+    user = _make_user()
+    subscription = {
+        "id": "sub_new",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_paid"}, "quantity": 1}]},
+    }
+    billing_boundaries.subscription.return_value = subscription
+    with (
+        patch.object(
+            credit.User,
+            "prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=user)),
+        ),
+        patch.object(
+            credit,
+            "build_price_to_tier_map",
+            AsyncMock(return_value={"price_paid": tier}),
+        ),
+        patch.object(
+            credit.subscription_activation,
+            "publish_initial_pro_activation",
+            AsyncMock(return_value=False),
+        ) as publish,
+        patch.object(credit, "set_subscription_tier", AsyncMock()) as direct,
+    ):
+        await sync_subscription_from_stripe(subscription)
+    publish.assert_awaited_once()
+    billing_boundaries.tx.user.update.assert_not_awaited()
+    direct.assert_not_awaited()
 
 
 @pytest.mark.asyncio

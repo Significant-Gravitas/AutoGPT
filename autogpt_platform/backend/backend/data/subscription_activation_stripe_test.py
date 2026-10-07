@@ -81,3 +81,78 @@ async def test_discount_duration_and_tax_changes_require_new_consent(
     live_subscription.automatic_tax.enabled = True
     taxed = await billing.quote_terms(trial, live_subscription)
     assert not taxed.same_charge_as(once)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("product,discount_count", [("prod_pro", 0), ("prod_max", 1)])
+async def test_alternate_quote_only_discloses_applicable_discounts(
+    trial, subscription, monkeypatch, product, discount_count
+):
+    subscription["items"]["data"][0].update(id="si_owned")
+    subscription["items"]["data"][0]["price"].update(
+        unit_amount=5000,
+        currency="usd",
+        product="prod_pro",
+        recurring={"interval": "month", "interval_count": 1},
+    )
+    live = billing.BillingSubscription.model_validate(subscription)
+    monkeypatch.setattr(
+        billing.credit, "get_subscription_price_id", AsyncMock(return_value="price_max")
+    )
+    price = {
+        "id": "price_max",
+        "product": "prod_max",
+        "unit_amount": 9000,
+        "currency": "usd",
+        "recurring": {"interval": "month", "interval_count": 1},
+    }
+    invoice = {
+        "customer": "cus_1",
+        "currency": "usd",
+        "amount_due": 9000,
+        "discounts": [
+            {
+                "coupon": {
+                    "percent_off": 50,
+                    "duration": "forever",
+                    "applies_to": {"products": [product]},
+                }
+            }
+        ],
+    }
+    calls = AsyncMock(side_effect=[price, invoice])
+    monkeypatch.setattr(billing, "stripe_call", calls)
+    terms = await billing.quote_terms(trial, live, "MAX")
+    assert len(terms.renewal_discounts) == discount_count
+    assert terms.amount_due == 9000
+    assert "discounts.coupon.applies_to" in calls.await_args.kwargs["expand"]
+
+
+@pytest.mark.asyncio
+async def test_restricted_discount_requires_known_selected_product(
+    trial, subscription, monkeypatch
+):
+    subscription["items"]["data"][0]["price"].update(
+        unit_amount=5000,
+        currency="usd",
+        recurring={"interval": "month", "interval_count": 1},
+    )
+    invoice = {
+        "customer": "cus_1",
+        "currency": "usd",
+        "amount_due": 2500,
+        "discounts": [
+            {
+                "coupon": {
+                    "percent_off": 50,
+                    "duration": "forever",
+                    "applies_to": {"products": ["prod_pro"]},
+                }
+            }
+        ],
+    }
+    monkeypatch.setattr(billing, "stripe_call", AsyncMock(return_value=invoice))
+    with pytest.raises(billing.ActivationUnavailable):
+        await billing.quote_terms(
+            trial, billing.BillingSubscription.model_validate(subscription)
+        )

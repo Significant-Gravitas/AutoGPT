@@ -7,7 +7,7 @@ then for every reconcilable user (has a Stripe customer, not ENTERPRISE) sets th
 tier from the map (NO_TIER when the customer is absent). Manual grants (no Stripe
 customer) and ENTERPRISE rows are never touched.
 
-Pro candidates without a completed activation for their current subscription pass
+Pro/Max candidates without a completed activation for their current subscription pass
 through subscription and settled-invoice reconciliation: tier assignment alone
 does not establish that first paid activation and its usage generation completed.
 Other unchanged tiers need no writes. Manual grants (no customer) remain excluded.
@@ -161,16 +161,16 @@ async def _reconcile_one(
         summary.skipped_incomplete += 1
         return
     try:
-        pro_candidate = target_tier == SubscriptionTier.PRO
+        pro_candidate = target_tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
         if pro_candidate:
             subscription = (pro_subscriptions or {}).get(user.stripeCustomerId or "")
             if subscription is None:
-                raise ValueError("Pro reconciliation requires a subscription identity")
+                raise ValueError("Paid reconciliation requires a subscription identity")
             # The list price is only a routing hint. Reconciliation refetches
             # Stripe under the activation lock and requires settled evidence.
             # Run this even for an unchanged tier to recover incomplete usage
-            # activation; never grant Pro by calling set_subscription_tier.
-            if await _requires_pro_reconciliation(user, subscription):
+            # activation; never grant Pro/Max by calling set_subscription_tier.
+            if await _requires_pro_reconciliation(user, subscription, target_tier):
                 target_tier = await _reconcile_pro_tier(user, subscription)
         if target_tier == current_tier:
             summary.unchanged += 1
@@ -208,8 +208,10 @@ async def _reconcile_one(
         summary.upgrades += 1
 
 
-async def _requires_pro_reconciliation(user: User, subscription: dict) -> bool:
-    if user.subscriptionTier != SubscriptionTier.PRO:
+async def _requires_pro_reconciliation(
+    user: User, subscription: dict, target_tier: SubscriptionTier
+) -> bool:
+    if user.subscriptionTier != target_tier:
         return True
     activation = await PaidUsageActivation.prisma().find_unique(
         where={"userId": user.id}
@@ -300,8 +302,11 @@ async def _collect_status_page(
                     existing = tiers.get(str(sub.customer))
                     if existing is None or _TIER_RANK[tier] > _TIER_RANK[existing]:
                         tiers[str(sub.customer)] = tier
-                    if tier == SubscriptionTier.PRO and pro_subscriptions is not None:
-                        pro_subscriptions[str(sub.customer)] = dict(sub)
+                        if (
+                            tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
+                            and pro_subscriptions is not None
+                        ):
+                            pro_subscriptions[str(sub.customer)] = dict(sub)
                 continue
             _record_subscription(sub, price_to_tier, tiers, pro_subscriptions)
         if not subs.has_more or not subs.data:
@@ -336,8 +341,12 @@ def _record_subscription(
     existing = tiers.get(customer)
     if existing is None or _TIER_RANK[tier] > _TIER_RANK[existing]:
         tiers[customer] = tier
-    if tier == SubscriptionTier.PRO and pro_subscriptions is not None:
-        pro_subscriptions.setdefault(customer, dict(sub))
+    if (
+        tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
+        and pro_subscriptions is not None
+        and (existing is None or _TIER_RANK[tier] > _TIER_RANK[existing])
+    ):
+        pro_subscriptions[customer] = dict(sub)
 
 
 _TIER_RANK: dict[SubscriptionTier, int] = {

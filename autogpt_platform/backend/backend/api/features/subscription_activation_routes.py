@@ -1,4 +1,4 @@
-"""Authenticated backend contract for explicit Pro trial conversion."""
+"""Explicit Pro/Max trial conversion; pro-activation is the historical URL."""
 
 import logging
 from typing import Annotated
@@ -49,7 +49,7 @@ async def preview_pro_activation(
     user_id: CurrentUser,
 ) -> ActivationResponse:
     try:
-        return await preview_activation(user_id, body.return_to)
+        return await preview_activation(user_id, body.return_to, body.plan)
     except (ActivationUnavailable, SubscriptionCheckoutUnavailable) as exc:
         raise HTTPException(409, str(exc)) from exc
     except stripe.StripeError as exc:
