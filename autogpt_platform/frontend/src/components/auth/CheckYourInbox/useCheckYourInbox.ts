@@ -29,28 +29,37 @@ export function useCheckYourInbox({ email, next }: Args) {
 
   async function handleResend() {
     setIsResending(true);
-    // Through the HTTP route rather than a server action so Better Auth's
-    // per-IP rate limit applies.
-    const { error } = await authClient.sendVerificationEmail({
-      email,
-      callbackURL: getEmailVerificationCallbackURL(next),
-    });
-    setIsResending(false);
-
-    if (error) {
-      toast({
-        title: "We couldn't send the email",
-        description:
-          error.status === 429
-            ? "Too many attempts. Please try again in a few minutes."
-            : "Please try again in a moment.",
-        variant: "destructive",
+    try {
+      // Through the HTTP route rather than a server action so Better Auth's
+      // per-IP rate limit applies.
+      const { error } = await authClient.sendVerificationEmail({
+        email,
+        callbackURL: getEmailVerificationCallbackURL(next),
       });
+      if (error) {
+        showResendFailed(error.status === 429);
+        return;
+      }
+    } catch {
+      // A network failure throws instead of answering with an error.
+      showResendFailed(false);
       return;
+    } finally {
+      setIsResending(false);
     }
 
     setCooldown(RESEND_COOLDOWN_SECONDS);
     toast({ title: `Email sent to ${email}`, variant: "success" });
+  }
+
+  function showResendFailed(rateLimited: boolean) {
+    toast({
+      title: "We couldn't send the email",
+      description: rateLimited
+        ? "Too many attempts. Please try again in a few minutes."
+        : "Please try again in a moment.",
+      variant: "destructive",
+    });
   }
 
   return {

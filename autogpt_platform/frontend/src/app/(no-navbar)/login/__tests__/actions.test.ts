@@ -6,6 +6,8 @@ const rollbackSessionMock = vi.fn();
 const createUserMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const captureExceptionMock = vi.fn();
+const scheduleAccountCreatedGoalMock = vi.fn();
+const markAccountCreatedMock = vi.fn();
 
 vi.mock("@/lib/auth/auth", () => ({
   auth: {
@@ -19,12 +21,20 @@ vi.mock("@/lib/auth/server/rollbackSession", () => ({
   rollbackSession: (...args: unknown[]) => rollbackSessionMock(...args),
 }));
 
-vi.mock("@/lib/autogpt-server-api", () => ({
-  default: class BackendAPIMock {
-    createUser(...args: unknown[]) {
-      return createUserMock(...args);
-    }
-  },
+vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
+  postV1GetOrCreateUser: (...args: unknown[]) => createUserMock(...args),
+}));
+
+vi.mock("@/services/analytics/datafast-server", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/services/analytics/datafast-server")
+  >()),
+  scheduleAccountCreatedGoal: (...args: unknown[]) =>
+    scheduleAccountCreatedGoalMock(...args),
+}));
+
+vi.mock("@/services/analytics/account-created-server", () => ({
+  markAccountCreated: (...args: unknown[]) => markAccountCreatedMock(...args),
 }));
 
 vi.mock("@/app/api/helpers", () => ({
@@ -41,12 +51,24 @@ vi.mock("@sentry/nextjs", () => ({
 
 import { login } from "../actions";
 
+// What the backend's get-or-create answers: X-AutoGPT-User-Created is true
+// only on the call that created the User.
+function userResponse(created: boolean, status = 200) {
+  return {
+    status,
+    data: { id: "user-1" },
+    headers: new Headers({ "X-AutoGPT-User-Created": String(created) }),
+  };
+}
+
 beforeEach(() => {
   signInEmailMock.mockReset();
   rollbackSessionMock.mockReset();
   createUserMock.mockReset();
   getOnboardingStatusMock.mockReset();
   captureExceptionMock.mockReset();
+  scheduleAccountCreatedGoalMock.mockReset();
+  markAccountCreatedMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -57,7 +79,7 @@ afterEach(() => {
 describe("login", () => {
   it("signs in, provisions the backend user, and points new users at onboarding", async () => {
     signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
-    createUserMock.mockResolvedValue({ id: "user-1" });
+    createUserMock.mockResolvedValue(userResponse(false));
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
 
     const result = await login("user@example.com", "hunter2-password");
@@ -77,7 +99,7 @@ describe("login", () => {
 
   it("sends returning users to copilot when onboarding is already complete", async () => {
     signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
-    createUserMock.mockResolvedValue({ id: "user-1" });
+    createUserMock.mockResolvedValue(userResponse(false));
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 
     const result = await login("user@example.com", "hunter2-password");
@@ -164,12 +186,52 @@ describe("login", () => {
 
   it("does not roll back the session when login succeeds end to end", async () => {
     signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
-    createUserMock.mockResolvedValue({});
+    createUserMock.mockResolvedValue(userResponse(false));
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 
     const result = await login("user@example.com", "hunter2-password");
 
     expect(rollbackSessionMock).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, next: "/copilot" });
+  });
+
+  it("counts the sign-up when this login is the call that created the account", async () => {
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockResolvedValue(userResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const result = await login("user@example.com", "hunter2-password");
+
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledTimes(1);
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledWith("email");
+    expect(markAccountCreatedMock).toHaveBeenCalledTimes(1);
+    expect(markAccountCreatedMock).toHaveBeenCalledWith("email");
+    expect(result).toEqual({ success: true, next: "/onboarding" });
+  });
+
+  it("does not count a login into an account that already existed", async () => {
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockResolvedValue(userResponse(false));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
+
+    await login("user@example.com", "hunter2-password");
+
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+    expect(markAccountCreatedMock).not.toHaveBeenCalled();
+  });
+
+  it("rolls back and counts nothing when provisioning answers an error status", async () => {
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockResolvedValue(userResponse(true, 500));
+
+    const result = await login("user@example.com", "hunter2-password");
+
+    expect(rollbackSessionMock).toHaveBeenCalledTimes(1);
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+    expect(markAccountCreatedMock).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      success: false,
+      error: "Failed to login. Please try again.",
+    });
   });
 });
