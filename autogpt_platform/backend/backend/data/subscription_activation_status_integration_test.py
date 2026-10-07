@@ -19,11 +19,13 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize("trial_cost", [None, 25, 100])
+@pytest.mark.parametrize("tier", ["PRO", "MAX"])
 async def test_current_completes_activation_and_keeps_paid_usage_on_repeated_reads(
-    activation_case, mocker, trial_cost
+    activation_case, mocker, trial_cost, tier
 ):
     case = activation_case
-    trial = await case.add_trial(trial_cost) if trial_cost is not None else None
+    case.select_plan(tier)
+    trial = await case.add_trial(trial_cost, tier) if trial_cost is not None else None
     await case.add_cost(None, 173)
     case.subscription["metadata"]["pro_activation_return_to"] = "/chat/resume?kept=1"
     case.subscription["items"]["data"][0]["price"].update(
@@ -34,7 +36,10 @@ async def test_current_completes_activation_and_keeps_paid_usage_on_repeated_rea
     mocker.patch.object(
         credit,
         "build_price_to_tier_map",
-        return_value={"price_pro": SubscriptionTier.PRO},
+        return_value={
+            "price_pro": SubscriptionTier.PRO,
+            "price_max": SubscriptionTier.MAX,
+        },
     )
     mocker.patch.object(credit, "schedule_posthog_lifecycle_sync")
     mocker.patch(
@@ -45,16 +50,17 @@ async def test_current_completes_activation_and_keeps_paid_usage_on_repeated_rea
     )
     charge = mocker.patch("stripe.Subscription.modify_async")
     response = await current_activation(case.user_id)
-    assert response.status == "ready" and response.usage_reset
-    assert response.activation_id
+    assert response.status == "ready" and response.usage_reset == (trial is not None)
+    assert bool(response.activation_id) == (trial is not None)
     assert response.return_to == "/chat/resume?kept=1"
-    assert await case.counters(response.activation_id) == (0, 0)
+    initial_cost = 0 if trial else 173
+    assert await case.counters(response.activation_id) == (initial_cost, initial_cost)
     await case.add_cost(response.activation_id, 179)
 
     for _ in range(2):
         assert await current_activation(case.user_id) == response
-    assert await case.counters(response.activation_id) == (179, 179)
-    assert await case.counters(None) == (173, 173)
+    assert await case.counters(response.activation_id) == (initial_cost + 179,) * 2
+    assert await case.counters(None) == ((173 if trial else 352),) * 2
     charge.assert_not_called()
     if trial:
         saved = await SubscriptionTrial.prisma().find_unique_or_raise(

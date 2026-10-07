@@ -1,10 +1,12 @@
-"""Public contract and persisted terms for explicitly ending a Pro trial."""
+"""Public contract and persisted terms for explicitly ending a trial on Pro or Max."""
 
 from datetime import datetime
 from hashlib import sha256
 from typing import Literal
 
 from pydantic import BaseModel, Field, Json, field_validator
+
+ActivationPlan = Literal["PRO", "MAX"]
 
 ActivationStatus = Literal[
     "confirmation_required",
@@ -41,7 +43,7 @@ class RenewalTax(BaseModel):
 
 
 class ActivationTerms(BaseModel):
-    plan: Literal["PRO"] = "PRO"
+    plan: ActivationPlan = "PRO"
     price_id: str
     accepted_offer_token: str
     amount_due: int = Field(ge=0)
@@ -78,6 +80,7 @@ class ActivationConfirmRequest(BaseModel):
 
 
 class ActivationPreviewRequest(BaseModel):
+    plan: ActivationPlan | None = None
     return_to: str = "/settings/billing"
 
     @field_validator("return_to")
@@ -141,3 +144,96 @@ class ActivationUnavailable(ValueError):
 
 class ActivationNotFound(ValueError):
     """No activation owned by this authenticated user."""
+
+
+class InvoicePaymentSource(BaseModel):
+    type: str
+    payment_intent: str | None = None
+
+
+class InvoicePayment(BaseModel):
+    invoice: str
+    is_default: bool = False
+    payment: InvoicePaymentSource
+
+
+class InvoicePayments(BaseModel):
+    data: list[InvoicePayment] = Field(default_factory=list)
+    has_more: bool = False
+
+
+class BillingInvoice(BaseModel):
+    id: str
+    customer: str
+    status: str | None = None
+    amount_remaining: int | None = None
+    hosted_invoice_url: str | None = None
+    payment_intent: str | None = None
+    payments: InvoicePayments | None = None
+
+
+class CouponProducts(BaseModel):
+    products: list[str]
+
+
+class Coupon(BaseModel):
+    applies_to: CouponProducts | None = None
+    amount_off: int | None = None
+    percent_off: float | None = None
+    currency: str | None = None
+    duration: str
+    duration_in_months: int | None = None
+
+
+class Discount(BaseModel):
+    coupon: Coupon
+    end: int | None = None
+
+
+class InvoicePreview(BaseModel):
+    customer: str
+    currency: str
+    amount_due: int
+    discounts: list[Discount] = Field(default_factory=list)
+
+
+class AutomaticTax(BaseModel):
+    enabled: bool = False
+
+
+class RecurringPrice(BaseModel):
+    interval: Literal["month", "year"]
+    interval_count: int
+
+
+class ActivationPrice(BaseModel):
+    id: str
+    product: str | None = None
+    unit_amount: int
+    currency: str
+    recurring: RecurringPrice
+    tax_behavior: str = "unspecified"
+
+
+class ActivationItem(BaseModel):
+    id: str | None = None
+    price: ActivationPrice
+    quantity: int
+
+
+class ActivationItems(BaseModel):
+    data: list[ActivationItem]
+    has_more: bool = False
+
+
+class BillingSubscription(BaseModel):
+    id: str
+    customer: str
+    status: str
+    metadata: dict[str, str] = Field(default_factory=dict)
+    cancel_at_period_end: bool = False
+    trial_end: int | None = None
+    items: ActivationItems
+    latest_invoice: BillingInvoice | None = None
+    automatic_tax: AutomaticTax = Field(default_factory=AutomaticTax)
+    default_tax_rates: list[RenewalTaxRate] = Field(default_factory=list)

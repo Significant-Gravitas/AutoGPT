@@ -27,18 +27,24 @@ from backend.data.subscription_activation_evidence import (
     settled_recurring_invoice,
 )
 from backend.data.subscription_activation_models import PaidActivationResult
+from backend.data.subscription_activation_target import (
+    PAID_CONVERSION_TIERS,
+    accepted_conversion_target,
+    owns_consumed_trial,
+    subscription_price_id,
+)
 from backend.data.subscription_trial import TrialState
 
 
 async def reconcile_paid_activation(
-    user_id: str, subscription_id: str
+    user_id: str, subscription_id: str, *, expected_price_id: str | None = None
 ) -> PaidActivationResult | None:
     user = await User.prisma().find_unique_or_raise(where={"id": user_id})
     raw = await stripe_call(stripe.Subscription.retrieve_async, subscription_id)
     verify_subscription_owner(user, dict(raw))
     await credit.sync_subscription_from_stripe(dict(raw))
     state = await get_usage_activation_state(user_id)
-    if not state.ready or state.tier != SubscriptionTier.PRO:
+    if not state.ready or state.tier not in PAID_CONVERSION_TIERS:
         return None
     if raw.status != "active" or not await current_invoice_is_settled(
         dict(raw), allow_proration=True
@@ -46,13 +52,15 @@ async def reconcile_paid_activation(
         return None
     async with transaction() as tx:
         locked = await lock_activation_user(user_id, tx)
-        if locked.subscriptionTier != SubscriptionTier.PRO:
+        if locked.subscriptionTier not in PAID_CONVERSION_TIERS:
             return None
-        return await _reconcile_locked_activation(locked, subscription_id, tx)
+        return await _reconcile_locked_activation(
+            locked, subscription_id, tx, expected_price_id
+        )
 
 
 async def _reconcile_locked_activation(
-    user: User, subscription_id: str, tx: Prisma
+    user: User, subscription_id: str, tx: Prisma, expected_price_id: str | None
 ) -> PaidActivationResult | None:
     await query_raw_with_schema(
         'SELECT "id" FROM {schema_prefix}"SubscriptionTrial" WHERE "userId" = $1 FOR UPDATE',
@@ -69,31 +77,26 @@ async def _reconcile_locked_activation(
         await stripe_call(stripe.Subscription.retrieve_async, subscription_id)
     )
     price_id = subscription_price_id(current)
-    if not price_id:
+    if not price_id or (
+        expected_price_id is not None and price_id != expected_price_id
+    ):
         return None
-    accepted_price = bool(
-        trial
-        and price_id == trial.offer.price_id
-        and trial.offer.tier == SubscriptionTier.PRO
+    target = await accepted_conversion_target(trial, current, tx) if trial else None
+    if trial and trial.converted_at is None and target is None:
+        return None
+    tier = (
+        target[0] if target else (await credit.build_price_to_tier_map()).get(price_id)
     )
-    if trial and trial.converted_at is None and not accepted_price:
+    if tier not in PAID_CONVERSION_TIERS or user.subscriptionTier != tier:
         return None
-    if (
-        not accepted_price
-        and (await credit.build_price_to_tier_map()).get(price_id)
-        != SubscriptionTier.PRO
-    ):
+    # Even an admin paid label cannot hide incomplete payment reconciliation.
+    if not await publish_initial_pro_activation(user, current, price_id, tx, trial):
         return None
-    # Even an admin Pro label cannot hide incomplete first-payment reconciliation.
-    if not await publish_initial_pro_activation(
-        user, current, price_id, tx, trial if accepted_price else None
-    ):
-        return None
-    return await _paid_activation_result(user.id, current, tx)
+    return await _paid_activation_result(user.id, current, tx, trial)
 
 
 async def _paid_activation_result(
-    user_id: str, subscription: dict, tx: Prisma
+    user_id: str, subscription: dict, tx: Prisma, trial: TrialState | None
 ) -> PaidActivationResult | None:
     activation = await tx.paidusageactivation.find_unique(where={"userId": user_id})
     if activation and activation.readyAt is None:
@@ -103,9 +106,21 @@ async def _paid_activation_result(
     ).invoice_id
     usage_reset = bool(
         activation
+        and trial
+        and trial.consumed_at is not None
+        and trial.conversion_invoice_id == invoice_id
         and activation.stripeSubscriptionId == subscription["id"]
         and activation.stripeInvoiceId == invoice_id
     )
+    if usage_reset:
+        invoice = await _retrieve_invoice(invoice_id)
+        usage_reset = qualifying_invoice(
+            invoice,
+            customer_id=subscription["customer"],
+            subscription_id=subscription["id"],
+            price_id=subscription_price_id(subscription) or "",
+            trial_end=subscription.get("trial_end"),
+        )
     return PaidActivationResult(
         invoice_id=invoice_id,
         usage_reset=usage_reset,
@@ -130,31 +145,24 @@ def verify_subscription_owner(user: User, subscription: dict) -> None:
         raise ValueError("Subscription does not belong to this user")
 
 
-def subscription_price_id(subscription: dict) -> str | None:
-    items = subscription.get("items", {})
-    data = items.get("data", [])
-    if items.get("has_more") or len(data) != 1 or data[0].get("quantity") != 1:
-        return None
-    return data[0].get("price", {}).get("id")
-
-
 async def current_invoice_is_settled(
     subscription: dict, *, allow_proration: bool = False
 ) -> bool:
+    return (
+        await _current_settled_invoice(subscription, allow_proration=allow_proration)
+        is not None
+    )
+
+
+async def _current_settled_invoice(
+    subscription: dict, *, allow_proration: bool = False
+) -> dict | None:
     latest = subscription.get("latest_invoice")
     if not latest or subscription.get("status") != "active":
-        return False
+        return None
     invoice_id = INVOICE_REFERENCE.validate_python(latest).invoice_id
-    invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
-    if invoice.get("lines", {}).get("has_more"):
-        lines = await stripe_call(
-            stripe.Invoice.list_lines_async, invoice_id, limit=100
-        )
-        invoice["lines"] = {
-            "data": [dict(line) async for line in stripe_list_items(lines)],
-            "has_more": False,
-        }
-    return bool(
+    invoice = await _retrieve_invoice(invoice_id)
+    settled = (
         (
             settled_recurring_invoice(invoice)
             or (
@@ -171,6 +179,20 @@ async def current_invoice_is_settled(
             or invoice.get("created", 0) >= subscription["trial_end"]
         )
     )
+    return invoice if settled else None
+
+
+async def _retrieve_invoice(invoice_id: str) -> dict:
+    invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
+    if invoice.get("lines", {}).get("has_more"):
+        lines = await stripe_call(
+            stripe.Invoice.list_lines_async, invoice_id, limit=100
+        )
+        invoice["lines"] = {
+            "data": [dict(line) async for line in stripe_list_items(lines)],
+            "has_more": False,
+        }
+    return invoice
 
 
 async def publish_initial_pro_activation(
@@ -180,11 +202,16 @@ async def publish_initial_pro_activation(
     tx: Prisma,
     trial: TrialState | None = None,
 ) -> bool:
-    """Under User then Trial row locks; return whether paid access is proven."""
+    """Prove paid access; only an initial consumed trial conversion may reset.
+
+    The historical name and policy ID remain compatible with existing rows.
+    Call under User then Trial row locks when a trial enrollment is supplied.
+    """
     verify_subscription_owner(user, subscription)
     if subscription_price_id(subscription) != price_id:
         return False
-    if not await current_invoice_is_settled(subscription, allow_proration=True):
+    current_invoice = await _current_settled_invoice(subscription, allow_proration=True)
+    if current_invoice is None:
         return False
     existing = await tx.paidusageactivation.find_unique(where={"userId": user.id})
     if existing:
@@ -195,8 +222,21 @@ async def publish_initial_pro_activation(
     # never from a tier label that an admin or delayed cache may have assigned.
     if user.subscriptionTier == SubscriptionTier.ENTERPRISE:
         return True
+    if (trial is None or trial.converted_at is not None) and settled_recurring_invoice(
+        current_invoice
+    ):
+        return True
     first = await first_settled_invoice(user.stripeCustomerId or "")
     if first is None:
+        return False
+    # Paid signups and already-converted trials retain their usage. In
+    # particular, replaying a legacy trial's original invoice cannot mint a
+    # generation merely because no activation row was recorded at that time.
+    if trial is None or trial.converted_at is not None:
+        return True
+    if not owns_consumed_trial(user, subscription, trial):
+        return False
+    if await accepted_conversion_target(trial, subscription, tx) is None:
         return False
     if invoice_subscription(first) != subscription["id"]:
         return True  # A returning subscriber keeps their existing consumption.
@@ -217,10 +257,12 @@ async def publish_initial_pro_activation(
         # first-period evidence is different: leave it recoverable, fail closed.
         prices = {line_price(line) for line in first.get("lines", {}).get("data", [])}
         return (
-            trial is None
-            and bool(prices)
+            bool(prices)
             and None not in prices
-            and price_id not in prices
+            and (
+                price_id not in prices
+                or first.get("created", 0) < subscription["trial_end"]
+            )
         )
     generation = str(
         uuid5(
@@ -237,11 +279,10 @@ async def publish_initial_pro_activation(
         }
     )
     await _complete_activation(generation, user.id, tx)
-    if trial:
-        await tx.subscriptiontrial.update(
-            where={"userId": user.id},
-            data={"convertedAt": paid_at, "stripeConversionInvoiceId": first["id"]},
-        )
+    await tx.subscriptiontrial.update(
+        where={"userId": user.id},
+        data={"convertedAt": paid_at, "stripeConversionInvoiceId": first["id"]},
+    )
     return True
 
 

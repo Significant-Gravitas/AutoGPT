@@ -24,7 +24,10 @@ def billing_boundaries(mocker):
     mocker.patch.object(
         credit,
         "build_price_to_tier_map",
-        return_value={"price_pro": SubscriptionTier.PRO},
+        return_value={
+            "price_pro": SubscriptionTier.PRO,
+            "price_max": SubscriptionTier.MAX,
+        },
     )
     mocker.patch.object(credit, "schedule_posthog_lifecycle_sync")
 
@@ -71,6 +74,7 @@ async def test_paid_basic_upgrade_recovers_without_a_new_usage_generation(
 
 async def test_paid_upgrade_preserves_existing_generation(activation_case):
     case = activation_case
+    await case.add_trial(100)
     assert await case.activate()
     before = await get_usage_activation_state(case.user_id)
     await case.add_cost(before.generation, 151)
@@ -148,11 +152,13 @@ async def test_known_different_trial_subscription_does_not_block_paid_signup(
     before = await SubscriptionTrial.prisma().find_unique_or_raise(
         where={"id": trial.id}
     )
+    await case.add_cost(None, 153)
 
     await credit.sync_subscription_from_stripe(case.subscription, track_lifecycle=False)
 
     state = await get_usage_activation_state(case.user_id)
-    assert state.tier == "PRO" and state.generation
+    assert state.tier == "PRO" and state.generation is None
+    assert await case.counters(None) == (153, 153)
     assert (
         await SubscriptionTrial.prisma().find_unique_or_raise(where={"id": trial.id})
         == before
@@ -182,6 +188,7 @@ async def test_repeated_paid_result_identifies_current_activation_without_erasin
     activation_case,
 ):
     case = activation_case
+    await case.add_trial(100)
     result = await reconcile_paid_activation(case.user_id, case.subscription["id"])
     state = await get_usage_activation_state(case.user_id)
     assert result is not None and result.usage_reset
@@ -197,6 +204,7 @@ async def test_repeated_paid_result_identifies_current_activation_without_erasin
 
 async def test_renewal_paid_result_does_not_announce_initial_reset(activation_case):
     case = activation_case
+    await case.add_trial(100)
     assert await case.activate()
     before = await get_usage_activation_state(case.user_id)
     await case.add_cost(before.generation, 159)
@@ -252,6 +260,7 @@ async def test_returning_subscription_does_not_announce_old_lifetime_generation(
     activation_case,
 ):
     case = activation_case
+    await case.add_trial(100)
     assert await case.activate()
     before = await get_usage_activation_state(case.user_id)
     await case.add_cost(before.generation, 167)
@@ -262,6 +271,7 @@ async def test_returning_subscription_does_not_announce_old_lifetime_generation(
     new_invoice["status_transitions"]["paid_at"] += 60
     case.invoices.append(new_invoice)
     case.subscription.update(id="sub_returning", latest_invoice="in_returning")
+    del case.subscription["metadata"]["trial_enrollment_id"]
     await User.prisma().update(
         where={"id": case.user_id}, data={"subscriptionTier": "NO_TIER"}
     )

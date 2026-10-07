@@ -9,6 +9,7 @@ from prisma.enums import SubscriptionTier
 from backend.data import subscription_activation
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.subscription_activation_target import record_checkout_consumption
 from backend.data.subscription_checkout import other_plan_has_access
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_claims import claim_trial_identities
@@ -110,26 +111,40 @@ async def _reconcile_locked(
             snapshot = SubscriptionSnapshot.model_validate(raw)
             if snapshot.id != subscription_id or snapshot.status != "canceled":
                 raise ValueError("Stripe did not confirm trial cancellation")
-    # The one other price a trial may end on is the plan the customer chose
-    # to start in its place, once that switch has gone through.
-    if (
-        trial.converted_at is None
-        and snapshot.status in ("active", "trialing")
-        and not snapshot.has_accepted_price(trial.offer)
-        and not (snapshot.status == "active" and snapshot.chosen_plan())
-    ):
-        raise ValueError(
-            "Stripe items do not match the accepted trial price and quantity"
-        )
+    target = None
+    if trial.converted_at is None and snapshot.status in ("active", "trialing"):
+        if snapshot.status == "active":
+            target = await subscription_activation.accepted_conversion_target(
+                trial, dict(raw), tx
+            )
+        if (
+            not snapshot.has_accepted_price(trial.offer)
+            and target is None
+            and not (snapshot.status == "active" and snapshot.chosen_plan())
+        ):
+            raise ValueError(
+                "Stripe items do not match the accepted trial price and quantity"
+            )
     tier = (
         trial_subscription_tier(trial, snapshot, now)
         if checkout_complete
         else SubscriptionTier.NO_TIER
     )
-    if tier == SubscriptionTier.PRO and trial.converted_at is None:
+    if target is not None and tier not in (
+        SubscriptionTier.NO_TIER,
+        SubscriptionTier.TRIAL,
+    ):
+        tier = target[0]
+    if (
+        tier in subscription_activation.PAID_CONVERSION_TIERS
+        and not previously_converted
+    ):
+        assert target is not None
+        tier, price_id = target
+        await record_checkout_consumption(trial, snapshot.id, now, tx)
         user = await tx.user.find_unique_or_raise(where={"id": trial.user_id})
         if not await subscription_activation.publish_initial_pro_activation(
-            user, dict(raw), trial.offer.price_id, tx, trial
+            user, dict(raw), price_id, tx, trial
         ):
             tier = SubscriptionTier.NO_TIER
         # Preserve the activation's first invoice, even if a later renewal is

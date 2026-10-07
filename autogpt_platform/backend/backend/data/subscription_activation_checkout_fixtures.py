@@ -92,3 +92,27 @@ def boundaries(monkeypatch, attempt, live_subscription, trial):
         AsyncMock(return_value={"price_pro": SubscriptionTier.PRO}),
     )
     return SimpleNamespace(**mocks)
+
+
+@pytest.fixture
+def max_attempt(attempt, boundaries, trial, live_subscription):
+    trial.subscription_id = live_subscription.id
+    trial.consumed_at = datetime.now(UTC)
+    attempt.terms = attempt.terms.model_copy(
+        update={
+            "plan": "MAX",
+            "price_id": "price_max",
+            "accepted_offer_token": trial.offer.token,
+        }
+    )
+    live_subscription.items.data[0] = billing.ActivationItem.model_validate(
+        {
+            **live_subscription.items.data[0].model_dump(),
+            "id": "si_owned",
+        }
+    )
+    boundaries.quote_terms.return_value = attempt.terms
+    boundaries.save_confirmation.return_value = attempt.model_copy(
+        update={"confirmed_at": datetime.now(UTC)}
+    )
+    return attempt
