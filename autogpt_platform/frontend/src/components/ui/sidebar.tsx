@@ -4,8 +4,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/atoms/Button/Button";
 import { Separator } from "@/components/atoms/Separator/Separator";
 import {
   overlayClassName,
@@ -291,8 +290,8 @@ const Sidebar = React.forwardRef<
 Sidebar.displayName = "Sidebar";
 
 const SidebarTrigger = React.forwardRef<
-  React.ElementRef<typeof Button>,
-  React.ComponentProps<typeof Button>
+  HTMLButtonElement,
+  { className?: string; onClick?: React.MouseEventHandler<HTMLButtonElement> }
 >(({ className, onClick }, ref) => {
   const { toggleSidebar } = useSidebar();
 
@@ -301,9 +300,10 @@ const SidebarTrigger = React.forwardRef<
       ref={ref}
       data-sidebar="trigger"
       variant="ghost"
-      size="icon"
-      className={className}
-      onClick={(event) => {
+      size="icon-md"
+      withTooltip={false}
+      className={cn("rounded-md", className)}
+      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
         onClick?.(event);
         toggleSidebar();
       }}
@@ -367,15 +367,15 @@ const SidebarInset = React.forwardRef<
 SidebarInset.displayName = "SidebarInset";
 
 const SidebarInput = React.forwardRef<
-  React.ElementRef<typeof Input>,
-  React.ComponentProps<typeof Input>
+  HTMLInputElement,
+  React.ComponentProps<"input">
 >(({ className, ...props }, ref) => {
   return (
-    <Input
+    <input
       ref={ref}
       data-sidebar="input"
       className={cn(
-        "h-8 w-full bg-white shadow-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        "flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-base text-foreground shadow-none outline-hidden placeholder:text-zinc-500 focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
         className,
       )}
       {...props}

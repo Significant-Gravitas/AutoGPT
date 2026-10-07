@@ -507,7 +507,7 @@ export function ChatInput({
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
-                variant="default"
+                variant="primary"
                 disabled={isEnqueueing}
                 onClick={() => void handleEnqueue()}
                 className={cn(

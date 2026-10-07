@@ -4,8 +4,8 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/atoms/Button/Button";
+import type { extendedButtonVariants } from "@/components/atoms/Button/helpers";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -95,8 +95,10 @@ function InputGroupButton({
   variant = "ghost",
   size = "xs",
   ...props
-}: Omit<React.ComponentProps<typeof Button>, "size"> &
-  VariantProps<typeof inputGroupButtonVariants>) {
+}: Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "size"> &
+  VariantProps<typeof inputGroupButtonVariants> & {
+    variant?: VariantProps<typeof extendedButtonVariants>["variant"];
+  }) {
   return (
     <Button
       type={type}
@@ -113,11 +115,11 @@ const InputGroupTextarea = React.forwardRef<
   React.ComponentProps<"textarea">
 >(({ className, ...props }, ref) => {
   return (
-    <Textarea
+    <textarea
       ref={ref}
       data-slot="input-group-control"
       className={cn(
-        "flex-1 resize-none rounded-none border-0 bg-transparent py-3 shadow-none focus-visible:ring-0",
+        "flex min-h-[60px] w-full flex-1 resize-none rounded-none border-0 bg-transparent px-3 py-3 text-base text-foreground shadow-none outline-hidden placeholder:text-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
         className,
       )}
       {...props}

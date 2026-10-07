@@ -86,10 +86,10 @@ describe("MobileDrawer search", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /search chats/i }));
     expect(
-      screen.getByRole("textbox", { name: /search chats/i }),
+      screen.getByRole("searchbox", { name: /search chats/i }),
     ).toBeDefined();
 
-    fireEvent.change(screen.getByRole("textbox", { name: /search chats/i }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: /search chats/i }), {
       target: { value: "forecast" },
     });
     expect(
@@ -102,7 +102,9 @@ describe("MobileDrawer search", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /close search/i }));
-    expect(screen.queryByRole("textbox", { name: /search chats/i })).toBeNull();
+    expect(
+      screen.queryByRole("searchbox", { name: /search chats/i }),
+    ).toBeNull();
     expect(await screen.findByText("Budget notes")).toBeDefined();
   });
 
@@ -112,7 +114,7 @@ describe("MobileDrawer search", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /search chats/i }),
     );
-    fireEvent.change(screen.getByRole("textbox", { name: /search chats/i }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: /search chats/i }), {
       target: { value: "revenue" },
     });
     fireEvent.click(

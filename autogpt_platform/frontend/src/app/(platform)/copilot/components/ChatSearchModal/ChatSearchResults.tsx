@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { MutableRefObject } from "react";
@@ -58,6 +58,7 @@ export function ChatSearchResults({
             type="button"
             variant="ghost"
             role="option"
+            unmask={false}
             aria-selected={isHighlighted}
             onMouseEnter={() => onHighlight(index)}
             onClick={() => onSelect(session.id)}

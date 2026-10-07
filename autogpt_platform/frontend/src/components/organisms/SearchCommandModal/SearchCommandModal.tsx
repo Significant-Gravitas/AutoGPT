@@ -1,6 +1,5 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/atoms/Button/Button";
 import { Separator } from "@/components/atoms/Separator/Separator";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
@@ -133,7 +132,7 @@ export function SearchCommandModal({
               icon={Search01Icon}
               className="h-5 w-5 shrink-0 text-foreground"
             />
-            <Input
+            <input
               ref={inputRef}
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
@@ -146,7 +145,7 @@ export function SearchCommandModal({
                   : undefined
               }
               autoComplete="off"
-              className="h-9 border-0 bg-transparent px-0 text-base text-foreground shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
+              className="flex h-9 w-full min-w-0 border-0 bg-transparent px-0 text-base text-foreground shadow-none outline-hidden placeholder:text-zinc-700 md:text-sm"
             />
             {isLoading && isSearching ? (
               <LoadingSpinner
@@ -160,6 +159,7 @@ export function SearchCommandModal({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
+                withTooltip={false}
                 aria-label="Clear search"
                 onClick={() => onQueryChange("")}
                 className="shrink-0"

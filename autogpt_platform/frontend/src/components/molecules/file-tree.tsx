@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
 import {
   FileEmpty02Icon,
@@ -370,8 +370,9 @@ const CollapseButton = forwardRef<
 
     return (
       <Button
-        variant={"ghost"}
-        className="absolute right-2 bottom-1 h-8 w-fit p-1"
+        variant="ghost"
+        size="sm"
+        className="absolute right-2 bottom-1 w-fit p-1"
         onClick={
           expandedItems && expandedItems.length > 0
             ? closeAll

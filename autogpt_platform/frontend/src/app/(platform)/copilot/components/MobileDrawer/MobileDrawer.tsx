@@ -1,7 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/atoms/Separator/Separator";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { Text } from "@/components/atoms/Text/Text";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -163,21 +163,13 @@ export function MobileDrawer() {
               {isSearchActive ? (
                 <div className="flex min-h-0 flex-1 flex-col">
                   <div className="px-1 pb-3">
-                    <div className="relative">
-                      <Icon
-                        icon={Search01Icon}
-                        className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400"
-                      />
-                      <Input
-                        ref={searchInputRef}
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Search chats..."
-                        aria-label="Search chats"
-                        autoComplete="off"
-                        className="h-10 bg-white pl-9 text-sm"
-                      />
-                    </div>
+                    <SearchInput
+                      ref={searchInputRef}
+                      value={query}
+                      onChange={setQuery}
+                      placeholder="Search chats..."
+                      aria-label="Search chats"
+                    />
                   </div>
                   <Separator className="mb-2" />
                   <div className="px-1 pb-2 text-xs font-medium tracking-wide text-zinc-400 uppercase">

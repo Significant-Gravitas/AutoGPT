@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../../../store";
 import {
@@ -54,7 +54,11 @@ export function NotificationToggle() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Notification settings">
+        <Button
+          variant="ghost"
+          size="icon-md"
+          aria-label="Notification settings"
+        >
           {!isNotificationsEnabled ? (
             <Icon icon={BellOffIcon} className="size-5!" />
           ) : isSoundEnabled ? (
