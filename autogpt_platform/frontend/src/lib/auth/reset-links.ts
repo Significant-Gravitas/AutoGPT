@@ -15,10 +15,11 @@ const RESET_LINK = "reset-password:";
  * account's password.
  *
  * So after every update to the account, whatever path made it (/change-email,
- * a confirmed change on /verify-email, an admin update), its links not mailed
- * to its current address are dropped. A link with no address recorded counts
- * as mailed elsewhere. The reset also checks the address itself
- * (reset-link-address.ts), for a link issued while a change was landing.
+ * a confirmed change on /verify-email, an admin update), its links mailed to
+ * another address are dropped. A link with no address recorded (recording is
+ * best-effort) is kept: the reset checks the address itself
+ * (reset-link-address.ts), so such a link resets the password but verifies
+ * nothing.
  */
 export async function revokeResetLinksMailedElsewhere(
   context: AuthEmailContext,
@@ -35,7 +36,8 @@ export async function revokeResetLinksMailedElsewhere(
   const mailedTo = await resetLinkAddresses(context, user.id);
   const email = user.email.toLowerCase();
   for (const { identifier } of links) {
-    if (mailedTo.get(identifier.slice(RESET_LINK.length)) === email) continue;
+    const address = mailedTo.get(identifier.slice(RESET_LINK.length));
+    if (address === undefined || address === email) continue;
     await deleteVerification(context, identifier);
   }
   for (const [token, address] of mailedTo) {

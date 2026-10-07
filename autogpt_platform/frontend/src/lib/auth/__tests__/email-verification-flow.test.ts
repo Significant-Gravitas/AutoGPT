@@ -1190,6 +1190,29 @@ describe("password reset links", () => {
     },
   );
 
+  it("keep a link whose address wasn't recorded, which then verifies nothing", async () => {
+    const { handler, api, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(api, "owner@example.com");
+    await requestReset(handler, "owner@example.com");
+    await emailsSent();
+    // Recording the address is best-effort.
+    const record = db.UserAuthVerification.findIndex((row) =>
+      String(row.identifier).startsWith("reset-password-mailed-to:"),
+    );
+    db.UserAuthVerification.splice(record, 1);
+
+    await api.updateUser({ body: { name: "New name" }, headers: session });
+    const reset = await post(handler, "/reset-password", {
+      token: lastResetToken("owner@example.com", "reset_password"),
+      newPassword: "a-new-long-enough-password",
+    });
+
+    expect(reset.status).toBe(200);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ emailVerified: false }),
+    ]);
+  });
+
   it("survive changes to the account that keep its address", async () => {
     const { handler, api, db } = await createAuthHandler(false);
     const session = await signUpSignedIn(api, "owner@example.com");

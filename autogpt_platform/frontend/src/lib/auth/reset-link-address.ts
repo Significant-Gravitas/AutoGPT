@@ -55,14 +55,20 @@ export async function verifyAddressTheResetLinkWasMailedTo(
   context: ResetLinkContext,
   token: string,
 ) {
-  const [record] = (await context.adapter.findMany({
+  // The adapter's LIKE leaves `_` (in base64url tokens) a wildcard, so the
+  // suffix is matched exactly here.
+  const records = (await context.adapter.findMany({
     model: "verification",
     where: [
       { field: "identifier", value: `:${token}`, operator: "ends_with" },
       { field: "identifier", value: MAILED_TO, operator: "starts_with" },
     ],
-    limit: 1,
+    limit: 10,
   })) as Array<{ identifier: string; value: string }>;
+  const record = records.find(
+    ({ identifier }) =>
+      identifier.startsWith(MAILED_TO) && identifier.endsWith(`:${token}`),
+  );
   if (!record) return;
   await context.adapter.deleteMany({
     model: "verification",
@@ -91,9 +97,8 @@ export async function resetLinkAddresses(
     limit: 100,
   })) as Array<{ identifier: string; value: string }>;
   return new Map(
-    records.map((record) => [
-      record.identifier.slice(prefix.length),
-      record.value,
-    ]),
+    records
+      .filter(({ identifier }) => identifier.startsWith(prefix))
+      .map((record) => [record.identifier.slice(prefix.length), record.value]),
   );
 }
