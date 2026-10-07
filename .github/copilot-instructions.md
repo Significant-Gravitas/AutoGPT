@@ -137,7 +137,7 @@ pnpm storybook                      # Start component development server
 - `package.json` - Node.js dependencies and scripts
 - `schema.prisma` - Database schema and migrations
 - `next.config.mjs` - Next.js configuration
-- `tailwind.config.ts` - Styling configuration
+- `src/app/globals.css` - Styling configuration (Tailwind 4 `@theme`)
 
 ### Security & Middleware
 

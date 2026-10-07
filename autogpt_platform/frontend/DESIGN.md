@@ -2,7 +2,7 @@
 version: alpha
 name: AutoGPT Platform
 description: >-
-  Design system of the AutoGPT Platform frontend (Next.js, Tailwind 3.4,
+  Design system of the AutoGPT Platform frontend (Next.js, Tailwind 4.3,
   Radix). Tokens below are the decided values; "Tokens today" in the prose
   says where the code still differs.
 colors:
@@ -157,11 +157,11 @@ Made 2026-10-07 (audit Part 8.4). New code follows them now; the token rebuild (
 
 ## Tokens today
 
-The sources are `src/components/styles/colors.ts` (palette), `src/app/globals.css` (shadcn variables), `tailwind.config.ts` (theme) and `src/components/atoms/Text/helpers.ts` (type scale). If this table and those files disagree, the files win and this table is out of date.
+The sources are `src/app/globals.css` (the Tailwind theme in `@theme`: palette, radius, shadows, animations; and the shadcn variables) and `src/components/atoms/Text/helpers.ts` (type scale). `src/components/styles/colors.ts` repeats the palette for the one component and the story that read it in TypeScript. If this table and those files disagree, the files win and this table is out of date.
 
 ### Palette
 
-`colors.ts` overrides Tailwind's ramps of the same name; `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` and `fuchsia` are Tailwind defaults and are banned by lint. `blue`, `sky`, `teal` and `cyan` are also defaults, have no decision yet, and are allowed for now. `zinc-950` is not defined and falls through to Tailwind's value; do not use it.
+The palette overrides Tailwind's ramps of the same name; `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` and `fuchsia` are Tailwind defaults and are banned by lint. `blue`, `sky`, `teal` and `cyan` are also defaults, have no decision yet, and are allowed for now. The `-950` steps are not part of the palette (`globals.css` keeps Tailwind 3's values for them and for the default families, so the Tailwind 4 upgrade changed no colour); do not use them.
 
 | Step | slate     | zinc      | red       | orange    | yellow    | green     | purple    | pink      |
 | ---- | --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- |
@@ -218,7 +218,7 @@ Defined as HSL in `globals.css`, exposed as Tailwind colours. Prefer these over 
 
 ### Spacing
 
-Tailwind's default 4px scale, plus `4.5` (18px), `18` (72px), `68` (272px), `71` (284px) and `76` (304px). Use the scale before an arbitrary value; `h-[2.25rem]` is `h-9`, `w-[12rem]` is `w-48`. Page width `max-w-[1360px]` recurs and has no token yet.
+Tailwind 4 derives every step from `--spacing` (4px): `p-4` is `calc(var(--spacing) * 4)`, and any multiple of 0.25 works (`4.5`, `18`, `68`). Use the scale before an arbitrary value; `h-[2.25rem]` is `h-9`, `w-[12rem]` is `w-48`. Page width `max-w-[1360px]` recurs and has no token yet.
 
 ### Radius
 
@@ -343,10 +343,10 @@ One rule per line, with what enforces it. "Allowlisted" means existing violators
 3. Icons are Hugeicons through the `Icon` atom; no `lucide-react`, `@phosphor-icons/react`, `@radix-ui/react-icons`, `react-icons`, or direct `@hugeicons/react` (type imports are fine). Enforced: `no-restricted-imports`, allowlisted.
 4. Toasts go through `molecules/Toast`, never `sonner`. Enforced: `no-restricted-imports` (`sonner`), allowlisted.
 5. Use only classes Tailwind generates. Enforced: `better-tailwindcss/no-unknown-classes`, allowlisted.
-6. Do not combine classes that set the same property. Enforced: `better-tailwindcss/no-conflicting-classes` (reports nothing until Tailwind 4).
+6. Do not combine classes that set the same property. Enforced: `better-tailwindcss/no-conflicting-classes`, allowlisted.
 7. No `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` or `fuchsia` colour classes; map them to `zinc`, `zinc`, `zinc`, `green`, `yellow`, `purple`, `purple`, `red`. Enforced: `better-tailwindcss/no-restricted-classes`, allowlisted.
 8. `blue`, `sky`, `teal`, `cyan`: no decision yet; leave existing uses, avoid new ones. Not yet enforced.
-9. No `dark:` classes. Not yet enforced.
+9. No `dark:` classes. Enforced: `better-tailwindcss/no-restricted-classes`.
 10. No hex or `rgb()` colour classes (`bg-[#F9F9FA]`); use a palette step. Not yet enforced.
 11. Prefer semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) where one fits. Not yet enforced.
 12. Typography through `Text`; no raw `<p>` or `<h1>`…`<h6>` with classes. Not yet enforced.
@@ -373,7 +373,7 @@ The script lints everything with the allowlist removed, rewrites the file, and p
 
 Wave 1 (merged into `ds/integration`): lint enforcement, live atom fixes, dead code, Storybook coverage (every component folder has a story, `a11y.test: "error"` declared), and the `admin`, `copilot`, `library`, `profile` and `settings` migrations. Wave 2 (in progress): `build`, `marketplace` and the remaining app routes, `components/contextual` and `layout`, new atoms (Checkbox, Textarea, Separator and others), the dead-code backlog, and this document. Counts before and after are in the audit's "Wave 1 and 2 outcome".
 
-Not done yet: the Tailwind 4 upgrade, the shadcn token rebuild (which applies the decisions above), the 32/36/40 control heights, a `test-storybook` runner, and visual regression in CI (the Chromatic job runs only when `CHROMATIC_PROJECT_TOKEN` is set).
+Not done yet: the shadcn token rebuild (which applies the decisions above), the 32/36/40 control heights, a `test-storybook` runner, and visual regression in CI (the Chromatic job runs only when `CHROMATIC_PROJECT_TOKEN` is set).
 
 ## Deprecated
 
