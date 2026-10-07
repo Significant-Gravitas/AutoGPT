@@ -130,4 +130,47 @@ describe("Dialog", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.hasAttribute("aria-describedby")).toBe(false);
   });
+
+  test("links the description as the accessible description", () => {
+    render(
+      <Dialog
+        title="Delete agent"
+        description="This cannot be undone."
+        controlled={{ isOpen: true, set: vi.fn() }}
+      >
+        <Dialog.Content>
+          <p>Body</p>
+        </Dialog.Content>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Delete agent" });
+    const description = document.getElementById(
+      dialog.getAttribute("aria-describedby") ?? "",
+    );
+    expect(description?.textContent).toBe("This cannot be undone.");
+    expect(description?.classList.contains("sr-only")).toBe(false);
+  });
+
+  test("keeps a hidden description for screen readers only", () => {
+    render(
+      <Dialog
+        title="Delete agent"
+        description="This cannot be undone."
+        hideDescription
+        controlled={{ isOpen: true, set: vi.fn() }}
+      >
+        <Dialog.Content>
+          <p>Body</p>
+        </Dialog.Content>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Delete agent" });
+    const description = document.getElementById(
+      dialog.getAttribute("aria-describedby") ?? "",
+    );
+    expect(description?.textContent).toBe("This cannot be undone.");
+    expect(description?.classList.contains("sr-only")).toBe(true);
+  });
 });

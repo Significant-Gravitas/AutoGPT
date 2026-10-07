@@ -46,6 +46,45 @@ export const Basic: Story = {
   render: renderBasicDialog,
 };
 
+export const WithDescription: Story = {
+  render: function WithDescriptionStory() {
+    return (
+      <Dialog
+        title="Delete agent"
+        description="This removes the agent and its run history. This cannot be undone."
+      >
+        <Dialog.Trigger>
+          <Button variant="primary">Open Dialog (description)</Button>
+        </Dialog.Trigger>
+        <Dialog.Content>
+          <Dialog.Footer>
+            <Button variant="destructive">Delete</Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
+    );
+  },
+};
+
+export const WithHiddenDescription: Story = {
+  render: function WithHiddenDescriptionStory() {
+    return (
+      <Dialog
+        title="Rename agent"
+        description="Enter a new name for this agent."
+        hideDescription
+      >
+        <Dialog.Trigger>
+          <Button variant="primary">Open Dialog (hidden description)</Button>
+        </Dialog.Trigger>
+        <Dialog.Content>
+          <p>The description is read by screen readers only.</p>
+        </Dialog.Content>
+      </Dialog>
+    );
+  },
+};
+
 export const WithoutTitle: Story = {
   render: renderDialogWithoutTitle,
 };

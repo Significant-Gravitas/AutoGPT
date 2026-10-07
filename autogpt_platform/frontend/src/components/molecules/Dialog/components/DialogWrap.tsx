@@ -15,6 +15,7 @@ import { DialogCtx, DialogVariant } from "../useDialogCtx";
 import { compactStyles, modalStyles } from "./styles";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -36,6 +37,8 @@ function isExternalPickerOpen(): boolean {
 export function DialogWrap({
   children,
   title,
+  description,
+  hideDescription,
   variant,
   styling = {},
   className,
@@ -45,6 +48,7 @@ export function DialogWrap({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
   const isCompact = variant === "compact";
+  const hasVisibleHeader = Boolean(title || (description && !hideDescription));
 
   // Prevent dialog from closing when external picker is open or when forceOpen is true
   const handleInteractOutside = useCallback(
@@ -109,7 +113,9 @@ export function DialogWrap({
         onPointerDownOutside={handlePointerDownOutside}
         onFocusOutside={handleFocusOutside}
         onEscapeKeyDown={handleEscapeKeyDown}
-        aria-describedby={undefined}
+        // Without a description, opt out of Radix's missing-description
+        // warning; with one, keep the link Radix sets up.
+        {...(description ? {} : { "aria-describedby": undefined })}
         className={cn(
           modalStyles.content,
           isCompact && compactStyles.content,
@@ -122,18 +128,35 @@ export function DialogWrap({
         <div
           className={cn(
             "flex items-center justify-between px-2",
-            title ? (isCompact ? compactStyles.header : "pb-6") : "pb-0",
+            hasVisibleHeader
+              ? isCompact
+                ? compactStyles.header
+                : "pb-6"
+              : "pb-0",
           )}
         >
-          {title ? (
-            <RXDialog.Title
-              className={isCompact ? compactStyles.title : modalStyles.title}
-            >
-              {title}
-            </RXDialog.Title>
-          ) : (
-            <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
-          )}
+          <div className="flex min-w-0 flex-col gap-2">
+            {title ? (
+              <RXDialog.Title
+                className={isCompact ? compactStyles.title : modalStyles.title}
+              >
+                {title}
+              </RXDialog.Title>
+            ) : (
+              <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
+            )}
+            {description ? (
+              <RXDialog.Description asChild>
+                <Text
+                  variant="body"
+                  tone="secondary"
+                  className={cn(hideDescription && "sr-only")}
+                >
+                  {description}
+                </Text>
+              </RXDialog.Description>
+            ) : null}
+          </div>
 
           {isForceOpen ? null : (
             <Button

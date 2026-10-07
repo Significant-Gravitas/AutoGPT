@@ -10,6 +10,8 @@ export type DialogVariant = "default" | "compact";
 
 export interface DialogCtx {
   title: React.ReactNode;
+  description?: React.ReactNode;
+  hideDescription?: boolean;
   variant: DialogVariant;
   handleOpen: () => void;
   handleClose: () => void;

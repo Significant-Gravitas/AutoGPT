@@ -93,4 +93,24 @@ describe("Dialog rendered as a drawer", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.hasAttribute("aria-describedby")).toBe(false);
   });
+
+  test("links the description in the drawer too", () => {
+    render(
+      <Dialog
+        title="Test"
+        description="Drawer description"
+        controlled={{ isOpen: true, set: vi.fn() }}
+      >
+        <Dialog.Content>
+          <p>Drawer body</p>
+        </Dialog.Content>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(
+      document.getElementById(dialog.getAttribute("aria-describedby") ?? "")
+        ?.textContent,
+    ).toBe("Drawer description");
+  });
 });
