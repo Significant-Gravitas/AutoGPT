@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 SCRIPT = Path(__file__).with_name("backmerge.sh")
 REAL_GIT = shutil.which("git") or "git"
@@ -27,6 +27,11 @@ if sys.argv[1] == "api":
         answers = json.load(f)
     path = sys.argv[-1]
     print(json.dumps(answers["comments"] if "/comments" in path else answers["pulls"]))
+if sys.argv[1:3] == ["pr", "create"]:
+    print("https://github.com/example/repo/pull/9")
+labels = {"--label", "--add-label"} & set(sys.argv)
+if labels and os.path.exists(os.path.join(state, "no-label")):
+    sys.exit("could not add label: 'conflicts-help' not found")
 """
 
 # Advances origin's dev the first time the script pushes to dev, as a merge
@@ -99,15 +104,25 @@ class BackmergeTest(unittest.TestCase):
         ).stdout.strip()
 
     def commit(
-        self, branch: str, files: Dict[str, str], message: str, push: bool = True
+        self,
+        branch: str,
+        files: Dict[str, Optional[str]],
+        message: str,
+        push: bool = True,
     ) -> str:
+        """Writes `files` on `branch`, deleting those whose content is None."""
         self.git(self.work, "fetch", "-q", "origin")
         if self.git(self.work, "branch", "--list", branch):
             self.git(self.work, "switch", "-q", branch)
         else:
             self.git(self.work, "switch", "-q", "-c", branch, f"origin/{branch}")
         for name, content in files.items():
-            (self.work / name).write_text(content)
+            path = self.work / name
+            if content is None:
+                path.unlink()
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
         self.git(self.work, "add", "-A")
         self.git(self.work, "commit", "-q", "-m", message)
         if push:
@@ -218,13 +233,14 @@ class BackmergeTest(unittest.TestCase):
         self.assertEqual(self.ref(branch), master)
         [create] = self.gh_calls("pr", "create")
         args = create["args"]
-        for flag, value in [
-            ("--base", "dev"),
-            ("--head", branch),
-            ("--label", "conflicts-help"),
-        ]:
+        for flag, value in [("--base", "dev"), ("--head", branch)]:
             self.assertEqual(args[args.index(flag) + 1], value)
         self.assertIn("--draft", args)
+        [label] = self.gh_calls("pr", "edit")
+        self.assertEqual(label["args"][2], "https://github.com/example/repo/pull/9")
+        self.assertEqual(
+            label["args"][label["args"].index("--add-label") + 1], "conflicts-help"
+        )
         self.assertIn("- `app.txt`", create["body"])
         self.assertIn("CONFLICT (content): Merge conflict in app.txt", create["body"])
         self.assertIn("hotfix two (#1)", create["body"])
@@ -240,6 +256,53 @@ class BackmergeTest(unittest.TestCase):
         self.assertEqual(len(self.gh_calls("pr", "create")), 1)
         self.assertEqual(self.gh_calls("pr", "comment"), [])
 
+    def test_a_missing_label_still_opens_the_pr(self) -> None:
+        self.conflict()
+        (self.state / "no-label").touch()
+
+        result = self.run_script()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.gh_calls("pr", "create")), 1)
+        self.assertIn("Label not added", result.stderr)
+
+    def test_a_pr_whose_branch_is_gone_is_not_the_open_one(self) -> None:
+        gone = "backmerge/master-deleted"
+        self.git(self.work, "push", "-q", "origin", f"master:refs/heads/{gone}")
+        # The runner's clone still has the branch, as a reused clone would.
+        self.git(self.root, "clone", "-q", str(self.origin), str(self.root / "runner"))
+        self.git(self.work, "push", "-q", "origin", f":refs/heads/{gone}")
+        master = self.conflict()
+        self.open_prs = [
+            {"number": 6, "head": {"ref": gone, "repo": {"full_name": REPO}}}
+        ]
+
+        result = self.run_script()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Skipping #6", result.stderr)
+        [create] = self.gh_calls("pr", "create")
+        self.assertIn(f"backmerge/master-{master[:12]}", create["args"])
+        self.assertEqual(self.gh_calls("pr", "comment"), [])
+
+    def test_a_conflict_in_no_one_file_lists_no_file(self) -> None:
+        moved = {f"dir/f{i}": f"{i}\n" for i in range(4)}
+        self.commit("master", moved, "add dir")
+        self.git(self.work, "push", "-q", "origin", "master:dev")
+        # dev splits dir/ evenly, so git cannot tell where master's new file goes.
+        split = {name: None for name in moved}
+        split.update({"a/f0": "0\n", "a/f1": "1\n", "b/f2": "2\n", "b/f3": "3\n"})
+        self.commit("dev", split, "split dir")
+        self.commit("master", {"dir/new": "new\n"}, "add dir/new (#1)")
+
+        result = self.run_script()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        [create] = self.gh_calls("pr", "create")
+        self.assertIn("outside any one file", create["body"])
+        self.assertIn("CONFLICT (directory rename split)", create["body"])
+        self.assertNotIn("\n- `", create["body"])
+
     def test_open_pr_is_told_once_when_master_moves(self) -> None:
         first = self.conflict()
         self.git(
@@ -253,7 +316,7 @@ class BackmergeTest(unittest.TestCase):
             {
                 "number": 8,
                 "head": {
-                    "ref": "backmerge/master-elsewhere",
+                    "ref": f"backmerge/master-{first[:12]}",
                     "repo": {"full_name": "fork/repo"},
                 },
             },

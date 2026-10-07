@@ -80,11 +80,12 @@ fetch() {
 }
 
 conflict() { # <source> <target> <merge-tree output>
-  local source=$1 target=$2 files messages prs branch title
-  files=$(sed -n '2,/^$/{/^$/!p}' <<<"$3")
+  local source=$1 target=$2 files messages prs branch title url
+  # Line 2 up to the first blank line; empty for a conflict in no one file.
+  files=$(sed -n '2,${/^$/q;p}' <<<"$3")
   messages=$(grep '^CONFLICT' <<<"$3" || true)
   echo "Merging $SOURCE $(short "$source") into $TARGET $(short "$target") conflicts in:"
-  indent '    ' <<<"$files"
+  indent '    ' <<<"${files:-$messages}"
 
   prs=$(open_backmerge_prs)
   if [[ -n $prs ]]; then
@@ -102,22 +103,36 @@ conflict() { # <source> <target> <merge-tree output>
   if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
     git push origin "$source:refs/heads/$branch"
   fi
-  conflict_body "$source" "$target" "$files" "$messages" "$branch" |
+  # Labelled after the create, so a missing label cannot keep the PR from opening.
+  url=$(conflict_body "$source" "$target" "$files" "$messages" "$branch" |
     gh pr create --repo "$GITHUB_REPOSITORY" --draft --base "$TARGET" --head "$branch" \
-      --title "$title" --label "$LABEL" --body-file -
+      --title "$title" --body-file -)
+  echo "Opened $url."
+  if ! gh pr edit "$url" --repo "$GITHUB_REPOSITORY" --add-label "$LABEL"; then
+    echo "::warning title=Label not added::Could not add the $LABEL label to $url; add it by hand." >&2
+  fi
 }
 
-open_backmerge_prs() { # "<number> <branch>" per open back-merge PR, oldest first
+open_backmerge_prs() { # "<number> <branch>" per open back-merge PR whose branch exists, oldest first
+  local number branch
+  # One fetch of every back-merge branch: a deleted one is pruned, not an error.
+  git fetch --quiet --prune origin "+refs/heads/$BRANCH_PREFIX*:refs/remotes/origin/$BRANCH_PREFIX*" || return
   gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$TARGET&direction=asc&per_page=100" |
     jq -r --arg prefix "$BRANCH_PREFIX" --arg repo "$GITHUB_REPOSITORY" \
       '.[][] | select(.head.repo.full_name == $repo and (.head.ref | startswith($prefix)))
-        | "\(.number) \(.head.ref)"'
+        | "\(.number) \(.head.ref)"' |
+    while read -r number branch; do
+      if git rev-parse --quiet --verify "refs/remotes/origin/$branch" >/dev/null; then
+        echo "$number $branch"
+      else
+        echo "Skipping #$number: its branch $branch no longer exists." >&2
+      fi
+    done
 }
 
 already_open() { # <source> <open PRs>
   local source=$1 number branch marker comments
   while read -r number branch; do
-    git fetch --quiet origin "+refs/heads/$branch:refs/remotes/origin/$branch"
     if git merge-base --is-ancestor "$source" "origin/$branch"; then
       echo "#$number already carries $SOURCE $(short "$source"); nothing to do."
       return
@@ -147,10 +162,12 @@ EOF
 }
 
 conflict_body() { # <source> <target> <files> <messages> <branch>
-  local source=$1 target=$2 files=$3 messages=$4 branch=$5 base file
+  local source=$1 target=$2 files=$3 messages=$4 branch=$5 base file where
   base=$(git merge-base "$target" "$source")
+  where="in $(wc -l <<<"$files") files"
+  [[ -z $files ]] && where="outside any one file (git's messages are below)"
   cat <<EOF
-Merging \`$SOURCE\` into \`$TARGET\` conflicts in $(wc -l <<<"$files") files, so it needs a human. This branch is \`$SOURCE\` at $source ($(release "$source")), unresolved.
+Merging \`$SOURCE\` into \`$TARGET\` conflicts $where, so it needs a human. This branch is \`$SOURCE\` at $source ($(release "$source")), unresolved.
 
 **Land it by pushing the resolved head to \`$TARGET\`, never through the merge queue.** The queue squashes, which drops \`$SOURCE\`'s ancestry, so the same conflict comes back on the next push to \`$SOURCE\`. A repository admin runs \`git push origin <resolved head>:$TARGET\`, and GitHub then marks this PR merged.
 
@@ -160,6 +177,7 @@ What each side changed since the merge base $(short "$base"). A hotfix that also
 
 EOF
   while read -r file; do
+    [[ -z $file ]] && continue
     echo "- \`$file\`"
     echo "  - $SOURCE: $(touched "$base" "$source" "$file")"
     echo "  - $TARGET: $(touched "$base" "$target" "$file")"
