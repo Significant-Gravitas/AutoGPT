@@ -36,8 +36,7 @@ export function FloatingReviewsPanel({
         refetchInterval: (q) => {
           // Note: refetchInterval callback receives raw data before select transform
           const rawData = q.state.data as
-            | { status: number; data?: { status?: string } }
-            | undefined;
+            { status: number; data?: { status?: string } } | undefined;
           if (rawData?.status !== 200) return false;
 
           const status = rawData?.data?.status;
@@ -115,7 +114,7 @@ export function FloatingReviewsPanel({
   }
 
   return (
-    <div className={cn("fixed bottom-20 right-4 z-50", className)}>
+    <div className={cn("fixed right-4 bottom-20 z-50", className)}>
       {!isOpen && pendingReviews.length > 0 && (
         <Button
           onClick={() => setIsOpen(true)}
@@ -136,7 +135,7 @@ export function FloatingReviewsPanel({
             size="icon"
             aria-label="Close"
             withTooltip={false}
-            className="absolute right-4 top-4 z-10"
+            className="absolute top-4 right-4 z-10"
           >
             <Icon icon={Cancel01Icon} size={16} />
           </Button>

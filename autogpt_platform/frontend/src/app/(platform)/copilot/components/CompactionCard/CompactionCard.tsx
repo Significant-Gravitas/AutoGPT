@@ -72,7 +72,7 @@ function LiveCompaction({ phase, stats }: LiveProps) {
           {label}
         </span>
         {showTime && (
-          <span className="font-mono tabular-nums text-muted-foreground">
+          <span className="font-mono text-muted-foreground tabular-nums">
             {formatElapsed(elapsedSeconds)}
           </span>
         )}

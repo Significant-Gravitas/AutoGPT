@@ -613,8 +613,7 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
       const toolPart = result.messages
         .find((m) => m.role === "assistant")
         ?.parts.find((p) => p.type === "tool-SomeTool") as
-        | { state: string; output: unknown }
-        | undefined;
+        { state: string; output: unknown } | undefined;
 
       expect(toolPart?.state).toBe("output-available");
       expect(toolPart?.output).toEqual({ ok: true });

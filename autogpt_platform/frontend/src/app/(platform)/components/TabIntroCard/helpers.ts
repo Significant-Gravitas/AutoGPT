@@ -6,10 +6,7 @@ export type TabIntroTab = "agents" | "marketplace" | "build";
 // string so a typo lands as a type error instead of a silent extra branch in
 // the funnel.
 export type TabIntroCta =
-  | "see_agents"
-  | "browse_featured"
-  | "ask_autopilot"
-  | "builder_tutorial";
+  "see_agents" | "browse_featured" | "ask_autopilot" | "builder_tutorial";
 
 // One onboarding step per tab. The backend record is the source of truth —
 // it is what stops the card reappearing on a new browser or device.

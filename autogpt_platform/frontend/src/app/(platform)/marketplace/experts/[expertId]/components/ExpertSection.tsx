@@ -22,7 +22,7 @@ export function ExpertSection({ title, count, description, children }: Props) {
       >
         {title}
         {count !== undefined ? (
-          <span className="text-base font-normal tabular-nums text-zinc-400">
+          <span className="text-base font-normal text-zinc-400 tabular-nums">
             {count}
           </span>
         ) : null}

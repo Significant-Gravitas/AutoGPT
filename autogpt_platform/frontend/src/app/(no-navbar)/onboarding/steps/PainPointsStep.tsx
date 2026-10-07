@@ -110,7 +110,7 @@ export function PainPointsStep() {
         </div>
 
         <div className="flex w-full flex-col items-center gap-4">
-          <div className="flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 scrollbar-none md:grid md:grid-cols-3 md:overflow-hidden md:px-0">
+          <div className="scrollbar-none flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 md:grid md:grid-cols-3 md:overflow-hidden md:px-0">
             {orderedPainPoints.map((p) => (
               <SelectableCard
                 key={p.id}

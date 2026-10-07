@@ -99,7 +99,7 @@ export const QuestionCheckboxList = forwardRef<
                 "flex size-5 shrink-0 items-center justify-center rounded-md transition-colors " +
                 (isSelected
                   ? "bg-zinc-800 text-white"
-                  : "ring-1 ring-inset ring-zinc-300")
+                  : "ring-1 ring-zinc-300 ring-inset")
               }
             >
               {isSelected && <Icon icon={Tick02Icon} size={13} />}

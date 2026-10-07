@@ -19,7 +19,7 @@ export default function SkillsPage() {
   }
 
   return (
-    <main className="container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12">
+    <main className="container min-h-screen space-y-6 pt-16 pb-20 sm:px-8 md:px-12">
       <Link
         href="/library"
         className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"

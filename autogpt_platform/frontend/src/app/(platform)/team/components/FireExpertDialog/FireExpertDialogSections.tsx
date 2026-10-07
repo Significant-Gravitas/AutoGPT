@@ -80,7 +80,7 @@ export function FireExpertPreview({
 
 function PauseItemsPanel({ items }: PauseItemsPanelProps) {
   return (
-    <div className="rounded-xl bg-zinc-50 px-3.5 py-3 ring-1 ring-inset ring-zinc-200/80">
+    <div className="rounded-xl bg-zinc-50 px-3.5 py-3 ring-1 ring-zinc-200/80 ring-inset">
       <Text variant="small" tone="muted">
         Pausing now
       </Text>

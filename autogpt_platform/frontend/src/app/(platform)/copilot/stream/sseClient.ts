@@ -15,8 +15,7 @@ export type SseFrame =
   | { kind: "done" };
 
 export type SseResult =
-  | { ok: true }
-  | { ok: false; status: number; body: unknown };
+  { ok: true } | { ok: false; status: number; body: unknown };
 
 /** Open an SSE request and deliver its frames until the body ends. */
 export async function fetchSse(

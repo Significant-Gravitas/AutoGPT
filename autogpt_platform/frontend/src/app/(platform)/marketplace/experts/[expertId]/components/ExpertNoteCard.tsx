@@ -11,10 +11,10 @@ interface Props {
  *  read as terms rather than as more of the essay above them. */
 export function ExpertNoteCard({ icon, children }: Props) {
   return (
-    <div className="flex gap-4 rounded-2xl bg-zinc-50 p-5 ring-1 ring-inset ring-zinc-200/60">
+    <div className="flex gap-4 rounded-2xl bg-zinc-50 p-5 ring-1 ring-zinc-200/60 ring-inset">
       <span
         aria-hidden="true"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-inset ring-zinc-200/70"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-zinc-200/70 ring-inset"
       >
         <Icon icon={icon} size={20} className="text-zinc-600" />
       </span>

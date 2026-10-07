@@ -178,7 +178,7 @@ function Th({ children, align = "left", className = "" }: ThProps) {
       <Text
         variant="small-medium"
         as="span"
-        className="uppercase tracking-[0.04em] text-zinc-500"
+        className="tracking-[0.04em] text-zinc-500 uppercase"
       >
         {children}
       </Text>

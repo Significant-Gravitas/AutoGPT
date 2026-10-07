@@ -350,7 +350,7 @@ export function SetupRequirementsCard({
           {inputSchema && (
             <FormRenderer
               jsonSchema={inputSchema}
-              className="mb-3 mt-3"
+              className="mt-3 mb-3"
               handleChange={(v) =>
                 setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
               }

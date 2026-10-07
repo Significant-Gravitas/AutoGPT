@@ -3,6 +3,4 @@ import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStat
 import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
 
 export type AnyJobStatus =
-  | DreamJobStatus
-  | NightlyJobStatus
-  | CommunityRebuildJobStatus;
+  DreamJobStatus | NightlyJobStatus | CommunityRebuildJobStatus;

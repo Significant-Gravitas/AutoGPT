@@ -139,8 +139,8 @@ describe("BackendAPI WebSocket failure logging", () => {
       | ((event: Pick<CloseEvent, "code" | "reason" | "wasClean">) => void)
       | null = null;
     onerror:
-      | ((event: Pick<Event, "type"> & { target?: unknown }) => void)
-      | null = null;
+      ((event: Pick<Event, "type"> & { target?: unknown }) => void) | null =
+      null;
     onmessage: ((event: MessageEvent) => void) | null = null;
     state = "connecting";
     close = vi.fn();

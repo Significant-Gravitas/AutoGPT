@@ -181,7 +181,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
             </div>
           </NewChatOnboarding>
         )}
-        <div className="shrink-0 px-3 pb-5 pt-2">
+        <div className="shrink-0 px-3 pt-2 pb-5">
           <ChatInput
             inputId="expert-chat-input"
             variant="compact"

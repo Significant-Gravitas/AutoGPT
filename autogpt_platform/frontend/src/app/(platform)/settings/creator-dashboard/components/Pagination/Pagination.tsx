@@ -67,7 +67,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
                 aria-label={`Go to page ${page}`}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium tabular-nums transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
+                  "inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] disabled:cursor-not-allowed disabled:opacity-50",
                   isActive
                     ? "bg-zinc-900 text-white"
                     : "text-zinc-700 hover:bg-zinc-100",

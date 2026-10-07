@@ -6,8 +6,10 @@ import { forwardRef, ReactNode, useId } from "react";
 import { getDescribedBy, textareaVariants } from "./helpers";
 import { useTextarea } from "./useTextarea";
 
-interface Props
-  extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "size"> {
+interface Props extends Omit<
+  React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+  "size"
+> {
   label: string;
   hideLabel?: boolean;
   hint?: ReactNode;

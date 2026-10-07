@@ -74,12 +74,7 @@ interface MutationResponseData {
 interface ExecutionsTableProps {
   onRefresh?: () => void;
   initialTab?:
-    | "all"
-    | "orphaned"
-    | "failed"
-    | "long-running"
-    | "stuck-queued"
-    | "invalid";
+    "all" | "orphaned" | "failed" | "long-running" | "stuck-queued" | "invalid";
   onTabChange?: (
     tab:
       | "all"
@@ -122,12 +117,7 @@ export function ExecutionsTable({
   const [pageSize] = useState(10);
 
   type ExecutionTab =
-    | "all"
-    | "orphaned"
-    | "failed"
-    | "long-running"
-    | "stuck-queued"
-    | "invalid";
+    "all" | "orphaned" | "failed" | "long-running" | "stuck-queued" | "invalid";
 
   function handleTabChange(newTab: string) {
     const tab = newTab as ExecutionTab;
@@ -216,8 +206,7 @@ export function ExecutionsTable({
   const { data: executionsResponse, isLoading, error, refetch } = activeQuery;
 
   const responseData = executionsResponse?.data as
-    | { executions: RunningExecutionDetail[]; total: number }
-    | undefined;
+    { executions: RunningExecutionDetail[]; total: number } | undefined;
   const executions = responseData?.executions || [];
   const total = responseData?.total || 0;
 

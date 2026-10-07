@@ -32,7 +32,7 @@ export function KitResultRow({
       style={{ animationDelay: `${index * 60}ms` }}
       className={cn(
         "flex items-center gap-3 border-b border-border px-3.5 py-3 transition-colors duration-200 last:border-b-0 hover:bg-zinc-50",
-        "duration-300 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none",
+        "animate-in duration-300 fill-mode-both fade-in slide-in-from-bottom-1 motion-reduce:animate-none",
       )}
     >
       <span
@@ -76,7 +76,7 @@ export function KitResultRow({
               icon={Tick02Icon}
               size={14}
               aria-hidden
-              className="duration-200 animate-in fade-in zoom-in-50 motion-reduce:animate-none"
+              className="animate-in duration-200 zoom-in-50 fade-in motion-reduce:animate-none"
             />
           ) : undefined
         }

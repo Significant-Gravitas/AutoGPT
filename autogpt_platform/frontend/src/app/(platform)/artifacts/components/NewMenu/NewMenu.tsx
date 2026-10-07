@@ -45,7 +45,7 @@ export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
             variant="primary"
             size="small"
             disabled={isUploading}
-            className="min-w-0 gap-1.5 pl-4 pr-3"
+            className="min-w-0 gap-1.5 pr-3 pl-4"
             data-testid="artifacts-new-menu"
           >
             {isUploading ? (

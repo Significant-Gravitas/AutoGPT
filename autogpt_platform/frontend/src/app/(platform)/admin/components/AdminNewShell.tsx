@@ -27,7 +27,7 @@ export function AdminNewShell({ children }: { children: ReactNode }) {
               initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
-              className="mx-auto w-full max-w-[1360px] px-4 pb-8 pt-2 md:px-6 md:pt-6"
+              className="mx-auto w-full max-w-[1360px] px-4 pt-2 pb-8 md:px-6 md:pt-6"
             >
               {children}
             </motion.div>

@@ -98,17 +98,15 @@ export function combineSearchHits({
   const needle = query.trim().toLowerCase();
   const libraryHits = skills
     .filter((skill) => skillMatches(skill, needle))
-    .map(
-      (skill): SearchHit => ({
-        key: `library:skill:${skill.name.toLowerCase()}`,
-        name: skill.name,
-        subtitle: "Library skill",
-        kind: "skill",
-        source: "library",
-        id: skill.name,
-        description: skill.description,
-      }),
-    );
+    .map((skill): SearchHit => ({
+      key: `library:skill:${skill.name.toLowerCase()}`,
+      name: skill.name,
+      subtitle: "Library skill",
+      kind: "skill",
+      source: "library",
+      id: skill.name,
+      description: skill.description,
+    }));
   // Browsing with nothing typed, the Hub asks for exactly as many listings as
   // there are slots, so pushing it first would bury the user's own skills —
   // the half they are likeliest to be after. Interleaving keeps both visible.

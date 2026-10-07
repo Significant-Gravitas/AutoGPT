@@ -415,9 +415,9 @@ export function useCopilotPage() {
       } catch (err) {
         // Any other failure propagates to the composer, which restores the
         // draft and shows the one toast for it.
-        if (
-          !(err instanceof Error && err.name === "QueueFollowUpNotActiveError")
-        ) {
+        if (!(
+          err instanceof Error && err.name === "QueueFollowUpNotActiveError"
+        )) {
           if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
           throw err;
         }

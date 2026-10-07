@@ -8,11 +8,10 @@ import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { forwardRef, ReactNode, useId } from "react";
 import { checkboxVariants, getDescribedBy, indicatorSize } from "./helpers";
 
-interface Props
-  extends Omit<
-    React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>,
-    "children"
-  > {
+interface Props extends Omit<
+  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>,
+  "children"
+> {
   label?: ReactNode;
   description?: ReactNode;
   error?: string;

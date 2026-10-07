@@ -39,7 +39,7 @@ export function SectionHeader({
     <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         {eyebrow ? (
-          <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-purple-600">
+          <div className="mb-2.5 flex items-center gap-2 text-xs font-medium tracking-[0.14em] text-purple-600 uppercase">
             {eyebrowIcon}
             {eyebrow}
           </div>

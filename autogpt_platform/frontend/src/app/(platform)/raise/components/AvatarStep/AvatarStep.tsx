@@ -25,7 +25,7 @@ export function AvatarStep({
     return (
       <div
         className={cn(
-          "ml-auto flex w-fit items-center gap-3 rounded-full border py-2 pl-2 pr-5",
+          "ml-auto flex w-fit items-center gap-3 rounded-full border py-2 pr-5 pl-2",
           bubbleClassFor(color) ?? "border-accent bg-accent/5",
         )}
       >

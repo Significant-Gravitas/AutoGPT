@@ -55,7 +55,7 @@ export function FileChips({
         >
           <div
             className={cn(
-              "flex w-full flex-wrap gap-2 px-3 pb-2 pt-2",
+              "flex w-full flex-wrap gap-2 px-3 pt-2 pb-2",
               stacked && "gap-1.5 p-0",
             )}
           >
@@ -111,7 +111,7 @@ export function FileChips({
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700",
                       stacked &&
-                        "gap-1.5 border border-zinc-200 bg-white py-[3px] pl-2 pr-1.5 text-xs text-zinc-900 shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
+                        "gap-1.5 border border-zinc-200 bg-white py-[3px] pr-1.5 pl-2 text-xs text-zinc-900 shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
                     )}
                   >
                     <Icon

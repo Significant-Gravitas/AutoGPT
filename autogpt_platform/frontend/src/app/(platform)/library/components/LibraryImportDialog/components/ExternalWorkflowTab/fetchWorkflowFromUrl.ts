@@ -15,8 +15,7 @@ const N8N_TEMPLATES_API = "https://api.n8n.io/api/templates/workflows";
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 export type FetchWorkflowResult =
-  | { ok: true; json: string }
-  | { ok: false; error: string };
+  { ok: true; json: string } | { ok: false; error: string };
 
 /**
  * Server action that fetches a workflow JSON from an n8n template URL.

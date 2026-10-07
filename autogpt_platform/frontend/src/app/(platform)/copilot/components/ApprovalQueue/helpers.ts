@@ -11,12 +11,7 @@ import { beautifyString } from "@/lib/utils";
 import { asObject, str } from "../ToolChain/resultHelpers";
 
 export type ReasonKind =
-  | "mode"
-  | "subject"
-  | "supervisor"
-  | "rule"
-  | "content"
-  | "spend";
+  "mode" | "subject" | "supervisor" | "rule" | "content" | "spend";
 
 // Microdollars, as the server sends them.
 export interface ApprovalSpend {

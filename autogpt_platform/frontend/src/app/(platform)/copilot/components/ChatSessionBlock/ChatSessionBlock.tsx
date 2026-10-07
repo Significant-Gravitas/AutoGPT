@@ -66,7 +66,7 @@ export function ChatSessionBlock({
 
   return (
     <div
-      className={cn("flex min-w-0 max-w-full items-center gap-2", className)}
+      className={cn("flex max-w-full min-w-0 items-center gap-2", className)}
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center">

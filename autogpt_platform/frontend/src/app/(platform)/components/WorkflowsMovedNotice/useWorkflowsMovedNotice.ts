@@ -32,15 +32,15 @@ export function useWorkflowsMovedNotice(canShow = true) {
   const [dismissedUsers, setDismissedUsers] = useState<string[]>([]);
   const isEligible = Boolean(
     canShow &&
-      userID &&
-      experts.ready &&
-      experts.enabled &&
-      layout.ready &&
-      layout.enabled &&
-      isPreExpertsUser(user?.created_at) &&
-      isSafeLanding &&
-      !dismissedUsers.includes(userID) &&
-      !peekWorkflowsMovedNoticeSeen(userID),
+    userID &&
+    experts.ready &&
+    experts.enabled &&
+    layout.ready &&
+    layout.enabled &&
+    isPreExpertsUser(user?.created_at) &&
+    isSafeLanding &&
+    !dismissedUsers.includes(userID) &&
+    !peekWorkflowsMovedNoticeSeen(userID),
   );
   const { data, queryKey } = useGetV1OnboardingState({
     query: {

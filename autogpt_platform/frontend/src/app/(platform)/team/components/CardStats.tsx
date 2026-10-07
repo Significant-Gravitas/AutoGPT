@@ -42,7 +42,7 @@ export function CardStat({ icon, label, singular, count }: StatProps) {
         variant="body-medium"
         as="dd"
         unmask={false}
-        className="tabular-nums text-zinc-800"
+        className="text-zinc-800 tabular-nums"
       >
         {count}
       </Text>

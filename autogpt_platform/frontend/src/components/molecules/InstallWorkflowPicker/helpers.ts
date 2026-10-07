@@ -9,8 +9,7 @@ export const INSTALL_WORKFLOW_SOURCES: {
 ];
 
 export type WorkflowInstallData =
-  | { library_agent_id: string }
-  | { store_listing_version_id: string };
+  { library_agent_id: string } | { store_listing_version_id: string };
 
 /** Row subtitle: the workflow's own description, or a neutral source label.
  *  A user's own agent has no marketplace creator, so `creator_name` reads

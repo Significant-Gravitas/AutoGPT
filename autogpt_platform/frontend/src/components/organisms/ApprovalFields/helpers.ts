@@ -13,13 +13,7 @@ export const ARRAY_MAX = 5;
 const CODE_KEYS = new Set(["command", "code", "script", "source", "sql"]);
 
 export type FieldKind =
-  | "secret"
-  | "code"
-  | "long"
-  | "short"
-  | "list"
-  | "object"
-  | "json";
+  "secret" | "code" | "long" | "short" | "list" | "object" | "json";
 
 export interface FieldSpec {
   key: string;

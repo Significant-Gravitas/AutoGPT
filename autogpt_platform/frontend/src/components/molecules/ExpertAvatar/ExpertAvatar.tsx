@@ -87,7 +87,7 @@ export function ExpertAvatar({
         <StatusDot
           status={status}
           size={Math.round(size * 0.34)}
-          className="absolute -bottom-0.5 -right-0.5"
+          className="absolute -right-0.5 -bottom-0.5"
         />
       )}
     </span>

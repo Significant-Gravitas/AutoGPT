@@ -12,10 +12,7 @@ const HIGHLIGHT_BADGE = "Best value";
 export type BillingCycle = "monthly" | "yearly";
 export type HighlightedPlanKey = typeof PLAN_KEYS.PRO | typeof PLAN_KEYS.MAX;
 export type SubscriptionPricingExperimentVariant =
-  | "monthly-pro"
-  | "monthly-max"
-  | "yearly-pro"
-  | "yearly-max";
+  "monthly-pro" | "monthly-max" | "yearly-pro" | "yearly-max";
 
 interface SubscriptionPricingExperimentConfig {
   billing: BillingCycle;

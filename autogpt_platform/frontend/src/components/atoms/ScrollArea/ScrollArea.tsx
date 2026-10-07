@@ -7,8 +7,9 @@ import { ScrollBar } from "./components/ScrollBar";
 import { ScrollToTopButton } from "./components/ScrollToTopButton";
 import { useScrollArea } from "./useScrollArea";
 
-interface Props
-  extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
+interface Props extends React.ComponentPropsWithoutRef<
+  typeof ScrollAreaPrimitive.Root
+> {
   orientation?: "vertical" | "horizontal" | "both";
   /** Fades in a "Scroll to top" button once the viewport is scrolled 200px. */
   showScrollToTop?: boolean;

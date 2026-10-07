@@ -102,7 +102,7 @@ export function StatusCard({ label, ok }: StatusCardProps) {
 export function StatCard({ value, label }: StatCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-baseline gap-2 p-2.5`}>
-      <span className="text-lg font-semibold leading-none text-zinc-800">
+      <span className="text-lg leading-none font-semibold text-zinc-800">
         {value.toLocaleString()}
       </span>
       <span className="min-w-0 truncate text-xs text-zinc-500">{label}</span>
@@ -118,7 +118,7 @@ export function ChipList({ label, items }: ChipListProps) {
         as="p"
         tone="muted"
         unmask={false}
-        className="mb-1.5 text-[11px] uppercase tracking-wide"
+        className="mb-1.5 text-[11px] tracking-wide uppercase"
       >
         {label}
       </Text>

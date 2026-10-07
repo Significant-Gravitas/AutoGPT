@@ -139,7 +139,7 @@ export const Flow = () => {
           {graph && !isReadOnly && (
             <FloatingSafeModeToggle
               graph={graph}
-              className="right-2 top-32 p-2"
+              className="top-32 right-2 p-2"
             />
           )}
           <DraftRecoveryPopup isInitialLoadComplete={isInitialLoadComplete} />

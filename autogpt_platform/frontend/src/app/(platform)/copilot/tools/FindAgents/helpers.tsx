@@ -17,14 +17,10 @@ export interface FindAgentInput {
 }
 
 export type FindAgentsOutput =
-  | AgentsFoundResponse
-  | NoResultsResponse
-  | ErrorResponse;
+  AgentsFoundResponse | NoResultsResponse | ErrorResponse;
 
 export type FindAgentsToolType =
-  | "tool-find_agent"
-  | "tool-find_library_agent"
-  | (string & {});
+  "tool-find_agent" | "tool-find_library_agent" | (string & {});
 
 function parseOutput(output: unknown): FindAgentsOutput | null {
   if (!output) return null;

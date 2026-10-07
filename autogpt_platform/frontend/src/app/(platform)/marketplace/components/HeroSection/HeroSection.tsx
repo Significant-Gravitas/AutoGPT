@@ -11,7 +11,7 @@ export function HeroSection() {
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
 
   return (
-    <div className="mb-16 mt-10 flex flex-col items-center justify-center px-4">
+    <div className="mt-10 mb-16 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-3xl">
         <Text
           variant="lead-semibold"

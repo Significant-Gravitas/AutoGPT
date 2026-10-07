@@ -13,7 +13,7 @@ export function SetupStatus({ expert, isRetrying, onRetry }: Props) {
     return (
       <div
         role="status"
-        className="mx-4 mb-3 rounded-lg bg-sky-50 px-3 py-2 ring-1 ring-inset ring-sky-200"
+        className="mx-4 mb-3 rounded-lg bg-sky-50 px-3 py-2 ring-1 ring-sky-200 ring-inset"
       >
         <Text variant="body" className="text-sky-800">
           Setting up {expert.name}&apos;s skills and workflows…
@@ -26,7 +26,7 @@ export function SetupStatus({ expert, isRetrying, onRetry }: Props) {
   return (
     <div
       role="alert"
-      className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-yellow-50 px-3 py-2 ring-1 ring-inset ring-yellow-200"
+      className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-yellow-50 px-3 py-2 ring-1 ring-yellow-200 ring-inset"
     >
       <Text variant="body" className="text-yellow-700">
         {failures.length

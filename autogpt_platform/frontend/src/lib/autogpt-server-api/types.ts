@@ -36,8 +36,7 @@ export type BlockIORootSchema = {
 };
 
 export type BlockIOSubSchema =
-  | BlockIOSimpleTypeSubSchema
-  | BlockIOCombinedTypeSubSchema;
+  BlockIOSimpleTypeSubSchema | BlockIOCombinedTypeSubSchema;
 
 export type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
@@ -178,11 +177,7 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
 };
 
 export type CredentialsType =
-  | "api_key"
-  | "oauth2"
-  | "user_password"
-  | "host_scoped"
-  | "device_code";
+  "api_key" | "oauth2" | "user_password" | "host_scoped" | "device_code";
 
 /**
  * Every credential type the platform can store, as a runtime list.

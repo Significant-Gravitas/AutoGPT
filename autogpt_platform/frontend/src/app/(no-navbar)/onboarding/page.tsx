@@ -73,7 +73,7 @@ export default function OnboardingPage() {
           size="xs"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
-          className="absolute left-6 top-6 text-zinc-500 hover:text-zinc-900"
+          className="absolute top-6 left-6 text-zinc-500 hover:text-zinc-900"
         >
           Back
         </Button>
@@ -83,8 +83,8 @@ export default function OnboardingPage() {
         className={cn(
           "flex w-full min-w-0 flex-1 items-center justify-center",
           currentStep === steps.subscription
-            ? "pb-8 pt-3 lg:pb-2"
-            : "pb-8 pt-16",
+            ? "pt-3 pb-8 lg:pb-2"
+            : "pt-16 pb-8",
         )}
       >
         {currentStep === steps.team && <IntroStep slide="team" />}

@@ -358,11 +358,9 @@ export function useMemoryVisualizer(expertID?: string) {
 
   const dreamStatusData = dreamStatus.data?.data as AnyJobStatus | undefined;
   const nightlyStatusData = nightlyStatus.data?.data as
-    | AnyJobStatus
-    | undefined;
+    AnyJobStatus | undefined;
   const rebuildStatusData = rebuildStatus.data?.data as
-    | AnyJobStatus
-    | undefined;
+    AnyJobStatus | undefined;
 
   return {
     overview,

@@ -46,7 +46,7 @@ function LogsTable({
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b text-xs uppercase text-muted-foreground">
+          <thead className="border-b text-xs text-muted-foreground uppercase">
             <tr>
               <th scope="col" className="px-3 py-3">
                 Time
@@ -92,7 +92,7 @@ function LogsTable({
           <tbody>
             {logs.map((log) => (
               <tr key={log.id} className="border-b hover:bg-muted">
-                <td className="whitespace-nowrap px-3 py-2 text-xs">
+                <td className="px-3 py-2 text-xs whitespace-nowrap">
                   {formatLogDate(log.created_at)}
                 </td>
                 <td className="px-3 py-2 text-xs">

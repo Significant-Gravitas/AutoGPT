@@ -17,7 +17,7 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
   const fileIcon = classifyArtifact(item.mime_type ?? null, item.name).icon;
 
   return (
-    <div className="group relative flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 transition-transform duration-150 ease-out smooth-shadow-ring-sm hover:-translate-y-px motion-reduce:transition-none">
+    <div className="group relative flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 smooth-shadow-ring-sm transition-transform duration-150 ease-out hover:-translate-y-px motion-reduce:transition-none">
       <button
         type="button"
         onClick={() => onOpen(file)}

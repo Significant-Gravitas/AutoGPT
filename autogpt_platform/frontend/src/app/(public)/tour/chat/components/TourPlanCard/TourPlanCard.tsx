@@ -57,14 +57,14 @@ function TourPlanStepItem({
 }) {
   return (
     <div
-      className="flex items-start gap-3 py-1.5 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+      className="flex animate-in items-start gap-3 py-1.5 duration-500 fill-mode-both fade-in slide-in-from-bottom-2"
       style={{ animationDelay: `${index * STEP_STAGGER_MS}ms` }}
     >
       <Icon
         icon={CheckmarkCircle02Icon}
         size={18}
         aria-label="completed"
-        className="mt-0.5 shrink-0 text-green-500 duration-300 animate-in fade-in zoom-in-50 fill-mode-both"
+        className="mt-0.5 shrink-0 animate-in text-green-500 duration-300 fill-mode-both zoom-in-50 fade-in"
         style={{ animationDelay: `${index * STEP_STAGGER_MS + 200}ms` }}
       />
       <div className="min-w-0 flex-1">

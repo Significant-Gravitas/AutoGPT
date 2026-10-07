@@ -52,7 +52,7 @@ export function TranscriptPanel({ finalizeResponse }: Props) {
           transcript_preview (from finalize)
         </Text>
         {preview ? (
-          <pre className="mt-2 whitespace-pre-wrap rounded-large bg-zinc-50 p-4 font-mono text-sm text-zinc-800">
+          <pre className="mt-2 rounded-large bg-zinc-50 p-4 font-mono text-sm whitespace-pre-wrap text-zinc-800">
             {preview}
           </pre>
         ) : (

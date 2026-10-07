@@ -62,7 +62,7 @@ export function WorkspaceFilePicker({
               icon={Search01Icon}
               width={18}
               height={18}
-              className="absolute left-4 top-1/2 z-20 -translate-y-1/2 text-zinc-500"
+              className="absolute top-1/2 left-4 z-20 -translate-y-1/2 text-zinc-500"
             />
             <Input
               label="Search workspace files"

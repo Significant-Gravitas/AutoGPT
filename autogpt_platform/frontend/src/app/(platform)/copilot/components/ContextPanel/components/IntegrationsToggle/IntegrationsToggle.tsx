@@ -95,7 +95,7 @@ export function IntegrationsToggle({ expert, className }: Props) {
           {shown.map((service) => (
             <Tooltip key={service.id}>
               <TooltipTrigger asChild>
-                <span className="flex size-6 items-center justify-center rounded-full bg-white ring-2 ring-white smooth-shadow-ring-sm">
+                <span className="flex size-6 items-center justify-center rounded-full bg-white ring-2 smooth-shadow-ring-sm ring-white">
                   <IntegrationLogo
                     provider={service.id}
                     alt={service.name}
@@ -110,7 +110,7 @@ export function IntegrationsToggle({ expert, className }: Props) {
         {hidden.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+              <span className="text-xs font-medium text-sidebar-foreground/90 tabular-nums">
                 +{hidden.length}
               </span>
             </TooltipTrigger>

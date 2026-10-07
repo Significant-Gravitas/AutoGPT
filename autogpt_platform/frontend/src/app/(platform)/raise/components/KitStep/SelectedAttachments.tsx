@@ -31,7 +31,7 @@ export function SelectedAttachments({ attachments, color, onRemove }: Props) {
             "transition-transform duration-200 hover:scale-[1.03] active:scale-95 motion-reduce:transition-none motion-reduce:hover:scale-100",
             // Chips pop in as they are picked, so the jump from the results
             // list up to the tray reads as one continuous move.
-            "duration-300 animate-in fade-in zoom-in-95 fill-mode-both motion-reduce:animate-none",
+            "animate-in duration-300 fill-mode-both zoom-in-95 fade-in motion-reduce:animate-none",
             bubbleClassFor(color) ?? "border-accent bg-accent/5",
           )}
         >

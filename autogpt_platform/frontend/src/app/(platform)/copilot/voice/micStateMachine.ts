@@ -7,12 +7,7 @@
  */
 
 export type VoiceState =
-  | "off"
-  | "listening"
-  | "hearing"
-  | "transcribing"
-  | "thinking"
-  | "speaking";
+  "off" | "listening" | "hearing" | "transcribing" | "thinking" | "speaking";
 
 export type VoiceEvent =
   | { type: "ENABLE" }

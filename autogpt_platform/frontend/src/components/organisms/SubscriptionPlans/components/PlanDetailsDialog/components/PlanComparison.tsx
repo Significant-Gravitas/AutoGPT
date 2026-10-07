@@ -12,7 +12,7 @@ export function PlanComparison({ plans }: Props) {
         <thead>
           <tr>
             {plans.map((plan) => (
-              <th key={plan.key} scope="col" className="pb-3 pr-3 font-medium">
+              <th key={plan.key} scope="col" className="pr-3 pb-3 font-medium">
                 {plan.name}
                 {plan.usage && ` · ${plan.usage} usage`}
               </th>

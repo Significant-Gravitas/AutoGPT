@@ -26,7 +26,7 @@ export function ExpertAbout({ text }: Props) {
         tone="secondary"
         unmask={false}
         className={cn(
-          "whitespace-pre-line leading-7",
+          "leading-7 whitespace-pre-line",
           isClampable && !isExpanded && "line-clamp-6",
         )}
       >

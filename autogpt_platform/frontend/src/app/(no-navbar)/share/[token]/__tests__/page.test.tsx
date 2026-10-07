@@ -40,16 +40,14 @@ beforeEach(() => {
 describe("SharePage (execution share viewer)", () => {
   test("renders the AutoGPT logo header + run summary + outputs on the happy path", async () => {
     server.use(
-      getGetV1GetSharedExecutionMockHandler200(
-        (): SharedExecutionResponse => ({
-          id: "exec-1",
-          graph_name: "Weather Agent",
-          graph_description: "Reports the weather",
-          status: "COMPLETED",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          outputs: {},
-        }),
-      ),
+      getGetV1GetSharedExecutionMockHandler200((): SharedExecutionResponse => ({
+        id: "exec-1",
+        graph_name: "Weather Agent",
+        graph_description: "Reports the weather",
+        status: "COMPLETED",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        outputs: {},
+      })),
     );
 
     render(<SharePage />);

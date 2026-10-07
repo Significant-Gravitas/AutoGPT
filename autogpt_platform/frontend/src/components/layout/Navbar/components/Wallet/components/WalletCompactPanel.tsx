@@ -50,10 +50,10 @@ export function WalletCompactPanel({
         </button>
       )}
 
-      <div className="px-3 pb-1.5 pt-2">
+      <div className="px-3 pt-2 pb-1.5">
         <Text variant="body-medium">Earn credits</Text>
       </div>
-      <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+      <div className="scrollbar-thin max-h-80 scrollbar-thumb-zinc-200 scrollbar-track-transparent overflow-y-auto">
         {earnGroups.map((group) => (
           // `defaultOpen` is part of the key so finishing the last task in a
           // group remounts its section and re-seeds it collapsed, instead of
@@ -103,7 +103,7 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
 
 function EarnTaskRow({ row }: { row: EarnRow }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-1.5 pl-8 pr-3">
+    <div className="flex items-start justify-between gap-3 py-1.5 pr-3 pl-8">
       <div className="flex min-w-0 items-start gap-2.5">
         <StatusIcon done={row.done} />
         <Text variant="body">{row.label}</Text>

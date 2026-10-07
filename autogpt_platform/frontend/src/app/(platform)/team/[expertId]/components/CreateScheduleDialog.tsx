@@ -91,7 +91,7 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
       variant="ghost"
       unmask={false}
       disabled={!agent}
-      className="h-auto w-full min-w-0 justify-start gap-3 whitespace-normal rounded-2xl border-zinc-200 px-4 py-3 text-left font-normal hover:border-zinc-200 hover:bg-zinc-50 disabled:opacity-60"
+      className="h-auto w-full min-w-0 justify-start gap-3 rounded-2xl border-zinc-200 px-4 py-3 text-left font-normal whitespace-normal hover:border-zinc-200 hover:bg-zinc-50 disabled:opacity-60"
     >
       <Icon
         icon={Calendar03Icon}

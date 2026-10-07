@@ -80,11 +80,11 @@ export function ActivityDropdown({
   return (
     <div className="overflow-hidden">
       {/* Header */}
-      <div className={cn("sticky top-0 z-10 px-4", !newLayout && "pb-1 pt-0")}>
+      <div className={cn("sticky top-0 z-10 px-4", !newLayout && "pt-0 pb-1")}>
         <div
           className={cn(
             "flex items-center justify-between",
-            newLayout ? "pb-1 pt-3" : "h-[60px]",
+            newLayout ? "pt-3 pb-1" : "h-[60px]",
           )}
         >
           {isSearchVisible && withSearch ? (
@@ -111,7 +111,7 @@ export function ActivityDropdown({
                   variant="ghost"
                   size="icon-xs"
                   onClick={handleClearSearch}
-                  className="absolute right-1 top-1/2 size-6 -translate-y-1/2 hover:border-transparent hover:bg-transparent"
+                  className="absolute top-1/2 right-1 size-6 -translate-y-1/2 hover:border-transparent hover:bg-transparent"
                   aria-label="Clear search"
                   withTooltip={false}
                 >
@@ -126,7 +126,7 @@ export function ActivityDropdown({
           ) : (
             <div className={cn(styles.headerContainer, newLayout && "py-0.5")}>
               {newLayout ? (
-                <span className="text-xs font-medium uppercase text-zinc-500">
+                <span className="text-xs font-medium text-zinc-500 uppercase">
                   Agent Activity
                 </span>
               ) : (
@@ -170,7 +170,7 @@ export function ActivityDropdown({
             style={{ width: newLayout ? "100%" : 320, height: listHeight }}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
+          <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-zinc-100 p-6">
               <Icon icon={BellIcon} className="h-6 w-6 text-zinc-300" />
             </div>

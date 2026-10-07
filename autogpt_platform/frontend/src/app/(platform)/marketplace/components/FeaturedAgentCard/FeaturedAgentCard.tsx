@@ -137,7 +137,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
         </span>
       </div>
       {agent.creator && agent.slug && agent.agent_graph_id && (
-        <div className="absolute bottom-4 right-4">
+        <div className="absolute right-4 bottom-4">
           <AddToLibraryButton
             creatorSlug={agent.creator}
             agentSlug={agent.slug}

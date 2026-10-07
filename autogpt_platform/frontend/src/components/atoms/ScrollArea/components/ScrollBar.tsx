@@ -12,7 +12,7 @@ export function ScrollBar({ orientation }: Props) {
     <ScrollAreaPrimitive.ScrollAreaScrollbar
       orientation={orientation}
       className={cn(
-        "flex touch-none select-none p-px transition-colors",
+        "flex touch-none p-px transition-colors select-none",
         orientation === "vertical" && "h-full w-2.5",
         orientation === "horizontal" && "h-2.5 flex-col",
       )}

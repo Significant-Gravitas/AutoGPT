@@ -75,7 +75,7 @@ export const MainSearchResultPage = ({
   return (
     <div className="w-full">
       <div className="mx-auto min-h-screen w-full max-w-[1440px] px-6 md:px-10">
-        <div className="mb-4 mt-5">
+        <div className="mt-5 mb-4">
           <Button
             variant="secondary"
             size="small"
@@ -99,7 +99,7 @@ export const MainSearchResultPage = ({
               variant="h4"
               as="h1"
               unmask={false}
-              className="text-2xl font-semibold leading-8 text-zinc-800"
+              className="text-2xl leading-8 font-semibold text-zinc-800"
             >
               &quot;{searchTerm}&quot;
             </Text>

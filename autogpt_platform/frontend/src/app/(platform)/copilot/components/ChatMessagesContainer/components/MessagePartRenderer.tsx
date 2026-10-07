@@ -174,7 +174,7 @@ export function MessagePartRenderer({
       const isActive = reasoningState === "streaming";
       return (
         <ReasoningCollapse key={key} isActive={isActive}>
-          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
+          <pre className="text-sm whitespace-pre-wrap text-zinc-700">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -207,7 +207,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm italic text-zinc-600"
+            className="my-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-600 italic"
           >
             {markerText}
           </div>

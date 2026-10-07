@@ -58,11 +58,7 @@ export const customMutator = async <
 ): Promise<T> => {
   const requestOptions = options;
   const method = (requestOptions.method || "GET") as
-    | "GET"
-    | "POST"
-    | "PUT"
-    | "DELETE"
-    | "PATCH";
+    "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   const data = requestOptions.body;
   let headers: Record<string, string> = {
     ...((requestOptions.headers as Record<string, string>) || {}),

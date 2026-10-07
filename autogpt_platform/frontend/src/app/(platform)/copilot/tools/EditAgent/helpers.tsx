@@ -12,9 +12,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type EditAgentToolOutput =
-  | AgentPreviewResponse
-  | AgentSavedResponse
-  | ErrorResponse;
+  AgentPreviewResponse | AgentSavedResponse | ErrorResponse;
 
 function parseOutput(output: unknown): EditAgentToolOutput | null {
   if (!output) return null;

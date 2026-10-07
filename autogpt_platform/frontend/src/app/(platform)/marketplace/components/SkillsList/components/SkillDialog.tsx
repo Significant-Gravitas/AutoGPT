@@ -61,7 +61,7 @@ export function SkillDialog({ slug, onClose }: Props) {
                   variant="ghost"
                   size="small"
                   onClick={() => refetch()}
-                  className="h-auto min-w-0 rounded-none border-0 p-0 font-medium leading-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+                  className="h-auto min-w-0 rounded-none border-0 p-0 leading-normal font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
                 >
                   Retry
                 </Button>
@@ -73,7 +73,7 @@ export function SkillDialog({ slug, onClose }: Props) {
                     variant="body"
                     tone="secondary"
                     unmask={false}
-                    className="min-w-0 max-w-[52ch] flex-1 text-[15px] leading-6"
+                    className="max-w-[52ch] min-w-0 flex-1 text-[15px] leading-6"
                   >
                     {skill.description}
                   </Text>

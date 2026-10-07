@@ -38,7 +38,7 @@ export function APIKeyListSkeleton() {
       {PLACEHOLDER_ROWS.map((i) => (
         <motion.div
           key={i}
-          className="flex items-center justify-between py-4 pl-3 pr-5"
+          className="flex items-center justify-between py-4 pr-5 pl-3"
           variants={reduceMotion ? undefined : SKELETON_ITEM_VARIANTS}
         >
           <div className="flex items-center gap-3">

@@ -645,8 +645,7 @@ describe("CredentialsInput – a removed connection", () => {
       current?: ReturnType<typeof render>["rerender"];
     } = {};
     let resolveDelete:
-      | ((result: { deleted: true; revoked: null }) => void)
-      | undefined;
+      ((result: { deleted: true; revoked: null }) => void) | undefined;
     const deleteCredentials = vi.fn(async () => {
       mockProvider([]);
       if (!rerenderRef.current)

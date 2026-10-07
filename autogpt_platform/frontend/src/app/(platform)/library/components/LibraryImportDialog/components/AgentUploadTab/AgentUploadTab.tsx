@@ -78,7 +78,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                   placeholder="Agent file"
                   maxFileSize={10 * 1024 * 1024}
                   showStorageNote={false}
-                  className="mb-8 mt-4"
+                  className="mt-4 mb-8"
                 />
               </FormControl>
               <FormMessage />

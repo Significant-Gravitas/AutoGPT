@@ -32,8 +32,7 @@ export interface DecomposeErrorOutput {
 }
 
 export type DecomposeGoalOutput =
-  | TaskDecompositionOutput
-  | DecomposeErrorOutput;
+  TaskDecompositionOutput | DecomposeErrorOutput;
 
 function parseOutput(output: unknown): DecomposeGoalOutput | null {
   if (!output) return null;

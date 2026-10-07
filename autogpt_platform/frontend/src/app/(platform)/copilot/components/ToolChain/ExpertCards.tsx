@@ -220,7 +220,7 @@ export function ExpertChangeCard({
           className={cn(
             "flex items-center gap-2.5",
             stepDirection &&
-              "duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
+              "animate-in duration-300 fill-mode-both fade-in motion-reduce:animate-none",
             stepDirection === "forward" && "slide-in-from-right-4",
             stepDirection === "back" && "slide-in-from-left-4",
           )}
@@ -274,9 +274,9 @@ export function ExpertChangeCard({
             tone="muted"
             unmask={false}
             className={cn(
-              "pl-[42px] pt-2",
+              "pt-2 pl-[42px]",
               stepDirection &&
-                "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
+                "animate-in delay-75 duration-300 fill-mode-both fade-in motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
               stepDirection === "back" && "slide-in-from-left-4",
             )}
@@ -285,7 +285,7 @@ export function ExpertChangeCard({
           </Text>
         )}
         {hasCharter && !panelAvailable && showCharter && (
-          <div className="flex flex-col gap-1 pl-[42px] pt-1.5">
+          <div className="flex flex-col gap-1 pt-1.5 pl-[42px]">
             {tagline && about && (
               <Text variant="body" as="p" tone="muted" unmask={false}>
                 {about}
@@ -359,7 +359,7 @@ export function ExpertChangeCardSkeleton() {
             <Skeleton className="h-3 w-20" />
           </div>
         </div>
-        <div className="flex flex-col gap-1.5 pl-[42px] pt-2.5">
+        <div className="flex flex-col gap-1.5 pt-2.5 pl-[42px]">
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-4/5" />
         </div>

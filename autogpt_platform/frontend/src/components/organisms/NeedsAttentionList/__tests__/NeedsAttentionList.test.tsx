@@ -125,8 +125,7 @@ test("confirms a successful decision with a toast", async () => {
 
 test("decline sends a rejection", async () => {
   let actionBody:
-    | { reviews: Array<{ approved: boolean; message?: string }> }
-    | undefined;
+    { reviews: Array<{ approved: boolean; message?: string }> } | undefined;
   server.use(
     getGetV2GetPendingReviewsMockHandler200([review]),
     getPostV2ProcessReviewActionMockHandler200(async (info) => {

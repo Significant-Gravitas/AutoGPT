@@ -34,7 +34,7 @@ export function NavbarLink({ name, href }: Props) {
         className={cn(
           "flex items-center justify-start gap-2.5 p-1 md:p-2",
           isActive &&
-            "rounded-small bg-zinc-800 py-1 pl-1 pr-1.5 transition-all duration-300 md:py-[0.7rem] md:pl-2 md:pr-3",
+            "rounded-small bg-zinc-800 py-1 pr-1.5 pl-1 transition-all duration-300 md:py-[0.7rem] md:pr-3 md:pl-2",
         )}
       >
         {href === "/marketplace" && (

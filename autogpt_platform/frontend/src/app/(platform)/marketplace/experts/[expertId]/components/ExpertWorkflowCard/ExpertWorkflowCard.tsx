@@ -41,7 +41,7 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
           <Skeleton className="absolute inset-0 rounded-none" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white ring-1 ring-inset ring-zinc-200/70">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white ring-1 ring-zinc-200/70 ring-inset">
               <Icon icon={FlashIcon} size={18} className={accent.icon} />
             </span>
           </div>

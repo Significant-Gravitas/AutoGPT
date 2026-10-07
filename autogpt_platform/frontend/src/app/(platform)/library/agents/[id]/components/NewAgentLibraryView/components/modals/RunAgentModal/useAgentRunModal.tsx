@@ -26,10 +26,7 @@ import { getSystemCredentials } from "../../../../../../../../../../components/c
 import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =
-  | "manual"
-  | "schedule"
-  | "automatic-trigger"
-  | "manual-trigger";
+  "manual" | "schedule" | "automatic-trigger" | "manual-trigger";
 
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;

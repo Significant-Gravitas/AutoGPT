@@ -150,7 +150,7 @@ function ChatGPTConnectionDialog({
               ) : (
                 snapshot?.plan_type && (
                   <span className="mt-1 flex flex-wrap gap-2">
-                    <span className="rounded-[10px] bg-purple-50 px-2 py-0.5 text-[13px] font-medium leading-5 text-purple-800">
+                    <span className="rounded-[10px] bg-purple-50 px-2 py-0.5 text-[13px] leading-5 font-medium text-purple-800">
                       {snapshot.plan_type} plan
                     </span>
                   </span>
@@ -304,7 +304,7 @@ function Microsoft365CopilotConnectionDialog({
                   {accessLabels.map((label) => (
                     <span
                       key={label}
-                      className="rounded-[10px] bg-slate-100 px-2 py-0.5 text-[13px] font-medium leading-5 text-zinc-700"
+                      className="rounded-[10px] bg-slate-100 px-2 py-0.5 text-[13px] leading-5 font-medium text-zinc-700"
                     >
                       {label}
                     </span>

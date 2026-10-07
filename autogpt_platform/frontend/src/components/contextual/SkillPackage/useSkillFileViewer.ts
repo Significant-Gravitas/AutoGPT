@@ -3,8 +3,7 @@ import { useGetV2ReadMarketplaceSkillFile } from "@/app/api/__generated__/endpoi
 import { okData } from "@/app/api/helpers";
 
 export type SkillPackageSource =
-  | { kind: "listing"; slug: string }
-  | { kind: "submission"; versionId: string };
+  { kind: "listing"; slug: string } | { kind: "submission"; versionId: string };
 
 interface Args {
   source: SkillPackageSource;

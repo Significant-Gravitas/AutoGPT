@@ -44,8 +44,7 @@ export function getPaginatedTotalCount(
 
 export function getPaginationNextPageNumber(
   lastPage:
-    | { data: { pagination?: Pagination; [key: string]: any } }
-    | undefined,
+    { data: { pagination?: Pagination; [key: string]: any } } | undefined,
 ): number | undefined {
   if (!hasValidPaginationInfo(lastPage)) return undefined;
 

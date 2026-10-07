@@ -58,7 +58,7 @@ export function BrainDumpStep() {
       >
         <div
           className={cn(
-            "absolute right-4 top-4 flex items-center gap-2 sm:right-6 sm:top-6 sm:gap-5",
+            "absolute top-4 right-4 flex items-center gap-2 sm:top-6 sm:right-6 sm:gap-5",
             isRecording && "hidden",
           )}
         >

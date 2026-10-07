@@ -78,7 +78,7 @@ function ProviderLogo({ provider }: LogoProps) {
       <span
         role="img"
         aria-label={name}
-        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[9px] font-semibold uppercase leading-none text-zinc-600 ring-1 ring-zinc-200"
+        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[9px] leading-none font-semibold text-zinc-600 uppercase ring-1 ring-zinc-200"
       >
         {name.charAt(0)}
       </span>

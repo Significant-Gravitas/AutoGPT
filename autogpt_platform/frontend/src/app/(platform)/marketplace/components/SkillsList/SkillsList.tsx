@@ -82,7 +82,7 @@ export function SkillsList({ category }: Props) {
             variant="ghost"
             size="small"
             onClick={() => refetch()}
-            className="h-auto min-w-0 rounded-none border-0 p-0 font-medium leading-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+            className="h-auto min-w-0 rounded-none border-0 p-0 leading-normal font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
           >
             Retry
           </Button>
@@ -100,7 +100,7 @@ export function SkillsList({ category }: Props) {
               variant="ghost"
               size="small"
               onClick={() => selectTopic(null)}
-              className="h-auto min-w-0 rounded-none border-0 p-0 font-medium leading-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+              className="h-auto min-w-0 rounded-none border-0 p-0 leading-normal font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
             >
               Show all
             </Button>

@@ -15,9 +15,7 @@ export interface ViewAgentOutputInput {
 }
 
 export type ViewAgentOutputToolOutput =
-  | AgentOutputResponse
-  | NoResultsResponse
-  | ErrorResponse;
+  AgentOutputResponse | NoResultsResponse | ErrorResponse;
 
 function parseOutput(output: unknown): ViewAgentOutputToolOutput | null {
   if (!output) return null;

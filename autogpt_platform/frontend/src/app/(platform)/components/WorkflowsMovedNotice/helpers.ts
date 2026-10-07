@@ -33,9 +33,9 @@ export function isWorkflowsMovedNoticeRoute(
   const path = pathname?.replace(/\/$/, "");
   return Boolean(
     path &&
-      LANDING_ROUTES.has(path) &&
-      (path !== "/copilot" ||
-        !CHAT_INTENT_PARAMS.some((param) => searchParams?.has(param))),
+    LANDING_ROUTES.has(path) &&
+    (path !== "/copilot" ||
+      !CHAT_INTENT_PARAMS.some((param) => searchParams?.has(param))),
   );
 }
 

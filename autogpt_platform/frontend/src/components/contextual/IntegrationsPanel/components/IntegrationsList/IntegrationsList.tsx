@@ -116,7 +116,7 @@ export function IntegrationsList({ query, onQueryChange: setQuery }: Props) {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="sticky top-0 z-10 -mx-1 bg-zinc-50 px-1 pb-1 pt-1">
+      <div className="sticky top-0 z-10 -mx-1 bg-zinc-50 px-1 pt-1 pb-1">
         <IntegrationsSearch value={query} onChange={setQuery} />
       </div>
 

@@ -56,9 +56,7 @@ export type FeatureRequestOutput =
   | ErrorResponse;
 
 export type FeatureRequestToolType =
-  | "tool-search_feature_requests"
-  | "tool-create_feature_request"
-  | string;
+  "tool-search_feature_requests" | "tool-create_feature_request" | string;
 
 /* ------------------------------------------------------------------ */
 /*  Output parsing                                                     */

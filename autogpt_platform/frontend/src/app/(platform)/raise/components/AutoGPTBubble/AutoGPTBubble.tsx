@@ -23,7 +23,7 @@ export function AutoGPTBubble({
   return (
     <div
       id={id}
-      className="flex max-w-[85%] flex-col gap-1.5 self-start duration-500 animate-in fade-in slide-in-from-bottom-3 fill-mode-both motion-reduce:animate-none"
+      className="flex max-w-[85%] animate-in flex-col gap-1.5 self-start duration-500 fill-mode-both fade-in slide-in-from-bottom-3 motion-reduce:animate-none"
     >
       <div className="flex items-end gap-2">
         <AutopilotAvatar size={20} />

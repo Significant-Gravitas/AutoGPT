@@ -64,8 +64,7 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
       for (const key of Object.keys(formData)) {
         if (!isCredentialsProperty(jsonSchema, key)) continue;
         const value = formData[key] as
-          | { id?: unknown; provider?: unknown }
-          | undefined;
+          { id?: unknown; provider?: unknown } | undefined;
         // Also drop a credential the current selection no longer needs, or a
         // connection chosen under one transport survives a switch to another
         // that uses none — invisible, because its row is hidden.

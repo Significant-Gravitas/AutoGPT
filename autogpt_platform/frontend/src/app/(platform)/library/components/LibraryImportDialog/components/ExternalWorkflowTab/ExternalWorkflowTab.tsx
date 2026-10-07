@@ -33,7 +33,7 @@ export default function ExternalWorkflowTab({
         placeholder="Workflow file (n8n, Make.com, Zapier, ...)"
         maxFileSize={10 * 1024 * 1024}
         showStorageNote={false}
-        className="mb-4 mt-2"
+        className="mt-2 mb-4"
       />
       <Button
         type="button"

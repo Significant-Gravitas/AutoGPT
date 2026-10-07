@@ -13,14 +13,14 @@ export function useHomeComposer({ enabled }: Args) {
   const { dashboard } = useHomePage({ enabled });
   const hasExistingWork = Boolean(
     enabled &&
-      dashboard &&
-      (dashboard.team.total > 0 ||
-        dashboard.attention.length > 0 ||
-        dashboard.active_tasks.length > 0 ||
-        dashboard.upcoming_tasks.length > 0 ||
-        dashboard.week.run_count > 0 ||
-        (dashboard.recent_work?.total_count ?? 0) > 0 ||
-        (dashboard.recent_work?.groups?.length ?? 0) > 0),
+    dashboard &&
+    (dashboard.team.total > 0 ||
+      dashboard.attention.length > 0 ||
+      dashboard.active_tasks.length > 0 ||
+      dashboard.upcoming_tasks.length > 0 ||
+      dashboard.week.run_count > 0 ||
+      (dashboard.recent_work?.total_count ?? 0) > 0 ||
+      (dashboard.recent_work?.groups?.length ?? 0) > 0),
   );
   const [discoveryPlaceholder, setDiscoveryPlaceholder] = useState(
     getInputPlaceholder(),

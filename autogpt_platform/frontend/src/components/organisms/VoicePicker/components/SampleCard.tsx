@@ -49,7 +49,7 @@ export function SampleCard({
       >
         <span
           className={cn(
-            "text-xs font-semibold uppercase tracking-[0.12em]",
+            "text-xs font-semibold tracking-[0.12em] uppercase",
             labelClassName ?? "text-accent",
           )}
         >

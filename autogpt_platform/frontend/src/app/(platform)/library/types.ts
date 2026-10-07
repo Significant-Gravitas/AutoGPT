@@ -8,11 +8,7 @@ export interface LibraryTab {
 
 /** Agent execution status — drives StatusBadge visuals & filtering. */
 export type AgentStatus =
-  | "running"
-  | "error"
-  | "listening"
-  | "scheduled"
-  | "idle";
+  "running" | "error" | "listening" | "scheduled" | "idle";
 
 /** Derived health bucket for quick triage. */
 export type AgentHealth = "good" | "attention" | "stale";

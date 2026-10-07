@@ -24,7 +24,7 @@ export function TourChatContainer({ chat }: Props) {
           footer={isDemoComplete ? <TourEndCard /> : null}
         />
         {!isDemoComplete && (
-          <div className="relative px-3 pb-2 pt-2">
+          <div className="relative px-3 pt-2 pb-2">
             <TourPromptBar
               key={`${chat.turnIndex}:${chat.currentUserPrompt ?? ""}`}
               prompt={chat.currentUserPrompt}

@@ -31,7 +31,7 @@ function Section({ title, text }: SectionProps) {
         as="p"
         tone="secondary"
         unmask={false}
-        className="whitespace-pre-line leading-relaxed"
+        className="leading-relaxed whitespace-pre-line"
       >
         {text}
       </Text>

@@ -210,7 +210,7 @@ interface OutputTablePreviewProps {
 
 function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
   return (
-    <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-zinc-200">
+    <div className="overflow-x-auto rounded-xl ring-1 ring-zinc-200 ring-inset">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-zinc-50 text-left">

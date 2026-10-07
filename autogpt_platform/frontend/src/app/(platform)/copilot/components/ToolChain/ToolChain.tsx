@@ -299,7 +299,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               >
                 <div
                   className={
-                    "flex flex-col pl-0.5 pt-2.5" +
+                    "flex flex-col pt-2.5 pl-0.5" +
                     (panelOpen && !windowMode ? " " + PANEL_REVEAL : "")
                   }
                 >

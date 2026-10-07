@@ -229,7 +229,7 @@ function SectionHeading({ label }: { label: string }) {
       tone="muted"
       unmask={false}
       role="presentation"
-      className="px-3 pb-1 pt-2 text-left uppercase tracking-wide"
+      className="px-3 pt-2 pb-1 text-left tracking-wide uppercase"
     >
       {label}
     </Text>

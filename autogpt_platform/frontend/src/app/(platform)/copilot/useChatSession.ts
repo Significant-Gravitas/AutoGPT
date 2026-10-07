@@ -389,10 +389,7 @@ export function useChatSession({
       ? sessionQuery.data.data.metadata?.llm_auth_provider
       : null;
   const sessionLlmAuthProvider:
-    | "platform"
-    | "codex"
-    | "microsoft_365_copilot"
-    | null = sessionId
+    "platform" | "codex" | "microsoft_365_copilot" | null = sessionId
     ? storedLlmAuthProvider === "codex" ||
       storedLlmAuthProvider === "microsoft_365_copilot"
       ? storedLlmAuthProvider

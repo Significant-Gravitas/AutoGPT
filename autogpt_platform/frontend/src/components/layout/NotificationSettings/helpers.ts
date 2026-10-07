@@ -1,6 +1,5 @@
 export type NotificationPermissionState =
-  | NotificationPermission
-  | "unsupported";
+  NotificationPermission | "unsupported";
 
 export function readPermission(): NotificationPermissionState {
   if (typeof Notification === "undefined") return "unsupported";

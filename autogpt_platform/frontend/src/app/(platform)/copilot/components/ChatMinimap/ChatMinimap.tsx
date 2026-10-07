@@ -75,7 +75,7 @@ export function ChatMinimap({ messages }: Props) {
                 }
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={reducedMotion ? { duration: 0 } : CARD_TRANSITION}
-                className="absolute left-10 top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm"
+                className="absolute top-1/2 left-10 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm"
               >
                 <Text
                   variant="body"

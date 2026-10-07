@@ -85,7 +85,7 @@ export function ExpertComputerSection({
       </div>
 
       {!computer.e2b_active ? (
-        <div className="rounded-lg bg-yellow-50 px-4 py-2.5 ring-1 ring-inset ring-yellow-200">
+        <div className="rounded-lg bg-yellow-50 px-4 py-2.5 ring-1 ring-yellow-200 ring-inset">
           <Text variant="small" className="text-yellow-700">
             Cloud sandboxes are not configured on this deployment.
           </Text>

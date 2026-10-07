@@ -81,7 +81,7 @@ export function PlatformChrome({ children }: Props) {
         <SidebarInset className="bg-background">
           <header
             className={cn(
-              "flex shrink-0 items-center pb-4 pt-6",
+              "flex shrink-0 items-center pt-6 pb-4",
               // Overlay mode (copilot): the header floats above the content
               // instead of reserving vertical space, so the chat scrolls to
               // the viewport top underneath it.

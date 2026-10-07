@@ -174,7 +174,7 @@ function StatRow({ items }: { items: StatItem[] }) {
             tone={item.tone === "warn" ? undefined : "primary"}
             className={
               item.tone === "warn"
-                ? "tabular-nums text-orange-600"
+                ? "text-orange-600 tabular-nums"
                 : "tabular-nums"
             }
           >

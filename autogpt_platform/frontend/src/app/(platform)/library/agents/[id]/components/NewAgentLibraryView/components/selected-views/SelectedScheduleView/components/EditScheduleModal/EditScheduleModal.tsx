@@ -50,7 +50,7 @@ export function EditScheduleModal({
         <Button
           variant="ghost"
           size="small"
-          className={triggerClassName ?? "absolute -right-2 -top-2"}
+          className={triggerClassName ?? "absolute -top-2 -right-2"}
         >
           <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
         </Button>

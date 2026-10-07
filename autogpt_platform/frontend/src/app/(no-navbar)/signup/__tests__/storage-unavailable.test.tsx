@@ -53,9 +53,8 @@ describe("/signup when localStorage is unavailable", () => {
   test("server-rendering the route reports nothing to Sentry", async () => {
     isServerSide.mockReturnValue(true);
     const { renderToString } = await import("react-dom/server");
-    const { default: OrgTeamProvider } = await import(
-      "@/providers/org-team/OrgTeamProvider"
-    );
+    const { default: OrgTeamProvider } =
+      await import("@/providers/org-team/OrgTeamProvider");
     const { default: SignupPage } = await import("../page");
 
     const html = renderToString(
@@ -77,9 +76,8 @@ describe("/signup when localStorage is unavailable", () => {
       },
       configurable: true,
     });
-    const { default: OrgTeamProvider } = await import(
-      "@/providers/org-team/OrgTeamProvider"
-    );
+    const { default: OrgTeamProvider } =
+      await import("@/providers/org-team/OrgTeamProvider");
     const { default: SignupPage } = await import("../page");
 
     render(

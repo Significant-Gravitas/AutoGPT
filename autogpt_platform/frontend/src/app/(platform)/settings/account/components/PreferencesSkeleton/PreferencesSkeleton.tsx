@@ -70,8 +70,8 @@ function NotificationsSkeleton() {
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-3.5 w-72" />
       </div>
-      <div className="flex flex-col gap-3 rounded-[18px] border border-zinc-200 bg-white px-4 pb-4 pt-0 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-        <div className="flex items-center gap-6 border-b border-zinc-100 pb-3 pt-3">
+      <div className="flex flex-col gap-3 rounded-[18px] border border-zinc-200 bg-white px-4 pt-0 pb-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+        <div className="flex items-center gap-6 border-b border-zinc-100 pt-3 pb-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-5 w-28" />
           ))}

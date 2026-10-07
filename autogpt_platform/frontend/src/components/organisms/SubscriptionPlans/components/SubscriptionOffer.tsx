@@ -119,7 +119,7 @@ function OfferFeatures({
   isTeam: boolean;
 }) {
   return (
-    <ul className="mb-4 mt-3 flex-1 space-y-1.5 border-t border-zinc-100 pt-3">
+    <ul className="mt-3 mb-4 flex-1 space-y-1.5 border-t border-zinc-100 pt-3">
       {features.map((feature) => (
         <li key={feature} className="flex items-start gap-2">
           <span

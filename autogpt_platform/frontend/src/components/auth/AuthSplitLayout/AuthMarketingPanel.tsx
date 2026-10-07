@@ -23,7 +23,7 @@ export function AuthMarketingPanel({
   return (
     <Vortex
       containerClassName="absolute inset-0 h-full w-full"
-      className="relative flex h-full w-full flex-col justify-between px-12 pb-12 pt-10 xl:px-16 xl:pb-16"
+      className="relative flex h-full w-full flex-col justify-between px-12 pt-10 pb-12 xl:px-16 xl:pb-16"
       backgroundColor="transparent"
       particleCount={350}
       baseHue={260}

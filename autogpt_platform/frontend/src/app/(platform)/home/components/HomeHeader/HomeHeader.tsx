@@ -11,13 +11,13 @@ export function HomeHeader({ dashboard }: Props) {
   const status = getHomeStatusLine(dashboard);
 
   return (
-    <header className="flex items-end justify-between gap-6 px-1 pb-5 pt-1">
+    <header className="flex items-end justify-between gap-6 px-1 pt-1 pb-5">
       <div className="min-w-0">
         <Text
           variant="lead-semibold"
           as="h2"
           tone="primary"
-          className="text-pretty tracking-[-0.01em]"
+          className="tracking-[-0.01em] text-pretty"
         >
           Your recap
         </Text>

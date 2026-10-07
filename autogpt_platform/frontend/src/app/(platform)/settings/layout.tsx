@@ -23,7 +23,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
               initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
-              className="mx-auto max-w-[1100px] px-4 pb-8 pt-2 md:pt-[39px]"
+              className="mx-auto max-w-[1100px] px-4 pt-2 pb-8 md:pt-[39px]"
             >
               {children}
             </motion.div>

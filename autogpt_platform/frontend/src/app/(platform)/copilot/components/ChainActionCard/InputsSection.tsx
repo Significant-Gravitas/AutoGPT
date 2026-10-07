@@ -42,11 +42,11 @@ export function InputsSection({ requests }: Props) {
           {/* Each RJSF field carries an inline 16px bottom margin — the
               negative margin swallows the last field's so the card edge
               sits ~8px below the form. */}
-          <div className="px-4 pb-0 pt-2">
+          <div className="px-4 pt-2 pb-0">
             {request.schema && (
               <FormRenderer
                 jsonSchema={request.schema}
-                className="-mb-2 mt-0"
+                className="mt-0 -mb-2"
                 handleChange={(v) => request.onChange(v.formData ?? {})}
                 uiSchema={{
                   "ui:submitButtonOptions": { norender: true },
@@ -62,7 +62,7 @@ export function InputsSection({ requests }: Props) {
               <Button
                 type="button"
                 variant="link"
-                className="mb-2 mt-1 h-auto min-w-0 p-0 text-xs font-normal text-muted-foreground"
+                className="mt-1 mb-2 h-auto min-w-0 p-0 text-xs font-normal text-muted-foreground"
                 onClick={request.onToggleAdvanced}
               >
                 {request.showAdvanced

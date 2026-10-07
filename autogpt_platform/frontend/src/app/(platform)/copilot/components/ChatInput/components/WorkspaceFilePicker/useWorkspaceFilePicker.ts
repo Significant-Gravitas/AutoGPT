@@ -26,8 +26,7 @@ type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
 /** A picked row: a file, or a folder the model will open for itself. */
 export type PickedItem =
-  | { kind: "file"; file: WorkspaceFileItem }
-  | PickedFolder;
+  { kind: "file"; file: WorkspaceFileItem } | PickedFolder;
 
 type PickedFolder = {
   kind: "folder";

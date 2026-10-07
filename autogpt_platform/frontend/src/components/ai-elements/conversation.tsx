@@ -32,7 +32,7 @@ export const ConversationContent = ({
   <StickToBottom.Content
     className={cn("flex flex-col gap-8 p-4", className)}
     scrollClassName={cn(
-      "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+      "scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent",
       scrollClassName,
     )}
     {...props}

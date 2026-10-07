@@ -18,7 +18,7 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
   return (
     <section
       aria-labelledby="available-integrations-heading"
-      className="flex flex-col gap-4 pb-6 pt-6"
+      className="flex flex-col gap-4 pt-6 pb-6"
     >
       <div className="flex flex-col gap-1 px-4">
         <Text
@@ -26,7 +26,7 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
           as="h2"
           id="available-integrations-heading"
           tone="secondary"
-          className="uppercase tracking-[0.06em]"
+          className="tracking-[0.06em] uppercase"
         >
           Available integrations
         </Text>

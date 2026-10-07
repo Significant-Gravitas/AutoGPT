@@ -47,8 +47,7 @@ export const WORKSPACE_FOLDER_PART_TYPE = "data-workspace-folder";
 
 /** A message part for an attachment that needed no upload. */
 export type StoredAttachmentPart =
-  | FileUIPart
-  | ReturnType<typeof buildWorkspaceFolderPart>;
+  FileUIPart | ReturnType<typeof buildWorkspaceFolderPart>;
 
 export interface WorkspaceFolderPartData {
   id: string;

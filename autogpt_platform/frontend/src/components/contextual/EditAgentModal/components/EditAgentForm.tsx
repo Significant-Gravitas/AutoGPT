@@ -165,7 +165,7 @@ export function EditAgentForm({
                   ) : null}
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -253,7 +253,7 @@ export function EditAgentForm({
                   ) : null}
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <ThumbnailImages
                   agentId={submission.graph_id}
                   onImagesChange={handleImagesChange}
@@ -290,7 +290,7 @@ export function EditAgentForm({
                   ) : null}
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
                   name="description"

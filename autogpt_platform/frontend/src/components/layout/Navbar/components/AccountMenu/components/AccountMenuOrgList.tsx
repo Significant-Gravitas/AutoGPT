@@ -54,7 +54,7 @@ export function AccountMenuOrgList() {
   return (
     <div className="flex flex-col gap-2 p-2">
       <div className="flex flex-col gap-0.5">
-        <span className="px-2 py-1 text-xs font-medium uppercase text-zinc-400">
+        <span className="px-2 py-1 text-xs font-medium text-zinc-400 uppercase">
           Organizations
         </span>
         {orgs.map((org) => (
@@ -86,7 +86,7 @@ export function AccountMenuOrgList() {
         <>
           <div className="border-t border-zinc-100" />
           <div className="flex flex-col gap-0.5">
-            <span className="px-2 py-1 text-xs font-medium uppercase text-zinc-400">
+            <span className="px-2 py-1 text-xs font-medium text-zinc-400 uppercase">
               Teams
             </span>
             {teams.map((team) => (

@@ -99,17 +99,15 @@ export function useAgentSelectStep({
         select: (res) => {
           const payload = okData(res);
           if (!payload) return null;
-          const agents = payload.agents.map(
-            (agent): Agent => ({
-              name: agent.agent_name,
-              id: agent.graph_id,
-              version: agent.graph_version,
-              lastEdited: agent.last_edited.toLocaleDateString(),
-              imageSrc: agent.agent_image || "",
-              description: agent.description || "",
-              recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
-            }),
-          );
+          const agents = payload.agents.map((agent): Agent => ({
+            name: agent.agent_name,
+            id: agent.graph_id,
+            version: agent.graph_version,
+            lastEdited: agent.last_edited.toLocaleDateString(),
+            imageSrc: agent.agent_image || "",
+            description: agent.description || "",
+            recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
+          }));
           return { agents, pagination: payload.pagination };
         },
       },

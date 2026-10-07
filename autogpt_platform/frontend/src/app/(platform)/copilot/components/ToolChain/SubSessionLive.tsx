@@ -70,7 +70,7 @@ export function SubSessionLive({ subSessionId, active }: Props) {
   );
 
   return (
-    <div className="mt-2 border-t border-zinc-100 pl-1 pt-2.5">
+    <div className="mt-2 border-t border-zinc-100 pt-2.5 pl-1">
       <LiveSteps rows={rows} />
       {latestText && (
         <Text

@@ -74,7 +74,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       <button
         type="button"
         onClick={handleDownloadOnly}
-        className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50"
+        className="my-1 flex w-full min-w-0 animate-in items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors fill-mode-both [animation-duration:500ms] fade-in slide-in-from-bottom-2 hover:bg-zinc-50"
       >
         <Icon
           icon={classification.icon}
@@ -112,7 +112,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       type="button"
       onClick={() => openArtifact(artifact)}
       className={cn(
-        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50",
+        "my-1 flex w-full min-w-0 animate-in items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left transition-colors fill-mode-both [animation-duration:500ms] fade-in slide-in-from-bottom-2 hover:bg-zinc-50",
         isActive ? "border-purple-300 bg-purple-50/50" : "border-zinc-200",
       )}
     >

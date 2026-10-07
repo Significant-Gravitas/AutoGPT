@@ -25,8 +25,7 @@ export function getNodeDisplayTitle(data: CustomNodeData): string {
 
   const agentName = data.hardcodedValues?.agent_name as string | undefined;
   const graphVersion = data.hardcodedValues?.graph_version as
-    | number
-    | undefined;
+    number | undefined;
   if (agentName) {
     return graphVersion != null ? `${agentName} v${graphVersion}` : agentName;
   }

@@ -49,7 +49,7 @@ export function VoiceModeBar({
   // rather than sit beside it, and it stays until the user acts on it.
   if (failure) {
     return (
-      <div className="flex w-full flex-wrap items-center gap-2 py-1.5 pl-3 pr-1.5">
+      <div className="flex w-full flex-wrap items-center gap-2 py-1.5 pr-1.5 pl-3">
         <span
           role="alert"
           className="min-w-0 flex-1 truncate text-sm text-red-600"
@@ -70,7 +70,7 @@ export function VoiceModeBar({
   const { source, color } = APPEARANCE[state];
 
   return (
-    <div className="flex w-full items-center gap-3 py-1.5 pl-3 pr-1.5">
+    <div className="flex w-full items-center gap-3 py-1.5 pr-1.5 pl-3">
       <VoiceTrace source={source} color={color} className="min-w-0 flex-1" />
       <span className="sr-only" role="status" aria-live="polite">
         {statusLabel}

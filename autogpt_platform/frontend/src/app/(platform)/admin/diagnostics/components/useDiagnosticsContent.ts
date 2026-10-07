@@ -38,12 +38,10 @@ export function useDiagnosticsContent() {
   const error = executionError || agentError || scheduleError;
 
   const executionData = executionResponse?.data as
-    | ExecutionDiagnosticsResponse
-    | undefined;
+    ExecutionDiagnosticsResponse | undefined;
   const agentData = agentResponse?.data as AgentDiagnosticsResponse | undefined;
   const scheduleData = scheduleResponse?.data as
-    | ScheduleHealthMetrics
-    | undefined;
+    ScheduleHealthMetrics | undefined;
 
   const refresh = () => {
     refetchExecutions();

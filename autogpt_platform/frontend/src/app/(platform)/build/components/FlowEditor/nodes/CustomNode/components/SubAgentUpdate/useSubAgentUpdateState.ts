@@ -58,14 +58,11 @@ export function useSubAgentUpdateState({
   // Extract agent-specific data
   const graphID = nodeData.hardcodedValues?.graph_id as string | undefined;
   const graphVersion = nodeData.hardcodedValues?.graph_version as
-    | number
-    | undefined;
+    number | undefined;
   const currentInputSchema = nodeData.hardcodedValues?.input_schema as
-    | GraphInputSchema
-    | undefined;
+    GraphInputSchema | undefined;
   const currentOutputSchema = nodeData.hardcodedValues?.output_schema as
-    | GraphOutputSchema
-    | undefined;
+    GraphOutputSchema | undefined;
 
   // Use the sub-agent update hook
   const updateInfo = useSubAgentUpdate(

@@ -17,12 +17,7 @@ import {
 } from "./helpers";
 
 export type PageStatus =
-  | "loading"
-  | "not-authenticated"
-  | "ready"
-  | "linking"
-  | "success"
-  | "error";
+  "loading" | "not-authenticated" | "ready" | "linking" | "success" | "error";
 
 interface ViewData {
   linkType: LinkType;

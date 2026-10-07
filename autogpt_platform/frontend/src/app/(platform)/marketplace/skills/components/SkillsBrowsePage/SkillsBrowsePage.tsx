@@ -40,7 +40,7 @@ export function SkillsBrowsePage() {
   if (ready && !enabled) notFound();
 
   return (
-    <main className="mx-auto w-full max-w-[1360px] px-6 pb-16 pt-8 md:px-10 lg:px-14">
+    <main className="mx-auto w-full max-w-[1360px] px-6 pt-8 pb-16 md:px-10 lg:px-14">
       <Link
         href="/marketplace#skills"
         className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"

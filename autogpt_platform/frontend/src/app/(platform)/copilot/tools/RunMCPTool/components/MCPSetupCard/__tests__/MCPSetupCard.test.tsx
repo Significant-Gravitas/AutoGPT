@@ -115,9 +115,8 @@ describe("MCPSetupCard", () => {
   // Storing a manual credential probes the server first, so the default is an
   // accepting server; the tests that care override it.
   beforeEach(async () => {
-    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2DiscoverAvailableToolsOnAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
       status: 200,
       data: { tools: [], server_name: "Example" },
@@ -221,9 +220,8 @@ describe("MCPSetupCard", () => {
   });
 
   it("shows manual token input after OAuth 400", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
       data: { detail: { code: "no_oauth", message: "No OAuth support" } },
@@ -246,9 +244,8 @@ describe("MCPSetupCard", () => {
     // not match the issuer bound at login.  That is a blocked mix-up, not an
     // unsupported server, so it must not invite the user to paste a
     // credential in its place.
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 200,
       data: {
@@ -290,9 +287,8 @@ describe("MCPSetupCard", () => {
   });
 
   it("uses a unique manual credential input id for each mounted card", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
       .mockResolvedValueOnce({
         status: 400,
@@ -496,9 +492,8 @@ describe("MCPSetupCard", () => {
     setMockLiveCreds([
       { provider: "mcp", host: "https://mcp.example.com/mcp" },
     ]);
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
       data: { detail: { code: "no_oauth", message: "No OAuth support" } },
@@ -530,9 +525,8 @@ describe("MCPSetupCard", () => {
     setMockLiveCreds([
       { provider: "mcp", host: "https://mcp.example.com/mcp" },
     ]);
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
       data: { detail: { code: "no_oauth", message: "No OAuth support" } },
@@ -556,9 +550,8 @@ describe("MCPSetupCard", () => {
     // with OAUTH_ERROR_FLOW_CANCELED, even though the second attempt is
     // still alive. The guard keeps the second click a no-op so the
     // first attempt runs to completion.
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     // Reset call counter — prior tests in this file also invoke the same mock.
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockClear();
     let resolveLogin: ((value: unknown) => void) | undefined;
@@ -596,9 +589,8 @@ describe("MCPSetupCard", () => {
   it("opens the sign-in window before the initiate await and hands it over", async () => {
     const callOrder: string[] = [];
     const fakeWindow = { closed: false, close: vi.fn() };
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
     vi.mocked(preOpenOAuthPopup).mockClear();
     vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
       callOrder.push("preOpen");
@@ -608,9 +600,8 @@ describe("MCPSetupCard", () => {
       promise: new Promise(() => {}),
       cleanup: { abort: vi.fn() },
     } as never);
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
       async () => {
         callOrder.push("initiate");
@@ -644,9 +635,8 @@ describe("MCPSetupCard", () => {
     vi.mocked(preOpenOAuthPopup).mockReturnValue(
       fakeWindow as unknown as Window,
     );
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
       data: { detail: { code: "no_oauth", message: "No OAuth" } },
@@ -664,9 +654,8 @@ describe("MCPSetupCard", () => {
   });
 
   it("shows timeout-specific error message when OAuth popup times out", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 200,
       data: { login_url: "https://example.com/oauth", state_token: "s1" },
@@ -692,9 +681,8 @@ describe("MCPSetupCard", () => {
   });
 
   it("forwards the authorization response issuer to the credentials provider", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 200,
       data: {
@@ -742,9 +730,8 @@ describe("MCPSetupCard", () => {
   });
 
   it("shows generic error message when OAuth callback fails with a non-400 status", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     // Login itself returns 500 (not 400, not timeout) → catch hits the
     // "generic error" branch with the server's ``detail``.
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
@@ -1009,9 +996,8 @@ describe("MCPSetupCard", () => {
   });
 
   it("uses current provider and chat actions from a previously registered chain callback", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     const { openOAuthPopup } = await import("@/lib/oauth-popup");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 200,
@@ -1091,9 +1077,8 @@ describe("MCPSetupCard", () => {
   });
 
   it("does not reinterpret an already prepared Basic chain credential", async () => {
-    const { postV2StoreABearerTokenForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2StoreABearerTokenForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
       status: 200,
       data: {

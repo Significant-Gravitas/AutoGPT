@@ -50,11 +50,7 @@ function heldReviewId(output: unknown): string | null {
 }
 
 export type HeldOutcomeKind =
-  | "approved"
-  | "rejected"
-  | "expired"
-  | "closed"
-  | "unknown";
+  "approved" | "rejected" | "expired" | "closed" | "unknown";
 
 export interface HeldOutcome {
   outcome: HeldOutcomeKind;

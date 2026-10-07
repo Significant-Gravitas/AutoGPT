@@ -135,7 +135,7 @@ export function ExpertIntegrationGroups({
                   </Text>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-0 pb-0 pt-0">
+              <AccordionContent className="px-0 pt-0 pb-0">
                 <div className="flex flex-col divide-y divide-zinc-100 border-t border-zinc-200">
                   {group.integrations.map((integration) => (
                     <ExpertIntegrationRow
@@ -165,7 +165,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
   const name = formatCredentialName(integration.title, integration.provider);
   return (
     <div
-      className="flex w-full items-center justify-between py-2.5 pl-3 pr-4"
+      className="flex w-full items-center justify-between py-2.5 pr-4 pl-3"
       data-testid="expert-integration-row"
     >
       <div className="flex flex-col gap-0.5">

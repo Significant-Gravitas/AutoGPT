@@ -19,7 +19,7 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
         <Text variant="body-medium" className="text-zinc-700">
           {label}
         </Text>
-        <Text variant="body" className="tabular-nums text-zinc-500">
+        <Text variant="body" className="text-zinc-500 tabular-nums">
           {percentLabel}
         </Text>
       </div>

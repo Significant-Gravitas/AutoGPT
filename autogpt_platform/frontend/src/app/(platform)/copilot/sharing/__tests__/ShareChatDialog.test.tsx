@@ -49,14 +49,12 @@ afterEach(() => {
 
 function mockShareState(state: Partial<ChatShareStateResponse>) {
   server.use(
-    getGetV2GetChatShareStateMockHandler200(
-      (): ChatShareStateResponse => ({
-        is_shared: false,
-        share_token: null,
-        auto_share_executions: false,
-        ...state,
-      }),
-    ),
+    getGetV2GetChatShareStateMockHandler200((): ChatShareStateResponse => ({
+      is_shared: false,
+      share_token: null,
+      auto_share_executions: false,
+      ...state,
+    })),
   );
 }
 

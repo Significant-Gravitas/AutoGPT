@@ -1,8 +1,2 @@
 export type AvatarStatus =
-  | "idle"
-  | "thinking"
-  | "working"
-  | "waiting"
-  | "done"
-  | "failed"
-  | "sleeping";
+  "idle" | "thinking" | "working" | "waiting" | "done" | "failed" | "sleeping";

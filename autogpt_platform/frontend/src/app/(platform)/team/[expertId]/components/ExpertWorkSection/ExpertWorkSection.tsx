@@ -103,7 +103,7 @@ export function ExpertWorkSection({ expertId, expertName, enabled }: Props) {
 function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
   const meta = getRunMeta(run);
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-white p-3 ring-1 ring-inset ring-zinc-200">
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-white p-3 ring-1 ring-zinc-200 ring-inset">
       <div className="min-w-0">
         <Text variant="body-medium" tone="primary" className="truncate">
           {run.agent_name}

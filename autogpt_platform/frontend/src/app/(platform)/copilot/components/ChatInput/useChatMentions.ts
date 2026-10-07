@@ -131,16 +131,15 @@ export function useChatMentions({
   // Integrations, then folders, then files: the keyboard cursor spans all
   // three groups as one list.
   const options: MentionOption[] = [
-    ...matchedIntegrations.map(
-      (integration): MentionOption => ({ kind: "integration", integration }),
-    ),
-    ...folders.map(
-      (folder): MentionOption => ({
-        kind: "folder",
-        folder,
-        subfolderCount: subfolderCountOf(allFolders, folder.id),
-      }),
-    ),
+    ...matchedIntegrations.map((integration): MentionOption => ({
+      kind: "integration",
+      integration,
+    })),
+    ...folders.map((folder): MentionOption => ({
+      kind: "folder",
+      folder,
+      subfolderCount: subfolderCountOf(allFolders, folder.id),
+    })),
     ...files.map((file): MentionOption => ({ kind: "file", file })),
   ];
 

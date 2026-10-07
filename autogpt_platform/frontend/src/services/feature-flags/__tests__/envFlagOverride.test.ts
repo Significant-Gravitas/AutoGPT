@@ -117,9 +117,8 @@ describe("NEXT_PUBLIC_FORCE_ALL_FLAGS master switch", () => {
     vi.resetModules();
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION", "true");
-    const { envFlagOverride: override, Flag: F } = await import(
-      "../use-get-flag"
-    );
+    const { envFlagOverride: override, Flag: F } =
+      await import("../use-get-flag");
     expect(override(F.CHAT_MODE_OPTION)).toBe(true);
   });
 

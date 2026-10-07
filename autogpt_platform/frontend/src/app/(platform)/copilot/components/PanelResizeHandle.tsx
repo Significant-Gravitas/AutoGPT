@@ -121,7 +121,7 @@ export function PanelResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panel"
-      className="group absolute left-0 top-0 z-10 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-stretch justify-center"
+      className="group absolute top-0 left-0 z-10 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-stretch justify-center"
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}

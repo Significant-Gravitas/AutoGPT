@@ -104,7 +104,7 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
           variant="small"
           as="p"
           unmask={false}
-          className="pb-2.5 pt-0.5 text-right font-mono text-yellow-500"
+          className="pt-0.5 pb-2.5 text-right font-mono text-yellow-500"
         >
           summarizes ~{formatTokenCount(AUTOCOMPACT_TOKENS)}
         </Text>

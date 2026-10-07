@@ -56,16 +56,14 @@ beforeEach(() => {
 describe("SharedChatPage", () => {
   test("renders the read-only viewer with messages on happy path", async () => {
     server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-123",
-          title: "How to deploy",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          shared_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
+      getGetV2GetSharedChatMockHandler200((): SharedChatSession => ({
+        id: "session-123",
+        title: "How to deploy",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        updated_at: new Date("2026-05-12T00:00:00Z"),
+        shared_at: new Date("2026-05-12T00:00:00Z"),
+        linked_executions: [],
+      })),
       getGetV2GetSharedChatMessagesMockHandler200(
         (): SharedChatMessagesPage => ({
           messages: [
@@ -111,16 +109,14 @@ describe("SharedChatPage", () => {
 
   test("centers the loading state across the shared chat chrome", () => {
     server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-loading",
-          title: "Loading",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          shared_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
+      getGetV2GetSharedChatMockHandler200((): SharedChatSession => ({
+        id: "session-loading",
+        title: "Loading",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        updated_at: new Date("2026-05-12T00:00:00Z"),
+        shared_at: new Date("2026-05-12T00:00:00Z"),
+        linked_executions: [],
+      })),
     );
 
     render(<SharedChatPage />);
@@ -132,16 +128,14 @@ describe("SharedChatPage", () => {
 
   test("surfaces the has_more notice when the chat is truncated", async () => {
     server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-123",
-          title: "Long chat",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          shared_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
+      getGetV2GetSharedChatMockHandler200((): SharedChatSession => ({
+        id: "session-123",
+        title: "Long chat",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        updated_at: new Date("2026-05-12T00:00:00Z"),
+        shared_at: new Date("2026-05-12T00:00:00Z"),
+        linked_executions: [],
+      })),
       getGetV2GetSharedChatMessagesMockHandler200(
         (): SharedChatMessagesPage => ({
           messages: [
@@ -217,16 +211,14 @@ describe("SharedChatPage", () => {
     // via ``flex-row``.  The viewer must match — otherwise opening an
     // artifact covers the chat full-screen instead of splitting.
     server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-split",
-          title: "Layout check",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          shared_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
+      getGetV2GetSharedChatMockHandler200((): SharedChatSession => ({
+        id: "session-split",
+        title: "Layout check",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        updated_at: new Date("2026-05-12T00:00:00Z"),
+        shared_at: new Date("2026-05-12T00:00:00Z"),
+        linked_executions: [],
+      })),
       getGetV2GetSharedChatMessagesMockHandler200(
         (): SharedChatMessagesPage => ({
           messages: [],
@@ -255,16 +247,14 @@ describe("SharedChatPage", () => {
     const latestArtifactId = "22222222-2222-4222-8222-222222222222";
 
     server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-artifacts",
-          title: "Artifacts",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          shared_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
+      getGetV2GetSharedChatMockHandler200((): SharedChatSession => ({
+        id: "session-artifacts",
+        title: "Artifacts",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        updated_at: new Date("2026-05-12T00:00:00Z"),
+        shared_at: new Date("2026-05-12T00:00:00Z"),
+        linked_executions: [],
+      })),
       getGetV2GetSharedChatMessagesMockHandler200(
         (): SharedChatMessagesPage => ({
           messages: [
@@ -317,16 +307,14 @@ describe("SharedChatPage", () => {
 
   test("falls back to 'Shared chat' when the session has no title", async () => {
     server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-no-title",
-          title: "",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          shared_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
+      getGetV2GetSharedChatMockHandler200((): SharedChatSession => ({
+        id: "session-no-title",
+        title: "",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        updated_at: new Date("2026-05-12T00:00:00Z"),
+        shared_at: new Date("2026-05-12T00:00:00Z"),
+        linked_executions: [],
+      })),
       getGetV2GetSharedChatMessagesMockHandler200(
         (): SharedChatMessagesPage => ({
           messages: [],
@@ -343,16 +331,14 @@ describe("SharedChatPage", () => {
 
   test("does NOT show the has_more notice when the chat fits in one page", async () => {
     server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-fits",
-          title: "Fits",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          shared_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
+      getGetV2GetSharedChatMockHandler200((): SharedChatSession => ({
+        id: "session-fits",
+        title: "Fits",
+        created_at: new Date("2026-05-12T00:00:00Z"),
+        updated_at: new Date("2026-05-12T00:00:00Z"),
+        shared_at: new Date("2026-05-12T00:00:00Z"),
+        linked_executions: [],
+      })),
       getGetV2GetSharedChatMessagesMockHandler200(
         (): SharedChatMessagesPage => ({
           messages: [],

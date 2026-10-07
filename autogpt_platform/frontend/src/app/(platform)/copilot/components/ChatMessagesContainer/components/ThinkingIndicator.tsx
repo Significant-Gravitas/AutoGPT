@@ -36,7 +36,7 @@ export function ThinkingIndicator({
       )}
       {!statusMessage && <span className="sr-only">Thinking…</span>}
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-zinc-400">
+        <span className="font-mono text-xs text-zinc-400 tabular-nums">
           {formatElapsed(elapsedSeconds)}
         </span>
       )}

@@ -6,10 +6,7 @@ export const AGENT_LIBRARY_SECTION_PADDING_X = "px-4";
 export type TriggerKind = "trigger-agent" | "webhook-trigger";
 
 export type SelectedTriggerKind =
-  | TriggerKind
-  | "loading"
-  | "error"
-  | "not-found";
+  TriggerKind | "loading" | "error" | "not-found";
 
 export function isNewAgentTaskDisabled(args: {
   sidebarLoading: boolean;

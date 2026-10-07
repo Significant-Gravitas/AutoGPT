@@ -200,8 +200,7 @@ export function getCredentialDisplayName(
 export function getRemovedCredentialMessage(
   removedCredentialTitle: string,
   selectedCredential:
-    | { id: string; title?: string | null; username?: string }
-    | undefined,
+    { id: string; title?: string | null; username?: string } | undefined,
   providerName: string,
 ): string {
   if (!selectedCredential?.id) {

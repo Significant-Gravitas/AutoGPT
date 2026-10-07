@@ -67,7 +67,7 @@ export function ReceiptEntries({ transaction }: Props) {
             variant="small"
             as="code"
             unmask={false}
-            className="break-all font-mono"
+            className="font-mono break-all"
           >
             {reference}
           </Text>
