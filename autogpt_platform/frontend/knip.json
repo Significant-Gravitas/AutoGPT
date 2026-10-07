@@ -119,8 +119,6 @@
     "src/app/(platform)/settings/memory/helpers.ts": ["exports"],
     "src/app/(platform)/team/helpers.ts": ["exports"],
     "src/app/(public)/tour/chat/constants.ts": ["exports"],
-    "src/components/ai-elements/conversation.tsx": ["exports"],
-    "src/components/ai-elements/message.tsx": ["exports"],
     "src/components/atoms/Avatar/Avatar.tsx": ["duplicates"],
     "src/components/contextual/CredentialsInput/helpers.ts": ["types"],
     "src/components/contextual/CronScheduler/cron-scheduler-dialog.tsx": [
@@ -164,8 +162,6 @@
     "src/components/renderers/InputRenderer/helpers.ts": ["exports"],
     "src/components/renderers/InputRenderer/registry/index.ts": ["exports"],
     "src/components/renderers/InputRenderer/utils/schema-utils.ts": ["exports"],
-    "src/components/ui/button-group.tsx": ["exports"],
-    "src/components/ui/sheet.tsx": ["exports"],
     "src/contexts/AutoPilotBridgeContext.tsx": ["exports"],
     "src/hooks/usePendingReviews.ts": ["exports"],
     "src/types/google.ts": ["types"]
