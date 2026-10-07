@@ -5,7 +5,7 @@ import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
-import { fieldVariants } from "../Input/fieldVariants";
+import { fieldVariants, type FieldSize } from "../Input/fieldVariants";
 
 import { Text } from "../Text/Text";
 import {
@@ -45,7 +45,7 @@ export interface DateTimeInputProps {
   error?: string;
   hint?: React.ReactNode;
   id?: string;
-  size?: "sm" | "md" | "lg";
+  size?: FieldSize;
   wrapperClassName?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;

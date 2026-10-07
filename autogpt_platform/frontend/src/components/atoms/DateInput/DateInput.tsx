@@ -6,7 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { fieldVariants } from "../Input/fieldVariants";
+import { fieldVariants, type FieldSize } from "../Input/fieldVariants";
 import {
   Popover,
   PopoverContent,
@@ -43,7 +43,7 @@ export interface DateInputProps {
   hideLabel?: boolean;
   error?: string;
   id?: string;
-  size?: "sm" | "md" | "lg";
+  size?: FieldSize;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;

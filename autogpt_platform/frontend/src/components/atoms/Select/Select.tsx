@@ -14,7 +14,7 @@ import { ReactNode, useState } from "react";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { fieldVariants } from "../Input/fieldVariants";
+import { fieldVariants, type FieldSize } from "../Input/fieldVariants";
 
 export interface SelectOption {
   value: string;
@@ -38,7 +38,7 @@ export interface SelectFieldProps {
   value?: string;
   onValueChange?: (value: string) => void;
   options: SelectOption[];
-  size?: "sm" | "md" | "lg";
+  size?: FieldSize;
   labelVariant?: Variant;
   labelClassName?: string;
   labelTooltip?: string;

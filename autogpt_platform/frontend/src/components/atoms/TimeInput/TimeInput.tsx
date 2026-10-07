@@ -1,7 +1,7 @@
 import React, { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Text } from "../Text/Text";
-import { fieldVariants } from "../Input/fieldVariants";
+import { fieldVariants, type FieldSize } from "../Input/fieldVariants";
 
 interface TimeInputProps {
   value?: string;
@@ -14,7 +14,7 @@ interface TimeInputProps {
   hideLabel?: boolean;
   error?: string;
   hint?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: FieldSize;
   wrapperClassName?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;

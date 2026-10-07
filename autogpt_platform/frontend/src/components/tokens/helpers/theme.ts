@@ -136,12 +136,6 @@ export function getPaletteSingles() {
     .map((name) => ({ name, value: colors[name] }));
 }
 
-export interface SemanticColor {
-  name: string;
-  light: string;
-  dark: string | undefined;
-}
-
 // The semantic colours (`bg-background`, `text-muted-foreground`...) with
 // the palette step each one points at in :root and in .dark.
 export function getSemanticColors() {

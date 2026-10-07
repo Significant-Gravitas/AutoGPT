@@ -6,7 +6,12 @@ import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useInput } from "./useInput";
-import { FIELD_BASE, FIELD_INVALID, fieldVariants } from "./fieldVariants";
+import {
+  FIELD_BASE,
+  FIELD_INVALID,
+  fieldVariants,
+  type FieldSize,
+} from "./fieldVariants";
 import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -22,7 +27,7 @@ export interface TextFieldProps extends Omit<
   decimalCount?: number; // Only used for type="amount"
   error?: string;
   hint?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: FieldSize;
   labelVariant?: Variant;
   labelClassName?: string;
   labelTooltip?: string;

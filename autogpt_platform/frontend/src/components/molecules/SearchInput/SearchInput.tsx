@@ -8,7 +8,10 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { fieldVariants } from "@/components/atoms/Input/fieldVariants";
+import {
+  fieldVariants,
+  type FieldSize,
+} from "@/components/atoms/Input/fieldVariants";
 
 interface Props {
   value: string;
@@ -18,7 +21,7 @@ interface Props {
   disabled?: boolean;
   loading?: boolean;
   maxLength?: number;
-  size?: "sm" | "md" | "lg";
+  size?: FieldSize;
   className?: string;
 }
 
