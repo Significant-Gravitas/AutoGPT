@@ -6,5 +6,19 @@
       "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git worktree:*)",
       "Bash(tmux:*)", "Bash(sleep:*)", "Bash(branchlet:*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/skills/autogpt-ui/lint-on-edit.mjs\"; [ -f \"$f\" ] && node \"$f\" || true",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
   }
 }
