@@ -134,6 +134,8 @@ export function FloatingReviewsPanel({
             onClick={() => setIsOpen(false)}
             variant="icon"
             size="icon"
+            aria-label="Close"
+            withTooltip={false}
             className="absolute right-4 top-4 z-10"
           >
             <Icon icon={Cancel01Icon} size={16} />
