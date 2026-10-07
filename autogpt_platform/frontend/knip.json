@@ -23,6 +23,8 @@
   // Backlog: called from package.json scripts but not installed.
   "ignoreBinaries": ["test-storybook", "wait-on"],
   "ignoreFiles": [
+    // Type sidecar for eslint.design-system.mjs; consumed by TypeScript, not imported.
+    "eslint.design-system.d.mts",
     // Loaded by URL or path string, or run by hand; never imported.
     "public/gtag.js",
     "public/push-sw.js",

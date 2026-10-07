@@ -21,7 +21,7 @@ export function ScopeCard({ scopeExpertID, experts, onSelect }: Props) {
           Choose whose memory you&apos;re looking at. Experts keep their own.
         </Text>
       </div>
-      <div className="sm:w-70 w-full">
+      <div className="w-full sm:w-[17.5rem]">
         <ScopeSelect
           scopeExpertID={scopeExpertID}
           experts={experts}
