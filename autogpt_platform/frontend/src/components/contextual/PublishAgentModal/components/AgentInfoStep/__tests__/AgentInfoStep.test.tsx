@@ -12,7 +12,7 @@ vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({
   CronExpressionDialog: () => null,
 }));
 
-vi.mock("./components/ThumbnailImages", () => ({
+vi.mock("../components/ThumbnailImages", () => ({
   ThumbnailImages: () => <div data-testid="thumbnail-images-mock" />,
 }));
 

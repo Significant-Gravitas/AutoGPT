@@ -42,9 +42,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-vi.mock("../../UsageLimits/UsageLimits", () => ({
-  UsageLimits: () => null,
-}));
 vi.mock("../../UsageLimits/UsagePopover/UsagePopover", () => ({
   UsagePopover: () => null,
 }));
