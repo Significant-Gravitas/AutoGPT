@@ -14,8 +14,8 @@ const PENDING_TTL_MS = 2 * 60 * 1000;
 // so any redesign of this message, including this one, stays ask-first.
 const KICKOFF_PROMPT =
   "You were just hired. Call expert_onboarding once, and nothing else, this " +
-  "turn: a greeting of 1-2 sentences introducing yourself in your voice, " +
-  "then 3-5 questions the user can answer by tapping. Every question and " +
+  "turn: a one-sentence greeting introducing yourself in your voice, then " +
+  "2-3 short questions the user can answer by tapping. Every question and " +
   "every option must come from your own role and area of expertise and from " +
   "the workflows installed on you — ask which outcome in your area to start " +
   "with, and which of the services your work depends on you should be " +

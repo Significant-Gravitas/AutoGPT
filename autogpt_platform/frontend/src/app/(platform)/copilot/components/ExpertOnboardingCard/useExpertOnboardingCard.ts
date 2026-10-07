@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   buildOnboardingAnswersMessage,
@@ -13,6 +13,8 @@ import {
 } from "./onboardingProgress";
 
 const SKIP_MESSAGE = "Let's skip the setup questions for now.";
+// Long enough to see the tapped row light up before the next question.
+const AUTO_ADVANCE_MS = 300;
 
 interface Args {
   callId: string;
@@ -33,6 +35,7 @@ export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
   );
   const [isSent, setIsSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const current = Math.min(step, steps.length - 1);
   const currentStep = steps[current];
@@ -48,11 +51,29 @@ export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
     writeOnboardingProgress(callId, { step, answers });
   }, [callId, step, answers, isDone]);
 
+  function cancelAutoAdvance() {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    advanceTimer.current = null;
+  }
+
   function setAnswer(next: string) {
+    cancelAutoAdvance();
     setAnswers((previous) => ({ ...previous, [currentStep.keyword]: next }));
   }
 
+  // A tapped option is a whole answer, so it moves on by itself. The last
+  // step waits for Send: sending is the one move the user can't take back.
+  function choose(option: string) {
+    setAnswer(option);
+    if (isLast) return;
+    advanceTimer.current = setTimeout(
+      () => setStep(current + 1),
+      AUTO_ADVANCE_MS,
+    );
+  }
+
   function goBack() {
+    cancelAutoAdvance();
     setStep(Math.max(current - 1, 0));
   }
 
@@ -96,6 +117,7 @@ export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
     isSending,
     value,
     advance,
+    choose,
     goBack,
     setAnswer,
     skip,

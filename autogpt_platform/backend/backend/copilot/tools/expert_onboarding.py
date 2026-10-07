@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 TOOL_NAME = "expert_onboarding"
 
 # The card is a one-question-at-a-time pager, so its length is the user's
-# patience, not a context budget: five steps is already a long walk before
-# anyone has seen the expert do anything.
-MIN_STEPS = 3
-MAX_STEPS = 5
-MAX_OPTIONS = 6
+# patience, not a context budget: every extra step or option is one more
+# chance to close the tab before the expert has done anything.
+MIN_STEPS = 2
+MAX_STEPS = 3
+MAX_OPTIONS = 4
 MAX_QUESTION_LENGTH = 200
 MAX_OPTION_LENGTH = 120
 MAX_GREETING_LENGTH = 600
@@ -49,10 +49,11 @@ class ExpertOnboardingTool(BaseTool):
     def description(self) -> str:
         return (
             "Open your onboarding card on your first turn after being hired: "
-            "a short greeting plus 3-5 multiple-choice questions that settle "
-            "what the user wants from you and which services you need. Ask "
-            "for nothing else on that turn, and do not start work until the "
-            "answers come back."
+            f"a one-line greeting plus {MIN_STEPS}-{MAX_STEPS} short "
+            "multiple-choice questions that settle what the user wants from "
+            "you and which services you need. Keep every word short: the "
+            "user reads it in seconds or not at all. Ask for nothing else on "
+            "that turn, and do not start work until the answers come back."
         )
 
     @property
@@ -63,8 +64,8 @@ class ExpertOnboardingTool(BaseTool):
                 "greeting": {
                     "type": "string",
                     "description": (
-                        "One or two sentences introducing yourself, in your "
-                        "own voice. Shown above the questions."
+                        "One short sentence, under 15 words, introducing "
+                        "yourself in your own voice. Shown under your name."
                     ),
                 },
                 "steps": {
@@ -76,19 +77,23 @@ class ExpertOnboardingTool(BaseTool):
                         "properties": {
                             "question": {
                                 "type": "string",
-                                "description": "The question text.",
+                                "description": (
+                                    "The question, under 10 words. No "
+                                    "preamble or explanation — just the "
+                                    "question."
+                                ),
                             },
                             "options": {
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": (
-                                    "Up to 6 answers the user can tap. Make "
-                                    "them concrete and specific to your role "
-                                    "— the point is that answering costs no "
-                                    "typing. The user can always write their "
-                                    "own answer instead. Exactly one is "
-                                    "chosen, so split a question that needs "
-                                    "several answers into separate steps."
+                                    f"2-{MAX_OPTIONS} answers the user can "
+                                    "tap, 1-5 words each. Make them concrete "
+                                    "and specific to your role — the point "
+                                    "is that answering costs no typing. "
+                                    "Exactly one is chosen. Leave out "
+                                    "'not sure', 'later' and 'skip' answers: "
+                                    "the card already offers Other and Skip."
                                 ),
                             },
                             "keyword": {
@@ -99,10 +104,11 @@ class ExpertOnboardingTool(BaseTool):
                         "required": ["question", "options"],
                     },
                     "description": (
-                        "3-5 questions, shown one per step, all about your "
-                        "own role and the workflows installed on you. Order "
-                        "them from what you most need to know to what is "
-                        "merely nice to know."
+                        f"{MIN_STEPS}-{MAX_STEPS} questions, shown one per "
+                        "step, all about your own role and the workflows "
+                        "installed on you. Ask only what you need before you "
+                        "can start; anything else can wait for the "
+                        "conversation."
                     ),
                 },
             },
