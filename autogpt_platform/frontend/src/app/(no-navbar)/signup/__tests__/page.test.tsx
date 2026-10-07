@@ -123,6 +123,7 @@ describe("SignupPage", () => {
         "validpassword123",
         "validpassword123",
         false,
+        null,
       );
     });
 
@@ -239,6 +240,7 @@ describe("SignupPage", () => {
         "validpassword123",
         "validpassword123",
         true,
+        null,
       );
     });
   });
@@ -266,6 +268,7 @@ describe("SignupPage", () => {
         "validpassword123",
         "validpassword123",
         false,
+        null,
       );
     });
   });
@@ -355,6 +358,32 @@ describe("SignupPage", () => {
     },
   );
 
+  test.each([
+    { optOut: true, calls: [[false], [true]] },
+    { optOut: false, calls: [[false]] },
+  ])(
+    "an email signup that must verify its address carries an opt-out ($optOut) to the link",
+    async ({ optOut, calls }) => {
+      // No session yet, so the action records nothing: the emailed link lands
+      // on /auth/callback, which takes the refusal from the cookie.
+      mockSignupAction.mockResolvedValue({
+        success: true,
+        verificationRequired: true,
+        email: "new@example.com",
+      });
+      const user = userEvent.setup();
+      render(<SignupPage />);
+
+      if (optOut)
+        await user.click(screen.getByRole("button", { name: "opt out" }));
+      fillValidForm();
+      fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+      expect(await screen.findByText("new@example.com")).toBeDefined();
+      expect(setMarketingOptOutFlag.mock.calls).toEqual(calls);
+    },
+  );
+
   test("locks the opt-out toggle while an email signup is pending and frees it on failure", async () => {
     let finishSignup: (result: unknown) => void = () => undefined;
     mockSignupAction.mockReturnValue(
@@ -374,6 +403,7 @@ describe("SignupPage", () => {
         "validpassword123",
         "validpassword123",
         false,
+        null,
       );
     });
     const toggle = screen.getByRole<HTMLButtonElement>("button", {

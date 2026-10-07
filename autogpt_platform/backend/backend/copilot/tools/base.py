@@ -493,7 +493,7 @@ class BaseTool:
             result = await self._execute(user_id, session, **run_kwargs)
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
-            raw_output = result.model_dump_json(exclude_none=True)
+            raw_output = full = result.model_dump_json(exclude_none=True)
 
             digest = (
                 self.digest_large_output
@@ -523,7 +523,9 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
-        return await self._screen_read(user_id, session, tool_call_id, kwargs, output)
+        return await self._screen_read(
+            user_id, session, tool_call_id, kwargs, output, result.outside, full
+        )
 
     async def _gate(
         self,
@@ -615,8 +617,11 @@ class BaseTool:
         tool_call_id: str,
         kwargs: dict[str, Any],
         result: StreamToolOutputAvailable,
+        outside: tuple[Any, ...] | None,
+        full: str,
     ) -> StreamToolOutputAvailable:
-        """Judge the output as the model will receive it, after every cap."""
+        """Judge the output as the model will receive it, after every cap: the
+        parts ``outside`` declares, or all of it when nothing was declared."""
         from backend.copilot.gate.reads import model_view, readable_parts, screen_read
 
         seen = (
@@ -638,6 +643,8 @@ class BaseTool:
             text=text,
             images=images,
             tool_call_id=tool_call_id,
+            outside=outside,
+            full=full,
         )
         if stub is None:
             return result

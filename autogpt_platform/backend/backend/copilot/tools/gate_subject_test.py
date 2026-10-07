@@ -32,9 +32,11 @@ from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot.gate import RUN_FILES_KEY
 from backend.copilot.gate.classifier import Judgement
+from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.effects import block_effect, graph_effect
 from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.reads import screen_read
 from backend.copilot.gate.review import review_payload
 from backend.copilot.gate.subject import workflow_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
@@ -820,6 +822,9 @@ class _LocalSandbox:
         cmd: str,
         envs: dict[str, str] | None = None,
         cwd: str = "/home/user",
+        background: bool = False,
+        on_stdout: Any = None,
+        on_stderr: Any = None,
         **_: Any,
     ) -> SimpleNamespace:
         user_home = (envs or {}).get("HOME", "/home/user")
@@ -831,11 +836,18 @@ class _LocalSandbox:
             text=True,
             timeout=10,
         )
-        return SimpleNamespace(
+        result = SimpleNamespace(
             exit_code=done.returncode,
             stdout=done.stdout.replace(self.home, "/home/user"),
             stderr=done.stderr,
         )
+        if not background:
+            return result
+        # bash_exec follows its command through E2B's background handle.
+        for emit, text in ((on_stdout, result.stdout), (on_stderr, result.stderr)):
+            if emit and text:
+                emit(text)
+        return SimpleNamespace(pid=1, wait=AsyncMock(return_value=result))
 
 
 @pytest.fixture
@@ -880,6 +892,40 @@ async def test_a_heredoc_write_into_the_workspace_runs_as_a_file_write(
     assert held is not runs
     assert ran == int(runs)
     assert asked == int(not runs)
+
+
+@pytest.mark.parametrize(
+    "command, asked, judged",
+    [(_LONG_POST, 0, None), (_LONG_POST + "\necho ok", 1, r"ok\n")],
+    ids=["write", "write-then-run"],
+)
+async def test_a_heredoc_write_is_judged_by_neither_gate_as_the_models_words(
+    gate, home, command, asked, judged
+):
+    """Both gates on the real command: a pure write reaches neither the supervisor
+    nor the content judge, and the judge reads only what a command printed."""
+    asks = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    judge = AsyncMock(return_value=ContentVerdict(held=False))
+    with (
+        patch(f"{_GATE}.reads.screen_read", screen_read),
+        patch(f"{_GATE}.reads.judge_content", judge),
+        patch(f"{_GATE}.supervise", asks),
+        patch(f"{_BASH}.selected_credentials", AsyncMock(return_value={})),
+        patch(f"{_BASH}.get_integration_env_vars", AsyncMock(return_value={})),
+        patch(f"{_BASH}.get_github_user_git_identity", AsyncMock(return_value=None)),
+    ):
+        result = await BashExecTool().execute(
+            "user-1", _session("auto"), "call-1", command=command
+        )
+
+    assert json.loads(result.output)["exit_code"] == 0
+    assert (home / "workspace/blog/post.md").read_text().startswith("word ")
+    assert asks.await_count == asked
+    if judged is None:
+        judge.assert_not_awaited()
+    else:
+        assert judge.await_args.kwargs["text"] == judged
+        assert judge.await_args.kwargs["source"] == "bash_exec"
 
 
 @pytest.mark.parametrize(

@@ -24,7 +24,7 @@ from prisma.types import (
 )
 from pydantic import BaseModel, ConfigDict
 
-from backend.data.db import prisma, transaction
+from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
@@ -63,6 +63,10 @@ class UserCreationResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     user: User
+    # True for the one call that set the account up: it created the ``User``
+    # row, or bootstrapped the personal org for a row the auth hook inserted
+    # bare at sign-up. Drives the sign-up conversion (via the route's
+    # ``X-AutoGPT-User-Created`` header) and the PostHog lifecycle sync.
     was_created: bool
 
 
@@ -86,20 +90,24 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
             raise HTTPException(status_code=401, detail="Email not found in token")
 
         user = await prisma.user.find_unique(where={"id": user_id})
+        row_created = False
         if not user:
-            user = await prisma.user.create(
-                data=UserCreateInput(
-                    id=user_id,
-                    email=user_email,
-                    name=user_data.get("user_metadata", {}).get("name"),
+            try:
+                user = await prisma.user.create(
+                    data=UserCreateInput(
+                        id=user_id,
+                        email=user_email,
+                        name=user_data.get("user_metadata", {}).get("name"),
+                    )
                 )
-            )
-            was_created = True
-            track_signup_completed(
-                user_id=user.id, signup_method=await _signup_method(user.id, user_data)
-            )
-        else:
-            was_created = False
+                row_created = True
+            except UniqueViolationError:
+                # A concurrent first request (the verify link opened in two
+                # browsers at once) created it since the lookup. If it is the
+                # email that clashes instead, there is still no row: re-raise.
+                user = await prisma.user.find_unique(where={"id": user_id})
+                if user is None:
+                    raise
 
         # Ensure every user has a marketplace Profile (required to publish
         # agents). Best-effort: a failure must not block user resolution — the
@@ -119,9 +127,16 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # organization context available", so a failure here must fail the
         # request loudly instead of returning a bricked account. Idempotent and
         # race-safe (see ensure_personal_org).
-        await ensure_personal_org(user.id)
+        org_created = await ensure_personal_org(user.id)
 
+        # The auth hook inserts a bare row the moment the identity is created
+        # (see provision-platform-user.ts), so the row alone does not mark a
+        # new account: the personal org this call bootstraps does.
+        was_created = row_created or org_created
         if was_created:
+            track_signup_completed(
+                user_id=user.id, signup_method=await _signup_method(user.id, user_data)
+            )
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
@@ -317,6 +332,110 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
         email=user.email,
         created_at=user.createdAt,
     )
+
+
+class OrphanedAuthIdentity(BaseModel):
+    """An auth identity (Better Auth user) with no platform ``User`` row."""
+
+    id: str
+    email: str
+    name: Optional[str] = None
+    createdAt: datetime
+    # Set when a *different* platform User already owns this email, which the
+    # unique index on ``User.email`` turns into an unprovisionable account.
+    email_owner_id: Optional[str] = None
+
+    @property
+    def has_email_collision(self) -> bool:
+        return self.email_owner_id is not None and self.email_owner_id != self.id
+
+
+class OrphanedAuthIdentityReport(BaseModel):
+    healed: list[str] = []
+    collided: list[OrphanedAuthIdentity] = []
+    failed: list[str] = []
+
+    @property
+    def is_clean(self) -> bool:
+        return not (self.healed or self.collided or self.failed)
+
+
+async def find_orphaned_auth_identities(
+    older_than: datetime, limit: int = 100
+) -> list[OrphanedAuthIdentity]:
+    """Auth identities created before *older_than* that have no ``User`` row.
+
+    Only verified identities, or ones with a session: an unverified sign-up
+    gets its row when its link is opened. Identities whose email another
+    platform User owns sort last, so they can't fill every batch.
+    """
+    rows = await query_raw_with_schema(
+        # The owner lookup is case-insensitive on purpose: the auth migration
+        # copied emails as stored, so a migrated identity can differ from its
+        # platform row only by case, and missing that owner would heal a
+        # duplicate account. It is a scalar subquery rather than a join so an
+        # identity yields exactly one row even when several platform rows
+        # carry case-variants of its email -- a join would return the identity
+        # once per variant and let duplicates eat into the batch limit.
+        'SELECT a.id, a.email, a.name, a."createdAt", '
+        '(SELECT owner.id FROM {schema_prefix}"User" owner '
+        "WHERE LOWER(owner.email) = LOWER(a.email) "
+        'ORDER BY owner."createdAt" ASC LIMIT 1) AS email_owner_id '
+        'FROM {schema_prefix}"UserAuthIdentity" a '
+        'LEFT JOIN {schema_prefix}"User" u ON u.id = a.id '
+        'WHERE u.id IS NULL AND a."createdAt" < $1::timestamptz '
+        'AND (a."emailVerified" OR EXISTS (SELECT 1 FROM '
+        '{schema_prefix}"UserAuthSession" s WHERE s."userId" = a.id)) '
+        'ORDER BY EXISTS (SELECT 1 FROM {schema_prefix}"User" o '
+        "WHERE LOWER(o.email) = LOWER(a.email)), "
+        'a."createdAt" ASC '
+        "LIMIT $2::int",
+        older_than.isoformat(),
+        limit,
+    )
+    return [OrphanedAuthIdentity(**row) for row in rows]
+
+
+async def heal_orphaned_auth_identities(
+    grace_secs: int = 300, limit: int = 100
+) -> OrphanedAuthIdentityReport:
+    """Provision a platform ``User`` for every orphaned auth identity.
+
+    Runs the same provisioning as ``POST /auth/user`` (User + marketplace
+    Profile + personal org) from the identity's own email, so a healed account
+    is indistinguishable from one that signed up cleanly. Identities younger
+    than *grace_secs* are left alone: their sign-up is still in flight.
+
+    An identity whose email is already owned by a different platform User
+    (compared case-insensitively) is reported, not healed -- the unique index
+    makes it unprovisionable, and guessing which account the person meant is
+    not this function's call.
+    """
+    older_than = datetime.now(timezone.utc) - timedelta(seconds=grace_secs)
+    report = OrphanedAuthIdentityReport()
+    for identity in await find_orphaned_auth_identities(older_than, limit):
+        if identity.has_email_collision:
+            report.collided.append(identity)
+            continue
+        try:
+            result = await get_or_create_user_with_status(
+                {
+                    "sub": identity.id,
+                    "email": identity.email,
+                    "user_metadata": {"name": identity.name},
+                }
+            )
+        except Exception:
+            logger.error(
+                f"Failed to heal orphaned auth identity {identity.id}", exc_info=True
+            )
+            report.failed.append(identity.id)
+            continue
+        # A sign-in that landed between the query and here provisioned it
+        # already: nothing was broken, so nothing to page about.
+        if result.was_created:
+            report.healed.append(identity.id)
+    return report
 
 
 @cache_user_lookup

@@ -92,7 +92,10 @@ afterEach(() => {
 
 describe("signup", () => {
   it("creates the account, provisions the backend user, and routes to onboarding", async () => {
-    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    signUpEmailMock.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     postV1GetOrCreateUserMock.mockResolvedValue({
       status: 200,
       data: { id: "user-1" },
@@ -102,7 +105,12 @@ describe("signup", () => {
     const result = await signupWithValidPayload();
 
     expect(signUpEmailMock).toHaveBeenCalledWith({
-      body: { email, password: validPassword, name: "new.user" },
+      body: {
+        email,
+        password: validPassword,
+        name: "new.user",
+        callbackURL: "/auth/callback?method=email",
+      },
       headers: expect.any(Headers),
     });
     expect(postV1GetOrCreateUserMock).toHaveBeenCalledTimes(1);
@@ -110,7 +118,10 @@ describe("signup", () => {
   });
 
   it("records terms acceptance on the account it just created", async () => {
-    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    signUpEmailMock.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     postV1GetOrCreateUserMock.mockResolvedValue({ status: 200, data: {} });
     wasAccountCreatedMock.mockReturnValue(true);
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
@@ -126,7 +137,10 @@ describe("signup", () => {
   });
 
   it("does not record consent when signing up into an existing account", async () => {
-    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    signUpEmailMock.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     postV1GetOrCreateUserMock.mockResolvedValue({ status: 200, data: {} });
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 
@@ -137,7 +151,10 @@ describe("signup", () => {
   });
 
   it("keeps the new account signed in when the consent write fails", async () => {
-    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    signUpEmailMock.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     postV1GetOrCreateUserMock.mockResolvedValue({ status: 200, data: {} });
     wasAccountCreatedMock.mockReturnValue(true);
     postV1RecordUserConsentMock.mockRejectedValue(
@@ -157,7 +174,10 @@ describe("signup", () => {
   });
 
   it("routes straight to copilot when onboarding is already complete", async () => {
-    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    signUpEmailMock.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     postV1GetOrCreateUserMock.mockResolvedValue({
       status: 200,
       data: { id: "user-1" },
@@ -216,7 +236,10 @@ describe("signup", () => {
   });
 
   it("asks the user to retry when backend user provisioning fails after sign-up", async () => {
-    signUpEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    signUpEmailMock.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     postV1GetOrCreateUserMock.mockRejectedValue(new Error("backend down"));
 
     const result = await signupWithValidPayload();
@@ -228,6 +251,38 @@ describe("signup", () => {
       success: false,
       error: "Failed to complete account setup. Please try again.",
     });
+  });
+
+  it("shows check-your-inbox instead of provisioning when verification is required", async () => {
+    // AUTH_REQUIRE_EMAIL_VERIFICATION=true: Better Auth creates no session and
+    // emails a link. Provisioning without a session is what used to fail with
+    // 401 "Failed to complete account setup".
+    signUpEmailMock.mockResolvedValue({ token: null, user: { id: "user-1" } });
+
+    const result = await signupWithValidPayload();
+
+    expect(result).toEqual({
+      success: true,
+      verificationRequired: true,
+      email,
+    });
+    expect(postV1GetOrCreateUserMock).not.toHaveBeenCalled();
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
+    expect(getOnboardingStatusMock).not.toHaveBeenCalled();
+  });
+
+  it("carries a safe next path through the verification link", async () => {
+    signUpEmailMock.mockResolvedValue({ token: null, user: { id: "user-1" } });
+
+    await signup(email, validPassword, validPassword, true, "/marketplace");
+    await signup(email, validPassword, validPassword, true, "https://evil.com");
+
+    expect(signUpEmailMock.mock.calls[0][0].body.callbackURL).toBe(
+      "/auth/callback?method=email&next=%2Fmarketplace",
+    );
+    expect(signUpEmailMock.mock.calls[1][0].body.callbackURL).toBe(
+      "/auth/callback?method=email",
+    );
   });
 
   it("rejects a password shorter than 12 characters without calling Better Auth", async () => {

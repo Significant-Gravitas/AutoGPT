@@ -48,9 +48,12 @@ vi.mock("@sentry/nextjs", () => ({
 describe("email signup account creation tracking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Better Auth's signUpEmail sets the session cookie; a resolved call is
-    // the success case.
-    mocks.signUpEmail.mockResolvedValue({ user: { id: "user-1" } });
+    // Better Auth's signUpEmail sets the session cookie and returns its
+    // token when no email verification is required.
+    mocks.signUpEmail.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     mocks.getOnboardingStatus.mockResolvedValue({
       shouldShowOnboarding: true,
     });
@@ -102,6 +105,29 @@ describe("email signup account creation tracking", () => {
     expect(mocks.postV1RecordUserConsent).not.toHaveBeenCalled();
   });
 
+  it("does not track an unverified sign-up; the verification link does", async () => {
+    // With AUTH_REQUIRE_EMAIL_VERIFICATION=true there is no session yet, so
+    // the account is not provisioned or counted here. /auth/callback?method=email
+    // does both once the link is clicked.
+    mocks.signUpEmail.mockResolvedValue({ token: null });
+
+    const result = await signup(
+      "new@example.com",
+      "ValidPassword123!",
+      "ValidPassword123!",
+      true,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      verificationRequired: true,
+      email: "new@example.com",
+    });
+    expect(mocks.postV1GetOrCreateUser).not.toHaveBeenCalled();
+    expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
+    expect(mocks.cookieSet).not.toHaveBeenCalled();
+  });
+
   it("reports a thrown backend error instead of completing signup", async () => {
     // The generated client throws ApiError on non-2xx (custom-mutator), which
     // the action catches to roll back the session and surface the failure.
@@ -129,7 +155,10 @@ describe("email signup consent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    mocks.signUpEmail.mockResolvedValue({ user: { id: "user-1" } });
+    mocks.signUpEmail.mockResolvedValue({
+      token: "session-token",
+      user: { id: "user-1" },
+    });
     mocks.getOnboardingStatus.mockResolvedValue({
       shouldShowOnboarding: true,
     });

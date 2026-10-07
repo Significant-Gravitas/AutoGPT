@@ -292,6 +292,94 @@ describe("auth callback GET — signup consent", () => {
   });
 });
 
+describe("auth callback GET — email verification link", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+  });
+
+  it("provisions and tracks a new email account once the link signs it in", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?method=email"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/onboarding`);
+    expect(postV1GetOrCreateUserMock).toHaveBeenCalledOnce();
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledOnce();
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledWith("email");
+    expect(cookieSetMock).toHaveBeenCalledOnce();
+    expect(cookieSetMock).toHaveBeenCalledWith(
+      "agpt_account_created",
+      "email",
+      expect.objectContaining({ maxAge: 600, path: "/" }),
+    );
+  });
+
+  it("records the terms and a refusal carried from /signup once the link signs a new account in", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    cookieGetMock.mockImplementation((name: string) =>
+      name === "agpt_marketing_opt_out"
+        ? { name: "agpt_marketing_opt_out", value: "1" }
+        : undefined,
+    );
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    await GET(makeCallbackRequest("/auth/callback?method=email"));
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+  });
+
+  it("does not track an existing account that verifies at its next sign-in", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?method=email&next=/marketplace"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+    expect(cookieSetMock).not.toHaveBeenCalled();
+  });
+
+  it("sends an expired or used link to log in, keeping next", async () => {
+    getServerSessionMock.mockResolvedValue(null);
+
+    const response = await GET(
+      makeCallbackRequest(
+        "/auth/callback?method=email&next=%2Fmarketplace&error=TOKEN_EXPIRED",
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      `${origin}/login?email_verification=expired&next=%2Fmarketplace`,
+    );
+    expect(postV1GetOrCreateUserMock).not.toHaveBeenCalled();
+  });
+
+  it("sends a click on an already verified link to log in", async () => {
+    getServerSessionMock.mockResolvedValue(null);
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?method=email&next=https://evil.com"),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      `${origin}/login?email_verification=verified`,
+    );
+  });
+});
+
 describe("auth callback GET — redirect target resolution", () => {
   it("uses the canonical HTTPS origin and ignores a malicious forwarded host", async () => {
     vi.stubEnv("NODE_ENV", "development");

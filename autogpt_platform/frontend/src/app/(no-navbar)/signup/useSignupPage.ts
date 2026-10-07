@@ -26,6 +26,9 @@ export function useSignupPage() {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(
+    null,
+  );
   const isCloudEnv = environment.isCloud();
 
   // Same-origin redirect target; off-site values are dropped so a crafted
@@ -140,6 +143,7 @@ export function useSignupPage() {
         data.password,
         data.confirmPassword,
         data.marketingOptOut,
+        nextUrl,
       );
 
       if (!result.success) {
@@ -158,6 +162,17 @@ export function useSignupPage() {
           title: result.error || "Signup failed",
           variant: "destructive",
         });
+        setIsSigningUp(false);
+        return;
+      }
+
+      if (result.verificationRequired) {
+        // There is no session yet, so the action recorded nothing. The emailed
+        // link lands on /auth/callback, which records the terms and, if the
+        // link is opened in this browser while the cookie lasts, the refusal.
+        if (data.marketingOptOut) setMarketingOptOutFlag(true);
+        setVerificationEmail(result.email);
+        setIsLoading(false);
         setIsSigningUp(false);
         return;
       }
@@ -182,9 +197,16 @@ export function useSignupPage() {
     }
   }
 
+  function handleStartAgain() {
+    setVerificationEmail(null);
+    form.resetField("email");
+  }
+
   return {
     form,
     feedback,
+    nextUrl,
+    verificationEmail,
     isLoggedIn: !!user,
     hasInitializedAuth,
     isLoading,
@@ -198,5 +220,6 @@ export function useSignupPage() {
     handleToggleMarketingOptOut,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
+    handleStartAgain,
   };
 }

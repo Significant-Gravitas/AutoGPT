@@ -323,8 +323,14 @@ function getWebAccordionData(
             const href = getStringField(r, "url") ?? "";
             const snippet = getStringField(r, "snippet");
             const pageAge = getStringField(r, "page_age");
+            const citation = typeof r.n === "number" ? r.n : null;
             return (
               <div key={i} className="text-sm">
+                {citation !== null && (
+                  <span className="mr-1.5 text-xs tabular-nums text-slate-500">
+                    [{citation}]
+                  </span>
+                )}
                 {href ? (
                   <a
                     href={href}
