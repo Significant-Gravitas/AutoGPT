@@ -3,8 +3,8 @@ version: alpha
 name: AutoGPT Platform
 description: >-
   Design system of the AutoGPT Platform frontend (Next.js, Tailwind 4.3,
-  Radix). Tokens below are the decided values; "Tokens today" in the prose
-  says where the code still differs.
+  Radix). Tokens below are the decided values; the Tokens section lists
+  the classes that carry them.
 colors:
   primary: "#3E3E43"
   on-primary: "#FFFFFF"
@@ -12,16 +12,16 @@ colors:
   on-accent: "#FFFFFF"
   background: "#FAFAFA"
   surface: "#FFFFFF"
-  text-primary: "#2C2C30"
+  text-primary: "#141414"
   text-secondary: "#505057"
   text-muted: "#68686F"
   text-placeholder: "#83838C"
   border: "#DADADC"
   border-strong: "#C5C5C9"
-  danger: "#D93636"
+  danger: "#EF4444"
   success: "#149443"
-  warning: "#876A00"
-  focus-ring: "#7733F5"
+  warning: "#DFAF00"
+  focus-ring: "#925CF7"
 typography:
   h1:
     {
@@ -142,7 +142,7 @@ History, evidence and the rebuild plan are in [the design system audit](../../do
 
 ## Decisions
 
-Made 2026-10-07 (audit Part 8.4). New code follows them now; the token rebuild (Tailwind 4 and shadcn, audit Part 8.3) moves the existing code onto them.
+Made 2026-10-07 (audit Part 8.4). The wave-3 token rebuild (Tailwind 4 and shadcn, audit Part 8.3) put them into `globals.css` and the atoms.
 
 | Axis            | Decision                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -155,13 +155,13 @@ Made 2026-10-07 (audit Part 8.4). New code follows them now; the token rebuild (
 | Dark mode       | Later, and only by swapping the semantic variables in `.dark`. No `dark:` class anywhere.                           |
 | Icons           | Hugeicons only (`@hugeicons/core-free-icons`, stroke-rounded), always through the `Icon` atom.                      |
 
-## Tokens today
+## Tokens
 
-The sources are `src/app/globals.css` (the Tailwind theme in `@theme`: palette, radius, shadows, animations; and the shadcn variables) and `src/components/atoms/Text/helpers.ts` (type scale). `src/components/styles/colors.ts` repeats the palette for the one component and the story that read it in TypeScript. If this table and those files disagree, the files win and this table is out of date.
+`src/app/globals.css` is the only source: the palette and theme in `@theme` blocks, the semantic values in `:root` (and an inactive `.dark`), exposed as classes by `@theme inline`. The type scale is in `src/components/atoms/Text/helpers.ts`. If this section and those files disagree, the files win. Storybook's "Tokens" stories read the same file.
 
 ### Palette
 
-The palette overrides Tailwind's ramps of the same name; `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` and `fuchsia` are Tailwind defaults and are banned by lint. `blue`, `sky`, `teal` and `cyan` are also defaults, have no decision yet, and are allowed for now. The `-950` steps are not part of the palette (`globals.css` keeps Tailwind 3's values for them and for the default families, so the Tailwind 4 upgrade changed no colour); do not use them.
+`@theme static { --color-*: initial; ... }` switches Tailwind's palette off and declares ours, so only these families compile: `gray-500` or `amber-50` is an unknown class, not a fallback. Every step is a CSS variable in `:root` (`var(--color-zinc-200)`).
 
 | Step | slate     | zinc      | red       | orange    | yellow    | green     | purple    | pink      |
 | ---- | --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- |
@@ -176,45 +176,50 @@ The palette overrides Tailwind's ramps of the same name; `gray`, `neutral`, `sto
 | 800  | `#475263` | `#3E3E43` | `#832525` | `#8C4A00` | `#876A00` | `#0C5A29` | `#411C87` | `#822854` |
 | 900  | `#2A313A` | `#2C2C30` | `#641D1D` | `#6B3900` | `#675100` | `#09441F` | `#321567` | `#631E40` |
 
-Also: `white` is `#FEFEFE`, `black` is `#141414`, `yellow-25` and `yellow-150` exist for one component. `textBlack`, `textGrey` and `bgLightGrey` are deprecated; use `zinc-900`, `zinc-700` and `zinc-100`.
+Also `white` (`#FEFEFE`) and `black` (`#141414`). There are no `-950` steps. `blue`, `sky`, `teal` and `cyan` keep Tailwind's default ramps until there is a decision for them; avoid new uses.
 
 **Role of each step.** Zinc is the neutral ramp and carries most of the UI:
 
-| zinc | Role                                                           |
-| ---- | -------------------------------------------------------------- |
-| 50   | Hover fill, sunken surface, subtle row                         |
-| 100  | Soft fill, skeleton, pressed toggle                            |
-| 200  | Default border, disabled fill                                  |
-| 300  | Strong border, outline button                                  |
-| 400  | Decorative icons only (2.2:1 on white, fails as text)          |
-| 500  | Placeholder and disabled text (3.8:1)                          |
-| 600  | Muted text (`Text tone="secondary"` today; the muted decision) |
-| 700  | Secondary emphasis text                                        |
-| 800  | Primary action fill, strong text                               |
-| 900  | Primary text (`Text tone="primary"`)                           |
+| zinc | Role                                                       |
+| ---- | ---------------------------------------------------------- |
+| 50   | Hover fill, sunken surface, subtle row                     |
+| 100  | Soft fill, skeleton, pressed toggle (`muted`, `secondary`) |
+| 200  | Default border (`border`, `input`)                         |
+| 300  | Strong border                                              |
+| 400  | Decorative icons only (2.2:1 on white, fails as text)      |
+| 500  | Placeholder and disabled text (3.8:1)                      |
+| 600  | Muted text (`muted-foreground`, `Text tone="muted"`)       |
+| 700  | Secondary text (`Text tone="secondary"`, `info`)           |
+| 800  | Primary action fill (`primary`)                            |
+| 900  | Strong text on tints                                       |
 
-The colour ramps follow one pattern: 50 to 100 tinted backgrounds (alerts, badges), 200 to 300 borders on those backgrounds, 400 to 500 the solid hue (dots, icons, fills), 600 hover of the solid hue and text on white, 700 to 800 text on a 50 to 100 tint. Red is error and destructive, green success, yellow warning (orange for its icon), purple brand and accent, slate a cool neutral used in a few places, pink decorative.
+The colour ramps follow one pattern: 50 to 100 tinted backgrounds, 200 to 300 borders on those backgrounds, 400 to 500 the solid hue (dots, icons, fills), 600 hover of the solid hue, 700 to 800 text on a 50 to 100 tint. Red is error and destructive, green success, yellow warning, purple brand and accent, slate a cool neutral used in a few places, pink decorative.
 
-### Semantic variables (shadcn)
+### Semantic colours
 
-Defined as HSL in `globals.css`, exposed as Tailwind colours. Prefer these over palette steps where one fits; the token rebuild remaps them to the palette (the "Target" column).
+Prefer these over palette steps where one fits. Each is a class stem (`bg-`, `text-`, `border-`, `ring-`...).
 
-| Class stem                | Today                 | Target               | Role                                                                   |
-| ------------------------- | --------------------- | -------------------- | ---------------------------------------------------------------------- |
-| `background`              | `#FAFAFA`             | same                 | Page background. `body` still paints `bg-[#F6F7F8]` until the rebuild. |
-| `foreground`              | `#09090B`             | `zinc-900`           | Default text                                                           |
-| `card`, `popover`         | `#FFFFFF`             | white                | Raised surfaces                                                        |
-| `primary` / `-foreground` | `#18181B` / `#FAFAFA` | `zinc-800` / white   | Primary action                                                         |
-| `secondary`, `muted`      | `#F4F4F5`             | `zinc-100`           | Soft fills                                                             |
-| `muted-foreground`        | `#71717A`             | `zinc-600`           | Muted text                                                             |
-| `accent` / `-foreground`  | `#7C3BED` / white     | `purple-500` / white | Brand accent                                                           |
-| `destructive`             | `#EF4444`             | `red-500`            | Destructive action                                                     |
-| `border`                  | `#E4E4E7`             | `zinc-200`           | Default border (`*` gets `border-border`)                              |
-| `input`                   | `#D6D6DB`             | `zinc-200`           | Field border                                                           |
-| `ring`                    | `#18181B`             | `purple-500`         | Focus ring                                                             |
-| `sidebar-*`               | various               | to be folded in      | Only `ui/sidebar` uses them                                            |
+| Class stem                        | Light value                 | Role                                                              |
+| --------------------------------- | --------------------------- | ----------------------------------------------------------------- |
+| `background` / `foreground`       | `#FAFAFA` / black `#141414` | Page background (`body`) and default text                         |
+| `card`, `popover` / `-foreground` | white / black               | Raised surfaces: cards, dialogs, menus, tooltips                  |
+| `primary` / `-foreground`         | `zinc-800` / white          | Primary action                                                    |
+| `secondary` / `-foreground`       | `zinc-100` / `zinc-800`     | Soft fills                                                        |
+| `muted` / `-foreground`           | `zinc-100` / `zinc-600`     | Soft fill, skeletons; muted text                                  |
+| `accent` / `-foreground`          | `purple-500` / white        | Brand accent: active tab, links in accents                        |
+| `destructive` / `-foreground`     | `red-500` / white           | Destructive action, errors                                        |
+| `success` / `-foreground`         | `green-600` / `green-50`    | Success                                                           |
+| `warning` / `-foreground`         | `yellow-600` / `yellow-50`  | Warning                                                           |
+| `info` / `-foreground`            | `zinc-700` / `zinc-100`     | Neutral notice                                                    |
+| `border`, `input`                 | `zinc-200`                  | Default border (every element gets `border-border`), field border |
+| `ring`                            | `purple-400`                | Focus ring (`focus-ring`), default `ring-*` colour                |
+| `sidebar`, `sidebar-*`            | `#FAFAFA`, zinc, purple-400 | `ui/sidebar`                                                      |
 
-`--radius` is `0.5rem` today (target `0.75rem`). The `.dark` block exists but nothing activates it: `providers.tsx` forces the light theme.
+The success, warning and destructive pairs are below 4.5:1 as text (warning on its tint is 1.9:1). Use them for fills, borders and icons; for text on their tints use the 700/800 step of the hue, as Badge does.
+
+Interactive atoms share one focus treatment, the `focus-ring` utility (a 2px `ring` on `focus-visible`); add `focus-visible:ring-offset-2` where the ring needs air. Form fields share `fieldVariants` in `atoms/Input/fieldVariants.ts`.
+
+The `.dark` block holds inverted values for every variable. Nothing activates it: `providers.tsx` forces the light theme, and no `dark:` class exists.
 
 ### Spacing
 
@@ -222,38 +227,45 @@ Tailwind 4 derives every step from `--spacing` (4px): `p-4` is `calc(var(--spaci
 
 ### Radius
 
-| Class                                | Today                                 | After the rebuild               |
-| ------------------------------------ | ------------------------------------- | ------------------------------- |
-| `rounded-sm` / `md` / `lg`           | 4 / 6 / 8px (from `--radius: 0.5rem`) | 8 / 10 / 12px (fields use `lg`) |
-| `rounded-xl` / `2xl` / `3xl`         | 12 / 16 / 24px (Tailwind)             | 16px cards (`xl`) and up        |
-| `rounded-xsmall` … `rounded-2xlarge` | 4 / 8 / 12 / 16 / 20 / 24px           | deleted                         |
-| `rounded-full`                       | pill                                  | pill (Button, Badge)            |
+One `--radius` (`0.75rem`) and a scale derived from it; Tailwind's own steps are switched off.
 
-Until the rebuild, match the atoms: fields `rounded-xl` (12px), cards `rounded-large` or `rounded-2xl` (16px), buttons `rounded-full`. Do not add new uses of `xsmall` … `2xlarge`.
+| Class          | Value | Use                                           |
+| -------------- | ----- | --------------------------------------------- |
+| `rounded-sm`   | 4px   | Small chips, tags                             |
+| `rounded-md`   | 8px   | Compact buttons (`sm`, `icon-sm`), menu items |
+| `rounded-lg`   | 12px  | Fields                                        |
+| `rounded-xl`   | 16px  | Cards                                         |
+| `rounded-2xl`  | 20px  | Large panels                                  |
+| `rounded-3xl`  | 24px  | Dialogs                                       |
+| `rounded-full` | pill  | Buttons, badges, avatars                      |
+
+### Control heights
+
+`sm`, `md` and `lg` are 32, 36 and 40px (`h-8`, `h-9`, `h-10`) on Button, Input, Select, SearchInput, TimeInput, DateInput and DateTimeInput. Icon buttons are `icon-sm`, `icon-md` and `icon-lg` at the same sizes.
 
 ### Typography
 
 Two families: Poppins for headings (`font-poppins`), Geist Sans for everything else (`font-sans`), Geist Mono for code (`font-mono`), loaded with `next/font` in `src/components/styles/fonts.ts`. All type goes through the `Text` atom: `<Text variant="body" tone="secondary">`.
 
-| Variant                         | Size / line height | Weight          | Notes                 |
-| ------------------------------- | ------------------ | --------------- | --------------------- |
-| `h1`                            | 44 / 56px          | 600             | Poppins               |
-| `h2`                            | 32 / 40px          | 500             | Poppins               |
-| `h3`                            | 28 / 40px          | 500             | Poppins               |
-| `h4`                            | 22 / 24px          | 500             | Poppins               |
-| `h5`                            | 16 / 24px          | 500             | Poppins               |
-| `lead`, `-medium`, `-semibold`  | 20 / 28px          | 400 / 500 / 600 |                       |
-| `large`, `-medium`, `-semibold` | 16 / 26px          | 400 / 500 / 600 |                       |
-| `body`, `-medium`               | 14 / 22px          | 400 / 500       | Default body copy     |
-| `small`, `-medium`              | 12 / 18px          | 400 / 500       |                       |
-| `label`                         | 11 / 20px          | 500             | Uppercase, tracked    |
-| `eyebrow`                       | 12 / 16px          | 500             | Uppercase, `zinc-500` |
+| Variant                         | Size / line height | Weight          | Notes              |
+| ------------------------------- | ------------------ | --------------- | ------------------ |
+| `h1`                            | 44 / 56px          | 600             | Poppins            |
+| `h2`                            | 32 / 40px          | 500             | Poppins            |
+| `h3`                            | 28 / 40px          | 500             | Poppins            |
+| `h4`                            | 22 / 24px          | 500             | Poppins            |
+| `h5`                            | 16 / 24px          | 500             | Poppins            |
+| `lead`, `-medium`, `-semibold`  | 20 / 28px          | 400 / 500 / 600 |                    |
+| `large`, `-medium`, `-semibold` | 16 / 26px          | 400 / 500 / 600 |                    |
+| `body`, `-medium`               | 14 / 22px          | 400 / 500       | Default body copy  |
+| `small`, `-medium`              | 12 / 18px          | 400 / 500       |                    |
+| `label`                         | 11 / 20px          | 500             | Uppercase, tracked |
+| `eyebrow`                       | 12 / 16px          | 500             | Uppercase, muted   |
 
-Tones: `primary` (`zinc-900`), `secondary` (`zinc-600`), `muted` (`zinc-500`), `danger` (`red-600`). Without a tone the variant is black. Use a tone, not `!text-zinc-*`. `Text` unmasks its content in Sentry replays by default; pass `unmask={false}` for user data. Off-scale sizes (`text-[13px]`, `text-[11px]`) are an open design question; do not add more.
+Tones: `primary` (`foreground`), `secondary` (`zinc-700`), `muted` (`muted-foreground`, zinc-600), `danger` (`destructive`), `success`, `warning`, `inherit`. Without a tone the variant is `foreground`. Use a tone, not `!text-zinc-*`. `Text` unmasks its content in Sentry replays by default; pass `unmask={false}` for user data. Off-scale sizes (`text-[13px]`, `text-[11px]`) are an open design question; do not add more.
 
 ### Shadow and elevation
 
-No elevation scale exists yet. Use, in order of height: `shadow-subtle` (1px hairline), `shadow-sm` (secondary and icon buttons), `shadow-md` (Card, Popover, DropdownMenu), `shadow-lg` (sub-menus), `shadow-2xl` (floating panels, command palette). `smooth-shadow-ring-sm` is a soft shadow plus a 1px ring. Do not write new `shadow-[...]` values.
+No elevation scale exists yet. Use, in order of height: `shadow-subtle` (1px hairline), `shadow-xs` (secondary and icon buttons), `shadow-sm` (Card), `shadow-md` (Popover, DropdownMenu), `shadow-lg` (sub-menus, Sheet), `shadow-2xl` (floating panels, command palette). Tailwind 4 renamed the steps: Tailwind 3's `shadow-sm` is `shadow-xs` and `shadow` is `shadow-sm`. `smooth-shadow-ring-sm` is a soft shadow plus a 1px ring. Do not write new `shadow-[...]` values.
 
 ### Motion
 
@@ -265,35 +277,35 @@ All under `src/components/`. Every folder has a story except the two helper-only
 
 **Atoms**
 
-| Atom               | Purpose                                                                      | Replaces                                                                                                  |
-| ------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| AutoGPTLogo        | Brand logo, plus a white variant                                             |                                                                                                           |
-| Avatar             | Image avatar with fallback                                                   |                                                                                                           |
-| Badge              | Status and label pill                                                        | `__legacy__/ui/badge`                                                                                     |
-| Button             | Every button: variants, sizes, loading, icons, `as="NextLink"`               | `__legacy__/ui/button`, `ui/button`                                                                       |
-| Card               | Bordered content container                                                   | `__legacy__/ui/card`                                                                                      |
-| DateInput          | Date field with calendar popover                                             | (still uses `__legacy__` popover, calendar, button)                                                       |
-| DateTimeInput      | Date and time field                                                          | (still uses `__legacy__` popover, calendar)                                                               |
-| Emoji              | Emoji at a given size                                                        |                                                                                                           |
-| FadeIn             | Fade-in wrapper                                                              |                                                                                                           |
-| FileInput          | File upload with preview                                                     |                                                                                                           |
-| GlassPixelBackdrop | Decorative backdrop                                                          |                                                                                                           |
-| Icon               | Renders a Hugeicon at the system stroke width                                | `__legacy__/ui/icons`, every other icon library                                                           |
-| Input              | Text, password, number, amount and textarea field with label, hint and error | `__legacy__/ui/input`, `ui/input`, `__legacy__/ui/textarea`, `ui/textarea` (still wraps the legacy input) |
-| LLMItem            | LLM provider logo and name                                                   |                                                                                                           |
-| Link               | In-app and external links                                                    | raw `<a>` and bare `next/link`                                                                            |
-| LoadingSpinner     | Spinner                                                                      | `__legacy__/ui/loading`, `ui/spinner`                                                                     |
-| OverflowText       | Truncated text with a tooltip                                                |                                                                                                           |
-| Progress           | Progress bar                                                                 |                                                                                                           |
-| Reveal             | Staggered entrance animation                                                 |                                                                                                           |
-| Select             | Labelled select from an options array                                        | `__legacy__/ui/select` (still wraps it)                                                                   |
-| Skeleton           | Loading placeholder                                                          | `__legacy__/ui/skeleton`, `ui/skeleton`                                                                   |
-| SwapFade           | Cross-fade on key change                                                     |                                                                                                           |
-| Switch             | Toggle switch                                                                |                                                                                                           |
-| Text               | All typography                                                               | raw `<p>`, `<h1>`…`<h6>` with classes                                                                     |
-| TimeInput          | Time field                                                                   |                                                                                                           |
-| ToggleChip         | Icon and label toggle chip                                                   |                                                                                                           |
-| Tooltip            | Tooltip (`BaseTooltip.tsx`)                                                  | `ui/tooltip`                                                                                              |
+| Atom               | Purpose                                                                      | Replaces                                                                   |
+| ------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| AutoGPTLogo        | Brand logo, plus a white variant                                             |                                                                            |
+| Avatar             | Image avatar with fallback                                                   |                                                                            |
+| Badge              | Status and label pill                                                        | `__legacy__/ui/badge`                                                      |
+| Button             | Every button: variants, sizes, loading, icons, `as="NextLink"`               | `__legacy__/ui/button`, `ui/button`                                        |
+| Card               | Bordered content container                                                   | `__legacy__/ui/card`                                                       |
+| DateInput          | Date field with calendar popover                                             | (still uses `__legacy__` popover, calendar)                                |
+| DateTimeInput      | Date and time field                                                          | (still uses `__legacy__` popover, calendar)                                |
+| Emoji              | Emoji at a given size                                                        |                                                                            |
+| FadeIn             | Fade-in wrapper                                                              |                                                                            |
+| FileInput          | File upload with preview                                                     |                                                                            |
+| GlassPixelBackdrop | Decorative backdrop                                                          |                                                                            |
+| Icon               | Renders a Hugeicon at the system stroke width                                | `__legacy__/ui/icons`, every other icon library                            |
+| Input              | Text, password, number, amount and textarea field with label, hint and error | `__legacy__/ui/input`, `ui/input`, `__legacy__/ui/textarea`, `ui/textarea` |
+| LLMItem            | LLM provider logo and name                                                   |                                                                            |
+| Link               | In-app and external links                                                    | raw `<a>` and bare `next/link`                                             |
+| LoadingSpinner     | Spinner                                                                      | `__legacy__/ui/loading`, `ui/spinner`                                      |
+| OverflowText       | Truncated text with a tooltip                                                |                                                                            |
+| Progress           | Progress bar                                                                 |                                                                            |
+| Reveal             | Staggered entrance animation                                                 |                                                                            |
+| Select             | Labelled select from an options array                                        | `__legacy__/ui/select` (still wraps it)                                    |
+| Skeleton           | Loading placeholder                                                          | `__legacy__/ui/skeleton`, `ui/skeleton`                                    |
+| SwapFade           | Cross-fade on key change                                                     |                                                                            |
+| Switch             | Toggle switch                                                                |                                                                            |
+| Text               | All typography                                                               | raw `<p>`, `<h1>`…`<h6>` with classes                                      |
+| TimeInput          | Time field                                                                   |                                                                            |
+| ToggleChip         | Icon and label toggle chip                                                   |                                                                            |
+| Tooltip            | Tooltip (`BaseTooltip.tsx`)                                                  | `ui/tooltip`                                                               |
 
 **Molecules**
 
@@ -344,7 +356,7 @@ One rule per line, with what enforces it. "Allowlisted" means existing violators
 4. Toasts go through `molecules/Toast`, never `sonner`. Enforced: `no-restricted-imports` (`sonner`), allowlisted.
 5. Use only classes Tailwind generates. Enforced: `better-tailwindcss/no-unknown-classes`, allowlisted.
 6. Do not combine classes that set the same property. Enforced: `better-tailwindcss/no-conflicting-classes`, allowlisted.
-7. No `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` or `fuchsia` colour classes; map them to `zinc`, `zinc`, `zinc`, `green`, `yellow`, `purple`, `purple`, `red`. Enforced: `better-tailwindcss/no-restricted-classes`, allowlisted.
+7. No `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` or `fuchsia` colour classes; map them to `zinc`, `zinc`, `zinc`, `green`, `yellow`, `purple`, `purple`, `red`, `green`, `pink`. Enforced twice: they no longer compile (`no-unknown-classes`) and `better-tailwindcss/no-restricted-classes` names the replacement.
 8. `blue`, `sky`, `teal`, `cyan`: no decision yet; leave existing uses, avoid new ones. Not yet enforced.
 9. No `dark:` classes. Enforced: `better-tailwindcss/no-restricted-classes`.
 10. No hex or `rgb()` colour classes (`bg-[#F9F9FA]`); use a palette step. Not yet enforced.
@@ -373,7 +385,9 @@ The script lints everything with the allowlist removed, rewrites the file, and p
 
 Wave 1 (merged into `ds/integration`): lint enforcement, live atom fixes, dead code, Storybook coverage (every component folder has a story, `a11y.test: "error"` declared), and the `admin`, `copilot`, `library`, `profile` and `settings` migrations. Wave 2 (in progress): `build`, `marketplace` and the remaining app routes, `components/contextual` and `layout`, new atoms (Checkbox, Textarea, Separator and others), the dead-code backlog, and this document. Counts before and after are in the audit's "Wave 1 and 2 outcome".
 
-Not done yet: the shadcn token rebuild (which applies the decisions above), the 32/36/40 control heights, a `test-storybook` runner, and visual regression in CI (the Chromatic job runs only when `CHROMATIC_PROJECT_TOKEN` is set).
+Wave 3 (`ds/20` to `ds/23`): Tailwind 4, the shadcn token rebuild with the decisions above, the 32/36/40 control heights, and the atoms on semantic tokens.
+
+Not done yet: a `test-storybook` runner, and visual regression in CI (the Chromatic job runs only when `CHROMATIC_PROJECT_TOKEN` is set).
 
 ## Deprecated
 
@@ -403,5 +417,3 @@ Do not add imports of these. Each has a replacement or is waiting for one.
 | `__legacy__/ui/checkbox`, `label`, `separator`, `scroll-area`, `sheet`, `calendar`, `carousel`, `command`, `multiselect`, `pagination-controls`; `ui/separator`, `scroll-area`, `sheet`, `sidebar`, `input-group`, `button-group` | No replacement yet (atoms are being added in wave 2). Keep existing uses, add none.  |
 | `__legacy__/Sidebar`, `SortDropdown`, `SearchFilterChips`                                                                                                                                                                         | No replacement yet                                                                   |
 | `ui/aurora-background`, `vortex`, `dot-distortion-shader`, `text-generate-effect`                                                                                                                                                 | Decorative one-offs; do not reuse                                                    |
-| `textBlack`, `textGrey`, `bgLightGrey` colours                                                                                                                                                                                    | `zinc-900`, `zinc-700`, `zinc-100`                                                   |
-| `rounded-xsmall` … `rounded-2xlarge`                                                                                                                                                                                              | The Tailwind radius scale (see Radius)                                               |

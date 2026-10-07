@@ -413,6 +413,29 @@ Numbers are for `src/` excluding generated code. Per-directory breakdowns show w
 | `ui/` importers from `src/app` | 40 files | 25 files |
 | lucide / legacy icons / radix icons / react-icons / phosphor importers | 42 / 16 / 16 / 2 / 1 | 30 / 12 / 12 / 1 / 1 |
 
+**After wave 3 (Tailwind 4 and the token rebuild).** `ds/integration` (waves 1 and 2 merged) against `ds/21-shadcn-tokens`, both measured with one script whose patterns again differ from the tables above (multi-line JSX is matched; only class-like `!` markers count), so compare the two columns with each other only.
+
+| Signal | `ds/integration` | `ds/21-shadcn-tokens` |
+|---|---|---|
+| Default palette, banned families | 537 in 66 files | 1 in 1 files |
+| `blue`, `sky`, `teal`, `cyan` | 267 in 79 files | 262 in 77 files |
+| Arbitrary hex colour classes | 8 in 7 files | 101 in 9 files |
+| `textBlack` / `textGrey` / `bgLightGrey` classes | 5 in 3 files | 0 in 0 files |
+| `dark:` classes | 201 in 36 files | 0 in 0 files |
+| Arbitrary `h-`/`w-`/`size-` values | 537 in 271 files | 346 in 202 files |
+| Arbitrary `text-[...]` | 253 in 118 files | 253 in 118 files |
+| Arbitrary `rounded-[...]` | 101 in 68 files | 97 in 65 files |
+| `!important` utilities | 92 in 36 files | 110 in 34 files |
+| Inline `style={{` | 144 in 97 files | 143 in 97 files |
+| Raw `<p>`/`<h*>` with classes in `src/app` | 11 in 6 files | 11 in 6 files |
+| Raw `<button className>` in `src/app` | 45 in 42 files | 45 in 42 files |
+| Raw `<input className>` in `src/app` | 6 in 6 files | 6 in 6 files |
+| `__legacy__` importers (outside `__legacy__`) | 60 files | 59 files |
+| `ui/` importers from `src/app` | 34 files | 34 files |
+| lucide / legacy icons / radix icons / react-icons / phosphor importers | 11 / 0 / 9 / 0 / 0 | 9 / 0 / 9 / 0 / 0 |
+
+The banned families no longer compile (`--color-*: initial`); the one remaining match is a code sample in the colour story. The hex count rose because the raise ColorStep swatches (Rose, Amber, Lime, Emerald, Indigo, Violet, Fuchsia) are now written as their hex values: they are user-pickable and must stay distinct from the palette's red, yellow, green and purple. The arbitrary-size drop is the Tailwind 4 codemod turning `h-[2.25rem]` into `h-9` and similar.
+
 What is working: zero direct `HugeiconsIcon` usage outside the `Icon` atom (1,174 uses of the atom across 527 files), and `Text` is imported in 336 of 1,385 app files.
 
 Exact duplicate files that will keep drift alive if only one copy is fixed: `contextual/OutputRenderers/renderers/MarkdownRenderer.tsx` and `library/agents/[id]/.../OutputRenderers/renderers/MarkdownRenderer.tsx`; `__legacy__/CreatorInfoCard.tsx` and `marketplace/components/CreatorInfoCard/CreatorInfoCard.tsx`.
@@ -775,3 +798,8 @@ Status on 2026-10-07. Wave 1 is merged into `ds/integration`; wave 2 branches ar
 - Governance (this branch): `frontend/DESIGN.md` as the single design-system document; the Part 4.7 contradictions fixed in `AGENTS.md`, `CONTRIBUTING.md`, `TESTING.md` and `README.md`; a design-system checklist in the PR template and a CODEOWNERS entry for `src/components` and `DESIGN.md`; `better-tailwindcss/no-restricted-classes` banning the ten default-palette families, with 196 files allowlisted; `scripts/eslint-allowlist-regenerate.ts` to rebuild the allowlist; an `autogpt-ui` agent skill and a `PostToolUse` hook that runs `eslint --fix` after every agent edit under `src/`; Chromatic driven by a `CHROMATIC_PROJECT_TOKEN` secret instead of a plaintext token, and a `build-storybook` job on PRs touching `src/components`.
 
 **Still open.** Tailwind 4 and the shadcn token rebuild (which applies the Part 8.4 decisions: `--radius: 0.75rem`, 32/36/40 controls, `zinc-600` muted, `bg-background` on `body`), a decision on `blue`/`sky`/`teal`/`cyan`, lint for `dark:`, hex classes, raw elements and `next/link`, a story test runner (`@storybook/addon-vitest`), the Chromatic secret, and the ratchet from Part 6 Step 8.
+
+**Wave 3 (stack upgrade, in progress).**
+
+- **Tailwind 4** (`ds/20-tailwind-4`): `tailwind.config.ts` is gone and the theme lives in `globals.css`; the upgrade codemod ran over `src`; every `dark:` class is deleted and the variant is banned; `no-conflicting-classes` now reports; Prettier 3.9 with `prettier-plugin-tailwindcss` 0.8.
+- **Tokens and atoms** (`ds/21-shadcn-tokens`): the palette replaces Tailwind's (`--color-*: initial`), the shadcn semantic layer carries the 8.4 decisions plus `success`, `warning` and `info`, an inactive `.dark` block is written, the radius scale derives from `--radius: 0.75rem`, `styles/colors.ts` is deleted, and Button, Text, the form fields, Badge, Alert, Card, the overlays, Skeleton, Switch, Checkbox, Toast, TabsLine, Separator, ScrollArea, Kbd, Pagination and DataTable use the semantic classes, with one `focus-ring` utility and 32/36/40 control heights.
