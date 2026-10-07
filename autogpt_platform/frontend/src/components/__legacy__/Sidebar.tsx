@@ -1,10 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/__legacy__/ui/sheet";
+import { Sheet } from "@/components/molecules/Sheet/Sheet";
 import { Menu } from "lucide-react";
 import { IconDashboardLayout } from "./ui/icons";
 
@@ -50,8 +46,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
 
   return (
     <>
-      <Sheet>
-        <SheetTrigger asChild>
+      <Sheet
+        title="Menu"
+        hideTitle
+        side="left"
+        className="w-[280px] border-none sm:w-[280px]"
+        bodyClassName="px-0 pb-0"
+        trigger={
           <button
             aria-label="Open sidebar menu"
             className="fixed top-4 left-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-zinc-500 bg-zinc-200 px-4 py-2 font-sans text-sm font-medium tracking-tight whitespace-nowrap text-zinc-800 transition-colors hover:bg-zinc-200/50 focus-visible:ring-1 focus-visible:ring-black focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
@@ -59,17 +60,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
             <Menu className="h-8 w-8 stroke-black" />
             <span className="sr-only">Open sidebar menu</span>
           </button>
-        </SheetTrigger>
-        <SheetContent
-          side="left"
-          className="z-50 w-[280px] border-none p-0 sm:w-[280px]"
-        >
-          <div className="h-full w-full rounded-2xl bg-zinc-200">
-            <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
-              {renderLinks()}
-            </div>
+        }
+      >
+        <div className="h-full w-full rounded-2xl bg-zinc-200">
+          <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
+            {renderLinks()}
           </div>
-        </SheetContent>
+        </div>
       </Sheet>
 
       <div className="relative hidden h-[912px] w-[234px] border-none lg:block">

@@ -8,12 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/atoms/Separator/Separator";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  overlayClassName,
+  sheetVariants,
+} from "@/components/molecules/Sheet/helpers";
+import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import {
   Tooltip,
@@ -214,25 +212,34 @@ const Sidebar = React.forwardRef<
 
     if (isMobile) {
       return (
-        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-          <SheetContent
-            data-sidebar="sidebar"
-            data-mobile="true"
-            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-            style={
-              {
-                "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-              } as React.CSSProperties
-            }
-            side={side}
-          >
-            <SheetHeader className="sr-only">
-              <SheetTitle>Sidebar</SheetTitle>
-              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-            </SheetHeader>
-            <div className="flex h-full w-full flex-col">{children}</div>
-          </SheetContent>
-        </Sheet>
+        <SheetPrimitive.Root
+          open={openMobile}
+          onOpenChange={setOpenMobile}
+          {...props}
+        >
+          <SheetPrimitive.Portal>
+            <SheetPrimitive.Overlay className={overlayClassName} />
+            <SheetPrimitive.Content
+              data-sidebar="sidebar"
+              data-mobile="true"
+              aria-describedby={undefined}
+              className={cn(
+                sheetVariants({ side }),
+                "w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground",
+              )}
+              style={
+                {
+                  "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+                } as React.CSSProperties
+              }
+            >
+              <SheetPrimitive.Title className="sr-only">
+                Sidebar
+              </SheetPrimitive.Title>
+              <div className="flex h-full w-full flex-col">{children}</div>
+            </SheetPrimitive.Content>
+          </SheetPrimitive.Portal>
+        </SheetPrimitive.Root>
       );
     }
 

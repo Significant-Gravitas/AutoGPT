@@ -3,14 +3,7 @@ import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Label } from "@/components/__legacy__/ui/label";
 import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/__legacy__/ui/sheet";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -23,13 +16,15 @@ import {
   OutputActions,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
-import { useMemo } from "react";
+import { Sheet } from "@/components/molecules/Sheet/Sheet";
+import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
+  const [open, setOpen] = useState(false);
   const nodes = useNodeStore(useShallow((state) => state.nodes));
 
   const outputs = useMemo(() => {
@@ -86,43 +81,44 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   }, [outputs]);
 
   return (
-    <Sheet>
+    <>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <SheetTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon-lg"
-                data-id="agent-outputs-button"
-                disabled={!flowID || !hasOutputs()}
-              >
-                <Icon icon={BookOpen01Icon} className="size-4" />
-              </Button>
-            </SheetTrigger>
+            <Button
+              variant="outline"
+              size="icon-lg"
+              data-id="agent-outputs-button"
+              aria-label="Agent Outputs"
+              disabled={!flowID || !hasOutputs()}
+              onClick={() => setOpen(true)}
+            >
+              <Icon icon={BookOpen01Icon} className="size-4" />
+            </Button>
           </TooltipTrigger>
           <TooltipContent>
             <p>Agent Outputs</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <SheetContent className="flex h-full w-full flex-col overflow-hidden sm:max-w-[600px]">
-        <SheetHeader className="px-2 py-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <SheetTitle className="text-xl">Run Outputs</SheetTitle>
-              <SheetDescription className="mt-1 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
-                    Beta
-                  </span>
-                  <span>This feature is in beta and may contain bugs</span>
-                </span>
-              </SheetDescription>
-            </div>
-            {outputs.length > 0 && <OutputActions items={actionItems} />}
-          </div>
-        </SheetHeader>
+      <Sheet
+        open={open}
+        onOpenChange={setOpen}
+        title="Run Outputs"
+        description={
+          <span className="inline-flex items-center gap-1.5">
+            <Badge variant="warning" size="small">
+              Beta
+            </Badge>
+            <span>This feature is in beta and may contain bugs</span>
+          </span>
+        }
+        actions={
+          outputs.length > 0 ? <OutputActions items={actionItems} /> : null
+        }
+        className="w-full overflow-hidden sm:max-w-[600px]"
+        bodyClassName="px-2 pb-2"
+      >
         <div className="grow overflow-y-auto px-2 py-2">
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-6">
@@ -158,7 +154,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
             </div>
           </ScrollArea>
         </div>
-      </SheetContent>
-    </Sheet>
+      </Sheet>
+    </>
   );
 };

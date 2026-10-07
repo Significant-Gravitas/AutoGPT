@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet } from "@/components/molecules/Sheet/Sheet";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import {
@@ -69,18 +64,12 @@ export function ContextPanel({ sessionId, mobile }: Props) {
       <Sheet
         open={showExpanded}
         onOpenChange={(open) => !open && closeArtifactPanel()}
+        title={TAB_TITLES[activeTab]}
+        side="right"
+        className="w-full sm:max-w-full"
+        bodyClassName="gap-0 px-0 pb-0"
       >
-        <SheetContent
-          side="right"
-          className="flex w-full flex-col p-0 sm:max-w-full"
-        >
-          <SheetHeader className="mt-12 p-2 text-left">
-            <SheetTitle className="text-sm font-medium text-zinc-900">
-              {TAB_TITLES[activeTab]}
-            </SheetTitle>
-          </SheetHeader>
-          {content}
-        </SheetContent>
+        {content}
       </Sheet>
     );
   }
