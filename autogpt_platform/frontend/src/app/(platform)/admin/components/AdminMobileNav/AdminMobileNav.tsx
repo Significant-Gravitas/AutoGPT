@@ -55,7 +55,7 @@ export function AdminMobileNav() {
           sideOffset={8}
           className="w-[calc(100vw-32px)] max-w-sm p-2"
         >
-          <nav className="flex flex-col gap-[4px]">
+          <nav className="flex flex-col gap-1">
             {items.map(({ label, href, Icon, isActive }) => (
               <Link
                 key={href}
