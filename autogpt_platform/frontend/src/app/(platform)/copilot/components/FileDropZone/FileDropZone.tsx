@@ -64,12 +64,12 @@ export function FileDropZone({ children, onFilesDropped, className }: Props) {
       {children}
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
+          "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-purple-400 bg-purple-500/10 transition-opacity duration-150",
           isDragging ? "opacity-100" : "opacity-0",
         )}
       >
-        <Icon icon={Upload03Icon} className="h-10 w-10 text-violet-500" />
-        <span className="text-lg font-medium text-violet-600">
+        <Icon icon={Upload03Icon} className="h-10 w-10 text-purple-500" />
+        <span className="text-lg font-medium text-purple-600">
           Drop files here
         </span>
       </div>

@@ -74,10 +74,10 @@ export function NotificationDialog() {
     >
       <Dialog.Content>
         <div className="flex flex-col items-center gap-4 py-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-100">
-            <Icon icon={BellRingIcon} className="h-6 w-6 text-violet-600" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
+            <Icon icon={BellRingIcon} className="h-6 w-6 text-purple-600" />
           </div>
-          <Text variant="body" className="text-center text-neutral-600">
+          <Text variant="body" className="text-center text-zinc-600">
             Your experts can notify you when a response is ready, even if you
             switch tabs or close this page. Enable notifications so you never
             miss one.

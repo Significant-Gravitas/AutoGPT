@@ -184,7 +184,7 @@ export function OnboardingIntroCard({
                     <Icon
                       icon={Tick02Icon}
                       size={16}
-                      className="text-emerald-600"
+                      className="text-green-600"
                     />
                   ) : (
                     <Icon icon={Copy01Icon} size={16} />

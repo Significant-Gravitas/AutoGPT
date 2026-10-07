@@ -200,7 +200,7 @@ export function MobileDrawer() {
                       }}
                     />
                   ) : (
-                    <p className="py-4 text-center text-sm text-neutral-500">
+                    <p className="py-4 text-center text-sm text-zinc-500">
                       No chats found
                     </p>
                   )}
@@ -209,11 +209,11 @@ export function MobileDrawer() {
                 <div className="flex items-center justify-center py-4">
                   <Icon
                     icon={Loading03Icon}
-                    className="h-5 w-5 animate-spin text-neutral-400"
+                    className="h-5 w-5 animate-spin text-zinc-400"
                   />
                 </div>
               ) : sessions.length === 0 ? (
-                <p className="py-4 text-center text-sm text-neutral-500">
+                <p className="py-4 text-center text-sm text-zinc-500">
                   No conversations yet
                 </p>
               ) : (
@@ -265,7 +265,7 @@ export function MobileDrawer() {
                   onClick={() => loadMore()}
                   loading={isLoadingMore}
                   disabled={isLoadingMore}
-                  className="mt-2 w-full justify-center text-neutral-500"
+                  className="mt-2 w-full justify-center text-zinc-500"
                 >
                   {isLoadingMore ? "Loading…" : "Load older chats"}
                 </Button>
