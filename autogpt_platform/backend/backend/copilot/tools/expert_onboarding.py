@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -30,6 +31,9 @@ MAX_GREETING_LENGTH = 600
 # Both arrays are model-authored and the model can be steered by an expert's
 # own user-supplied identity text, so every scan needs its own bound.
 MAX_SCAN = 200
+# Em and en dashes are the tell of machine-written copy, and models reach for
+# them even when told not to, so the greeting loses them either way.
+_DASH = re.compile(r"\s*[\u2013\u2014]+\s*")
 
 
 class ExpertOnboardingTool(BaseTool):
@@ -65,7 +69,8 @@ class ExpertOnboardingTool(BaseTool):
                     "type": "string",
                     "description": (
                         "One short sentence, under 15 words, introducing "
-                        "yourself in your own voice. Shown under your name."
+                        "yourself in your own voice. No dashes. Shown under "
+                        "your name."
                     ),
                 },
                 "steps": {
@@ -163,7 +168,7 @@ class ExpertOnboardingTool(BaseTool):
             message="; ".join(step.question for step in steps),
             session_id=session.session_id,
             expert_id=expert_id,
-            greeting=greeting.strip()[:MAX_GREETING_LENGTH],
+            greeting=_strip_dashes(greeting)[:MAX_GREETING_LENGTH],
             steps=steps,
         )
 
@@ -194,6 +199,12 @@ def _has_onboarded(session: ChatSession) -> bool:
         ):
             return True
     return False
+
+
+def _strip_dashes(text: str) -> str:
+    """Turn every em or en dash into a comma: "I'm Jules — I write" reads
+    "I'm Jules, I write". A dash that ends the text is simply dropped."""
+    return _DASH.sub(", ", text.strip()).strip(", ")
 
 
 def _parse_steps(raw: list[Any]) -> list[ExpertOnboardingStep]:

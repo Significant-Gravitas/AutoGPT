@@ -84,6 +84,30 @@ async def test_returns_greeting_and_steps(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "greeting, expected",
+    [
+        (
+            "Hi, I'm Jules — I turn talks into posts.",
+            "Hi, I'm Jules, I turn talks into posts.",
+        ),
+        ("I'm Nadia–competitor teardowns.", "I'm Nadia, competitor teardowns."),
+        ("Hi, I'm Ada —", "Hi, I'm Ada"),
+        ("Day-one ready.", "Day-one ready."),
+    ],
+)
+async def test_greeting_loses_its_dashes(
+    tool: ExpertOnboardingTool, session: ChatSession, greeting: str, expected: str
+):
+    result = await tool._execute(
+        user_id="test-user", session=session, greeting=greeting, steps=steps(2)
+    )
+
+    assert isinstance(result, ExpertOnboardingResponse)
+    assert result.greeting == expected
+
+
+@pytest.mark.asyncio
 async def test_step_without_options_is_open_ended(
     tool: ExpertOnboardingTool, session: ChatSession
 ):
