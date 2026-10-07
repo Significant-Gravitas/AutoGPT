@@ -172,7 +172,7 @@ function ChatGPTConnectionDialog({
             <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 onClick={connect}
                 loading={isReconnecting}
                 disabled={isDisconnecting}
@@ -181,7 +181,7 @@ function ChatGPTConnectionDialog({
               </Button>
               <Button
                 variant="destructive"
-                size="small"
+                size="md"
                 onClick={() => void disconnect()}
                 loading={isDisconnecting}
                 disabled={isReconnecting}
@@ -325,7 +325,7 @@ function Microsoft365CopilotConnectionDialog({
             <div className="flex justify-end pt-1">
               <Button
                 variant="destructive"
-                size="small"
+                size="md"
                 onClick={() => void disconnect()}
                 loading={isDisconnecting}
               >

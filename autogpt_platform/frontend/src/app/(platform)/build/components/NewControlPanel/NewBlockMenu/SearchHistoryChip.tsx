@@ -21,7 +21,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
   return (
     <Button
       variant="ghost"
-      size="small"
+      size="md"
       unmask={false}
       className={cn(
         "my-px h-9 min-w-0 gap-1 rounded-3xl bg-zinc-50 p-1.5 pr-2.5 shadow-none",

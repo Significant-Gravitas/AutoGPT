@@ -47,7 +47,7 @@ export function MaintenanceControls({
       <Button
         type="button"
         variant="primary"
-        size="small"
+        size="md"
         onClick={onDream}
         disabled={dreamActive}
         title="Run ONLY the dream pass (consolidate → recombine → sanitize) — skips community rebuild and ratification."
@@ -57,7 +57,7 @@ export function MaintenanceControls({
       <Button
         type="button"
         variant="primary"
-        size="small"
+        size="md"
         onClick={onRatification}
         disabled={ratificationPending}
         title="Run ONLY the ratification supersession sweep — promotes hit tentatives, supersedes unratified ones past their grace period."
@@ -67,7 +67,7 @@ export function MaintenanceControls({
       <Button
         type="button"
         variant="primary"
-        size="small"
+        size="md"
         onClick={onNightly}
         disabled={nightlyActive}
         title="Run the FULL nightly batch — what the 03:00 cron does. Fans out dream pass + ratification sweep (+ future P2/P3/P4/P11 stages) in one pass."
@@ -98,7 +98,7 @@ function RebuildControl({
       <Button
         type="button"
         variant="primary"
-        size="small"
+        size="md"
         onClick={onRebuild}
         disabled={active}
       >

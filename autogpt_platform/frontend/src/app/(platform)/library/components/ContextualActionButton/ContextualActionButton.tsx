@@ -43,7 +43,7 @@ export function ContextualActionButton({
     <Button
       type="button"
       variant="ghost"
-      size="xs"
+      size="sm"
       onClick={handleClick}
       leftIcon={<Icon icon={config.icon} size={12} className="shrink-0" />}
       className={cn("text-zinc-600 hover:text-zinc-800", className)}

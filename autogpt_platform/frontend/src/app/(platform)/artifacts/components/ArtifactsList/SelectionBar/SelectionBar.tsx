@@ -59,7 +59,7 @@ export function SelectionBar({
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
-          size="xs"
+          size="sm"
           onClick={() => setIsMoveOpen(true)}
           data-testid="artifacts-selection-move"
         >
@@ -68,7 +68,7 @@ export function SelectionBar({
         </Button>
         <Button
           variant="outline"
-          size="xs"
+          size="sm"
           disabled={isDeleting}
           onClick={handleDelete}
           className="text-red-600 hover:bg-red-50 hover:text-red-700"
@@ -80,7 +80,7 @@ export function SelectionBar({
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           withTooltip={false}
           aria-label="Clear selection"
           className="rounded-full border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"

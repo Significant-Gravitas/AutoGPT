@@ -51,7 +51,7 @@ export function SkillActions({
           as="NextLink"
           href={`/signup?next=${encodeURIComponent(`/marketplace/skills/${slug}`)}`}
           variant="primary"
-          size="small"
+          size="md"
           className="w-full sm:w-auto"
         >
           Install skill
@@ -66,7 +66,7 @@ export function SkillActions({
             as="NextLink"
             href="/library/skills"
             variant="secondary"
-            size="small"
+            size="md"
             className={SECONDARY_CLASS}
           >
             Your skills
@@ -81,7 +81,7 @@ export function SkillActions({
             >
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 aria-label={MENU_LABEL}
                 disabled={isAdding}
                 className={`min-w-0 px-2.5 ${SECONDARY_CLASS}`}

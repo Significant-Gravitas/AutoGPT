@@ -61,7 +61,7 @@ export function KitSearchField({
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           withTooltip={false}
           onClick={() => onChange("")}
           aria-label="Clear search"

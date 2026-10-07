@@ -58,7 +58,7 @@ export function MainCreatorPage({ params }: Props) {
         <div className="mb-4 flex items-center justify-between px-4 md:!-mb-3">
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             as="NextLink"
             href="/marketplace"
             className="relative -left-2 lg:!-left-4"

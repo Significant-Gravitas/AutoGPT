@@ -60,7 +60,7 @@ export function AdminSkillSubmissions() {
           <div className="flex shrink-0 gap-2">
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               disabled={isReviewing}
               onClick={() => reject(submission.skill_listing_version_id)}
               data-testid={`reject-${submission.skill_listing_version_id}`}
@@ -69,7 +69,7 @@ export function AdminSkillSubmissions() {
             </Button>
             <Button
               variant="primary"
-              size="small"
+              size="md"
               disabled={isReviewing}
               onClick={() => approve(submission.skill_listing_version_id)}
               data-testid={`approve-${submission.skill_listing_version_id}`}

@@ -149,12 +149,12 @@ export function IncompatibleUpdateDialog({
           </Alert>
 
           <Dialog.Footer>
-            <Button variant="ghost" size="small" onClick={onClose}>
+            <Button variant="ghost" size="md" onClick={onClose}>
               Cancel
             </Button>
             <Button
               variant="primary"
-              size="small"
+              size="md"
               onClick={onConfirm}
               className="border-yellow-700 bg-yellow-600 hover:bg-yellow-700"
             >

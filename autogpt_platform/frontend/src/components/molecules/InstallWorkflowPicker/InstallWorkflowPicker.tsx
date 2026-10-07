@@ -99,7 +99,7 @@ export function InstallWorkflowPicker({
                   </div>
                   <Button
                     variant="secondary"
-                    size="small"
+                    size="md"
                     loading={pendingKey === expert.id}
                     onClick={() => installOnExpert(expert)}
                   >
@@ -121,7 +121,7 @@ export function InstallWorkflowPicker({
                   key={option.id}
                   type="button"
                   variant="toggle"
-                  size="xs"
+                  size="sm"
                   aria-pressed={source === option.id}
                   onClick={() => setSource(option.id)}
                 >
@@ -176,7 +176,7 @@ export function InstallWorkflowPicker({
                         </div>
                         <Button
                           variant="secondary"
-                          size="small"
+                          size="md"
                           loading={pendingKey === agent.id}
                           onClick={() => installLibraryAgent(agent)}
                         >
@@ -201,7 +201,7 @@ export function InstallWorkflowPicker({
                         </div>
                         <Button
                           variant="secondary"
-                          size="small"
+                          size="md"
                           loading={pendingKey === agent.agent_graph_id}
                           onClick={() => installFromListing(agent)}
                         >
@@ -214,7 +214,7 @@ export function InstallWorkflowPicker({
             {source === "library" && hasMoreLibraryResults ? (
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 loading={isLoadingMore}
                 onClick={() => loadMoreLibraryResults()}
               >

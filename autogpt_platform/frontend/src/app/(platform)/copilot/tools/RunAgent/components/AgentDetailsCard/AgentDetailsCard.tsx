@@ -70,7 +70,7 @@ export function AgentDetailsCard({ output }: Props) {
         <ContentMessage>This agent has no configurable inputs.</ContentMessage>
         <div className="flex gap-2 pt-2">
           <Button
-            size="small"
+            size="md"
             className="w-fit"
             onClick={() =>
               onSend(
@@ -109,7 +109,7 @@ export function AgentDetailsCard({ output }: Props) {
       <div className="mt-4">
         <Button
           variant="primary"
-          size="small"
+          size="md"
           className="w-fit"
           disabled={!valid}
           onClick={handleProceed}

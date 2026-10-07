@@ -100,7 +100,7 @@ export function JobTitleStep({
           <Button
             type="submit"
             variant="primary"
-            size="small"
+            size="md"
             disabled={!trimmed}
             className="h-10.5 rounded-xl py-3"
           >
@@ -109,7 +109,7 @@ export function JobTitleStep({
           <Button
             type="button"
             variant="ghost"
-            size="small"
+            size="md"
             onClick={onSkip}
             className="h-10.5 rounded-xl py-3"
           >

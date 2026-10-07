@@ -81,7 +81,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           <Button
             type="button"
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label="Scroll left"
             withTooltip={false}
             className="pointer-events-none absolute top-5 left-2 -translate-y-1/2 rounded-full border-0 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-transparent"
@@ -98,7 +98,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           <Button
             type="button"
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label="Scroll right"
             withTooltip={false}
             className="pointer-events-none absolute top-5 right-2 -translate-y-1/2 rounded-full border-0 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-transparent"

@@ -59,7 +59,7 @@ export function IntroStep({ slide }: Props) {
 
       <Button
         type="button"
-        size="small"
+        size="md"
         onClick={nextStep}
         className="h-10 w-56 rounded-xl"
       >

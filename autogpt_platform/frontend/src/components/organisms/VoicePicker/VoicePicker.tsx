@@ -112,7 +112,7 @@ export function VoicePicker({
       <footer className="flex items-center justify-between gap-3">
         <Button
           variant="ghost"
-          size={compact ? "small" : undefined}
+          size={compact ? "md" : undefined}
           onClick={onSkip}
           disabled={isSubmitting}
         >
@@ -120,7 +120,7 @@ export function VoicePicker({
         </Button>
         <Button
           variant="primary"
-          size={compact ? "small" : undefined}
+          size={compact ? "md" : undefined}
           onClick={submit}
           disabled={!canSubmit}
           loading={isSubmitting}

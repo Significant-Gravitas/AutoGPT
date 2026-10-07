@@ -259,7 +259,7 @@ export function NewAgentLibraryView() {
               triggerSlot={
                 <Button
                   variant="outline"
-                  size="small"
+                  size="md"
                   className="w-full"
                   disabled={isNewAgentTaskDisabled({
                     sidebarLoading,

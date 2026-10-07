@@ -138,7 +138,7 @@ export function InlineUserPasswordForm({
       <Button
         type="submit"
         variant="primary"
-        size="small"
+        size="md"
         className="w-full"
         disabled={!form.formState.isValid}
         loading={isPending}

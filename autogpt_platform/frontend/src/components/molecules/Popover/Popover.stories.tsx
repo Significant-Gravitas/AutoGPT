@@ -16,7 +16,7 @@ import {
 
 const triggerClassName = extendedButtonVariants({
   variant: "secondary",
-  size: "small",
+  size: "md",
 });
 
 const meta = {
@@ -179,10 +179,10 @@ function renderWithForm() {
             wrapperClassName="mb-0!"
           />
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="small">
+            <Button variant="secondary" size="md">
               Cancel
             </Button>
-            <Button variant="primary" size="small">
+            <Button variant="primary" size="md">
               Save
             </Button>
           </div>
@@ -207,11 +207,7 @@ function ControlledPopover() {
         <PopoverContent aria-label="Share agent">
           <div className="flex flex-col gap-3">
             <Text variant="body">Anyone with the link can run this agent.</Text>
-            <Button
-              variant="primary"
-              size="small"
-              onClick={() => setOpen(false)}
-            >
+            <Button variant="primary" size="md" onClick={() => setOpen(false)}>
               Done
             </Button>
           </div>

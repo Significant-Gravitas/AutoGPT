@@ -75,7 +75,7 @@ export function BalanceCard({ index = 0 }: Props) {
           controlled={{ isOpen: open, set: setOpen }}
         >
           <Dialog.Trigger>
-            <Button variant="primary" size="small">
+            <Button variant="primary" size="md">
               Add credits
             </Button>
           </Dialog.Trigger>
@@ -100,7 +100,7 @@ export function BalanceCard({ index = 0 }: Props) {
               <Button
                 type="button"
                 variant="ghost"
-                size="small"
+                size="md"
                 onClick={() => setOpen(false)}
               >
                 Cancel
@@ -108,7 +108,7 @@ export function BalanceCard({ index = 0 }: Props) {
               <Button
                 type="button"
                 variant="primary"
-                size="small"
+                size="md"
                 disabled={!isValid || isAdding}
                 loading={isAdding}
                 onClick={handleSubmit}

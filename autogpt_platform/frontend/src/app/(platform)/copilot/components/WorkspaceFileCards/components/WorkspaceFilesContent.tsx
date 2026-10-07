@@ -50,7 +50,7 @@ export function WorkspaceFilesContent({
           {files.length > 0 && (
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-sm"
               withTooltip={false}
               onClick={onDownloadAll}
               loading={isZipping}

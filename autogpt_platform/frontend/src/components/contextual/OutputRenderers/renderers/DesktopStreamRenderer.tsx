@@ -81,7 +81,7 @@ export function DesktopStreamPreview({
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={handleFullscreen}
               leadingIcon={ArrowExpandIcon}
               className="text-zinc-600 hover:border-zinc-200 hover:bg-zinc-200"
@@ -95,7 +95,7 @@ export function DesktopStreamPreview({
               target="_blank"
               rel="noopener noreferrer"
               variant="ghost"
-              size="xs"
+              size="sm"
               leadingIcon={ArrowUpRight01Icon}
               className="text-zinc-600 hover:border-zinc-200 hover:bg-zinc-200"
             >

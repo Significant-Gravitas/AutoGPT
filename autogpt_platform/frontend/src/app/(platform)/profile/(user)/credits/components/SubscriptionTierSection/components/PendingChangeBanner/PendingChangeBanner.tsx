@@ -50,7 +50,7 @@ export function PendingChangeBanner({
       </Text>
       <Button
         variant="secondary"
-        size="small"
+        size="md"
         disabled={isBusy}
         onClick={onKeepCurrent}
       >

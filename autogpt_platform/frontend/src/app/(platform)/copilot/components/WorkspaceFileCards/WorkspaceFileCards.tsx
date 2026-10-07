@@ -66,7 +66,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
             files.length > 0 && (
               <Button
                 variant="ghost"
-                size="icon-xs"
+                size="icon-sm"
                 withTooltip={false}
                 onClick={handleDownloadAll}
                 loading={isZipping}

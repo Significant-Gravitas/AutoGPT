@@ -129,7 +129,7 @@ export function OAuthAppsSection() {
             <div className="flex items-center gap-3">
               <Button
                 variant={app.is_active ? "outline" : "primary"}
-                size="small"
+                size="md"
                 onClick={() => handleToggleStatus(app.id, app.is_active)}
                 loading={updatingAppId === app.id}
                 leadingIcon={PowerIcon}
@@ -147,7 +147,7 @@ export function OAuthAppsSection() {
               />
               <Button
                 variant="outline"
-                size="small"
+                size="md"
                 onClick={() => fileInputRefs.current[app.id]?.click()}
                 loading={uploadingAppId === app.id}
                 leadingIcon={Upload01Icon}

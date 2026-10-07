@@ -89,7 +89,7 @@ export default function AdminPreviewPage() {
       <div className="mb-6 flex items-center justify-between">
         <Button
           variant="ghost"
-          size="small"
+          size="md"
           onClick={() => router.back()}
           leadingIcon={ArrowLeft02Icon}
         >
@@ -103,7 +103,7 @@ export default function AdminPreviewPage() {
           </span>
           <Button
             variant="primary"
-            size="small"
+            size="md"
             onClick={handleAddToLibrary}
             disabled={isAddingToLibrary}
           >

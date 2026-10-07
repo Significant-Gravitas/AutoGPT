@@ -194,7 +194,7 @@ function ProfileForm({
       <Button
         type="submit"
         variant="primary"
-        size="large"
+        size="lg"
         disabled={disabled}
         loading={form.formState.isSubmitting}
       >

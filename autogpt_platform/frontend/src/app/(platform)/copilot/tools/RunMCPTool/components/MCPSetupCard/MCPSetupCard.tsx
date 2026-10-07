@@ -375,7 +375,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       <div className="rounded-2xl border bg-background p-4">
         <Button
           variant="primary"
-          size="small"
+          size="md"
           onClick={handleConnect}
           disabled={loading}
         >
@@ -437,7 +437,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               />
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 onClick={() => handleManualToken()}
                 disabled={loading || !manualToken.trim()}
               >

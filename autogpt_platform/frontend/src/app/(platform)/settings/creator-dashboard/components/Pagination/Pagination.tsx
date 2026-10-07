@@ -47,7 +47,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
       <div className="flex items-center gap-1.5">
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           leftIcon={<Icon icon={ArrowLeft01Icon} size={14} />}
           disabled={disabled || current_page <= 1}
           onClick={() => onPageChange(current_page - 1)}
@@ -80,7 +80,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
         </div>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           rightIcon={<Icon icon={ArrowRight01Icon} size={14} />}
           disabled={disabled || current_page >= total_pages}
           onClick={() => onPageChange(current_page + 1)}

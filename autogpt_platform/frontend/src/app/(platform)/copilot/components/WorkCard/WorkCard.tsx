@@ -37,11 +37,7 @@ export function WorkCard({ metadata, preview }: Props) {
             <RunStatusBadge status={metadata.status} />
           </div>
         </div>
-        <Button
-          variant="secondary"
-          size="small"
-          onClick={() => setIsOpen(true)}
-        >
+        <Button variant="secondary" size="md" onClick={() => setIsOpen(true)}>
           Open
         </Button>
       </div>

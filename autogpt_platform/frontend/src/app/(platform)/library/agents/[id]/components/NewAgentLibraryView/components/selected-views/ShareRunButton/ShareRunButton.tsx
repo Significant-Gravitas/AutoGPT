@@ -50,7 +50,7 @@ export function ShareRunButton({
       <Dialog.Trigger>
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Share results"
           className={isShared ? "relative" : ""}
         >
@@ -103,7 +103,7 @@ export function ShareRunButton({
                 <Button
                   variant="secondary"
                   onClick={handleCopy}
-                  size="small"
+                  size="md"
                   className="mt-0.5 min-w-0"
                 >
                   {copied ? (

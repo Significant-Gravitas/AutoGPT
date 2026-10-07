@@ -107,7 +107,7 @@ function SubAgentUpdateAvailableBar({
         )}
       </div>
       <Button
-        size="small"
+        size="md"
         variant={isCompatible ? "primary" : "outline"}
         onClick={onUpdate}
         className={cn(

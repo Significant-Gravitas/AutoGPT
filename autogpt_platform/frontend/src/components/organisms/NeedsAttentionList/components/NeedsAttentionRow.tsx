@@ -56,7 +56,7 @@ export function NeedsAttentionRow({
       <div className="flex shrink-0 items-center gap-2">
         <Button
           variant="primary"
-          size="small"
+          size="md"
           disabled={isProcessing}
           aria-label={`Approve: ${title}`}
           onClick={() => onApprove(review)}
@@ -68,7 +68,7 @@ export function NeedsAttentionRow({
           // label: in a fast-tapping flow a word swap alone is easy to miss,
           // and the next tap has no undo.
           variant={isConfirmingDecline ? "destructive" : "ghost"}
-          size="small"
+          size="md"
           disabled={isProcessing}
           aria-label={
             isConfirmingDecline

@@ -91,7 +91,7 @@ export const AgentTableCard = ({
         </div>
         <Button
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           aria-label="View submission"
           withTooltip={false}
           onClick={onView}

@@ -80,13 +80,13 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
         />
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
-        <Button type="button" variant="ghost" size="small" onClick={onClose}>
+        <Button type="button" variant="ghost" size="md" onClick={onClose}>
           Cancel
         </Button>
         <Button
           type="submit"
           variant="primary"
-          size="small"
+          size="md"
           loading={isPending}
           disabled={!canSave}
         >

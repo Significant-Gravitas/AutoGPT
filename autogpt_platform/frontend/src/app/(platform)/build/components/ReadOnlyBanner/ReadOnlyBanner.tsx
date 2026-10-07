@@ -33,7 +33,7 @@ export function ReadOnlyBanner() {
       {showDuplicate && (
         <Button
           variant="primary"
-          size="small"
+          size="md"
           onClick={duplicate}
           loading={isDuplicating}
           disabled={!canDuplicate}
@@ -44,7 +44,7 @@ export function ReadOnlyBanner() {
       )}
       <Button
         variant="ghost"
-        size="icon"
+        size="icon-lg"
         onClick={() => setIsDismissed(true)}
         aria-label="Dismiss"
         title="Dismiss"

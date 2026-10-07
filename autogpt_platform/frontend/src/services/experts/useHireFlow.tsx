@@ -31,7 +31,7 @@ function celebrate(result: HireResult) {
         as="NextLink"
         href="/team"
         variant="outline"
-        size="small"
+        size="md"
         className="border-white text-white hover:border-white hover:bg-white/15 hover:text-white"
       >
         View team

@@ -38,7 +38,7 @@ export function MarketplaceBanners({
             </div>
             {onUpdate && (
               <div className="flex justify-start">
-                <Button size="small" onClick={onUpdate} disabled={isUpdating}>
+                <Button size="md" onClick={onUpdate} disabled={isUpdating}>
                   {isUpdating ? "Updating..." : "Update agent"}
                 </Button>
               </div>
@@ -66,7 +66,7 @@ export function MarketplaceBanners({
             </div>
             {onPublish && (
               <div className="flex justify-start">
-                <Button size="small" onClick={onPublish}>
+                <Button size="md" onClick={onPublish}>
                   Publish changes
                 </Button>
               </div>

@@ -55,7 +55,7 @@ export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
           <Button
             type="button"
             variant="ghost"
-            size="small"
+            size="md"
             leadingIcon={ArrowLeft01Icon}
             onClick={() => goTo(page - 1)}
             disabled={disabled || page <= 1}
@@ -95,7 +95,7 @@ export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
           <Button
             type="button"
             variant="ghost"
-            size="small"
+            size="md"
             rightIcon={<Icon icon={ArrowRight01Icon} size={16} aria-hidden />}
             onClick={() => goTo(page + 1)}
             disabled={disabled || page >= pageCount}

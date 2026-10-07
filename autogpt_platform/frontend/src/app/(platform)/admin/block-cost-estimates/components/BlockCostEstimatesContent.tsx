@@ -79,7 +79,7 @@ export function BlockCostEstimatesContent() {
         </div>
         <Button
           variant="primary"
-          size="small"
+          size="md"
           onClick={fetchEstimates}
           loading={loading}
         >
@@ -87,7 +87,7 @@ export function BlockCostEstimatesContent() {
         </Button>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={handleDownload}
           disabled={!data || data.total_rows === 0}
           leftIcon={<Icon icon={Download04Icon} />}

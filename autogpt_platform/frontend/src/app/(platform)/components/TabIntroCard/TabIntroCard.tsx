@@ -154,7 +154,7 @@ export function TabIntroCard({
               {altAction && (
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="md"
                   onClick={altAction.onClick}
                   className="w-fit self-start px-0 text-purple-600 underline-offset-4 hover:bg-transparent hover:underline"
                 >
@@ -163,10 +163,10 @@ export function TabIntroCard({
               )}
 
               <div className="mt-3 flex items-center justify-end gap-3">
-                <Button variant="secondary" size="small" onClick={onDismiss}>
+                <Button variant="secondary" size="md" onClick={onDismiss}>
                   Got it
                 </Button>
-                <Button variant="primary" size="small" onClick={cta.onClick}>
+                <Button variant="primary" size="md" onClick={cta.onClick}>
                   {cta.label}
                 </Button>
               </div>

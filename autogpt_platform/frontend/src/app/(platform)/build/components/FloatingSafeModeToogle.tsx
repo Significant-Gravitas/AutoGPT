@@ -43,7 +43,7 @@ function SafeModeButton({
       <TooltipTrigger asChild>
         <Button
           variant={isEnabled ? "primary" : "outline"}
-          size="small"
+          size="md"
           onClick={onToggle}
           disabled={isPending}
           className={cn("justify-start", fullWidth ? "w-full" : "")}

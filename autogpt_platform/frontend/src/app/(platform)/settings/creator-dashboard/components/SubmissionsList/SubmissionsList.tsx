@@ -188,7 +188,7 @@ export function SubmissionsList({
                       {debouncedSearch ? (
                         <Button
                           variant="secondary"
-                          size="small"
+                          size="md"
                           onClick={() => onSearchChange("")}
                         >
                           Clear search
@@ -196,7 +196,7 @@ export function SubmissionsList({
                       ) : (
                         <Button
                           variant="secondary"
-                          size="small"
+                          size="md"
                           onClick={onResetFilters}
                         >
                           Clear filters

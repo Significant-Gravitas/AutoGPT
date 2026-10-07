@@ -70,7 +70,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
         {value.length > 0 ? (
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => onChange([])}
             className="self-end"
           >

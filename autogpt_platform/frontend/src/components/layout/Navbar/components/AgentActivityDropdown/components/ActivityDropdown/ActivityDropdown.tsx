@@ -109,7 +109,7 @@ export function ActivityDropdown({
                 />
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={handleClearSearch}
                   className="absolute top-1/2 right-1 size-6 -translate-y-1/2 hover:border-transparent hover:bg-transparent"
                   aria-label="Clear search"
@@ -135,7 +135,7 @@ export function ActivityDropdown({
               {withSearch ? (
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="md"
                   onClick={toggleSearch}
                   aria-label="Search agents"
                   className={cn(

@@ -61,7 +61,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              size="icon"
+              size="icon-lg"
               variant="ghost"
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
@@ -84,7 +84,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            size="icon"
+            size="icon-lg"
             variant={isGraphRunning ? "destructive" : "primary"}
             data-id={isGraphRunning ? "stop-graph-button" : "run-graph-button"}
             onClick={

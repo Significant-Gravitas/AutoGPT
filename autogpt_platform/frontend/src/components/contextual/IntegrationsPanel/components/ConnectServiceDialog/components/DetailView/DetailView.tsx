@@ -59,7 +59,7 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
       <div className="flex items-center gap-3 pl-1">
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           onClick={onBack}
           aria-label="Back to services"
           className="size-9"

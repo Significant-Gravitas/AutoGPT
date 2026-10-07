@@ -21,7 +21,7 @@ export function TriggerNotFound({ agent, banner, onClearSelection }: Props) {
             This trigger doesn&apos;t exist or is no longer available.
           </Text>
           {onClearSelection && (
-            <Button variant="secondary" size="small" onClick={onClearSelection}>
+            <Button variant="secondary" size="md" onClick={onClearSelection}>
               Clear selection
             </Button>
           )}

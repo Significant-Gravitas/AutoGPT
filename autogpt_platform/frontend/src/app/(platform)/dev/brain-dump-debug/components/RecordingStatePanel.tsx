@@ -31,7 +31,7 @@ export function RecordingStatePanel({ snapshot, onRefresh }: Props) {
       action={
         <Button
           variant="outline"
-          size="small"
+          size="md"
           onClick={onRefresh}
           leftIcon={<Icon icon={ArrowReloadHorizontalIcon} size={16} />}
         >

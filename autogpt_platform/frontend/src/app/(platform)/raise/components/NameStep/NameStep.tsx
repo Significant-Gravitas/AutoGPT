@@ -77,7 +77,7 @@ export function NameStep({
           <Button
             type="submit"
             variant="primary"
-            size="small"
+            size="md"
             disabled={!trimmed}
             className="h-10.5 rounded-xl py-3"
           >

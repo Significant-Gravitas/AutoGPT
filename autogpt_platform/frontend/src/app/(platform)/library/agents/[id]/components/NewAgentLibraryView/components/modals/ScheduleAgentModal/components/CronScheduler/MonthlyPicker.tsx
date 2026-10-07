@@ -30,21 +30,16 @@ export function MonthlyPicker({
         Days of Month
       </Text>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" size="small" onClick={allDays}>
+        <Button type="button" variant="outline" size="md" onClick={allDays}>
           All Days
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="small"
-          onClick={customize}
-        >
+        <Button type="button" variant="outline" size="md" onClick={customize}>
           Customize
         </Button>
         <Button
           type="button"
           variant="outline"
-          size="small"
+          size="md"
           onClick={() => onChange([15])}
         >
           15th
@@ -52,7 +47,7 @@ export function MonthlyPicker({
         <Button
           type="button"
           variant="outline"
-          size="small"
+          size="md"
           onClick={() => onChange([31])}
         >
           Last Day

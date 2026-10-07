@@ -88,7 +88,7 @@ export function RateLimitModal({
   return (
     <>
       <Button
-        size="small"
+        size="md"
         variant="outline"
         onClick={(e) => {
           e.stopPropagation();

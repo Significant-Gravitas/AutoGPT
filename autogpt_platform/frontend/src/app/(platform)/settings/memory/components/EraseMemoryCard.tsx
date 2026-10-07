@@ -52,7 +52,7 @@ export function EraseMemoryCard({
         }}
       >
         <Dialog.Trigger>
-          <Button variant="destructive" size="small">
+          <Button variant="destructive" size="md">
             Erase memory
           </Button>
         </Dialog.Trigger>
@@ -75,14 +75,14 @@ export function EraseMemoryCard({
             <div className="flex justify-end gap-2">
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 onClick={() => setIsOpen(false)}
               >
                 Cancel
               </Button>
               <Button
                 variant="destructive"
-                size="small"
+                size="md"
                 disabled={!isConfirmed}
                 loading={isErasing}
                 onClick={handleErase}

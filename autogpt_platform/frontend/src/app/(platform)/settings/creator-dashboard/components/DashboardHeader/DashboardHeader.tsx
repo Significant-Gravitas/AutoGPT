@@ -50,7 +50,7 @@ export function DashboardHeader({
         trigger={
           <Button
             data-testid="submit-agent-button"
-            size="large"
+            size="lg"
             onClick={onOpenSubmit}
             leftIcon={<Icon icon={PlusSignIcon} size={18} />}
           >

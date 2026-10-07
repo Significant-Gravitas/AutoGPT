@@ -420,7 +420,7 @@ function Sidebar({
                   key={k}
                   type="button"
                   variant="toggle"
-                  size="xs"
+                  size="sm"
                   aria-pressed={!hidden}
                   onClick={() =>
                     setHiddenNodeTypes(togglePill(hiddenNodeTypes, k))
@@ -447,7 +447,7 @@ function Sidebar({
                   key={k}
                   type="button"
                   variant="toggle"
-                  size="xs"
+                  size="sm"
                   aria-pressed={!hidden}
                   onClick={() =>
                     setHiddenEdgeTypes(togglePill(hiddenEdgeTypes, k))
@@ -534,7 +534,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-xs"
+                size="icon-sm"
                 onClick={onClear}
                 aria-label="Clear selection"
                 withTooltip={false}

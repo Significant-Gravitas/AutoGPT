@@ -54,7 +54,7 @@ export function TourUpsellCard({ surface }: Props) {
           as="NextLink"
           href="/signup"
           variant="primary"
-          size="small"
+          size="md"
           onClick={handleSignupClick}
           rightIcon={<Icon icon={ArrowRight02Icon} size={16} aria-hidden />}
           className="w-full"
@@ -67,7 +67,7 @@ export function TourUpsellCard({ surface }: Props) {
           target="_blank"
           rel="noopener noreferrer"
           variant="ghost"
-          size="small"
+          size="md"
           onClick={handleSelfHostClick}
           leftIcon={<Icon icon={GithubIcon} size={14} aria-hidden />}
           className="w-full text-xs text-zinc-600"

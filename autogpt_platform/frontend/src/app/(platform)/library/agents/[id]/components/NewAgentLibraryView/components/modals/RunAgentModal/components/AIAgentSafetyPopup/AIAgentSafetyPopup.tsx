@@ -65,7 +65,7 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
 
           <Button
             variant="primary"
-            size="large"
+            size="lg"
             className="w-full"
             onClick={handleAcknowledge}
           >

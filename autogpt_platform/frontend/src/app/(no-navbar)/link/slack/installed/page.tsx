@@ -28,14 +28,14 @@ export default function SlackInstalledPage() {
           </div>
 
           <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:justify-center sm:gap-4">
-            <Button size="small" onClick={openSlack}>
+            <Button size="md" onClick={openSlack}>
               Open Slack
             </Button>
             <Button
               as="NextLink"
               href={openSlackHref}
               variant="outline"
-              size="small"
+              size="md"
             >
               Open Slack in browser
             </Button>

@@ -42,12 +42,7 @@ export function PublicMCPPanel({ serverURL }: Props) {
           {error}
         </Text>
       )}
-      <Button
-        variant="primary"
-        size="small"
-        onClick={check}
-        loading={isPending}
-      >
+      <Button variant="primary" size="md" onClick={check} loading={isPending}>
         Check connection
       </Button>
     </div>

@@ -152,7 +152,7 @@ export function CredentialRow({
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-sm"
               aria-label="Credential actions"
               withTooltip={false}
               className="ml-auto shrink-0 rounded-sm hover:border-transparent hover:bg-zinc-100"

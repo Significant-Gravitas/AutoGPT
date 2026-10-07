@@ -62,7 +62,7 @@ export function ExpertWorkflowsSection({
           {onInstallWorkflow ? (
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >

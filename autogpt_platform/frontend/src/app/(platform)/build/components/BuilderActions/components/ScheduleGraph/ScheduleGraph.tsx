@@ -26,7 +26,7 @@ export const ScheduleGraph = ({ flowID }: { flowID: string | null }) => {
           <TooltipTrigger asChild>
             <Button
               variant="outline"
-              size="icon"
+              size="icon-lg"
               data-id="schedule-graph-button"
               onClick={handleScheduleGraph}
               disabled={!flowID}

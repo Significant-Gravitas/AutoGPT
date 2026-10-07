@@ -491,7 +491,7 @@ export function ExecutionAnalyticsForm() {
                 <Button
                   type="button"
                   variant="secondary"
-                  size="small"
+                  size="md"
                   onClick={() => {
                     handleInputChange(
                       "system_prompt",
@@ -504,7 +504,7 @@ export function ExecutionAnalyticsForm() {
                 <Button
                   type="button"
                   variant="secondary"
-                  size="small"
+                  size="md"
                   onClick={() => {
                     handleInputChange(
                       "user_prompt",
@@ -517,7 +517,7 @@ export function ExecutionAnalyticsForm() {
                 <Button
                   type="button"
                   variant="secondary"
-                  size="small"
+                  size="md"
                   onClick={() => {
                     handleInputChange("system_prompt", "");
                     handleInputChange("user_prompt", "");
@@ -533,7 +533,7 @@ export function ExecutionAnalyticsForm() {
         <div className="flex justify-end">
           <Button
             variant="primary"
-            size="large"
+            size="lg"
             type="submit"
             disabled={generateAnalytics.isPending}
           >

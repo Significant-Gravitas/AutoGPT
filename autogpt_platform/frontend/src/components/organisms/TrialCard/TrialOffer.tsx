@@ -37,7 +37,7 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
       </div>
       <Button
         variant="primary"
-        size="large"
+        size="lg"
         onClick={onStart}
         loading={isStarting}
         disabled={isStarting}

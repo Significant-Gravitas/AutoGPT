@@ -109,7 +109,7 @@ export const DifferentSides: Story = {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="small">
+              <Button variant="secondary" size="md">
                 Top
               </Button>
             </TooltipTrigger>
@@ -122,7 +122,7 @@ export const DifferentSides: Story = {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="small">
+              <Button variant="secondary" size="md">
                 Right
               </Button>
             </TooltipTrigger>
@@ -135,7 +135,7 @@ export const DifferentSides: Story = {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="small">
+              <Button variant="secondary" size="md">
                 Bottom
               </Button>
             </TooltipTrigger>
@@ -148,7 +148,7 @@ export const DifferentSides: Story = {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="small">
+              <Button variant="secondary" size="md">
                 Left
               </Button>
             </TooltipTrigger>
@@ -216,7 +216,7 @@ export const MultipleTooltips: Story = {
         <div className="flex items-center gap-4">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="small">
+              <Button variant="secondary" size="md">
                 Save
               </Button>
             </TooltipTrigger>
@@ -227,7 +227,7 @@ export const MultipleTooltips: Story = {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="small">
+              <Button variant="secondary" size="md">
                 Edit
               </Button>
             </TooltipTrigger>
@@ -238,7 +238,7 @@ export const MultipleTooltips: Story = {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="destructive" size="small">
+              <Button variant="destructive" size="md">
                 Delete
               </Button>
             </TooltipTrigger>

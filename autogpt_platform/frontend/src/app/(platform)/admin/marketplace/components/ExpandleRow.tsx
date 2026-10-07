@@ -87,7 +87,7 @@ export function ExpandableRow({
                   as="NextLink"
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                   variant="outline"
-                  size="small"
+                  size="md"
                   leadingIcon={ViewIcon}
                 >
                   Preview
@@ -214,7 +214,7 @@ export function ExpandableRow({
                                   as="NextLink"
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                   variant="outline"
-                                  size="small"
+                                  size="md"
                                   leadingIcon={ViewIcon}
                                 >
                                   Preview

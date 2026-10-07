@@ -156,7 +156,7 @@ export function YourPlanCard({ index = 0 }: Props) {
           {canResume ? (
             <Button
               variant="primary"
-              size="small"
+              size="md"
               onClick={onResume}
               disabled={isUpdatingTier}
               loading={isUpdatingTier}
@@ -171,7 +171,7 @@ export function YourPlanCard({ index = 0 }: Props) {
           {canDowngrade && plan.previousTierLabel ? (
             <Button
               variant="outline"
-              size="small"
+              size="md"
               onClick={onDowngrade}
               disabled={isUpdatingTier}
               loading={isUpdatingTier}
@@ -182,7 +182,7 @@ export function YourPlanCard({ index = 0 }: Props) {
           {plan.isPaidPlan && !plan.isAdminManaged ? (
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={onManage}
               disabled={!canManagePortal}
               data-fast-goal="billing_portal_open"
@@ -194,7 +194,7 @@ export function YourPlanCard({ index = 0 }: Props) {
           {canUpgrade && plan.nextTierLabel ? (
             <Button
               variant="primary"
-              size="small"
+              size="md"
               onClick={onUpgrade}
               disabled={isUpdatingTier}
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}

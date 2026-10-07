@@ -118,7 +118,7 @@ export function FloatingReviewsPanel({
       {!isOpen && pendingReviews.length > 0 && (
         <Button
           onClick={() => setIsOpen(true)}
-          size="large"
+          size="lg"
           variant="primary"
           leftIcon={<Icon icon={Clock01Icon} size={20} />}
         >
@@ -132,7 +132,7 @@ export function FloatingReviewsPanel({
           <Button
             onClick={() => setIsOpen(false)}
             variant="icon"
-            size="icon"
+            size="icon-lg"
             aria-label="Close"
             withTooltip={false}
             className="absolute top-4 right-4 z-10"

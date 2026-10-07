@@ -275,7 +275,7 @@ export function SuggestedGoalCard({ output }: OutputProps) {
         <Button
           type="button"
           variant="primary"
-          size="xs"
+          size="sm"
           className="w-fit rounded-lg border-zinc-900 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-700"
           onClick={() =>
             actions.onSend(`Please create an agent with this goal: ${goal}`)
@@ -319,7 +319,7 @@ export function TriggerSetupCard({ output }: OutputProps) {
           <Button
             type="button"
             variant="ghost"
-            size="xs"
+            size="sm"
             onClick={handleCopy}
             className="h-6 shrink-0 px-2 text-zinc-600 hover:border-zinc-200 hover:bg-zinc-200"
           >

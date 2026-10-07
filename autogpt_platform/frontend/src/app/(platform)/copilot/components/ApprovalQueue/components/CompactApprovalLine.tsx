@@ -34,7 +34,7 @@ export function CompactApprovalLine({
       {bare ? (
         <div className="flex shrink-0 gap-2">
           <Button
-            size="xs"
+            size="sm"
             variant="primary"
             className="rounded-full"
             loading={status === "approving"}
@@ -44,7 +44,7 @@ export function CompactApprovalLine({
             Approve
           </Button>
           <Button
-            size="xs"
+            size="sm"
             variant="secondary"
             className="rounded-full"
             loading={status === "rejecting"}
@@ -56,7 +56,7 @@ export function CompactApprovalLine({
         </div>
       ) : (
         <Button
-          size="xs"
+          size="sm"
           variant="secondary"
           className="shrink-0 rounded-full"
           onClick={onOpen}

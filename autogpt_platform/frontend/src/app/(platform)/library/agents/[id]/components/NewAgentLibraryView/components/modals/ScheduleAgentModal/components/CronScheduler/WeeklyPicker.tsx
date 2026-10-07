@@ -44,28 +44,13 @@ export function WeeklyPicker({
         Repeats on
       </Text>
       <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="small"
-          onClick={toggleAll}
-        >
+        <Button type="button" variant="outline" size="md" onClick={toggleAll}>
           Select all
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="small"
-          onClick={setWeekdays}
-        >
+        <Button type="button" variant="outline" size="md" onClick={setWeekdays}>
           Weekdays
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="small"
-          onClick={setWeekends}
-        >
+        <Button type="button" variant="outline" size="md" onClick={setWeekends}>
           Weekends
         </Button>
       </div>

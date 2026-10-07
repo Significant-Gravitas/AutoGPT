@@ -52,7 +52,7 @@ function ArtifactContentLoader({
         <Button
           type="button"
           variant="secondary"
-          size="xs"
+          size="sm"
           onClick={retry}
           className="h-auto px-3 py-1.5 leading-4 text-zinc-700"
         >
@@ -106,7 +106,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         <Button
           type="button"
           variant="secondary"
-          size="xs"
+          size="sm"
           onClick={() => {
             setError(false);
             setLoaded(false);
@@ -154,7 +154,7 @@ function ArtifactVideo({ src }: { src: string }) {
         <Button
           type="button"
           variant="secondary"
-          size="xs"
+          size="sm"
           onClick={() => {
             setError(false);
             setLoaded(false);

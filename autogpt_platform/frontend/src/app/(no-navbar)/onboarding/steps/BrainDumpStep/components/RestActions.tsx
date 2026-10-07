@@ -15,7 +15,7 @@ export function RestActions({ onTalk, onWrite }: Props) {
     <div className="mt-4 flex items-center gap-3">
       <Button
         type="button"
-        size="small"
+        size="md"
         onClick={onTalk}
         leadingIcon={Mic01Icon}
         className="h-10 w-36 rounded-xl"
@@ -25,7 +25,7 @@ export function RestActions({ onTalk, onWrite }: Props) {
       <Button
         type="button"
         variant="secondary"
-        size="small"
+        size="md"
         onClick={onWrite}
         leadingIcon={PencilEdit01Icon}
         className="h-10 w-36 rounded-xl"

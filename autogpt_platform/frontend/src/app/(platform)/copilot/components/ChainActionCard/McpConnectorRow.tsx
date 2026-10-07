@@ -82,7 +82,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
         ) : (
           <Button
             variant="primary"
-            size="small"
+            size="md"
             className="shrink-0"
             disabled={request.loading}
             onClick={request.onConnect}
@@ -137,7 +137,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             />
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               disabled={request.loading || !token.trim()}
               onClick={submitCredential}
             >

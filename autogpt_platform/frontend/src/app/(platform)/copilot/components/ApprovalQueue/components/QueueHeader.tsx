@@ -20,7 +20,7 @@ export function QueueHeader({ count, mode, approveAll }: Props) {
         )}
         {approveAll && (
           <Button
-            size="small"
+            size="md"
             variant="secondary"
             className="min-w-0"
             disabled={approveAll.busy}

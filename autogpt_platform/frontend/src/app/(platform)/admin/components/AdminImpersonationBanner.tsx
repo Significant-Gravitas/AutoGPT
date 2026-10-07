@@ -27,7 +27,7 @@ export function AdminImpersonationBanner() {
         </div>
         <Button
           variant="outline"
-          size="small"
+          size="md"
           onClick={stopImpersonating}
           className="ml-4"
         >

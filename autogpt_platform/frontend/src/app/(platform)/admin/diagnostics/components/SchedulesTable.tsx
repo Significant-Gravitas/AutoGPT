@@ -200,7 +200,7 @@ export function SchedulesTable({
                 {activeTab === "orphaned" && schedules.length > 0 && (
                   <Button
                     variant="destructive"
-                    size="small"
+                    size="md"
                     onClick={confirmDelete}
                     disabled={isDeleting}
                   >
@@ -211,7 +211,7 @@ export function SchedulesTable({
                 {selectedIds.size > 0 && (
                   <Button
                     variant="destructive"
-                    size="small"
+                    size="md"
                     onClick={confirmDelete}
                     disabled={isDeleting}
                   >
@@ -221,7 +221,7 @@ export function SchedulesTable({
                 )}
                 <Button
                   variant="outline"
-                  size="small"
+                  size="md"
                   onClick={() => {
                     refetch();
                     if (onRefresh) onRefresh();
@@ -386,7 +386,7 @@ export function SchedulesTable({
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
-                      size="small"
+                      size="md"
                       onClick={() => setCurrentPage(currentPage - 1)}
                       disabled={currentPage === 1}
                     >
@@ -397,7 +397,7 @@ export function SchedulesTable({
                     </div>
                     <Button
                       variant="outline"
-                      size="small"
+                      size="md"
                       onClick={() => setCurrentPage(currentPage + 1)}
                       disabled={currentPage === totalPages}
                     >

@@ -78,7 +78,7 @@ export const MainSearchResultPage = ({
         <div className="mt-5 mb-4">
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             as="NextLink"
             href="/marketplace"
             leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}

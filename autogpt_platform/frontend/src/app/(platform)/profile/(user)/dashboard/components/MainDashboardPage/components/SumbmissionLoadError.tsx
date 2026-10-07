@@ -20,7 +20,7 @@ export function SubmissionLoadError() {
         </div>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={() => window.location.reload()}
         >
           Try again

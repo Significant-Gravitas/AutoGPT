@@ -31,7 +31,7 @@ export function HomeTileFilter({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="small"
+          size="md"
           className="gap-1 px-2.5 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
           leadingIcon={FilterHorizontalIcon}
           aria-label={`${ariaLabelPrefix}: ${activeLabel}`}

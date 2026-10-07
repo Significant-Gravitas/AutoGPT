@@ -178,7 +178,7 @@ export function ExpertConnectServiceDialog({
                               key={option.value}
                               type="button"
                               variant="toggle"
-                              size="small"
+                              size="md"
                               aria-pressed={filter === option.value}
                               onClick={() => setFilter(option.value)}
                             >
@@ -245,7 +245,7 @@ export function ExpertConnectServiceDialog({
               <>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="md"
                   onClick={handleBackToList}
                 >
                   Back
@@ -253,7 +253,7 @@ export function ExpertConnectServiceDialog({
                 {showContinue ? (
                   <Button
                     variant="primary"
-                    size="small"
+                    size="md"
                     disabled={isContinueDisabled}
                     loading={isConnecting}
                     onClick={handleContinue}
@@ -263,7 +263,7 @@ export function ExpertConnectServiceDialog({
                 ) : null}
               </>
             ) : (
-              <Button variant="secondary" size="small" onClick={onClose}>
+              <Button variant="secondary" size="md" onClick={onClose}>
                 Cancel
               </Button>
             )}

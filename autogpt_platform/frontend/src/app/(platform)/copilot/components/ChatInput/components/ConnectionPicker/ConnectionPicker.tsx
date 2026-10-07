@@ -174,7 +174,7 @@ export function ConnectionPicker({
       <Button
         type="button"
         variant="ghost"
-        size={showsTier ? "icon" : "small"}
+        size={showsTier ? "icon-lg" : "md"}
         unmask={false}
         aria-label={
           showsTier

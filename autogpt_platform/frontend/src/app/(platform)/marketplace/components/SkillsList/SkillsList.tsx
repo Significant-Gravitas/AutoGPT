@@ -80,7 +80,7 @@ export function SkillsList({ category }: Props) {
           <Button
             type="button"
             variant="ghost"
-            size="small"
+            size="md"
             onClick={() => refetch()}
             className="h-auto min-w-0 rounded-none border-0 p-0 leading-normal font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
           >
@@ -98,7 +98,7 @@ export function SkillsList({ category }: Props) {
             <Button
               type="button"
               variant="ghost"
-              size="small"
+              size="md"
               onClick={() => selectTopic(null)}
               className="h-auto min-w-0 rounded-none border-0 p-0 leading-normal font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
             >
@@ -138,7 +138,7 @@ export function SkillsList({ category }: Props) {
           as="NextLink"
           href="/marketplace/skills"
           variant="secondary"
-          size="small"
+          size="md"
         >
           Browse all skills
         </Button>

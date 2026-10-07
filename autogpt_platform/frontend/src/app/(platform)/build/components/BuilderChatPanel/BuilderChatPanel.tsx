@@ -82,7 +82,7 @@ export function BuilderChatPanel({ className }: Props) {
                   <Button
                     type="button"
                     variant="secondary"
-                    size="small"
+                    size="md"
                     onClick={activeRetry}
                     className="h-auto min-w-0 rounded-md border-slate-300 px-3 py-1.5 text-slate-700 hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-purple-400"
                   >

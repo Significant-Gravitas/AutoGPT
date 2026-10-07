@@ -17,7 +17,7 @@ interface Props {
   onAsk?: (prompt: string) => void;
   /** Cards float these over the cover art; the list rows sit on white. */
   variant?: "floating" | "ghost";
-  size?: "icon-xs" | "icon-sm";
+  size?: "icon-sm" | "icon-md";
 }
 
 export function ExpertWorkflowActions({
@@ -29,7 +29,7 @@ export function ExpertWorkflowActions({
   chatPrompt,
   onAsk,
   variant = "floating",
-  size = "icon-xs",
+  size = "icon-sm",
 }: Props) {
   return (
     <>

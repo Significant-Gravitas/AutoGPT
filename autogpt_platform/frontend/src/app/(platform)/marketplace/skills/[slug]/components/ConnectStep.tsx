@@ -32,7 +32,7 @@ export function ConnectStep({ names, onConnect }: Props) {
       </Text>
       <Button
         variant="secondary"
-        size="small"
+        size="md"
         onClick={onConnect}
         className="ml-auto"
       >

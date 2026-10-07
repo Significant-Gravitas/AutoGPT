@@ -117,7 +117,7 @@ export const CustomControls = memo(
             <TooltipTrigger asChild>
               <Button
                 variant="icon"
-                size="small"
+                size="md"
                 onClick={control.onClick}
                 className={control.className}
                 data-id={control.id}

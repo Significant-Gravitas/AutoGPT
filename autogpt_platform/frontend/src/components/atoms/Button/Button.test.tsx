@@ -108,25 +108,36 @@ describe("Button unmask prop", () => {
   });
 });
 
-describe("Button compact sizes", () => {
-  it("renders xs as a 28px rounded-rectangle chip", () => {
-    renderButton({ variant: "secondary", size: "xs", children: "Chat" });
-    const el = screen.getByRole("button", { name: "Chat" });
-    expect(el.className).toContain("h-7");
-    expect(el.className).toContain("rounded-md");
-    expect(el.className).not.toContain("rounded-full");
+describe("Button sizes", () => {
+  it.each([
+    ["sm", "h-8"],
+    ["md", "h-9"],
+    ["lg", "h-10"],
+  ] as const)("renders %s at %s", (size, height) => {
+    renderButton({ size, children: "Save" });
+    expect(screen.getByRole("button", { name: "Save" }).className).toContain(
+      height,
+    );
   });
 
-  it("softens the outline border at xs", () => {
-    renderButton({ variant: "outline", size: "xs", children: "New Pod" });
-    const el = screen.getByRole("button", { name: "New Pod" });
-    expect(el.className).toContain("border-zinc-200");
-    expect(el.className).not.toContain("border-zinc-700");
+  it("defaults to lg", () => {
+    renderButton({ children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("h-10");
+    expect(el.className).toContain("min-w-30");
+  });
+
+  it("renders sm as a rounded-rectangle chip without a minimum width", () => {
+    renderButton({ variant: "secondary", size: "sm", children: "Chat" });
+    const el = screen.getByRole("button", { name: "Chat" });
+    expect(el.className).toContain("rounded-md");
+    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).not.toContain("min-w-");
   });
 
   it("renders a leadingIcon before the label", () => {
     renderButton({
-      size: "xs",
+      size: "sm",
       leadingIcon: PencilEdit02Icon,
       children: "Edit Soul",
     });
@@ -138,20 +149,20 @@ describe("Button compact sizes", () => {
   it("names icon-only buttons by aria-label", () => {
     renderButton({
       variant: "floating",
-      size: "icon-xs",
+      size: "icon-sm",
       leadingIcon: PencilEdit02Icon,
       "aria-label": "Edit workflow",
       children: undefined,
     });
     const el = screen.getByRole("button", { name: "Edit workflow" });
-    expect(el.className).toContain("size-7");
-    expect(el.className).toContain("bg-white/90");
+    expect(el.className).toContain("size-8");
+    expect(el.className).toContain("bg-card/90");
   });
 
   it("styles toggle by aria-pressed", () => {
     renderButton({
       variant: "toggle",
-      size: "xs",
+      size: "sm",
       "aria-pressed": true,
       children: "Needs review",
     });
@@ -159,7 +170,30 @@ describe("Button compact sizes", () => {
       name: "Needs review",
       pressed: true,
     });
-    expect(el.className).toContain("aria-pressed:bg-zinc-100");
+    expect(el.className).toContain("aria-pressed:bg-muted");
+  });
+});
+
+describe("Button tokens", () => {
+  it("paints primary with the primary token", () => {
+    renderButton({ children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("bg-primary");
+    expect(el.className).toContain("text-primary-foreground");
+  });
+
+  it("uses the shared focus ring", () => {
+    renderButton({ variant: "secondary", children: "Cancel" });
+    expect(screen.getByRole("button", { name: "Cancel" }).className).toContain(
+      "focus-ring",
+    );
+  });
+
+  it("keeps the variant while loading instead of turning grey", () => {
+    renderButton({ variant: "secondary", loading: true, children: "Saving" });
+    const el = screen.getByRole("button");
+    expect(el.className).toContain("bg-background");
+    expect(el).toHaveProperty("disabled", true);
   });
 });
 

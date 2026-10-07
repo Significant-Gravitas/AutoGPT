@@ -108,10 +108,10 @@ function DialogBody({ title, onClose, sectionCount = 1 }: DialogBodyProps) {
         ))}
       </div>
       <footer className="flex justify-end gap-2 border-t border-zinc-200 px-4 py-3">
-        <Button variant="secondary" size="small" onClick={onClose}>
+        <Button variant="secondary" size="md" onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="primary" size="small" onClick={onClose}>
+        <Button variant="primary" size="md" onClick={onClose}>
           Save
         </Button>
       </footer>
@@ -128,7 +128,7 @@ function DialogWithTrigger() {
 
   return (
     <>
-      <Button variant="primary" size="small" onClick={() => setOpen(true)}>
+      <Button variant="primary" size="md" onClick={() => setOpen(true)}>
         Edit soul
       </Button>
       {open ? (

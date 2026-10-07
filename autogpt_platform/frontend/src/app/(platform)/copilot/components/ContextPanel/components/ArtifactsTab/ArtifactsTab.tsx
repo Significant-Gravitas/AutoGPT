@@ -67,12 +67,7 @@ export function ArtifactsTab({ sessionId }: Props) {
             ? "Nothing to preview yet."
             : "Pick an artifact from this chat to preview it here."}
         </Text>
-        <Button
-          as="NextLink"
-          href="/artifacts"
-          variant="secondary"
-          size="small"
-        >
+        <Button as="NextLink" href="/artifacts" variant="secondary" size="md">
           Open artifacts
         </Button>
       </div>

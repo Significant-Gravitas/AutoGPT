@@ -55,7 +55,7 @@ export function CookieSettingsCard({ index = 0 }: Props) {
         ) : (
           <Button
             type="button"
-            size="small"
+            size="md"
             variant="secondary"
             disabled={status !== "ready"}
             onClick={openConsentSettings}

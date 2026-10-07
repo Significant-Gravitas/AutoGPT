@@ -36,7 +36,7 @@ export function SelectedTriggerAgentActions({
           href={`/library/agents/${triggerAgent.id}`}
           aria-label="View in library"
         >
-          <Button variant="icon" size="icon" aria-label="View in library">
+          <Button variant="icon" size="icon-lg" aria-label="View in library">
             <Icon icon={LinkSquare01Icon} size={18} className="text-zinc-700" />
           </Button>
         </Link>
@@ -44,13 +44,13 @@ export function SelectedTriggerAgentActions({
           href={`/build?flowID=${triggerAgent.graph_id}`}
           aria-label="Open in builder"
         >
-          <Button variant="icon" size="icon" aria-label="Open in builder">
+          <Button variant="icon" size="icon-lg" aria-label="Open in builder">
             <Icon icon={PencilIcon} size={18} className="text-zinc-700" />
           </Button>
         </Link>
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Remove trigger"
           onClick={openDialog}
           disabled={isDeleting}

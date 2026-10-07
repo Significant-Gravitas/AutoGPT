@@ -31,7 +31,7 @@ export function ExpertBudgetSection({ expert }: Props) {
           <Button
             type="button"
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             leadingIcon={PencilEdit02Icon}
             aria-label="Edit budget"
             onClick={() => setIsEditOpen(true)}

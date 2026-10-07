@@ -198,7 +198,7 @@ export function AgentSelectStep({
                   </Text>
                   <Button
                     variant="secondary"
-                    size="small"
+                    size="md"
                     onClick={() => setSearchInput("")}
                   >
                     Clear search
@@ -324,7 +324,7 @@ export function AgentSelectStep({
             secondary={
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 onClick={onCancel}
                 className="w-full sm:w-auto"
               >
@@ -333,7 +333,7 @@ export function AgentSelectStep({
             }
             primary={
               <Button
-                size="small"
+                size="md"
                 onClick={handleNext}
                 disabled={isNextDisabled}
                 className="w-full sm:w-auto"

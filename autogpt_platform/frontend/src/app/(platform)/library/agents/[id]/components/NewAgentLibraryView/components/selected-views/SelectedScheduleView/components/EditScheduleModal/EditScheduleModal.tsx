@@ -49,7 +49,7 @@ export function EditScheduleModal({
       <Dialog.Trigger>
         <Button
           variant="ghost"
-          size="small"
+          size="md"
           className={triggerClassName ?? "absolute -top-2 -right-2"}
         >
           <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
@@ -92,7 +92,7 @@ export function EditScheduleModal({
           <div className="flex w-full justify-end gap-2">
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => setIsOpen(false)}
               className="min-w-32"
             >
@@ -100,7 +100,7 @@ export function EditScheduleModal({
             </Button>
             <Button
               variant="primary"
-              size="small"
+              size="md"
               onClick={() => mutateAsync()}
               loading={isPending}
               className="min-w-32"

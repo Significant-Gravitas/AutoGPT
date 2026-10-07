@@ -169,10 +169,10 @@ function renderDialogWithFooter() {
         <p>This dialog includes a footer with action buttons.</p>
         <p>Use the footer for primary and secondary actions.</p>
         <Dialog.Footer>
-          <Button variant="ghost" size="small">
+          <Button variant="ghost" size="md">
             Cancel
           </Button>
-          <Button variant="primary" size="small">
+          <Button variant="primary" size="md">
             Confirm
           </Button>
         </Dialog.Footer>
@@ -210,7 +210,7 @@ function renderControlledDialog() {
               <span className="font-bold">{isOpen ? "Open" : "Closed"}</span>
             </p>
           </div>
-          <Button onClick={handleToggle} className="mt-8" size="small">
+          <Button onClick={handleToggle} className="mt-8" size="md">
             Close this modal
           </Button>
         </Dialog.Content>
@@ -255,7 +255,7 @@ function renderModalOverModal() {
 
           <Dialog title="Child Dialog">
             <Dialog.Trigger>
-              <Button size="small">Open Child Modal</Button>
+              <Button size="md">Open Child Modal</Button>
             </Dialog.Trigger>
             <Dialog.Content>
               <p>

@@ -25,7 +25,7 @@ export function CostsBreakdown({ agents }: Props) {
     <section className="mt-6 flex flex-col gap-4">
       <Button
         variant="ghost"
-        size="small"
+        size="md"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
         className="w-fit gap-1 px-0 text-zinc-800 hover:bg-transparent"

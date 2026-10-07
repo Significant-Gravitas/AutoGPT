@@ -193,7 +193,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           withTooltip={false}
           unmask={false}
           onClick={onRemove}

@@ -53,7 +53,7 @@ export function ApproveRejectButtons({
     <>
       {!isApproved && (
         <Button
-          size="small"
+          size="md"
           variant="outline"
           className="text-green-600 hover:bg-green-50 hover:text-green-700"
           leadingIcon={CheckmarkCircle02Icon}
@@ -66,7 +66,7 @@ export function ApproveRejectButtons({
         </Button>
       )}
       <Button
-        size="small"
+        size="md"
         variant="outline"
         className="text-red-600 hover:bg-red-50 hover:text-red-700"
         leadingIcon={CancelCircleIcon}
@@ -116,12 +116,12 @@ export function ApproveRejectButtons({
               <Button
                 type="button"
                 variant="outline"
-                size="small"
+                size="md"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="small">
+              <Button type="submit" variant="primary" size="md">
                 Approve
               </Button>
             </Dialog.Footer>
@@ -181,12 +181,12 @@ export function ApproveRejectButtons({
               <Button
                 type="button"
                 variant="outline"
-                size="small"
+                size="md"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive" size="small">
+              <Button type="submit" variant="destructive" size="md">
                 {isApproved ? "Revoke" : "Reject"}
               </Button>
             </Dialog.Footer>

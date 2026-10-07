@@ -184,14 +184,14 @@ export function ConnectCredentialDialog({
             </span>
           )}
           <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" size="small" onClick={handleClose}>
+            <Button variant="secondary" size="md" onClick={handleClose}>
               Cancel
             </Button>
             {showExisting ? (
               <>
                 <Button
                   variant="outline"
-                  size="small"
+                  size="md"
                   disabled={existing?.isPending}
                   onClick={() => setAddingNew(true)}
                 >
@@ -199,7 +199,7 @@ export function ConnectCredentialDialog({
                 </Button>
                 <Button
                   variant="primary"
-                  size="small"
+                  size="md"
                   loading={existing?.isPending}
                   disabled={!chosen}
                   onClick={handleUseExisting}
@@ -217,7 +217,7 @@ export function ConnectCredentialDialog({
               showContinue && (
                 <Button
                   variant="primary"
-                  size="small"
+                  size="md"
                   disabled={isContinueDisabled}
                   loading={isConnecting}
                   onClick={handleContinue}

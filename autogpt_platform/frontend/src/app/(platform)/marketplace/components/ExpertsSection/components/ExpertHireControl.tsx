@@ -81,7 +81,7 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
         as="NextLink"
         href={`/signup?next=${next}`}
         variant="ghost"
-        size="small"
+        size="md"
         leftIcon={HIRE_ICON}
         className={TEXT_BUTTON}
       >
@@ -92,7 +92,7 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
     control = (
       <Button
         variant="ghost"
-        size="small"
+        size="md"
         loading={isHiring}
         leftIcon={HIRE_ICON}
         onClick={handleHire}

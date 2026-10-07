@@ -23,7 +23,7 @@ export function ConnectAccountRow({ onConnect, isConnecting }: Props) {
     <Button
       type="button"
       variant="ghost"
-      size="small"
+      size="md"
       aria-label="Connect a ChatGPT subscription"
       disabled={isConnecting}
       onClick={onConnect}

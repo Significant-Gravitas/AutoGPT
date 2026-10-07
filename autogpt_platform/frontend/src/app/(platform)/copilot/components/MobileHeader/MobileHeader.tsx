@@ -14,7 +14,7 @@ export function MobileHeader() {
     >
       <Button
         variant="icon"
-        size="icon"
+        size="icon-lg"
         aria-label="Open sessions"
         onClick={() => setDrawerOpen(true)}
         className="bg-white shadow-md"
@@ -23,7 +23,7 @@ export function MobileHeader() {
       </Button>
       <Button
         variant="icon"
-        size="icon"
+        size="icon-lg"
         aria-label="Open workspace files"
         onClick={toggleContextPanel}
         className="bg-white shadow-md"

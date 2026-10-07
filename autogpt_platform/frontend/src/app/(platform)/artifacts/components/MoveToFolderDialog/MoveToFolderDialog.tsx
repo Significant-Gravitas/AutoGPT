@@ -78,7 +78,7 @@ export function MoveToFolderDialog({
           <Button
             type="button"
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => setIsOpen(false)}
           >
             Cancel
@@ -86,7 +86,7 @@ export function MoveToFolderDialog({
           <Button
             type="button"
             variant="primary"
-            size="small"
+            size="md"
             disabled={!canConfirm}
             loading={isMoving}
             onClick={confirm}

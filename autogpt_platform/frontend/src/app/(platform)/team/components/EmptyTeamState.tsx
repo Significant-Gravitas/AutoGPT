@@ -15,15 +15,10 @@ export function EmptyTeamState() {
         work alongside Otto.
       </Text>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Button
-          as="NextLink"
-          href="/marketplace"
-          variant="primary"
-          size="small"
-        >
+        <Button as="NextLink" href="/marketplace" variant="primary" size="md">
           Browse the marketplace
         </Button>
-        <Button as="NextLink" href="/raise" variant="secondary" size="small">
+        <Button as="NextLink" href="/raise" variant="secondary" size="md">
           Create an Expert
         </Button>
       </div>

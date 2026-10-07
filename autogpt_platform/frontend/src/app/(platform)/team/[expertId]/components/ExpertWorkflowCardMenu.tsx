@@ -34,7 +34,7 @@ interface Props {
   expertId?: string;
   name: string;
   variant?: "floating" | "ghost";
-  size?: "icon-xs" | "icon-sm";
+  size?: "icon-sm" | "icon-md";
 }
 
 export function ExpertWorkflowCardMenu({
@@ -42,7 +42,7 @@ export function ExpertWorkflowCardMenu({
   expertId,
   name,
   variant = "floating",
-  size = "icon-xs",
+  size = "icon-sm",
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -133,7 +133,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="ghost"
-                size="small"
+                size="md"
                 disabled={isRemoving}
                 onClick={() => setIsRemoveOpen(false)}
               >
@@ -142,7 +142,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="destructive"
-                size="small"
+                size="md"
                 loading={isRemoving}
                 onClick={handleRemove}
               >

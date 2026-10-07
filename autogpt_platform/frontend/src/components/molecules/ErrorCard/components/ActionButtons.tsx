@@ -25,7 +25,7 @@ export function ActionButtons({
   return (
     <div className="flex flex-col flex-wrap gap-3 pt-2 sm:flex-row">
       {onRetry && (
-        <Button onClick={onRetry} variant="outline" size="small">
+        <Button onClick={onRetry} variant="outline" size="md">
           <Icon icon={Refresh01Icon} size={16} />
           Try Again
         </Button>
@@ -34,7 +34,7 @@ export function ActionButtons({
       <Button
         onClick={() => handleReportError(responseError, httpError, context)}
         variant="ghost"
-        size="small"
+        size="md"
       >
         <Icon icon={Bug01Icon} size={16} />
         Report Error
@@ -43,7 +43,7 @@ export function ActionButtons({
       <Button
         as="NextLink"
         variant="ghost"
-        size="small"
+        size="md"
         href="https://discord.gg/autogpt"
         target="_blank"
         rel="noopener noreferrer"

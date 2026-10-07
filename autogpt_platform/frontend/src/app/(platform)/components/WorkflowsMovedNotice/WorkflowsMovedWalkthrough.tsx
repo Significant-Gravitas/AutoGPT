@@ -109,7 +109,7 @@ function WalkthroughControl({ player }: { player: Player }) {
       <Button
         type="button"
         variant={player.hasStarted ? "secondary" : "primary"}
-        size={player.hasStarted ? "small" : "icon"}
+        size={player.hasStarted ? "md" : "icon-lg"}
         withTooltip={false}
         aria-label={`${action} walkthrough`}
         aria-busy={player.isStarting}

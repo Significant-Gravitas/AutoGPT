@@ -29,7 +29,7 @@ export function DownloadAgentAdminButton({
 
   return (
     <Button
-      size="small"
+      size="md"
       variant="outline"
       onClick={handleDownload}
       disabled={isLoading}

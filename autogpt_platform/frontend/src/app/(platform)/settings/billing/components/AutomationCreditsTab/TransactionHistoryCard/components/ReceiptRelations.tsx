@@ -103,7 +103,7 @@ function RelatedExecution({
       {loaded ? (
         <Button
           variant="ghost"
-          size="small"
+          size="md"
           unmask={false}
           className="min-h-11 min-w-0 px-0 text-left whitespace-normal text-purple-700"
           onClick={() => onSelectRelated(execution.execution_id)}

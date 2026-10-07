@@ -30,7 +30,7 @@ export function ScrollToTopButton({ visible, onClick }: Props) {
             <Button
               type="button"
               variant="primary"
-              size="icon"
+              size="icon-lg"
               leadingIcon={ArrowUp02Icon}
               aria-label="Scroll to top"
               className="shadow-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2"

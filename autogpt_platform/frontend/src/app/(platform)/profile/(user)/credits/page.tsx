@@ -64,7 +64,7 @@ function CoPilotUsageSection() {
         <StorageBar />
       </div>
       <Button
-        size="small"
+        size="md"
         className="w-full"
         onClick={() => router.push("/copilot")}
       >
@@ -206,7 +206,7 @@ export default function CreditsPage() {
               required
             />
 
-            <Button type="submit" size="small" className="w-full">
+            <Button type="submit" size="md" className="w-full">
               Top-up
             </Button>
           </form>
@@ -260,11 +260,11 @@ export default function CreditsPage() {
 
             {autoTopUpConfig?.amount ? (
               <>
-                <Button type="submit" size="small" className="w-full">
+                <Button type="submit" size="md" className="w-full">
                   Save Changes
                 </Button>
                 <Button
-                  size="small"
+                  size="md"
                   className="w-full"
                   variant="destructive"
                   onClick={() =>
@@ -277,7 +277,7 @@ export default function CreditsPage() {
                 </Button>
               </>
             ) : (
-              <Button type="submit" size="small" className="w-full">
+              <Button type="submit" size="md" className="w-full">
                 Enable Auto-Refill
               </Button>
             )}
@@ -297,7 +297,7 @@ export default function CreditsPage() {
             billing portal.
           </Text>
           <Button
-            size="small"
+            size="md"
             type="submit"
             className="w-full"
             onClick={() => openBillingPortal()}
@@ -356,7 +356,7 @@ export default function CreditsPage() {
           </Table>
           {transactionHistory.next_transaction_time && (
             <Button
-              size="small"
+              size="md"
               type="submit"
               className="w-full"
               onClick={() => fetchTransactionHistory()}
@@ -405,7 +405,7 @@ export default function CreditsPage() {
           )}
 
           <Button
-            size="small"
+            size="md"
             variant="destructive"
             onClick={() => openRefundModal()}
             className="w-full"

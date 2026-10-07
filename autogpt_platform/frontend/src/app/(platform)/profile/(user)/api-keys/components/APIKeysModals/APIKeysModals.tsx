@@ -30,7 +30,7 @@ export const APIKeysModals = () => {
         controlled={{ isOpen: isCreateOpen, set: setIsCreateOpen }}
       >
         <Dialog.Trigger>
-          <Button size="small">Create Key</Button>
+          <Button size="md">Create Key</Button>
         </Dialog.Trigger>
         <Dialog.Content>
           <Text variant="body" tone="muted">
@@ -91,16 +91,12 @@ export const APIKeysModals = () => {
           <Dialog.Footer>
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => setIsCreateOpen(false)}
             >
               Cancel
             </Button>
-            <Button
-              size="small"
-              onClick={handleCreateKey}
-              disabled={isCreating}
-            >
+            <Button size="md" onClick={handleCreateKey} disabled={isCreating}>
               Create
             </Button>
           </Dialog.Footer>
@@ -129,7 +125,7 @@ export const APIKeysModals = () => {
             />
           </div>
           <Dialog.Footer>
-            <Button size="small" onClick={() => setIsKeyDialogOpen(false)}>
+            <Button size="md" onClick={() => setIsKeyDialogOpen(false)}>
               Close
             </Button>
           </Dialog.Footer>

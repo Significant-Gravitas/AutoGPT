@@ -102,7 +102,7 @@ export function ThumbnailImages({
             <Button
               type="button"
               variant="outline"
-              size="small"
+              size="md"
               onClick={handleGenerateImage}
               disabled={isGenerating || isUploading || images.length >= 5}
               loading={isGenerating}
@@ -164,7 +164,7 @@ export function ThumbnailImages({
                   type="button"
                   onClick={handleAddImage}
                   variant="outline"
-                  size="small"
+                  size="md"
                   disabled={isUploading || isGenerating}
                   loading={isUploading}
                   leadingIcon={PlusSignIcon}
@@ -176,7 +176,7 @@ export function ThumbnailImages({
               <Button
                 type="button"
                 variant="outline"
-                size="small"
+                size="md"
                 onClick={handleGenerateImage}
                 disabled={isGenerating || isUploading || images.length >= 5}
                 loading={isGenerating}

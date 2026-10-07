@@ -117,7 +117,7 @@ function LongText({ text, shortened }: LongTextProps) {
       {!open && (
         <Button
           variant="link"
-          size="small"
+          size="md"
           className="h-auto min-w-0 px-0 py-0 text-sm"
           onClick={() => setOpen(true)}
         >

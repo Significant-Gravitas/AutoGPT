@@ -78,7 +78,7 @@ export function AutoRefillDialog({
             <Button
               type="button"
               variant="ghost"
-              size="small"
+              size="md"
               onClick={onDisable}
               disabled={isSaving}
             >
@@ -88,7 +88,7 @@ export function AutoRefillDialog({
             <Button
               type="button"
               variant="ghost"
-              size="small"
+              size="md"
               onClick={() => onOpenChange(false)}
             >
               Cancel
@@ -97,7 +97,7 @@ export function AutoRefillDialog({
           <Button
             type="button"
             variant="primary"
-            size="small"
+            size="md"
             disabled={!isValid || isSaving}
             loading={isSaving}
             onClick={onSave}

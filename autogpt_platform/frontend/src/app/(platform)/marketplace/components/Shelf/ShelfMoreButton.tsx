@@ -21,7 +21,7 @@ export function ShelfMoreButton({
 }: Props) {
   return (
     <Button
-      size="small"
+      size="md"
       aria-expanded={isExpanded}
       onClick={onToggle}
       unmask={false}

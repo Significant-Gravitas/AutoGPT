@@ -75,11 +75,7 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
           <Text variant="small" className="text-zinc-600">
             History couldn’t be refreshed. Showing previously loaded activity.
           </Text>
-          <Button
-            variant="ghost"
-            size="small"
-            onClick={() => void retryHistory()}
-          >
+          <Button variant="ghost" size="md" onClick={() => void retryHistory()}>
             Try again
           </Button>
         </div>

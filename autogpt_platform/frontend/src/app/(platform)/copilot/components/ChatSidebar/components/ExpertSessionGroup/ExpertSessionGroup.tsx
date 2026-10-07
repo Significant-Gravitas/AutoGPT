@@ -70,7 +70,7 @@ export function ExpertSessionGroup({
         {hiddenCount > 0 && (
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             data-testid={`expert-group-load-more-${groupKey}`}
             onClick={() =>
               setVisibleCount((count) => count + EXPERT_CHAT_PAGE_SIZE)

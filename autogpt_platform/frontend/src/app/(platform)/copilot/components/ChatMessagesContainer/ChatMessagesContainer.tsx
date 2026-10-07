@@ -264,7 +264,7 @@ export function LoadMoreSentinel({
         hasMore && (
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             onClick={() => captureAndLoad(false)}
           >
             Load older messages

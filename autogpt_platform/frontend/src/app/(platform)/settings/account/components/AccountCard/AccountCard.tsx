@@ -89,7 +89,7 @@ export function AccountCard({ user, index = 0 }: Props) {
               <Dialog.Trigger>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="md"
                   aria-label="Edit email"
                   className="h-7 min-w-0 px-1.5 py-0.5"
                 >
@@ -129,14 +129,14 @@ export function AccountCard({ user, index = 0 }: Props) {
                     <Button
                       type="button"
                       variant="ghost"
-                      size="small"
+                      size="md"
                       onClick={() => setEmailDialogOpen(false)}
                     >
                       Cancel
                     </Button>
                     <Button
                       type="submit"
-                      size="small"
+                      size="md"
                       disabled={disableEmailSubmit}
                       loading={isUpdatingEmail}
                     >
@@ -157,7 +157,7 @@ export function AccountCard({ user, index = 0 }: Props) {
           <Button
             as="NextLink"
             href="/reset-password"
-            size="small"
+            size="md"
             variant="secondary"
           >
             Reset password

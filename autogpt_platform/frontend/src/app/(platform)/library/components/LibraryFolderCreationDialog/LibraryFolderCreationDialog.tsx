@@ -108,7 +108,7 @@ export default function LibraryFolderCreationDialog() {
           data-testid="upload-agent-button"
           variant="secondary"
           className="h-fit w-fit"
-          size="small"
+          size="md"
         >
           <Icon icon={Folder01Icon} width={18} height={18} />
           <span className="create-folder">Create folder</span>

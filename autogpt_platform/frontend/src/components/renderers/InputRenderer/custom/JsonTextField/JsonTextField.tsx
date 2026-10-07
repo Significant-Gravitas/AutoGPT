@@ -113,7 +113,7 @@ export const JsonTextField = (props: FieldProps) => {
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-lg"
               onClick={handleModalOpen}
               type="button"
               className="p-1"

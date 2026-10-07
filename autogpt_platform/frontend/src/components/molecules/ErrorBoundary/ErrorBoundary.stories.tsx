@@ -108,7 +108,7 @@ function RecoverableDemo() {
     <div className="flex flex-col items-center gap-4 p-8">
       <Button
         variant="secondary"
-        size="small"
+        size="md"
         onClick={() => setShouldThrow(true)}
       >
         Break the widget

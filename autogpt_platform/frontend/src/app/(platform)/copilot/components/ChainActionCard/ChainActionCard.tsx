@@ -134,7 +134,7 @@ export function ChainActionCard({
       {(hasInputs || manualProceed) && !hasQuestions && (
         <Button
           variant="primary"
-          size="small"
+          size="md"
           className="w-fit"
           disabled={!isReady}
           onClick={onProceed}

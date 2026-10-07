@@ -59,7 +59,7 @@ export function ExpertSchedulesSection({
           {expertId && workflows ? (
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >

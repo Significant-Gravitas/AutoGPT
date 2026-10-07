@@ -58,7 +58,7 @@ export function SwitchCycleDialog({
           <Button
             type="button"
             variant="ghost"
-            size="small"
+            size="md"
             onClick={() => onOpenChange(false)}
             disabled={isSaving}
           >
@@ -67,7 +67,7 @@ export function SwitchCycleDialog({
           <Button
             type="button"
             variant="primary"
-            size="small"
+            size="md"
             onClick={onConfirm}
             data-fast-goal="subscription_cycle_confirm"
             data-fast-goal-surface="settings_billing"

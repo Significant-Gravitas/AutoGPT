@@ -26,7 +26,7 @@ export function RejectAllFooter({
             Reject all {count}? {AUTOPILOT_NAME} will be told none of them ran.
           </span>
           <Button
-            size="xs"
+            size="sm"
             variant="primary"
             className="rounded-full"
             disabled={busy}
@@ -35,7 +35,7 @@ export function RejectAllFooter({
             Reject all
           </Button>
           <Button
-            size="xs"
+            size="sm"
             variant="ghost"
             className="rounded-full"
             onClick={onCancel}
@@ -46,7 +46,7 @@ export function RejectAllFooter({
       ) : (
         <Button
           variant="link"
-          size="small"
+          size="md"
           className="h-auto min-w-0 px-0 py-0 text-sm"
           disabled={busy}
           onClick={onAsk}

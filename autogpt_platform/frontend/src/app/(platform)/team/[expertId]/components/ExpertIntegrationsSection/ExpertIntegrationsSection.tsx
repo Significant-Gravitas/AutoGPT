@@ -71,7 +71,7 @@ export function ExpertIntegrationsSection({
               <span>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="md"
                   leadingIcon={Share01Icon}
                   disabled={
                     grantable.length === 0 || isError || isGrantableError
@@ -98,7 +98,7 @@ export function ExpertIntegrationsSection({
           </Tooltip>
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >

@@ -68,7 +68,7 @@ export function TransactionRow({
           <Button
             id={`transaction-details-${transaction.id}`}
             variant="ghost"
-            size="small"
+            size="md"
             unmask={false}
             className="min-h-11 w-full min-w-0 px-1 text-zinc-600"
             onClick={() => onToggle(transaction.id)}

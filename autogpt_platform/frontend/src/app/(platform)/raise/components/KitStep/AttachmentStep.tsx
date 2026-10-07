@@ -73,7 +73,7 @@ export function AttachmentStep({
         <Button
           type="button"
           variant="primary"
-          size="small"
+          size="md"
           onClick={picker.submit}
           disabled={isSubmitting}
           loading={isSubmitting}
@@ -84,7 +84,7 @@ export function AttachmentStep({
         <Button
           type="button"
           variant="ghost"
-          size="small"
+          size="md"
           onClick={picker.skip}
           disabled={isSubmitting}
           className="h-10.5 rounded-xl py-3"

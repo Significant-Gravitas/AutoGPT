@@ -217,13 +217,13 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
       <div className="flex items-center justify-end gap-2">
         {selectedProvider ? (
           <>
-            <Button variant="outline" size="xs" onClick={handleBackToList}>
+            <Button variant="outline" size="sm" onClick={handleBackToList}>
               Back
             </Button>
             {showContinue && (
               <Button
                 variant="primary"
-                size="xs"
+                size="sm"
                 disabled={isContinueDisabled}
                 loading={isConnecting}
                 onClick={handleContinue}
@@ -234,10 +234,10 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
           </>
         ) : (
           <>
-            <Button variant="outline" size="xs" onClick={onBack}>
+            <Button variant="outline" size="sm" onClick={onBack}>
               Back
             </Button>
-            <Button variant="primary" size="xs" onClick={onNext}>
+            <Button variant="primary" size="sm" onClick={onNext}>
               Next
             </Button>
           </>

@@ -55,7 +55,7 @@ export function AgentSettingsModal({
         <Dialog.Trigger>
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             className="m-0 min-w-0 rounded-full p-0 px-1"
             aria-label="Agent Settings"
           >

@@ -160,13 +160,13 @@ export function MobileSubmissionsList({
             {debouncedSearch ? (
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 onClick={() => onSearchChange("")}
               >
                 Clear search
               </Button>
             ) : (
-              <Button variant="secondary" size="small" onClick={onResetFilters}>
+              <Button variant="secondary" size="md" onClick={onResetFilters}>
                 Clear filters
               </Button>
             )}

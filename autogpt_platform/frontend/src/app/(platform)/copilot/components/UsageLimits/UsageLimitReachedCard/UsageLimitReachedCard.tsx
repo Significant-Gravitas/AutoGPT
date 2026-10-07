@@ -58,7 +58,7 @@ export function UsageLimitReachedCard() {
           as="NextLink"
           href="/settings/billing"
           variant="primary"
-          size="small"
+          size="md"
           className="mt-1 w-full"
         >
           Go to billing

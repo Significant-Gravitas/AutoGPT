@@ -69,7 +69,7 @@ export function SearchAndFilterAdminMarketplace({
         />
         <Button
           variant="outline"
-          size="small"
+          size="md"
           onClick={handleSearch}
           aria-label="Search"
         >

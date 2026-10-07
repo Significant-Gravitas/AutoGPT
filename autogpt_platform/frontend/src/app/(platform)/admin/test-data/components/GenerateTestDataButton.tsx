@@ -34,7 +34,7 @@ export function GenerateTestDataButton() {
 
   return (
     <>
-      <Button size="large" variant="primary" onClick={openDialog}>
+      <Button size="lg" variant="primary" onClick={openDialog}>
         Generate Test Data
       </Button>
 

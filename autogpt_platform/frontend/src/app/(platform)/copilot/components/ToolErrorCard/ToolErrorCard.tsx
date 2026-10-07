@@ -60,7 +60,7 @@ export function ToolErrorCard({
           <Button
             key={i}
             variant={action.variant ?? "outline"}
-            size="small"
+            size="md"
             onClick={action.onClick}
           >
             {action.label}

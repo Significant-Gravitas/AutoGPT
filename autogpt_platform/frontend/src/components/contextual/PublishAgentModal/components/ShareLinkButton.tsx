@@ -32,7 +32,7 @@ export function ShareLinkButton({ url }: Props) {
   return (
     <Button
       variant="ghost"
-      size="small"
+      size="md"
       onClick={handleCopy}
       leftIcon={
         copied ? (

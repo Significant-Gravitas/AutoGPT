@@ -42,7 +42,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
             <TooltipTrigger asChild>
               <Button
                 variant="primary"
-                size="small"
+                size="md"
                 onClick={() => onGuidedPrompt(NEW_SKILL_PROMPT)}
                 data-testid="skill-new-button"
               >

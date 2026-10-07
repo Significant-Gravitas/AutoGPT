@@ -67,7 +67,7 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         as="NextLink"
         href={href}
         variant="primary"
-        size="small"
+        size="md"
         className="mt-5 h-11 w-full rounded-lg border-purple-600 bg-purple-600 text-white hover:border-purple-700 hover:bg-purple-700"
         data-fast-goal="subscription_upgrade_intent"
         data-fast-goal-surface="model_picker"

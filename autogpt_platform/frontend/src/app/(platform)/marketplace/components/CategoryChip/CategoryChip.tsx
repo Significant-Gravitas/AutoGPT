@@ -65,7 +65,7 @@ export function CategoryChip({
     // the variant's hover wash rather than being replaced by it.
     <Button
       variant="outline"
-      size={size === "default" ? "small" : "xs"}
+      size={size === "default" ? "md" : "sm"}
       title={title}
       aria-pressed={isSelected}
       onClick={onClick}

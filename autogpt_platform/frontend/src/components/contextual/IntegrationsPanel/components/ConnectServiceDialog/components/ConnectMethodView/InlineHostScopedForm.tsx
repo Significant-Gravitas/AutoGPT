@@ -165,7 +165,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
             <Button
               type="button"
               variant="icon"
-              size="icon"
+              size="icon-lg"
               aria-label={`Remove header ${index + 1}`}
               disabled={headerPairs.length === 1}
               onClick={() => removeHeaderPair(index)}
@@ -178,7 +178,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
         <Button
           type="button"
           variant="outline"
-          size="small"
+          size="md"
           onClick={addHeaderPair}
         >
           <Icon icon={PlusSignIcon} size={16} /> Add header
@@ -188,7 +188,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
       <Button
         type="submit"
         variant="primary"
-        size="small"
+        size="md"
         className="w-full"
         disabled={!canSubmit}
         loading={isPending}

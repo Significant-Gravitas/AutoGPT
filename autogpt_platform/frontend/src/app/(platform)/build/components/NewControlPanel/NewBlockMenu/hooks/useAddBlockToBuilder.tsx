@@ -59,7 +59,7 @@ export function useAddBlockToBuilder() {
       const notification = toast({
         title: "Block added outside the current view",
         action: (
-          <Button variant="secondary" size="small" onClick={handleShowBlock}>
+          <Button variant="secondary" size="md" onClick={handleShowBlock}>
             Show block
           </Button>
         ),

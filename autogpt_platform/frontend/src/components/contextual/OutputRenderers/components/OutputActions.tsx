@@ -73,7 +73,7 @@ export function OutputActions({
     <div className="flex items-center gap-3">
       <Button
         variant={isPrimary ? "primary" : "ghost"}
-        size={isPrimary ? "small" : "icon"}
+        size={isPrimary ? "md" : "icon-lg"}
         onClick={handleCopyAll}
         aria-label="Copy all text outputs"
         className={cn(isPrimary ? "min-w-0" : "")}
@@ -91,7 +91,7 @@ export function OutputActions({
 
       <Button
         variant={isPrimary ? "primary" : "ghost"}
-        size={isPrimary ? "small" : "icon"}
+        size={isPrimary ? "md" : "icon-lg"}
         onClick={handleDownloadAll}
         aria-label="Download outputs"
         className={cn(isPrimary ? "min-w-0" : "")}

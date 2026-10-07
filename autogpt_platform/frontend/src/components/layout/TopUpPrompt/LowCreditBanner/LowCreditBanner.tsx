@@ -22,12 +22,12 @@ export function LowCreditBanner({ className }: Props) {
           You&apos;re out of automation credits. Top up to keep your agents
           running.
         </AlertDescription>
-        <Button variant="primary" size="small" onClick={openTopUp}>
+        <Button variant="primary" size="md" onClick={openTopUp}>
           Top up
         </Button>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           onClick={dismiss}
           aria-label="Dismiss"
           title="Dismiss"

@@ -52,7 +52,7 @@ function Body() {
 
 export const Right: Story = {
   args: {
-    trigger: <Button size="small">Open sheet</Button>,
+    trigger: <Button size="md">Open sheet</Button>,
     children: <Body />,
   },
 };
@@ -60,7 +60,7 @@ export const Right: Story = {
 export const Left: Story = {
   args: {
     side: "left",
-    trigger: <Button size="small">Open from the left</Button>,
+    trigger: <Button size="md">Open from the left</Button>,
     children: <Body />,
   },
 };
@@ -68,7 +68,7 @@ export const Left: Story = {
 export const Top: Story = {
   args: {
     side: "top",
-    trigger: <Button size="small">Open from the top</Button>,
+    trigger: <Button size="md">Open from the top</Button>,
     children: <Body />,
   },
 };
@@ -76,7 +76,7 @@ export const Top: Story = {
 export const Bottom: Story = {
   args: {
     side: "bottom",
-    trigger: <Button size="small">Open from the bottom</Button>,
+    trigger: <Button size="md">Open from the bottom</Button>,
     children: <Body />,
   },
 };
@@ -84,14 +84,14 @@ export const Bottom: Story = {
 export const OpenWithFooter: Story = {
   args: {
     defaultOpen: true,
-    trigger: <Button size="small">Open sheet</Button>,
+    trigger: <Button size="md">Open sheet</Button>,
     children: <Body />,
     footer: (
       <>
-        <Button variant="secondary" size="small">
+        <Button variant="secondary" size="md">
           Cancel
         </Button>
-        <Button size="small">Save</Button>
+        <Button size="md">Save</Button>
       </>
     ),
   },
@@ -100,9 +100,9 @@ export const OpenWithFooter: Story = {
 export const WithHeaderActions: Story = {
   args: {
     defaultOpen: true,
-    trigger: <Button size="small">Open sheet</Button>,
+    trigger: <Button size="md">Open sheet</Button>,
     actions: (
-      <Button variant="secondary" size="small">
+      <Button variant="secondary" size="md">
         Export CSV
       </Button>
     ),
@@ -115,7 +115,7 @@ export const HiddenTitle: Story = {
     defaultOpen: true,
     hideTitle: true,
     description: undefined,
-    trigger: <Button size="small">Open sheet</Button>,
+    trigger: <Button size="md">Open sheet</Button>,
     children: <Body />,
   },
 };
@@ -125,7 +125,7 @@ export const Controlled: Story = {
     const [open, setOpen] = useState(false);
     return (
       <>
-        <Button size="small" onClick={() => setOpen(true)}>
+        <Button size="md" onClick={() => setOpen(true)}>
           Open controlled sheet
         </Button>
         <Sheet {...args} open={open} onOpenChange={setOpen}>

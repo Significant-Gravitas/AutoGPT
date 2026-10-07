@@ -62,11 +62,7 @@ export function ExecutionStartedCard({ output }: Props) {
         <ContentCardSubtitle>{output.execution_id}</ContentCardSubtitle>
         <ContentCardDescription>{output.message}</ContentCardDescription>
         {!hideViewExecution && (
-          <Button
-            size="small"
-            className="mt-3"
-            onClick={() => router.push(href)}
-          >
+          <Button size="md" className="mt-3" onClick={() => router.push(href)}>
             View Execution
           </Button>
         )}

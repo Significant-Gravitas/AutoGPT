@@ -94,7 +94,7 @@ export function Table({
                   <TableCell className="p-2">
                     <Button
                       variant="icon"
-                      size="icon"
+                      size="icon-lg"
                       onClick={() => handleDeleteRow(rowIndex)}
                       aria-label="Delete row"
                       className="text-zinc-400 transition-colors hover:text-red-500"
@@ -113,7 +113,7 @@ export function Table({
                 >
                   <Button
                     variant="outline"
-                    size="small"
+                    size="md"
                     onClick={handleAddRow}
                     leftIcon={<Plus className="h-4 w-4" />}
                     className="w-fit"

@@ -52,7 +52,7 @@ export function LibraryEmptyState() {
             as="NextLink"
             href="/build"
             variant="primary"
-            size="large"
+            size="lg"
             leftIcon={<Icon icon={PlusSignIcon} className="h-4 w-4" />}
           >
             Build an agent
@@ -63,7 +63,7 @@ export function LibraryEmptyState() {
             as="NextLink"
             href="/marketplace"
             variant="secondary"
-            size="large"
+            size="lg"
             leftIcon={<Icon icon={Store01Icon} className="h-4 w-4" />}
           >
             Browse marketplace

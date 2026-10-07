@@ -31,10 +31,10 @@ export default function Error({
           again later or contact support if the issue persists.
         </Text>
         <div className="mt-6 flex flex-row justify-center gap-4">
-          <Button onClick={reset} variant="outline" size="small">
+          <Button onClick={reset} variant="outline" size="md">
             Retry
           </Button>
-          <Button as="NextLink" href="/" size="small">
+          <Button as="NextLink" href="/" size="md">
             Go to Homepage
           </Button>
         </div>

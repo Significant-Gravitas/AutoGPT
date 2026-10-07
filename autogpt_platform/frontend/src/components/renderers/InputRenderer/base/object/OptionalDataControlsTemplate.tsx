@@ -19,7 +19,7 @@ export default function OptionalDataControlsTemplate(
         onClick={onAddClick}
         title={label}
         icon={<Icon icon={AddCircleIcon} size={24} />}
-        size="small"
+        size="md"
       />
     );
   } else if (onRemoveClick) {
@@ -30,7 +30,7 @@ export default function OptionalDataControlsTemplate(
         className="rjsf-remove-optional-data"
         onClick={onRemoveClick}
         title={label}
-        size="small"
+        size="md"
       />
     );
   }

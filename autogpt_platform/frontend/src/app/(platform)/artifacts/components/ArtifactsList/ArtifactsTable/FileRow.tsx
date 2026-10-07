@@ -146,7 +146,7 @@ export function FileRow({
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           withTooltip={false}
           aria-label={`Rename ${file.name}`}
           className="shrink-0 rounded-full border-0 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:opacity-100"

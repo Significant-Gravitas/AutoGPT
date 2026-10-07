@@ -111,7 +111,7 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
         <div className="flex justify-center">
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => setShowAll(!showAll)}
           >
             {showAll ? "Collapse" : `Show all (${billable.length})`}

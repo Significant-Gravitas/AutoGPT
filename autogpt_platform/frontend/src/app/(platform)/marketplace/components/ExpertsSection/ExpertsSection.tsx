@@ -35,12 +35,7 @@ export function ExpertsSection({ category }: Props) {
     if (!isLoggedIn) return null;
     return (
       <section id="experts" className="mb-20 scroll-mt-24">
-        <Button
-          as="NextLink"
-          href={RAISE_HREF}
-          variant="secondary"
-          size="small"
-        >
+        <Button as="NextLink" href={RAISE_HREF} variant="secondary" size="md">
           {RAISE_LABEL}
         </Button>
       </section>
@@ -55,15 +50,10 @@ export function ExpertsSection({ category }: Props) {
         actions={
           isLoggedIn ? (
             <div className="flex items-center gap-2">
-              <Button
-                as="NextLink"
-                href="/team"
-                variant="secondary"
-                size="small"
-              >
+              <Button as="NextLink" href="/team" variant="secondary" size="md">
                 View your team
               </Button>
-              <Button as="NextLink" href={RAISE_HREF} size="small">
+              <Button as="NextLink" href={RAISE_HREF} size="md">
                 {RAISE_LABEL}
               </Button>
             </div>

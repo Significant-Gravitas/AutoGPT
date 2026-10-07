@@ -34,7 +34,7 @@ export function PublishSkillButton({ skillName }: Props) {
     <>
       <Button
         variant="icon"
-        size="icon"
+        size="icon-lg"
         onClick={open}
         data-testid="skill-publish-button"
         aria-label="Publish skill to marketplace"

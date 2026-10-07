@@ -58,7 +58,7 @@ export function FilterSheet({
               <Button
                 className="p-0"
                 variant="ghost"
-                size="icon"
+                size="icon-lg"
                 onClick={handleCloseButton}
               >
                 <Icon icon={Cancel01Icon} size={20} />
@@ -132,7 +132,7 @@ export function FilterSheet({
             {/* Footer section */}
             <div className="fixed bottom-0 flex w-full justify-between gap-3 border-t border-zinc-200 bg-white px-5 py-3">
               <Button
-                size="small"
+                size="md"
                 variant="outline"
                 onClick={handleClearFilters}
                 className="rounded-lg px-2 py-1.5"
@@ -141,7 +141,7 @@ export function FilterSheet({
               </Button>
 
               <Button
-                size="small"
+                size="md"
                 onClick={handleApplyFilters}
                 disabled={!hasLocalActiveFilters()}
                 className="rounded-lg px-2 py-1.5"

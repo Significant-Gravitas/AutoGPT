@@ -137,7 +137,7 @@ export function LibraryAgentCard({
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               leadingIcon={EyeIcon}
               onClick={() => router.push(`/library/agents/${id}`)}
               data-testid="library-agent-card-see-runs-link"
@@ -153,7 +153,7 @@ export function LibraryAgentCard({
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               leadingIcon={Chatting01Icon}
               onClick={() => {
                 const prompt = encodeURIComponent(

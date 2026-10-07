@@ -93,7 +93,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
             <SheetTrigger asChild>
               <Button
                 variant="outline"
-                size="icon"
+                size="icon-lg"
                 data-id="agent-outputs-button"
                 disabled={!flowID || !hasOutputs()}
               >

@@ -42,7 +42,7 @@ export function InsufficientState({
         {canRecord && (
           <Button
             variant={recordIsPrimary ? "primary" : "secondary"}
-            size="small"
+            size="md"
             onClick={onRecordAgain}
           >
             Record again
@@ -50,12 +50,12 @@ export function InsufficientState({
         )}
         <Button
           variant={recordIsPrimary ? "secondary" : "primary"}
-          size="small"
+          size="md"
           onClick={onTypeInstead}
         >
           {mode === "typed" ? "Add more detail" : "Type instead"}
         </Button>
-        <Button variant="ghost" size="small" onClick={onSkip}>
+        <Button variant="ghost" size="md" onClick={onSkip}>
           Continue without it
         </Button>
       </div>

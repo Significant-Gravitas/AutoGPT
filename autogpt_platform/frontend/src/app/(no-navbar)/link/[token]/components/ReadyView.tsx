@@ -89,7 +89,7 @@ export function ReadyView({
             </Text>
             <Button
               variant="ghost"
-              size="small"
+              size="md"
               onClick={onSwitchAccount}
               className="text-xs text-muted-foreground underline underline-offset-2"
             >

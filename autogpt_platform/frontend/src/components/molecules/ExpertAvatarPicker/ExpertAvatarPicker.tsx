@@ -52,7 +52,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
       <div className="flex w-full flex-wrap justify-end gap-2">
         <Button
           variant="ghost"
-          size="small"
+          size="md"
           onClick={picker.openFilePicker}
           disabled={picker.isUploading}
         >
@@ -60,7 +60,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         </Button>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           leadingIcon={RefreshIcon}
           onClick={picker.generate}
           loading={picker.isGenerating}
@@ -69,7 +69,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
           Regenerate
         </Button>
         <Button
-          size="small"
+          size="md"
           onClick={picker.confirm}
           disabled={picker.isUploading}
         >

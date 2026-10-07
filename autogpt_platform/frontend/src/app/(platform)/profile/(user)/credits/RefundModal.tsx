@@ -122,10 +122,10 @@ export function RefundModal({
           </div>
         </div>
         <Dialog.Footer>
-          <Button variant="secondary" size="small" onClick={handleClose}>
+          <Button variant="secondary" size="md" onClick={handleClose}>
             Cancel
           </Button>
-          <Button size="small" onClick={handleRefundRequest}>
+          <Button size="md" onClick={handleRefundRequest}>
             Request Refund
           </Button>
         </Dialog.Footer>

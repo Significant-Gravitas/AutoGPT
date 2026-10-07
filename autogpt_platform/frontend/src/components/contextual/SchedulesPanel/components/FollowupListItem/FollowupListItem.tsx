@@ -98,7 +98,7 @@ export function FollowupListItem({ followup }: Props) {
       <div className="flex shrink-0 items-center gap-2">
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={openView}
           data-testid="followup-view-button"
           aria-label="View follow-up"
@@ -108,7 +108,7 @@ export function FollowupListItem({ followup }: Props) {
         </Button>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={openDelete}
           data-testid="followup-delete-button"
           aria-label="Delete follow-up"

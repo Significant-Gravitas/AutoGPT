@@ -58,7 +58,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                   />
                   <Button
                     variant="secondary"
-                    size="small"
+                    size="md"
                     onClick={() => handleCopy("input", latestInputData)}
                     className={cn(
                       "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
@@ -120,7 +120,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                             />
                             <Button
                               variant="secondary"
-                              size="small"
+                              size="md"
                               onClick={() => handleCopy(key, value)}
                               className={cn(
                                 "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",

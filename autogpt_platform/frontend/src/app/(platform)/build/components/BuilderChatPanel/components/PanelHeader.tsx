@@ -31,7 +31,7 @@ export function PanelHeader({
         {canRevert && (
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             onClick={onRevert}
             leftIcon={<Icon icon={RefreshIcon} size={14} />}
             aria-label={
@@ -46,7 +46,7 @@ export function PanelHeader({
         )}
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           onClick={onClose}
           aria-label="Close"
         >

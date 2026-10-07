@@ -185,7 +185,7 @@ export function WorkspaceFileList({
             <Button
               type="button"
               variant="ghost"
-              size="small"
+              size="md"
               onClick={onLoadMore}
               loading={isLoadingMore}
             >

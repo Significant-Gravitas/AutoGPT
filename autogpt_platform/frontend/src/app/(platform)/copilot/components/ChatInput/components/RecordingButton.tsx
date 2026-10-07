@@ -31,7 +31,7 @@ export function RecordingButton({
     <Button
       type="button"
       variant="icon"
-      size="icon"
+      size="icon-lg"
       aria-label={isRecording ? "Stop recording" : "Start recording"}
       disabled={disabled}
       onClick={onClick}

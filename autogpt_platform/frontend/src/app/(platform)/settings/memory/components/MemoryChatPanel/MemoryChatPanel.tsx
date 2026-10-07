@@ -62,7 +62,7 @@ export function MemoryChatPanel({
             </div>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-lg"
               onClick={onClose}
               aria-label="Close memory chat"
             >
@@ -79,7 +79,7 @@ export function MemoryChatPanel({
                 <Text variant="body" tone="muted">
                   Something went wrong. Retry to try again.
                 </Text>
-                <Button variant="secondary" size="small" onClick={onRetry}>
+                <Button variant="secondary" size="md" onClick={onRetry}>
                   Retry
                 </Button>
               </div>

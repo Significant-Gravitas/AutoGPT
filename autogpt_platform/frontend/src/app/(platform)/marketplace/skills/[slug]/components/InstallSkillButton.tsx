@@ -36,7 +36,7 @@ export function InstallSkillButton({
     return (
       <Button
         variant="primary"
-        size="small"
+        size="md"
         onClick={onAddToLibrary}
         loading={isAdding}
         className="w-full sm:w-auto"
@@ -51,7 +51,7 @@ export function InstallSkillButton({
     <div className="inline-flex w-full sm:w-auto">
       <Button
         variant="primary"
-        size="small"
+        size="md"
         onClick={onAddToLibrary}
         loading={isAdding}
         className="rounded-r-none border-r-0 sm:w-auto"
@@ -66,7 +66,7 @@ export function InstallSkillButton({
       >
         <Button
           variant="primary"
-          size="small"
+          size="md"
           aria-label={MENU_LABEL}
           disabled={isAdding}
           className="min-w-0 rounded-l-none border-l border-l-white/25 px-2.5"

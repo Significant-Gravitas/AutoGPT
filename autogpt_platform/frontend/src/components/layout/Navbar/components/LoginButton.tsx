@@ -18,7 +18,7 @@ export function LoginButton() {
   return (
     <Button
       onClick={handleLogin}
-      size="small"
+      size="md"
       leadingIcon={Login03Icon}
       variant="secondary"
     >

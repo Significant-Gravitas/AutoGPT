@@ -256,7 +256,7 @@ export function ExpertChangeCard({
           {showDetails && (
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               aria-expanded={panelAvailable ? undefined : showCharter}
               onClick={handleShowMore}
               leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
@@ -306,7 +306,7 @@ export function ExpertChangeCard({
             {decision && onUndo && (
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 onClick={onUndo}
                 leftIcon={<Icon icon={UndoIcon} size={14} />}
                 className="h-8 min-w-0 px-3"
@@ -318,7 +318,7 @@ export function ExpertChangeCard({
               <>
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="md"
                   onClick={() => onDecide("declined")}
                   className="h-8 min-w-0 px-3"
                 >
@@ -326,7 +326,7 @@ export function ExpertChangeCard({
                 </Button>
                 <Button
                   variant="primary"
-                  size="small"
+                  size="md"
                   onClick={() => onDecide("approved")}
                   className="h-8 min-w-0 px-3"
                 >
@@ -504,7 +504,7 @@ export function ExpertChangeGroup({
       <Button
         type="button"
         variant="toggle"
-        size="icon-xs"
+        size="icon-sm"
         aria-label="Previous expert"
         withTooltip={false}
         disabled={current === 0}
@@ -539,7 +539,7 @@ export function ExpertChangeGroup({
       <Button
         type="button"
         variant="toggle"
-        size="icon-xs"
+        size="icon-sm"
         aria-label="Next expert"
         withTooltip={false}
         disabled={isLast}
@@ -565,7 +565,7 @@ export function ExpertChangeGroup({
   ) : canSend ? (
     <Button
       variant="primary"
-      size="icon"
+      size="icon-lg"
       aria-label="Send decisions"
       onClick={send}
       className="size-8 p-0"

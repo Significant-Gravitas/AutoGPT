@@ -103,7 +103,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
                   className="flex-1 rounded-sm border border-zinc-200 bg-zinc-50 px-2 py-1.5 font-mono text-xs"
                 />
                 <Button
-                  size="small"
+                  size="md"
                   variant="secondary"
                   onClick={state.copyShareUrl}
                   leftIcon={

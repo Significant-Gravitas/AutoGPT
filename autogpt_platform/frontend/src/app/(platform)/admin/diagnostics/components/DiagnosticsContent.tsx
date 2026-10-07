@@ -67,7 +67,7 @@ export function DiagnosticsContent() {
           onClick={refresh}
           disabled={isLoading}
           variant="outline"
-          size="small"
+          size="md"
         >
           <Icon
             icon={Refresh01Icon}

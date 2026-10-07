@@ -58,7 +58,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents, total }: Props) {
             workflows is the whole invitation. */}
         <PublishAgentModal
           trigger={
-            <Button variant="secondary" size="small">
+            <Button variant="secondary" size="md">
               Publish your workflows
             </Button>
           }

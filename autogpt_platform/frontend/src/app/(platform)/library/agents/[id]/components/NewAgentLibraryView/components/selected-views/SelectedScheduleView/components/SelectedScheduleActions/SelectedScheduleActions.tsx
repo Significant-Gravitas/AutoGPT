@@ -48,7 +48,7 @@ export function SelectedScheduleActions({
       <SelectedActionsWrap>
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Run now"
           onClick={handleRunNow}
           disabled={isRunning || !schedule}
@@ -62,7 +62,7 @@ export function SelectedScheduleActions({
         {openInBuilderHref && (
           <Button
             variant="icon"
-            size="icon"
+            size="icon-lg"
             as="NextLink"
             href={openInBuilderHref}
             target="_blank"
@@ -73,7 +73,7 @@ export function SelectedScheduleActions({
         )}
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Delete schedule"
           onClick={() => setShowDeleteDialog(true)}
           disabled={isDeleting}

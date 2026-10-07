@@ -133,7 +133,7 @@ export function HireStep() {
 
         <Button
           type="button"
-          size="small"
+          size="md"
           onClick={step.handleContinue}
           disabled={isHiring}
           className="h-10 w-56 rounded-xl"

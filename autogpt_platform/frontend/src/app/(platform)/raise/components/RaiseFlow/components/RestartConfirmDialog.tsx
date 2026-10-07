@@ -27,12 +27,12 @@ export function RestartConfirmDialog({ open, onOpenChange, onConfirm }: Props) {
           <div className="flex justify-end gap-2 pt-2">
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => onOpenChange(false)}
             >
               Keep going
             </Button>
-            <Button variant="destructive" size="small" onClick={onConfirm}>
+            <Button variant="destructive" size="md" onClick={onConfirm}>
               Start over
             </Button>
           </div>

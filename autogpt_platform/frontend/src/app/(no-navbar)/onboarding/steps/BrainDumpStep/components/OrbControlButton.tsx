@@ -24,7 +24,7 @@ export function OrbControlButton({ screen, onClick }: Props) {
   return (
     <Button
       variant="icon"
-      size="icon"
+      size="icon-lg"
       onClick={onClick}
       aria-label={ariaLabel}
       className="mt-4 border border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"

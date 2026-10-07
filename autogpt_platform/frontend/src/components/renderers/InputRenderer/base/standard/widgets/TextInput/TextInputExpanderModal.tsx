@@ -92,7 +92,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
           <div className="flex items-center justify-end gap-1">
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={copyValue}
               aria-label={
                 isCopied ? "Copied to clipboard" : "Copy to clipboard"
@@ -112,10 +112,10 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
           </div>
 
           <Dialog.Footer>
-            <Button variant="secondary" size="small" onClick={onClose}>
+            <Button variant="secondary" size="md" onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="primary" size="small" onClick={handleSave}>
+            <Button variant="primary" size="md" onClick={handleSave}>
               Save
             </Button>
           </Dialog.Footer>

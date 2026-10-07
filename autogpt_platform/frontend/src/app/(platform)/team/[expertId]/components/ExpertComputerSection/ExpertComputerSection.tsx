@@ -74,7 +74,7 @@ export function ExpertComputerSection({
         </div>
         <Button
           variant="primary"
-          size="small"
+          size="md"
           className={ACTION_BUTTON_CLASS}
           loading={isOpening}
           disabled={!computer.e2b_active}

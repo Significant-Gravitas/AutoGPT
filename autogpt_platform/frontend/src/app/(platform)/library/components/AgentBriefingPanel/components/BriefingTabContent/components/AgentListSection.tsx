@@ -62,11 +62,7 @@ export function AgentListSection({ activeTab, agents }: Props) {
       </div>
       {hasMore ? (
         <div className="mt-3 flex justify-center">
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={handleToggleShowAll}
-          >
+          <Button variant="secondary" size="md" onClick={handleToggleShowAll}>
             {showAll ? "Collapse" : `Show all (${filtered.length})`}
           </Button>
         </div>

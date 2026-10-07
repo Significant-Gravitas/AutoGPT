@@ -85,7 +85,7 @@ export function NotificationBanner() {
         <Button
           as="NextLink"
           variant="primary"
-          size="small"
+          size="md"
           href="/settings/account"
           onClick={handleOpenSettings}
         >
@@ -93,7 +93,7 @@ export function NotificationBanner() {
         </Button>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           onClick={handleDismiss}
           aria-label="Dismiss"
           title="Dismiss"

@@ -59,7 +59,7 @@ export const ViewMoreData = ({
       <Dialog.Trigger>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           className="h-fit w-fit min-w-0 text-xs"
         >
           View More
@@ -90,7 +90,7 @@ export const ViewMoreData = ({
                     </Text>
                     <Button
                       variant="ghost"
-                      size="small"
+                      size="md"
                       onClick={() => copyExecutionId(result.node_exec_id)}
                       className="h-6 w-6 min-w-0 p-0"
                     >
@@ -145,7 +145,7 @@ export const ViewMoreData = ({
                                   />
                                   <Button
                                     variant="secondary"
-                                    size="small"
+                                    size="md"
                                     onClick={() =>
                                       handleCopy(
                                         `${result.node_exec_id}-${key}`,

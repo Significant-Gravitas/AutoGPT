@@ -508,7 +508,7 @@ export function MCPToolDialog({
           {step === "tool" && (
             <Button
               variant="outline"
-              size="small"
+              size="md"
               onClick={() => {
                 setStep("url");
                 setSelectedTool(null);
@@ -517,12 +517,12 @@ export function MCPToolDialog({
               Back
             </Button>
           )}
-          <Button variant="outline" size="small" onClick={handleClose}>
+          <Button variant="outline" size="md" onClick={handleClose}>
             Cancel
           </Button>
           {step === "url" && (
             <Button
-              size="small"
+              size="md"
               loading={loading || oauthLoading}
               onClick={
                 authRequired && !showManualToken
@@ -548,11 +548,7 @@ export function MCPToolDialog({
             </Button>
           )}
           {step === "tool" && (
-            <Button
-              size="small"
-              onClick={handleConfirm}
-              disabled={!selectedTool}
-            >
+            <Button size="md" onClick={handleConfirm} disabled={!selectedTool}>
               Add Block
             </Button>
           )}
@@ -712,7 +708,7 @@ function MCPToolCard({
       {(paramNames.length > 0 || cleanDescription.length > 120) && (
         <Button
           variant="ghost"
-          size="xs"
+          size="sm"
           onClick={(e) => {
             e.stopPropagation();
             setExpanded((prev) => !prev);

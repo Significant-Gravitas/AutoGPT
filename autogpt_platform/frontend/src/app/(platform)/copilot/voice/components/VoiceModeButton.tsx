@@ -25,7 +25,7 @@ export function VoiceModeButton({
     <Button
       type="button"
       variant="icon"
-      size="icon"
+      size="icon-lg"
       aria-label={
         speaking ? "Stop" : isActive ? "Leave voice mode" : "Start voice mode"
       }

@@ -40,12 +40,7 @@ export function YearlyPicker({
         Months
       </Text>
       <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="small"
-          onClick={toggleAll}
-        >
+        <Button type="button" variant="outline" size="md" onClick={toggleAll}>
           {values.length === months.length ? "Deselect All" : "Select All"}
         </Button>
       </div>

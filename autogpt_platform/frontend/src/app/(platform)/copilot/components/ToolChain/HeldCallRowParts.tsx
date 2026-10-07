@@ -72,7 +72,7 @@ export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
       {held.state === "waiting" && reviewId && (
         <Button
           variant="link"
-          size="small"
+          size="md"
           className="h-auto min-w-0 px-0 py-0 text-sm"
           onClick={goToApproval}
         >

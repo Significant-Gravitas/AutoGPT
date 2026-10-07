@@ -41,7 +41,7 @@ export function TourHero() {
           <Button
             as="NextLink"
             href="/tour/chat"
-            size="large"
+            size="lg"
             rightIcon={
               <Icon
                 icon={ArrowRight02Icon}
@@ -58,7 +58,7 @@ export function TourHero() {
             target="_blank"
             rel="noopener noreferrer"
             variant="ghost"
-            size="large"
+            size="lg"
             className="w-full sm:w-auto"
           >
             See pricing

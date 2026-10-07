@@ -18,7 +18,7 @@ export default function AddButton({
       <Button
         {...props}
         id={id ? getFieldDomId(id, registry.formContext) : undefined}
-        size="small"
+        size="md"
         className={cn("w-full gap-4", className)}
         variant="secondary"
         type="button"

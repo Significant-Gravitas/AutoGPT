@@ -298,7 +298,7 @@ export function ConnectorRow({ row }: Props) {
       ) : (
         <Button
           variant="primary"
-          size="small"
+          size="md"
           className="shrink-0"
           disabled={
             isGranting ||

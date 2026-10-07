@@ -56,7 +56,7 @@ export function SortColumnFilter({
         {isActive ? (
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={clear}
             className="self-end"
           >

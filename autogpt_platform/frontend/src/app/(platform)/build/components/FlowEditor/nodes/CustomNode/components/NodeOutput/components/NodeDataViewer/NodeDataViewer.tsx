@@ -93,7 +93,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
             <Dialog.Trigger>
               <Button
                 variant="secondary"
-                size="small"
+                size="md"
                 className="h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900"
               >
                 <Icon
@@ -149,7 +149,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   </Text>
                   <Button
                     variant="ghost"
-                    size="small"
+                    size="md"
                     onClick={copyExecutionId}
                     className="h-6 w-6 min-w-0 p-0"
                   >
@@ -200,7 +200,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                               <Button
                                 variant="secondary"
                                 className="min-w-0 p-1"
-                                size="icon"
+                                size="icon-lg"
                                 onClick={() =>
                                   handleCopyGroupedItem(
                                     execution.execId,
@@ -225,7 +225,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                               </Button>
                               <Button
                                 variant="secondary"
-                                size="icon"
+                                size="icon-lg"
                                 className="min-w-0 p-1"
                                 onClick={() => handleDownloadGroupedItem(item)}
                                 aria-label="Download item"
@@ -260,7 +260,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       <Button
                         variant="secondary"
                         className="min-w-0 p-1"
-                        size="icon"
+                        size="icon-lg"
                         onClick={() => handleCopyItem(index)}
                         aria-label="Copy item"
                       >
@@ -278,7 +278,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       </Button>
                       <Button
                         variant="secondary"
-                        size="icon"
+                        size="icon-lg"
                         className="min-w-0 p-1"
                         onClick={() => handleDownloadItem(index)}
                         aria-label="Download item"

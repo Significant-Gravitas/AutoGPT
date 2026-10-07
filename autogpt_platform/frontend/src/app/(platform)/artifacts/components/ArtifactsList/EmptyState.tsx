@@ -79,7 +79,7 @@ export function EmptyState({ content, compact = false }: Props) {
             <motion.div {...fadeUp(0.44)}>
               <Button
                 variant="primary"
-                size="large"
+                size="lg"
                 onClick={openFilePicker}
                 disabled={isUploading}
                 leftIcon={<Icon icon={Upload03Icon} className="h-4 w-4" />}
@@ -104,7 +104,7 @@ export function EmptyState({ content, compact = false }: Props) {
                 as="NextLink"
                 href={content.chatHref}
                 variant={content.showUpload ? "secondary" : "primary"}
-                size="large"
+                size="lg"
                 leftIcon={<Icon icon={PlusSignIcon} className="h-4 w-4" />}
               >
                 {content.chatLabel}

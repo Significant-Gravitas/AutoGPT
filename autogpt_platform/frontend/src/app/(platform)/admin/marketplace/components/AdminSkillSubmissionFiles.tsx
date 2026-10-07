@@ -23,7 +23,7 @@ export function AdminSkillSubmissionFiles({ versionId, files }: Props) {
       <Button
         type="button"
         variant="toggle"
-        size="xs"
+        size="sm"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
         data-testid={`files-${versionId}`}

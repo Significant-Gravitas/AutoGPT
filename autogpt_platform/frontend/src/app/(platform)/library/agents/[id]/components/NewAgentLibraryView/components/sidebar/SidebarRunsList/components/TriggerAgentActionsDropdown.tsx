@@ -36,7 +36,7 @@ export function TriggerAgentActionsDropdown({
         <DropdownMenuTrigger asChild>
           <Button
             variant="icon"
-            size="icon"
+            size="icon-lg"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
             className="ml-auto min-w-fit shrink-0"

@@ -155,7 +155,7 @@ export default function SharedChatPage() {
             <span>Couldn&apos;t load messages. The share link is valid.</span>
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               onClick={retry}
               className="border-yellow-300 bg-white hover:border-yellow-300 hover:bg-yellow-100"
             >

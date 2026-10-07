@@ -25,17 +25,17 @@ export function APIKeySelectionBar({
           {selectedCount} selected
         </Text>
         {!allSelected && (
-          <Button variant="ghost" size="small" onClick={onSelectAll}>
+          <Button variant="ghost" size="md" onClick={onSelectAll}>
             Select All
           </Button>
         )}
-        <Button variant="ghost" size="small" onClick={onDeselectAll}>
+        <Button variant="ghost" size="md" onClick={onDeselectAll}>
           Deselect
         </Button>
       </div>
       <Button
         variant="destructive"
-        size="small"
+        size="md"
         leftIcon={<Icon icon={Delete02Icon} size={16} />}
         onClick={onDeleteSelected}
       >

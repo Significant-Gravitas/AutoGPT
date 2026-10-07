@@ -26,7 +26,7 @@ export function PublishToMarketplace({ flowID, flowVersion }: Props) {
         <TooltipTrigger asChild>
           <Button
             variant="outline"
-            size="icon"
+            size="icon-lg"
             onClick={handlePublishToMarketplace}
             disabled={isDisabled}
           >

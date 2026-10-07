@@ -53,7 +53,7 @@ export function SetupNeededRow({
         {item.resolution === "allow" ? (
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             loading={isGranting}
             onClick={onAllow}
           >
@@ -61,7 +61,7 @@ export function SetupNeededRow({
           </Button>
         ) : item.resolution === "connect" ? (
           isConnectable ? (
-            <Button variant="primary" size="small" onClick={onConnect}>
+            <Button variant="primary" size="md" onClick={onConnect}>
               Connect
             </Button>
           ) : (
@@ -74,7 +74,7 @@ export function SetupNeededRow({
             as="NextLink"
             href={`/library/agents/${item.library_agent_id}`}
             variant="outline"
-            size="small"
+            size="md"
           >
             Open workflow
           </Button>

@@ -35,7 +35,7 @@ export function SessionNotFound() {
         <Button
           type="button"
           variant="secondary"
-          size="small"
+          size="md"
           className="mt-2"
           onClick={handleNewChat}
         >

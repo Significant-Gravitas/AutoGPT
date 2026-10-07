@@ -154,7 +154,7 @@ export function UseExistingCredentialsDialog({
                       </Text>
                       <Button
                         variant="secondary"
-                        size="small"
+                        size="md"
                         disabled={isGranting}
                         onClick={() => onUse(credential.id)}
                         aria-label={`Let ${expertName} use ${name}`}
@@ -225,7 +225,7 @@ export function UseExistingCredentialsDialog({
             </>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="secondary" size="small" onClick={onClose}>
+            <Button variant="secondary" size="md" onClick={onClose}>
               Cancel
             </Button>
           </div>

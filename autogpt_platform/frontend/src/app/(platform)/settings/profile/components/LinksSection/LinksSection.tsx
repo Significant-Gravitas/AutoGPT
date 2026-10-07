@@ -76,7 +76,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                   </div>
                   <Button
                     variant="icon"
-                    size="icon"
+                    size="icon-lg"
                     aria-label={`Remove link ${index + 1}`}
                     onClick={() => onRemove(index)}
                   >
@@ -97,7 +97,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
         <div>
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             leftIcon={<Icon icon={PlusSignIcon} size={16} />}
             onClick={onAdd}
             disabled={!canAdd}

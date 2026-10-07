@@ -10,25 +10,25 @@ import { LinkProps } from "next/link";
 
 // Extended button variants based on our design system
 export const extendedButtonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-black disabled:pointer-events-none disabled:opacity-50 font-sans leading-snug border",
+  "inline-flex items-center justify-center border font-sans leading-snug font-medium whitespace-nowrap focus-ring transition-colors focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
         primary:
-          "bg-zinc-800 border-zinc-800 text-white hover:bg-zinc-900 hover:border-zinc-900 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-100",
+          "rounded-full border-primary bg-primary text-primary-foreground hover:border-primary/90 hover:bg-primary/90",
         secondary:
-          "bg-white border-zinc-200 text-zinc-800 shadow-xs hover:bg-zinc-50 hover:border-zinc-300 rounded-full disabled:text-zinc-300 disabled:bg-zinc-50 disabled:border-zinc-100 disabled:shadow-none disabled:opacity-100",
+          "rounded-full border-border bg-background text-secondary-foreground shadow-xs hover:bg-muted",
         destructive:
-          "bg-red-500 border-red-500 text-white hover:bg-red-600 hover:border-red-600 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-100",
+          "rounded-full border-destructive bg-destructive text-destructive-foreground hover:border-destructive/90 hover:bg-destructive/90",
         outline:
-          "bg-transparent border-zinc-300 text-black hover:bg-zinc-100 hover:border-zinc-300 rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-100",
+          "rounded-full border-border bg-transparent text-foreground hover:bg-muted",
         ghost:
-          "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-100",
-        icon: "bg-white text-zinc-800 border border-zinc-200 shadow-xs hover:bg-zinc-50 hover:border-zinc-300 rounded-full disabled:shadow-none disabled:opacity-100 min-w-0!",
+          "rounded-full border-transparent bg-transparent text-foreground hover:bg-muted",
+        icon: "min-w-0! rounded-full border-border bg-card text-foreground shadow-xs hover:bg-muted",
         toggle:
-          "bg-transparent border-transparent text-zinc-500 hover:bg-transparent hover:border-transparent hover:text-zinc-800 aria-pressed:bg-zinc-100 aria-pressed:text-zinc-900 rounded-md disabled:opacity-50",
+          "rounded-md border-transparent bg-transparent text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
         floating:
-          "bg-white/90 border-transparent text-zinc-700 backdrop-blur-sm hover:bg-white hover:border-transparent hover:text-zinc-900 rounded-md disabled:text-zinc-300 disabled:opacity-100",
+          "rounded-md border-transparent bg-card/90 text-muted-foreground backdrop-blur-sm hover:bg-card hover:text-foreground",
         link: cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
@@ -37,45 +37,41 @@ export const extendedButtonVariants = cva(
         ),
       },
       size: {
-        small: "px-3 py-2 text-sm gap-1.5 h-9 min-w-22",
-        large: "px-4 py-2.5 text-sm gap-2 h-11.5 min-w-[7.7rem]",
-        icon: "p-3 min-w-0!",
-        xs: "h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-xs",
-        "icon-xs": "size-7 min-w-0 rounded-md p-0",
-        "icon-sm": "size-8 min-w-0 rounded-lg p-0",
+        sm: "h-8 gap-1.5 rounded-md px-3 text-xs",
+        md: "h-9 min-w-22 gap-1.5 px-3 text-sm",
+        lg: "h-10 min-w-30 gap-2 px-4 text-sm",
+        "icon-sm": "size-8 rounded-md p-0",
+        "icon-md": "size-9 p-0",
+        "icon-lg": "size-10 p-0",
       },
     },
     compoundVariants: [
       {
-        variant: "outline",
-        size: ["xs", "icon-xs", "icon-sm"],
-        class: "border-zinc-300 hover:border-zinc-300",
-      },
-      {
         variant: "icon",
-        size: ["icon-xs", "icon-sm"],
-        class: "text-zinc-600",
+        size: ["icon-sm", "icon-md"],
+        class: "text-muted-foreground",
       },
     ],
     defaultVariants: {
       variant: "primary",
-      size: "large",
+      size: "lg",
     },
   },
 );
 
 export const BUTTON_ICON_SIZE = {
-  small: 16,
-  large: 18,
-  icon: 16,
-  xs: 14,
-  "icon-xs": 14,
+  sm: 14,
+  md: 16,
+  lg: 18,
   "icon-sm": 16,
+  "icon-md": 16,
+  "icon-lg": 18,
 } as const;
 
 export const ICON_ONLY_SIZES: ReadonlySet<string> = new Set([
-  "icon-xs",
   "icon-sm",
+  "icon-md",
+  "icon-lg",
 ]);
 
 type BaseButtonProps = {

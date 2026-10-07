@@ -26,7 +26,7 @@ export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
 
       <Button
         variant="primary"
-        size="small"
+        size="md"
         leadingIcon={PlusSignIcon}
         onClick={onConnect}
         className="sm:hidden"
@@ -35,7 +35,7 @@ export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
       </Button>
       <Button
         variant="primary"
-        size="large"
+        size="lg"
         leftIcon={<Icon icon={PlusSignIcon} size={20} />}
         onClick={onConnect}
         className="hidden sm:inline-flex"

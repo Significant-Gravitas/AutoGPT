@@ -65,7 +65,7 @@ export function RecentMemoriesCard({
               </Text>
               <Button
                 variant="ghost"
-                size="small"
+                size="md"
                 className="h-7 min-w-0 shrink-0 px-2 text-zinc-600"
                 loading={forgettingUuid === fact.uuid}
                 onClick={() => onForget(fact.uuid)}
@@ -78,7 +78,7 @@ export function RecentMemoriesCard({
       </div>
 
       <div className="mt-3">
-        <Button variant="secondary" size="small" onClick={onForgetTopic}>
+        <Button variant="secondary" size="md" onClick={onForgetTopic}>
           Forget a topic…
         </Button>
       </div>

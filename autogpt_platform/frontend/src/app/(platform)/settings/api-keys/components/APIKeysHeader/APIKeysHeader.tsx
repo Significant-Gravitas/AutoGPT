@@ -22,7 +22,7 @@ export function APIKeysHeader({ onCreate }: Props) {
 
       <Button
         variant="primary"
-        size="small"
+        size="md"
         leftIcon={<Icon icon={PlusSignIcon} size={16} />}
         onClick={onCreate}
         className="sm:hidden"
@@ -31,7 +31,7 @@ export function APIKeysHeader({ onCreate }: Props) {
       </Button>
       <Button
         variant="primary"
-        size="large"
+        size="lg"
         leftIcon={<Icon icon={PlusSignIcon} size={20} />}
         onClick={onCreate}
         className="hidden sm:inline-flex"

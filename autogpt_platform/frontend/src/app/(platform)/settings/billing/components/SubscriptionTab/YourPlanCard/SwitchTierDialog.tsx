@@ -42,7 +42,7 @@ export function SwitchTierDialog({
           <Button
             type="button"
             variant="ghost"
-            size="small"
+            size="md"
             onClick={() => onOpenChange(false)}
             disabled={isSaving}
           >
@@ -51,7 +51,7 @@ export function SwitchTierDialog({
           <Button
             type="button"
             variant="primary"
-            size="small"
+            size="md"
             onClick={onConfirm}
             disabled={isSaving}
             loading={isSaving}

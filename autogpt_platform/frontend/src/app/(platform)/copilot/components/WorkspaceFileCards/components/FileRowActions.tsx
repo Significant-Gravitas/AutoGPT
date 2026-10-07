@@ -23,7 +23,7 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
     <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
       <Button
         variant="ghost"
-        size="icon-xs"
+        size="icon-sm"
         withTooltip={false}
         onClick={() => onDownload(file)}
         aria-label={`Download ${item.name}`}
@@ -34,7 +34,7 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
       {canDelete && (
         <Button
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           withTooltip={false}
           onClick={() => onRequestDelete(file)}
           aria-label={`Delete ${item.name}`}

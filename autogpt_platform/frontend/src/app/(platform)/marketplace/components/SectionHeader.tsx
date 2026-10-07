@@ -77,7 +77,7 @@ export function SectionHeader({
               as="NextLink"
               href={secondaryAction.href}
               variant="secondary"
-              size="small"
+              size="md"
             >
               {secondaryAction.label}
             </Button>

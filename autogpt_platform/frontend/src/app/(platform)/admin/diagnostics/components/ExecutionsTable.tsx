@@ -518,7 +518,7 @@ export function ExecutionsTable({
                   <>
                     <Button
                       variant="outline"
-                      size="small"
+                      size="md"
                       onClick={() => confirmStop("all", "cleanup")}
                       disabled={isStopping}
                       className="border-orange-500 text-orange-700 hover:bg-orange-50"
@@ -528,7 +528,7 @@ export function ExecutionsTable({
                     </Button>
                     <Button
                       variant="outline"
-                      size="small"
+                      size="md"
                       onClick={() => confirmStop("all", "requeue")}
                       disabled={isStopping}
                       className="border-blue-500 text-blue-700 hover:bg-blue-50"
@@ -543,7 +543,7 @@ export function ExecutionsTable({
                   activeTab !== "invalid" && (
                     <Button
                       variant="destructive"
-                      size="small"
+                      size="md"
                       onClick={() => confirmStop("selected", "stop")}
                       disabled={isStopping}
                     >
@@ -560,7 +560,7 @@ export function ExecutionsTable({
                 {activeTab === "long-running" && total > 0 && (
                   <Button
                     variant="destructive"
-                    size="small"
+                    size="md"
                     onClick={() => confirmStop("all", "stop")}
                     disabled={isStopping}
                   >
@@ -580,7 +580,7 @@ export function ExecutionsTable({
                 )}
                 <Button
                   variant="outline"
-                  size="small"
+                  size="md"
                   onClick={() => {
                     refetch();
                     if (onRefresh) onRefresh();
@@ -824,7 +824,7 @@ export function ExecutionsTable({
                                   <>
                                     <Button
                                       variant="ghost"
-                                      size="small"
+                                      size="md"
                                       onClick={() =>
                                         confirmStop(
                                           "single",
@@ -843,7 +843,7 @@ export function ExecutionsTable({
                                     </Button>
                                     <Button
                                       variant="ghost"
-                                      size="small"
+                                      size="md"
                                       onClick={() =>
                                         confirmStop(
                                           "single",
@@ -864,7 +864,7 @@ export function ExecutionsTable({
                                 ) : (
                                   <Button
                                     variant="ghost"
-                                    size="small"
+                                    size="md"
                                     onClick={() => {
                                       const isOrphaned = orphanedIds.has(
                                         execution.execution_id,
@@ -903,7 +903,7 @@ export function ExecutionsTable({
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
-                          size="small"
+                          size="md"
                           onClick={() => setCurrentPage(currentPage - 1)}
                           disabled={currentPage === 1}
                         >
@@ -915,7 +915,7 @@ export function ExecutionsTable({
                         </div>
                         <Button
                           variant="outline"
-                          size="small"
+                          size="md"
                           onClick={() => setCurrentPage(currentPage + 1)}
                           disabled={currentPage === totalPages}
                         >

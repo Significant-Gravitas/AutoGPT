@@ -103,7 +103,7 @@ function ReceiptDestination({ transaction }: Props) {
         as="NextLink"
         href={href || conversationHref || ""}
         variant="secondary"
-        size="small"
+        size="md"
         className="min-h-11 min-w-0"
         rightIcon={<Icon icon={ArrowUpRight01Icon} size={16} />}
       >

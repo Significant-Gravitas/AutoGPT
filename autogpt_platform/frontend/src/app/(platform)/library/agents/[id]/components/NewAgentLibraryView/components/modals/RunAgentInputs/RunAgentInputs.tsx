@@ -329,7 +329,7 @@ export function RunAgentInputs({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="small"
+                        size="md"
                         onClick={() => removeRow(rowIndex)}
                         className="h-8 w-8 p-0"
                       >
@@ -344,7 +344,7 @@ export function RunAgentInputs({
           <Button
             type="button"
             variant="outline"
-            size="small"
+            size="md"
             onClick={addRow}
             className="w-full"
           >

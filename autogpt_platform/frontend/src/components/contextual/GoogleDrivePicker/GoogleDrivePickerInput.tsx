@@ -133,7 +133,7 @@ export function GoogleDrivePickerInput({
               {showRemoveButton && (
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon-lg"
                   className="h-6 w-6 shrink-0"
                   aria-label="Remove file"
                   onClick={() => handleRemoveFile(idx)}

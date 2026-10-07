@@ -289,12 +289,12 @@ export function PlatformCostContent({ searchParams }: Props) {
             <option value="dream_pass">dream_pass</option>
           </select>
         </div>
-        <Button variant="primary" size="small" onClick={handleFilter}>
+        <Button variant="primary" size="md" onClick={handleFilter}>
           Apply
         </Button>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={() => {
             setStartInput("");
             setEndInput("");

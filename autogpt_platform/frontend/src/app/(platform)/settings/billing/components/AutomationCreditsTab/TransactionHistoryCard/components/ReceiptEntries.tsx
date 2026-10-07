@@ -25,7 +25,7 @@ export function ReceiptEntries({ transaction }: Props) {
         {!!transaction.charges?.length && (
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             className="min-h-11 min-w-0 px-0 text-zinc-600"
             onClick={() => setEntriesOpen(!entriesOpen)}
             aria-expanded={entriesOpen}
@@ -43,7 +43,7 @@ export function ReceiptEntries({ transaction }: Props) {
         {reference && (
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             className="min-h-11 min-w-0 px-0 text-zinc-600"
             onClick={() => setReferenceOpen(!referenceOpen)}
             aria-expanded={referenceOpen}

@@ -27,7 +27,7 @@ export function SummaryCard({
             : `Ask ${scopeName} what they know about you and their work. Opens a chat.`}
         </Text>
       </div>
-      <Button variant="primary" size="small" onClick={onViewSummary}>
+      <Button variant="primary" size="md" onClick={onViewSummary}>
         {isAutoPilot ? "View my summary" : `View ${scopeName}'s summary`}
       </Button>
     </div>

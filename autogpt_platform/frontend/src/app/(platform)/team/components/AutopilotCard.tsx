@@ -108,7 +108,7 @@ export function AutopilotCard({
       <div className="flex items-center gap-2 px-4 pb-4">
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           className="flex-1"
           leadingIcon={BubbleChatIcon}
           onClick={onChat}

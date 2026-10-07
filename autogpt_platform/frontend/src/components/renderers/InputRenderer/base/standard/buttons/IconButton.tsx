@@ -40,7 +40,7 @@ export default function IconButton(props: AutogptIconButtonProps) {
 
   return (
     <Button
-      size="icon"
+      size="icon-lg"
       variant="secondary"
       className={cn(className, "w-fit border border-zinc-200 p-1.5 px-4")}
       {...otherProps}

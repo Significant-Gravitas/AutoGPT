@@ -65,7 +65,7 @@ export function AdminUserSearch({
       />
       <Button
         variant="outline"
-        size="small"
+        size="md"
         onClick={handleSearch}
         disabled={isLoading || !currentValue.trim()}
         loading={isLoading}

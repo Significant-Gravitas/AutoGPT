@@ -358,14 +358,14 @@ export function EditAgentForm({
               type="button"
               onClick={onClose}
               variant="secondary"
-              size="small"
+              size="md"
               className="w-full sm:w-auto"
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              size="small"
+              size="md"
               disabled={isSubmitDisabled}
               loading={isSubmitting}
               className="w-full sm:w-auto"

@@ -60,7 +60,7 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
           {children}
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             className="mt-2"
             onClick={() => setValue("")}
           >

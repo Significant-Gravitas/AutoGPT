@@ -53,7 +53,7 @@ export const Button = forwardRef<
   const resolvedLeftIcon = leadingIcon ? (
     <Icon
       icon={leadingIcon}
-      size={BUTTON_ICON_SIZE[size ?? "large"]}
+      size={BUTTON_ICON_SIZE[size ?? "lg"]}
       aria-hidden
     />
   ) : (
@@ -110,16 +110,10 @@ export const Button = forwardRef<
   }
 
   if (loading) {
-    const loadingClassName =
-      variant === "ghost"
-        ? applyUnmask(
-            extendedButtonVariants({ variant, size, className }),
-            "pointer-events-none",
-          )
-        : applyUnmask(
-            extendedButtonVariants({ variant: "primary", size, className }),
-            "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
-          );
+    const loadingClassName = applyUnmask(
+      extendedButtonVariants({ variant, size, className }),
+      "pointer-events-none opacity-50",
+    );
 
     if (as === "NextLink") {
       return (

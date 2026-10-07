@@ -158,7 +158,7 @@ export function WalletRefill() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  size="small"
+                  size="md"
                   className="mt-5"
                 >
                   Enable Auto-refill

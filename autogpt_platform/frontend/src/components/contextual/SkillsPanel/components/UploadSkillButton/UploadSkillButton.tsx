@@ -32,7 +32,7 @@ export function UploadSkillButton({ onUploaded }: Props) {
         <TooltipTrigger asChild>
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={openFilePicker}
             loading={isUploading}
             data-testid="skill-upload-button"

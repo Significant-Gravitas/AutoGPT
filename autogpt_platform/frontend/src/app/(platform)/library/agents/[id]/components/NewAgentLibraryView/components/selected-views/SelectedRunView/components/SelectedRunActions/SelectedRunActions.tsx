@@ -56,7 +56,7 @@ export function SelectedRunActions({
       {canRunManually && !isRunning ? (
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Rerun task"
           onClick={handleRunAgain}
           disabled={isRunningAgain}
@@ -82,7 +82,7 @@ export function SelectedRunActions({
       {canStop ? (
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Stop task"
           onClick={handleStopRun}
           disabled={isStopping}
@@ -94,7 +94,7 @@ export function SelectedRunActions({
       {openInBuilderHref ? (
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           as="NextLink"
           href={openInBuilderHref}
           target="_blank"
@@ -113,7 +113,7 @@ export function SelectedRunActions({
         <>
           <Button
             variant="icon"
-            size="icon"
+            size="icon-lg"
             aria-label="Save task as template"
             onClick={() => setIsCreateTemplateModalOpen(true)}
             title="Create template"

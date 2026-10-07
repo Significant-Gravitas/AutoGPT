@@ -51,10 +51,10 @@ export const WithHeaderAndActions: Story = {
           </Text>
         </div>
         <div className="flex gap-2">
-          <Button variant="primary" size="small">
+          <Button variant="primary" size="md">
             Run agent
           </Button>
-          <Button variant="secondary" size="small">
+          <Button variant="secondary" size="md">
             Edit
           </Button>
         </div>

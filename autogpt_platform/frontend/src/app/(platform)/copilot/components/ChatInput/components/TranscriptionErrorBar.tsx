@@ -45,7 +45,7 @@ export function TranscriptionErrorBar({
       <Button
         type="button"
         variant="ghost"
-        size="xs"
+        size="sm"
         leadingIcon={RefreshIcon}
         loading={isRetrying}
         disabled={isRetrying}
@@ -56,7 +56,7 @@ export function TranscriptionErrorBar({
       <Button
         type="button"
         variant="ghost"
-        size="xs"
+        size="sm"
         leadingIcon={Download04Icon}
         onClick={onDownload}
       >
@@ -65,7 +65,7 @@ export function TranscriptionErrorBar({
       <Button
         type="button"
         variant="icon"
-        size="icon-xs"
+        size="icon-sm"
         aria-label="Dismiss"
         onClick={onDismiss}
       >

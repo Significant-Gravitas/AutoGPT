@@ -56,7 +56,7 @@ export function BotCardDmTile({
       {dmLink ? (
         <Button
           variant="outline"
-          size="small"
+          size="md"
           leftIcon={<Icon icon={Delete02Icon} size={16} />}
           loading={isPending(dmLink.id)}
           onClick={() => onUnlink(dmLink.id)}

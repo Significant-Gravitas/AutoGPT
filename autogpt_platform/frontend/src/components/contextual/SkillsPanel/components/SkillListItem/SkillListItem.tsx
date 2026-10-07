@@ -91,7 +91,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       <div className="flex shrink-0 items-center gap-2">
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           onClick={openView}
           data-testid="skill-view-button"
           aria-label="View skill"
@@ -100,7 +100,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         </Button>
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           onClick={handleDownload}
           loading={isDownloading}
           data-testid="skill-download-button"
@@ -113,7 +113,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         ) : null}
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           onClick={openDelete}
           data-testid="skill-delete-button"
           aria-label="Delete skill"

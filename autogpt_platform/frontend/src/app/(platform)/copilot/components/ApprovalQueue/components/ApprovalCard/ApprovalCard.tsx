@@ -145,7 +145,7 @@ export function ApprovalActions({
         onApprove={onApprove}
       />
       <Button
-        size="small"
+        size="md"
         variant="secondary"
         className="min-w-0"
         loading={status === "rejecting"}

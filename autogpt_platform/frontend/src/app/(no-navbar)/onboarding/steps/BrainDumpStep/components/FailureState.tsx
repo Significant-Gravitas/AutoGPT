@@ -19,10 +19,10 @@ export function FailureState({ onDownload, onSkip }: Props) {
         Your recording is safe. Try again.
       </Text>
       <div className="flex items-center gap-3">
-        <Button variant="primary" size="small" onClick={onDownload}>
+        <Button variant="primary" size="md" onClick={onDownload}>
           Download recording
         </Button>
-        <Button variant="ghost" size="small" onClick={onSkip}>
+        <Button variant="ghost" size="md" onClick={onSkip}>
           Continue without it
         </Button>
       </div>

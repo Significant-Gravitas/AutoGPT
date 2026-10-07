@@ -262,7 +262,7 @@ export function AnalyticsResultsTable({ results }: Props) {
                       <td className="px-4 py-3">
                         <Button
                           variant="ghost"
-                          size="small"
+                          size="md"
                           onClick={() => toggleRowExpansion(result.exec_id)}
                         >
                           <Icon icon={EyeIcon} size={16} />

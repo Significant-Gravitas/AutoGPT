@@ -49,7 +49,7 @@ export function BudgetStep({
           <Button
             type="button"
             variant="primary"
-            size="small"
+            size="md"
             onClick={budget.submitCustom}
             className="h-10.5 rounded-xl py-3"
           >
@@ -59,7 +59,7 @@ export function BudgetStep({
         <Button
           type="button"
           variant="ghost"
-          size="small"
+          size="md"
           onClick={onSkip}
           className="h-10.5 rounded-xl py-3"
         >

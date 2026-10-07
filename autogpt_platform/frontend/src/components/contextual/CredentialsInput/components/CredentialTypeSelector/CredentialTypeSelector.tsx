@@ -150,12 +150,7 @@ function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
       <Text variant="body" tone="secondary">
         Sign in with your {providerName} account using OAuth.
       </Text>
-      <Button
-        variant="primary"
-        size="small"
-        onClick={onOAuthLogin}
-        type="button"
-      >
+      <Button variant="primary" size="md" onClick={onOAuthLogin} type="button">
         Sign in with {providerName}
       </Button>
     </div>
@@ -295,7 +290,7 @@ function SimpleActionTab({
       <Text variant="body" tone="secondary">
         {description}
       </Text>
-      <Button variant="primary" size="small" onClick={onClick} type="button">
+      <Button variant="primary" size="md" onClick={onClick} type="button">
         {buttonLabel}
       </Button>
     </div>

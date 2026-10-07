@@ -125,7 +125,7 @@ export const RunInputDialog = ({
               {purpose === "run" && (
                 <Button
                   variant="primary"
-                  size="large"
+                  size="lg"
                   className="group h-fit min-w-0 gap-2 px-10"
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
@@ -143,7 +143,7 @@ export const RunInputDialog = ({
               {purpose === "schedule" && (
                 <Button
                   variant="primary"
-                  size="large"
+                  size="lg"
                   className="group h-fit min-w-0 gap-2 px-10"
                   onClick={() => setOpenCronSchedulerDialog(true)}
                   data-id="run-input-schedule-button"

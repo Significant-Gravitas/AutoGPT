@@ -29,7 +29,7 @@ export function CancelRecordingDialog({
         <Dialog.Footer>
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => onOpenChange(false)}
             className="h-10 rounded-xl"
           >
@@ -37,7 +37,7 @@ export function CancelRecordingDialog({
           </Button>
           <Button
             variant="destructive"
-            size="small"
+            size="md"
             onClick={onConfirm}
             className="h-10 rounded-xl"
           >

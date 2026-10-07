@@ -143,7 +143,7 @@ export function SitrepItem({ item }: Props) {
             as="NextLink"
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
             variant="ghost"
-            size="xs"
+            size="sm"
             leadingIcon={EyeIcon}
             className="text-zinc-600 hover:text-zinc-800"
           >
@@ -159,7 +159,7 @@ export function SitrepItem({ item }: Props) {
         <Button
           type="button"
           variant="ghost"
-          size="xs"
+          size="sm"
           leadingIcon={Chatting01Icon}
           onClick={handleAskAutoPilot}
           className="text-zinc-600 hover:text-zinc-800"

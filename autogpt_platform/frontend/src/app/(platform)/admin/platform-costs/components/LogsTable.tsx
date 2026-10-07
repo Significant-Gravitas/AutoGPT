@@ -37,7 +37,7 @@ function LogsTable({
         </span>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={onExport}
           disabled={exporting}
         >
@@ -159,7 +159,7 @@ function LogsTable({
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               disabled={pagination.current_page <= 1}
               onClick={() => onPageChange(pagination.current_page - 1)}
             >
@@ -167,7 +167,7 @@ function LogsTable({
             </Button>
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               disabled={pagination.current_page >= pagination.total_pages}
               onClick={() => onPageChange(pagination.current_page + 1)}
             >

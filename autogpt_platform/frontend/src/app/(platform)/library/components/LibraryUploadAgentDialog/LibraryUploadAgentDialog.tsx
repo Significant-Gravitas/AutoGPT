@@ -43,7 +43,7 @@ export default function LibraryUploadAgentDialog() {
           data-testid="upload-agent-button"
           variant="primary"
           className="h-[2.78rem] w-full md:w-48"
-          size="small"
+          size="md"
         >
           <Icon icon={Upload03Icon} width={18} height={18} />
           <span className="">Upload agent</span>

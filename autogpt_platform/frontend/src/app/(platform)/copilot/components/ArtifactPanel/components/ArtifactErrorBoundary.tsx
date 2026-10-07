@@ -94,7 +94,7 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         <Button
           type="button"
           variant="secondary"
-          size="xs"
+          size="sm"
           onClick={this.handleCopy}
           className="h-auto px-3 py-1.5 leading-4 text-zinc-700"
         >

@@ -76,7 +76,7 @@ export function ServerStatusPanel({
         </div>
         <Button
           variant="outline"
-          size="small"
+          size="md"
           onClick={onFinalize}
           disabled={!canFinalize}
           loading={isFinalizing}

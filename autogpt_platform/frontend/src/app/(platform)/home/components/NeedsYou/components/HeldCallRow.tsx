@@ -130,7 +130,7 @@ export function HeldCallRow({
         ) : (
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             className="h-8 min-w-0 px-3"
             disabled={busy}
             aria-label={`Review: ${item.title}`}

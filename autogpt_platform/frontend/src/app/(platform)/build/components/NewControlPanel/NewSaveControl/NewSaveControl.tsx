@@ -115,7 +115,7 @@ export const NewSaveControl = () => {
                 <Button
                   variant="primary"
                   type="submit"
-                  size="small"
+                  size="md"
                   className="w-full"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"

@@ -102,7 +102,7 @@ export function AgentImageItem({
         <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-5 lg:left-5">
           <Button
             variant="secondary"
-            size="large"
+            size="lg"
             onClick={() => {
               if (videoRef.current) {
                 videoRef.current.play();

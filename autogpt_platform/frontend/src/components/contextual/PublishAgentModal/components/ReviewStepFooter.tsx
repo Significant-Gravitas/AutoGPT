@@ -39,7 +39,7 @@ export function ReviewStepFooter({
             {onEdit && isPending ? (
               <Button
                 variant="ghost"
-                size="small"
+                size="md"
                 onClick={onEdit}
                 className="w-full sm:w-auto"
                 leftIcon={<Icon icon={NoteEditIcon} size={14} />}
@@ -50,7 +50,7 @@ export function ReviewStepFooter({
             ) : null}
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={onDone}
               className="w-full sm:w-auto"
             >
@@ -63,7 +63,7 @@ export function ReviewStepFooter({
             <Button
               as="NextLink"
               href={marketplaceUrl}
-              size="small"
+              size="md"
               className="w-full sm:w-auto"
               rightIcon={<Icon icon={Store01Icon} size={14} />}
               data-testid="view-marketplace-button"
@@ -72,7 +72,7 @@ export function ReviewStepFooter({
             </Button>
           ) : isRejected || isDraft || isDashboardPage ? null : (
             <Button
-              size="small"
+              size="md"
               onClick={onViewProgress}
               className="w-full sm:w-auto"
               rightIcon={<Icon icon={ArrowRight02Icon} size={14} />}

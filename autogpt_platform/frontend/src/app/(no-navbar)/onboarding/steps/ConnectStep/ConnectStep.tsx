@@ -64,7 +64,7 @@ export function ConnectStep() {
           </Text>
         )}
 
-        <Button size="small" onClick={skip} className="h-10 w-56 rounded-xl">
+        <Button size="md" onClick={skip} className="h-10 w-56 rounded-xl">
           Next
         </Button>
       </div>

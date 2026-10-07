@@ -60,11 +60,11 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
               {comment.length}/2000
             </Text>
             <div className="flex gap-2">
-              <Button variant="outline" size="small" onClick={handleClose}>
+              <Button variant="outline" size="md" onClick={handleClose}>
                 Cancel
               </Button>
               <Button
-                size="small"
+                size="md"
                 onClick={handleSubmit}
                 disabled={!comment.trim()}
               >

@@ -58,7 +58,7 @@ export function KitResultRow({
       <Button
         type="button"
         variant={selected ? "ghost" : "secondary"}
-        size="small"
+        size="md"
         disabled={selected || atCap}
         loading={isPending}
         onClick={onAdd}

@@ -15,7 +15,7 @@ export function SaveBar({ dirty, saving, canSave, onDiscard, onSave }: Props) {
     <div className="flex items-center justify-start gap-2">
       <Button
         variant="outline"
-        size="large"
+        size="lg"
         onClick={onDiscard}
         disabled={!dirty || saving}
       >
@@ -23,7 +23,7 @@ export function SaveBar({ dirty, saving, canSave, onDiscard, onSave }: Props) {
       </Button>
       <Button
         variant="primary"
-        size="large"
+        size="lg"
         onClick={onSave}
         loading={saving}
         disabled={!canSave || saving}

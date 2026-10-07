@@ -179,7 +179,7 @@ export function AgentActionsDropdown({
         <DropdownMenuTrigger asChild>
           <Button
             variant="icon"
-            size="icon"
+            size="icon-lg"
             aria-label="More actions"
             className="min-w-fit"
           >

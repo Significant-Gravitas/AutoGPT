@@ -69,7 +69,7 @@ export function BrainDumpStep() {
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={dump.handleSkip}
               className="text-zinc-400 hover:text-zinc-700"
             >
@@ -206,7 +206,7 @@ export function BrainDumpStep() {
               {dump.screen === "failed" && (
                 <Button
                   variant="ghost"
-                  size="xs"
+                  size="sm"
                   onClick={dump.showTyping}
                   className="underline underline-offset-4"
                 >
@@ -216,7 +216,7 @@ export function BrainDumpStep() {
               {isTyping && !dump.isMicBlocked && (
                 <Button
                   variant="ghost"
-                  size="xs"
+                  size="sm"
                   onClick={dump.showRecording}
                   className="underline underline-offset-4"
                 >
@@ -226,7 +226,7 @@ export function BrainDumpStep() {
               {dump.screen === "recovery" && (
                 <Button
                   variant="ghost"
-                  size="xs"
+                  size="sm"
                   onClick={dump.handleTypeInsteadOfRecovered}
                   className="underline underline-offset-4"
                 >

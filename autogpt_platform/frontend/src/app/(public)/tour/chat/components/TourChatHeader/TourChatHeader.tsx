@@ -33,7 +33,7 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
       </div>
       <Button
         variant="secondary"
-        size="small"
+        size="md"
         onClick={handleShare}
         leftIcon={
           isCopied ? (

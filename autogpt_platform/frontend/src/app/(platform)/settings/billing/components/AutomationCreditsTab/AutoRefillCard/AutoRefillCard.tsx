@@ -55,7 +55,7 @@ export function AutoRefillCard({ index = 0 }: Props) {
 
       <Button
         variant="secondary"
-        size="small"
+        size="md"
         onClick={() => setOpen(true)}
         disabled={isLoading}
       >

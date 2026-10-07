@@ -38,7 +38,7 @@ export function OAuthConnectButton({
       <Button
         type="button"
         variant="primary"
-        size="large"
+        size="lg"
         onClick={connect}
         loading={isPending}
         rightIcon={<Icon icon={LinkSquare01Icon} size={18} />}

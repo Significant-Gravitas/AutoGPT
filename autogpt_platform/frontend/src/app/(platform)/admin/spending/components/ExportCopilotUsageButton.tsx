@@ -106,7 +106,7 @@ export function ExportCopilotUsageButton() {
       <Dialog.Trigger>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           leftIcon={<Icon icon={ChartLineIcon} />}
         >
           Copilot Usage CSV
@@ -151,7 +151,7 @@ export function ExportCopilotUsageButton() {
         <Dialog.Footer>
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => setOpen(false)}
             disabled={exporting}
           >
@@ -159,7 +159,7 @@ export function ExportCopilotUsageButton() {
           </Button>
           <Button
             variant="primary"
-            size="small"
+            size="md"
             onClick={handleExport}
             loading={exporting}
           >

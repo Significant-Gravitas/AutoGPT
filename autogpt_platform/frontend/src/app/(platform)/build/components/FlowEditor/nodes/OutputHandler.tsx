@@ -105,7 +105,7 @@ export const OutputHandler = ({
               {hasNestedProperties && (
                 <Button
                   variant="ghost"
-                  size="xs"
+                  size="sm"
                   onClick={() => toggleObjectExpanded(fullKey)}
                   className="h-auto border-0 p-0 text-slate-500 hover:bg-transparent hover:text-slate-700"
                   aria-label={isExpanded ? "Collapse" : "Expand"}

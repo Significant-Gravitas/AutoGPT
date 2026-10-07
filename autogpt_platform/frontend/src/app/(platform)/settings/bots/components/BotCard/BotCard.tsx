@@ -52,7 +52,7 @@ export function BotCard({ platform }: Props) {
               target="_blank"
               rel="noopener noreferrer"
               variant="primary"
-              size="small"
+              size="md"
               rightIcon={<Icon icon={ArrowUpRight01Icon} size={16} />}
             >
               Open AutoGPT in {platform.display_name}
@@ -68,7 +68,7 @@ export function BotCard({ platform }: Props) {
               as="NextLink"
               href={platform.add_bot_url}
               variant={pendingInstall ? "outline" : "primary"}
-              size="small"
+              size="md"
               leftIcon={<Icon icon={PlusSignIcon} size={16} />}
             >
               Add bot to {platform.display_name}

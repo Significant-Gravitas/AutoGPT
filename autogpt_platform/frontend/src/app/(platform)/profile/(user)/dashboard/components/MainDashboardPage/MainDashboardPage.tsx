@@ -50,7 +50,7 @@ export const MainDashboardPage = () => {
           trigger={
             <Button
               data-testid="submit-agent-button"
-              size="small"
+              size="md"
               onClick={onOpenSubmitModal}
             >
               Submit agent

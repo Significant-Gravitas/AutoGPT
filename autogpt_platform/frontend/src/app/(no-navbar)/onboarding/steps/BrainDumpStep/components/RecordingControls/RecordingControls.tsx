@@ -172,7 +172,7 @@ function RecordingControlButton({
   return (
     <Button
       variant="icon"
-      size="icon"
+      size="icon-lg"
       onClick={handleClick}
       aria-disabled={pendingAction !== null}
       aria-label={isLoading ? pendingLabel : label}

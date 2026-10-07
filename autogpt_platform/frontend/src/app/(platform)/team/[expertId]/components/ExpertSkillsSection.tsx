@@ -47,7 +47,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >

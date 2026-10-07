@@ -61,7 +61,7 @@ export function SuccessView({
             <Button
               as="NextLink"
               href={returnUrl}
-              size="small"
+              size="md"
               leftIcon={<Icon icon={ArrowTurnBackwardIcon} size={16} />}
             >
               Return to {platform}
@@ -71,7 +71,7 @@ export function SuccessView({
             as="NextLink"
             href="/settings/bots"
             variant="outline"
-            size="small"
+            size="md"
           >
             Manage bots
           </Button>

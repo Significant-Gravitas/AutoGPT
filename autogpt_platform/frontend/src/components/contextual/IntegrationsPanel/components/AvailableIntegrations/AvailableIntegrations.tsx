@@ -68,7 +68,7 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
               : `${catalog.providers.length} of ${catalog.total} services`}
           </Text>
           {catalog.hasMore && (
-            <Button variant="secondary" size="small" onClick={catalog.showMore}>
+            <Button variant="secondary" size="md" onClick={catalog.showMore}>
               Show more services
             </Button>
           )}

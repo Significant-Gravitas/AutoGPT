@@ -48,7 +48,7 @@ export function PaywallModal() {
           <div className="sticky top-0 z-10 -mb-13 flex w-full justify-end">
             <Button
               variant="floating"
-              size="small"
+              size="md"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
               className="rounded-full text-zinc-500 hover:text-zinc-700"
@@ -73,7 +73,7 @@ export function PaywallModal() {
                 </Text>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="md"
                   onClick={retryLoadPlans}
                   loading={isRetryingPlans}
                 >

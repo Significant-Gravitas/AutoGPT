@@ -95,7 +95,7 @@ export function SelectedTemplateActions({
       <div className="my-4 flex flex-col items-center gap-3">
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Save changes"
           onClick={onSaveChanges}
           disabled={isSaving || isStarting || deleteMutation.isPending}
@@ -109,7 +109,7 @@ export function SelectedTemplateActions({
         {onStartTask && (
           <Button
             variant="icon"
-            size="icon"
+            size="icon-lg"
             aria-label="Start task from template"
             onClick={onStartTask}
             disabled={isSaving || isStarting || deleteMutation.isPending}
@@ -127,7 +127,7 @@ export function SelectedTemplateActions({
         )}
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Delete template"
           onClick={() => setShowDeleteDialog(true)}
           disabled={isSaving || isStarting || deleteMutation.isPending}

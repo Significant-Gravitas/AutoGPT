@@ -114,7 +114,7 @@ export function McpConnectPanel({
         {state.phase === "form" && state.manualSchemes.length > 0 && (
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={state.handleSwitchToToken}
           >
             Use an API token instead
@@ -123,7 +123,7 @@ export function McpConnectPanel({
         {state.phase === "manual-token" && state.canUseOAuth && (
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={state.handleSwitchToOAuth}
             disabled={state.isSubmitting}
           >
@@ -132,7 +132,7 @@ export function McpConnectPanel({
         )}
         <Button
           variant="primary"
-          size="small"
+          size="md"
           onClick={
             state.phase === "form"
               ? state.handleConnect

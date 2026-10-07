@@ -71,7 +71,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
                 </code>
                 <Button
                   variant="outline"
-                  size="icon"
+                  size="icon-lg"
                   className="size-7 flex-none p-1"
                   onClick={handleCopyWebhookUrl}
                   title="Copy webhook URL"

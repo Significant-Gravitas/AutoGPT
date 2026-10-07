@@ -98,7 +98,7 @@ export function ApiKeyConnectForm({
       <Button
         type="submit"
         variant="primary"
-        size="large"
+        size="lg"
         disabled={!form.formState.isValid || isPending}
         loading={isPending}
       >

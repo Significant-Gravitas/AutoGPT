@@ -87,7 +87,7 @@ export function SelectedTriggerActions({
       <div className="my-4 flex flex-col items-center gap-3">
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Save changes"
           onClick={onSaveChanges}
           disabled={isSaving || deleteMutation.isPending}
@@ -100,7 +100,7 @@ export function SelectedTriggerActions({
         </Button>
         <Button
           variant="icon"
-          size="icon"
+          size="icon-lg"
           aria-label="Delete trigger"
           onClick={() => setShowDeleteDialog(true)}
           disabled={isSaving || deleteMutation.isPending}

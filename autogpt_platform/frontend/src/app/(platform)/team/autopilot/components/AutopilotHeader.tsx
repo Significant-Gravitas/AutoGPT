@@ -65,7 +65,7 @@ export function AutopilotHeader() {
           as="NextLink"
           href="/copilot"
           variant="primary"
-          size="small"
+          size="md"
           className="shrink-0"
         >
           Chat

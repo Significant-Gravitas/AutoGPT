@@ -24,7 +24,7 @@ export const FilterChip: React.FC<Props> = ({
     <AnimatePresence mode="wait">
       <Button
         variant="ghost"
-        size="small"
+        size="md"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={cn(

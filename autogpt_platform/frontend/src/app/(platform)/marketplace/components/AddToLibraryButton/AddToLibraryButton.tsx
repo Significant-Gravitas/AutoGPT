@@ -34,7 +34,7 @@ function UndoActions({
     <div className="mt-6 flex items-center gap-2">
       <Button
         variant="primary"
-        size="small"
+        size="md"
         as="NextLink"
         className="bg-zinc-200 text-zinc-900 hover:bg-zinc-300 hover:text-zinc-800"
         href={libraryHref}
@@ -43,7 +43,7 @@ function UndoActions({
       </Button>
       <Button
         variant="ghost"
-        size="small"
+        size="md"
         loading={isUndoing}
         className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
         onClick={async () => {
@@ -185,7 +185,7 @@ export function AddToLibraryButton({
   return (
     <Button
       variant="secondary"
-      size="small"
+      size="md"
       loading={isPending}
       leftIcon={<Icon icon={PlusSignIcon} size={14} />}
       onClick={handleClick}

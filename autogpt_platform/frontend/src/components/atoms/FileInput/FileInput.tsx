@@ -33,7 +33,7 @@ function PreviewButton({
       <Dialog.Trigger>
         <Button
           variant="outline"
-          size="small"
+          size="md"
           className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-zinc-500 hover:text-blue-600"
           type="button"
           aria-label="Preview file"
@@ -366,7 +366,7 @@ export function FileInput(props: Props) {
               )}
               <Button
                 variant="outline"
-                size="small"
+                size="md"
                 className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-zinc-500 hover:text-red-600"
                 onClick={handleClear}
                 type="button"
@@ -379,7 +379,7 @@ export function FileInput(props: Props) {
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                size="small"
+                size="md"
                 onClick={() => inputRef.current?.click()}
                 className="flex-1 border-zinc-300 text-xs"
                 disabled={isUploading}
@@ -450,7 +450,7 @@ export function FileInput(props: Props) {
                 )}
                 <Button
                   variant="outline"
-                  size="small"
+                  size="md"
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear file"

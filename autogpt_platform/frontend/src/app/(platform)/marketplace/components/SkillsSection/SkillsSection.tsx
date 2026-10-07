@@ -105,7 +105,7 @@ function ShelfError({ onRetry }: { onRetry: () => void }) {
       <Button
         type="button"
         variant="ghost"
-        size="small"
+        size="md"
         onClick={onRetry}
         className="h-auto min-w-0 rounded-none border-0 p-0 leading-normal font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
       >

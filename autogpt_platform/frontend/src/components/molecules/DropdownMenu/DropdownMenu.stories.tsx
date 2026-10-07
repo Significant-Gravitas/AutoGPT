@@ -22,7 +22,7 @@ export const Basic: Story = {
   render: () => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" size="small">
+        <Button variant="secondary" size="md">
           Open menu
         </Button>
       </DropdownMenuTrigger>

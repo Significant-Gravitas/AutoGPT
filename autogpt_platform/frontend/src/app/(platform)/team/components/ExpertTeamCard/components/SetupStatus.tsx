@@ -36,7 +36,7 @@ export function SetupStatus({ expert, isRetrying, onRetry }: Props) {
       {expert.source_template_id ? (
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           loading={isRetrying}
           onClick={onRetry}
         >

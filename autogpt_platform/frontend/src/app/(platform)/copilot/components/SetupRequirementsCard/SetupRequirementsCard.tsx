@@ -406,7 +406,7 @@ export function SetupRequirementsCard({
       {(needsCredentials || needsInputs) && !chainActions && (
         <Button
           variant="primary"
-          size="small"
+          size="md"
           className="mt-4 w-fit"
           disabled={!canRun}
           onClick={handleRun}

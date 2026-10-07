@@ -181,7 +181,7 @@ function OutputTable({
       <div className="flex justify-end">
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={() =>
             downloadCsv(`${title || "run"}.csv`, toCsv(visibleRows, columns))
           }
@@ -284,7 +284,7 @@ function RunLinkFallback({ runLink }: { runLink?: string | null }) {
       <Text variant="body" className="text-zinc-500">
         Open the full run to inspect its output.
       </Text>
-      <Button as="NextLink" href={runLink} variant="primary" size="small">
+      <Button as="NextLink" href={runLink} variant="primary" size="md">
         Open run details
       </Button>
     </div>

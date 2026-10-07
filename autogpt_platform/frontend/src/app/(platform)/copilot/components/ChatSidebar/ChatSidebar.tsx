@@ -416,7 +416,7 @@ export function ChatSidebar() {
               {sessionId ? (
                 <Button
                   variant="primary"
-                  size="small"
+                  size="md"
                   onClick={handleNewChat}
                   className="w-full"
                   leftIcon={<Icon icon={PlusSignIcon} className="h-4 w-4" />}
@@ -485,7 +485,7 @@ export function ChatSidebar() {
               {hasMore && (
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="md"
                   onClick={() => loadMore()}
                   loading={isLoadingMore}
                   disabled={isLoadingMore}

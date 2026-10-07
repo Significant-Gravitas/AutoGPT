@@ -23,10 +23,10 @@ export function RecoveryPrompt({ durationSecs, onResume, onDiscard }: Props) {
         already recorded.
       </Text>
       <div className="flex w-full flex-col items-center gap-2">
-        <Button size="small" onClick={onResume} className="w-full max-w-xs">
+        <Button size="md" onClick={onResume} className="w-full max-w-xs">
           Use that recording
         </Button>
-        <Button variant="ghost" size="xs" onClick={onDiscard}>
+        <Button variant="ghost" size="sm" onClick={onDiscard}>
           Start over
         </Button>
       </div>

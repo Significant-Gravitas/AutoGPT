@@ -112,7 +112,7 @@ function BotCardServerRow({
       </div>
       <Button
         variant="outline"
-        size="small"
+        size="md"
         leftIcon={<Icon icon={Delete02Icon} size={16} />}
         loading={isPending}
         onClick={onUnlink}

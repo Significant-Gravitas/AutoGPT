@@ -14,7 +14,6 @@ const config = {
         "src/components/__legacy__/ui/badge.tsx",
         "src/components/__legacy__/ui/button.tsx",
         "src/components/__legacy__/ui/calendar.tsx",
-        "src/components/atoms/Button/helpers.ts",
         "src/components/atoms/DateInput/DateInput.tsx",
         "src/components/atoms/DateTimeInput/DateTimeInput.tsx",
         "src/components/atoms/Input/Input.tsx",

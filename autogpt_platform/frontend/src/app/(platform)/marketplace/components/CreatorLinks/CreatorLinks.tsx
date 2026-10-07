@@ -74,7 +74,7 @@ export function CreatorLinks({ links }: CreatorLinksProps) {
           <Button
             key={link}
             variant="secondary"
-            size="small"
+            size="md"
             as="NextLink"
             href={normalizeURL(link)}
             target="_blank"

@@ -228,7 +228,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon-xs"
+                            size="icon-sm"
                             withTooltip={false}
                             aria-label="Previous card"
                             onClick={() => setCardIndex(cardIndex - 1)}
@@ -273,7 +273,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                         {card.cta && (
                           <Button
                             variant="ghost"
-                            size="xs"
+                            size="sm"
                             className="-ml-2.5 w-fit"
                             onClick={() => setIsConnectOpen(true)}
                           >
@@ -297,14 +297,14 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                           <div className="flex items-center gap-2">
                             <Button
                               variant="ghost"
-                              size="xs"
+                              size="sm"
                               onClick={() => finish("skipped")}
                             >
                               Skip
                             </Button>
                             <Button
                               variant="primary"
-                              size="xs"
+                              size="sm"
                               onClick={handleNext}
                             >
                               {!isLastCard

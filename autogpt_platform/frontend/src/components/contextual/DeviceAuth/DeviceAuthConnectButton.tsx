@@ -55,7 +55,7 @@ export function DeviceAuthConnectButton({
           {providerName} uses device authorization. Click below, then follow the
           link to approve access.
         </Text>
-        <Button type="button" variant="primary" size="large" onClick={connect}>
+        <Button type="button" variant="primary" size="lg" onClick={connect}>
           Connect {providerName}
         </Button>
       </div>
@@ -109,7 +109,7 @@ export function DeviceAuthConnectButton({
         <Button
           type="button"
           variant="ghost"
-          size="small"
+          size="md"
           onClick={cancel}
           rightIcon={<Icon icon={Cancel01Icon} size={14} />}
         >

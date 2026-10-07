@@ -43,7 +43,7 @@ export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
           <Button
             type="button"
             variant="primary"
-            size="small"
+            size="md"
             disabled={isUploading}
             className="min-w-0 gap-1.5 pr-3 pl-4"
             data-testid="artifacts-new-menu"

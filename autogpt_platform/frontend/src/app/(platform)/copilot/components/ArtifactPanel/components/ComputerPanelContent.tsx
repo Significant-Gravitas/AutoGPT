@@ -114,7 +114,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
         </div>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           loading={isPending}
           disabled={computer != null && !computer.e2b_active}
           onClick={() => startDesktop({ sessionId })}

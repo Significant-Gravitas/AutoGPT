@@ -66,7 +66,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
               </FormItem>
             )}
           />
-          <Button type="submit" disabled={isLoading} size="small">
+          <Button type="submit" disabled={isLoading} size="md">
             {isLoading ? "Saving..." : "Save timezone"}
           </Button>
         </form>

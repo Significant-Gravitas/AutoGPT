@@ -38,7 +38,7 @@ export function AttachmentCapNotice({
       <Button
         type="button"
         variant="icon"
-        size="icon-xs"
+        size="icon-sm"
         aria-label="Dismiss attachment limit notice"
         onClick={onDismiss}
       >

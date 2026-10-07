@@ -227,7 +227,7 @@ export function SubscriptionTierSection() {
 
               {!isCurrent && isPaymentEnabled && (
                 <Button
-                  size="small"
+                  size="md"
                   className="w-full"
                   variant={isUpgrade ? "primary" : "secondary"}
                   disabled={isPending || isScheduledTier}
@@ -259,7 +259,7 @@ export function SubscriptionTierSection() {
           {!hasPendingChange && (
             <Button
               variant="ghost"
-              size="small"
+              size="md"
               className="shrink-0 text-zinc-600 hover:text-red-600"
               disabled={isPending}
               onClick={() => setConfirmDowngradeTo("NO_TIER")}
@@ -289,14 +289,14 @@ export function SubscriptionTierSection() {
           <Dialog.Footer>
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => setConfirmDowngradeTo(null)}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              size="small"
+              size="md"
               onClick={() => void confirmDowngrade()}
             >
               Confirm Downgrade
@@ -327,14 +327,14 @@ export function SubscriptionTierSection() {
           <Dialog.Footer>
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => setConfirmReplacePendingTo(null)}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              size="small"
+              size="md"
               onClick={() => void confirmReplacePending()}
             >
               Replace pending change
@@ -361,12 +361,12 @@ export function SubscriptionTierSection() {
           <Dialog.Footer>
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => setPendingUpgradeTier(null)}
             >
               Cancel
             </Button>
-            <Button size="small" onClick={() => void confirmUpgrade()}>
+            <Button size="md" onClick={() => void confirmUpgrade()}>
               {subscription.has_active_stripe_subscription
                 ? "Confirm Upgrade"
                 : "Continue to Checkout"}

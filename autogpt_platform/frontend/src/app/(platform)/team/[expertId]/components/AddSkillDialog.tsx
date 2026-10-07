@@ -187,7 +187,7 @@ export function AddSkillDialog({
             </>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="secondary" size="small" onClick={onClose}>
+            <Button variant="secondary" size="md" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -230,7 +230,7 @@ function SkillOption({
       </span>
       <Button
         variant="secondary"
-        size="small"
+        size="md"
         disabled={disabled}
         onClick={onAdd}
         leadingIcon={PlusSignIcon}

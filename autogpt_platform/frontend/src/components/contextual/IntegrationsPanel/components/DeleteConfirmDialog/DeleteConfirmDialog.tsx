@@ -65,7 +65,7 @@ export function DeleteConfirmDialog({
           <div className="flex justify-end gap-2 pt-2">
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
@@ -73,7 +73,7 @@ export function DeleteConfirmDialog({
             </Button>
             <Button
               variant="destructive"
-              size="small"
+              size="md"
               onClick={onConfirm}
               loading={isPending}
               disabled={isPending}

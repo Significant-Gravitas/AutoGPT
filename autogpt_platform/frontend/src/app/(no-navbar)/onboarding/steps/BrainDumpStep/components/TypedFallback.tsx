@@ -27,7 +27,7 @@ export function TypedFallback({ value, onChange, onSubmit }: Props) {
           autoFocus
         />
         <Button
-          size="small"
+          size="md"
           onClick={onSubmit}
           disabled={!value.trim()}
           className="h-10 w-56 rounded-xl"

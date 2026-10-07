@@ -40,7 +40,7 @@ export function ApproveSplitButton({
   const who = expertName ?? AUTOPILOT_NAME;
   const main = (
     <Button
-      size="small"
+      size="md"
       variant="primary"
       loading={loading}
       disabled={disabled}
@@ -60,7 +60,7 @@ export function ApproveSplitButton({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            size="small"
+            size="md"
             variant="primary"
             disabled={disabled}
             aria-label="More ways to approve"

@@ -145,7 +145,7 @@ export function WorkspaceFilePicker({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="small"
+                  size="md"
                   onClick={() => picker.setExpertOnly(false)}
                 >
                   Show your own files too
@@ -159,7 +159,7 @@ export function WorkspaceFilePicker({
           <Button
             type="button"
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => handleOpenChange(false)}
           >
             Cancel
@@ -167,7 +167,7 @@ export function WorkspaceFilePicker({
           <Button
             type="button"
             variant="primary"
-            size="small"
+            size="md"
             disabled={files + folders === 0}
             onClick={handleConfirm}
           >

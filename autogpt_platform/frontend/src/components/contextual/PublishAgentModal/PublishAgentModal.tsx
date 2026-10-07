@@ -165,7 +165,7 @@ export function PublishAgentModal({
       >
         {showTrigger && (
           <Dialog.Trigger>
-            {trigger || <Button size="small">Publish Agent</Button>}
+            {trigger || <Button size="md">Publish Agent</Button>}
           </Dialog.Trigger>
         )}
         <Dialog.Content>

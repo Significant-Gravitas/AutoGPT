@@ -50,7 +50,7 @@ export function AgentSavedCard({
       {!hideNavButtons && (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
-            size="small"
+            size="md"
             as="NextLink"
             href={libraryAgentLink}
             target="_blank"
@@ -62,7 +62,7 @@ export function AgentSavedCard({
           <Button
             as="NextLink"
             variant="secondary"
-            size="small"
+            size="md"
             href={agentPageLink}
             target="_blank"
             rel="noopener noreferrer"

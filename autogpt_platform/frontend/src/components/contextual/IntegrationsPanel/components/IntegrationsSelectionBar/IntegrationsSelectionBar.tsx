@@ -37,7 +37,7 @@ export function IntegrationsSelectionBar({
       </div>
       <Button
         variant="destructive"
-        size="small"
+        size="md"
         leadingIcon={Delete02Icon}
         onClick={onDeleteSelected}
         loading={isDeleting}

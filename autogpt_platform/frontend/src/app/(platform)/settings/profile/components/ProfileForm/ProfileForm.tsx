@@ -202,7 +202,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
         <Button
           type="button"
           variant="ghost"
-          size="xs"
+          size="sm"
           aria-pressed={isPreview}
           onClick={() => setIsPreview((v) => !v)}
           leadingIcon={isPreview ? EyeClosedIcon : EyeIcon}

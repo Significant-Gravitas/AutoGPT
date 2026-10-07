@@ -265,7 +265,7 @@ export function MobileSubmissionItem({
           <Dialog.Footer>
             <Button
               variant="ghost"
-              size="small"
+              size="md"
               onClick={() => setConfirmDeleteOpen(false)}
               disabled={isDeleting}
             >
@@ -273,7 +273,7 @@ export function MobileSubmissionItem({
             </Button>
             <Button
               variant="destructive"
-              size="small"
+              size="md"
               onClick={handleConfirmDelete}
               loading={isDeleting}
             >

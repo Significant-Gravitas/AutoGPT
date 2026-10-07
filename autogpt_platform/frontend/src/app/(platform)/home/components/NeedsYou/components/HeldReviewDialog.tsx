@@ -153,7 +153,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
             </div>
             {carousel.finished ? (
               <PaneFooter>
-                <Button size="small" variant="primary" onClick={carousel.close}>
+                <Button size="md" variant="primary" onClick={carousel.close}>
                   Done
                 </Button>
               </PaneFooter>

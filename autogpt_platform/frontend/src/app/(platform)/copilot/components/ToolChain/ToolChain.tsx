@@ -431,7 +431,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             </span>
             <Button
               variant="primary"
-              size="small"
+              size="md"
               disabled={!allActionsReady}
               onClick={handleProceed}
             >

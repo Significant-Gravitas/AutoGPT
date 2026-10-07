@@ -123,7 +123,7 @@ function Header({
         {showSourceToggle ? (
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={onToggleSource}
             leftIcon={
               isSourceView ? (
@@ -138,7 +138,7 @@ function Header({
         ) : null}
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={handleDownload}
           loading={isDownloading}
           leftIcon={<Icon icon={Download04Icon} size={14} />}

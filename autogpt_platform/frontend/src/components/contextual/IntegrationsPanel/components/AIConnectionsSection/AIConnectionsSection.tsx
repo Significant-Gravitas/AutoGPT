@@ -226,7 +226,7 @@ function ConnectionRow({
   const manage = onManage ? (
     <Button
       variant="secondary"
-      size="small"
+      size="md"
       className="ml-auto flex-none self-center"
       onClick={onManage}
     >

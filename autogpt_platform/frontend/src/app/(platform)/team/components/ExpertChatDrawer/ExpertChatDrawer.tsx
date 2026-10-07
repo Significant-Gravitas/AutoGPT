@@ -70,7 +70,7 @@ export function ExpertChatDrawer({
           <Button
             type="button"
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             leadingIcon={NoteEditIcon}
             aria-label="New task"
             disabled={!chat.sessionId}
@@ -80,7 +80,7 @@ export function ExpertChatDrawer({
             as="NextLink"
             href={copilotHref}
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             leadingIcon={ArrowExpandIcon}
             aria-label="Open in Copilot"
           />

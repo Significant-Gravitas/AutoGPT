@@ -66,7 +66,7 @@ export default function ExternalWorkflowTab({
             key={p.label}
             type="button"
             variant="secondary"
-            size="xs"
+            size="sm"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
             className="rounded-full font-normal text-zinc-600 shadow-none hover:border-purple-400 hover:bg-white hover:text-purple-600"

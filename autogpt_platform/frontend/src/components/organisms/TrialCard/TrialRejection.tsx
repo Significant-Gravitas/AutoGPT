@@ -31,7 +31,7 @@ export function TrialRejection({ reason }: Props) {
         target="_blank"
         rel="noopener noreferrer"
         variant="outline"
-        size="small"
+        size="md"
         className="self-start"
       >
         Contact support

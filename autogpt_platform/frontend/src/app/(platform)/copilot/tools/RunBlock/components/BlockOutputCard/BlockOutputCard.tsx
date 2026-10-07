@@ -69,7 +69,7 @@ function OutputKeySection({
       {hasMoreItems && (
         <Button
           variant="ghost"
-          size="small"
+          size="md"
           className="mt-1 h-auto px-0 py-0.5 text-[11px] text-muted-foreground"
           onClick={() => setExpanded((prev) => !prev)}
         >

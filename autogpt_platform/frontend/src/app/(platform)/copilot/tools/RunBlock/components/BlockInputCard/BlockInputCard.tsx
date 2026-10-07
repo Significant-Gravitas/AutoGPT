@@ -28,7 +28,7 @@ export function BlockInputCard({ inputData }: Props) {
     <div>
       <Button
         variant="ghost"
-        size="xs"
+        size="sm"
         unmask={false}
         className="h-auto px-0 font-normal text-muted-foreground hover:border-transparent hover:bg-transparent hover:text-foreground"
         onClick={() => setExpanded((prev) => !prev)}

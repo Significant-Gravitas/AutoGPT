@@ -57,7 +57,7 @@ export function AdminAddMoneyButton({
   return (
     <>
       <Button
-        size="small"
+        size="md"
         variant="primary"
         onClick={(e) => {
           e.stopPropagation();
@@ -127,7 +127,7 @@ export function AdminAddMoneyButton({
               <Button
                 type="button"
                 variant="outline"
-                size="small"
+                size="md"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
                 disabled={isSubmitting}
               >
@@ -136,7 +136,7 @@ export function AdminAddMoneyButton({
               <Button
                 type="submit"
                 variant="primary"
-                size="small"
+                size="md"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? "Adding..." : "Add Dollars"}

@@ -126,7 +126,7 @@ function TriggerSetupSuccessCard({ output }: { output: TriggerSetupOutput }) {
           </code>
           <Button
             variant="ghost"
-            size="small"
+            size="md"
             onClick={handleCopy}
             aria-label={copied ? "Copied" : "Copy webhook URL"}
           >

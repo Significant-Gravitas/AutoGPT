@@ -62,7 +62,7 @@ export function ComposerPlusMenu({
           <Button
             type="button"
             variant="icon"
-            size="icon"
+            size="icon-lg"
             aria-label="Add files and more"
             data-testid="composer-plus-button"
             disabled={disabled}

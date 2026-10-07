@@ -70,7 +70,7 @@ export default function OnboardingPage() {
         <Button
           type="button"
           variant="ghost"
-          size="xs"
+          size="sm"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
           className="absolute top-6 left-6 text-zinc-500 hover:text-zinc-900"
@@ -122,7 +122,7 @@ export default function OnboardingPage() {
           as="NextLink"
           href="/logout"
           variant="ghost"
-          size="xs"
+          size="sm"
           leadingIcon={Logout03Icon}
           className="absolute bottom-6 left-6 text-zinc-500 hover:text-zinc-900"
         >

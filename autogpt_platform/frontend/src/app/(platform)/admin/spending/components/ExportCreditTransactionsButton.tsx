@@ -127,7 +127,7 @@ export function ExportCreditTransactionsButton() {
       <Dialog.Trigger>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           leftIcon={<Icon icon={Download04Icon} />}
         >
           Export CSV
@@ -192,7 +192,7 @@ export function ExportCreditTransactionsButton() {
         <Dialog.Footer>
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => setOpen(false)}
             disabled={exporting}
           >
@@ -200,7 +200,7 @@ export function ExportCreditTransactionsButton() {
           </Button>
           <Button
             variant="primary"
-            size="small"
+            size="md"
             onClick={handleExport}
             loading={exporting}
           >

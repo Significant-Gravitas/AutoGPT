@@ -176,7 +176,7 @@ function PanelHeader({
       <Button
         type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon-sm"
         leadingIcon={Cancel01Icon}
         aria-label={closeLabel}
         onClick={onClose}

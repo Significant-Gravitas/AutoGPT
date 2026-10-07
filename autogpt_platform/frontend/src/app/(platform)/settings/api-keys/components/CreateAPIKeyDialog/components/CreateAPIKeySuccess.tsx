@@ -37,7 +37,7 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
         </code>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           leftIcon={<Icon icon={Copy01Icon} size={16} />}
           onClick={handleCopy}
         >
@@ -45,7 +45,7 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
         </Button>
       </div>
 
-      <Button variant="primary" size="large" onClick={onClose}>
+      <Button variant="primary" size="lg" onClick={onClose}>
         Close
       </Button>
     </div>

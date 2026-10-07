@@ -29,10 +29,10 @@ export function MobileWarning() {
             desktop browser.
           </Text>
           <div className="mt-2 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
-            <Button variant="secondary" size="small" onClick={dismiss}>
+            <Button variant="secondary" size="md" onClick={dismiss}>
               Continue anyway
             </Button>
-            <Button variant="ghost" size="small" onClick={suppress}>
+            <Button variant="ghost" size="md" onClick={suppress}>
               Don&apos;t show again
             </Button>
           </div>

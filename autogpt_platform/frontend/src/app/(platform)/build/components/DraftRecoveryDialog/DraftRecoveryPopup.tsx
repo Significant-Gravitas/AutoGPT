@@ -121,7 +121,7 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="primary"
-                    size="small"
+                    size="md"
                     onClick={onLoad}
                     className="aspect-square min-w-0 p-1.5"
                   >
@@ -135,7 +135,7 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="destructive"
-                    size="icon"
+                    size="icon-lg"
                     onClick={onDiscard}
                     aria-label="Discard changes"
                     className="aspect-square min-w-0 p-1.5"

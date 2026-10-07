@@ -30,7 +30,7 @@ export function CancelTrialDialog({
       <Dialog.Trigger>
         <Button
           variant="outline"
-          size="small"
+          size="md"
           loading={isCanceling}
           disabled={isCanceling}
         >

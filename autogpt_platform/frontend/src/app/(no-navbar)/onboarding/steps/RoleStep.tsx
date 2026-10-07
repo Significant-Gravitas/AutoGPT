@@ -132,7 +132,7 @@ export function RoleStep() {
 
         <Button
           type="button"
-          size="small"
+          size="md"
           onClick={handleNext}
           disabled={!canContinue}
           className="h-10 w-56 rounded-xl"

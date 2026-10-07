@@ -94,7 +94,7 @@ export function TransactionHistoryTable({
           <Button
             id={loadMoreID}
             variant="secondary"
-            size="small"
+            size="md"
             className="min-h-11 min-w-0"
             loading={isLoadingMore}
             onClick={(event) => void loadOlder(event)}

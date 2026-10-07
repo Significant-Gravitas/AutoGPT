@@ -21,7 +21,7 @@ export function OfferActions(props: Props) {
         <Button
           type="button"
           variant="primary"
-          size="small"
+          size="md"
           className="w-full"
           loading={props.isStartingTrial}
           disabled={props.isStartingTrial}
@@ -72,7 +72,7 @@ function PaidPlanAction({
     <Button
       type="button"
       variant={inline ? "link" : plan.highlighted ? "primary" : "secondary"}
-      size="small"
+      size="md"
       className={inline ? "h-auto min-w-0 p-0 text-xs text-zinc-500" : "w-full"}
       unmask={!inline}
       loading={isUpdatingTier && selectedPlan === plan.key}

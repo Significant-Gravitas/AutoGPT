@@ -259,7 +259,7 @@ export function SubmissionItem({
             <Dialog.Footer>
               <Button
                 variant="ghost"
-                size="small"
+                size="md"
                 onClick={() => setConfirmDeleteOpen(false)}
                 disabled={isDeleting}
               >
@@ -267,7 +267,7 @@ export function SubmissionItem({
               </Button>
               <Button
                 variant="destructive"
-                size="small"
+                size="md"
                 onClick={handleConfirmDelete}
                 loading={isDeleting}
               >

@@ -61,7 +61,7 @@ function ProviderConnectRow({
       </span>
       <Button
         variant="primary"
-        size="small"
+        size="md"
         onClick={onAddCredential}
         className="shrink-0"
         type="button"
@@ -178,7 +178,7 @@ export function CredentialsFlatView({
           {showAddAction && (
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={onAddCredential}
               className="w-fit"
               type="button"

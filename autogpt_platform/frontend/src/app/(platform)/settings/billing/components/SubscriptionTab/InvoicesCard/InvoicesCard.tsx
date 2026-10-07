@@ -135,7 +135,7 @@ export function InvoicesCard({ index = 0 }: Props) {
                     <td className="px-2 py-4 text-right sm:px-4">
                       <Button
                         variant="secondary"
-                        size="small"
+                        size="md"
                         aria-label={`Download invoice ${invoice.number}`}
                         className="h-7 min-w-0 px-1.5 py-0.5"
                         disabled={!invoice.pdfUrl}

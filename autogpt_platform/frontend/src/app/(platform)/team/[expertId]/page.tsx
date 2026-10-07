@@ -141,7 +141,7 @@ export default function ExpertDetailPage() {
             </Text>
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               loading={isResuming}
               onClick={resumeSchedules}
             >

@@ -62,7 +62,7 @@ export function RaiseFlow() {
         <div key={item.id} className={`flex delay-700 ${STEP_ANIMATION}`}>
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             className="-ml-3 rounded-full"
             onClick={startRaising}
             disabled={hasStarted}
@@ -117,7 +117,7 @@ export function RaiseFlow() {
           <div className="absolute top-4 left-4 z-10 flex gap-2 sm:top-6 sm:left-6">
             <Button
               variant="icon"
-              size="small"
+              size="md"
               aria-label="Back"
               className="bg-white p-2 hover:bg-zinc-100"
               onClick={goBack}
@@ -127,7 +127,7 @@ export function RaiseFlow() {
             </Button>
             <Button
               variant="icon"
-              size="small"
+              size="md"
               aria-label="Start over"
               className="bg-white p-2 hover:bg-zinc-100"
               onClick={() => setIsRestartOpen(true)}

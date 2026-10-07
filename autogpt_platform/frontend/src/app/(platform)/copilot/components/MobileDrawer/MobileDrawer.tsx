@@ -129,7 +129,7 @@ export function MobileDrawer() {
                   ) : null}
                   <Button
                     variant="icon"
-                    size="icon"
+                    size="icon-lg"
                     aria-label="Close sessions"
                     onClick={closeDrawer}
                     className="ml-3"
@@ -142,7 +142,7 @@ export function MobileDrawer() {
                 <div className="mt-2">
                   <Button
                     variant="primary"
-                    size="small"
+                    size="md"
                     onClick={handleNewChat}
                     className="w-full"
                     leftIcon={
@@ -266,7 +266,7 @@ export function MobileDrawer() {
               {hasMore && (
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="md"
                   onClick={() => loadMore()}
                   loading={isLoadingMore}
                   disabled={isLoadingMore}

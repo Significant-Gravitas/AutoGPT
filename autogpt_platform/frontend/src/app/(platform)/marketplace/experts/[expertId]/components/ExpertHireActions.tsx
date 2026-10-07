@@ -37,7 +37,7 @@ export function ExpertHireActions({
         as="NextLink"
         href={`/signup?next=${next}`}
         variant="primary"
-        size="small"
+        size="md"
         className="w-full sm:w-auto"
       >
         Get started
@@ -56,7 +56,7 @@ export function ExpertHireActions({
           as="NextLink"
           href={`/copilot?expertId=${hiredExpert.id}`}
           variant="secondary"
-          size="small"
+          size="md"
           className={SECONDARY_CLASS}
         >
           {`Chat with ${expert.name}`}
@@ -76,7 +76,7 @@ export function ExpertHireActions({
   return (
     <Button
       variant="primary"
-      size="small"
+      size="md"
       onClick={handleHire}
       loading={isHiring}
       className="w-full sm:w-auto"

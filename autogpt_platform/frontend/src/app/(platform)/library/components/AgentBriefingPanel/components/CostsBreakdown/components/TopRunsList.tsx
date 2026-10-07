@@ -80,7 +80,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
         <div className="flex justify-center">
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={() => setShowAll(!showAll)}
           >
             {showAll ? "Collapse" : `Show all (${runs.length})`}

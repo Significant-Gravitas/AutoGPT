@@ -23,7 +23,7 @@ export function BillingToggle({
           key={cycle}
           type="button"
           variant="ghost"
-          size="xs"
+          size="sm"
           aria-pressed={billing === cycle}
           onClick={() => onBillingChange(cycle)}
           data-fast-goal="paywall_billing_toggle"

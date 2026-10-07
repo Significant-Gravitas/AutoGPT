@@ -121,7 +121,7 @@ export function EmptyTasks({
               triggerSlot={
                 <Button
                   variant="primary"
-                  size="large"
+                  size="lg"
                   className="inline-flex w-[19.75rem]"
                 >
                   Setup your task
@@ -178,19 +178,19 @@ export function EmptyTasks({
           <div className="mt-4 flex items-center gap-2">
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               as="NextLink"
               href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
               target="_blank"
             >
               Edit agent
             </Button>
-            <Button variant="secondary" size="small" onClick={handleExport}>
+            <Button variant="secondary" size="md" onClick={handleExport}>
               Export agent to file
             </Button>
             <Button
               variant="secondary"
-              size="small"
+              size="md"
               onClick={() => setShowDeleteDialog(true)}
             >
               Delete agent

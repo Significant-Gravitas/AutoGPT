@@ -49,7 +49,7 @@ export function GoogleDrivePicker(props: Props) {
         />
       )}
       <Button
-        size="small"
+        size="md"
         type="button"
         onClick={handleOpenPicker}
         disabled={props.disabled || isLoading || isAuthInProgress}

@@ -264,7 +264,7 @@ export function HostScopedCredentialsModal({
                   <Button
                     type="button"
                     variant="secondary"
-                    size="small"
+                    size="md"
                     onClick={() => removeHeaderPair(index)}
                     disabled={headerPairs.length === 1}
                   >
@@ -276,7 +276,7 @@ export function HostScopedCredentialsModal({
               <Button
                 type="button"
                 variant="outline"
-                size="small"
+                size="md"
                 onClick={addHeaderPair}
               >
                 <Icon icon={PlusSignIcon} className="size-4" /> Add Another
@@ -285,7 +285,7 @@ export function HostScopedCredentialsModal({
             </div>
 
             <div className="pt-8">
-              <Button type="submit" className="w-full" size="small">
+              <Button type="submit" className="w-full" size="md">
                 {hasExistingForHost
                   ? "Update & use these credentials"
                   : "Save & use these credentials"}

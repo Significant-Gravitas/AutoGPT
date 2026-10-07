@@ -111,7 +111,7 @@ export function GraphScheduleListItem({
         {editAction}
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={openView}
           className={actionClassName}
           data-testid="schedule-view-button"
@@ -122,7 +122,7 @@ export function GraphScheduleListItem({
         </Button>
         <Button
           variant="secondary"
-          size="small"
+          size="md"
           onClick={openDelete}
           className={actionClassName}
           data-testid="schedule-delete-button"

@@ -151,14 +151,10 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
           )}
         </div>
         <div className="mt-8 flex justify-end space-x-2">
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={() => setOpen(false)}
-          >
+          <Button variant="secondary" size="md" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button size="small" onClick={handleDone}>
+          <Button size="md" onClick={handleDone}>
             Done
           </Button>
         </div>

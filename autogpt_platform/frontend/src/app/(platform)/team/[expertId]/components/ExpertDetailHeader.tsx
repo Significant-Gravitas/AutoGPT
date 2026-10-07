@@ -47,7 +47,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
         <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             leadingIcon={PencilEdit02Icon}
             onClick={onEditSoul}
           >
@@ -55,7 +55,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
           </Button>
           <Button
             variant="primary"
-            size="small"
+            size="md"
             leadingIcon={BubbleChatIcon}
             onClick={onChat}
           >

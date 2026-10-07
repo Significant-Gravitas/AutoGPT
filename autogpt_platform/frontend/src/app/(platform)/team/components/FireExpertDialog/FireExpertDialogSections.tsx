@@ -65,7 +65,7 @@ export function FireExpertPreview({
         <div className="flex justify-end">
           <Button
             variant="secondary"
-            size="small"
+            size="md"
             onClick={handleRetry}
             data-testid="fire-preview-retry"
           >
@@ -111,7 +111,7 @@ export function FireExpertFooter({
   return (
     <Dialog.Footer>
       <Button
-        size="small"
+        size="md"
         variant="secondary"
         disabled={isFiring}
         onClick={onClose}
@@ -119,7 +119,7 @@ export function FireExpertFooter({
         Keep {expertName}
       </Button>
       <Button
-        size="small"
+        size="md"
         variant="destructive"
         loading={isFiring}
         disabled={isPreviewLoading}

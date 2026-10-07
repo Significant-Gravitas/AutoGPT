@@ -34,7 +34,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="primary"
-            size="small"
+            size="md"
             onClick={() => onGuidedPrompt(NEW_SCHEDULED_TASK_PROMPT)}
             data-testid="schedule-new-button"
           >

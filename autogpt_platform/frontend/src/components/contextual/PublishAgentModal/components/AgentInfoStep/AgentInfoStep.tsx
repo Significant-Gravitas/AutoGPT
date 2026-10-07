@@ -474,7 +474,7 @@ export function AgentInfoStep({
                 type="button"
                 onClick={onBack}
                 variant="secondary"
-                size="small"
+                size="md"
                 className="w-full sm:w-auto"
               >
                 Back
@@ -483,7 +483,7 @@ export function AgentInfoStep({
             primary={
               <Button
                 type="submit"
-                size="small"
+                size="md"
                 disabled={isSubmitDisabled}
                 loading={isSubmitting}
                 className="w-full sm:w-auto"

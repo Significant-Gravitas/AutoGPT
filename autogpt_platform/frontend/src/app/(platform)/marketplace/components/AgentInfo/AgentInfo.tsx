@@ -223,7 +223,7 @@ export function AgentInfo({
               </Text>
               <Button
                 variant="ghost"
-                size="small"
+                size="md"
                 loading={isDownloadingAgent}
                 onClick={() => handleDownload(agentId, name)}
                 data-testid="agent-download-button"
@@ -301,7 +301,7 @@ export function AgentInfo({
                   <Dialog.Trigger>
                     <Button
                       variant="ghost"
-                      size="small"
+                      size="md"
                       className="text-purple-600 hover:text-purple-500"
                     >
                       (Changelog)
