@@ -99,9 +99,15 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "codex"; credentialId: string }
   | { authProvider: "microsoft_365_copilot"; credentialId: string };
 
-/** Context panel tab: "files" is the inline workspace-files card, "artifacts"
- *  the docked artifacts library. */
-export type ContextPanelTab = "files" | "artifacts";
+/** Context panel tab, each docked on the right: the chat's files, the
+ *  artifacts library, or the chat's expert's integrations. */
+export type ContextPanelTab = "files" | "artifacts" | "integrations";
+
+/** The expert whose files and integrations the context panel lists. */
+export interface ContextPanelExpert {
+  id: string;
+  name: string;
+}
 
 const isClient = typeof window !== "undefined";
 
@@ -226,13 +232,24 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
+  contextPanelExpert: ContextPanelExpert | null;
+  setContextPanelExpert: (expert: ContextPanelExpert | null) => void;
+  /** The integrations tab for `expert`, toggled like any other tab. */
+  toggleIntegrationsPanel: (expert: ContextPanelExpert) => void;
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
-  /** Remember the chat's desktop stream and show it if nothing else is open. */
-  registerComputerStream: (ref: DesktopStreamRef) => void;
+  /** Remember the chat's desktop stream and show it if nothing else is open.
+   *  `show: false` only remembers it (mobile has no computer face to open). */
+  registerComputerStream: (
+    ref: DesktopStreamRef,
+    opts?: { show?: boolean },
+  ) => void;
   /** Open the side panel on its computer face. */
   openComputer: () => void;
+  /** Leave the computer face for whatever was under it: the preview, the
+   *  tab, or a closed panel. Remembered previews survive either way. */
+  closeComputer: () => void;
   setArtifactPanelMode: (mode: ArtifactPanelMode) => void;
   openContextPanelForFiles: () => void;
   showFilesTab: () => void;
@@ -270,6 +287,9 @@ interface CopilotUIState {
 const _autoOpenKnownIds = new Set<string>();
 let _autoOpenReady = false;
 let _autoOpenUserClosed = false;
+// Whether the computer face was opened over a closed panel, so leaving it
+// closes the panel again instead of revealing a tab nobody had open.
+let _computerOverClosedPanel = false;
 
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
@@ -384,6 +404,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           activeArtifact: ref,
           history,
           mode: "artifact",
+          // A document opened over the computer face takes the panel; the
+          // flag must follow, or the controls read the computer as showing.
+          isComputerOpen: false,
         },
       };
     }),
@@ -436,12 +459,20 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         isComputerOpen: false,
       },
     })),
-  registerComputerStream: (ref) =>
+  registerComputerStream: (ref, opts) =>
     set((state) => {
-      const { activeArtifact, isComputerOpen } = state.artifactPanel;
+      const { activeArtifact, isComputerOpen, isOpen, computer } =
+        state.artifactPanel;
       // A desktop the model just started is the thing to look at: show it
-      // unless an artifact preview is already holding the panel.
-      const showNow = activeArtifact == null || isComputerOpen;
+      // unless an artifact preview is already holding the panel. A desktop
+      // already registered is not news: its card remounts whenever the
+      // streaming chain collapses and re-expands its rows, and that must not
+      // reopen a computer the user has hidden.
+      const isNews = computer?.sandbox_id !== ref.sandbox_id;
+      const showNow =
+        opts?.show !== false &&
+        (isComputerOpen || (isNews && activeArtifact == null));
+      if (showNow && !isComputerOpen) _computerOverClosedPanel = !isOpen;
       return {
         artifactPanel: {
           ...state.artifactPanel,
@@ -454,24 +485,54 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       };
     }),
   openComputer: () =>
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        mode: "computer",
-        isComputerOpen: true,
-      },
-    })),
+    set((state) => {
+      if (!state.artifactPanel.isComputerOpen)
+        _computerOverClosedPanel = !state.artifactPanel.isOpen;
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: true,
+          mode: "computer",
+          isComputerOpen: true,
+        },
+      };
+    }),
+  closeComputer: () =>
+    set((state) => {
+      const { activeArtifact } = state.artifactPanel;
+      // Under a preview or an open tab the document face is already there;
+      // over a panel that was closed, close it again. Neither path touches
+      // lastArtifact, unlike closeArtifactPanel.
+      const closeAgain = activeArtifact == null && _computerOverClosedPanel;
+      _computerOverClosedPanel = false;
+      if (closeAgain && isClient)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: closeAgain ? false : state.artifactPanel.isOpen,
+          mode: "artifact",
+          isComputerOpen: false,
+        },
+      };
+    }),
   setArtifactPanelMode: (mode) =>
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        mode,
-        // Switching to the artifact face closes the computer face, so a
-        // later registerComputerStream does not flip the panel back.
-        isComputerOpen: mode === "computer",
-      },
-    })),
+    set((state) => {
+      // openComputer persists nothing (a reload cannot restore the computer
+      // face), so a panel it opened is still stored as closed. Turned to its
+      // document face it is an ordinary open panel and must survive a reload.
+      if (isClient && mode === "artifact" && state.artifactPanel.isOpen)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          mode,
+          // Switching to the artifact face closes the computer face, so a
+          // later registerComputerStream does not flip the panel back.
+          isComputerOpen: mode === "computer",
+        },
+      };
+    }),
   goBackArtifact: () =>
     set((state) => {
       const { history } = state.artifactPanel;
@@ -508,8 +569,14 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }),
   clearLastArtifact: () =>
     set((state) => ({
+      // Expert-wide panel sections belong to the previous chat's expert.
+      contextPanelExpert: null,
       artifactPanel: {
         ...state.artifactPanel,
+        activeTab:
+          state.artifactPanel.activeTab === "integrations"
+            ? "files"
+            : state.artifactPanel.activeTab,
         lastArtifact: null,
         // A new chat has its own computer; never show the previous chat's.
         computer: null,
@@ -519,10 +586,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     })),
   toggleContextPanelTab: (tab) =>
     set((state) => {
-      const { isOpen, activeTab, activeArtifact } = state.artifactPanel;
-      // An open preview covers the panel, so a click there means "show me the
-      // tab again" rather than "close" — only a visible matching tab closes.
-      const nextOpen = !(isOpen && activeTab === tab && activeArtifact == null);
+      const { isOpen, activeTab, activeArtifact, isComputerOpen } =
+        state.artifactPanel;
+      // An open preview or the computer face covers the panel, so a click
+      // there means "show me the tab again" rather than "close" — only a
+      // visible matching tab closes.
+      const nextOpen = !(
+        isOpen &&
+        activeTab === tab &&
+        activeArtifact == null &&
+        !isComputerOpen
+      );
       if (isClient) {
         storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, String(nextOpen));
         storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
@@ -538,9 +612,18 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           // Closing from the tab view forgets the remembered preview, so the
           // next sidebar click reopens the tab rather than an older artifact.
           lastArtifact: nextOpen ? state.artifactPanel.lastArtifact : null,
+          // The tab takes the panel from the computer face.
+          mode: "artifact",
+          isComputerOpen: false,
         },
       };
     }),
+  contextPanelExpert: null,
+  setContextPanelExpert: (expert) => set({ contextPanelExpert: expert }),
+  toggleIntegrationsPanel: (expert) => {
+    set({ contextPanelExpert: expert });
+    get().toggleContextPanelTab("integrations");
+  },
   openContextPanelForFiles: () => {
     if (_autoOpenUserClosed) return;
     if (isClient) {
@@ -554,12 +637,14 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         activeArtifact: null,
         history: [],
+        mode: "artifact",
+        isComputerOpen: false,
       },
     }));
   },
 
   // Explicit user action (the artifact panel's files button): drops the open
-  // preview and hands the region to the floating files card.
+  // preview or the computer face and docks the files tab.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
@@ -572,6 +657,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         activeArtifact: null,
         history: [],
+        mode: "artifact",
+        isComputerOpen: false,
       },
     }));
   },
@@ -654,6 +741,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,
+      contextPanelExpert: null,
       artifactPanel: {
         isOpen: false,
         activeArtifact: null,

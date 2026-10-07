@@ -5,13 +5,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from backend.api.features.library.db import get_library_agent
 from backend.api.features.schedule_visibility import (
     hidden_expert_ids,
     is_visible_schedule,
 )
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
+from backend.data.db_accessors import library_db
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -140,7 +140,7 @@ class ListSchedulesTool(BaseTool):
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
-            "follow-ups). Use before delete_schedule. Pending follow-ups "
+            "follow-ups). Use before tool:delete_schedule. Pending follow-ups "
             "for this session are already summarised in <session_context>."
         )
 
@@ -185,7 +185,7 @@ class ListSchedulesTool(BaseTool):
         # Resolve library_agent_id → graph_id (also verifies ownership)
         if library_agent_id:
             try:
-                lib_agent = await get_library_agent(
+                lib_agent = await library_db().get_library_agent(
                     id=library_agent_id, user_id=user_id
                 )
             except NotFoundError as e:
@@ -240,7 +240,7 @@ class DeleteScheduleTool(BaseTool):
         return (
             "Delete a scheduled job (agent run or copilot follow-up) by "
             "schedule_id. For 'cancel that' on a follow-up listed in "
-            "<session_context>, look up its schedule_id via list_schedules."
+            "<session_context>, look up its schedule_id via tool:list_schedules."
         )
 
     @property
@@ -441,7 +441,7 @@ class PauseScheduleTool(_ToggleScheduleTool):
 
     @property
     def description(self) -> str:
-        return "Pause a schedule without deleting it. Resume with resume_schedule."
+        return "Pause a schedule without deleting it. Resume with tool:resume_schedule."
 
 
 class ResumeScheduleTool(_ToggleScheduleTool):

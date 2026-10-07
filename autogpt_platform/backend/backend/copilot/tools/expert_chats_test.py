@@ -26,8 +26,8 @@ from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetad
 from backend.copilot.tools import (
     TOOL_GROUPS,
     execute_tool,
-    get_available_tools,
     get_tool,
+    reachable_tool_names,
 )
 
 from .expert_chats import _MAX_PAGE_CHARS, ListExpertChatsTool, ReadExpertChatTool
@@ -169,16 +169,16 @@ class TestGating:
         assert TOOL_GROUPS["list_expert_chats"] == "expert_admin"
         assert TOOL_GROUPS["read_expert_chat"] == "expert_admin"
 
-    def test_an_autopilot_session_is_offered_them_and_an_expert_session_is_not(
+    def test_an_autopilot_session_can_reach_them_and_an_expert_session_cannot(
         self,
     ) -> None:
-        autopilot = {t["function"]["name"] for t in get_available_tools()}
+        # Both tools are deferred, so ask what the session can reach through
+        # run_capability, not what it declares — the schema list leaves them
+        # out of both sides and would pass whether the group gate works or not.
+        autopilot = reachable_tool_names()
         # What survives the filter, NOT what it hid — naming this `hidden`
         # invites "fixing" the assertion below into its own inverse.
-        expert = {
-            t["function"]["name"]
-            for t in get_available_tools(disabled_groups=["expert_admin"])
-        }
+        expert = reachable_tool_names(disabled_groups=["expert_admin"])
         assert {"list_expert_chats", "read_expert_chat"} <= autopilot
         assert not {"list_expert_chats", "read_expert_chat"} & expert
 

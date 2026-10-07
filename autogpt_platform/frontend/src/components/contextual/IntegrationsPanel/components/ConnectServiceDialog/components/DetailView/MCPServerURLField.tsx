@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
+import { noPasswordManager } from "./helpers";
 
 interface Props {
   serverURL: string;
@@ -60,6 +61,7 @@ export function MCPServerURLField({
         disabled={disabled}
         readOnly={readOnly || Boolean(matched && !customSelected)}
         autoFocus={!readOnly && options.length === 0}
+        {...noPasswordManager}
       />
     </>
   );

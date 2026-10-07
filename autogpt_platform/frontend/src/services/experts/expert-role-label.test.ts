@@ -4,14 +4,14 @@ import { getExpertRoleLabel } from "./expert-role-label";
 describe("getExpertRoleLabel", () => {
   test("shortens long roster roles", () => {
     expect(getExpertRoleLabel("Social & Content Repurposing")).toBe(
-      "Social Media",
+      "Social Media Manager",
     );
     expect(getExpertRoleLabel("Market & Competitor Intelligence")).toBe(
-      "Market Intelligence",
+      "Market Research Analyst",
     );
   });
 
   test("keeps other roles unchanged", () => {
-    expect(getExpertRoleLabel("Email & Lifecycle")).toBe("Email & Lifecycle");
+    expect(getExpertRoleLabel("My custom role")).toBe("My custom role");
   });
 });

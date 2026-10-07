@@ -143,6 +143,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O1_MINI = "o1-mini"
     # GPT-6 models (September 2026)
     GPT6_ASTRA = "gpt-6-astra"
+    GPT6_SOL = "gpt-6-sol"
+    GPT6_1_SOL = "gpt-6.1-sol"
+    GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
@@ -175,9 +178,12 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
+    CLAUDE_4_8_OPUS = "claude-opus-4-8"
     CLAUDE_5_OPUS = "claude-opus-5"
+    CLAUDE_5_5_OPUS = "claude-opus-5-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
+    CLAUDE_5_5_SONNET = "claude-sonnet-5-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -202,9 +208,16 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
+    GEMMA_4_31B_IT = "google/gemma-4-31b-it"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
+    MISTRAL_LARGE_4 = "mistralai/mistral-large-4-0"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
+    MISTRAL_MEDIUM_3_5 = "mistralai/mistral-medium-3-5"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
+    MISTRAL_SMALL_4 = "mistralai/mistral-small-2603"
+    MINISTRAL_3_14B = "mistralai/ministral-14b-2512"
+    MINISTRAL_3_8B = "mistralai/ministral-8b-2512"
+    MINISTRAL_3_3B = "mistralai/ministral-3b-2512"
     CODESTRAL = "mistralai/codestral-2508"
     COHERE_COMMAND_A_03_2025 = "cohere/command-a-03-2025"
     COHERE_COMMAND_A_TRANSLATE_08_2025 = "cohere/command-a-translate-08-2025"
@@ -224,6 +237,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
+    INCLUSIONAI_LING_3_0_FLASH_VL = "inclusionai/ling-3.0-flash-vl"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
@@ -233,6 +247,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
     GROK_4_20 = "x-ai/grok-4.20"
+    GROK_4_7 = "x-ai/grok-4.7"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
@@ -242,6 +257,10 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
+    QWEN3_8_FLASH = "qwen/qwen3.8-flash"
+    # Xiaomi models
+    MIMO_V2_6_PRO = "xiaomi/mimo-v2.6-pro"
+    MIMO_V2_6_FLASH = "xiaomi/mimo-v2.6-flash"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
@@ -250,8 +269,15 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5 = "z-ai/glm-5"
     ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
+    ZAI_GLM_5_3 = "z-ai/glm-5.3"
     # Sakana AI models
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
+    # Inception Labs models
+    INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
+    # Tencent models
+    TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    # Unbiased models
+    UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
@@ -309,9 +335,12 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
 # (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``). The
 # generic provider-prefix strip in ``_missing_`` can't reverse the date
 # truncation, so map the OpenRouter slugs to ``LLMModel`` members here.
-# Only models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
-# suffix need entries; values without a snapshot (4.6/4.7+) are already
-# covered by the prefix-strip path alone. Stored as ``LLMModel`` instances
+# Models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
+# suffix need entries, as do the dot-versioned point releases
+# (``anthropic/claude-sonnet-5.5`` → ``claude-sonnet-5-5``) — ``_missing_``
+# strips the vendor prefix but does not rewrite dots. Plain values without
+# either (4.6/4.7+, ``claude-sonnet-5``) are covered by the prefix-strip
+# path alone. Stored as ``LLMModel`` instances
 # (not strings) so a rename or snapshot rotation on the enum follows the
 # alias automatically — a stale entry becomes a load-time ``AttributeError``
 # rather than a silent ``_missing_`` miss at runtime.
@@ -319,6 +348,7 @@ _OPENROUTER_ALIASES: Mapping[str, LLMModel] = {
     "anthropic/claude-haiku-4-5": LLMModel.CLAUDE_4_5_HAIKU,
     "anthropic/claude-opus-4-5": LLMModel.CLAUDE_4_5_OPUS,
     "anthropic/claude-sonnet-4-5": LLMModel.CLAUDE_4_5_SONNET,
+    "anthropic/claude-sonnet-5.5": LLMModel.CLAUDE_5_5_SONNET,
     "openai/gpt-5.4": LLMModel.GPT5_4,
     "openai/gpt-5.4-mini": LLMModel.GPT5_4_MINI,
     "openai/gpt-5.4-nano": LLMModel.GPT5_4_NANO,
@@ -438,7 +468,8 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
     "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
     "cohere/command-r-plus-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
-    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_3_2,
+    # nemo's prior target Small 3.2 is also retired; route to its successor.
+    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_4,
     "microsoft/wizardlm-2-8x22b": LLMModel.MICROSOFT_PHI_4,
     "moonshotai/kimi-k2": LLMModel.KIMI_K2_6,
     "moonshotai/kimi-k2-0905": LLMModel.KIMI_K2_6,

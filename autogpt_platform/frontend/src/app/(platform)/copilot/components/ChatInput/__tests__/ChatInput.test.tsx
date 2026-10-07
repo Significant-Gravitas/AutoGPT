@@ -110,10 +110,22 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
 }));
 
+const voiceRetry = vi.fn();
+const voiceDownload = vi.fn();
+const voiceDismiss = vi.fn();
+let mockTranscriptionError: string | null = null;
+let mockHasFailedRecording = false;
+let mockIsTranscribing = false;
+
 vi.mock("../useVoiceRecording", () => ({
   useVoiceRecording: () => ({
     isRecording: false,
-    isTranscribing: false,
+    isTranscribing: mockIsTranscribing,
+    transcriptionError: mockTranscriptionError,
+    hasFailedRecording: mockHasFailedRecording,
+    retryTranscription: voiceRetry,
+    downloadFailedRecording: voiceDownload,
+    dismissTranscriptionError: voiceDismiss,
     elapsedTime: 0,
     toggleRecording: vi.fn(),
     handleKeyDown: vi.fn(),
@@ -233,6 +245,9 @@ afterEach(() => {
   mockFlagValue = false;
   mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+  mockTranscriptionError = null;
+  mockHasFailedRecording = false;
+  mockIsTranscribing = false;
 });
 
 describe("ChatInput composer row", () => {
@@ -384,6 +399,142 @@ describe("ChatInput queue button", () => {
     expect(mockOnEnqueue).not.toHaveBeenCalled();
     // textarea stays empty
     expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+});
+
+describe("ChatInput Enter while streaming", () => {
+  // Enter submits the form (CredentialMentionEditor calls requestSubmit), so
+  // these drive the submit event directly.
+  it("queues the text instead of sending it, and clears the box", async () => {
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "  and then?  " } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onEnqueue).toHaveBeenCalledWith("and then?");
+    expect(mockOnSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("");
+  });
+
+  it("queues while an earlier send from this composer is still streaming", async () => {
+    // The composer's own send guard holds until the whole answer has
+    // streamed; Enter must not be stuck behind it.
+    const onSend = vi.fn(() => new Promise<void>(() => {}));
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ChatInput onSend={onSend} onEnqueue={onEnqueue} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "write an essay" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    rerender(<ChatInput onSend={onSend} onEnqueue={onEnqueue} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "then say PINEAPPLE" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onEnqueue).toHaveBeenCalledWith("then say PINEAPPLE");
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(textarea.value).toBe("");
+  });
+
+  it("puts the text back and toasts when queueing fails", async () => {
+    const onEnqueue = vi
+      .fn()
+      .mockRejectedValue(new Error("Session has no active turn"));
+    render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "and then?" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(textarea.value).toBe("and then?");
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't send message",
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("ignores a second Enter while the first queue request is pending", async () => {
+    let settle: (() => void) | undefined;
+    const onEnqueue = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "first" } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.change(textarea, { target: { value: "second" } });
+    fireEvent.submit(form);
+    expect(onEnqueue).toHaveBeenCalledTimes(1);
+    expect(textarea.value).toBe("second");
+    await act(async () => {
+      settle?.();
+    });
+  });
+
+  it("keeps attachments on the send path, which the queue cannot carry", async () => {
+    // Attachments are added between turns (paste is ignored mid-stream);
+    // the turn then starts from elsewhere, e.g. a question card answer.
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ChatInput onSend={onSend} onEnqueue={onEnqueue} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    rerender(<ChatInput onSend={onSend} onEnqueue={onEnqueue} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onEnqueue).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledWith(
+      "see attached",
+      [expect.any(File)],
+      undefined,
+    );
+  });
+
+  it("hides the queue button while attachments are present", async () => {
+    const { rerender } = render(
+      <ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    rerender(<ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    expect(screen.queryByLabelText(/queue message/i)).toBeNull();
+  });
+
+  it("falls back to a normal send when nothing can queue", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onSend).toHaveBeenCalledWith("hello", undefined, undefined);
   });
 });
 
@@ -1118,6 +1269,71 @@ describe("ChatInput voice mode", () => {
     expect(screen.queryByTestId("voice-bar")).toBeNull();
     expect(isShown(textarea)).toBe(true);
     expect(textarea.value).toBe("half a thought");
+  });
+});
+
+describe("ChatInput transcription failure", () => {
+  const mockOnSend = vi.fn();
+
+  it("offers a retry and the recording itself when transcription fails", () => {
+    mockTranscriptionError = "Transcription service unavailable";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription service unavailable",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Download recording/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(voiceRetry).toHaveBeenCalledTimes(1);
+    expect(voiceDownload).toHaveBeenCalledTimes(1);
+    expect(voiceDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the row up while the retry is in flight", () => {
+    // It must not blink away and back: that takes the Retry button with it
+    // and makes a slow retry look like it did nothing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    mockIsTranscribing = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /^Retry$/ }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("renders in the card composer too", () => {
+    // The empty-state composer stacks its rows and supplies its own spacing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} stacked />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription failed",
+    );
+  });
+
+  it("says nothing when there is no failed recording to act on", () => {
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("stays out of voice mode's way", () => {
+    // Voice mode replaces the composer's controls; a dictation error from
+    // before it was entered must not squat on top of the voice bar.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(
+      <ChatInput onSend={mockOnSend} voiceBar={<div data-testid="bar" />} />,
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 

@@ -54,7 +54,7 @@ class FixAgentGraphTool(BaseTool):
                         "Workspace filename (no directories) to write the "
                         "fixed JSON to (pretty-printed, overwrites). The "
                         "response then returns an @@agptfile ref to pass to "
-                        "create_agent/edit_agent instead of the full JSON."
+                        "tool:create_agent / tool:edit_agent instead of the full JSON."
                     ),
                 },
             },
@@ -144,7 +144,7 @@ class FixAgentGraphTool(BaseTool):
                 user_id,
                 session_id,
                 label="Fixed JSON",
-                pass_to="create_agent/edit_agent",
+                pass_to="tool:create_agent / tool:edit_agent",
                 fallback_note="returning the fixed JSON inline instead.",
             )
             message += write_note

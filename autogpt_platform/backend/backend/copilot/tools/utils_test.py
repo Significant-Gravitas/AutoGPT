@@ -118,6 +118,10 @@ def test_sanitize_provider_message_drops_secrets(raw: str, expected: str):
         f"Authorization: Basic {_SECRET}",
         f"Authorization: Token {_SECRET}",
         f'{{"authorization": "Bearer {_SECRET}"}}',
+        # An OAuth token endpoint's error can quote these back.
+        f"client_secret={_SECRET}",
+        f'{{"client_secret": "{_SECRET}"}}',
+        f'{{"id_token": "{_SECRET}"}}',
     ],
 )
 def test_sanitize_provider_message_leaves_no_secret(raw: str):
@@ -225,3 +229,224 @@ async def _resolve_for(expert_id: str | None, allowed: list[str]):
             {"url": "https://api.example.com/v1/data"},
             expert_id,
         )
+
+
+def _key_cred(cred_id: str, provider: str = "github"):
+    from backend.data.model import APIKeyCredentials
+
+    return APIKeyCredentials(
+        id=cred_id, provider=provider, title=cred_id, api_key=SecretStr("k")
+    )
+
+
+def _find(creds, selected=None, *, ask=False, field=None):
+    from backend.copilot.tools.utils import find_matching_credential
+
+    return find_matching_credential(
+        creds, field or _make_regular_field(), selected, ask_when_ambiguous=ask
+    )
+
+
+def test_the_credential_the_user_picked_wins():
+    creds = [_key_cred("work"), _key_cred("personal")]
+    picked = _find(creds, {"github": "personal"}, ask=True)
+    assert picked is not None and picked.id == "personal"
+
+
+def test_a_chat_tool_asks_rather_than_choosing_between_two_accounts():
+    # None surfaces as a missing credential, which is the card with a picker.
+    assert _find([_key_cred("work"), _key_cred("personal")], ask=True) is None
+
+
+def test_a_single_credential_needs_no_pick():
+    picked = _find([_key_cred("only")], ask=True)
+    assert picked is not None and picked.id == "only"
+
+
+def test_a_pick_that_no_longer_fits_is_ignored_not_trusted():
+    # Deleted, or for another provider: fall back to asking, never to a guess.
+    creds = [_key_cred("work"), _key_cred("personal")]
+    assert _find(creds, {"github": "deleted-id"}, ask=True) is None
+    assert _find(creds, {"slack": "work"}, ask=True) is None
+
+
+def test_callers_that_cannot_ask_keep_the_first_fit():
+    # Schedules and expert setup have nobody to ask; their behaviour is unchanged.
+    picked = _find([_key_cred("work"), _key_cred("personal")])
+    assert picked is not None and picked.id == "work"
+
+
+def test_a_system_credential_is_used_when_the_user_has_none_of_their_own():
+    from backend.integrations.credentials_store import openai_credentials
+
+    field = CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["openai"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+    assert _find([openai_credentials], ask=True, field=field) is openai_credentials
+    own = _key_cred("own-openai", provider="openai")
+    assert _find([own, openai_credentials], ask=True, field=field) is own
+
+
+# ---------------------------------------------------------------------------
+# A scheduled turn keeps to the account its schedule pinned (SECRT-2804)
+# ---------------------------------------------------------------------------
+
+
+def _github_oauth(cred_id: str, scopes: list[str]):
+    from backend.data.model import OAuth2Credentials
+
+    return OAuth2Credentials(
+        id=cred_id,
+        provider="github",
+        title=cred_id,
+        access_token=SecretStr("t"),
+        scopes=scopes,
+    )
+
+
+async def _match_with_pins(saved: list, requirements: dict, pins: dict):
+    """Match in a turn fired by a schedule with *pins*, as its own task so the
+    pins stay inside it."""
+    import asyncio
+
+    from backend.copilot.credential_selection import set_turn_credential_pins
+    from backend.copilot.tools.utils import match_credentials_to_requirements
+
+    async def turn():
+        set_turn_credential_pins(pins)
+        with (
+            patch(
+                "backend.copilot.tools.utils.IntegrationCredentialsManager"
+            ) as creds_mgr,
+            patch(
+                "backend.copilot.credential_selection.get_redis_async",
+                AsyncMock(return_value=MagicMock(hgetall=AsyncMock(return_value={}))),
+            ),
+        ):
+            creds_mgr.return_value.store = AsyncMock()
+            creds_mgr.return_value.store.get_all_creds.return_value = saved
+            return await match_credentials_to_requirements(
+                "test-user", requirements, session_id="s1"
+            )
+
+    return await asyncio.create_task(turn())
+
+
+async def test_a_pinned_account_without_the_scope_does_not_switch_accounts():
+    # The schedule runs on "work". A step needing `repo` must not quietly run
+    # on "personal", which has it: that is the switch the pin exists to stop.
+    from backend.copilot.credential_selection import CredentialPin
+
+    field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["oauth2"],
+            "credentials_scopes": ["repo"],
+        },
+        by_alias=True,
+    )
+    matched, missing = await _match_with_pins(
+        [_github_oauth("personal", ["repo"]), _github_oauth("work", ["read:user"])],
+        {"credentials": field},
+        {"github": CredentialPin(id="work", title="Work")},
+    )
+    assert matched == {}
+    assert len(missing) == 1
+
+
+async def test_a_pin_for_one_host_leaves_the_credentials_for_other_hosts():
+    from backend.copilot.credential_selection import CredentialPin
+
+    other_host = HostScopedCredentials(
+        id="other-host",
+        provider="http",
+        host="api.other.com",
+        headers={"Authorization": SecretStr("Bearer token")},
+        title="other-host",
+    )
+    field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["http"],
+            "credentials_types": ["host_scoped"],
+            "discriminator": "url",
+            "discriminator_values": ["https://api.other.com/v1"],
+        },
+        by_alias=True,
+    )
+    matched, _ = await _match_with_pins(
+        [_host_cred("example-host"), other_host],
+        {"credentials": field},
+        {"http": CredentialPin(id="example-host", title="example-host")},
+    )
+    assert matched["credentials"].id == "other-host"
+
+
+async def test_the_error_names_a_pinned_account_that_cannot_do_the_step():
+    import asyncio
+
+    from backend.copilot.credential_selection import (
+        CredentialPin,
+        set_turn_credential_pins,
+    )
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+
+    async def turn():
+        set_turn_credential_pins({"github": CredentialPin(id="work", title="Work")})
+        with patch(
+            "backend.copilot.tools.helpers.get_user_credentials",
+            AsyncMock(return_value=[_github_oauth("work", ["read:user"])]),
+        ):
+            return await unattended_missing_credentials_error(
+                "Block 'Create PR'",
+                {"credentials": {"provider": "github", "types": ["oauth2"]}},
+                "s1",
+                "test-user",
+                None,
+            )
+
+    result = await asyncio.create_task(turn())
+    assert result.error == "pinned_credential_unusable"
+    assert "'Work'" in result.message
+    assert "did not switch" in result.message
+
+
+async def test_a_pin_for_one_host_is_not_blamed_for_a_step_on_another():
+    # A host pin never filters another host's credentials (see keep_to_pins),
+    # so a step on a host with none failed for want of one, as it would
+    # unpinned. Naming the pinned account would send the user to fix the wrong
+    # credential.
+    import asyncio
+
+    from backend.copilot.credential_selection import (
+        CredentialPin,
+        set_turn_credential_pins,
+    )
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+
+    async def turn():
+        set_turn_credential_pins(
+            {"http": CredentialPin(id="example-host", title="example-host")}
+        )
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_user_credentials",
+                AsyncMock(return_value=[_host_cred("example-host")]),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.ungranted_credential_hint",
+                AsyncMock(return_value=""),
+            ),
+        ):
+            return await unattended_missing_credentials_error(
+                "Block 'Send Web Request'",
+                {"credentials": {"provider": "http", "types": ["host_scoped"]}},
+                "s1",
+                "test-user",
+                None,
+            )
+
+    result = await asyncio.create_task(turn())
+    assert result.error == "missing_credentials"
+    assert "has no http credential" in result.message
+    assert "example-host" not in result.message

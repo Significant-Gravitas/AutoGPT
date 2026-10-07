@@ -85,7 +85,7 @@ export function RoleStep() {
     <FadeIn>
       <div className="flex w-full flex-col items-center gap-8 px-4">
         <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 text-center">
-          <AutopilotAvatar size={120} />
+          <AutopilotAvatar size={120} transparent />
           <Text variant="h4">What best describes you?</Text>
         </div>
 

@@ -61,6 +61,11 @@ const REGISTRY = [
     description: "Mail relay",
     supported_auth_types: ["user_password"],
   },
+  {
+    name: "http",
+    description: "Generic HTTP requests",
+    supported_auth_types: ["host_scoped"],
+  },
 ];
 
 function stubPanel({
@@ -169,7 +174,7 @@ describe("ConnectToolsPanel — picking a provider", () => {
     ).toBeNull();
   });
 
-  it("offers no Continue for a method the dialog cannot drive", async () => {
+  it("expands the user/password form in place, with no footer Continue", async () => {
     stubPanel();
     renderPanel();
 
@@ -181,9 +186,12 @@ describe("ConnectToolsPanel — picking a provider", () => {
       screen.getByRole("button", { name: /Username & password/ }),
     );
 
+    expect(await screen.findByLabelText("Username")).toBeDefined();
     expect(
-      await screen.findByText("No connection method available"),
+      screen.getByLabelText("Password", { selector: "input" }),
     ).toBeDefined();
+    expect(screen.queryByText("No connection method available")).toBeNull();
+    // The card submits itself, so the footer's Continue stays away.
     expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
   });
 
@@ -215,6 +223,179 @@ describe("ConnectToolsPanel — picking a provider", () => {
     // it can only be identified by its tint.
     expect(github.querySelector(".text-emerald-500")).not.toBeNull();
     expect(smtp.querySelector(".text-emerald-500")).toBeNull();
+  });
+});
+
+describe("ConnectToolsPanel — inline host-scoped flow", () => {
+  async function openHttpHostCard() {
+    stubPanel({ recommended: ["github", "smtp", "http"] });
+    renderPanel();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Http/ }));
+    await screen.findByRole("heading", { name: "Connect AutoGPT to Http" });
+    await user.click(screen.getByRole("button", { name: /^Website access/ }));
+    return user;
+  }
+
+  it("expands the host form in place instead of the unsupported notice", async () => {
+    const user = await openHttpHostCard();
+
+    expect(await screen.findByLabelText("Host")).toBeDefined();
+    expect(screen.getByLabelText("Header name")).toBeDefined();
+    expect(screen.getByLabelText("Header value")).toBeDefined();
+    expect(screen.queryByText("No connection method available")).toBeNull();
+    // No block is in scope here, so the field says what to type rather than
+    // presenting an unexplained empty box.
+    expect(
+      screen.getByText("The host of the URL this block will call."),
+    ).toBeDefined();
+    expect(screen.getByLabelText("Host")).toHaveProperty("readOnly", false);
+    // The card submits itself, so the footer's Continue stays away.
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+
+    expect(screen.getByRole("button", { name: "Connect" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+
+    // A host with no headers saves a credential that adds nothing to a
+    // request, so the host alone must not be enough.
+    await user.type(screen.getByLabelText("Host"), "api.example.com");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Connect" })).toHaveProperty(
+        "disabled",
+        true,
+      ),
+    );
+
+    await user.type(screen.getByLabelText("Header name"), "Authorization");
+    await user.type(screen.getByLabelText("Header value"), "<test-token>");
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Connect" })).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+  });
+
+  it("rejects a full URL where the host belongs", async () => {
+    const user = await openHttpHostCard();
+
+    await user.type(
+      await screen.findByLabelText("Host"),
+      "https://api.example.com",
+    );
+    await user.type(screen.getByLabelText("Header name"), "Authorization");
+    await user.type(screen.getByLabelText("Header value"), "<test-token>");
+
+    expect(
+      await screen.findByText(
+        "Enter only the host (e.g. api.example.com), not a full URL",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Connect" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+
+  it("posts the host and its headers to the picked provider", async () => {
+    const requests: { provider: string; body: unknown }[] = [];
+    server.use(
+      http.post(CREATE_CREDENTIALS_URL, async ({ params, request }) => {
+        requests.push({
+          provider: String(params.provider),
+          body: await request.json(),
+        });
+        return HttpResponse.json(
+          {
+            id: "cred-http",
+            provider: "http",
+            type: "host_scoped",
+            title: "api.example.com",
+            scopes: null,
+            username: null,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    const user = await openHttpHostCard();
+    await user.type(await screen.findByLabelText("Host"), "api.example.com");
+    await user.type(screen.getByLabelText("Header name"), "Authorization");
+    await user.type(screen.getByLabelText("Header value"), "<test-token>");
+
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0].provider).toBe("http");
+    expect(requests[0].body).toMatchObject({
+      provider: "http",
+      type: "host_scoped",
+      title: "api.example.com",
+      host: "api.example.com",
+      headers: { Authorization: "<test-token>" },
+    });
+    expect(toastSpy).toHaveBeenCalledWith({
+      title: "Host credentials saved",
+      variant: "success",
+    });
+  });
+});
+
+describe("ConnectToolsPanel — inline user/password flow", () => {
+  it("posts the username and password to the picked provider", async () => {
+    stubPanel();
+    const requests: { provider: string; body: unknown }[] = [];
+    server.use(
+      http.post(CREATE_CREDENTIALS_URL, async ({ params, request }) => {
+        requests.push({
+          provider: String(params.provider),
+          body: await request.json(),
+        });
+        return HttpResponse.json(
+          {
+            id: "cred-smtp",
+            provider: "smtp",
+            type: "user_password",
+            title: "Mail relay",
+            scopes: null,
+            username: "postmaster",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderPanel();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Smtp/ }));
+    await screen.findByRole("heading", { name: "Connect AutoGPT to Smtp" });
+    await user.click(
+      screen.getByRole("button", { name: /Username & password/ }),
+    );
+
+    await user.type(await screen.findByLabelText("Name"), "Mail relay");
+    await user.type(screen.getByLabelText("Username"), "postmaster");
+    await user.type(
+      screen.getByLabelText("Password", { selector: "input" }),
+      "<test-password>",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0].provider).toBe("smtp");
+    expect(requests[0].body).toMatchObject({
+      provider: "smtp",
+      type: "user_password",
+      title: "Mail relay",
+      username: "postmaster",
+      password: "<test-password>",
+    });
   });
 });
 

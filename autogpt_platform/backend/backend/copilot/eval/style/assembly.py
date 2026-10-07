@@ -17,10 +17,14 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertWorkflowRef,
 )
-from backend.api.features.experts.seed import ROSTER, RosterEntry
+from backend.api.features.experts.roster import load_roster
+from backend.api.features.experts.roster_types import RosterEntry
+from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.copilot.config import ChatConfig
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
+    render_account_standing_work_block,
+    render_expert_computer_block,
     render_expert_identity_suffix,
     render_expert_workflows_block,
     render_team_context,
@@ -61,10 +65,12 @@ class RoutedModel(BaseModel):
 
 
 def roster_experts(names: list[str] | None = None) -> list[Expert]:
+    """The catalog roster as hired copies. Reads ``SKILLS_CATALOG_PATH`` or
+    downloads the configured catalog ref into the local cache."""
     wanted = {n.lower() for n in names} if names else None
     return [
         roster_expert(entry)
-        for entry in ROSTER
+        for entry in load_roster(catalog_checkout().root)
         if wanted is None or entry["name"].lower() in wanted
     ]
 
@@ -117,11 +123,25 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
     (``build_expert_context``): the expert's installed workflows and the rest
     of the roster as teammates; plain Otto gets the whole roster."""
     if expert is None:
-        return render_team_context(roster, delegation_enabled=DELEGATION_ENABLED)
-    return render_expert_workflows_block(expert) + render_team_context(
-        roster,
-        delegation_enabled=DELEGATION_ENABLED,
-        exclude_expert_id=expert.id,
+        # ``<routines>`` is omitted: it is a per-account database read, and an
+        # eval fixture has no account. ``<standing_work>`` is static text every
+        # Otto turn carries, so leaving it out here would make this check pass
+        # while production and the harness disagreed.
+        return (
+            render_team_context(roster, delegation_enabled=DELEGATION_ENABLED)
+            + render_account_standing_work_block()
+        )
+    # ``<expert_computer>`` is only rendered when E2B actually backs the
+    # sandbox, so it is empty wherever E2B is unconfigured — which is why its
+    # absence here went unnoticed: CI has no E2B and both sides read "".
+    return (
+        render_expert_workflows_block(expert)
+        + render_expert_computer_block()
+        + render_team_context(
+            roster,
+            delegation_enabled=DELEGATION_ENABLED,
+            exclude_expert_id=expert.id,
+        )
     )
 
 
@@ -132,7 +152,7 @@ def chat_system_prompt(expert: Expert | None) -> str:
     suffix = render_expert_identity_suffix(expert) if expert else ""
     return (
         CACHEABLE_SYSTEM_PROMPT
-        + get_sdk_supplement(use_e2b=True)
+        + get_sdk_supplement(use_e2b=True, expert_session=expert is not None)
         + (get_delegation_supplement() if DELEGATION_ENABLED else "")
         + get_expert_oversight_supplement(
             experts_enabled=DELEGATION_ENABLED,

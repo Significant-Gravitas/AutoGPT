@@ -69,7 +69,7 @@ _ERROR_MESSAGES: dict[str, str] = {
     ),
     "channel_not_found": (
         "No channel matching that reference was found in your linked server(s). "
-        "Call list_chat_platform_channels to see valid options."
+        "Call tool:list_chat_platform_channels to see valid options."
     ),
     "not_authorized": (
         "That channel belongs to a server that isn't linked to your account, "
@@ -77,7 +77,7 @@ _ERROR_MESSAGES: dict[str, str] = {
     ),
     "ambiguous_channel": (
         "More than one channel matches that name across your linked servers. "
-        "Use the numeric channel ID, or call list_chat_platform_channels."
+        "Use the numeric channel ID, or call tool:list_chat_platform_channels."
     ),
     "send_failed": (
         "The platform rejected the message — the bot likely lacks permission "
@@ -228,10 +228,10 @@ class PostToChatPlatformTool(BaseTool):
             "channels only). 'channel' is a name (#standup) or numeric ID — "
             "on Telegram, a linked group's numeric chat ID. Teams supports "
             "target='dm' only; its channels cannot be posted to yet. Pair "
-            "with schedule_followup for recurring posts; call "
-            "list_chat_platform_channels if a Discord/Slack channel won't "
+            "with tool:schedule_followup for recurring posts; call "
+            "tool:list_chat_platform_channels if a Discord/Slack channel won't "
             "resolve. Whatever this posts can later be changed with "
-            "edit_chat_platform_message using the channel_id and ref_id it "
+            "tool:edit_chat_platform_message using the channel_id and ref_id it "
             "returns — for mode='thread' those address the body message "
             "inside the new thread, so posting again with that channel_id "
             "continues the thread."
@@ -588,7 +588,7 @@ class ListChatPlatformChannelsTool(BaseTool):
         return (
             "List server channels the bot can post to on Discord or Slack — "
             "use to resolve a channel name to an ID before "
-            "post_to_chat_platform. Telegram can't list channels (use a "
+            "tool:post_to_chat_platform. Telegram can't list channels (use a "
             "linked group's numeric chat ID) and neither can Teams (post to "
             "target='dm'). The user's own DMs never appear here — use "
             "target='dm' instead."

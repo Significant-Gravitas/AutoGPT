@@ -191,6 +191,32 @@ describe("Marketplace SkillsSection", () => {
     expect(brand.textContent).not.toContain("Works with");
   });
 
+  test("credits the repo a vendored skill came from, and nothing for our own", async () => {
+    const coldEmail: MarketplaceSkill = {
+      ...outreach,
+      slug: "cold-email",
+      name: "cold-email",
+      title: "Cold email",
+      source_repo: "coreyhaines31/marketingskills",
+      source_url:
+        "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+      license: "MIT",
+    };
+    server.use(listing([brandVoice, coldEmail]));
+
+    render(<MainMarkeplacePage />);
+
+    await screen.findAllByTestId("skill-card", undefined, { timeout: 10000 });
+    const vendored = await screen.findByRole("link", { name: /Cold email/ });
+    expect(vendored.textContent).toContain(
+      "From coreyhaines31/marketingskills",
+    );
+    const own = await screen.findByRole("link", {
+      name: /Brand voice guide/,
+    });
+    expect(own.textContent).not.toContain("From ");
+  });
+
   test("marks a skill the user already has as Added", async () => {
     server.use(
       listing([brandVoice, outreach]),
@@ -401,7 +427,7 @@ describe("Marketplace SkillsSection", () => {
 
 async function findCategoryChip(name: string) {
   const group = await screen.findByRole("group", {
-    name: "Browse by category",
+    name: "Browse experts by category",
   });
   return within(group).findByRole("button", { name });
 }

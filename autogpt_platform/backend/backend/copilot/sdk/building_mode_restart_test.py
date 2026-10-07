@@ -79,6 +79,9 @@ class TestApplyBuildingModeRestart:
         delegation_supplement: str = "",
         oversight_supplement: str = "",
         team_building_supplement: str = "",
+        auto_mode_supplement: str = "",
+        use_e2b: bool = False,
+        expert_id: str | None = None,
     ):
         from backend.copilot.sdk.service import (
             _BUILDING_MODE_CONTINUATION,
@@ -90,6 +93,7 @@ class TestApplyBuildingModeRestart:
             new=mocker.AsyncMock(return_value=suffix),
         )
         session = _session(requested=True, guide_loaded=False)
+        session.expert_id = expert_id
         state = self._state(
             prior_emitted=prior_emitted, thinking_reprompted=thinking_reprompted
         )
@@ -103,7 +107,8 @@ class TestApplyBuildingModeRestart:
             oversight_supplement=oversight_supplement,
             team_building_supplement=team_building_supplement,
             graphiti_supplement="",
-            use_e2b=False,
+            auto_mode_supplement=auto_mode_supplement,
+            use_e2b=use_e2b,
             session_id="sess-1",
             message_id="msg-1",
             log_prefix="[test]",
@@ -140,13 +145,104 @@ class TestApplyBuildingModeRestart:
         assert marker in text
 
     @pytest.mark.asyncio
-    async def test_empty_suffix_degrades_without_prompt_upgrade(self, mocker):
-        session, state, _, _ = await self._run(mocker, suffix="")
+    async def test_auto_mode_supplement_survives_the_restart(self, mocker):
+        """Same hole as the delegation case, one supplement over.
 
-        assert session.building_mode_requested is False
+        The gate stays active across a restart, so a prompt rebuilt without
+        its rules leaves the model asking in prose and retrying refusals for
+        the rest of the turn.
+        """
+        _, state, _, _ = await self._run(
+            mocker, auto_mode_supplement="\n\n<auto_mode>RULES</auto_mode>"
+        )
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert "<auto_mode>RULES</auto_mode>" in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "use_e2b, expert_id, expected",
+        [(True, None, 1), (True, "expert-1", 0), (False, None, 0)],
+    )
+    async def test_computer_note_only_for_a_plain_e2b_session(
+        self, mocker, use_e2b, expert_id, expected
+    ):
+        """An expert session's computer block rides its first user message, so
+        the system prompt must not add a second one."""
+        mocker.patch(
+            "backend.copilot.sdk.service.build_expert_identity_suffix",
+            new=mocker.AsyncMock(return_value=""),
+        )
+        _, state, _, _ = await self._run(mocker, use_e2b=use_e2b, expert_id=expert_id)
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert text.count("### Your computer") == expected
+
+    @pytest.mark.asyncio
+    async def test_empty_suffix_relaunches_without_the_confirmation(self, mocker):
+        """An empty suffix means the guide is genuinely absent, so the model
+        must not be told it is present — that sentence costs it the rest of
+        the turn chasing a gate that cannot clear."""
+        session, state, _, continuation = await self._run(mocker, suffix="")
+
+        assert state.query_message != continuation
+        assert "could not be loaded" in state.query_message
         assert session.guide_in_system_prompt is False
-        # The restart still proceeds — resume wiring is unconditional.
+        # Cleared as on the success path, which is what stops the restart
+        # re-firing at the next message boundary of this turn.
+        assert session.building_mode_requested is False
+        # The relaunch itself still proceeds — resume wiring is unconditional.
         assert state.use_resume is True
+
+    @pytest.mark.asyncio
+    async def test_guide_applied_although_history_lacks_the_enter_call(self, mocker):
+        """Production shape: the restart runs microseconds after the enter
+        tool ran, before its row is in ``messages``. Deriving "is this session
+        building?" from history there answers False and strands the turn with
+        no guide — this is the case dev logged 16 times in six hours.
+
+        The real suffix builder runs here on purpose: patching it would prove
+        only the wiring, never that the predicate underneath it answers.
+        """
+        from backend.copilot.sdk.service import (
+            _BUILDING_MODE_CONTINUATION,
+            _apply_building_mode_restart,
+        )
+
+        session = _session(requested=True, guide_loaded=False)
+        assert session.messages == []
+        assert session.has_tool_been_called("enter_agent_building_mode") is False
+        state = self._state(prior_emitted=False, thinking_reprompted=False)
+        mocker.patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="# Guide body",
+        )
+
+        await _apply_building_mode_restart(
+            session=session,
+            state=state,
+            sdk_options=MagicMock(),
+            base_system_prompt="BASE",
+            delegation_supplement="",
+            oversight_supplement="",
+            team_building_supplement="",
+            graphiti_supplement="",
+            auto_mode_supplement="",
+            use_e2b=False,
+            session_id="sess-1",
+            message_id="msg-1",
+            log_prefix="[test]",
+        )
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert "<building_guide>" in text
+        assert "# Guide body" in text
+        assert session.guide_in_system_prompt is True
+        assert session.building_mode_requested is False
+        assert state.query_message == _BUILDING_MODE_CONTINUATION
 
     @pytest.mark.asyncio
     async def test_adapter_carry_over(self, mocker):
@@ -191,6 +287,7 @@ class TestApplyBuildingModeRestart:
                 oversight_supplement="",
                 team_building_supplement="",
                 graphiti_supplement="",
+                auto_mode_supplement="",
                 use_e2b=False,
                 session_id="sess-1",
                 message_id="msg-1",

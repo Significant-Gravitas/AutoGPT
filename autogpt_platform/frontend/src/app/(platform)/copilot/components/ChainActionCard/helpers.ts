@@ -4,15 +4,18 @@ import { formatProviderName } from "@/components/contextual/IntegrationsPanel/he
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { RJSFSchema } from "@rjsf/utils";
 import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
-import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import type {
+  ClarifyingQuestion,
+  QuestionAnswer,
+} from "../../tools/clarifying-questions";
 
 /** One question card's ask. The card owns the inputs; the asking component
  *  keeps the answers so it can still build its own message. */
 export interface QuestionRequest {
   id: string;
   questions: ClarifyingQuestion[];
-  answers: Record<string, string>;
-  onAnswer: (keyword: string, value: string) => void;
+  answers: Record<string, QuestionAnswer>;
+  onAnswer: (keyword: string, value: QuestionAnswer) => void;
   onSkip: () => void;
 }
 
@@ -65,8 +68,12 @@ export interface ConnectorRequest {
   onChange: (key: string, value?: CredentialsMetaInput) => void;
   /** The user finished a sign-in on this row. Distinct from a credential
    *  merely being present, which is also true of a card re-rendered from
-   *  chat history. */
-  onConnected: () => void;
+   *  chat history. Carries the credential the sign-in reported, if it did. */
+  onConnected: (credentialId?: string) => void;
+  /** A saved credential the provider refused when the tool ran. It stays on
+   *  file, so without this the row would auto-select it and read Connected
+   *  with nothing to click. */
+  rejectedCredentialId?: string;
 }
 
 export interface ConnectorRow {
@@ -76,7 +83,7 @@ export interface ConnectorRow {
   schema: CredentialField[1];
   selected?: CredentialsMetaInput;
   select: (value?: CredentialsMetaInput) => void;
-  onConnected: () => void;
+  onConnected: (credentialId?: string) => void;
   /** Set when an expert asked: an account credential only counts once the
    *  expert has been granted it, so the connect dialog offers the account's
    *  existing credentials first and a freshly connected one is granted. */
@@ -85,6 +92,9 @@ export interface ConnectorRow {
    *  reports the FIRST target's value, so without this a second card asking
    *  for the same provider reads as answered while its field is still empty. */
   hasUnansweredTarget: boolean;
+  /** Saved credentials a merged card reported refused. None is usable until
+   *  the user signs in to it again from this row. */
+  rejectedCredentialIds: string[];
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -147,10 +157,17 @@ export function toConnectorRows(
     hasUnansweredTarget: row.targets.some(
       ({ request, key }) => request.selected[key]?.id !== row.selected?.id,
     ),
+    rejectedCredentialIds: [
+      ...new Set(
+        row.targets.flatMap(({ request }) =>
+          request.rejectedCredentialId ? [request.rejectedCredentialId] : [],
+        ),
+      ),
+    ],
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
-    onConnected: () =>
-      row.targets.forEach(({ request }) => request.onConnected()),
+    onConnected: (credentialId?: string) =>
+      row.targets.forEach(({ request }) => request.onConnected(credentialId)),
   }));
 }
 

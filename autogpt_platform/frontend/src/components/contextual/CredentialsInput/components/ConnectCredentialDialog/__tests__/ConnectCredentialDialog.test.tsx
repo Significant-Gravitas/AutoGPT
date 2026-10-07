@@ -26,12 +26,14 @@ vi.mock(
       provider,
       selectedMethod,
       onSelectMethod,
-      onDeviceAuthSuccess,
+      hostScopedHost,
+      onInlineConnectSuccess,
     }: {
       provider: { id: string; name: string; supportedAuthTypes: string[] };
       selectedMethod: string | null;
       onSelectMethod: (method: string) => void;
-      onDeviceAuthSuccess: () => void;
+      hostScopedHost?: string;
+      onInlineConnectSuccess: () => void;
     }) => (
       <div data-testid="connect-method-view">
         <span>Connect AutoGPT to {provider.name}</span>
@@ -39,13 +41,14 @@ vi.mock(
           {provider.supportedAuthTypes.join(",")}
         </span>
         <span data-testid="selected-method">{selectedMethod ?? "none"}</span>
+        <span data-testid="host-scoped-host">{hostScopedHost ?? "none"}</span>
         {provider.supportedAuthTypes.map((method) => (
           <button key={method} onClick={() => onSelectMethod(method)}>
             {`select-${method}`}
           </button>
         ))}
         {provider.supportedAuthTypes.includes("device_code") && (
-          <button onClick={onDeviceAuthSuccess}>complete-device_code</button>
+          <button onClick={onInlineConnectSuccess}>complete-device_code</button>
         )}
       </div>
     ),
@@ -108,7 +111,7 @@ function makeApiKeyReturn(
       reset: vi.fn(),
       formState: { isValid: overrides.isValid ?? false },
       handleSubmit: (onValid: (values: unknown) => void) => () =>
-        onValid({ title: "Key", apiKey: "sk-123", expiresAt: "" }),
+        onValid({ title: "Key", apiKey: "sk-123", expiresAt: "" }), // pragma: allowlist secret
     },
     handleSubmit: vi.fn(),
     isPending: overrides.isPending ?? false,
@@ -146,6 +149,55 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ConnectCredentialDialog", () => {
+  it("takes the host-scoped host from the requesting node's URL input", () => {
+    renderDialog({
+      schema: {
+        credentials_provider: ["http"],
+        credentials_types: ["host_scoped"],
+        discriminator: "url",
+      } as unknown as BlockIOCredentialsSubSchema,
+      provider: "http",
+      displayName: "Http",
+      siblingInputs: { url: "https://api.example.com/v1/orders" },
+    });
+
+    expect(screen.getByTestId("host-scoped-host").textContent).toBe(
+      "api.example.com",
+    );
+  });
+
+  it("falls back to the schema's discriminator for a saved graph's pinned URL", () => {
+    // A run of a saved agent passes no sibling inputs; the aggregated
+    // credentials schema carries the node's URL instead.
+    renderDialog({
+      schema: {
+        credentials_provider: ["http"],
+        credentials_types: ["host_scoped"],
+        discriminator: "url",
+        discriminator_values: ["https://api.stripe.com/v1/charges"],
+      } as unknown as BlockIOCredentialsSubSchema,
+      provider: "http",
+      displayName: "Http",
+    });
+
+    expect(screen.getByTestId("host-scoped-host").textContent).toBe(
+      "api.stripe.com",
+    );
+  });
+
+  it("leaves the host unset where no block is in scope", () => {
+    renderDialog({
+      schema: {
+        credentials_provider: ["http"],
+        credentials_types: ["host_scoped"],
+      } as unknown as BlockIOCredentialsSubSchema,
+      provider: "http",
+      displayName: "Http",
+    });
+
+    expect(screen.getByTestId("host-scoped-host").textContent).toBe("none");
+  });
+
   it("renders nothing while closed", () => {
     renderDialog({ open: false });
     expect(screen.queryByTestId("connect-method-view")).toBeNull();
@@ -228,7 +280,7 @@ describe("ConnectCredentialDialog", () => {
 
     expect(apiKey.handleSubmit).toHaveBeenCalledWith({
       title: "Key",
-      apiKey: "sk-123",
+      apiKey: "sk-123", // pragma: allowlist secret
       expiresAt: "",
     });
   });
@@ -429,5 +481,72 @@ describe("ConnectCredentialDialog with existing accounts", () => {
     );
     expect(screen.queryByTestId("connect-method-view")).toBeNull();
     expect(screen.getByText("Use existing")).toBeDefined();
+  });
+
+  it("pre-selects nothing when the user is choosing between their own accounts", async () => {
+    const existing = { ...offer(), purpose: "choose" as const };
+    renderDialog({ existing });
+
+    expect(screen.getByText("Choose a GitHub account")).toBeDefined();
+    expect(screen.queryByText(/this expert/i)).toBeNull();
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio.getAttribute("aria-checked")).toBe("false");
+    }
+    // Nothing is picked for the user, so there is nothing to confirm yet.
+    expect(
+      screen.getByText("Use this account").closest("button")?.disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByText("Personal GitHub"));
+    fireEvent.click(screen.getByText("Use this account"));
+
+    await waitFor(() =>
+      expect(existing.onUse).toHaveBeenCalledWith(accounts[1]),
+    );
+  });
+
+  it("keeps the expert grant wording and its default selection", () => {
+    renderDialog({ existing: offer() });
+
+    expect(screen.getByText("Give this expert access to GitHub")).toBeDefined();
+    expect(screen.getAllByRole("radio")[0].getAttribute("aria-checked")).toBe(
+      "true",
+    );
+  });
+
+  it("signs in to the account the user chose to update, not a fresh one", () => {
+    const existing = { ...offer(), purpose: "update" as const };
+    renderDialog({ existing });
+
+    expect(screen.getByText("Update a GitHub account")).toBeDefined();
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio.getAttribute("aria-checked")).toBe("false");
+    }
+    expect(
+      screen.getByText("Update this account").closest("button")?.disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByText("Personal GitHub"));
+    fireEvent.click(screen.getByText("Update this account"));
+
+    // The list gives way to the sign-in, aimed at that account, so the
+    // backend widens it in place instead of storing another beside it.
+    expect(screen.getByTestId("connect-method-view")).toBeDefined();
+    const flow = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(flow.credentialID).toBe("cred-2");
+    expect(existing.onUse).not.toHaveBeenCalled();
+  });
+
+  it("adds a new account when the user asks for one instead of updating", () => {
+    renderDialog({ existing: { ...offer(), purpose: "update" as const } });
+
+    fireEvent.click(screen.getByText("Add new"));
+
+    const flow = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(flow.credentialID).toBeUndefined();
   });
 });

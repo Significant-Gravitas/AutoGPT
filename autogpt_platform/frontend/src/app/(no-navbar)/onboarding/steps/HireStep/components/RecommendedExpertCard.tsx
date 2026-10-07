@@ -1,5 +1,7 @@
 "use client";
 
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
+
 import type { RecommendedExpert } from "@/app/api/__generated__/models/recommendedExpert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -46,7 +48,7 @@ export function RecommendedExpertCard({
             {expert.name}
           </Text>
           <Text variant="small" tone="muted" className="truncate">
-            {expert.role}
+            {getExpertRoleLabel(expert.role)}
           </Text>
         </div>
       </div>

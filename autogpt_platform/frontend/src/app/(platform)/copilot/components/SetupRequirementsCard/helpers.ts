@@ -1,4 +1,5 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import { putV2RecordCredentialPicksForThisChat } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import type { RJSFSchema } from "@rjsf/utils";
 import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
@@ -350,6 +351,46 @@ export function isRejectedCredentialSelected(
   return Object.values(inputCredentials).some(
     (credential) => credential?.id === rejectedId,
   );
+}
+
+/** `{provider: credentialId}` for every credential chosen on the card. */
+export function buildCredentialSelections(
+  inputCredentials: Record<
+    string,
+    { id?: string; provider?: string } | undefined
+  >,
+): Record<string, string> {
+  const selections: Record<string, string> = {};
+  for (const credential of Object.values(inputCredentials)) {
+    if (credential?.id && credential.provider) {
+      selections[credential.provider] = credential.id;
+    }
+  }
+  return selections;
+}
+
+/**
+ * Tell the backend which accounts were chosen, before the reply that re-runs
+ * the tool. The tools use exactly these for the rest of the chat; without them
+ * they would match on their own and could run on a different account.
+ *
+ * Failure is swallowed on purpose: with nothing recorded the backend asks
+ * again rather than guessing, so the worst case is a second card.
+ */
+export async function reportCredentialPicks(
+  sessionID: string | null,
+  inputCredentials: Record<
+    string,
+    { id?: string; provider?: string } | undefined
+  >,
+): Promise<void> {
+  const selections = buildCredentialSelections(inputCredentials);
+  if (!sessionID || Object.keys(selections).length === 0) return;
+  try {
+    await putV2RecordCredentialPicksForThisChat(sessionID, { selections });
+  } catch {
+    // See above.
+  }
 }
 
 export function checkCanRun(

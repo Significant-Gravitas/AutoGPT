@@ -33,7 +33,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "Requires get_agent_building_guide first (refuses otherwise)."
+            "Requires tool:get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -164,8 +164,8 @@ class EditAgentTool(BaseTool):
                     "by editing the graph — that would change the agent's global "
                     "default for everyone who uses it. A trigger's configuration "
                     "lives on a per-trigger preset: use the "
-                    "setup_agent_webhook_trigger tool with these fields as "
-                    "`trigger_config` instead. Re-run edit_agent leaving the "
+                    "tool:setup_agent_webhook_trigger tool with these fields as "
+                    "`trigger_config` instead. Re-run tool:edit_agent leaving the "
                     "trigger block's config unchanged."
                 ),
                 error="trigger_config_edit_blocked",

@@ -7,8 +7,6 @@ import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
-  AnalyticsDetails,
-  AnalyticsMetrics,
   APIKey,
   APIKeyCredentials,
   APIKeyPermission,
@@ -55,6 +53,11 @@ import type {
   UsersBalanceHistoryResponse,
   WebSocketNotification,
 } from "./types";
+import {
+  describeCloseEvent,
+  describeErrorEvent,
+  logWebSocketIssue,
+} from "./websocket-logging";
 
 const isClient = environment.isClientSide();
 
@@ -451,14 +454,6 @@ export default class BackendAPI {
    */
   async pingWebhook(webhook_id: string): Promise<boolean> {
     return this._request("POST", `/integrations/webhooks/${webhook_id}/ping`);
-  }
-
-  logMetric(metric: AnalyticsMetrics) {
-    return this._request("POST", "/analytics/log_raw_metric", metric);
-  }
-
-  logAnalytic(analytic: AnalyticsDetails) {
-    return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
   async uploadFile(
@@ -1089,16 +1084,26 @@ export default class BackendAPI {
         };
 
         this.webSocket.onclose = (event) => {
-          if (this.webSocket?.state == "connecting") {
-            console.error(
-              `[BackendAPI] WebSocket failed to connect: ${event.reason}`,
+          const phase = this.webSocket?.state;
+          if (phase == "connecting" || phase == "connected") {
+            const { summary, extra } = describeCloseEvent(
               event,
+              this.wsUrl,
+              phase,
             );
-          } else if (this.webSocket?.state == "connected") {
-            console.warn(
-              `[BackendAPI] WebSocket connection closed: ${event.reason}`,
-              event,
-            );
+            if (phase == "connecting") {
+              logWebSocketIssue(
+                "error",
+                `[BackendAPI] WebSocket failed to connect: ${summary}`,
+                extra,
+              );
+            } else {
+              logWebSocketIssue(
+                "warn",
+                `[BackendAPI] WebSocket connection closed: ${summary}`,
+                extra,
+              );
+            }
           }
           this.webSocket!.state = "closed";
 
@@ -1119,7 +1124,12 @@ export default class BackendAPI {
 
         this.webSocket.onerror = (error) => {
           if (this.webSocket?.state == "connected") {
-            console.error("[BackendAPI] WebSocket error:", error);
+            const { summary, extra } = describeErrorEvent(error, this.wsUrl);
+            logWebSocketIssue(
+              "error",
+              `[BackendAPI] WebSocket error: ${summary}`,
+              extra,
+            );
           }
         };
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);

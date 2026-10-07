@@ -12,7 +12,7 @@ from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
@@ -24,6 +24,7 @@ from .tool_adapter import (
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
     get_sdk_disallowed_tools,
@@ -768,6 +769,12 @@ class TestSDKDisallowedTools:
         a denylist — an unlisted tool falls through and executes."""
         assert tool in BLOCKED_TOOLS
 
+    @pytest.mark.parametrize("tool", ["ListAgents", "SendMessage"])
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_cli_cross_session_tools_are_disallowed(self, tool: str, use_e2b: bool):
+        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
+        assert tool in BLOCKED_TOOLS
+
     def test_orchestrator_block_disallows_every_known_builtin(self):
         # The orchestrator's model gets graph MCP tools only, so its blocklist
         # must cover everything the copilot blocks *and* everything the
@@ -1255,11 +1262,10 @@ class TestCreateCopilotMcpServerHidden:
 
     @pytest.mark.asyncio
     async def test_hidden_tools_not_registered(self):
-        # Use a named tool (find_block is stable + load-bearing in the
-        # builder flow) so the test reads as a real scenario instead of
-        # "the first key in dict insertion order".
-        hidden_name = "find_block"
-        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_block"
+        # Use a named eager tool so the test reads as a real scenario
+        # instead of "the first key in dict insertion order".
+        hidden_name = "find_capability"
+        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_capability"
         server = create_copilot_mcp_server(hidden_tool_names=[hidden_name])
         registered = await self._registered_tool_names(server)
         assert hidden_name not in registered
@@ -1293,8 +1299,8 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         for blocked in BUILDER_BLOCKED_TOOLS:
             assert blocked not in registered
-        # edit_agent must remain so the model can populate the bound graph.
-        assert "edit_agent" in registered
+        # The registry tools must remain so the model can still act.
+        assert "run_capability" in registered
 
     @pytest.mark.asyncio
     async def test_unknown_hidden_name_is_silently_ignored(self):
@@ -1332,16 +1338,23 @@ class TestCreateCopilotMcpServerHidden:
                 f"{sorted(INTERACTIVE_ORIGIN_TOOLS & registered)}"
             )
             # Narrow by design: the work an automation exists to do stays.
-            assert {"run_agent", "run_block", "run_sub_session"} <= registered
+            # ``run_block`` is a permission gate rather than a registered
+            # tool now — blocks run through ``run_capability``.
+            assert {"run_agent", "run_capability", "run_sub_session"} <= registered
 
         interactive = await self._registered_tool_names(
             create_copilot_mcp_server(
                 hidden_tool_names=origin_disabled_tools("interactive")
             )
         )
-        assert INTERACTIVE_ORIGIN_TOOLS <= interactive, (
-            "an interactive session lost "
-            f"{sorted(INTERACTIVE_ORIGIN_TOOLS - interactive)}"
+        # Every interactive-origin tool is deferred, so none is registered by
+        # name in either session; the model reaches them through
+        # ``run_capability``. What the origin gate still decides is whether
+        # the turn may run them at all, which the hidden set above enforces.
+        assert INTERACTIVE_ORIGIN_TOOLS <= DEFERRED_TOOL_NAMES
+        eager_interactive = INTERACTIVE_ORIGIN_TOOLS - DEFERRED_TOOL_NAMES
+        assert eager_interactive <= interactive, (
+            "an interactive session lost " f"{sorted(eager_interactive - interactive)}"
         )
 
     @pytest.mark.asyncio
@@ -1351,19 +1364,22 @@ class TestCreateCopilotMcpServerHidden:
         Without it the model is offered browser tools on a box with no
         ``agent-browser`` binary, and they fail on first use.
         """
+        # The browser tools are deferred, so they are never registered by
+        # name; the model reaches them through ``run_capability``. Assert the
+        # env check on a tool that is registered when its binary is present.
         browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
+        assert browser_tools <= DEFERRED_TOOL_NAMES
 
-        with patch(
-            "backend.copilot.tools.agent_browser.shutil.which", return_value="/x"
-        ):
-            registered = await self._registered_tool_names(create_copilot_mcp_server())
-            assert browser_tools <= registered
-
-        with patch(
-            "backend.copilot.tools.agent_browser.shutil.which", return_value=None
-        ):
-            registered = await self._registered_tool_names(create_copilot_mcp_server())
-            assert not (browser_tools & registered)
+        for present in ("/x", None):
+            with patch(
+                "backend.copilot.tools.agent_browser.shutil.which",
+                return_value=present,
+            ):
+                registered = await self._registered_tool_names(
+                    create_copilot_mcp_server()
+                )
+                assert not (browser_tools & registered)
+                assert self._expected_registry_names() <= registered
 
     @staticmethod
     def _expected_registry_names() -> set[str]:
@@ -1372,12 +1388,16 @@ class TestCreateCopilotMcpServerHidden:
         ``is_available`` is read here rather than asserted over the whole
         registry: the chat-platform, browser and E2B tools depend on env the
         test box may not have, and registering one the environment cannot
-        serve is the bug, not the invariant.
+        serve is the bug, not the invariant. Deferred tools are excluded for
+        the same reason — they are reached through run_capability by id, not
+        registered by name.
         """
         return {
             name
             for name, tool in TOOL_REGISTRY.items()
-            if name not in BASELINE_ONLY_MCP_TOOLS and tool.is_available
+            if name not in BASELINE_ONLY_MCP_TOOLS
+            and name not in DEFERRED_TOOL_NAMES
+            and tool.is_available
         }
 
     @staticmethod
@@ -1477,3 +1497,66 @@ class TestEmptyArgsCircuitBreaker:
         text = _text_from_mcp_result(result)
         assert "STOP" in text
         assert "Do NOT retry" in text
+
+
+class TestNonRegistryGateSeam:
+    """The file handlers never reach ``BaseTool.execute``; this seam is their gate."""
+
+    @pytest.mark.asyncio
+    async def test_a_refused_file_write_never_reaches_its_handler(self):
+        called = False
+
+        async def handler(_args):
+            nonlocal called
+            called = True
+            return {"content": [{"type": "text", "text": "wrote"}], "isError": False}
+
+        refusal = {"content": [{"type": "text", "text": "no"}], "isError": True}
+        _init_ctx(_make_test_session())
+        with patch(
+            "backend.copilot.sdk.tool_adapter.gate_non_registry_tool",
+            new=AsyncMock(return_value=refusal),
+        ) as gate:
+            wrapper = _make_truncating_wrapper(
+                handler, "write_file", required_args=["path"]
+            )
+            result = await wrapper({"path": "a.txt", "content": "x"})
+
+        gate.assert_awaited_once()
+        assert called is False
+        assert result.get("isError") is True
+
+
+def test_set_execution_context_carries_hidden_tools():
+    """The SDK engine hands its per-turn hidden tool set through this
+    adapter's ``set_execution_context`` (not ``context.set_execution_context``),
+    so the keyword must exist here too — run_capability reads it back."""
+    from backend.copilot.context import get_current_hidden_tools
+
+    session = MagicMock(spec=ChatSession)
+    set_execution_context("user", session, hidden_tools=frozenset({"list_schedules"}))
+    try:
+        assert get_current_hidden_tools() == frozenset({"list_schedules"})
+    finally:
+        set_execution_context(None, session)
+    assert get_current_hidden_tools() == frozenset()
+
+
+class TestLateToolResultCap:
+    """A held call's late result must read as the direct result would have."""
+
+    @pytest.mark.asyncio
+    async def test_a_late_result_is_cut_exactly_as_the_wrapper_cuts_a_direct_one(
+        self,
+    ):
+        text = "x" * (_MCP_MAX_CHARS + 20_000)
+
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        _init_ctx(_make_test_session())
+        wrapper = _make_truncating_wrapper(handler, "read_workspace_file")
+        direct = _text_from_mcp_result(await wrapper({}))
+
+        assert len(direct) < len(text)
+        assert cap_late_tool_result(text) == direct

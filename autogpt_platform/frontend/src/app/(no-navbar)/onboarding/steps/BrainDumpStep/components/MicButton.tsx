@@ -135,7 +135,7 @@ export function MicButton({
             willChange: "transform, opacity",
           }}
         >
-          <AutopilotAvatar size={AVATAR_SIZE} />
+          <AutopilotAvatar size={AVATAR_SIZE} transparent />
         </motion.div>
         <VoiceDots
           levels={levels}

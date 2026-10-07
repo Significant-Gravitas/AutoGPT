@@ -635,7 +635,7 @@ async def mcp_store_token(
 
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
-    ``run_mcp_tool`` calls will automatically pick up the credential via
+    ``run_capability`` MCP calls will automatically pick up the credential via
     ``_auto_lookup_credential``.
     """
     try:

@@ -101,7 +101,7 @@ class RunMCPToolTool(BaseTool):
         return (
             "Discover and execute MCP server tools. "
             "Call with server_url only to list tools, then with tool_name + tool_arguments to execute. "
-            "Call get_mcp_guide first for server URLs and auth."
+            "Reached through run_capability on an MCP server entry."
         )
 
     @property
@@ -168,13 +168,13 @@ class RunMCPToolTool(BaseTool):
                 result=None,
                 success=True,
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if tool_arguments is not None and not isinstance(tool_arguments, dict):
             return ErrorResponse(
                 message="tool_arguments must be a JSON object.",
                 session_id=session_id,
-            )
+            ).from_outside()
         resolved_tool_arguments: dict[str, Any] = (
             tool_arguments if isinstance(tool_arguments, dict) else {}
         )
@@ -183,7 +183,7 @@ class RunMCPToolTool(BaseTool):
             return ErrorResponse(
                 message="Please provide a server_url for the MCP server.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         _parsed = urlparse(server_url)
         if _parsed.username or _parsed.password:
@@ -193,7 +193,7 @@ class RunMCPToolTool(BaseTool):
                     "Use the MCP credential setup flow instead."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
         if _parsed.query or _parsed.fragment:
             return ErrorResponse(
                 message=(
@@ -201,13 +201,13 @@ class RunMCPToolTool(BaseTool):
                     "Use the MCP credential setup flow instead."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Validate URL to prevent SSRF — blocks loopback and private IP ranges
         try:
@@ -221,7 +221,7 @@ class RunMCPToolTool(BaseTool):
                 )
             else:
                 user_msg = f"Blocked server URL: {msg}"
-            return ErrorResponse(message=user_msg, session_id=session_id)
+            return ErrorResponse(message=user_msg, session_id=session_id).from_outside()
 
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
@@ -254,7 +254,7 @@ class RunMCPToolTool(BaseTool):
                         f"(credential_id={ungranted.id}) is not granted to this "
                         "expert. Ask the user to grant it from the card, on the "
                         "expert's Integrations page, or from personal AutoPilot with "
-                        "grant_expert_credential."
+                        "tool:grant_expert_credential."
                     ),
                 )
         client = (
@@ -374,10 +374,28 @@ class RunMCPToolTool(BaseTool):
                 # not a rejection, so it stores, returns 2xx and greens the
                 # pill — and the next call 403s again. Reporting it as
                 # connected breaks that loop.
+                kept_credential = creds is not None and not credential_rejected
+                if kept_credential and tool_name:
+                    # ...but on a *named tool call* the connected card reads as
+                    # success and says nothing about the refusal, so the caller
+                    # retries the same tool forever. Report the refusal.
+                    host = server_host(server_url)
+                    return ErrorResponse(
+                        message=(
+                            f"{_service_name(host)} refused '{tool_name}' with HTTP "
+                            f"{e.status_code}. The sign-in is still valid, so this is "
+                            "a permission or scope limit on that tool, not a missing "
+                            "credential. Call run_capability without a tool to list "
+                            "what this server actually exposes, or tell the user which "
+                            "permission the account is missing."
+                        ),
+                        session_id=session_id,
+                        error=f"HTTP {e.status_code}: {str(e)[:300]}",
+                    ).from_outside(str(e)[:300])
                 return await self._build_setup_requirements(
                     server_url,
                     session_id,
-                    connected=creds is not None and not credential_rejected,
+                    connected=kept_credential,
                     rejection=rejected,
                     user_id=user_id,
                     expert_id=session.expert_id,
@@ -388,14 +406,14 @@ class RunMCPToolTool(BaseTool):
                 message=(f"MCP request to {host} failed with HTTP {e.status_code}."),
                 session_id=session_id,
                 error=f"HTTP {e.status_code}: {str(e)[:300]}",
-            )
+            ).from_outside(str(e)[:300])
 
         except MCPClientError as e:
             logger.warning("MCP client error for %s: %s", server_host(server_url), e)
             return ErrorResponse(
                 message=str(e),
                 session_id=session_id,
-            )
+            ).from_outside(str(e))
 
         except Exception:
             logger.error(
@@ -406,7 +424,7 @@ class RunMCPToolTool(BaseTool):
             return ErrorResponse(
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
-            )
+            ).from_outside()
         finally:
             # Release any legacy session; a no-op on stateless servers.
             await client.close()
@@ -419,7 +437,7 @@ class RunMCPToolTool(BaseTool):
     ) -> MCPToolsDiscoveredResponse:
         """List available tools from an already-initialized MCPClient.
 
-        Called when the agent invokes run_mcp_tool with only server_url (no
+        Called when run_capability targets an MCP server with no tool (no
         tool_name). Returns MCPToolsDiscoveredResponse so the agent can
         inspect tool schemas and choose one to execute in a follow-up call.
         """
@@ -453,7 +471,7 @@ class RunMCPToolTool(BaseTool):
                 f"{truncation_note} Full input "
                 "schemas are omitted to save context — `params` lists each "
                 "tool's argument names with required ones marked `*`. Call "
-                "run_mcp_tool again with tool_name and tool_arguments to "
+                "run_capability again with input {tool, arguments} to "
                 "execute one; if the arguments are wrong, the error response "
                 "includes a schema hint for that tool. Do NOT re-run "
                 "discovery after an argument error."
@@ -461,7 +479,7 @@ class RunMCPToolTool(BaseTool):
             server_url=server_url,
             tools=tool_infos,
             session_id=session_id,
-        )
+        ).from_outside(tool_infos)
 
     async def _execute_tool(
         self,
@@ -503,7 +521,7 @@ class RunMCPToolTool(BaseTool):
                         "Ensure the file exists before referencing it."
                     ),
                     session_id=session_id,
-                )
+                ).from_outside()
 
         result = await client.call_tool(
             tool_name, tool_arguments, input_schema=input_schema
@@ -515,14 +533,14 @@ class RunMCPToolTool(BaseTool):
                 for item in result.content
                 if item.get("type") == "text"
             )
-            hint = await self._build_error_hint(client, tool_name)
+            hint, listed = await self._build_error_hint(client, tool_name)
             return ErrorResponse(
                 message=(
                     f"MCP tool '{tool_name}' returned an error: "
                     f"{error_text or 'Unknown error'}{hint}"
                 ),
                 session_id=session_id,
-            )
+            ).from_outside(error_text, listed)
 
         result_value = parse_mcp_content(result.content)
 
@@ -533,10 +551,13 @@ class RunMCPToolTool(BaseTool):
             result=result_value,
             success=True,
             session_id=session_id,
-        )
+        ).from_outside(result_value)
 
-    async def _build_error_hint(self, client: MCPClient, tool_name: str) -> str:
-        """Self-correction hint appended to tool-error responses.
+    async def _build_error_hint(
+        self, client: MCPClient, tool_name: str
+    ) -> tuple[str, str]:
+        """Self-correction hint appended to tool-error responses, and the part
+        of it the server wrote.
 
         Discovery omits full input schemas (context cost), so this is where
         the model gets the one schema it actually needs: the failed tool's.
@@ -549,16 +570,16 @@ class RunMCPToolTool(BaseTool):
             match = next((t for t in tools if t.name == tool_name), None)
             if match is not None:
                 schema_json = _bounded_schema_hint(match.input_schema)
-                return f" Input schema for '{tool_name}': {schema_json}"
+                return f" Input schema for '{tool_name}': {schema_json}", schema_json
             names = ", ".join(t.name for t in tools[:40])
             return (
                 f" No tool named '{tool_name}' exists on this server. "
                 f"Available tools: {names}"
-            )
+            ), names
         except Exception:
             # Best-effort — a failed hint lookup must not mask the original
             # tool error.
-            return ""
+            return "", ""
 
     async def _lookup_tool_schema(
         self,
@@ -636,7 +657,7 @@ class RunMCPToolTool(BaseTool):
                     "— no credentials configured."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if user_id is not None and not connected:
             missing_creds_dict = await annotate_expert_grants(
@@ -651,9 +672,18 @@ class RunMCPToolTool(BaseTool):
                 status = (
                     f" (HTTP {rejection.status_code})" if rejection.status_code else ""
                 )
+                # The provider usually says why, and it is often something no
+                # amount of signing in again will fix — Brevo answers "API Key
+                # is not enabled" for a key created without the MCP option, and
+                # names its IP allow-list for a call from an unrecognised
+                # address. Dropping that left the card telling the user to retry
+                # the one thing that cannot work.
+                reason = (rejection.detail or "").strip()
                 message = (
-                    f"{service} rejected the saved credential{status}. "
-                    "Sign in again to continue."
+                    f"{service} rejected the saved credential{status}."
+                    + (f" {reason[:400]}" if reason else "")
+                    + " Sign in again if the credential is simply stale; "
+                    "otherwise fix what the service reported first."
                 )
             elif connected:
                 message = (
@@ -684,13 +714,16 @@ class RunMCPToolTool(BaseTool):
             graph_id=None,
             graph_version=None,
             rejection=rejection,
-        )
+        ).from_outside(rejection.detail if rejection else None)
 
 
 def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRejection:
     return CredentialRejection(
         provider=ProviderName.MCP.value,
-        detail=sanitize_provider_message(str(error)),
+        # Providers put the fix at the end of the sentence — Brevo's 401 names
+        # its IP allow-list page, and the default 200-character cap truncated
+        # that link away, leaving the user the complaint without the remedy.
+        detail=sanitize_provider_message(str(error), max_chars=400),
         status_code=error.status_code,
         credential_id=creds.id,
         credential_title=creds.title,

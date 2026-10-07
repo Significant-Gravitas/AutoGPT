@@ -86,9 +86,6 @@ jobs:
       # so they only need to exist. Nothing in this job ever connects to them.
       SUPABASE_URL: "http://localhost:54321"
       SUPABASE_SERVICE_ROLE_KEY: "synthetic-bake-no-real-key" # pragma: allowlist secret
-      # Non-production test key (identical to the one used in backend CI) so
-      # backend module imports that read settings.secrets don't error.
-      ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # pragma: allowlist secret # DO NOT USE IN PRODUCTION
 
     steps:
       - name: Checkout repository
@@ -101,6 +98,11 @@ jobs:
           # Only the release-publish step needs a token, via env — don't
           # persist credentials into the workspace git config.
           persist-credentials: false
+
+      - name: Generate ephemeral secrets
+        # backend module imports read settings.secrets, so ENCRYPTION_KEY has to
+        # exist. Generated per run: a value committed here would be published.
+        run: echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -148,6 +150,20 @@ jobs:
             echo "::warning title=seed-soft-failure::load-store-agents seeder failed; continuing without it."
             exit 0
           }
+
+      # The marketplace skills and expert roster come from the public skills
+      # catalog, the same way a deploy publishes them after migrations. Store
+      # assets were loaded just above, so the roster's preload workflows
+      # resolve; --skip-missing-preloads keeps the bake going if that step
+      # was the one that soft-failed.
+      - name: "Seed: skills catalog (best-effort)"
+        run: |
+          timeout 600 poetry run publish-skills-catalog --skip-missing-preloads || {
+            echo "::warning title=seed-soft-failure::skills catalog publish failed or timed out; continuing without marketplace skills and roster experts."
+            exit 0
+          }
+        env:
+          SKILLS_CATALOG_TOKEN: ${{ github.token }}
 
       - name: "Seed: e2e_test_data (best-effort)"
         run: |

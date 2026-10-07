@@ -261,6 +261,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
+| [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
+| [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
+| [Jev Filter](block-integrations/typesafe/filter.md#jev-filter) | Filter items with sequential Jev scores, one call per item |
+| [Jev Pick Best](block-integrations/typesafe/pick_best.md#jev-pick-best) | Choose the best candidate using Jev and rank candidates directly by its probabilities |
+| [Jev Route](block-integrations/typesafe/route.md#jev-route) | Route data using Jev's typed choice |
+| [Jev Score](block-integrations/typesafe/score.md#jev-score) | Score evidence with Jev using an explicit ordered scale |
+| [Jev Yes No](block-integrations/typesafe/yes_no.md#jev-yes-no) | Ask Jev a plain-language yes/no question and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
@@ -278,6 +285,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [AnySearch](block-integrations/anysearch/search.md#anysearch) | Searches the web using AnySearch - general queries plus vertical domains (finance, academic, health, legal, and more) via domain/sub_domain filters |
+| [AnySearch Extract](block-integrations/anysearch/extract.md#anysearch-extract) | Extracts readable content from a single URL using AnySearch, optimized for LLM consumption |
+| [AnySearch Parallel Search](block-integrations/anysearch/parallel_search.md#anysearch-parallel-search) | Runs several AnySearch queries in parallel (client-side concurrency via asyncio) |
 | [Ask Wolfram](block-integrations/wolfram/llm_api.md#ask-wolfram) | Ask Wolfram Alpha a question |
 | [Exa Bulk Webset Items](block-integrations/exa/websets_items.md#exa-bulk-webset-items) | Get all items from a webset in bulk (with configurable limits) |
 | [Exa Cancel Enrichment](block-integrations/exa/websets_enrichment.md#exa-cancel-enrichment) | Cancel a running enrichment operation |
@@ -528,6 +538,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AllQuiet List Incidents](block-integrations/allquiet/incident_search.md#allquiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
 | [AllQuiet List Teams](block-integrations/allquiet/teams.md#allquiet-list-teams) | Lists All Quiet teams and their IDs |
 | [AllQuiet Update Incident](block-integrations/allquiet/incidents.md#allquiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
+| [Conductor Create Session](block-integrations/conductor/create_session.md#conductor-create-session) | Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply |
+| [Conductor Create Workspace](block-integrations/conductor/create_workspace.md#conductor-create-workspace) | Create a Conductor cloud workspace for a project or repository, optionally start its agent with a prompt and wait for the reply |
+| [Conductor Get Account](block-integrations/conductor/account.md#conductor-get-account) | Get an overview of your Conductor account in one call: who you are, the projects (repositories) you can open workspaces in, your sections and your routines |
+| [Conductor Get Session](block-integrations/conductor/get_session.md#conductor-get-session) | Get a Conductor agent session: its details, whether the agent is idle, working or errored, and recent transcript messages |
+| [Conductor Get Workspace](block-integrations/conductor/get_workspace.md#conductor-get-workspace) | Get everything about one Conductor workspace: details, current status, shared preview URL and its agent sessions |
+| [Conductor List Workspaces](block-integrations/conductor/list_workspaces.md#conductor-list-workspaces) | List Conductor workspaces, optionally filtered by project, state, name, repository, creator or activity date |
+| [Conductor Manage Routine](block-integrations/conductor/routines.md#conductor-manage-routine) | Create a Conductor routine (a saved prompt that runs a fresh agent in a project whenever its webhook URL is called) or rotate a routine's webhook secret |
+| [Conductor Manage Section](block-integrations/conductor/sections.md#conductor-manage-section) | Create or delete a Conductor cloud section |
+| [Conductor Manage Session](block-integrations/conductor/manage_session.md#conductor-manage-session) | Rename, cancel or archive a Conductor agent session |
+| [Conductor Manage Workspace](block-integrations/conductor/manage_workspace.md#conductor-manage-workspace) | Change a Conductor workspace: rename it, archive, unarchive or sleep it, share or stop sharing a port at its public preview URL, or move it into a section |
+| [Conductor Send Message](block-integrations/conductor/send_message.md#conductor-send-message) | Send a prompt to a Conductor agent session and, by default, wait for the agent to finish and return its reply |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |

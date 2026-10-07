@@ -159,6 +159,32 @@ export function SkillPage({ slug }: Props) {
               <span>Updated {formatTimeAgo(String(skill.updated_at))}</span>
             </>
           ) : null}
+          {skill.source_repo ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>
+                From{" "}
+                {skill.source_url ? (
+                  <a
+                    href={skill.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900"
+                  >
+                    {skill.source_repo}
+                  </a>
+                ) : (
+                  skill.source_repo
+                )}
+              </span>
+            </>
+          ) : null}
+          {skill.license ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>License: {skill.license}</span>
+            </>
+          ) : null}
           {providers.length > 0 ? (
             <>
               <span aria-hidden>·</span>

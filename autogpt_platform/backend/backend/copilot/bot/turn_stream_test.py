@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.prompting import NO_REPLY
+from backend.platform_linking.models import ChannelCard
 
 from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
 from .turn_stream import DraftStreamer, TurnStreamer, _send_clarification
@@ -343,6 +344,37 @@ class TestNativeChoices:
         choices_mock.clear_choice.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_multi_select_question_uses_numbered_text(self):
+        # A native button consumes the question on the first click, so there
+        # is no way to pick a second option through one.
+        adapter = _choice_adapter()
+
+        await _clarify(
+            adapter,
+            [
+                {
+                    "question": "Which areas?",
+                    "options": ["Research", "Outreach"],
+                    "allow_multiple": True,
+                }
+            ],
+        )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        sent = adapter.send_message.await_args.args[1]
+        assert "1. Research" in sent
+        assert "(Pick one or more.)" in sent
+
+    @pytest.mark.asyncio
+    async def test_single_select_question_keeps_no_multi_hint(self):
+        adapter = _choice_adapter()
+        adapter.supports_choice_buttons = False
+
+        await _clarify(adapter, [{"question": "Region?", "options": ["EU", "US"]}])
+
+        assert "Pick one or more" not in adapter.send_message.await_args.args[1]
+
+    @pytest.mark.asyncio
     async def test_too_many_options_for_this_platform_uses_text(self):
         adapter = _choice_adapter(max_options=6)
 
@@ -501,3 +533,84 @@ class TestNativeChoices:
         cleared = {c.args[1] for c in choices_mock.clear_choice.await_args_list}
         assert cleared == {"tok-1", "tok-2"}
         adapter.send_message.assert_awaited()
+
+
+def _card_api(chunks_before: list[str]) -> MagicMock:
+    api = MagicMock()
+    api.open_card = AsyncMock(
+        return_value=ChannelCard(
+            token="tok", text="⏸️ **Post a message**", options=["Approve", "Reject"]
+        )
+    )
+
+    async def _stream(*args, on_approval_needed=None, **kwargs):
+        for chunk in chunks_before:
+            yield chunk
+        await on_approval_needed("sess", "review-1")
+
+    api.stream_chat = _stream
+    return api
+
+
+class TestApprovalCards:
+    @pytest.mark.asyncio
+    async def test_a_held_call_posts_its_card_after_the_words_before_it(self):
+        adapter = _choice_adapter()
+        api = _card_api(["I'll post it."])
+        ctx = _ctx("channel")
+
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "post")], ctx, adapter, "42"
+            )
+
+        api.open_card.assert_awaited_once_with(
+            "telegram", None, "user-1", "sess", "review-1"
+        )
+        assert adapter.send_message.await_args_list[0].args[1] == "I'll post it."
+        adapter.send_choice_buttons.assert_awaited_once_with(
+            "42", "⏸️ **Post a message**", ["Approve", "Reject"], "tok", kind="appr"
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_channel_that_cannot_show_buttons_gets_a_link_to_answer(self):
+        adapter = _choice_adapter()
+        adapter.send_choice_buttons = AsyncMock(side_effect=RuntimeError("down"))
+
+        with (
+            _patch_redis(),
+            patch(f"{_MODULE}.copilot_session_url", return_value="https://x/c"),
+        ):
+            await TurnStreamer(_card_api([])).stream_batch(
+                [("Bently", "user-1", "post")], _ctx(), adapter, "42"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.kwargs["link_label"] == "Answer in AutoGPT"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "opened",
+        [AsyncMock(return_value=None), AsyncMock(side_effect=RuntimeError("down"))],
+        ids=["no card", "raised"],
+    )
+    async def test_a_card_that_cannot_open_still_posts_the_link_to_answer_it(
+        self, opened
+    ):
+        adapter = _choice_adapter()
+        api = _card_api(["I'll post it."])
+        api.open_card = opened
+
+        with (
+            _patch_redis(),
+            patch(f"{_MODULE}.copilot_session_url", return_value="https://x/c"),
+        ):
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "post")], _ctx(), adapter, "42"
+            )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+        link = adapter.send_link.await_args
+        assert link.args[1] == "⏸️ An action is waiting for approval."
+        assert link.kwargs["link_url"] == "https://x/c"

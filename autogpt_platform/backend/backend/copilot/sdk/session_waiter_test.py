@@ -83,7 +83,44 @@ async def test_queue_branch_timeout_zero_returns_immediately():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
-    queue_mock.assert_awaited_once_with(session_id="sess-busy", message="follow-up")
+    queue_mock.assert_awaited_once_with(
+        session_id="sess-busy", message="follow-up", metadata=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_queue_branch_keeps_the_callers_message_metadata():
+    """A spawn tool's sender provenance must survive the in-flight fallback:
+    the pending message is what becomes the persisted user row."""
+    queue_mock = AsyncMock(return_value=_QR())
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.queue_user_message",
+            new=queue_mock,
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=AsyncMock(),
+        ),
+    ):
+        outcome, _ = await run_copilot_turn_via_queue(
+            session_id="sess-busy",
+            user_id="u1",
+            message="follow-up",
+            timeout=0,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+            message_metadata=provenance,
+        )
+
+    assert outcome == "queued"
+    assert queue_mock.await_args.kwargs["metadata"] == provenance
 
 
 @pytest.mark.asyncio

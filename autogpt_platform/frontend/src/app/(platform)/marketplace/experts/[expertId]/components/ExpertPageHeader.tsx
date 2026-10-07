@@ -1,52 +1,51 @@
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
-import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { ReactNode } from "react";
-import { type ExpertAccent } from "../../../components/ExpertsSection/helpers";
+import { CategoryTag } from "../../../components/CategoryChip/CategoryTag";
 
 interface Props {
   expert: Expert;
-  accent: ExpertAccent;
   actions: ReactNode;
 }
 
-export function ExpertPageHeader({ expert, accent, actions }: Props) {
+export function ExpertPageHeader({ expert, actions }: Props) {
+  const area = expert.categories?.[0];
+
   return (
     <header>
-      <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-        <Avatar className="h-18 w-18 shrink-0 bg-white shadow-sm ring-1 ring-black/5">
-          {expert.avatar_url ? (
-            <AvatarImage src={expert.avatar_url} alt={expert.name} />
-          ) : null}
-          <AvatarFallback>{expert.name}</AvatarFallback>
-        </Avatar>
+      <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-4 sm:gap-x-5">
+        <ExpertAvatar
+          name={expert.name}
+          avatarUrl={expert.avatar_url}
+          color={expert.color}
+          backgroundColor={getExpertTopicHex({
+            avatarUrl: expert.avatar_url,
+            categories: expert.categories,
+            role: expert.role,
+          })}
+          size={96}
+          className="border border-black/5"
+        />
         <div className="min-w-0 flex-1">
-          <h1 className="text-[28px] font-semibold leading-8 tracking-[-0.02em] text-zinc-900">
-            {expert.name}
-          </h1>
-          <span
-            className={cn(
-              "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
-              accent.pill,
-            )}
-          >
-            <Icon icon={accent.roleIcon} size={12} />
-            {getExpertRoleLabel(expert.role)}
-          </span>
+          <ExpertIdentityDetails
+            name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
+            size="page"
+            nameAlign="baseline"
+          />
+          {area ? (
+            <CategoryTag category={area} size="default" className="mt-2" />
+          ) : null}
         </div>
-        <div className="w-full sm:w-auto">{actions}</div>
+        <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
+          {actions}
+        </div>
       </div>
-      {expert.tagline ? (
-        <p className="mt-5 max-w-[60ch] text-[17px] leading-7 text-zinc-600">
-          {expert.tagline}
-        </p>
-      ) : null}
+      <ExpertTagline tagline={expert.tagline} />
     </header>
   );
 }

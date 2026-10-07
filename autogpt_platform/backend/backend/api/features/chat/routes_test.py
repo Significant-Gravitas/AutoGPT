@@ -89,8 +89,10 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(
         chat_transports,
-        "get_user_default_chat_route",
-        new=AsyncMock(return_value=(None, None)),
+        "user_db",
+        return_value=MagicMock(
+            get_user_default_chat_route=AsyncMock(return_value=(None, None))
+        ),
     )
     mocker.patch.object(
         chat_transports,
@@ -829,7 +831,9 @@ def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockerF
         json={"message": "hello"},
     )
     assert response.status_code == 429
-    assert "daily" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert "daily" in detail["message"].lower()
+    assert detail["kind"] == "usage_limit"
 
 
 def test_stream_chat_codex_skips_platform_paywall_and_cost_limit(
@@ -902,9 +906,10 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
         json={"message": "hello"},
     )
     assert response.status_code == 429
-    detail = response.json()["detail"].lower()
-    assert "weekly" in detail
-    assert "resets in" in detail
+    detail = response.json()["detail"]
+    message = detail["message"].lower()
+    assert "weekly" in message
+    assert "resets in" in message
 
 
 def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
@@ -927,8 +932,41 @@ def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
     )
     assert response.status_code == 429
     detail = response.json()["detail"]
-    assert "2h" in detail
-    assert "Resets in" in detail
+    assert "2h" in detail["message"]
+    assert "Resets in" in detail["message"]
+
+
+def test_stream_chat_429_carries_provider_failure_envelope_for_switch_connection(
+    mocker: pytest_mock.MockerFixture,
+):
+    """The platform usage-cap 429 must be a structured ProviderFailure, not a
+    bare string, so the frontend can offer "switch to another connection"
+    (e.g. a connected BYOSUB/Codex credential) instead of only "upgrade your
+    plan". A plain string here silently drops that UI even though the
+    frontend already supports it end-to-end.
+    """
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    _mock_stream_internals(mocker)
+    mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
+    resets_at = datetime.now(UTC) + timedelta(hours=1)
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitExceeded("daily", resets_at),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["kind"] == "usage_limit"
+    assert detail["authProvider"] == "platform"
+    assert detail["resetsAt"] == int(resets_at.timestamp())
 
 
 def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(
@@ -1465,7 +1503,10 @@ def test_list_chat_transports_marks_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
 
     response = client.get("/transports")
 
@@ -1499,7 +1540,10 @@ def test_set_default_transport_saves_the_choice(
 def test_set_default_transport_clears_the_choice(
     test_user_id: str,
 ) -> None:
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
 
     response = client.put("/transports/default", json={})
 
@@ -1569,7 +1613,10 @@ def test_create_session_uses_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -1592,7 +1639,10 @@ def test_an_explicit_route_still_beats_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -1611,7 +1661,10 @@ def test_a_saved_default_that_vanished_falls_back_instead_of_failing(
     test_user_id: str,
 ) -> None:
     """The saved ChatGPT account was disconnected since it was chosen."""
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-gone")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-gone",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -3150,6 +3203,106 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     mock_enqueue.assert_called_once_with("sess-1")
 
 
+def test_cancel_session_timeout_completes_as_cancelled_not_as_an_error(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Stop the executor never confirms is still the user's Stop.
+
+    The force-complete branch used to publish a ``StreamError``, which every
+    live and resumed stream renders as "the assistant encountered an error" --
+    the user's own cancel reported back to them as the assistant failing.
+    ``skip_error_publish`` keeps the status flip (locks released, queued turns
+    promoted) without the error frame, and the ``reason`` tells the caller the
+    turn may still be draining, which is what the frontend's "Stop may take a
+    moment" toast is keyed on.
+    """
+    from backend.copilot.stream_registry import ActiveSession
+
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+    running = ActiveSession(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id="turn-1",
+        status="running",
+    )
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(running, "1-0"))
+    # Never leaves "running": the executor did not confirm inside the window.
+    mock_registry.get_session = AsyncMock(return_value=running)
+    mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    mocker.patch(
+        "backend.api.features.chat.routes.enqueue_cancel_task",
+        new_callable=AsyncMock,
+    )
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.02)
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS", 0.01)
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+    mock_registry.mark_session_completed.assert_awaited_once()
+    assert (
+        mock_registry.mark_session_completed.await_args.kwargs.get("skip_error_publish")
+        is True
+    ), "a user cancel must not be published to the stream as an error"
+    assert mock_registry.mark_session_completed.await_args.kwargs["turn_id"] == "turn-1"
+    assert response.json()["reason"] == "cancel_published_not_confirmed"
+
+
+def test_cancel_confirms_once_the_next_turn_holds_the_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The cancelled turn's end can wake the next turn; the poll must not
+    force-complete that one as the user's cancel."""
+    from backend.copilot.stream_registry import ActiveSession
+
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+
+    def turn(turn_id: str) -> ActiveSession:
+        return ActiveSession(
+            session_id="sess-1",
+            user_id=TEST_USER_ID,
+            tool_call_id="chat_stream",
+            tool_name="chat",
+            turn_id=turn_id,
+            status="running",
+        )
+
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(turn("turn-1"), "1-0"))
+    mock_registry.get_session = AsyncMock(return_value=turn("turn-2"))
+    mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    mocker.patch(
+        "backend.api.features.chat.routes.enqueue_cancel_task",
+        new_callable=AsyncMock,
+    )
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.02)
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS", 0.01)
+    clear_pending = mocker.patch.object(
+        chat_routes, "_clear_pending_best_effort", new_callable=AsyncMock
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.json()["cancelled"] is True
+    mock_registry.mark_session_completed.assert_not_awaited()
+    # Only the up-front clear; the next turn's follow-ups stay queued.
+    clear_pending.assert_awaited_once()
+
+
 def test_cancel_session_clears_pending_buffer(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -3964,8 +4117,8 @@ def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:
     """Builder-bound sessions return a blacklist of the three tools that
     conflict with the panel's graph-bound scope. Regular sessions return
     ``None`` so default (unrestricted) behaviour is preserved."""
-    from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
     from backend.copilot.model import ChatSession
+    from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 
     unbound = ChatSession.new("u1", dry_run=False)
     assert chat_routes.resolve_session_permissions(unbound) is None
@@ -4378,3 +4531,32 @@ def test_start_session_desktop_is_refused_for_an_archived_experts_chat(
     owns_active.assert_awaited_once()
     assert owns_active.await_args.args[1] == "exp-archived"
     open_desktop.assert_not_awaited()
+
+
+def test_credential_selection_rejects_a_provider_named_twice(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """ " GitHub " and "github" normalise to the same provider. Keeping only the
+    later one would silently drop a credential the request had validated."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(return_value=MagicMock(provider="github"))
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {" GitHub ": "cred-a", "github": "cred-b"}},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "duplicate_provider"
+    remember.assert_not_awaited()

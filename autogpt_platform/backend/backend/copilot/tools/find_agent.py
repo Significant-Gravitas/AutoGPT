@@ -53,7 +53,7 @@ class FindAgentTool(BaseTool):
             update={
                 "message": (
                     f"{result.message} This is an expert chat: a marketplace agent "
-                    "must be installed with install_expert_workflow "
+                    "must be installed with tool:install_expert_workflow "
                     "(username_agent_slug='creator/slug', the agent id below) "
                     "before run_agent can use it."
                 )

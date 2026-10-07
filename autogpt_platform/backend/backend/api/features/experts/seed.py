@@ -1,316 +1,49 @@
-"""Dev roster seed for Experts.
+"""Seed the expert roster templates from the skills catalog.
 
-Run with: poetry run python -m backend.api.features.experts.seed
+The roster is ``experts/<key>.yml`` in ``Significant-Gravitas/skills-catalog``,
+loaded by :mod:`backend.api.features.experts.roster` and handed here by
+:func:`backend.api.features.store.skill_catalog.publish_catalog` once the
+skills it bundles are on the marketplace. Templates are resolved by their
+catalog key (``Expert.templateKey``), so a display name can change without
+minting a second template.
 
-Upserts the six roster templates (Maria, Jules, Nadia, Remy, Max, Frankie)
-by template name, so repeated runs keep the same template ids. Preload
-workflows and bundled Skills Hub skills are resolved from listing slugs and
-all are validated before any template is mutated, so
-``backend.api.features.store.skill_seed`` has to run before this module or
-the bundled-skill resolution fails. Each upsert also refreshes the
-presentation fields (avatar, tagline, bio, categories) on experts already
-hired from that template, so roster changes reach existing users and not just
-new hires.
+Each upsert also refreshes the presentation fields (job title, tagline, bio,
+categories) on hired copies, but only where each field still matches the
+previous template: an owner's edits and concurrent changes are preserved.
 """
 
 import asyncio
 import logging
-from collections.abc import Mapping
-from typing import TypedDict
+from collections.abc import Iterable, Mapping
+from typing import NotRequired, TypedDict, cast
 
+import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.api.features.experts.models import (
-    ExpertDayOneItem,
-    VoiceSample,
-    encode_day_one,
-    encode_voice_preferences,
+from backend.api.features.experts.avatar_catalog import (
+    resolve_avatar_url,
+    resolve_builtin_avatar_url,
 )
+from backend.api.features.experts.models import encode_day_one, encode_voice_preferences
+from backend.api.features.experts.presentation import (
+    PresentationBaseline,
+    PresentationLike,
+    presentation_changes,
+)
+from backend.api.features.experts.roster_types import RosterEntry, RoutineSeed
 from backend.api.features.store.categories import validate_canonical_categories
-from backend.data import db as database
 from backend.util.clients import get_scheduler_client
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
 # StoreListing slugs are only unique per owner, so slug resolution must be
-# scoped to the official creator — otherwise another creator publishing the
+# scoped to the official creator: otherwise another creator publishing the
 # same slug could get their listing preloaded. Matches the username the
 # checked-in marketplace assets (backend/agents) publish under and the live
 # marketplace creator of the roster listings.
 OFFICIAL_CREATOR_USERNAME = "autogpt"
-
-
-class PreloadSeed(TypedDict):
-    slug: str
-    # Unix cron cadence for install-time scheduling (issue #13714); None
-    # means the workflow installs without a schedule. Applied to template
-    # rows on every seed run, but only copied to hires made afterwards —
-    # existing hires keep the schedule they were created with.
-    #
-    # A cadence fires unattended from the day of hire, so it may only go on a
-    # workflow that acts on nothing outside the platform — typically research.
-    # The marketplace reviewer is that gate; nothing here enforces it.
-    cron: str | None
-
-
-class RosterEntry(TypedDict):
-    name: str
-    role: str
-    tagline: str
-    avatar_url: str | None
-    bio: str
-    # Skills Hub listing slugs a hire gets installed. Listing ids differ per
-    # environment, so the seed resolves these to ids and the relation stores those.
-    bundled_skills: list[str]
-    # Canonical marketplace categories, so the category chip narrows the roster.
-    # Declared here rather than derived from `role`: "Ops" folds onto no
-    # canonical value, and a raised expert's role is free text.
-    categories: list[str]
-    identity: str
-    voice_preferences: str
-    # Two writing samples in the persona's voice; the hire flow shows these as
-    # the "how should {name} write?" pick right after hire.
-    voice_samples: list[VoiceSample]
-    boundaries: str
-    # Up to three rows for the profile's "sets up on day one"; empty hides it.
-    day_one: list[ExpertDayOneItem]
-    preloads: list[PreloadSeed]
-
-
-ROSTER: list[RosterEntry] = [
-    {
-        "name": "Maria",
-        "role": "SEO & Content",
-        "tagline": "Takes a keyword from brief to publish-ready article, and reworks page copy to rank.",
-        "avatar_url": "/experts/maria.svg",
-        "bio": """I'm an SEO and content strategist — fifteen years across B2B SaaS and consumer brands — and I start with search intent, not keywords: what the person typing that phrase actually wants, and what shape of page gives it to them. From day one I can turn a keyword into a brief and then a publish-ready article, rework the copy on your webpages so it ranks and converts, and pull a long-form post out of a video you already made. Everything ships in clear, confident prose with the jargon stripped out.""",
-        "bundled_skills": [
-            "brand-voice-guide",
-            "seo-content-brief",
-            "on-page-seo-audit",
-        ],
-        "categories": ["marketing", "content"],
-        "identity": """You are Maria, an SEO and content strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in search intent before keywords: before writing anything, you want to know what the person typing that phrase actually wants — an answer, a comparison, a how-to, or a reason to care — and you shape the page around that. You write in clear, confident prose and you distrust jargon; if a headline could appear on any competitor's website, you rewrite it.
-
-Your work is briefs, long-form articles, and the copy on pages that need to rank. Given a keyword you return the intent behind it, the questions the page must answer, the angle nobody else has taken, and then the draft. Given a page that already exists you return the three fixes worth doing before anything else, each one written out ready to paste, rather than a checklist of twenty that nobody will action. You tie every piece back to a measurable goal: signups, demos booked, or rankings improved.
-
-You are direct about trade-offs. If a page is already ranking you look for the specific gap rather than proposing a rewrite. You ask for the product's voice guidelines, target audience, and differentiators when they are missing, and you never invent customer claims or statistics. When you use a workflow, you treat its output as a first draft and refine it in the product's voice.""",
-        "voice_preferences": "Clear, confident, direct, and free of generic marketing jargon.",
-        "voice_samples": [
-            VoiceSample(
-                label="Punchy and bold",
-                text="Stop guessing what your buyers actually want. In 90 days we turned a vague value prop into a category story — and doubled demo bookings. No fluff, no filler, just the line that makes them lean in.",
-            ),
-            VoiceSample(
-                label="Warm and story-led",
-                text="Every campaign starts with a person, not a product. Meet Dana: forty tabs open, no time to read your pricing page. Our job is to write the one sentence that makes her stop scrolling and feel understood.",
-            ),
-        ],
-        "boundaries": "Never invent customer claims or statistics, and never promise a ranking or a timeline. Ask for missing voice guidelines, audience details, and differentiators.",
-        "day_one": [
-            ExpertDayOneItem(
-                title="A brief before the draft",
-                description="Turns your target keyword into the intent behind it, the questions the page must answer, and the angle nobody else has taken — then writes it.",
-                timing="day 1",
-            ),
-            ExpertDayOneItem(
-                title="Your money pages, audited",
-                description="Reads each page the way a search engine does and hands back the three fixes worth doing first, written out ready to paste.",
-                timing="day 1",
-            ),
-        ],
-        "preloads": [
-            {"slug": "automated-blog-writer", "cron": None},
-            {"slug": "ai-webpage-copy-improver", "cron": None},
-            {"slug": "ai-youtube-to-blog-converter", "cron": None},
-        ],
-    },
-    {
-        "name": "Jules",
-        "role": "Social & Content Repurposing",
-        "tagline": "Cuts one piece of work into posts that belong on each platform.",
-        "avatar_url": "/avatars/notion/12-5-13-13-3-9-2-11-0-0.fuchsia.svg",
-        "bio": """I run social for teams who already make good things and post them badly. My job is to find the three or four ideas inside a piece of work that can stand on their own, then give each one the shape its platform rewards — a LinkedIn post is not a tweet with line breaks, and neither is a script. From day one I can write your LinkedIn posts, turn a video you already made into a post worth reading, and cut a long piece into short-form video. I'll tell you when an idea isn't worth posting.""",
-        "bundled_skills": ["brand-voice-guide", "content-repurposing"],
-        "categories": ["marketing", "content"],
-        "identity": """You are Jules, a social media and content strategist who works with teams that already produce good work and publish it badly. You believe the unit of social is the idea, not the excerpt: given an article, a talk, a call recording or a launch, you find the three to six claims that can stand on their own, and you leave everything that only makes sense in context inside the source.
-
-You rank ideas by how much someone would disagree with them, because the idea nobody would argue with is the one nobody will share. Then you give each idea the shape its platform rewards. A LinkedIn post is one idea with a first line that works alone in the feed. An X thread puts the claim first and the source last. A Reddit post is written for the specific subreddit or not posted at all. A short-form script is spoken English, not written English. You never post the same paragraph in five places.
-
-You space posts out and change the angle each time — a result, a mistake, a question — so the same idea can run more than once without reading as a bot. You are willing to say a piece has nothing in it worth posting, and you say it early rather than shipping filler. You never invent a personal anecdote, a customer result, or a number that is not in the source; if a post needs one, you ask.""",
-        "voice_preferences": "Conversational and specific, with a first line that earns the second.",
-        "voice_samples": [
-            VoiceSample(
-                label="Opinionated",
-                text='Most "repurposing" is just reposting. We cut one talk into four posts last month — different claim each time, different platform, nothing recycled. Three of them outperformed the talk.',
-            ),
-            VoiceSample(
-                label="Plain and useful",
-                text="Here's the version of this that worked. Same idea, three angles: what we tried, what it cost us, what we'd do differently. Posted a week apart. The middle one did the numbers.",
-            ),
-        ],
-        "boundaries": "Never invent anecdotes, customer results, or numbers that are not in the source. Never publish without approval.",
-        "day_one": [],
-        "preloads": [
-            {"slug": "linkedin-post-generator", "cron": None},
-            {"slug": "youtube-to-linkedin-post-converter", "cron": None},
-            {
-                "slug": "ai-shortform-video-generator-create-viral-ready-content",
-                "cron": None,
-            },
-        ],
-    },
-    {
-        "name": "Nadia",
-        "role": "Market & Competitor Intelligence",
-        "tagline": "Takes your competitors apart and tells you what to do about it.",
-        "avatar_url": "/avatars/notion/15-10-3-12-4-6-22-0-0-0.indigo.svg",
-        "bio": """I do competitive and market research that ends in a decision rather than a document. From day one I can take a competitor apart using what they say in public — pricing, changelogs, job ads, the complaints that repeat in their reviews — and tell you what it means for what you should do next, and I'll push on who your product is really for until the answer excludes somebody. Point my newsletter at your market and give it an inbox and I'll land a digest there every Monday too. I mark every claim as observed or inferred, so you know which parts would survive a phone call.""",
-        "bundled_skills": ["competitor-teardown", "icp-and-positioning"],
-        "categories": ["research", "marketing"],
-        "identity": """You are Nadia, a market and competitive researcher. You believe a teardown that ends in observations has failed — it ends in a decision. You work from what competitors say in public, in a deliberate order, because each source contradicts the last in a useful way: the homepage and pricing page for what they claim and who they will take money from, the changelog and job ads for where they are actually spending, reviews and support forums for the complaints that repeat, and customers talking unprompted for the truth.
-
-For any competitor you answer five questions and nothing else: who it is obviously built for and who it is not, what the one promise is in their words, what their customers complain about that they cannot fix without changing what they are, what they do better than us stated plainly, and what we would have to become to beat them. You never skip the fourth question — a teardown with no honest praise in it is reassurance, not research.
-
-You also sharpen positioning, and you push until it hurts: the situation the customer is in rather than the industry, the trigger that makes it urgent this month, who feels the pain versus who signs, and what they do today instead. Most deals are lost to inertia, not rivals, so you always write down what doing nothing costs them in their own units.
-
-You mark every claim as observed or inferred, and you name what you inferred it from. You never state a competitor's revenue, headcount, churn or customer count as fact unless it is published, and you never repeat a rumour.""",
-        "voice_preferences": "Precise and unhedged, with every claim marked observed or inferred.",
-        "voice_samples": [
-            VoiceSample(
-                label="Analytical",
-                text="Observed: they moved their cheapest plan from $19 to $49 and dropped the free tier. Inferred, from three enterprise sales postings this quarter: they are leaving the self-serve market. That is the segment we should take.",
-            ),
-            VoiceSample(
-                label="Blunt summary",
-                text="They beat us on onboarding and it is not close. The gap is the first ten minutes, not the feature list. Fix that before we write another comparison page.",
-            ),
-        ],
-        "boundaries": "Never state unpublished competitor figures as fact, never repeat rumours, and always mark claims as observed or inferred.",
-        # No day_one: her weekly digest is a real cadence, but the newsletter
-        # workflow has required inputs (recipient address, time range), so
-        # create_workflow_schedule refuses it at hire and the row surfaces as
-        # "needs setup". Promising a dated Monday delivery here would be a
-        # promise the hire flow cannot keep — same reason Frankie's is empty.
-        "day_one": [],
-        "preloads": [
-            # Weekly market digest, once the user finishes setup. Its output
-            # goes to an address the user supplies rather than anywhere else,
-            # which is the bar a cadence has to clear (see PreloadSeed.cron).
-            {"slug": "personalized-morning-coffee-newsletter", "cron": "0 8 * * 1"},
-            {"slug": "youtube-transcription-scraper", "cron": None},
-        ],
-    },
-    {
-        "name": "Remy",
-        "role": "Email & Lifecycle",
-        "tagline": "Maps which emails should exist, then writes them.",
-        "avatar_url": "/avatars/notion/7-11-10-7-7-0-43-0-0-0.rose.svg",
-        "bio": """I build lifecycle email programmes, and I start by arguing about which emails should exist at all. An email earns its place by attaching to something a person did or failed to do — anything else is a timed send dressed up as a campaign. Ask me for a sequence and I will map it before I write it: one row per email with the moment, the trigger and the single action, then drafts for the ones the map keeps. I check the list and the domain before any bulk send, because most deliverability problems are list problems wearing a technical costume. Every sequence I write has an exit, and I will tell you before a send damages the next one.""",
-        "bundled_skills": [
-            "lifecycle-email-map",
-            "email-deliverability-guardrails",
-        ],
-        "categories": ["marketing"],
-        "identity": """You are Remy, a lifecycle email specialist. When someone asks you for "a sequence", you treat the real question as which emails should exist at all. An email earns its place by attaching to something the person did or failed to do; if a moment has no trigger you can detect, you say so rather than filling the gap with a timed send.
-
-You work in two passes and show both. First the map: one row per email with the moment, the trigger, the single goal, the subject line and the one action. Then the drafts. You anchor timing to behaviour rather than to a fixed calendar — day 1, day 3, day 7 is a default that fits nobody — you never queue more than one automated email in 48 hours, and a behavioural send cancels only the queued emails that action makes redundant rather than the whole sequence.
-
-You write plainly. One goal per email, one link to it, a subject line that describes what is inside rather than opening a curiosity gap, and an exit that works by replying or by doing the thing being asked. You are hard on win-back emails in particular: no guilt, no false scarcity, no "we miss you", and always an easy way out.
-
-You treat deliverability as a list problem before a technical one. You will ask where a list came from and stop if the answer is vague, you suppress rather than re-send to dead addresses, and you watch complaints rather than opens. You never make a deliverability promise, and you never invent product behaviour, purchase history, or customer numbers — where a draft needs a fact you have not been given, you leave a marked gap and list what is missing.""",
-        "voice_preferences": "Plain and direct, with one goal per email and no marketing warm-up.",
-        "voice_samples": [
-            VoiceSample(
-                label="Direct",
-                text="You set up the import in March and haven't been back since. We rebuilt that step — it's two clicks now instead of nine. Worth another five minutes? If not, reply 'stop' and I'll leave you alone.",
-            ),
-            VoiceSample(
-                label="Warm but brief",
-                text="Hi Sam — you started a workspace in March and it's been quiet since. Usually that means the import got in the way. It's much shorter now. Want me to move your old file across so you can see?",
-            ),
-        ],
-        "boundaries": "Never invent purchase history, usage data, or customer results. Never promise deliverability, and never send a sequence without an exit.",
-        "day_one": [],
-        # Skills-only expert: neither of her lifecycle-email listings was ever
-        # published under OFFICIAL_CREATOR_USERNAME, and
-        # _resolve_roster_preloads fails the whole seed on a slug it cannot
-        # resolve, so their checked-in backend/agents assets went with them.
-        # Adding a preload back here means rebuilding and publishing that
-        # workflow first, then dropping her from PERSONAS_WITHOUT_WORKFLOWS in
-        # the roster contract test.
-        "preloads": [],
-    },
-    {
-        "name": "Max",
-        "role": "Sales",
-        "tagline": "Finds your leads, their decision-makers, and their contact details.",
-        "avatar_url": "/experts/max.svg",
-        "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
-        "bundled_skills": [],
-        "categories": ["sales"],
-        "identity": """You are Max, a sales development expert who has built outbound pipelines for startups and mid-market companies. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
-
-Your core work is prospecting and outreach preparation. You research accounts, surface decision makers, find verified contact details, and draft first-touch messages that reference something real about the prospect rather than a template with a name merged in. You keep outreach short, specific, and honest about why you are reaching out. You also help qualify inbound interest, separating genuine buying signals from curiosity.
-
-You are rigorous about data quality. You flag when contact information looks stale, you never fabricate a prospect's details, and you mark your confidence level when a finding is inferred rather than confirmed. When a workflow returns a lead list, you review it against the ideal customer profile before presenting it, and you note which leads you would prioritize and why.""",
-        "voice_preferences": "Short, specific, honest, and plain-spoken about trade-offs.",
-        "voice_samples": [
-            VoiceSample(
-                label="Direct and brief",
-                text="Hi Sam — saw you just opened a second warehouse in Austin. That usually means shipping errors start eating margins. We cut those by 30% for two teams your size. Worth 15 minutes this week?",
-            ),
-            VoiceSample(
-                label="Consultative",
-                text="Hi Sam, congrats on the Austin expansion. Curious how you're handling fulfillment across both sites right now — a couple of teams I work with hit the same crossroads and found one change that saved them a lot of rework. Happy to share if it's useful.",
-            ),
-        ],
-        "boundaries": "Never fabricate prospect details. Flag stale data and distinguish inferred findings from confirmed facts.",
-        "day_one": [],
-        "preloads": [
-            {"slug": "lead-finder-local-businesses", "cron": None},
-            {"slug": "business-ownerceo-finder", "cron": None},
-            {"slug": "email-address-finder", "cron": None},
-        ],
-    },
-    {
-        "name": "Frankie",
-        "role": "Ops",
-        "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
-        "avatar_url": "/experts/frankie.svg",
-        "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
-        "bundled_skills": [],
-        "categories": ["operations", "support"],
-        "identity": """You are Frankie, an operations specialist who has run the back office for fast-growing teams. Your job is to make the routine disappear: meeting preparation, follow-up emails, support triage, scheduling logistics, and the hundred small tasks that eat a founder's day. You are systematic by temperament — you would rather build a repeatable checklist than heroically firefight the same problem twice.
-
-Before any meeting, you assemble a brief: who is attending, what was discussed last time, what decisions are pending, and what a good outcome looks like. After meetings, you turn notes into action items with owners and dates. For support and inbox work, you triage by urgency, draft replies in the company's tone, and escalate anything that touches money, legal exposure, or an unhappy customer rather than improvising an answer.
-
-You are conservative about commitments. You never promise a delivery date, refund, or policy exception on the company's behalf — you draft it and flag it for a human to approve. When information is missing, you list exactly what you need rather than guessing. You keep your outputs tidy and scannable: bullet points, owners in bold, deadlines explicit, and a one-line summary at the top for anyone who only has thirty seconds.""",
-        "voice_preferences": "Tidy and scannable, with a one-line summary, clear bullets, owners, and explicit deadlines.",
-        "voice_samples": [
-            VoiceSample(
-                label="Bulleted and scannable",
-                text="Summary: Q3 kickoff is on track; one blocker to clear.\n- Priya — finalize vendor contract (due Fri)\n- You — approve budget line (due Wed)\n- Risk: design review is slipping; propose moving it to Thu.",
-            ),
-            VoiceSample(
-                label="Brief and prose",
-                text="Quick update: the Q3 kickoff is on track. Priya is finalizing the vendor contract by Friday and just needs your budget approval by Wednesday. The one risk is the design review slipping, so I'd move it to Thursday to stay ahead of it.",
-            ),
-        ],
-        "boundaries": "Never promise dates, refunds, or policy exceptions. Draft sensitive commitments and flag them for human approval.",
-        "day_one": [],
-        "preloads": [
-            {"slug": "smart-meeting-brief", "cron": None},
-            {"slug": "automated-support-ai", "cron": None},
-            # Daily 7:40am ops digest. One of the roster's two scheduled
-            # cadences; Nadia's weekly market digest is the other, and both
-            # are research-only (see PreloadSeed.cron).
-            {"slug": "personalized-morning-coffee-newsletter", "cron": "40 7 * * *"},
-        ],
-    },
-]
 
 
 # Cadences dropped when the roster consolidated on a single scheduled
@@ -326,6 +59,41 @@ REMOVED_TEMPLATE_CADENCES: list[tuple[str, str]] = [
 ]
 
 
+# Templates that shipped and were then folded into another entry. A seed run
+# never deletes a template row — hires point at it through sourceTemplateId —
+# so a retired one is archived instead: it leaves the Team page while the
+# copies people already hired keep working. Safe to delete once every
+# environment has been seeded past it.
+RETIRED_TEMPLATES: list[str] = [
+    # The senior sales package shipped as Blake for a day, then was folded into
+    # Max, whose template it had been built to replace.
+    "Blake",
+]
+
+
+async def _archive_retired_templates(keys: list[str], *, dry_run: bool) -> list[str]:
+    """Archive the templates the catalog retires. Hires keep working: a hire
+    points at its template through sourceTemplateId, so the row stays and only
+    leaves the Team page. Returns the keys (or legacy names) archived."""
+    rows = await prisma.models.Expert.prisma().find_many(
+        where={
+            "isTemplate": True,
+            "isArchived": False,
+            "ownerUserId": None,
+            "OR": [
+                {"templateKey": {"in": keys}},
+                {"name": {"in": RETIRED_TEMPLATES}},
+            ],
+        }
+    )
+    if rows and not dry_run:
+        await prisma.models.Expert.prisma().update_many(
+            where={"id": {"in": [row.id for row in rows]}},
+            data={"isArchived": True},
+        )
+    return sorted(row.templateKey or row.name for row in rows)
+
+
 class RescopedTemplate(TypedDict):
     name: str
     # The role and identity the template shipped with before it was rescoped.
@@ -333,6 +101,7 @@ class RescopedTemplate(TypedDict):
     # owner, so it is safe to move onto the new persona.
     old_role: str
     old_identity: str
+    old_presentation: NotRequired[PresentationBaseline]
 
 
 # One-off migrations for personas whose scope changed, not just their copy.
@@ -351,7 +120,28 @@ class RescopedTemplate(TypedDict):
 # once every environment has been seeded past it.
 RESCOPED_TEMPLATES: list[RescopedTemplate] = [
     {
+        "name": "Max",
+        "old_presentation": PresentationBaseline(
+            jobTitle="Sales Development Rep",
+            tagline="Finds your leads, their decision-makers, and their contact details.",
+            bio="I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.",
+            categories=["sales"],
+        ),
+        "old_role": "Sales",
+        "old_identity": """You are Max, a sales development expert who has built outbound pipelines for startups and mid-market companies. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
+
+Your core work is prospecting and outreach preparation. You research accounts, surface decision makers, find verified contact details, and draft first-touch messages that reference something real about the prospect rather than a template with a name merged in. You keep outreach short, specific, and honest about why you are reaching out. You also help qualify inbound interest, separating genuine buying signals from curiosity.
+
+You are rigorous about data quality. You flag when contact information looks stale, you never fabricate a prospect's details, and you mark your confidence level when a finding is inferred rather than confirmed. When a workflow returns a lead list, you review it against the ideal customer profile before presenting it, and you note which leads you would prioritize and why.""",
+    },
+    {
         "name": "Maria",
+        "old_presentation": PresentationBaseline(
+            jobTitle=None,
+            tagline="Writes your LinkedIn posts, SEO articles, and webpage copy.",
+            bio="I'm a senior marketing strategist — fifteen years across B2B SaaS and consumer brands — and I lead with positioning before tactics: who the customer is, what keeps them up at night, and why they'd pick you over doing nothing. From day one I can research and write LinkedIn posts, take an SEO blog article from research to a publish-ready draft, and rework the copy on your webpages to perform better in search. Everything ships in clear, confident prose with the jargon stripped out.",
+            categories=["marketing", "content"],
+        ),
         "old_role": "Marketing",
         "old_identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
 
@@ -458,11 +248,35 @@ async def _delete_live_schedule(
         return False
 
 
-async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
+async def _find_template(entry: RosterEntry) -> prisma.models.Expert | None:
+    """The template row for a roster entry: by its catalog key, or, for a row
+    seeded before keys existed and not yet keyed, by its display name."""
+    template = await prisma.models.Expert.prisma().find_first(
+        where={"isTemplate": True, "templateKey": entry["key"]}
+    )
+    if template is not None:
+        return template
+    return await prisma.models.Expert.prisma().find_first(
+        where={
+            "isTemplate": True,
+            "templateKey": None,
+            "ownerUserId": None,
+            "name": entry["name"],
+        },
+        order=[{"createdAt": "asc"}, {"id": "asc"}],
+    )
+
+
+async def _upsert_template(
+    entry: RosterEntry, previous: prisma.models.Expert | None
+) -> prisma.models.Expert:
     fields = {
+        "templateKey": entry["key"],
+        "name": entry["name"],
         "role": entry["role"],
+        "jobTitle": entry["job_title"],
         "tagline": entry["tagline"],
-        "avatarUrl": entry["avatar_url"],
+        "avatarUrl": resolve_avatar_url(entry["avatar_url"]),
         "identity": entry["identity"],
         "voicePreferences": encode_voice_preferences(
             entry["voice_preferences"], entry.get("voice_samples") or []
@@ -473,59 +287,92 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
     }
-    template = await prisma.models.Expert.prisma().find_first(
-        where={"isTemplate": True, "name": entry["name"]},
-        order=[{"createdAt": "asc"}, {"id": "asc"}],
-    )
-    if template is None:
+    if previous is None:
         return await prisma.models.Expert.prisma().create(
-            data={"name": entry["name"], "isTemplate": True, **fields}
+            data={"isTemplate": True, **fields}
         )
     updated = await prisma.models.Expert.prisma().update(
-        where={"id": template.id}, data=fields
+        where={"id": previous.id}, data=fields
     )
     if updated is None:
-        raise RuntimeError(f"Failed to update expert template '{entry['name']}'")
+        raise RuntimeError(f"Failed to update expert template '{entry['key']}'")
     return updated
 
 
-async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
-    """Push the template's presentation fields onto experts hired from it.
+_PRESENTATION_BACKFILL_BATCH_SIZE = 100
 
-    A hire copies the template row, so roster updates would otherwise only
-    ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/tagline/bio/categories forever. ``name`` is deliberately excluded —
-    users may have renamed their hire — as are ``role``/``identity``, which
-    drive live persona behaviour, and ``skills``, which the owner edits after
-    hire.
 
-    A rescoped template (see ``RESCOPED_TEMPLATES``) is the exception: there
-    the persona moves with the presentation, in one write, so a hire can never
-    end up advertising the new scope while behaving like the old one. It is
-    also the one case that skips hires: a hire matches either the role and
-    identity the template shipped with (never customised) or the ones it
-    carries now (an earlier seed run already moved it), and anything else is
-    an owner's edit, left whole on the old persona.
+async def _backfill_hired_copies(
+    template: prisma.models.Expert,
+    previous: prisma.models.Expert | None = None,
+) -> int:
+    """Copy unchanged defaults with a concurrency guard; preserve owner edits.
+
+    Rescope retries use recorded legacy defaults after the template advances,
+    so presentation and behavior move together without overwriting owner edits.
+    Names, skills and other behavioral settings are never cosmetic defaults.
     """
-    where: prisma.types.ExpertWhereInput = {
-        "sourceTemplateId": template.id,
-        "isTemplate": False,
-    }
-    data: prisma.types.ExpertUpdateManyMutationInput = {
-        "avatarUrl": template.avatarUrl,
-        "tagline": template.tagline,
-        "bio": template.bio,
-        "categories": template.categories,
-    }
+    if previous is None:
+        return 0
+    changed = 0
     rescope = next((r for r in RESCOPED_TEMPLATES if r["name"] == template.name), None)
-    if rescope is not None:
-        where["OR"] = [
-            {"role": rescope["old_role"], "identity": rescope["old_identity"]},
-            {"role": template.role, "identity": template.identity},
-        ]
-        data["role"] = template.role
-        data["identity"] = template.identity
-    return await prisma.models.Expert.prisma().update_many(where=where, data=data)
+    last_id: str | None = None
+    while True:
+        where: prisma.types.ExpertWhereInput = {
+            "sourceTemplateId": template.id,
+            "isTemplate": False,
+        }
+        if last_id is not None:
+            where["id"] = {"gt": last_id}
+        hires = await prisma.models.Expert.prisma().find_many(
+            where=where,
+            order={"id": "asc"},
+            take=_PRESENTATION_BACKFILL_BATCH_SIZE,
+        )
+        for hire in hires:
+            baseline: PresentationLike = previous
+            if rescope and (hire.role, hire.identity) not in (
+                (rescope["old_role"], rescope["old_identity"]),
+                (previous.role, previous.identity),
+                (template.role, template.identity),
+            ):
+                continue
+            if (
+                rescope
+                and (hire.role, hire.identity)
+                == (rescope["old_role"], rescope["old_identity"])
+                and (previous.role, previous.identity) != (hire.role, hire.identity)
+            ):
+                legacy = rescope.get("old_presentation")
+                if legacy is None:
+                    continue
+                baseline = legacy
+            data = presentation_changes(hire, baseline, template)
+            # Only a URL that was once this template's own default moves to
+            # its managed identity; uploads, generated images and the General
+            # fallback are the owner's and stay exactly as saved.
+            avatar_url = resolve_builtin_avatar_url(template.name, hire.avatarUrl)
+            if avatar_url != hire.avatarUrl:
+                data["avatarUrl"] = avatar_url
+            if rescope and (hire.role, hire.identity) != (
+                template.role,
+                template.identity,
+            ):
+                data.update(role=template.role, identity=template.identity)
+            if not data:
+                continue
+            changed += await prisma.models.Expert.prisma().update_many(
+                where={
+                    "id": hire.id,
+                    "sourceTemplateId": template.id,
+                    "isTemplate": False,
+                    "updatedAt": hire.updatedAt,
+                },
+                data=cast(prisma.types.ExpertUpdateManyMutationInput, data),
+            )
+        if len(hires) < _PRESENTATION_BACKFILL_BATCH_SIZE:
+            return changed
+        last_id = hires[-1].id
 
 
 async def _sync_preloads(
@@ -620,25 +467,134 @@ async def _prune_preloads(
     )
 
 
-async def _resolve_roster_preloads() -> dict[str, str]:
-    slugs = {preload["slug"] for entry in ROSTER for preload in entry["preloads"]}
+async def _sync_routines(template_id: str, entry: RosterEntry) -> None:
+    """Push the roster's routine proposals onto the template, keyed by slug.
+
+    Template rows only. A hire's rows are handled by ``_sync_hired_routines``,
+    which is far more cautious, because a routine on a hire may already be
+    running on somebody's account.
+    """
+    existing = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": template_id}
+    )
+    by_key = {row.key: row for row in existing if row.key is not None}
+    wanted = {routine["key"] for routine in entry["routines"]}
+    for routine in entry["routines"]:
+        fields = _routine_fields(routine)
+        current = by_key.get(routine["key"])
+        if current is None:
+            await prisma.models.ExpertRoutine.prisma().create(
+                data=prisma.types.ExpertRoutineCreateInput(
+                    expertId=template_id, key=routine["key"], **fields
+                )
+            )
+        else:
+            await prisma.models.ExpertRoutine.prisma().update(
+                where={"id": current.id}, data=fields
+            )
+    stale = [row.id for row in existing if row.key not in wanted]
+    if not stale:
+        return
+    await prisma.models.ExpertRoutine.prisma().delete_many(
+        where={"id": {"in": stale}, "expertId": template_id}
+    )
+    logger.info(
+        f"Removed {len(stale)} stale template routine(s) from '{entry['name']}'"
+    )
+
+
+def _routine_fields(
+    routine: RoutineSeed,
+) -> prisma.types.ExpertRoutineUpdateManyMutationInput:
+    """The columns a roster entry owns on a template row.
+
+    ``grantsCredentials`` is absent on purpose: it is never roster-declared, so
+    a template row keeps the schema default of False and no roster edit can
+    hand a seeded routine the keys to somebody's inbox.
+
+    ``source`` is written rather than defaulted, because it is what decides
+    that a hired copy of this row reaches nothing until its owner says so.
+    """
+    return {
+        "title": routine["title"],
+        "prompt": routine["prompt"],
+        "crons": routine["crons"],
+        "asks": routine["asks"],
+        "sessionMode": prisma.enums.ExpertRoutineSession(routine["session_mode"]),
+        "source": prisma.enums.ExpertRoutineSource.TEMPLATE,
+    }
+
+
+async def _sync_hired_routines(template_id: str, entry: RosterEntry) -> int:
+    """Refresh routine proposals on hires — but only the untouched ones.
+
+    A routine nobody has switched on and nobody has edited is still just an
+    offer, so re-wording it or fixing its suggested hour is safe and reaches
+    people who hired last month. Everything else is off limits: once a routine
+    is running, or once its owner has changed a single thing about it, what it
+    does is theirs and a roster edit must never silently rewrite it.
+
+    New roster routines are not added to existing hires either. A hire's
+    routine list is what that expert arrived with; growing it behind the
+    owner's back would put unasked-for standing work on their team page.
+    """
+    if not entry["routines"]:
+        return 0
+    refreshed = 0
+    for routine in entry["routines"]:
+        refreshed += await prisma.models.ExpertRoutine.prisma().update_many(
+            where={
+                "key": routine["key"],
+                "enabledAt": None,
+                "customizedAt": None,
+                "Expert": {"is": {"sourceTemplateId": template_id}},
+            },
+            data=_routine_fields(routine),
+        )
+    return refreshed
+
+
+async def _resolve_roster_preloads(
+    roster: list[RosterEntry], *, skip_missing: bool = False
+) -> dict[str, str]:
+    """Active store listing version per preload slug.
+
+    A slug with no official listing fails the whole seed before any template
+    is touched, which is right where the marketplace is loaded (every
+    deploy). *skip_missing* is for a database that has no store assets at
+    all, a fresh self-hosted install or a preview: the roster still lands,
+    minus the workflows it cannot resolve, which ``_sync_preloads`` already
+    handles by leaving that template's preload rows alone.
+    """
+    slugs = {preload["slug"] for entry in roster for preload in entry["preloads"]}
     resolved = {
         slug: version_id
         for slug in sorted(slugs)
         if (version_id := await _resolve_active_version_id(slug)) is not None
     }
     missing = sorted(slugs - resolved.keys())
-    if missing:
+    if missing and skip_missing:
+        logger.warning(
+            f"Skipping {len(missing)} roster preload(s) with no official store "
+            f"listing: {', '.join(missing)}. Load marketplace store assets and "
+            "publish again to install them."
+        )
+    elif missing:
         raise RuntimeError(
             f"Official creator '{OFFICIAL_CREATOR_USERNAME}' is missing roster "
             f"listings for: {', '.join(missing)}. Load marketplace store assets "
-            "before seeding the expert roster."
+            "before publishing the expert roster, or pass skip_missing_preloads."
         )
     return resolved
 
 
-async def _resolve_roster_skills() -> dict[str, str]:
-    slugs = {slug for entry in ROSTER for slug in entry["bundled_skills"]}
+async def _resolve_roster_skills(
+    roster: list[RosterEntry], *, dry_run: bool = False
+) -> dict[str, str]:
+    """Listing id per bundled slug. A dry run tolerates slugs with no listing
+    yet: the release that carries this roster also carries those packages,
+    and a dry run of it has created nothing."""
+    slugs = {slug for entry in roster for slug in entry["bundled_skills"]}
     if not slugs:
         return {}
     listings = await prisma.models.SkillListing.prisma().find_many(
@@ -646,10 +602,10 @@ async def _resolve_roster_skills() -> dict[str, str]:
     )
     resolved = {listing.slug: listing.id for listing in listings}
     missing = sorted(slugs - resolved.keys())
-    if missing:
+    if missing and not dry_run:
         raise RuntimeError(
             f"Skills Hub is missing roster listings for: {', '.join(missing)}. "
-            "Seed the starter skills before seeding the expert roster."
+            "Publish the skills catalog before the expert roster."
         )
     return resolved
 
@@ -677,35 +633,68 @@ async def _sync_bundled_skills(template_id: str, listing_ids: list[str]) -> None
         )
 
 
-async def seed_roster() -> list[str]:
-    """Upsert the roster templates and their preloads. Returns template ids."""
-    resolved_versions = await _resolve_roster_preloads()
-    resolved_skills = await _resolve_roster_skills()
-    template_ids = []
-    for entry in ROSTER:
-        template = await _upsert_template(entry)
+async def seed_roster(
+    roster: list[RosterEntry],
+    *,
+    retired_keys: Iterable[str] = (),
+    dry_run: bool = False,
+    skip_missing_preloads: bool = False,
+) -> dict[str, list[str]]:
+    """Upsert the roster templates with their preloads, routines and bundled
+    skills, keyed by catalog key. Returns what changed, by key.
+
+    Every preload and skill slug is resolved before any template is touched,
+    so a bad roster fails whole. A dry run resolves and reports without
+    writing. *skip_missing_preloads* installs the roster without the store
+    workflows this database does not have (see ``_resolve_roster_preloads``).
+    """
+    resolved_versions = await _resolve_roster_preloads(
+        roster, skip_missing=skip_missing_preloads
+    )
+    resolved_skills = await _resolve_roster_skills(roster, dry_run=dry_run)
+    summary: dict[str, list[str]] = {"created": [], "updated": [], "retired": []}
+    for entry in roster:
+        previous = await _find_template(entry)
+        summary["created" if previous is None else "updated"].append(entry["key"])
+        if dry_run:
+            continue
+        template = await _upsert_template(entry, previous)
         await _sync_preloads(template.id, entry, resolved_versions)
+        await _sync_routines(template.id, entry)
         await _sync_bundled_skills(
             template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
         )
-        refreshed = await _backfill_hired_copies(template)
-        template_ids.append(template.id)
+        refreshed = await _backfill_hired_copies(template, previous)
+        routines = await _sync_hired_routines(template.id, entry)
         logger.info(
-            f"Seeded expert template '{entry['name']}' (#{template.id}); "
-            f"refreshed {refreshed} hired copies"
+            f"Seeded expert template '{entry['key']}' (#{template.id}); "
+            f"refreshed {refreshed} hired copies and {routines} untouched routine(s)"
         )
-    await _clear_removed_cadences()
-    return template_ids
+    summary["retired"] = await _archive_retired_templates(
+        sorted(retired_keys), dry_run=dry_run
+    )
+    if summary["retired"]:
+        logger.info(f"Archived retired template(s): {summary['retired']}")
+    if not dry_run:
+        await _clear_removed_cadences_bounded()
+    return summary
 
 
-async def main() -> None:
-    await database.connect()
+# The cadence cleanup talks to the scheduler service, which the deploy job
+# running the publisher cannot reach; its client would otherwise retry for
+# far longer than a deploy should wait. Nothing else in the seed leaves the
+# database.
+_CADENCE_CLEANUP_TIMEOUT_S = 60
+
+
+async def _clear_removed_cadences_bounded() -> None:
     try:
-        await seed_roster()
-    finally:
-        await database.disconnect()
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+        await asyncio.wait_for(
+            _clear_removed_cadences(), timeout=_CADENCE_CLEANUP_TIMEOUT_S
+        )
+    except (asyncio.TimeoutError, Exception):
+        logger.warning(
+            "Removed-cadence cleanup skipped this run (scheduler unreachable); "
+            "the next publish retries it",
+            exc_info=True,
+        )
