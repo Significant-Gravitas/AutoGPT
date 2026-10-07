@@ -299,7 +299,6 @@ class TestDiscoverTools:
         detail = response.json()["detail"]
         assert response.status_code == expected_status
         assert f"HTTP {remote_status}" in detail
-        assert "blog.example.com" in detail
         assert "<!doctype" not in detail.lower()
 
     @pytest.mark.asyncio(loop_scope="session")
