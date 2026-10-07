@@ -582,20 +582,24 @@ def test_gemma_4_31b_it_bills_at_authored_rates():
 
 
 @pytest.mark.parametrize(
-    "slug, usd_in, usd_out, context_window",
+    "slug, usd_in, usd_out, context_window, max_output_tokens",
     [
-        ("mistralai/mistral-medium-3-5", 1.50, 7.50, 262144),
-        ("mistralai/mistral-small-2603", 0.15, 0.60, 262144),
-        ("mistralai/ministral-14b-2512", 0.20, 0.20, 262144),
-        ("mistralai/ministral-8b-2512", 0.15, 0.15, 262144),
-        ("mistralai/ministral-3b-2512", 0.10, 0.10, 131072),
+        ("mistralai/mistral-medium-3-5", 1.50, 7.50, 262144, 209715),
+        ("mistralai/mistral-small-2603", 0.15, 0.60, 262144, 209715),
+        ("mistralai/ministral-14b-2512", 0.20, 0.20, 262144, 209715),
+        ("mistralai/ministral-8b-2512", 0.15, 0.15, 262144, 209715),
+        ("mistralai/ministral-3b-2512", 0.10, 0.10, 131072, 104857),
     ],
 )
-def test_mistral_lineup_shows_openrouter_prices_and_window(
-    slug: str, usd_in: float, usd_out: float, context_window: int
+def test_mistral_lineup_matches_openrouter_listing(
+    slug: str,
+    usd_in: float,
+    usd_out: float,
+    context_window: int,
+    max_output_tokens: int,
 ):
     """The builder's per-1M label shows OpenRouter's USD price (read
-    2026-10-06), and blocks budget against OpenRouter's window."""
+    2026-10-06), and blocks budget against OpenRouter's window and output cap."""
     model = LLMModel(slug)
     entry = next(
         c
@@ -606,6 +610,7 @@ def test_mistral_lineup_shows_openrouter_prices_and_window(
     assert entry.token_rate.input_usd_per_1m == pytest.approx(usd_in)
     assert entry.token_rate.output_usd_per_1m == pytest.approx(usd_out)
     assert MODEL_METADATA[model].context_window == context_window
+    assert MODEL_METADATA[model].max_output_tokens == max_output_tokens
 
 
 def test_provider_usd_prices_are_all_or_nothing():
