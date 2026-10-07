@@ -355,6 +355,38 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Auth identity <-> platform User invariant monitoring
+    auth_identity_orphan_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the sweep that heals auth identities with no platform User row. "
+            "Off by default: its first run backfills every such identity, and "
+            "each heal counts as a sign-up in PostHog."
+        ),
+    )
+    auth_identity_orphan_check_interval_secs: int = Field(
+        default=15 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between sweeps for auth identities that have no "
+            "platform User row. Each sweep heals what it finds and alerts."
+        ),
+    )
+    auth_identity_orphan_grace_secs: int = Field(
+        default=5 * 60,
+        ge=0,
+        description=(
+            "Age in seconds an auth identity must reach before it counts as "
+            "orphaned, so a sign-up still in flight is not flagged or healed early."
+        ),
+    )
+    auth_identity_orphan_check_limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum orphaned auth identities healed per sweep.",
+    )
+
     # Execution Accuracy Monitoring
     execution_accuracy_check_interval_hours: int = Field(
         default=24,
@@ -541,6 +573,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             raise ValueError(
                 "PUBLIC_SITE_MEDIA_BUCKET must not be the legacy "
                 "MEDIA_GCS_BUCKET_NAME bucket, which holds private user data"
+            )
+        if (
+            self.media_gcs_bucket_name
+            and self.private_user_data_bucket != self.media_gcs_bucket_name
+        ):
+            raise ValueError(
+                "PRIVATE_USER_DATA_BUCKET must remain the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket until stored bucket-qualified "
+                "paths are migrated; clear MEDIA_GCS_BUCKET_NAME after migration"
             )
         return self
 
