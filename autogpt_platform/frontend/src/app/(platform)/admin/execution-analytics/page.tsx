@@ -1,6 +1,7 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 import { ExecutionAnalyticsForm } from "./components/ExecutionAnalyticsForm";
+import { Text } from "@/components/atoms/Text/Text";
 
 function ExecutionAnalyticsDashboard() {
   return (
@@ -8,23 +9,25 @@ function ExecutionAnalyticsDashboard() {
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Execution Analytics</h1>
-            <p className="text-gray-500">
+            <Text variant="h3" as="h1">
+              Execution Analytics
+            </Text>
+            <Text variant="large" tone="muted">
               Generate missing activity summaries and success scores for agent
               executions
-            </p>
+            </Text>
           </div>
         </div>
 
         <div className="rounded-lg border bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold">
+          <Text variant="h4" as="h2" className="mb-4">
             Execution Analytics & Accuracy Monitoring
-          </h2>
-          <p className="mb-6 text-gray-600">
+          </Text>
+          <Text variant="large" tone="secondary" className="mb-6">
             Generate missing activity summaries and success scores for agent
             executions. After generation, accuracy trends and alerts will
             automatically be displayed to help monitor agent health over time.
-          </p>
+          </Text>
 
           <Suspense
             fallback={<div className="py-10 text-center">Loading...</div>}
