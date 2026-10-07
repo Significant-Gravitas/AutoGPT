@@ -68,11 +68,9 @@ export const BUTTON_ICON_SIZE = {
   "icon-lg": 18,
 } as const;
 
-export const ICON_ONLY_SIZES: ReadonlySet<string> = new Set([
-  "icon-sm",
-  "icon-md",
-  "icon-lg",
-]);
+// Sizes that get the aria-label tooltip automatically (as variant="icon"
+// does). icon-md and icon-lg replace the old `icon` size, which did not.
+export const ICON_ONLY_SIZES: ReadonlySet<string> = new Set(["icon-sm"]);
 
 type BaseButtonProps = {
   loading?: boolean;
