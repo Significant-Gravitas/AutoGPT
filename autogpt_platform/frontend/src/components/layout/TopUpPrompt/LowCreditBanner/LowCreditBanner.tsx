@@ -18,7 +18,7 @@ export function LowCreditBanner({ className }: Props) {
   const alert = (
     <Alert variant="warning" aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
-        <AlertDescription className="min-w-[12rem] flex-1">
+        <AlertDescription className="min-w-48 flex-1">
           You&apos;re out of automation credits. Top up to keep your agents
           running.
         </AlertDescription>
