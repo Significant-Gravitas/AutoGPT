@@ -127,11 +127,11 @@ export function RateLimitDisplay({
     <div className={className ?? "rounded-md border bg-white p-6"}>
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <Text variant="h5" as="h2" className="mb-1">
+          <Text variant="h5" unmask={false} as="h2" className="mb-1">
             Rate Limits for {data.user_email ?? data.user_id}
           </Text>
           {data.user_email && (
-            <Text variant="small" tone="muted">
+            <Text variant="small" unmask={false} tone="muted">
               User ID: {data.user_id}
             </Text>
           )}

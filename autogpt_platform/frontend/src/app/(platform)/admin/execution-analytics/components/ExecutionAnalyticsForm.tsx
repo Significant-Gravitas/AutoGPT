@@ -572,7 +572,7 @@ export function ExecutionAnalyticsForm() {
                   <Text variant="h5" as="h4" className="text-red-800">
                     Accuracy Alert Detected
                   </Text>
-                  <Text variant="large" className="text-red-700">
+                  <Text variant="large" unmask={false} className="text-red-700">
                     <strong>
                       {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
                     </strong>{" "}

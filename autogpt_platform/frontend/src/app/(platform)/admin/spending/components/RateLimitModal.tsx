@@ -105,7 +105,7 @@ export function RateLimitModal({
         controlled={{ isOpen: open, set: setOpen }}
       >
         <Dialog.Content>
-          <Text variant="body" tone="muted" className="mb-4">
+          <Text variant="body" unmask={false} tone="muted" className="mb-4">
             CoPilot rate limits for {userEmail || userId}
           </Text>
 

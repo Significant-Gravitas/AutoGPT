@@ -77,7 +77,7 @@ export function AdminAddMoneyButton({
         }}
       >
         <Dialog.Content>
-          <Text variant="body" as="div" tone="muted">
+          <Text variant="body" unmask={false} as="div" tone="muted">
             <div className="mb-2">
               <span className="font-medium">User:</span> {userEmail}
             </div>

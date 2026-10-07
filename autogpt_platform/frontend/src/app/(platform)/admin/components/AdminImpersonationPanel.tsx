@@ -157,7 +157,7 @@ export function AdminImpersonationPanel() {
               </Alert>
             ) : creditsResponse?.data ? (
               <div className="space-y-1">
-                <Text variant="body">
+                <Text variant="body" unmask={false}>
                   <strong>
                     {creditsResponse.data &&
                     typeof creditsResponse.data === "object" &&
@@ -172,7 +172,7 @@ export function AdminImpersonationPanel() {
                     </span>
                   )}
                 </Text>
-                <Text variant="small" tone="muted">
+                <Text variant="small" unmask={false} tone="muted">
                   {isImpersonating
                     ? `Showing credits for user ${impersonatedUserId}`
                     : "Showing your own credits"}

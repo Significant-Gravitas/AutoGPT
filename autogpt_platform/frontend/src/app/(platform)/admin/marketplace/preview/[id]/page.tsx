@@ -68,7 +68,7 @@ export default function AdminPreviewPage() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <Text variant="large" tone="danger">
+        <Text variant="large" unmask={false} tone="danger">
           {error || "Preview not found"}
         </Text>
         <Button variant="link" onClick={() => router.back()}>
@@ -150,7 +150,7 @@ export default function AdminPreviewPage() {
             <Text variant="body-medium" as="h3" tone="muted" className="mb-2">
               Instructions
             </Text>
-            <Text variant="body" className="whitespace-pre-wrap">
+            <Text variant="body" unmask={false} className="whitespace-pre-wrap">
               {data.instructions}
             </Text>
           </div>
