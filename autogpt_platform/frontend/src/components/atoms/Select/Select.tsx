@@ -10,7 +10,7 @@ import {
 } from "@/components/__legacy__/ui/select";
 import { cn } from "@/lib/utils";
 import * as React from "react";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
@@ -21,7 +21,8 @@ export interface SelectOption {
   icon?: ReactNode;
   disabled?: boolean;
   separator?: boolean;
-  onSelect?: () => void; // optional action handler
+  /** Turns the row into an action: runs on selection instead of changing the value. */
+  onSelect?: () => void;
 }
 
 export interface SelectFieldProps {
@@ -91,8 +92,27 @@ export function Select({
     className,
   );
 
+  const [uncontrolledValue, setUncontrolledValue] = useState<string>();
+  const currentValue = value ?? uncontrolledValue ?? "";
+
+  function handleValueChange(nextValue: string) {
+    const action = options.find(
+      (option) => option.value === nextValue,
+    )?.onSelect;
+    if (action) {
+      action();
+      return;
+    }
+    if (value === undefined) setUncontrolledValue(nextValue);
+    onValueChange?.(nextValue);
+  }
+
   const select = (
-    <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
+    <BaseSelect
+      value={currentValue}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         className={triggerStyles}
         aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
@@ -118,12 +138,6 @@ export function Select({
               key={option.value}
               value={option.value}
               disabled={option.disabled}
-              onMouseDown={(e) => {
-                if (option.onSelect) {
-                  e.preventDefault();
-                  option.onSelect();
-                }
-              }}
             >
               {content}
             </SelectItem>
@@ -153,16 +167,18 @@ export function Select({
   return hideLabel ? (
     selectWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <Text
-            variant={labelVariant}
-            as="span"
-            className={cn("text-black", labelClassName)}
-          >
-            {label}
-          </Text>
+          <label htmlFor={id}>
+            <Text
+              variant={labelVariant}
+              as="span"
+              className={cn("text-black", labelClassName)}
+            >
+              {label}
+            </Text>
+          </label>
           {labelTooltip ? (
             <InformationTooltip description={labelTooltip} iconSize={20} />
           ) : null}
@@ -170,6 +186,6 @@ export function Select({
         {hint}
       </div>
       {selectWithError}
-    </label>
+    </div>
   );
 }
