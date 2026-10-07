@@ -24,6 +24,9 @@ export function useSignupPage() {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(
+    null,
+  );
   const isCloudEnv = environment.isCloud();
 
   // Same-origin redirect target; off-site values are dropped so a crafted
@@ -121,6 +124,7 @@ export function useSignupPage() {
         data.password,
         data.confirmPassword,
         data.agreeToTerms,
+        nextUrl,
       );
 
       if (!result.success) {
@@ -139,6 +143,13 @@ export function useSignupPage() {
           title: result.error || "Signup failed",
           variant: "destructive",
         });
+        setIsSigningUp(false);
+        return;
+      }
+
+      if (result.verificationRequired) {
+        setVerificationEmail(result.email);
+        setIsLoading(false);
         setIsSigningUp(false);
         return;
       }
@@ -163,9 +174,16 @@ export function useSignupPage() {
     }
   }
 
+  function handleStartAgain() {
+    setVerificationEmail(null);
+    form.resetField("email");
+  }
+
   return {
     form,
     feedback,
+    nextUrl,
+    verificationEmail,
     isLoggedIn: !!user,
     hasInitializedAuth,
     isLoading,
@@ -176,5 +194,6 @@ export function useSignupPage() {
     handleSubmit: form.handleSubmit(handleSignup),
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
+    handleStartAgain,
   };
 }

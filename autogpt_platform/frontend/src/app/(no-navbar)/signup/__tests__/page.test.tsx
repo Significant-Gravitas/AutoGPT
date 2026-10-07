@@ -63,6 +63,7 @@ describe("SignupPage", () => {
         "validpassword123",
         "validpassword123",
         true,
+        null,
       );
     });
 
