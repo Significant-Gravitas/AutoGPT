@@ -24,6 +24,10 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     "aiml_api": ("Unified access to 100+ AI models", ("api_key",)),
     "anthropic": ("Claude language models", ("api_key",)),
     "codex": ("Use your ChatGPT plan with Codex App Server", ("oauth2",)),
+    "microsoft_365_copilot": (
+        "Use your work or school Microsoft 365 Copilot plan",
+        ("device_code",),
+    ),
     "groq": ("Fast LLM inference", ("api_key",)),
     "llama_api": ("Llama model hosting", ("api_key",)),
     "ollama": ("Run open-source LLMs locally", ("api_key",)),

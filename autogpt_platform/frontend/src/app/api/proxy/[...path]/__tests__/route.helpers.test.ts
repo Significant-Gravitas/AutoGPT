@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  buildSafeWorkspaceDownloadHeaders,
+  getSafeDownloadContentDisposition,
   isWorkspaceDownloadRequest,
   isRedirectStatus,
   isTransientWorkspaceDownloadStatus,
@@ -10,7 +12,68 @@ import {
   RESPONSE_START_TIMEOUT_MS,
   CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
   getResponseStartTimeoutMs,
+  getSafePrivateMediaRange,
+  isPrivateStoreMediaRequest,
+  PRIVATE_MEDIA_RANGE_CHUNK_BYTES,
+  isPrivateStoreVideoRequest,
 } from "../route.helpers";
+
+describe("private store media request matching", () => {
+  const imagePath = [
+    "api",
+    "store",
+    "submissions",
+    "media",
+    "user-123",
+    "images",
+    "thumbnail.png",
+  ];
+
+  it("recognizes exact private image and video paths", () => {
+    expect(isPrivateStoreMediaRequest(imagePath)).toBe(true);
+    expect(
+      isPrivateStoreMediaRequest([
+        ...imagePath.slice(0, 5),
+        "videos",
+        "preview.mp4",
+      ]),
+    ).toBe(true);
+    expect(isPrivateStoreVideoRequest(imagePath)).toBe(false);
+    expect(
+      isPrivateStoreVideoRequest([
+        ...imagePath.slice(0, 5),
+        "videos",
+        "preview.mp4",
+      ]),
+    ).toBe(true);
+  });
+
+  it.each([
+    [imagePath.slice(0, -1)],
+    [[...imagePath, "extra"]],
+    [["api", "store", "media", "user-123", "images", "thumbnail.png"]],
+    [[...imagePath.slice(0, 4), "..", "images", "thumbnail.png"]],
+    [[...imagePath.slice(0, 5), "documents", "thumbnail.png"]],
+    [[...imagePath.slice(0, 6), "nested/thumbnail.png"]],
+  ])("rejects a non-private-media path: %j", (path) => {
+    expect(isPrivateStoreMediaRequest(path)).toBe(false);
+  });
+
+  it.each([
+    ["bytes=0-1023", "bytes=0-1023"],
+    ["bytes=1024-", `bytes=1024-${1023 + PRIVATE_MEDIA_RANGE_CHUNK_BYTES}`],
+    ["bytes=0-999999999", `bytes=0-${PRIVATE_MEDIA_RANGE_CHUNK_BYTES - 1}`],
+    ["bytes=-512", "bytes=-512"],
+    ["bytes=-999999999", `bytes=-${PRIVATE_MEDIA_RANGE_CHUNK_BYTES}`],
+    [" bytes=0-1023 ", "bytes=0-1023"],
+    ["bytes=0-1,4-5", null],
+    ["items=0-1", null],
+    ["bytes=-", null],
+    [null, null],
+  ])("sanitizes a Range header: %s", (value, expected) => {
+    expect(getSafePrivateMediaRange(value)).toBe(expected);
+  });
+});
 
 describe("isWorkspaceDownloadRequest", () => {
   const VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -736,6 +799,54 @@ describe("isWorkspaceDownloadRequest", () => {
           "download",
         ]),
       ).toBe(false);
+    });
+  });
+});
+
+describe("getSafeDownloadContentDisposition", () => {
+  it("forces an inline response to download while preserving its filename", () => {
+    expect(
+      getSafeDownloadContentDisposition('inline; filename="payload.html"'),
+    ).toBe('attachment; filename="payload.html"');
+  });
+
+  it("keeps attachment filename parameters", () => {
+    expect(
+      getSafeDownloadContentDisposition(
+        "attachment; filename*=UTF-8''image.png",
+      ),
+    ).toBe("attachment; filename*=UTF-8''image.png");
+  });
+
+  it("supplies attachment when the upstream omits a disposition", () => {
+    expect(getSafeDownloadContentDisposition(null)).toBe("attachment");
+  });
+});
+
+describe("buildSafeWorkspaceDownloadHeaders", () => {
+  it("hardens an upstream inline active-content response", () => {
+    expect(
+      buildSafeWorkspaceDownloadHeaders(
+        "text/html; charset=utf-8",
+        'inline; filename="payload.html"',
+        42,
+      ),
+    ).toEqual({
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": "42",
+      "Content-Disposition": 'attachment; filename="payload.html"',
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
+    });
+  });
+
+  it("hardens a redirected storage response with missing metadata", () => {
+    expect(buildSafeWorkspaceDownloadHeaders(null, null, 7)).toEqual({
+      "Content-Type": "application/octet-stream",
+      "Content-Length": "7",
+      "Content-Disposition": "attachment",
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
     });
   });
 });

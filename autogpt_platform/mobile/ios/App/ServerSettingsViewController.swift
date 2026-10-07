@@ -118,8 +118,8 @@ final class ServerSettingsViewController: UIViewController, UITextFieldDelegate 
       stack.widthAnchor.constraint(lessThanOrEqualToConstant: 416),
       width,
       addressField.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
-      connect.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
-      cancel.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+      connect.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
+      cancel.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
     ])
   }
 

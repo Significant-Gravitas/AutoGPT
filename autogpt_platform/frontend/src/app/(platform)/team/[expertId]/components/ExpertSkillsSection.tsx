@@ -31,6 +31,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
     setMarketQuery,
     marketplaceSkills,
     isMarketplaceLoading,
+    hasMarketplace,
     addSkill,
     addMarketplaceSkill,
     removeSkill,
@@ -40,20 +41,20 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="large-medium" tone="primary">
           {expert.name}&apos;s Skills
         </Text>
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
             Add skill
           </Button>
           <SearchInput
-            size="xsmall"
+            size="small"
             value={query}
             onChange={setQuery}
             placeholder="Search skills"
@@ -94,6 +95,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
         onMarketQueryChange={setMarketQuery}
         marketplaceSkills={marketplaceSkills}
         isMarketplaceLoading={isMarketplaceLoading}
+        hasMarketplace={hasMarketplace}
         isSaving={isSaving}
         onAdd={addSkill}
         onAddMarketplace={addMarketplaceSkill}

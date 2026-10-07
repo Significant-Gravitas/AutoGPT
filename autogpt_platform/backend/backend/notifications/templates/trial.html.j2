@@ -1,0 +1,24 @@
+{%- import "_email_ui.j2" as ui with context -%}
+{%- import "_trial_copy.j2" as copy with context -%}
+<!doctype html>
+<html lang="en">
+<head>{{ ui.head_block(subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.hero_otto() }}
+{{ ui.sheet_open() }}
+{% if kind == 'payment_failed' %}{{ ui.strip_amber('NEEDS YOU · PAYMENT DECLINED') }}{% endif %}
+{% call ui.eyebrow(tone='confirmed' if kind in ['started', 'resumed', 'converted'] else 'needs_you' if kind == 'payment_failed' else 'neutral') %}YOUR AUTOGPT TRIAL{% endcall %}
+{% call ui.headline() %}{{ subject }}{% endcall %}
+{% call ui.para() %}{{ copy.lede() }}{% endcall %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Trial ends', ends_label, true), ('Paid price', plan.price_display, true)]) }}
+{% if copy.detail() | trim %}{% call ui.para() %}{{ copy.detail() }}{% endcall %}{% endif %}
+{{ ui.cta('Update payment method' if kind == 'payment_failed' else 'Review your plan', urls.billing) }}
+{{ ui.close_row('You received this because your trial status changed or its end is approaching.', 'Billing settings', urls.billing) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.legal_footer("This is a service message about the AutoGPT account for " ~ user_email ~ ". It's sent even if you've opted out of product news.", 'Email preferences', urls.prefs, discord=true) }}
+</td></tr></table>
+</body></html>

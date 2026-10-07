@@ -697,3 +697,49 @@ class TestMCPToolBlock:
 
         assert captured_tokens == [None]
         assert outputs == [("result", "ok")]
+
+
+@pytest.mark.asyncio
+async def test_verification_client_does_not_follow_redirects():
+    """A verification probe must not chase a redirect.
+
+    ``Requests`` strips ``Authorization`` when a redirect crosses origins, so
+    the target would answer an anonymous request — and a caller asking "was
+    this credential accepted?" would read the resulting 401 as a rejection.
+    """
+    client = MCPClient(
+        "https://mcp.example.com/mcp",
+        authorization="Bearer secret",
+        follow_redirects=False,
+    )
+    with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+        MockRequests.return_value.post = AsyncMock(
+            side_effect=RuntimeError("stop here")
+        )
+        with pytest.raises(RuntimeError):
+            await client._send_request("initialize")
+
+    assert MockRequests.return_value.post.call_args.kwargs["allow_redirects"] is False
+
+
+@pytest.mark.asyncio
+async def test_verification_client_does_not_follow_redirects_on_close():
+    """The session-closing DELETE carries the token too, so it must not redirect.
+
+    ``close()`` builds its own ``Requests`` with ``_build_headers()`` — which
+    includes ``Authorization``. A legacy server that mints an ``Mcp-Session-Id``
+    and then answers the DELETE with a cross-host 307 would otherwise receive
+    the freshly typed credential.
+    """
+    client = MCPClient(
+        "https://mcp.example.com/mcp",
+        authorization="Bearer secret",
+        follow_redirects=False,
+    )
+    client._session_id = "session-abc"
+
+    with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+        MockRequests.return_value.delete = AsyncMock()
+        await client.close()
+
+    assert MockRequests.return_value.delete.call_args.kwargs["allow_redirects"] is False

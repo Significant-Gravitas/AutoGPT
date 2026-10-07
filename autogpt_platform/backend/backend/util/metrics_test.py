@@ -12,9 +12,17 @@ from __future__ import annotations
 import json
 import sys
 
+import sentry_sdk
+from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
-from sentry_sdk.utils import event_from_exception
+from sentry_sdk.serializer import serialize
+from sentry_sdk.transport import Transport
+from sentry_sdk.utils import event_from_exception, json_dumps
 
+# Imported at module scope on purpose: AppProcess calls sentry_init() in its
+# class body, so the guard has to hold at collection time, not just in a test.
+import backend.util.process
+from backend.util import feature_flag, metrics
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -201,6 +209,44 @@ def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
     assert "safe-context-value" in serialized
 
 
+def test_before_send_output_survives_the_sdk_transport() -> None:
+    """The SDK runs ``before_send`` on the already-serialized event and then
+    ``json_dumps`` it for the envelope. A scrubbed event that is not plain JSON
+    is dropped there as an internal SDK error, so it never reaches Sentry.
+
+    A frame local named ``session`` (as in ``download_with_fresh_session``) and
+    an ``authorization`` request header are enough to trigger that."""
+
+    def download_with_fresh_session():
+        session = "aiohttp-client-session"
+        if session:
+            raise RuntimeError("Response payload is not completed")
+
+    try:
+        download_with_fresh_session()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+    event["request"] = {
+        "method": "GET",
+        "url": "http://backend/api/workspace/files/f/download",
+        "headers": {"authorization": "Bearer FAKE-TOKEN-1", "accept": "*/*"},
+    }
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    body = json.loads(json_dumps(scrubbed))
+    raising_frame = body["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert raising_frame["vars"]["session"] == "[Filtered]"
+    assert body["request"]["headers"]["authorization"] == "[Filtered]"
+    assert body["request"]["headers"]["accept"] == "*/*"
+    assert body["exception"]["values"][0]["value"] == (
+        "Response payload is not completed"
+    )
+
+
 def test_before_send_keeps_untyped_balance_message() -> None:
     try:
         raise RuntimeError("Third-party API reported insufficient balance")
@@ -312,3 +358,112 @@ def test_falkordb_teardown_signatures_cover_known_patterns() -> None:
     graphiti FalkorDB driver docstring pairs together."""
     expected = {"buffer is closed", "connection closed by server"}
     assert expected == set(_FALKORDB_TEARDOWN_SIGNATURES)
+
+
+# ---------- pytest runs must not reach Sentry ----------
+
+_FAKE_DSN = "https://key@o1.ingest.us.sentry.io/1"
+
+
+def _spy_on_sentry_init(monkeypatch) -> list[dict]:
+    calls: list[dict] = []
+    monkeypatch.setattr(metrics, "_sentry_init", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(metrics.settings.secrets, "sentry_dsn", _FAKE_DSN)
+    return calls
+
+
+def test_no_sentry_client_is_active_under_pytest() -> None:
+    """End-to-end. AppProcess runs sentry_init() in its class body, so this
+    module's import above is what a live client here would have come from."""
+    assert backend.util.process.AppProcess
+    assert sentry_sdk.get_client().is_active() is False
+
+
+def test_sentry_init_skipped_at_collection_time(monkeypatch) -> None:
+    """pytest only sets PYTEST_CURRENT_TEST once a test item runs, so the
+    import-time call that AppProcess makes is covered by sys.modules alone."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls == []
+
+
+def test_sentry_init_runs_outside_pytest(monkeypatch) -> None:
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    assert calls[0]["dsn"] == _FAKE_DSN
+
+
+def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
+    """A spawned service subprocess does not inherit sys.modules, but does
+    inherit PYTEST_CURRENT_TEST from the environment."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "backend/util/metrics_test.py::t (call)")
+
+    metrics.sentry_init()
+
+    assert calls == []
+
+
+def test_sentry_init_never_hooks_or_opens_a_launchdarkly_client(monkeypatch) -> None:
+    """Sentry once asked feature_flag.get_client() for a LaunchDarklyIntegration,
+    which initialised an LD client in every process that set up Sentry. LD bills
+    per connection, so sentry_init() must neither hook LD nor create a client
+    (SECRT-2708)."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
+    ld_inits: list[str] = []
+    monkeypatch.setattr(
+        feature_flag, "initialize_launchdarkly", lambda: ld_inits.append("init")
+    )
+    monkeypatch.setattr(feature_flag, "_init_attempted", False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    integration_names = {type(i).__name__ for i in calls[0]["integrations"]}
+    assert "LaunchDarklyIntegration" not in integration_names
+    assert ld_inits == []
+
+
+class _DiscardTransport(Transport):
+    def capture_envelope(self, envelope) -> None:
+        pass
+
+
+def test_sentry_sdk_setup_from_sentry_init_hooks_no_launchdarkly(monkeypatch) -> None:
+    """The test above stops at the arguments sentry_init() passes. This builds a
+    real SDK client from them, with sentry-sdk's default and auto-enabling
+    integrations, and checks that SDK setup neither enables the LaunchDarkly
+    integration nor constructs an LD client."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
+    monkeypatch.setattr(feature_flag, "_init_attempted", False)
+    ld_clients: list[str] = []
+
+    def _refuse_ld_client(self, *args, **kwargs) -> None:
+        ld_clients.append("created")
+        raise RuntimeError("Sentry setup constructed a LaunchDarkly client")
+
+    monkeypatch.setattr(LDClient, "__init__", _refuse_ld_client)
+
+    metrics.sentry_init()
+    client = sentry_sdk.Client(**calls[0], transport=_DiscardTransport)
+    try:
+        assert "fastapi" in client.integrations
+        assert "launchdarkly" not in client.integrations
+    finally:
+        client.close()
+    assert ld_clients == []

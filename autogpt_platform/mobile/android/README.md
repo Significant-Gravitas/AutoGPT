@@ -69,7 +69,7 @@ All Kotlin sources and Gradle Kotlin scripts use ktfmt 0.64 with Kotlin language
 rg --files -g '*.kt' -g '*.kts' -0 | xargs -0 java -jar /path/to/ktfmt.jar --kotlinlang-style
 ```
 
-The launcher image reuses the web app's notification icon. The themed monochrome launcher uses the existing `AutoGPTLogoWhite` SVG geometry, without its wordmark. Native status screens support system light/dark appearance, large text, and scrolling when the available height is short.
+The launcher image reuses the web app's notification icon. The themed monochrome launcher uses the existing `AutoGPTLogoWhite` SVG geometry, without its wordmark. Native status screens use the web authentication screen's light palette, support large text, and scroll when the available height is short.
 
 ## Verification
 

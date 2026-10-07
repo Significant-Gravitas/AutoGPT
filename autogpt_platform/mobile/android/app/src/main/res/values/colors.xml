@@ -9,7 +9,8 @@
     <color name="shell_accent">#3E3E43</color>
     <color name="shell_on_accent">#FEFEFE</color>
     <color name="shell_pressed">#2C2C30</color>
-    <color name="shell_secondary_button">#EFEFF0</color>
+    <color name="shell_secondary_button">#FEFEFE</color>
+    <color name="shell_disabled_border">#EFEFF0</color>
     <color name="shell_border">#DADADC</color>
     <color name="shell_logo">#000030</color>
     <color name="shell_focus">#925CF7</color>

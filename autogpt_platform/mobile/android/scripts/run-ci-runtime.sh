@@ -39,3 +39,13 @@ adb -s "$emulator_serial" install -r app/build/outputs/apk/androidTest/debug/app
 adb -s "$emulator_serial" reverse tcp:8765 tcp:8765
 python3 scripts/run-runtime-probe.py --serial "$emulator_serial" --disposable \
   --fixture-origin http://127.0.0.1:8765 --output "$runtime_output/probe.txt"
+
+for screen in sign-in settings error; do
+  adb -s "$emulator_serial" shell am start -W -S \
+    -n com.agpt.mobile/.DesignPreviewActivity --es screen "$screen" \
+    > "$runtime_output/$screen-launch.txt"
+  adb -s "$emulator_serial" shell uiautomator dump \
+    "/sdcard/autogpt-$screen.xml" > "$runtime_output/$screen-ui.txt"
+  adb -s "$emulator_serial" exec-out screencap -p \
+    > "$runtime_output/android-$screen.png"
+done

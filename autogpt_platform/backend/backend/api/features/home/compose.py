@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo

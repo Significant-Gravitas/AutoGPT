@@ -4,7 +4,7 @@ import { useState } from "react";
 
 export function useSkillsPanel() {
   const [newSkillName, setNewSkillName] = useState<string | null>(null);
-  const query = useListCopilotSkills({
+  const query = useListCopilotSkills(undefined, {
     query: {
       select: (res) => okData(res) ?? [],
     },

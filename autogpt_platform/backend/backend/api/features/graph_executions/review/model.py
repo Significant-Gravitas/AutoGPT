@@ -1,0 +1,290 @@
+import json
+import re
+from datetime import datetime
+from functools import cache
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
+
+from prisma.enums import ReviewStatus
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from backend.blocks import get_blocks
+from backend.copilot.constants import legacy_chat_session_id
+
+if TYPE_CHECKING:
+    from prisma.models import PendingHumanReview
+
+# SafeJson-compatible type alias for review data
+SafeJsonData = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
+
+
+class PendingHumanReviewModel(BaseModel):
+    """Response model for pending human review data.
+
+    Represents a human review request that is awaiting user action.
+    Contains all necessary information for a user to review and approve
+    or reject data from a Human-in-the-Loop block execution.
+
+    Attributes:
+        id: Unique identifier for the review record
+        user_id: ID of the user who must perform the review
+        node_exec_id: ID of the node execution that created this review
+        node_id: ID of the node definition (for grouping reviews from same node)
+        graph_exec_id: ID of the graph execution containing the node
+        graph_id: ID of the graph template being executed
+        graph_version: Version number of the graph template
+        payload: The actual data payload awaiting review
+        instructions: Instructions or message for the reviewer
+        editable: Whether the reviewer can edit the data
+        status: Current review status (WAITING, APPROVED, or REJECTED)
+        review_message: Optional message from the reviewer
+        created_at: Timestamp when review was created
+        updated_at: Timestamp when review was last modified
+        reviewed_at: Timestamp when review was completed (if applicable)
+    """
+
+    node_exec_id: str = Field(description="Node execution ID (primary key)")
+    node_id: str = Field(
+        description="Node definition ID (for grouping)",
+        default="",  # Temporary default for test compatibility
+    )
+    user_id: str = Field(description="User ID associated with the review")
+    graph_exec_id: str | None = Field(
+        default=None, description="Graph execution ID; None for a chat review"
+    )
+    graph_id: str | None = Field(default=None, description="Graph ID")
+    graph_version: int | None = Field(default=None, description="Graph version")
+    session_id: str | None = Field(
+        default=None, description="Chat session ID; None for a graph review"
+    )
+    payload: SafeJsonData = Field(description="The actual data payload awaiting review")
+    instructions: str | None = Field(
+        description="Instructions or message for the reviewer", default=None
+    )
+    editable: bool = Field(description="Whether the reviewer can edit the data")
+    status: ReviewStatus = Field(description="Review status")
+    review_message: str | None = Field(
+        description="Optional message from the reviewer", default=None
+    )
+    expert_id: str | None = Field(
+        default=None, description="Expert attributed to the requesting run"
+    )
+    expert_name: str | None = Field(default=None)
+    expert_avatar_url: str | None = Field(default=None)
+    agent_name: str | None = Field(
+        default=None, description="Display name of the agent that requested the review"
+    )
+    block_id: str | None = Field(
+        default=None, description="The block awaiting approval, when a block asked"
+    )
+    action: str | None = Field(
+        default=None, description="What that block does, e.g. 'Send Discord Message'"
+    )
+    library_agent_id: str | None = Field(default=None, description="For run deep links")
+    was_edited: bool | None = Field(
+        description="Whether the data was modified during review", default=None
+    )
+    processed: bool = Field(
+        description="Whether the review result has been processed by the execution engine",
+        default=False,
+    )
+    created_at: datetime = Field(description="When the review was created")
+    updated_at: datetime | None = Field(
+        description="When the review was last updated", default=None
+    )
+    reviewed_at: datetime | None = Field(
+        description="When the review was completed", default=None
+    )
+
+    @classmethod
+    def from_db(
+        cls, review: "PendingHumanReview", node_id: str
+    ) -> "PendingHumanReviewModel":
+        """
+        Convert a database model to a response model.
+
+        Uses the new flat database structure with separate columns for
+        payload, instructions, and editable flag.
+
+        Handles invalid data gracefully by using safe defaults.
+
+        Args:
+            review: Database review object
+            node_id: Node definition ID (fetched from NodeExecution)
+        """
+        block = _block_named(review.instructions)
+        # A row written in the old synthetic-graph shape reads as a chat review.
+        legacy_session_id = legacy_chat_session_id(review.graphExecId)
+        is_graph = legacy_session_id is None and review.chatSessionId is None
+        return cls(
+            block_id=block.id if block else None,
+            action=_action_label(block.name) if block else None,
+            node_exec_id=review.nodeExecId,
+            node_id=node_id,
+            user_id=review.userId,
+            graph_exec_id=review.graphExecId if is_graph else None,
+            graph_id=review.graphId if is_graph else None,
+            graph_version=review.graphVersion if is_graph else None,
+            session_id=review.chatSessionId or legacy_session_id,
+            payload=review.payload,
+            instructions=review.instructions,
+            editable=review.editable,
+            status=review.status,
+            review_message=review.reviewMessage,
+            was_edited=review.wasEdited,
+            processed=review.processed,
+            created_at=review.createdAt,
+            updated_at=review.updatedAt,
+            reviewed_at=review.reviewedAt,
+        )
+
+
+class ReviewItem(BaseModel):
+    """Single review item for processing."""
+
+    node_exec_id: str = Field(description="Node execution ID to review")
+    approved: bool = Field(
+        description="Whether this review is approved (True) or rejected (False)"
+    )
+    message: str | None = Field(
+        None, description="Optional review message", max_length=2000
+    )
+    reviewed_data: SafeJsonData | None = Field(
+        None, description="Optional edited data (ignored if approved=False)"
+    )
+    auto_approve_future: bool = Field(
+        default=False,
+        description=(
+            "If true and this review is approved, future executions of this same "
+            "block (node) will be automatically approved. This only affects approved reviews."
+        ),
+    )
+    chat_rule: Literal["allow", "judge"] | None = Field(
+        default=None,
+        description=(
+            "AutoPilot cards naming a subject only: once approved, the subject "
+            "runs ('allow') or goes to the supervisor ('judge') for the rest of "
+            "the chat instead of asking."
+        ),
+    )
+    chat_rule_scope: Literal["chat", "expert", "team"] = Field(
+        default="chat",
+        description=(
+            "Where chat_rule holds: this chat, every chat with this chat's "
+            "Expert (or Otto), or every Expert on the user's team."
+        ),
+    )
+
+    @field_validator("reviewed_data")
+    @classmethod
+    def validate_reviewed_data(cls, v):
+        """Validate that reviewed_data is safe and properly structured."""
+        if v is None:
+            return v
+
+        # Validate SafeJson compatibility
+        def validate_safejson_type(obj):
+            """Ensure object only contains SafeJson compatible types."""
+            if obj is None:
+                return True
+            elif isinstance(obj, (str, int, float, bool)):
+                return True
+            elif isinstance(obj, dict):
+                return all(
+                    isinstance(k, str) and validate_safejson_type(v)
+                    for k, v in obj.items()
+                )
+            elif isinstance(obj, list):
+                return all(validate_safejson_type(item) for item in obj)
+            else:
+                return False
+
+        if not validate_safejson_type(v):
+            raise ValueError("reviewed_data contains non-SafeJson compatible types")
+
+        # Validate data size to prevent DoS attacks
+        try:
+            json_str = json.dumps(v)
+            if len(json_str) > 1000000:  # 1MB limit
+                raise ValueError("reviewed_data is too large (max 1MB)")
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"reviewed_data must be JSON serializable: {str(e)}")
+
+        # Ensure no dangerous nested structures (prevent infinite recursion)
+        def check_depth(obj, max_depth=10, current_depth=0):
+            """Recursively check object nesting depth to prevent stack overflow attacks."""
+            if current_depth > max_depth:
+                raise ValueError("reviewed_data has excessive nesting depth")
+
+            if isinstance(obj, dict):
+                for value in obj.values():
+                    check_depth(value, max_depth, current_depth + 1)
+            elif isinstance(obj, list):
+                for item in obj:
+                    check_depth(item, max_depth, current_depth + 1)
+
+        check_depth(v)
+        return v
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v):
+        """Validate and sanitize review message."""
+        if v is not None and len(v.strip()) == 0:
+            return None
+        return v
+
+
+class ReviewRequest(BaseModel):
+    """Request model for processing ALL pending reviews for an execution.
+
+    This request must include ALL pending reviews for a graph execution.
+    Each review will be either approved (with optional data modifications)
+    or rejected (data ignored). The execution will resume only after ALL reviews are processed.
+
+    Each review item can individually specify whether to auto-approve future executions
+    of the same block via the `auto_approve_future` field on ReviewItem.
+    """
+
+    reviews: List[ReviewItem] = Field(
+        description="All reviews with their approval status, data, and messages"
+    )
+
+    @model_validator(mode="after")
+    def validate_review_completeness(self):
+        """Validate that we have at least one review to process and no duplicates."""
+        if not self.reviews:
+            raise ValueError("At least one review must be provided")
+
+        # Ensure no duplicate node_exec_ids
+        node_ids = [review.node_exec_id for review in self.reviews]
+        if len(node_ids) != len(set(node_ids)):
+            duplicates = [nid for nid in set(node_ids) if node_ids.count(nid) > 1]
+            raise ValueError(f"Duplicate review IDs found: {', '.join(duplicates)}")
+
+        return self
+
+
+class ReviewResponse(BaseModel):
+    """Response from review endpoint."""
+
+    approved_count: int = Field(description="Number of reviews successfully approved")
+    rejected_count: int = Field(description="Number of reviews successfully rejected")
+    failed_count: int = Field(description="Number of reviews that failed processing")
+    error: str | None = Field(None, description="Error message if operation failed")
+
+
+def _block_named(name: str | None):
+    # A block's review stores its class name as the instructions; a
+    # human-in-the-loop block stores the user's own text there instead.
+    return _blocks_by_name().get(name) if name else None
+
+
+@cache
+def _blocks_by_name():
+    return {block.__name__: block() for block in get_blocks().values()}
+
+
+def _action_label(block_name: str) -> str:
+    words = re.sub(r"Block$", "", block_name)
+    words = re.sub(r"([a-z])([A-Z])", r"\1 \2", words)
+    return re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", words)

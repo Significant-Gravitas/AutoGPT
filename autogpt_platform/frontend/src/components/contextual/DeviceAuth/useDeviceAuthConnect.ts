@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -9,7 +9,9 @@ import {
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import type { CredentialsProviderName } from "@/lib/autogpt-server-api/types";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
+import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
 interface Args {
   provider: string;
@@ -27,6 +29,7 @@ const MAX_CONSECUTIVE_POLL_FAILURES = 3;
 
 export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   const queryClient = useQueryClient();
+  const credentialsActions = useContext(CredentialsActionsContext);
   const [phase, setPhase] = useState<Phase>("idle");
   const [userCode, setUserCode] = useState("");
   const [verificationUrl, setVerificationUrl] = useState("");
@@ -83,6 +86,18 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
           stopPolling();
           toast({ title: "Connected via device auth", variant: "success" });
           await invalidateConnectionQueries(queryClient);
+          // Seed the credentials store directly. Invalidating the query keys
+          // does not reach it — it is separate state filled by loadCredentials
+          // — so without this the caller selects an id the store has never
+          // seen, and `useCredentialsInput` reports the brand-new credential
+          // as removed and deselects it. The OAuth path gets this for free
+          // via `oAuthCallback`.
+          if (credentials) {
+            credentialsActions?.upsert(
+              provider as CredentialsProviderName,
+              credentials,
+            );
+          }
           onSuccess(credentials ?? undefined);
           return;
         }
@@ -138,7 +153,7 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
         });
       }
     },
-    [provider, onSuccess, queryClient, stopPolling],
+    [provider, onSuccess, queryClient, stopPolling, credentialsActions],
   );
 
   async function connect() {

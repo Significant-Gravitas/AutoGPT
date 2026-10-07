@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
@@ -30,20 +31,25 @@ const snappySpring: Transition = {
 export function OriginFilter({ value, onChange }: Props) {
   return (
     <LayoutGroup id="artifacts-origin-filter">
-      <div
-        role="tablist"
-        aria-label="Filter by source"
-        className="flex items-center gap-1"
-        data-testid="artifacts-origin-filter"
-      >
-        {OPTIONS.map((opt) => (
-          <OriginTab
-            key={opt.value}
-            option={opt}
-            active={value === opt.value}
-            onClick={() => onChange(opt.value)}
-          />
-        ))}
+      <div className="flex flex-col gap-1">
+        <Text variant="small" as="span" className="pl-4 text-zinc-500">
+          Type
+        </Text>
+        <div
+          role="tablist"
+          aria-label="Filter by type"
+          className="flex items-center gap-1"
+          data-testid="artifacts-origin-filter"
+        >
+          {OPTIONS.map((opt) => (
+            <OriginTab
+              key={opt.value}
+              option={opt}
+              active={value === opt.value}
+              onClick={() => onChange(opt.value)}
+            />
+          ))}
+        </div>
       </div>
     </LayoutGroup>
   );

@@ -11,6 +11,7 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
+import { getRunStatusGuidance } from "@/components/molecules/RunStatusBadge/helpers";
 import { useState } from "react";
 import { FilterIconMenu } from "../FilterIconMenu";
 import {
@@ -40,7 +41,7 @@ export function ExpertWorkSection({ expertId, expertName, enabled }: Props) {
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="large-medium" tone="primary">
           {expertName}&apos;s Work
         </Text>
         <FilterIconMenu
@@ -109,6 +110,9 @@ function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
         </Text>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <RunStatusBadge status={run.status} />
+          <Text variant="small" tone="secondary">
+            {getRunStatusGuidance(run.status)}
+          </Text>
           {run.needs_review && run.status.toUpperCase() !== "REVIEW" ? (
             <Badge variant="warning" size="small">
               Needs review
@@ -127,7 +131,7 @@ function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
           ) : null}
         </div>
       </div>
-      <Button variant="secondary" size="xs" onClick={onOpen}>
+      <Button variant="secondary" size="small" onClick={onOpen}>
         Open
       </Button>
     </div>

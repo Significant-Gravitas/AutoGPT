@@ -2,6 +2,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
@@ -64,11 +65,19 @@ export function ExpertHireActions({
     );
   }
 
+  function handleHire() {
+    trackFunnel("hire_started", {
+      template_id: expert.id,
+      surface: "expert_page",
+    });
+    onHire();
+  }
+
   return (
     <Button
       variant="primary"
       size="small"
-      onClick={onHire}
+      onClick={handleHire}
       loading={isHiring}
       className="w-full sm:w-auto"
     >

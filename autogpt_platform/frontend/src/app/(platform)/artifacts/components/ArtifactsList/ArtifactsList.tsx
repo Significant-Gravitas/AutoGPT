@@ -8,6 +8,7 @@ import { FileViewerModal } from "../FileViewerModal/FileViewerModal";
 import { WorkspaceFolders } from "../WorkspaceFolders/WorkspaceFolders";
 import { ArtifactsGrid } from "./ArtifactsGrid";
 import { ArtifactsTable } from "./ArtifactsTable/ArtifactsTable";
+import type { EmptyStateContent } from "./helpers";
 import { LoadMoreSentinel } from "./LoadMoreSentinel";
 
 interface Props {
@@ -15,7 +16,7 @@ interface Props {
   isLoading: boolean;
   isError: boolean;
   error: unknown;
-  emptyMessage: string;
+  emptyState: EmptyStateContent;
   compactEmpty: boolean;
   hasMore: boolean;
   isLoadingMore: boolean;
@@ -23,6 +24,8 @@ interface Props {
   listKey: string;
   view: ArtifactsView;
   showFolders: boolean;
+  /** Folder whose children the folder rows list; `null` is the root. */
+  folderParentId: string | null;
   onSelectFolder: (folderId: string) => void;
 }
 
@@ -31,7 +34,7 @@ export function ArtifactsList({
   isLoading,
   isError,
   error,
-  emptyMessage,
+  emptyState,
   compactEmpty,
   hasMore,
   isLoadingMore,
@@ -39,6 +42,7 @@ export function ArtifactsList({
   listKey,
   view,
   showFolders,
+  folderParentId,
   onSelectFolder,
 }: Props) {
   const [openFile, setOpenFile] = useState<WorkspaceFileItem | null>(null);
@@ -59,25 +63,31 @@ export function ArtifactsList({
       {view === "grid" ? (
         <div className="flex flex-col gap-6">
           {showFolders ? (
-            <WorkspaceFolders onSelectFolder={onSelectFolder} />
+            <WorkspaceFolders
+              parentId={folderParentId}
+              onSelectFolder={onSelectFolder}
+            />
           ) : null}
           <ArtifactsGrid
             files={files}
             isLoading={isLoading}
-            emptyMessage={emptyMessage}
+            emptyState={emptyState}
             compactEmpty={compactEmpty}
             listKey={listKey}
             onOpen={setOpenFile}
           />
         </div>
       ) : (
+        // Keyed so the row selection resets whenever the listing changes.
         <ArtifactsTable
+          key={listKey}
           files={files}
           isLoading={isLoading}
-          emptyMessage={emptyMessage}
+          emptyState={emptyState}
           compactEmpty={compactEmpty}
           listKey={listKey}
           showFolders={showFolders}
+          folderParentId={folderParentId}
           onSelectFolder={onSelectFolder}
           onOpen={setOpenFile}
         />

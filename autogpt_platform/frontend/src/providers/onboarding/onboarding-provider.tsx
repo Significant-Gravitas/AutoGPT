@@ -213,6 +213,11 @@ export default function OnboardingProvider({
           return;
         }
 
+        if (error instanceof DOMException && error.name === "AbortError") {
+          hasInitialized.current = false;
+          return;
+        }
+
         console.error("Failed to initialize onboarding:", error);
 
         toast({

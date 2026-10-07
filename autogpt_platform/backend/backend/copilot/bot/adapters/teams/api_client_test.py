@@ -166,3 +166,67 @@ async def test_the_playground_sends_no_bearer():
     client = TeamsClient()
     with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=True):
         assert await client.bearer_headers() == {}
+
+
+def _ok_response():
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"{}"
+    response.json.return_value = {}
+    return response
+
+
+def _authed_client() -> TeamsClient:
+    client = TeamsClient()
+    client._http = MagicMock()
+    client._token = "tok"
+    client._token_expires_at = time.monotonic() + 600
+    return client
+
+
+@pytest.mark.asyncio
+async def test_update_activity_builds_the_expected_url():
+    client = _authed_client()
+    client._http.request = AsyncMock(return_value=_ok_response())
+    app_id, password, tenant, unverified = _creds()
+    with app_id, password, tenant, unverified:
+        await client.update_activity(_ALLOWED, "19:conv", "act-1", {"type": "message"})
+
+    method, url = client._http.request.await_args.args
+    assert method == "PUT"
+    assert url == f"{_ALLOWED.rstrip('/')}/v3/conversations/19:conv/activities/act-1"
+
+
+@pytest.mark.asyncio
+async def test_update_activity_encodes_a_slash_in_activity_id():
+    # activity_id is an AutoPilot-tool-supplied ref_id with no id grammar of
+    # its own — a raw "/" must not be able to splice in an extra path segment
+    # and redirect the PUT to a different (unauthorized) conversation.
+    client = _authed_client()
+    client._http.request = AsyncMock(return_value=_ok_response())
+    app_id, password, tenant, unverified = _creds()
+    with app_id, password, tenant, unverified:
+        await client.update_activity(
+            _ALLOWED, "19:conv", "../../conversations/other/activities/x", {}
+        )
+
+    _, url = client._http.request.await_args.args
+    # The malicious segment is fully percent-encoded, so it stays one inert
+    # path component instead of being normalized into a different path.
+    assert url.startswith(
+        f"{_ALLOWED.rstrip('/')}/v3/conversations/19:conv/activities/"
+    )
+    assert "/conversations/other/" not in url
+    assert "%2F" in url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("activity_id", [".", ".."])
+async def test_update_activity_rejects_bare_dot_segments(activity_id):
+    client = _authed_client()
+    client._http.request = AsyncMock(return_value=_ok_response())
+    app_id, password, tenant, unverified = _creds()
+    with app_id, password, tenant, unverified, pytest.raises(TeamsApiError):
+        await client.update_activity(_ALLOWED, "19:conv", activity_id, {})
+
+    client._http.request.assert_not_awaited()

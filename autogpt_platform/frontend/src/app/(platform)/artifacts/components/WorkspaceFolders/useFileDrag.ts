@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import type { DragEvent } from "react";
-import { createFileDragImage, FILE_DRAG_MIME } from "./drag";
+import { createFileDragImage, writeFileDragData } from "./drag";
 
 /**
  * Drag handlers for a file card/row so it can be dropped onto a folder. Owns
  * the off-screen drag-image node and removes it on dragend or unmount.
+ * `fileIds` are the files carried by the drag; `label` is shown in the chip
+ * under the cursor.
  */
-export function useFileDrag(fileId: string, fileName: string) {
+export function useFileDrag(fileIds: string[], label: string) {
   const dragImageRef = useRef<HTMLElement | null>(null);
 
   // Clean up a leftover drag-image node if the element unmounts mid-drag
@@ -20,9 +22,9 @@ export function useFileDrag(fileId: string, fileName: string) {
 
   function handleDragStart(e: DragEvent<HTMLElement>) {
     dragImageRef.current?.remove();
-    e.dataTransfer.setData(FILE_DRAG_MIME, fileId);
+    writeFileDragData(e.dataTransfer, fileIds);
     e.dataTransfer.effectAllowed = "move";
-    const dragImage = createFileDragImage(fileName);
+    const dragImage = createFileDragImage(label);
     document.body.appendChild(dragImage);
     e.dataTransfer.setDragImage(dragImage, 16, 16);
     dragImageRef.current = dragImage;

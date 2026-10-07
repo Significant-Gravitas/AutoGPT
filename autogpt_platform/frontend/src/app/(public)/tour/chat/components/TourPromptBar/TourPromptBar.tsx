@@ -47,7 +47,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       ref={ref}
       role="button"
       tabIndex={isDisabled ? -1 : 0}
-      aria-label={prompt ? `Send: ${prompt}` : "Autopilot is working"}
+      aria-label={prompt ? `Send: ${prompt}` : "Otto is working"}
       aria-disabled={isDisabled}
       onKeyDown={handleKeyDown}
       onClick={send}

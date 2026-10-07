@@ -255,12 +255,12 @@ export class MarketplacePage extends BasePage {
 
     await publishAgentModal.getByLabel("Title").fill(agentTitle);
     await publishAgentModal
-      .getByLabel("Subheader")
-      .fill("A deterministic marketplace submission");
+      .getByLabel("Tagline")
+      .fill("Publish a deterministic marketplace submission");
     await publishAgentModal.getByLabel("Slug").fill(agentSlug);
 
     await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
-    await this.page.getByRole("option", { name: "Other" }).click();
+    await this.page.getByRole("option", { name: "Operations" }).click();
 
     // Stub the GCS-backed media upload so the flow is hermetic in CI, then
     // select a file to trigger it. This satisfies the "at least one image is

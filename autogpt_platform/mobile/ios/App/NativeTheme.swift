@@ -25,6 +25,10 @@ enum NativeTheme {
         highlighted: button.isHighlighted, enabled: button.isEnabled)
       configuration.title = title
       button.configuration = configuration
+      button.layer.shadowColor = UIColor.black.cgColor
+      button.layer.shadowOffset = CGSize(width: 0, height: 1)
+      button.layer.shadowRadius = 1
+      button.layer.shadowOpacity = !primary && button.isEnabled ? 0.05 : 0
     }
     button.titleLabel?.adjustsFontForContentSizeCategory = true
   }
@@ -37,13 +41,16 @@ enum NativeTheme {
     let fill =
       primary
       ? (!enabled ? border : highlighted ? color(0x2C2C30) : self.primary)
-      : (!enabled ? color(0xF9F9FA) : highlighted ? border : color(0xEFEFF0))
-    let foreground = primary ? background : (!enabled ? color(0xC5C5C9) : text)
+      : (!enabled || highlighted ? color(0xF9F9FA) : background)
+    let foreground = primary ? background : (!enabled ? color(0xC5C5C9) : self.primary)
     configuration.baseBackgroundColor = fill
     configuration.baseForegroundColor = foreground
     configuration.background.backgroundColorTransformer = UIConfigurationColorTransformer { _ in
       fill
     }
+    configuration.background.strokeWidth = primary ? 0 : 1
+    configuration.background.strokeColor =
+      !enabled ? color(0xEFEFF0) : highlighted ? color(0xC5C5C9) : border
     configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
       incoming in
       var outgoing = incoming
@@ -55,7 +62,7 @@ enum NativeTheme {
     configuration.titleAlignment = .center
     configuration.titleLineBreakMode = .byWordWrapping
     configuration.contentInsets = NSDirectionalEdgeInsets(
-      top: 16, leading: 16, bottom: 16, trailing: 16)
+      top: 12, leading: 16, bottom: 12, trailing: 16)
     return configuration
   }
 

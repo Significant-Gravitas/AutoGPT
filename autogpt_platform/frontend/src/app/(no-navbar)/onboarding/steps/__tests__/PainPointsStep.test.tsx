@@ -34,9 +34,8 @@ afterEach(cleanup);
 
 beforeEach(() => {
   useOnboardingWizardStore.getState().reset();
-  useOnboardingWizardStore.getState().setName("Alice");
   useOnboardingWizardStore.getState().setRole("Founder/CEO");
-  useOnboardingWizardStore.getState().goToStep(3);
+  useOnboardingWizardStore.getState().goToStep(2);
 });
 
 describe("PainPointsStep", () => {

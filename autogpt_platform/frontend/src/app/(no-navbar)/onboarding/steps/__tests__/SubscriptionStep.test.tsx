@@ -14,6 +14,7 @@ import {
 } from "@/tests/integrations/gtag-shim";
 import { useOnboardingWizardStore } from "../../store";
 import {
+  getReportedPricingVariant,
   getSubscriptionPricingExperimentConfig,
   getSubscriptionPricingExperimentPlans,
 } from "../SubscriptionStep/helpers";
@@ -25,7 +26,15 @@ const postHog = vi.hoisted(() => ({
 
 vi.mock("@posthog/react", () => ({
   useFeatureFlagVariantKey: () => postHog.variant,
+  usePostHog: () => undefined,
 }));
+
+const posthogJS = vi.hoisted(() => ({
+  __loaded: true,
+  is_capturing: () => true,
+  capture: vi.fn(),
+}));
+vi.mock("posthog-js", () => ({ default: posthogJS }));
 
 vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({
   FadeIn: ({ children }: { children: React.ReactNode }) => (
@@ -48,9 +57,11 @@ afterEach(() => {
 
 beforeEach(() => {
   postHog.variant = undefined;
+  posthogJS.capture.mockClear();
+  sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
-  // The paywall is the first step.
-  useOnboardingWizardStore.getState().goToStep(1);
+  // The paywall is the last interactive step (step 3), before Preparing.
+  useOnboardingWizardStore.getState().goToStep(3);
   // Default tests to cloud mode so they exercise the Stripe Checkout path.
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
@@ -95,12 +106,12 @@ describe("subscription pricing experiment helpers", () => {
     expect(pro).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
     expect(max).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
   });
 
@@ -132,8 +143,17 @@ describe("subscription pricing experiment helpers", () => {
     expect(max).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
+  });
+
+  test("reports a pricing arm only once PostHog has assigned a real one", () => {
+    expect(getReportedPricingVariant("yearly-max", true)).toBe("yearly-max");
+    expect(getReportedPricingVariant("control", true)).toBe("control");
+    // Still loading flags, not enrolled, or an arm this page does not know.
+    expect(getReportedPricingVariant("yearly-max", false)).toBeUndefined();
+    expect(getReportedPricingVariant(null, true)).toBeUndefined();
+    expect(getReportedPricingVariant("annual-team", true)).toBeUndefined();
   });
 });
 
@@ -197,7 +217,7 @@ describe("SubscriptionStep", () => {
     expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Welcome on success, paywall on cancel)", async () => {
+  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Role on success, paywall on cancel)", async () => {
     let capturedTierBody: {
       tier?: string;
       success_url?: string;
@@ -227,8 +247,8 @@ describe("SubscriptionStep", () => {
 
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     expect(capturedTierBody!.tier).toBe("PRO");
-    // Success returns to Welcome (step 2) to begin onboarding; cancel returns
-    // to the paywall (step 1).
+    // Success moves on to the step after the paywall (step 2) to begin
+    // onboarding; cancel returns to the paywall (step 1).
     expect(capturedTierBody!.success_url).toContain(
       "/onboarding?step=2&subscription=success",
     );
@@ -240,8 +260,8 @@ describe("SubscriptionStep", () => {
     expect(capturedTierBody!.success_url).toContain(
       "&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
     );
-    // Paywall-first: no profile data exists yet, so nothing is POSTed here —
-    // the Preparing step submits the profile at the end of onboarding.
+    // Nothing is POSTed here — the profile is collected after payment and
+    // the Preparing step submits it.
     expect(profileCalled).toBe(false);
   });
 
@@ -285,9 +305,7 @@ describe("SubscriptionStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
 
     await waitFor(() => {
-      expect(useOnboardingWizardStore.getState().currentStep).toBeGreaterThan(
-        1,
-      );
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
     });
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
@@ -365,6 +383,62 @@ describe("SubscriptionStep", () => {
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("MAX");
   });
 
+  test("reports the paywall view and the picked plan with its pricing arm to PostHog", async () => {
+    postHog.variant = "yearly-max";
+    let capturedTierBody: { surface?: string } | null = null;
+    server.use(
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedTierBody = (await request.json()) as typeof capturedTierBody;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "yearly",
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Max/i }));
+
+    await waitFor(() => {
+      expect(capturedTierBody).not.toBeNull();
+    });
+    // The backend reads `surface` for its checkout_started event.
+    expect(capturedTierBody!.surface).toBe("onboarding");
+    expect(posthogJS.capture).toHaveBeenCalledWith("paywall_viewed", {
+      surface: "onboarding",
+    });
+    expect(posthogJS.capture).toHaveBeenCalledWith("plan_selected", {
+      subscription_tier: "MAX",
+      billing_cycle: "yearly",
+      surface: "onboarding",
+      pricing_variant: "yearly-max",
+    });
+  });
+
+  // PostHog answers `false` for a user outside the rollout. They see the
+  // control layout but are not in the control arm.
+  test("reports no pricing arm for a user the experiment did not enrol", async () => {
+    postHog.variant = false;
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: null }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Max/i }));
+
+    await waitFor(() => {
+      expect(posthogJS.capture).toHaveBeenCalledWith("plan_selected", {
+        subscription_tier: "MAX",
+        billing_cycle: "monthly",
+        surface: "onboarding",
+      });
+    });
+  });
+
   test("selecting Team opens the intake form and does not advance", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     try {
@@ -377,7 +451,7 @@ describe("SubscriptionStep", () => {
       );
       const state = useOnboardingWizardStore.getState();
       expect(state.selectedPlan).toBeNull();
-      expect(state.currentStep).toBe(1);
+      expect(state.currentStep).toBe(3);
     } finally {
       openSpy.mockRestore();
     }
@@ -407,14 +481,13 @@ describe("SubscriptionStep", () => {
     });
     // Local short-circuit: no Stripe Checkout, no profile POST (the Preparing
     // step handles submission via useOnboardingPage). Advances from the
-    // paywall (step 1) to Welcome (step 2).
+    // paywall (step 3) to Preparing (step 4).
     expect(stripeCalled).toBe(false);
     expect(profileCalledSync).toBe(false);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
   });
 
   test("clicking a plan keeps the request in flight: clicked card spins, others lock", async () => {
-    useOnboardingWizardStore.getState().setName("Ada");
     useOnboardingWizardStore.getState().setRole("Engineer");
 
     let resolveTier: (value: unknown) => void = () => undefined;

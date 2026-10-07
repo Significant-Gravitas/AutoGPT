@@ -36,14 +36,14 @@ export function ConnectProviderRow({
       type="button"
       onClick={() => onSelect(provider.id)}
       className={cn(
-        "group flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3 text-left transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-neutral-200",
+        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-zinc-200 bg-white px-3 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 active:bg-zinc-100",
         className,
       )}
     >
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white text-[12px] font-semibold uppercase text-zinc-600"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-[12px] font-semibold uppercase text-zinc-600"
         >
           {provider.name?.charAt(0) ?? provider.id.charAt(0)}
         </div>
@@ -68,20 +68,20 @@ export function ConnectProviderRow({
           {isConnected && (
             <Icon
               icon={CheckmarkCircle02Icon}
-              size={18}
+              size={15}
               className="shrink-0 text-emerald-500"
             />
           )}
         </span>
         {description && (
-          <span className="truncate text-[11px] leading-[16px] text-zinc-500">
+          <span className="truncate text-[12px] leading-[16px] text-zinc-500">
             {description}
           </span>
         )}
       </span>
       <span
         aria-hidden
-        className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-zinc-700 text-white transition-transform group-hover:bg-zinc-800 group-active:scale-[0.96]"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-500 transition-colors group-hover:bg-zinc-200 group-hover:text-zinc-700"
       >
         <Icon icon={Add01Icon} size={14} />
       </span>

@@ -68,6 +68,7 @@ class ResponseType(str, Enum):
     # ``context_compaction`` tool row's JSON output.
     COMPACTION = "data-compaction"
     PROVIDER_FAILURE = "data-provider-failure"
+    CHECKPOINT = "data-checkpoint"
 
 
 class StreamBaseResponse(BaseModel):
@@ -473,6 +474,13 @@ class StreamCompactionProgress(StreamBaseResponse):
         return f"data: {json.dumps({'type': self.type.value, 'data': data})}\n\n"
 
 
+class StreamPendingDrainedMessage(BaseModel):
+    """One user follow-up carried by a ``data-pending-drained`` hint."""
+
+    id: str = Field(description="Stable id of the drained pending message")
+    content: str = Field(description="Raw text the user typed mid-turn")
+
+
 class StreamPendingDrained(StreamBaseResponse):
     """Hint that the pending-message buffer was drained mid-turn.
 
@@ -483,11 +491,22 @@ class StreamPendingDrained(StreamBaseResponse):
     for its slower backstop poll. ``drainedCount`` is informational only —
     correctness comes from the client's re-read, so a dropped hint just
     delays the chip→bubble swap until the next poll.
+
+    ``messages`` carries the drained text (with a stable id per message) so
+    the client can render the follow-up bubble at the exact point in the
+    stream where the backend injected it — between the tool chain that ran
+    before the drain and the work that follows it. Older clients ignore the
+    field; older backends omit it and the client falls back to its buffer
+    re-read.
     """
 
     type: ResponseType = ResponseType.PENDING_DRAINED
     drainedCount: int = Field(
         default=0, description="How many messages were drained in this batch"
+    )
+    messages: list[StreamPendingDrainedMessage] = Field(
+        default_factory=list,
+        description="The drained messages, in enqueue order (oldest first)",
     )
 
     def to_sse(self) -> str:
@@ -496,6 +515,36 @@ class StreamPendingDrained(StreamBaseResponse):
         it as an unknown chunk type."""
         data = {
             "type": self.type.value,
-            "data": {"drainedCount": self.drainedCount},
+            "data": {
+                "drainedCount": self.drainedCount,
+                "messages": [m.model_dump() for m in self.messages],
+            },
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamCheckpoint(StreamBaseResponse):
+    """The turn's first ``rows`` rows are persisted, starting at DB ``sequence``.
+
+    Published only after a successful persist with no block open and no tool
+    call pending, so the stream after it is self-contained. ``digest`` is
+    ``stream_checkpoint.rows_digest`` over those rows. Transient: the AI SDK
+    hands it to ``onData`` and stores nothing.
+    """
+
+    type: ResponseType = ResponseType.CHECKPOINT
+    rows: int
+    sequence: int
+    digest: str
+
+    def to_sse(self) -> str:
+        data = {
+            "type": self.type.value,
+            "data": {
+                "rows": self.rows,
+                "sequence": self.sequence,
+                "digest": self.digest,
+            },
+            "transient": True,
         }
         return f"data: {json.dumps(data)}\n\n"

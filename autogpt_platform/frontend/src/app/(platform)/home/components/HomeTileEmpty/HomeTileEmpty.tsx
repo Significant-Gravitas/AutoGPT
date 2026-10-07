@@ -69,7 +69,7 @@ export function HomeTileEmpty({
             as="NextLink"
             href={action.href}
             variant="secondary"
-            size="xs"
+            size="small"
           >
             {action.label}
           </Button>

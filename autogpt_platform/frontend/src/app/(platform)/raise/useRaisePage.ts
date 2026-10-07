@@ -1,4 +1,6 @@
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import type { VoicePickResult } from "@/components/organisms/VoicePicker/helpers";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   beatTriggers,
@@ -10,6 +12,7 @@ import {
 import {
   assembledKit,
   clearDraft,
+  draftWithPrefilledRole,
   EMPTY_DRAFT,
   loadDraft,
   resolveVoicePreferences,
@@ -21,12 +24,21 @@ import {
   type RaiseDraft,
   type RaiseKit,
 } from "./helpers";
+import { colorForCategory } from "./components/CategoryStep/helpers";
 import { useFlowProgress } from "./useFlowProgress";
 import { useRaiseSubmission } from "./useRaiseSubmission";
+import { useSkillsAvailability } from "./useSkillsAvailability";
 
 export function useRaisePage() {
-  const [draft, setDraft] = useState<RaiseDraft>(loadDraft);
-  const progress = useFlowProgress(beatTriggers(draft));
+  const searchParams = useSearchParams();
+  // Seeded in the initialiser rather than an effect: an effect would render
+  // the area question first and then snatch it away.
+  const [draft, setDraft] = useState<RaiseDraft>(() =>
+    draftWithPrefilledRole(loadDraft(), searchParams.get("role")),
+  );
+  const { hasSkillsToOffer } = useSkillsAvailability();
+  const hasSkillsBeat = draft.marketplace !== null || hasSkillsToOffer;
+  const progress = useFlowProgress(beatTriggers(draft, hasSkillsBeat));
   const { finish: submitRaise, isSubmitting } = useRaiseSubmission();
 
   function finish(kit: RaiseKit) {
@@ -49,26 +61,28 @@ export function useRaisePage() {
     progress.reset();
   }
 
-  function pickRole(roleId: string) {
-    update({ role: roleId, step: "name" });
+  function pickCategory(category: ExpertAvatarRequestCategory) {
+    update({ category, color: colorForCategory(category), step: "jobTitle" });
+  }
+
+  function submitJobTitle(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    update({ jobTitle: trimmed, step: "name" });
+  }
+
+  function skipJobTitle() {
+    update({ jobTitle: "", step: "name" });
   }
 
   function submitName(value: string) {
     const trimmed = value.trim();
     if (!trimmed) return;
-    update({ name: trimmed, step: "color" });
-  }
-
-  function pickColor(colorId: string) {
-    update({ color: colorId, step: "avatar" });
+    update({ name: trimmed, step: "avatar" });
   }
 
   function pickAvatar(avatarUrl: string) {
     update({ avatarUrl, step: "about" });
-  }
-
-  function skipAvatar() {
-    update({ avatarUrl: "", step: "about" });
   }
 
   function submitAbout(value: string) {
@@ -108,11 +122,23 @@ export function useRaisePage() {
     update({ budget: { credits: null }, step: "marketplace" });
   }
 
+  // With no skills to offer the marketplace beat is the last one, so it
+  // raises the expert itself rather than handing off to a beat that never
+  // opens. As with skills, the answer is not recorded until the POST wins,
+  // which keeps the retry control on screen when it fails.
   function submitMarketplace(attachments: RaiseAttachmentDraft[]) {
+    if (!hasSkillsToOffer) {
+      finish({ weeklyBudget: draft.budget?.credits ?? null, attachments });
+      return;
+    }
     update({ marketplace: attachments, step: "skills" });
   }
 
   function skipMarketplace() {
+    if (!hasSkillsToOffer) {
+      finish({ weeklyBudget: draft.budget?.credits ?? null, attachments: [] });
+      return;
+    }
     update({ marketplace: [], step: "skills" });
   }
 
@@ -143,7 +169,8 @@ export function useRaisePage() {
   return {
     step: draft.step,
     hasStarted: draft.hasStarted,
-    role: draft.role,
+    jobTitle: draft.jobTitle,
+    category: draft.category,
     color: draft.color,
     avatarUrl: draft.avatarUrl,
     about: draft.about,
@@ -154,16 +181,17 @@ export function useRaisePage() {
     marketplace: draft.marketplace,
     skills: draft.skills,
     kit: assembledKit(draft),
+    isMarketplaceFinal: !hasSkillsBeat,
     isSubmitting,
     canGoBack: lastAnsweredBeat(draft) !== null,
     startRaising,
     restart,
     revealStep: (beat: BeatKey) => progress.revealStep(beat),
-    pickRole,
+    pickCategory,
+    submitJobTitle,
+    skipJobTitle,
     submitName,
-    pickColor,
     pickAvatar,
-    skipAvatar,
     submitAbout,
     skipAbout,
     pickVoice,

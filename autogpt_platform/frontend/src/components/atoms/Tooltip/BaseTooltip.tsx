@@ -7,19 +7,24 @@ import { cn } from "@/lib/utils";
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
-const Tooltip = ({
-  children,
-  delayDuration = 10,
-  open,
-}: {
+interface Props {
   children: React.ReactNode;
   delayDuration?: number;
   open?: boolean;
-}) => (
-  <TooltipPrimitive.Root delayDuration={delayDuration} open={open}>
-    {children}
-  </TooltipPrimitive.Root>
-);
+  onOpenChange?: (open: boolean) => void;
+}
+
+function Tooltip({ children, delayDuration = 10, open, onOpenChange }: Props) {
+  return (
+    <TooltipPrimitive.Root
+      delayDuration={delayDuration}
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      {children}
+    </TooltipPrimitive.Root>
+  );
+}
 
 const TooltipTrigger = TooltipPrimitive.Trigger;
 

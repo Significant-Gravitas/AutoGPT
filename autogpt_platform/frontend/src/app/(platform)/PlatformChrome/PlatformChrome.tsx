@@ -20,6 +20,7 @@ import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigg
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
+import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
@@ -53,8 +54,7 @@ export function PlatformChrome({ children }: Props) {
     </TopUpPromptProvider>
   );
 
-  // Logged-out marketplace visitors browse with the tour demo sidebar as an
-  // upsell — clicking a demo session takes them into /tour/chat.
+  // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
@@ -103,6 +103,7 @@ export function PlatformChrome({ children }: Props) {
                 </div>
               )}
               <InsetHeaderTitle />
+              <InsetHeaderActions />
             </div>
           </header>
           <AdminImpersonationBanner />

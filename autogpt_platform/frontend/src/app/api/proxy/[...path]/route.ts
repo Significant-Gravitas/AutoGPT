@@ -1,15 +1,23 @@
 import {
   API_KEY_HEADER_NAME,
+  CLIENT_COUNTRY_TOKEN_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
+  VERCEL_COUNTRY_HEADER_NAME,
 } from "@/lib/constants";
+import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  buildSafeWorkspaceDownloadHeaders,
   fetchWorkspaceDownloadWithRetry,
   getResponseStartTimeoutMs,
+  getSafePrivateMediaRange,
+  shouldBufferPrivateMedia,
   getWorkspaceDownloadErrorMessage,
+  isPrivateStoreMediaRequest,
+  isPrivateStoreVideoRequest,
   isWorkspaceDownloadRequest,
   watchResponseStart,
 } from "./route.helpers";
@@ -75,6 +83,7 @@ const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   "upgrade",
   "content-encoding",
   "content-length",
+  "authorization",
   "set-cookie",
 ]);
 
@@ -82,13 +91,31 @@ function buildBackendUrl(path: string[], queryString: string): string {
   return `${environment.getAGPTServerBaseUrl()}/${path.join("/")}${queryString}`;
 }
 
-function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
+async function signCountry(country: string) {
+  try {
+    return await getCountryToken(country);
+  } catch (error) {
+    console.error("[proxy] Could not sign the client country", error);
+    return null;
+  }
+}
+
+async function buildForwardHeaders(
+  req: NextRequest,
+  token: string | null,
+): Promise<Headers> {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
   headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
+  // The visitor's country as the edge saw it, signed so the backend can tell
+  // it from one a caller typed. Without it the country is unknown, which the
+  // trial offer treats as "no offer", so a failed mint fails closed.
+  const country = req.headers.get(VERCEL_COUNTRY_HEADER_NAME);
+  const countryToken = country ? await signCountry(country) : null;
+  if (countryToken) headers.set(CLIENT_COUNTRY_TOKEN_HEADER_NAME, countryToken);
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
@@ -103,6 +130,12 @@ function filterResponseHeaders(src: Headers): Headers {
     }
   });
   return out;
+}
+
+function hardenPrivateMediaResponseHeaders(headers: Headers): Headers {
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return headers;
 }
 
 const METHODS_WITHOUT_BODY: ReadonlySet<string> = new Set([
@@ -137,18 +170,11 @@ async function handleWorkspaceDownload(
   // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
   const buffer = await response.arrayBuffer();
 
-  const contentType =
-    response.headers.get("Content-Type") || "application/octet-stream";
-  const contentDisposition = response.headers.get("Content-Disposition");
-
-  const responseHeaders: Record<string, string> = {
-    "Content-Type": contentType,
-    "Content-Length": String(buffer.byteLength),
-  };
-
-  if (contentDisposition) {
-    responseHeaders["Content-Disposition"] = contentDisposition;
-  }
+  const responseHeaders = buildSafeWorkspaceDownloadHeaders(
+    response.headers.get("Content-Type"),
+    response.headers.get("Content-Disposition"),
+    buffer.byteLength,
+  );
 
   return new NextResponse(buffer, {
     status: 200,
@@ -192,8 +218,8 @@ async function createWorkspaceDownloadErrorResponse(
  * pass through without parse → re-serialise round-trips. Status codes and
  * non-hop-by-hop response headers are preserved.
  *
- * Workspace file downloads have a dedicated buffering path because Vercel's
- * stream forwarding silently truncates large binary responses.
+ * Workspace file downloads and private store media are buffered because
+ * Vercel's stream forwarding silently truncates large binary responses.
  */
 async function handler(
   req: NextRequest,
@@ -204,6 +230,7 @@ async function handler(
   const queryString = url.search;
   const backendUrl = buildBackendUrl(path, queryString);
   const method = req.method;
+  const isPrivateMedia = isPrivateStoreMediaRequest(path);
 
   try {
     const token = await getServerAuthToken();
@@ -212,7 +239,17 @@ async function handler(
       return await handleWorkspaceDownload(backendUrl, token);
     }
 
-    const headers = buildForwardHeaders(req, token);
+    const headers = await buildForwardHeaders(req, token);
+    if (isPrivateMedia) {
+      headers.set("cache-control", "no-store");
+    }
+    if (method === "GET" && isPrivateStoreVideoRequest(path)) {
+      const range = getSafePrivateMediaRange(req.headers.get("range"));
+      if (range) {
+        headers.set("range", range);
+        headers.set("accept-encoding", "identity");
+      }
+    }
     const hasBody = !METHODS_WITHOUT_BODY.has(method);
 
     // Two-phase timeout: the overall ceiling covers the whole hop, while the
@@ -234,6 +271,7 @@ async function handler(
         // ReadableStream body. Cast because TS lib types haven't caught up.
         ...(responseStart.body ? ({ duplex: "half" } as RequestInit) : {}),
         redirect: "manual",
+        ...(isPrivateMedia ? { cache: "no-store" } : {}),
         signal: AbortSignal.any([
           AbortSignal.timeout(BACKEND_FETCH_TIMEOUT_MS),
           responseStart.signal,
@@ -243,17 +281,47 @@ async function handler(
       responseStart.clear();
     }
 
+    const responseHeaders = filterResponseHeaders(backendResponse.headers);
+    if (isPrivateMedia) {
+      hardenPrivateMediaResponseHeaders(responseHeaders);
+      // Vercel silently drops the tail of large streamed binary bodies, so
+      // private media is buffered like workspace downloads. Larger images keep
+      // streaming: a buffered body over Vercel's 4.5 MB limit fails outright.
+      if (shouldBufferPrivateMedia(backendResponse.headers)) {
+        const body = await backendResponse.arrayBuffer();
+        responseHeaders.set("content-length", String(body.byteLength));
+        return new NextResponse(body, {
+          status: backendResponse.status,
+          statusText: backendResponse.statusText,
+          headers: responseHeaders,
+        });
+      }
+    }
+
     return new NextResponse(backendResponse.body, {
       status: backendResponse.status,
       statusText: backendResponse.statusText,
-      headers: filterResponseHeaders(backendResponse.headers),
+      headers: responseHeaders,
     });
   } catch (error) {
     const timedOut = isTimeoutError(error);
+    const errorMessage = timedOut
+      ? "Proxy request timed out"
+      : "Proxy request failed";
+    if (isPrivateMedia) {
+      console.error(`Private media proxy ${method} failed: ${errorMessage}`);
+      const response = NextResponse.json(
+        { error: errorMessage },
+        { status: timedOut ? 504 : 502 },
+      );
+      hardenPrivateMediaResponseHeaders(response.headers);
+      return response;
+    }
+
     console.error(`Proxy error for ${method} /${path.join("/")}:`, error);
     return NextResponse.json(
       {
-        error: timedOut ? "Proxy request timed out" : "Proxy request failed",
+        error: errorMessage,
         detail: error instanceof Error ? error.message : "Unknown error",
       },
       { status: timedOut ? 504 : 502 },

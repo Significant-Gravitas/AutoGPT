@@ -1,7 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, expect, test } from "vitest";
 import { toast } from "sonner";
+import { afterEach, expect, test } from "vitest";
 import {
   getGetV2GetPendingReviewsMockHandler200,
   getPostV2ProcessReviewActionMockHandler200,
@@ -13,17 +13,8 @@ import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { NeedsAttentionList } from "../NeedsAttentionList";
 
 afterEach(() => {
-  for (const notification of toast.getToasts()) toast.dismiss(notification.id);
+  toast.dismiss();
 });
-
-async function waitForDecisionsToFinish() {
-  await waitFor(() => {
-    const buttons = screen.getAllByRole("button", { name: /^Approve:/ });
-    for (const button of buttons) {
-      expect((button as HTMLButtonElement).disabled).toBe(false);
-    }
-  });
-}
 
 const review: PendingHumanReviewModel = {
   node_exec_id: "ne-1",
@@ -65,7 +56,12 @@ test("renders attributed rows and approves in one tap", async () => {
       reviews: [{ node_exec_id: "ne-1", approved: true }],
     }),
   );
-  await waitForDecisionsToFinish();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /^Approve:/ })).toHaveProperty(
+      "disabled",
+      false,
+    ),
+  );
 });
 
 test("only the acted row locks while its decision is in flight", async () => {
@@ -97,7 +93,11 @@ test("only the acted row locks while its decision is in flight", async () => {
     expect(first.disabled).toBe(true);
     expect(second.disabled).toBe(false);
   });
-  await waitForDecisionsToFinish();
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole("button", { name: /^Approve:/ })[0],
+    ).toHaveProperty("disabled", false),
+  );
 });
 
 test("confirms a successful decision with a toast", async () => {
@@ -151,7 +151,12 @@ test("decline sends a rejection", async () => {
   // No canned reason: this surface has no field to write one in, so nothing
   // should reach the agent context / audit trail as if the user typed it.
   expect(actionBody?.reviews[0].message).toBeUndefined();
-  await waitForDecisionsToFinish();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /^Decline:/ })).toHaveProperty(
+      "disabled",
+      false,
+    ),
+  );
 });
 
 test("armed decline is announced and visually distinct, not just relabelled", async () => {
@@ -238,10 +243,23 @@ test("a second row's decision does not unlock the first one mid-flight", async (
     node_exec_id: "ne-2",
     instructions: "Approve invoice",
   };
+  let finishFirst = () => {};
+  let finishSecond = () => {};
+  const firstResponse = new Promise<void>((resolve) => {
+    finishFirst = resolve;
+  });
+  const secondResponse = new Promise<void>((resolve) => {
+    finishSecond = resolve;
+  });
   server.use(
     getGetV2GetPendingReviewsMockHandler200([review, other]),
-    http.post("/api/proxy/api/review/action", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
+    http.post("/api/proxy/api/review/action", async ({ request }) => {
+      const body = (await request.json()) as {
+        reviews: { node_exec_id: string }[];
+      };
+      await (body.reviews[0].node_exec_id === "ne-1"
+        ? firstResponse
+        : secondResponse);
       return HttpResponse.json({
         approved_count: 1,
         rejected_count: 0,
@@ -249,20 +267,26 @@ test("a second row's decision does not unlock the first one mid-flight", async (
       });
     }),
   );
-
   render(<NeedsAttentionList />);
   const buttons = await screen.findAllByRole("button", { name: /^Approve:/ });
-  await userEvent.click(buttons[0]);
-  await userEvent.click(buttons[1]);
-
-  await waitFor(() => {
-    const [first, second] = screen.getAllByRole("button", {
-      name: /^Approve:/,
-    }) as HTMLButtonElement[];
-    // Both in flight -> both locked. A single pending slot would have
-    // re-enabled the first row here, making it double-submittable.
-    expect(first.disabled).toBe(true);
-    expect(second.disabled).toBe(true);
-  });
-  await waitForDecisionsToFinish();
+  try {
+    await userEvent.click(buttons[0]);
+    await userEvent.click(buttons[1]);
+    await waitFor(() => {
+      expect(buttons[0]).toHaveProperty("disabled", true);
+      expect(buttons[1]).toHaveProperty("disabled", true);
+    });
+    finishSecond();
+    await waitFor(() => {
+      expect(buttons[1]).toHaveProperty("disabled", false);
+      expect(buttons[0]).toHaveProperty("disabled", true);
+    });
+  } finally {
+    finishFirst();
+    finishSecond();
+    await waitFor(() => {
+      expect(buttons[0]).toHaveProperty("disabled", false);
+      expect(buttons[1]).toHaveProperty("disabled", false);
+    });
+  }
 });

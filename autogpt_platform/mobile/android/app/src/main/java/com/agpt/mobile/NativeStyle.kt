@@ -57,8 +57,8 @@ object NativeStyle {
             includeFontPadding = false
             minWidth = 0
             minimumWidth = 0
-            minHeight = dp(context, 52)
-            minimumHeight = dp(context, 52)
+            minHeight = dp(context, 46)
+            minimumHeight = dp(context, 46)
             setPadding(dp(context, 16), dp(context, 12), dp(context, 16), dp(context, 12))
             stateListAnimator = null
             elevation = 0f
@@ -67,7 +67,7 @@ object NativeStyle {
                     if (primary) R.color.shell_accent else R.color.shell_secondary_button
                 )
             val foreground =
-                context.getColor(if (primary) R.color.shell_on_accent else R.color.shell_primary)
+                context.getColor(if (primary) R.color.shell_on_accent else R.color.shell_accent)
             val states =
                 StateListDrawable().apply {
                     addState(
@@ -78,6 +78,7 @@ object NativeStyle {
                                 if (primary) R.color.shell_border else R.color.shell_faint
                             ),
                             999,
+                            if (primary) null else context.getColor(R.color.shell_disabled_border),
                         ),
                     )
                     addState(
@@ -85,12 +86,21 @@ object NativeStyle {
                         shape(
                             context,
                             context.getColor(
-                                if (primary) R.color.shell_pressed else R.color.shell_border
+                                if (primary) R.color.shell_pressed else R.color.shell_faint
                             ),
                             999,
+                            if (primary) null else context.getColor(R.color.shell_subtle),
                         ),
                     )
-                    addState(intArrayOf(), shape(context, surface, 999))
+                    addState(
+                        intArrayOf(),
+                        shape(
+                            context,
+                            surface,
+                            999,
+                            if (primary) null else context.getColor(R.color.shell_border),
+                        ),
+                    )
                 }
             background =
                 RippleDrawable(

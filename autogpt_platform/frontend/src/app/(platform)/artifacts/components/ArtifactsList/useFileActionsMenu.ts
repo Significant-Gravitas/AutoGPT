@@ -1,18 +1,18 @@
-import {
-  getGetWorkspaceStorageUsageQueryKey,
-  getListWorkspaceFoldersQueryKey,
-  useDeleteWorkspaceFile,
-} from "@/app/api/__generated__/endpoints/workspace/workspace";
+import { useDeleteWorkspaceFile } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ARTIFACTS_LIST_QUERY_KEY } from "../../useArtifactsPage";
-import { deriveFileOrigin, downloadFileBlob } from "./helpers";
+import {
+  deriveFileOrigin,
+  downloadFileBlob,
+  invalidateWorkspaceFileQueries,
+} from "./helpers";
 
 export function useFileActionsMenu(file: WorkspaceFileItem) {
   const origin = deriveFileOrigin(file.path);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -20,17 +20,7 @@ export function useFileActionsMenu(file: WorkspaceFileItem) {
     useDeleteWorkspaceFile({
       mutation: {
         onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: ARTIFACTS_LIST_QUERY_KEY,
-          });
-          // Folder rows show file counts and the footer shows storage used,
-          // so both go stale after a deletion.
-          queryClient.invalidateQueries({
-            queryKey: getListWorkspaceFoldersQueryKey(),
-          });
-          queryClient.invalidateQueries({
-            queryKey: getGetWorkspaceStorageUsageQueryKey(),
-          });
+          invalidateWorkspaceFileQueries(queryClient);
           toast({ title: "File deleted" });
         },
         onError: (error) => {
@@ -77,6 +67,8 @@ export function useFileActionsMenu(file: WorkspaceFileItem) {
     goHref: origin.href,
     isMoveOpen,
     setIsMoveOpen,
+    isRenameOpen,
+    setIsRenameOpen,
     isDownloading,
     isDeleting,
     handleDownload,

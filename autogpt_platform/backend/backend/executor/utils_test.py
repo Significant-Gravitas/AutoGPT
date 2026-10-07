@@ -1,11 +1,19 @@
 from datetime import datetime, timezone
-from typing import cast
+from typing import Optional, cast
 
 import pytest
+from prisma.enums import ReviewStatus
 from pytest_mock import MockerFixture
 
+from backend.blocks.google._drive import GoogleDriveFile
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    ExecutionTrigger,
+    GraphExecutionWithNodes,
+)
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -13,10 +21,23 @@ from backend.executor.utils import (
     CRED_ERR_NOT_AVAILABLE_PREFIX,
     CRED_ERR_REQUIRED,
     CRED_ERR_UNKNOWN_PREFIX,
+    _is_optional_picker,
     add_graph_execution,
     is_credential_validation_error_message,
 )
 from backend.util.mock import MockObject
+
+
+@pytest.fixture(autouse=True)
+def mock_account_state(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "backend.executor.utils.onboarding_db.increment_onboarding_runs",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.executor.utils._spend_approval_required",
+        new=mocker.AsyncMock(return_value=None),
+    )
 
 
 def test_parse_execution_output():
@@ -443,6 +464,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         organization_id=None,
         team_id=None,
         expert_id=None,
+        trigger_source=ExecutionTrigger.MANUAL,
+        trigger_ref=None,
         schedule_id=None,
         webhook_id=None,
     )
@@ -935,6 +958,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_graph_exec.graph_version = 1
     mock_graph_exec.nodes_input_masks = {}
     mock_graph_exec.organization_id = "org-row"
+    mock_graph_exec.trigger_source = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-row"
 
@@ -1397,12 +1421,11 @@ async def test_validate_node_input_credentials_auto_creds_missing(
     )
 
     assert mock_node.id in errors
-    assert "spreadsheet" in errors[mock_node.id]
-    # Error message uses the CRED_ERR_UNKNOWN_PREFIX marker so the copilot
-    # credential-race fallback recognises it as a credentials gate failure.
-    assert (
-        errors[mock_node.id]["spreadsheet"].lower().startswith("unknown credentials #")
-    )
+    message = errors[mock_node.id]["spreadsheet"]
+    # A CRED_ERR_* marker lets the copilot credential-race fallback recognise
+    # it as a credentials gate failure, and the text says how to fix it.
+    assert is_credential_validation_error_message(message)
+    assert "select the file again with your own account" in message
 
 
 @pytest.mark.asyncio
@@ -1684,7 +1707,7 @@ async def test_validate_node_input_credentials_auto_creds_optional_none_value_sk
     mocker: MockerFixture,
 ):
     """Sentry HIGH regression: if input_default[field_name] is explicitly
-    ``None`` (e.g. cleared by ``_reassign_ids`` on fork) and the field is
+    ``None`` (e.g. cleared by ``stripped_for_export`` on fork) and the field is
     optional, the validator previously silently skipped the whole
     auto-credentials block — ``has_missing_credentials`` never flipped
     true and the node never landed in ``nodes_to_skip``. Then
@@ -1733,12 +1756,9 @@ async def test_validate_node_input_credentials_field_level_optional_none_value_s
     mocker: MockerFixture,
 ):
     """Cursor Medium (thread PRRT_kwDOJKSTjM58r_37): a node with
-    ``credentials_optional=False`` (the default) but whose auto-credential
-    field is NOT in ``required_fields`` (typical — the ``spreadsheet``
-    field on Google Sheets blocks defaults to None, so pydantic marks it
-    non-required at the schema level). The per-field check correctly
-    flags ``field_is_optional=True`` via ``field_name not in
-    required_fields``, but the POST-LOOP guard used ``is_creds_optional``
+    ``credentials_optional=False`` (the default) whose auto-credential field
+    is optional on its own: annotated ``Optional[GoogleDriveFile]``, see
+    ``_is_optional_picker``. The POST-LOOP guard used ``is_creds_optional``
     (the node-level flag) only — so the node silently passed validation
     and crashed at runtime inside ``_acquire_auto_credentials`` with
     ``ValueError('No file selected')``.
@@ -1763,9 +1783,11 @@ async def test_validate_node_input_credentials_field_level_optional_none_value_s
             "config": {"provider": "google", "type": "oauth2"},
         }
     }
-    # Field-level optional: `spreadsheet` is NOT in required_fields because
-    # its pydantic default is None.
+    # Field-level optional: the annotation allows None.
     mock_block.input_schema.get_required_fields.return_value = []
+    mock_block.input_schema.model_fields = {
+        "spreadsheet": mocker.MagicMock(annotation=Optional[GoogleDriveFile])
+    }
     mock_node.block = mock_block
 
     mock_graph = mocker.MagicMock()
@@ -1824,6 +1846,104 @@ async def test_validate_node_input_credentials_auto_creds_required_none_value_er
     assert mock_node.id in errors
     assert "spreadsheet" in errors[mock_node.id]
     assert is_credential_validation_error_message(errors[mock_node.id]["spreadsheet"])
+
+
+def _picker_node(mocker: MockerFixture, spreadsheet_value, *, annotation):
+    """A node whose block has one picker input, `spreadsheet`, declared with
+    `annotation` and, like every GoogleDriveFileField, a None default."""
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-picker"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"spreadsheet": spreadsheet_value}
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = []
+    mock_block.input_schema.model_fields = {
+        "spreadsheet": mocker.MagicMock(annotation=annotation)
+    }
+    mock_node.block = mock_block
+    return mock_node
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_empty_required_picker_errors(
+    mocker: MockerFixture,
+):
+    """[SECRT-1772] A picker the block needs (a plain `GoogleDriveFile`) still
+    defaults to None, so it is never in the schema's required fields. Left
+    empty, as after a fork or copy, its node used to be skipped silently and
+    the run finished without doing that work. Now the run is refused with a
+    message asking for a file."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+    mock_graph = mocker.MagicMock(nodes=[mock_node], links=[])
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    message = errors[mock_node.id]["spreadsheet"]
+    assert is_credential_validation_error_message(message)
+    assert "select a file" in message
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_linked_picker_is_not_checked(
+    mocker: MockerFixture,
+):
+    """A picker fed by a link gets its file from the upstream block at run
+    time, so a leftover None in its stored value must not fail the run."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+    link = mocker.MagicMock(sink_id=mock_node.id, sink_name="spreadsheet")
+    mock_graph = mocker.MagicMock(nodes=[mock_node], links=[link])
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert mock_node.id not in errors
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_link_into_one_attribute_needs_a_file(
+    mocker: MockerFixture,
+):
+    """A link into one attribute of the picked file (`spreadsheet_@_id`) sets
+    only that attribute at run time. It can't bring the `_credentials_id` the
+    file needs, so an empty picker is still refused."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+    link = mocker.MagicMock(sink_id=mock_node.id, sink_name="spreadsheet_@_id")
+    mock_graph = mocker.MagicMock(nodes=[mock_node], links=[link])
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert "select a file" in errors[mock_node.id]["spreadsheet"]
+
+
+def test_is_optional_picker_follows_the_annotation(mocker: MockerFixture):
+    """The Sheets blocks' pickers are plain `GoogleDriveFile` inputs, so they
+    are required; only a picker annotated to allow None may stay empty."""
+    optional_schema = mocker.MagicMock(
+        model_fields={"file": mocker.MagicMock(annotation=Optional[GoogleDriveFile])}
+    )
+
+    assert not _is_optional_picker(GoogleSheetsReadBlock().input_schema, "spreadsheet")
+    assert _is_optional_picker(optional_schema, "file")
 
 
 # ============================================================================
@@ -2117,6 +2237,8 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.expert_id = expert_id
     graph_exec.organization_id = organization_id
     graph_exec.team_id = team_id
+    graph_exec.trigger_source = None
+    graph_exec.trigger_ref = None
 
     captured: dict = {}
 
@@ -2774,3 +2896,326 @@ async def test_add_graph_execution_records_outcome(mocker):
         verr + 1,
         err + 1,
     )
+
+
+# ============ Spend approval (SECRT-2599) ============ #
+
+
+def _spend_needed():
+    from backend.api.features.experts.spend_approval import SpendApprovalNeeded
+
+    return SpendApprovalNeeded(
+        expert_id="expert-1", expert_name="Ada", spent=250, threshold=250, window="week"
+    )
+
+
+def _mock_spend_gate(mocker: MockerFixture, needed):
+    required = mocker.patch(
+        "backend.executor.utils._spend_approval_required",
+        new=mocker.AsyncMock(return_value=needed),
+    )
+    park = mocker.patch(
+        "backend.executor.utils._park_for_spend_approval", new=mocker.AsyncMock()
+    )
+    queue = mocker.AsyncMock()
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+    return required, park, queue
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_at_threshold_is_parked_unpublished(
+    mocker: MockerFixture,
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    needed = _spend_needed()
+    required, park, queue = _mock_spend_gate(mocker, needed)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1"
+    )
+
+    required.assert_awaited_once_with("owner", "expert-1")
+    assert result.status == ExecutionStatus.REVIEW
+    park_kwargs = park.await_args.kwargs
+    assert park_kwargs["graph_exec_id"] == "exec-id"
+    assert park_kwargs["needed"] is needed
+    mock_edb.update_graph_execution_stats.assert_not_awaited()
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_below_threshold_publishes(mocker: MockerFixture):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    _, park, queue = _mock_spend_gate(mocker, None)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1"
+    )
+
+    park.assert_not_awaited()
+    assert mock_edb.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.QUEUED
+    )
+    queue.publish_message.assert_awaited_once()
+    assert result.status == ExecutionStatus.QUEUED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"dry_run": True},
+        {"bypass_paywall": True},
+        {"execution_context": ExecutionContext(parent_execution_id="parent-exec")},
+    ],
+    ids=["dry_run", "admin_bypass", "nested_sub_graph"],
+)
+async def test_spend_gate_skips_dry_admin_and_nested_runs(
+    mocker: MockerFixture, extra: dict
+):
+    _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    required, park, queue = _mock_spend_gate(mocker, _spend_needed())
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1", **extra
+    )
+
+    required.assert_not_awaited()
+    park.assert_not_awaited()
+    queue.publish_message.assert_awaited_once()
+
+
+def _mock_parked_resume(mocker: MockerFixture, decision):
+    graph_exec, store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id="expert-1", organization_id="org", team_id="team"
+    )
+    graph_exec.status = ExecutionStatus.REVIEW
+    store.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mocker.MagicMock(status=ExecutionStatus.QUEUED)
+    )
+    _mock_expert_personal_tenancy(mocker)
+    mocker.patch(
+        "backend.executor.utils._parked_spend_decision",
+        new=mocker.AsyncMock(return_value=decision),
+    )
+    return graph_exec, store, queue
+
+
+@pytest.mark.asyncio
+async def test_parked_execution_stays_parked_while_waiting(mocker: MockerFixture):
+    graph_exec, store, queue = _mock_parked_resume(mocker, ReviewStatus.WAITING)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert result is graph_exec
+    store.update_graph_execution_stats.assert_not_awaited()
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_declined_execution_is_terminated_not_run(mocker: MockerFixture):
+    graph_exec, store, queue = _mock_parked_resume(mocker, ReviewStatus.REJECTED)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert result.status == ExecutionStatus.TERMINATED
+    assert store.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.TERMINATED
+    )
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "decision", [ReviewStatus.APPROVED, None], ids=["approved", "hitl"]
+)
+async def test_approved_or_hitl_review_resumes(mocker: MockerFixture, decision):
+    _, store, queue = _mock_parked_resume(mocker, decision)
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert store.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.QUEUED
+    )
+    queue.publish_message.assert_awaited_once()
+
+
+# ============================================================================
+# A run started from an attended chat pauses before irreversible blocks,
+# whatever the graph's own sensitive_action_safe_mode setting says.
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pause", [True, False])
+async def test_pause_override_parks_a_marked_block_with_library_setting_off(
+    mocker: MockerFixture, pause: bool
+):
+    from backend.blocks.email_block import SendEmailBlock
+    from backend.blocks.helpers.review import HITLReviewHelper
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    graph_exec = mock_edb.create_graph_execution.return_value
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", pause_irreversible_actions=pause
+    )
+
+    context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert context.sensitive_action_safe_mode is pause
+
+    park = mocker.patch.object(
+        HITLReviewHelper,
+        "handle_review_decision",
+        new=mocker.AsyncMock(return_value=None),
+    )
+    block = SendEmailBlock()
+    assert block.is_irreversible_action
+    should_pause, _ = await block.is_block_exec_need_review(
+        {"to_email": "someone@example.com"},
+        user_id="u",
+        node_id="n",
+        node_exec_id="ne",
+        graph_exec_id="exec-id",
+        graph_id="g",
+        graph_version=1,
+        execution_context=context,
+    )
+    assert should_pause is pause
+    assert park.await_count == int(pause)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "origin, expected",
+    [("interactive", True), (None, True), ("automation", False)],
+)
+async def test_resume_of_a_chat_started_run_keeps_the_pause(
+    mocker: MockerFixture, origin, expected: bool
+):
+    from backend.copilot.model import ChatSessionMetadata
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+    graph_exec.trigger_ref = "session-1"
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(
+        return_value=mocker.MagicMock(metadata=ChatSessionMetadata(origin=origin))
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    # The review-resume route rebuilds its context from the graph settings.
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(sensitive_action_safe_mode=False),
+    )
+
+    chat_store.get_chat_session_metadata.assert_awaited_once_with("session-1")
+    assert captured["execution_context"].sensitive_action_safe_mode is expected
+
+
+@pytest.mark.asyncio
+async def test_resume_of_a_subgraph_follows_the_chat_of_the_run_that_nested_it(
+    mocker: MockerFixture,
+):
+    from backend.copilot.model import ChatSessionMetadata
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "parent-exec"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            trigger_source=ExecutionTrigger.COPILOT.value, trigger_ref="session-1"
+        )
+    )
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            metadata=ChatSessionMetadata(origin="interactive")
+        )
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", graph_exec_id="existing-execution"
+    )
+
+    execution_store.get_graph_execution_meta.assert_awaited_once_with(
+        user_id="u", execution_id="parent-exec"
+    )
+    assert captured["execution_context"].sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gone", ["chat", "parent"])
+async def test_resume_pauses_when_the_originating_chat_or_parent_is_gone(
+    mocker: MockerFixture, gone: str
+):
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    if gone == "chat":
+        graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+        graph_exec.trigger_ref = "deleted-session"
+    else:
+        graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+        graph_exec.trigger_ref = "deleted-parent"
+        execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(return_value=None)
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", graph_exec_id="existing-execution"
+    )
+
+    assert captured["execution_context"].sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+async def test_subgraph_inherits_the_pause_through_its_context(
+    mocker: MockerFixture,
+):
+    from backend.blocks.agent import AgentExecutorBlock
+    from backend.data.execution import ExecutionContext
+
+    add = mocker.patch(
+        "backend.executor.utils.add_graph_execution",
+        new=mocker.AsyncMock(side_effect=RuntimeError("stop after the call")),
+    )
+    block = AgentExecutorBlock()
+    parent_context = ExecutionContext(sensitive_action_safe_mode=True)
+    with pytest.raises(RuntimeError, match="stop after the call"):
+        async for _ in block.run(
+            block.input_schema(
+                user_id="u",
+                graph_id="child",
+                graph_version=1,
+                agent_name="child",
+                input_schema={},
+                output_schema={},
+                inputs={},
+            ),
+            graph_exec_id="parent-exec",
+            execution_context=parent_context,
+        ):
+            pass
+
+    child_context = add.await_args.kwargs["execution_context"]
+    assert child_context.sensitive_action_safe_mode is True

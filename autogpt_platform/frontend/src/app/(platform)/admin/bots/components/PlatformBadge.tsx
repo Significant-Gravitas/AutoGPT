@@ -10,10 +10,11 @@ const PLATFORM_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 interface Props {
-  platform: string;
+  platform: string | undefined;
 }
 
 export function PlatformBadge({ platform }: Props) {
+  if (!platform) return null;
   const key = platform.toUpperCase();
   const label = PLATFORM_LABELS[key] ?? platform;
 

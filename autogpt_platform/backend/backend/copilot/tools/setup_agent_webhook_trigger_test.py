@@ -199,7 +199,9 @@ async def test_manual_webhook_no_creds_proceeds(tool, session):
 
 
 @pytest.mark.asyncio
-async def test_expert_session_passes_expert_scope_to_trigger_setup(tool, session):
+async def test_expert_session_passes_expert_scope_to_trigger_setup(
+    tool, session, request
+):
     session.expert_id = "expert-1"
     graph = _make_graph(manual=True, regular_credentials={})
     preset = _make_preset(
@@ -207,6 +209,12 @@ async def test_expert_session_passes_expert_scope_to_trigger_setup(tool, session
         url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
     )
     ctxs, setup_mock = _patches(graph, preset=preset)
+    installed = patch(
+        "backend.copilot.tools.setup_agent_webhook_trigger.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
         result = await tool._execute(
             user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
@@ -217,13 +225,19 @@ async def test_expert_session_passes_expert_scope_to_trigger_setup(tool, session
 
 
 @pytest.mark.asyncio
-async def test_expert_session_attributes_trigger_to_expert(tool):
+async def test_expert_session_attributes_trigger_to_expert(tool, request):
     """A trigger set up inside an expert chat threads that expert's id through
     to preset creation, so its webhook fires count as the expert's work."""
     session = make_session(_USER, expert_id="expert-1")
     graph = _make_graph(manual=True, regular_credentials={})
     preset = _make_preset(provider="generic_webhook", url="https://x/ingress")
     ctxs, setup_mock = _patches(graph, preset=preset)
+    installed = patch(
+        "backend.copilot.tools.setup_agent_webhook_trigger.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
         result = await tool._execute(
             user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"

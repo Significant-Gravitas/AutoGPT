@@ -12,14 +12,19 @@ export function EmptyTeamState() {
       </Text>
       <Text variant="body" tone="secondary" className="max-w-prose">
         Hire an expert from the marketplace and they will show up here, ready to
-        work alongside Autopilot.
+        work alongside Otto.
       </Text>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Button as="NextLink" href="/marketplace" variant="primary" size="xs">
+        <Button
+          as="NextLink"
+          href="/marketplace"
+          variant="primary"
+          size="small"
+        >
           Browse the marketplace
         </Button>
-        <Button as="NextLink" href="/raise" variant="secondary" size="xs">
-          Raise your own
+        <Button as="NextLink" href="/raise" variant="secondary" size="small">
+          Create an Expert
         </Button>
       </div>
     </div>

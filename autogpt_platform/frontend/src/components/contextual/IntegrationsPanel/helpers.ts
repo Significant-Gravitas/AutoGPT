@@ -21,9 +21,9 @@ export interface ProviderGroupView {
 }
 
 const TYPE_LABELS: Record<CredentialType, string> = {
-  api_key: "API Key",
+  api_key: "API Key", // pragma: allowlist secret
   oauth2: "OAuth",
-  user_password: "User/Password",
+  user_password: "User/Password", // pragma: allowlist secret
   host_scoped: "Host-scoped",
   device_code: "Device auth",
 };
@@ -42,6 +42,7 @@ const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   openweathermap: "OpenWeatherMap",
   e2b: "E2B",
   d_id: "D-ID",
+  dataforseo: "DataForSEO",
   ideogram: "Ideogram",
   jina: "Jina",
   linkedin: "LinkedIn",

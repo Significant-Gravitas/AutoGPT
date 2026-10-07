@@ -20,6 +20,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -35,9 +36,8 @@ import {
   Folder01Icon,
   GridViewIcon,
   Home10Icon,
-  NoteEditIcon,
   Store01Icon,
-  UserGroup02Icon,
+  AddTeamIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -53,10 +53,6 @@ const MAIN_LINKS: NavLink[] = [
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
-
-// /home 404s without the experts flag, so the entry only exists for the
-// cohort that has a home to go to.
-const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home10Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -82,9 +78,7 @@ function NavLinkLoader() {
   );
 }
 
-// Rendered inside the New Task <Link> — swap the sparkle for a spinner while
-// navigation to /copilot is pending, then back to the sparkle once it lands.
-function NewTaskIcon() {
+function HomeIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
@@ -98,14 +92,13 @@ function NewTaskIcon() {
 
   return (
     <Icon
-      icon={NoteEditIcon}
+      icon={Home10Icon}
       className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
     />
   );
 }
 
-// The stronger active state + grey shell ship with the brain-dump
-// experience; off keeps the original white sidebar.
+// The stronger active state ships with the brain-dump experience.
 function useNavItemClassName() {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   return cn(
@@ -116,9 +109,7 @@ function useNavItemClassName() {
   );
 }
 
-// New Task shares the nav-item styling with the main links so it sits in the
-// same section with a uniform gap, instead of being a standalone CTA button.
-function NewTaskItem() {
+function HomeItem() {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
@@ -126,13 +117,13 @@ function NewTaskItem() {
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
-        tooltip="New Task"
-        isActive={isLinkActive(pathname, "/copilot")}
+        tooltip="Home"
+        isActive={isLinkActive(pathname, "/home")}
         className={navItemClassName}
       >
-        <Link href="/copilot">
-          <NewTaskIcon />
-          <span className="truncate">New Task</span>
+        <Link href="/home">
+          <HomeIcon />
+          <span className="truncate">Home</span>
           <ShortcutHint letter="O" />
         </Link>
       </SidebarMenuButton>
@@ -242,31 +233,30 @@ function CollapsibleNavGroup({
 type Props = ComponentProps<typeof Sidebar>;
 
 export function AppSidebar(props: Props) {
+  const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
-  const workspaceLinks = isHireExpertsEnabled
-    ? [
-        { name: "Team", href: "/team", icon: UserGroup02Icon },
-        ...WORKSPACE_LINKS,
-      ]
-    : WORKSPACE_LINKS;
+  const filesEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+  const workspaceLinks = (
+    isHireExpertsEnabled
+      ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
+      : WORKSPACE_LINKS
+  ).filter((link) => link.href !== "/artifacts" || filesEnabled);
 
-  // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
-      if (event.key.toLocaleLowerCase() !== "o") return;
+      if (!event.key || event.key.toLocaleLowerCase() !== "o") return;
       if (!event.metaKey && !event.ctrlKey) return;
       if (!event.shiftKey) return;
       if (isEditableElement(document.activeElement)) return;
       event.preventDefault();
-      router.push("/copilot");
+      router.push("/home");
     }
 
     document.addEventListener("keydown", handleNewTaskShortcut);
@@ -277,11 +267,7 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className={
-        isBrainDumpEnabled
-          ? "[&_[data-sidebar=sidebar]]:bg-[#F4F4F4]"
-          : "[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
-      }
+      className="[&_[data-sidebar=sidebar]]:bg-[#fafafa]"
     >
       <AppSidebarHeader />
 
@@ -295,38 +281,34 @@ export function AppSidebar(props: Props) {
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
-                <NavMenu
-                  links={mainLinks}
-                  leading={
-                    <>
-                      {isHireExpertsEnabled && <NavItem link={HOME_LINK} />}
-                      <NewTaskItem />
-                    </>
-                  }
-                />
+                <NavMenu links={mainLinks} leading={<HomeItem />} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <CollapsibleNavGroup label="Workspace">
-              <NavMenu links={workspaceLinks} />
-            </CollapsibleNavGroup>
-          </motion.div>
+          {workspaceLinks.length > 0 ? (
+            <motion.div variants={itemVariants}>
+              <CollapsibleNavGroup label="Workspace">
+                <NavMenu links={workspaceLinks} />
+              </CollapsibleNavGroup>
+            </motion.div>
+          ) : null}
 
-          <motion.div
-            variants={itemVariants}
-            className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
-          >
-            <CollapsibleNavGroup label="Recent chats" scrollable>
-              {/* Suspense boundary: RecentChats reads useSearchParams(), which
+          {isLoggedIn && (
+            <motion.div
+              variants={itemVariants}
+              className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
+            >
+              <CollapsibleNavGroup label="Recent chats" scrollable>
+                {/* Suspense boundary: RecentChats reads useSearchParams(), which
                   Next.js requires to be wrapped to avoid forcing the route to
                   client-side rendering. */}
-              <Suspense fallback={null}>
-                <RecentChats />
-              </Suspense>
-            </CollapsibleNavGroup>
-          </motion.div>
+                <Suspense fallback={null}>
+                  <RecentChats />
+                </Suspense>
+              </CollapsibleNavGroup>
+            </motion.div>
+          )}
         </motion.div>
       </SidebarContent>
 

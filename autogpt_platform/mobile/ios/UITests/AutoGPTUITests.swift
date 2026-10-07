@@ -36,14 +36,18 @@ final class AutoGPTUITests: XCTestCase {
   }
 
   @MainActor
-  func testStartsHostedChatAndOffersConnectionSettings() {
+  func testSignInAndConnectionSettingsUseNativeLayout() {
     let app = XCUIApplication()
+    app.launchEnvironment["AUTOGPT_UI_TEST_SCREEN"] = "sign-in"
     app.launch()
     XCTAssertTrue(app.navigationBars["AutoGPT"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Welcome back"].exists)
+    capture("Native sign-in - portrait")
     app.buttons["App menu"].tap()
     app.buttons["Server settings"].tap()
     XCTAssertTrue(app.staticTexts["Server settings title"].waitForExistence(timeout: 3))
     XCTAssertTrue(app.textFields["Server address"].exists)
+    capture("Server settings - portrait")
     app.buttons["Cancel"].tap()
   }
 
@@ -67,6 +71,7 @@ final class AutoGPTUITests: XCTestCase {
     XCTAssertTrue(field.isHittable)
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+    capture("Server settings - landscape accessibility XXXL with keyboard")
     for title in ["Connect", "Cancel"] {
       let button = app.buttons[title]
       for _ in 0..<8 {
@@ -77,5 +82,13 @@ final class AutoGPTUITests: XCTestCase {
     }
     app.buttons["Cancel"].tap()
     XCTAssertTrue(app.buttons["App menu"].waitForExistence(timeout: 3))
+  }
+
+  @MainActor
+  private func capture(_ name: String) {
+    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    attachment.name = name
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 }

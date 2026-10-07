@@ -1,6 +1,7 @@
 """Unit tests for ChatConfig."""
 
 import pytest
+from pydantic import ValidationError
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
@@ -41,7 +42,6 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
     "CHAT_TITLE_MODEL",
     "CHAT_SIMULATION_MODEL",
-    "CHAT_RENDER_REASONING_IN_UI",
     "CHAT_STREAM_REPLAY_COUNT",
 )
 
@@ -245,7 +245,7 @@ class TestSdkModelVendorCompatibility:
             # aux check.
             aux_api_key="or-aux-key",
         )
-        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5-5"
 
     def test_openrouter_with_kimi_override_succeeds(self):
         """Kimi slug round-trips cleanly when OpenRouter is on — exercised
@@ -502,7 +502,7 @@ class TestApiKeyFallback:
         self, monkeypatch: pytest.MonkeyPatch
     ):
         """Critical safety check: a stray ``OPENAI_API_KEY`` (set by users
-        for graphiti / embedders) must not silently bind to AutoPilot's
+        for graphiti / embedders) must not silently bind to Otto's
         local Ollama endpoint as the bearer token. The fallback chain
         for local is empty by design — and the
         ``_validate_local_transport_requirements`` guard surfaces the
@@ -592,7 +592,7 @@ class TestLocalAuxModels:
     def test_cloud_transport_does_not_inherit(self):
         """Cloud transports leave the per-field cloud defaults alone — an
         operator might genuinely want gpt-4o-mini for titles even though
-        their primary model is anthropic/claude-sonnet-5."""
+        their primary model is anthropic/claude-sonnet-5-5."""
         cfg = ChatConfig(
             use_openrouter=True,
             api_key="or-key",
@@ -600,7 +600,7 @@ class TestLocalAuxModels:
         )
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
-        assert cfg.fast_advanced_model == "anthropic/claude-opus-4-8"
+        assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
 
 
 class TestLocalRequirementsValidator:
@@ -608,7 +608,7 @@ class TestLocalRequirementsValidator:
     misconfig where ``CHAT_USE_LOCAL=true`` was set but the operator
     forgot to provide either an endpoint or an api key. Without it the
     base_url field validator silently fills the OpenRouter default and
-    AutoPilot's first turn 401s — much worse UX than a startup error
+    Otto's first turn 401s — much worse UX than a startup error
     pointing at the missing env var."""
 
     def test_explicit_base_url_and_api_key_succeeds(self):
@@ -734,27 +734,10 @@ class TestLocalTransport:
         assert cfg.effective_transport == "local"
 
 
-class TestRenderReasoningInUi:
-    """``render_reasoning_in_ui`` gates reasoning wire events globally."""
-
-    def test_defaults_to_true(self):
-        """Default must stay True — flipping it silences the reasoning
-        collapse for every user, which is an opt-in operator decision."""
-        cfg = ChatConfig()
-        assert cfg.render_reasoning_in_ui is True
-
-    def test_env_override_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CHAT_RENDER_REASONING_IN_UI", "false")
-        cfg = ChatConfig()
-        assert cfg.render_reasoning_in_ui is False
-
-
 class TestStreamReplayCount:
-    """``stream_replay_count`` caps the SSE reconnect replay batch size."""
+    """``stream_replay_count`` is the SSE reconnect replay batch size."""
 
     def test_default_is_200(self):
-        """200 covers a full Kimi turn after coalescing (~150 events) while
-        bounding the replay storm from 1000+ chunks."""
         cfg = ChatConfig()
         assert cfg.stream_replay_count == 200
 
@@ -1203,3 +1186,16 @@ class TestHostMatches:
 
     def test_case_insensitive(self):
         assert _host_matches("https://API.ANTHROPIC.COM/", "anthropic.com")
+
+
+class TestLangfusePromptCacheTTL:
+    def test_default_is_five_minutes(self):
+        # Read the field default, not an instance: backend/.env can set
+        # CHAT_LANGFUSE_PROMPT_CACHE_TTL and mask it.
+        assert ChatConfig.model_fields["langfuse_prompt_cache_ttl"].default == 300
+
+    def test_a_negative_ttl_is_rejected(self):
+        # A negative TTL would skip our revalidation and expire the SDK entry
+        # at once, which is the unbounded staleness this field exists to avoid.
+        with pytest.raises(ValidationError, match="langfuse_prompt_cache_ttl"):
+            ChatConfig(langfuse_prompt_cache_ttl=-1)

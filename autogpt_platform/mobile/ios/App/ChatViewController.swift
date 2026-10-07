@@ -190,8 +190,8 @@ final class ChatViewController: UIViewController {
       status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
       status.centerXAnchor.constraint(equalTo: content.centerXAnchor),
       status.widthAnchor.constraint(lessThanOrEqualToConstant: 416),
-      primaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
-      secondaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+      primaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
+      secondaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
     ])
   }
 

@@ -167,6 +167,7 @@ const exceptionMap: Record<string, string> = {
   Ai: "AI",
   "You Tube": "YouTube",
   "All Quiet": "AllQuiet",
+  "Any Search": "AnySearch",
 };
 
 const applyExceptions = (str: string): string => {

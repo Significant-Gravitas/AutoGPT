@@ -1,36 +1,38 @@
 import { analytics } from "@/services/analytics";
-import type { Step } from "./store";
+import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
+import { OnboardingEvent } from "@/services/analytics/posthog-events";
+import type { StepLayout } from "./store";
 
 export type OnboardingStepKey =
-  | "welcome"
+  | "team"
+  | "autopilot"
   | "role"
   | "pain_points"
+  | "connect"
+  | "hire"
   | "preparing";
 
 const SENT_KEY_PREFIX = "onboarding_step_sent_";
-
-interface StepLayout {
-  welcome: number;
-  role: number;
-  painPoints: number;
-  preparing: number;
-}
+const POSTHOG_SENT_KEY_PREFIX = "posthog_onboarding_step_viewed_";
 
 /**
  * Maps a wizard step number to a stable key.
  *
- * Step numbers differ between the paywall-first and no-paywall layouts, so the
- * number alone is meaningless across cohorts — Welcome is 2 for one and 1 for
- * the other. Keying by name keeps a single funnel readable for both. The
- * subscription step returns null: it is reported as `paywall_view` instead.
+ * Step numbers differ between layouts, so the number alone is meaningless
+ * across cohorts — Preparing is 4 without a paywall and 5 with one. Keying by
+ * name keeps a single funnel readable for all. The subscription step returns
+ * null: it is reported as `paywall_view` instead.
  */
 export function onboardingStepKey(
   steps: StepLayout,
-  step: Step,
+  step: number,
 ): OnboardingStepKey | null {
-  if (step === steps.welcome) return "welcome";
+  if (step === steps.team) return "team";
+  if (step === steps.autopilot) return "autopilot";
   if (step === steps.role) return "role";
   if (step === steps.painPoints) return "pain_points";
+  if (step === steps.connect) return "connect";
+  if (step === steps.hire) return "hire";
   if (step === steps.preparing) return "preparing";
   return null;
 }
@@ -38,7 +40,7 @@ export function onboardingStepKey(
 /**
  * Reports that the user reached a wizard step, at most once per tab.
  *
- * The wizard's five steps share the `/onboarding` URL and the backend records
+ * The wizard's steps share the `/onboarding` URL and the backend records
  * only ONBOARDING_COMPLETE, so without this nothing distinguishes "abandoned on
  * Role" from "abandoned on Preparing" — the drop between signup and copilot is
  * a single opaque number.
@@ -48,6 +50,16 @@ export function onboardingStepKey(
  * ordered funnel.
  */
 export function trackOnboardingStep(key: OnboardingStepKey) {
+  // PostHog funnels order steps by their filter, so one event with a `step`
+  // property serves where DataFast needs a goal per step. Its once-per-tab
+  // guard is its own, marked only once the event is sent or dropped for lack
+  // of consent, not while it waits for the answer.
+  capturePostHogEvent(
+    OnboardingEvent.ONBOARDING_STEP_VIEWED,
+    { step: key },
+    { oncePerTabKey: `${POSTHOG_SENT_KEY_PREFIX}${key}` },
+  );
+
   const sentKey = `${SENT_KEY_PREFIX}${key}`;
   try {
     if (sessionStorage.getItem(sentKey)) return;

@@ -29,7 +29,7 @@ export function WorkGroup({ group, timezone }: Props) {
         variant="small-medium"
         as="span"
         className={cn(
-          "shrink-0 rounded-full border px-1.5 uppercase leading-4 tracking-[0.04em]",
+          "shrink-0 rounded-full border px-1.5 capitalize leading-4",
           chip.className,
         )}
       >

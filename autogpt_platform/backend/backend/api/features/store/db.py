@@ -25,6 +25,8 @@ from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
 from . import model as store_model
+from . import public_media
+from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
 from .store_listing_versions import installable_store_version_where
@@ -184,8 +186,8 @@ async def _fallback_store_agent_search(
             where_clause["featured"] = featured
         if creators:
             where_clause["creator_username"] = {"in": creators}
-        if category:
-            where_clause["categories"] = {"has": category}
+        if category_values := category_filter_values(category):
+            where_clause["categories"] = {"has_some": category_values}
 
         order_by = []
         if sorted_by == StoreAgentsSortOptions.RATING:
@@ -217,9 +219,9 @@ async def _fallback_store_agent_search(
         params.append(creators)
         filters.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
-    if category:
-        params.append(category)
-        filters.append(f"${param_idx} = ANY(sa.categories)")
+    if category_values := category_filter_values(category):
+        params.append(category_values)
+        filters.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 
     where_sql = " AND ".join(filters)
@@ -383,7 +385,7 @@ async def get_available_graph(
                 f"Store listing version {store_listing_version_id} not found",
             )
 
-        return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
+        graph = (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
             store_listing_version.AgentGraph,
             sub_graphs=(
                 await get_sub_graphs(store_listing_version.AgentGraph)
@@ -391,6 +393,10 @@ async def get_available_graph(
                 else None
             ),
         )
+        # A marketplace listing is public: the publisher's picked files, and
+        # the credentials embedded in them, aren't part of it.
+        graph.clear_auto_credentials()
+        return graph
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
@@ -836,12 +842,12 @@ async def create_store_submission(
     graph_version: int,
     slug: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
     instructions: str | None = None,
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
     recommended_schedule_cron: str | None = None,
@@ -859,7 +865,7 @@ async def create_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 
@@ -1039,11 +1045,11 @@ async def edit_store_submission(
     user_id: str,
     store_listing_version_id: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
@@ -1060,7 +1066,7 @@ async def edit_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 
@@ -1299,6 +1305,11 @@ async def update_profile(
         if updated_profile is None:
             logger.error(f"Failed to update profile for user {user_id}")
             raise DatabaseError("Failed to update profile")
+
+        if profile.avatar_url is not None:
+            updated_profile = await _publish_live_creator_avatar(
+                user_id, updated_profile
+            )
 
         return store_model.ProfileDetails.from_db(updated_profile)
 
@@ -1552,6 +1563,8 @@ async def review_store_submission(
                         "ActiveVersion": {"connect": {"id": other_approved.id}},
                     },
                 )
+                if public_media.publishing_enabled():
+                    await _publish_reactivated_media(other_approved.id)
 
         submission_status = (
             prisma.enums.SubmissionStatus.APPROVED
@@ -1583,6 +1596,9 @@ async def review_store_submission(
                 f"Failed to update store listing version {store_listing_version_id}"
             )
 
+        if is_approved:
+            reviewed_submission = await _publish_approved_media(reviewed_submission)
+
         try:
             await _send_submission_review_notification(
                 creator_user_id,
@@ -1603,6 +1619,162 @@ async def review_store_submission(
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
         raise DatabaseError("Failed to create store submission review") from e
+
+
+async def _publish_approved_media(
+    version: prisma.models.StoreListingVersion,
+) -> prisma.models.StoreListingVersion:
+    """
+    Copy an approved version's media and its creator's avatar to the public site
+    media bucket, and point the rows at the copies. Never fails the review. The
+    profile and the version are written separately on purpose: each copy is
+    valid on its own, so a failed version write keeps the published avatar.
+    """
+    if not public_media.publishing_enabled():
+        return version
+    try:
+        assert version.StoreListing is not None
+        owner_id = version.StoreListing.owningUserId
+        await publish_creator_avatar(owner_id)
+        published = await public_media.publish_urls(
+            [*version.imageUrls, version.videoUrl, version.agentOutputDemoUrl],
+            await _listing_media_owner_ids(version.StoreListing),
+        )
+
+        media_update = _published_media_update(version, published)
+        if not media_update:
+            return version
+
+        updated = await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": version.id},
+            data=media_update,
+            include={"StoreListing": True, "Reviewer": True},
+        )
+        return updated or version
+    except Exception:
+        logger.exception(
+            f"Failed to publish media of store listing version {version.id}"
+        )
+        return version
+
+
+async def _publish_reactivated_media(version_id: str) -> None:
+    """Publish the media of a version that became active again. Never raises."""
+    try:
+        version = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": version_id}, include={"StoreListing": True}
+        )
+    except Exception:
+        logger.exception(f"Failed to load store listing version {version_id}")
+        return
+    if version:
+        await _publish_approved_media(version)
+
+
+def _published_media_update(
+    version: prisma.models.StoreListingVersion, published: dict[str, str]
+) -> prisma.types.StoreListingVersionUpdateInput:
+    """The version's media columns rewritten to their published URLs."""
+    media_update: prisma.types.StoreListingVersionUpdateInput = {}
+    if any(url in published for url in version.imageUrls):
+        media_update["imageUrls"] = [
+            published.get(url, url) for url in version.imageUrls
+        ]
+    if version.videoUrl in published:
+        media_update["videoUrl"] = published[version.videoUrl]
+    if version.agentOutputDemoUrl in published:
+        media_update["agentOutputDemoUrl"] = published[version.agentOutputDemoUrl]
+    return media_update
+
+
+async def _listing_media_owner_ids(listing: prisma.models.StoreListing) -> set[str]:
+    """
+    Users whose uploads a listing may publish: its owner and, for an org listing,
+    the org's active members, who can edit it and upload under their own path.
+    """
+    owner_ids = {listing.owningUserId}
+    if listing.owningOrgId:
+        members = await prisma.models.OrgMember.prisma().find_many(
+            where={
+                "orgId": listing.owningOrgId,
+                "status": prisma.enums.OrgMemberStatus.ACTIVE,
+            }
+        )
+        owner_ids.update(member.userId for member in members)
+    return owner_ids
+
+
+async def publish_creator_avatar(user_id: str) -> None:
+    """Publish the avatar of a creator who has just gained a public listing."""
+    if not public_media.publishing_enabled():
+        return
+    try:
+        profile = await prisma.models.Profile.prisma().find_unique(
+            where={"userId": user_id}
+        )
+    except Exception:
+        logger.exception(f"Failed to load the profile of user {user_id}")
+        return
+    if profile:
+        await _publish_live_creator_avatar(user_id, profile)
+
+
+async def _has_public_listing(user_id: str) -> bool:
+    """Whether the marketplace shows this user as a creator to anyone."""
+    store_listing = await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "owningUserId": user_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        }
+    )
+    if store_listing:
+        return True
+    skill_listing = await prisma.models.SkillListing.prisma().find_first(
+        where={
+            "owningUserId": user_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+            "ActiveVersion": {
+                "is": {
+                    "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    "isDeleted": False,
+                    "isAvailable": True,
+                }
+            },
+        }
+    )
+    return skill_listing is not None
+
+
+async def _publish_live_creator_avatar(
+    user_id: str, profile: prisma.models.Profile
+) -> prisma.models.Profile:
+    """
+    Copy the avatar of a creator with a public listing to the public site media
+    bucket and point the profile at the copy. Only writes while the profile
+    still holds the avatar it copied. Never fails the caller.
+    """
+    if not profile.avatarUrl or not public_media.publishing_enabled():
+        return profile
+    try:
+        if not await _has_public_listing(user_id):
+            return profile
+
+        published = await public_media.publish_urls([profile.avatarUrl], [user_id])
+        if profile.avatarUrl not in published:
+            return profile
+        await prisma.models.Profile.prisma().update_many(
+            where={"id": profile.id, "avatarUrl": profile.avatarUrl},
+            data={"avatarUrl": published[profile.avatarUrl]},
+        )
+        updated = await prisma.models.Profile.prisma().find_unique(
+            where={"id": profile.id}
+        )
+        return updated or profile
+    except Exception:
+        logger.exception(f"Failed to publish avatar of user {user_id}")
+        return profile
 
 
 async def _approve_sub_agent(
@@ -1718,7 +1890,7 @@ async def _send_submission_review_notification(
 
     reviewer_name = reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
     reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
-    reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%B')}"
+    reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%b %Y')}"
 
     if is_approved:
         store_agent = await prisma.models.StoreAgent.prisma().find_first_or_raise(

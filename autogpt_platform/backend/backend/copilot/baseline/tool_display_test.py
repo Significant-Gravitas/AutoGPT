@@ -51,7 +51,13 @@ async def test_tool_display_streams_and_persists_before_tool_result(fails: bool)
         new=AsyncMock(side_effect=execute),
     ):
         result = await _baseline_tool_executor(
-            call, [], state=state, user_id="user-1", session=session, disabled_groups=[]
+            call,
+            [],
+            state=state,
+            user_id="user-1",
+            session=session,
+            disabled_groups=[],
+            disabled_tools=frozenset(),
         )
     messages: list[dict] = []
     _baseline_conversation_updater(

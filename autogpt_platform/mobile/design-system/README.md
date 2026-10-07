@@ -26,7 +26,7 @@ Use the resolved custom palette in [`colors.ts`](../../frontend/src/components/s
 | ------------------------- | ---------- | --------- |
 | Primary action            | zinc-800   | `#3E3E43` |
 | Primary pressed/hover     | zinc-900   | `#2C2C30` |
-| Secondary action          | zinc-100   | `#EFEFF0` |
+| Secondary action          | white      | `#FEFEFE` |
 | Subtle surface            | zinc-50    | `#F9F9FA` |
 | Border                    | zinc-200   | `#DADADC` |
 | Secondary text            | zinc-600   | `#68686F` |
@@ -42,7 +42,7 @@ Typography comes from [`Text/helpers.ts`](../../frontend/src/components/atoms/Te
 - Button labels: Geist Medium 14 points.
 - Small supporting text: Geist Regular 12/18 points.
 
-[`Button/helpers.ts`](../../frontend/src/components/atoms/Button/helpers.ts) defines a 52-point large action, pill radius, 16-point horizontal padding, and 8-point icon/label gap. Secondary actions use the same shape and zinc-100 fill. Maintain native text scaling and allow controls to grow when needed.
+[`Button/helpers.ts`](../../frontend/src/components/atoms/Button/helpers.ts) defines a 46-point large action, pill radius, 16-point horizontal padding, and 8-point icon/label gap. Secondary actions use the same shape, a white surface, zinc-800 text, and a zinc-200 border. Their pressed surface is zinc-50 with a zinc-300 border. Maintain native text scaling and allow controls to grow when needed.
 
 [`AuthSplitLayout.tsx`](../../frontend/src/components/auth/AuthSplitLayout/AuthSplitLayout.tsx) uses a white authentication surface, 24-point horizontal insets, a 416-point maximum content width, and a centered 128-point-wide full logo with 40 points below it. The mobile web login adds a very faint 10%-opacity blue/lavender Aurora background. The form heading is left aligned. The app's initial web theme is light.
 

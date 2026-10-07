@@ -294,7 +294,7 @@ describe("MemoryVisualizer — memory scope", () => {
     expect(
       (await screen.findByRole("combobox", { name: "Memory scope" }))
         .textContent,
-    ).toContain("AutoPilot");
+    ).toContain("Otto");
     await screen.findByText("12");
     await waitFor(() => {
       expect(overviewScopes).toEqual([null]);
@@ -365,7 +365,7 @@ describe("MemoryVisualizer — memory scope", () => {
     ).toBeDefined();
   });
 
-  test("scope switches preserve in-flight AutoPilot job tracking", async () => {
+  test("scope switches preserve in-flight Otto job tracking", async () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     let dreamRequests = 0;
     server.use(
@@ -403,7 +403,7 @@ describe("MemoryVisualizer — memory scope", () => {
     await screen.findByText("Expert memory is read-only.");
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     const activeButton = await screen.findByRole("button", {
       name: /consolidate…/i,
@@ -434,7 +434,7 @@ describe("MemoryVisualizer — memory scope", () => {
     );
   });
 
-  test("expert-list errors keep AutoPilot memory available", async () => {
+  test("expert-list errors keep Otto memory available", async () => {
     setupBaseHandlers();
     server.use(
       http.get("*/api/experts", () =>
@@ -447,11 +447,11 @@ describe("MemoryVisualizer — memory scope", () => {
     await screen.findByText("Failed to load experts.");
     const selector = screen.getByRole("combobox", { name: "Memory scope" });
     expect((selector as HTMLButtonElement).disabled).toBe(false);
-    expect(selector.textContent).toContain("AutoPilot");
+    expect(selector.textContent).toContain("Otto");
     await screen.findByText("12");
   });
 
-  test("removed experts reset the selected scope to AutoPilot", async () => {
+  test("removed experts reset the selected scope to Otto", async () => {
     let experts = [makeExpert("expert-ada", "Ada")];
     setupBaseHandlers();
     server.use(http.get("*/api/experts", () => HttpResponse.json(experts)));
@@ -474,11 +474,11 @@ describe("MemoryVisualizer — memory scope", () => {
       screen.getByRole("button", { name: "Refetch experts" }),
     );
 
-    await waitFor(() => expect(selector.textContent).toContain("AutoPilot"));
+    await waitFor(() => expect(selector.textContent).toContain("Otto"));
     expect(screen.queryByText("Expert memory is read-only.")).toBeNull();
     expect(toastMock).toHaveBeenCalledWith({
       title: "Expert no longer available",
-      description: "Showing AutoPilot account memory instead.",
+      description: "Showing Otto account memory instead.",
     });
   });
 
@@ -518,7 +518,7 @@ describe("MemoryVisualizer — memory scope", () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  test("empty and error scope states are announced without blocking AutoPilot", async () => {
+  test("empty and error scope states are announced without blocking Otto", async () => {
     setupBaseHandlers();
     render(<MemoryVisualizer />);
 
@@ -637,7 +637,7 @@ describe("MemoryVisualizer — memory scope", () => {
     ).toBeNull();
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     await screen.findByRole("button", { name: "AutoPilotFact (1)" });
     expect(
@@ -680,7 +680,7 @@ describe("MemoryVisualizer — memory scope", () => {
     expect(screen.queryByText("dream: running (consolidate)")).toBeNull();
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     await screen.findByText("dream: running (consolidate)");
   });
@@ -811,7 +811,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     });
   });
 
-  test("job completion refreshes every AutoPilot cache without invalidating expert memory", async () => {
+  test("job completion refreshes every Otto cache without invalidating expert memory", async () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     const graphRequests = new Map<string, number>();
     server.use(
@@ -894,7 +894,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     );
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
     await userEvent.click(episodes);
     await userEvent.click(
       await screen.findByRole("button", { name: /dream pass/i }),

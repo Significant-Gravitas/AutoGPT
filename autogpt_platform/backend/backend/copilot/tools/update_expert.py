@@ -58,7 +58,7 @@ class UpdateExpertTool(BaseTool):
             "change; the rest stay as they are. Never writes: returns the "
             "merged soul plus a one-time confirmation_id. Show the user "
             "exactly what would change and, only after they approve, call "
-            "confirm_expert_change with that id."
+            "tool:confirm_expert_change with that id."
         )
 
     @property
@@ -195,7 +195,7 @@ class UpdateExpertTool(BaseTool):
             message=(
                 f"Nothing changed yet. Show the user exactly how {expert.name} "
                 "would be rewritten, including anything this replaces. Only "
-                "after they explicitly approve, call confirm_expert_change "
+                "after they explicitly approve, call tool:confirm_expert_change "
                 f"with this confirmation_id; it expires in "
                 f"{PROPOSAL_TTL_MINUTES} minutes."
             ),

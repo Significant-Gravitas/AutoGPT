@@ -9,6 +9,7 @@ import {
   type CompactionStats,
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -19,10 +20,15 @@ export type MessagePart = UIMessage<
 // Every assistant tool renders inside the ToolChain. ToolResult supplies a
 // compact result view for known backend tools and a structured fallback for
 // SDK or future tools, so no tool ever renders as a bare top-level part.
-// Compaction and expert changes are the exceptions: each owns a card that
-// must stay on screen, so they render as parts of their own.
+// Compaction, expert changes and the hire's onboarding card are the
+// exceptions: each owns a card that must stay on screen, so they render as
+// parts of their own.
 export function isChainableToolPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");
@@ -147,68 +153,9 @@ export function getTurnMessages(
   return messages.slice(start, end);
 }
 
-// Special message prefixes for text-based markers (set by backend).
-// The hex suffix makes it virtually impossible for an LLM to accidentally
-// produce these strings in normal conversation.
-const COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]";
-const COPILOT_RETRYABLE_ERROR_PREFIX = "[__COPILOT_RETRYABLE_ERROR_a9c2__]";
-const COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]";
-
-export type MarkerType = "error" | "retryable_error" | "system" | null;
-
 /** Escape all regex special characters in a string. */
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Pre-compiled marker regexes (avoids re-creating on every call / render).
-// Retryable check must come first since it's more specific.
-const RETRYABLE_ERROR_MARKER_RE = new RegExp(
-  `${escapeRegExp(COPILOT_RETRYABLE_ERROR_PREFIX)}\\s*(.+?)$`,
-  "s",
-);
-const ERROR_MARKER_RE = new RegExp(
-  `${escapeRegExp(COPILOT_ERROR_PREFIX)}\\s*(.+?)$`,
-  "s",
-);
-const SYSTEM_MARKER_RE = new RegExp(
-  `${escapeRegExp(COPILOT_SYSTEM_PREFIX)}\\s*(.+?)$`,
-  "s",
-);
-
-export function parseSpecialMarkers(text: string): {
-  markerType: MarkerType;
-  markerText: string;
-  cleanText: string;
-} {
-  const retryableMatch = text.match(RETRYABLE_ERROR_MARKER_RE);
-  if (retryableMatch) {
-    return {
-      markerType: "retryable_error",
-      markerText: retryableMatch[1].trim(),
-      cleanText: text.replace(retryableMatch[0], "").trim(),
-    };
-  }
-
-  const errorMatch = text.match(ERROR_MARKER_RE);
-  if (errorMatch) {
-    return {
-      markerType: "error",
-      markerText: errorMatch[1].trim(),
-      cleanText: text.replace(errorMatch[0], "").trim(),
-    };
-  }
-
-  const systemMatch = text.match(SYSTEM_MARKER_RE);
-  if (systemMatch) {
-    return {
-      markerType: "system",
-      markerText: systemMatch[1].trim(),
-      cleanText: text.replace(systemMatch[0], "").trim(),
-    };
-  }
-
-  return { markerType: null, markerText: "", cleanText: text };
 }
 
 export function filePartToArtifactRef(
@@ -421,3 +368,69 @@ export function resolveWorkspaceUrls(
 
   return resolved;
 }
+
+export type ReviewTarget =
+  | { kind: "chat" }
+  /** graphId is set for a run_agent run, so its status can say when to stop polling. */
+  | { kind: "graph"; graphExecId: string; graphId?: string };
+
+/**
+ * The newest tool output that can have pending reviews for the chat to show:
+ * a run_block ReviewRequiredResponse, or a run_agent ExecutionStartedResponse
+ * that paused or had not finished when the tool returned (a run AutoPilot
+ * starts can pause at an irreversible block after it started).
+ */
+export function extractReviewTarget(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): ReviewTarget | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const parts = messages[i].parts;
+    for (let j = parts.length - 1; j >= 0; j--) {
+      const part = parts[j];
+      if (!("output" in part) || !part.output) continue;
+      const out =
+        typeof part.output === "string"
+          ? (() => {
+              try {
+                return JSON.parse(part.output);
+              } catch {
+                return null;
+              }
+            })()
+          : part.output;
+      if (!out || typeof out !== "object") continue;
+      if (isChatReview(out)) return { kind: "chat" };
+      if ("execution_id" in out && "status" in out) {
+        const { execution_id, status, graph_id } = out as {
+          execution_id: string;
+          status: string;
+          graph_id?: string;
+        };
+        if (REVIEWABLE_STATUSES.has(status)) {
+          return {
+            kind: "graph",
+            graphExecId: execution_id,
+            graphId: graph_id,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// A block review, or an action the auto-mode gate parked for approval.
+function isChatReview(out: object) {
+  const { type, review_id } = out as { type?: unknown; review_id?: unknown };
+  return (
+    type === "review_required" ||
+    (type === "approval_required" && typeof review_id === "string")
+  );
+}
+
+const REVIEWABLE_STATUSES = new Set([
+  "REVIEW",
+  "QUEUED",
+  "RUNNING",
+  "INCOMPLETE",
+]);

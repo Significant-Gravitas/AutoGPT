@@ -11,12 +11,13 @@ import {
 } from "../../helpers";
 import { AutopilotCard } from "../AutopilotCard";
 import { ExpertTeamCardSkeleton } from "../ExpertTeamCardSkeleton";
-import { TeamRosterToolbar } from "./TeamRosterToolbar";
-import { useTeamRosterView } from "./useTeamRosterView";
 
 interface Props {
   isLoading: boolean;
   experts: Expert[];
+  /** Experts left after the page's search and filter. */
+  visibleExperts: Expert[];
+  isNarrowed: boolean;
   schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
   renderCard: (expert: Expert) => ReactNode;
   onAutopilotChat: () => void;
@@ -25,14 +26,13 @@ interface Props {
 export function TeamRoster({
   isLoading,
   experts,
+  visibleExperts,
+  isNarrowed,
   schedulesForExpert,
   renderCard,
   onAutopilotChat,
 }: Props) {
-  const { query, setQuery, filter, setFilter, isNarrowed, visibleExperts } =
-    useTeamRosterView({ experts, schedulesForExpert });
-
-  // Autopilot reports on the whole team, so its summary ignores the toolbar.
+  // Otto reports on the whole team, so its summary ignores the toolbar.
   const summary = getAutopilotSummary({ experts, schedulesForExpert });
   const autopilot = (
     <AutopilotCard
@@ -45,18 +45,6 @@ export function TeamRoster({
 
   return (
     <section aria-label="Experts" className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Text variant="large-medium" as="h5" tone="primary">
-          Experts
-        </Text>
-        <TeamRosterToolbar
-          query={query}
-          onQueryChange={setQuery}
-          filter={filter}
-          onFilterChange={setFilter}
-        />
-      </div>
-
       {isLoading ? (
         <div className={TEAM_GRID_CLASS}>
           {autopilot}
@@ -66,7 +54,7 @@ export function TeamRoster({
         </div>
       ) : (
         <div className={TEAM_GRID_CLASS}>
-          {/* Autopilot is pinned rather than filtered — it is always on the
+          {/* Otto is pinned rather than filtered — it is always on the
               team, so it stays put unless the roster is being narrowed. */}
           {isNarrowed ? null : autopilot}
           {visibleExperts.map(renderCard)}

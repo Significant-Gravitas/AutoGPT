@@ -6,11 +6,12 @@ import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import { ArtifactCard } from "./ArtifactCard/ArtifactCard";
 import { EmptyState } from "./EmptyState";
+import type { EmptyStateContent } from "./helpers";
 
 interface Props {
   files: WorkspaceFileItem[];
   isLoading: boolean;
-  emptyMessage: string;
+  emptyState: EmptyStateContent;
   compactEmpty: boolean;
   listKey: string;
   onOpen: (file: WorkspaceFileItem) => void;
@@ -26,7 +27,7 @@ const GRID_VARIANTS: Variants = {
 export function ArtifactsGrid({
   files,
   isLoading,
-  emptyMessage,
+  emptyState,
   compactEmpty,
   listKey,
   onOpen,
@@ -47,7 +48,7 @@ export function ArtifactsGrid({
   }
 
   if (files.length === 0) {
-    return <EmptyState message={emptyMessage} compact={compactEmpty} />;
+    return <EmptyState content={emptyState} compact={compactEmpty} />;
   }
 
   return (
@@ -59,8 +60,8 @@ export function ArtifactsGrid({
       initial={reduceMotion ? false : "hidden"}
       animate={reduceMotion ? undefined : "show"}
     >
-      {files.map((file) => (
-        <ArtifactCard key={file.id} file={file} onOpen={onOpen} />
+      {files.map((file, index) => (
+        <ArtifactCard key={file.id} file={file} onOpen={onOpen} index={index} />
       ))}
     </motion.ul>
   );
