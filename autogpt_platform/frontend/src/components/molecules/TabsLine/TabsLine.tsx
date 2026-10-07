@@ -91,7 +91,7 @@ const TabsLineList = React.forwardRef<
       {activeTabElement && (
         <div
           className={cn(
-            "transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out",
+            "absolute bottom-0 h-0.5 bg-purple-600 transition-[left,width] duration-200 ease-in-out",
             isCompact && "bg-zinc-900",
             indicatorClassName,
           )}
@@ -150,7 +150,7 @@ const TabsLineTrigger = React.forwardRef<
         elementRef.current = node;
       }}
       className={cn(
-        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-[0.875rem] font-medium leading-[1.5rem] text-zinc-700 transition-all data-[state=active]:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-[0.875rem] font-medium leading-[1.5rem] text-zinc-700 transition-all data-[state=active]:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
         icon && "gap-1.5",
         variant === "compact" &&
           "px-2.5 py-2 text-sm leading-5 text-zinc-600 data-[state=active]:text-zinc-900",
@@ -176,7 +176,7 @@ const TabsLineContent = React.forwardRef<
       // rule behind it is weaker than any author display utility — a panel
       // styled `flex`/`grid` stays laid out and keeps stealing space from the
       // active one. The data-state variant is specific enough to win.
-      "mt-4 data-[state=inactive]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2",
+      "mt-4 data-[state=inactive]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2",
       className,
     )}
     {...props}

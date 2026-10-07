@@ -37,7 +37,7 @@ export const ScrollableTabsList = React.forwardRef<
       </div>
       {activeTabElement && (
         <div
-          className="transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out"
+          className="absolute bottom-0 h-0.5 bg-purple-600 transition-[left,width] duration-200 ease-in-out"
           style={{
             left: activeTabElement.offsetLeft,
             width: activeTabElement.offsetWidth,
