@@ -32,18 +32,7 @@
     "scripts/vendor-notion-avatar.mjs",
     // Backlog: unused files.
     "playwright.security.config.ts",
-    "src/lib/auth/client.ts",
-    "src/mocks/index.ts",
-    "src/mocks/mock-browser.ts",
-    "src/playwright/credentials/index.ts",
-    "src/playwright/pages/header.page.ts",
     "src/playwright/pages/profile.page.ts",
-    "src/playwright/utils/signin.ts",
-    "src/services/feature-flags/FeatureFlagPage.tsx",
-    "src/services/feature-flags/FeatureFlagRedirect.tsx",
-    "src/services/storage/session-storage.ts",
-    "src/types/chat.ts",
-    "src/types/types.ts",
     "test-runner-jest.config.js"
   ],
   // Backlog: unused exports, types, enum members and duplicate exports.
