@@ -90,7 +90,6 @@
     "lucide-react": [
       "src/components/__legacy__/Sidebar.tsx",
       "src/components/__legacy__/ui/carousel.tsx",
-      "src/components/__legacy__/ui/loading.tsx",
       "src/components/__legacy__/ui/multiselect.tsx",
       "src/components/atoms/Button/Button.stories.tsx",
       "src/components/atoms/DateInput/DateInput.tsx",
@@ -165,7 +164,6 @@
       "src/components/__legacy__/ui/badge.tsx",
       "src/components/__legacy__/ui/button.tsx",
       "src/components/__legacy__/ui/calendar.tsx",
-      "src/components/__legacy__/ui/card.tsx",
       "src/components/__legacy__/ui/carousel.tsx",
       "src/components/__legacy__/ui/checkbox.tsx",
       "src/components/__legacy__/ui/command.tsx",
