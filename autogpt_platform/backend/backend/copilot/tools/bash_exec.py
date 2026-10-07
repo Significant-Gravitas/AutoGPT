@@ -67,6 +67,34 @@ _DEADLINE_SLACK_SECONDS = 0.05
 # Reattaches to a running command after its stream to the box drops.
 _MAX_RECONNECTS = 3
 _KILL_TIMEOUT_SECONDS = 10
+# The turn's idle watchdog fires HUNG_TOOL_CAP_SECONDS after the last SDK
+# message, which is before the gate, keep_sandbox_running (up to ~40s) and
+# stream setup. Capping this far below it lets the tool's own timeout land first.
+_HUNG_CAP_MARGIN_SECONDS = 120
+
+# envd's kill reaches only the shell it started, so the children of a compound
+# command (`npm install && npm run build`) would keep running. This stops the
+# shell first, so it cannot start the next step once a child dies, then stops
+# and kills every process under it. The shell itself is left for envd's kill.
+# Exits non-zero if any of them is still alive afterwards (e.g. one run as root).
+_KILL_TREE_SCRIPT = r"""
+p=__PID__
+kill -STOP "$p" 2>/dev/null || exit 0
+under() {
+  awk -v root="$p" '
+    { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
+      parent[pid] = f[2]; state[pid] = f[1] }
+    END { q[1] = root; n = 1
+          while (n) { r = q[n--]
+                      for (k in parent) if (parent[k] == r) {
+                        q[++n] = k; if (state[k] != "Z") print k } } }
+  ' /proc/[0-9]*/stat 2>/dev/null
+}
+kids=$(under); [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
+kids=$(under); [ -n "$kids" ] && kill -KILL $kids 2>/dev/null
+sleep 0.2
+[ -z "$(under)" ]
+"""
 
 
 class _E2BRun(BaseModel):
@@ -79,6 +107,8 @@ class _E2BRun(BaseModel):
     timed_out: bool = False
     # Kill sent after a timeout: True done, False not found, None unknown.
     killed: bool | None = None
+    # The processes the command started were killed along with it.
+    children_killed: bool = False
     # Why we stopped following a command that had not ended: the stream
     # error's type name.
     lost: str | None = None
@@ -287,7 +317,7 @@ class BashExecTool(BaseTool):
         """
         # The turn stops following a tool after the hung-tool cap and pauses
         # the box, so a longer timeout only keeps an unwatched box billing.
-        timeout = min(max(timeout, 1), HUNG_TOOL_CAP_SECONDS)
+        timeout = min(max(timeout, 1), HUNG_TOOL_CAP_SECONDS - _HUNG_CAP_MARGIN_SECONDS)
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         }
@@ -389,7 +419,7 @@ async def _follow_command(
         except Exception as exc:
             remaining = deadline - loop.time()
             if remaining <= _DEADLINE_SLACK_SECONDS:
-                return outcome(timed_out=True, killed=await _kill(sandbox, pid))
+                return outcome(timed_out=True, **await _kill(sandbox, pid))
             logger.warning(
                 "[E2B] bash_exec lost its stream to pid %s after %.1fs of %ds "
                 "(%s: %s)",
@@ -414,7 +444,7 @@ async def _follow_command(
                 return outcome(ended_unseen=True)
             except Exception as reconnect_exc:
                 if deadline - loop.time() <= _DEADLINE_SLACK_SECONDS:
-                    return outcome(timed_out=True, killed=await _kill(sandbox, pid))
+                    return outcome(timed_out=True, **await _kill(sandbox, pid))
                 logger.warning(
                     "[E2B] bash_exec could not reattach to pid %s: %s",
                     pid,
@@ -423,14 +453,29 @@ async def _follow_command(
                 return outcome(lost=type(exc).__name__)
 
 
-async def _kill(sandbox: AsyncSandbox, pid: int) -> bool | None:
+async def _kill(sandbox: AsyncSandbox, pid: int) -> dict[str, Any]:
+    children_killed = await _kill_children(sandbox, pid)
     try:
-        return await asyncio.wait_for(
+        killed = await asyncio.wait_for(
             sandbox.commands.kill(pid), timeout=_KILL_TIMEOUT_SECONDS
         )
     except Exception as exc:
         logger.warning("[E2B] Could not kill timed-out pid %s: %s", pid, exc)
-        return None
+        killed = None
+    return {"killed": killed, "children_killed": children_killed}
+
+
+async def _kill_children(sandbox: AsyncSandbox, pid: int) -> bool:
+    try:
+        result = await run_internal(
+            sandbox,
+            _KILL_TREE_SCRIPT.replace("__PID__", str(pid)),
+            timeout=_KILL_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("[E2B] Could not kill the children of pid %s: %s", pid, exc)
+        return False
+    return result.exit_code == 0
 
 
 def _run_response(
@@ -450,8 +495,13 @@ def _run_response(
 
     elapsed = f"{run.elapsed:.1f}s"
     if run.timed_out:
-        if run.killed is True:
-            fate = "it was killed."
+        if run.killed is True and run.children_killed:
+            fate = "it was killed, with every process it started."
+        elif run.killed is True:
+            fate = (
+                "the shell was killed, but processes it started may still be "
+                "running."
+            )
         elif run.killed is False:
             fate = "it had already ended."
         else:

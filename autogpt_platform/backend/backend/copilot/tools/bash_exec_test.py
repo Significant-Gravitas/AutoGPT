@@ -3,7 +3,11 @@
 import asyncio
 import itertools
 import re
+import subprocess
+import sys
+import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -584,6 +588,15 @@ class TestBashExecE2BTimeouts:
     also for the box pausing or dying under the command, at whatever moment
     that happens.  Only the first may be reported as the command timing out."""
 
+    @pytest.fixture(autouse=True)
+    def kill_tree(self):
+        """The script that kills a timed-out command's children, run on the box."""
+        with patch(
+            "backend.copilot.tools.bash_exec.run_internal",
+            new=AsyncMock(return_value=SimpleNamespace(exit_code=0)),
+        ) as run:
+            yield run
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_command_outlives_the_box_running_time_limit(self):
         # The turn's connect armed the limit long ago: 0.3s of it is left,
@@ -610,16 +623,21 @@ class TestBashExecE2BTimeouts:
         box.set_timeout.assert_awaited_once_with(3660)
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_timeout_past_the_hung_tool_cap_is_capped(self):
+    async def test_timeout_past_the_hung_tool_cap_is_capped_below_it(self):
         # The turn gives up on a pending tool after two hours and pauses the
         # box, so a longer timeout would only bill a box nobody is following.
+        # The cap sits below the watchdog so the tool's own timeout lands first.
         from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
+
+        from .bash_exec import _HUNG_CAP_MARGIN_SECONDS
 
         box = _FakeBox(limit=30, process=_counting(0.1))
 
         await _run(box, timeout=7 * 24 * 60 * 60)
 
-        box.set_timeout.assert_awaited_once_with(HUNG_TOOL_CAP_SECONDS + 60)
+        box.set_timeout.assert_awaited_once_with(
+            HUNG_TOOL_CAP_SECONDS - _HUNG_CAP_MARGIN_SECONDS + 60
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_short_command_leaves_a_longer_limit_alone(self):
@@ -759,7 +777,10 @@ class TestBashExecE2BTimeouts:
 
         assert isinstance(result, BashExecResponse)
         assert result.timed_out is True
-        assert result.message == "Timed out after 2s; it was killed."
+        assert (
+            result.message
+            == "Timed out after 2s; it was killed, with every process it started."
+        )
         assert proc.killed is True
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -778,8 +799,47 @@ class TestBashExecE2BTimeouts:
         assert result.exit_code == -1
         assert result.stdout == "partial\n"
         assert result.stderr == "Timed out after 1s\nwarning: slow"
-        assert result.message == "Timed out after 1s; it was killed."
+        assert (
+            result.message
+            == "Timed out after 1s; it was killed, with every process it started."
+        )
         # E2B's deadline only closes the stream; the tool kills the command.
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_timeout_kills_the_children_before_the_shell(self, kill_tree):
+        # envd's kill reaches only the shell, so its children are killed first,
+        # while the shell is still there to find them under.
+        proc = _FakeProcess([], runtime=60, code=0)
+        box = _FakeBox(limit=30, process=proc)
+
+        def children_first(sandbox, script, **kwargs):
+            assert proc.killed is False
+            return SimpleNamespace(exit_code=0)
+
+        kill_tree.side_effect = children_first
+
+        await _run(box, timeout=1)
+
+        kill_tree.assert_awaited_once()
+        script = kill_tree.await_args.args[1]
+        assert "p=100\n" in script
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_children_that_could_not_be_killed_are_reported(self, kill_tree):
+        proc = _FakeProcess([], runtime=60, code=0)
+        box = _FakeBox(limit=30, process=proc)
+        kill_tree.side_effect = RuntimeError("login files changed")
+
+        result = await _run(box, timeout=1)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is True
+        assert result.message == (
+            "Timed out after 1s; the shell was killed, but processes it "
+            "started may still be running."
+        )
         assert proc.killed is True
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -832,3 +892,53 @@ class TestBashExecE2BTimeouts:
         stream_password_store.expire.assert_awaited_once_with(
             owner.stream_key(), 900, gt=True
         )
+
+
+def _children(pid: int) -> list[int]:
+    found = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(") ", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        if int(fields[1]) == pid:
+            found.append(int(stat.parent.name))
+    return found
+
+
+def _alive(pid: int) -> bool:
+    """Running or stopped; a killed child its stopped parent hasn't reaped is not."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1].split()[0]
+    except (OSError, IndexError):
+        return False
+    return state not in ("Z", "X")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+def test_kill_tree_script_kills_a_compound_commands_children():
+    # The reviewer's repro: killing the shell of `sleep 30 && echo done` left
+    # sleep running under a new parent.
+    from .bash_exec import _KILL_TREE_SCRIPT
+
+    shell = subprocess.Popen(["bash", "-c", "sleep 30 && echo done"])
+    try:
+        for _ in range(50):
+            if _children(shell.pid):
+                break
+            time.sleep(0.05)
+        (sleeper,) = _children(shell.pid)
+
+        subprocess.run(
+            ["bash", "-c", _KILL_TREE_SCRIPT.replace("__PID__", str(shell.pid))],
+            check=True,
+            timeout=10,
+        )
+
+        assert not _alive(sleeper)
+        # The shell is stopped, not killed: envd's kill does that, and the
+        # shell must not start `echo done` in between.
+        assert _alive(shell.pid)
+    finally:
+        shell.kill()
+        shell.wait(timeout=10)
