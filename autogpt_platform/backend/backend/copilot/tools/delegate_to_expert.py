@@ -241,7 +241,9 @@ class DelegateToExpertTool(BaseTool):
         )
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
-        return ErrorResponse(message=message, session_id=session.session_id)
+        return ErrorResponse(
+            message=message, session_id=session.session_id
+        ).from_outside()
 
     async def _load_delegate_target(
         self, user_id: str, target_id: str, session: ChatSession

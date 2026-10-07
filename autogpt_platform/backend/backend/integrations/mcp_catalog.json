@@ -376,6 +376,21 @@
     }
   },
   {
+    "name": "mcp_canva",
+    "display_name": "Canva",
+    "description": "Search, create, edit, autofill, and export Canva designs, and manage folders, assets, brand templates, and comments.",
+    "mcp_server": {
+      "server_url": "https://mcp.canva.com/mcp",
+      "documentation_url": "https://www.canva.dev/docs/apps/mcp/",
+      "setup_instructions": "Sign in with your Canva account and approve access. Your existing Canva permissions apply. Autofill, brand templates, and resize tools require a Canva Pro, Business, or Enterprise plan.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "canva"
+    }
+  },
+  {
     "name": "mcp_chargebee",
     "display_name": "Chargebee",
     "description": "Look up and export billing data through your Chargebee site MCP server.",

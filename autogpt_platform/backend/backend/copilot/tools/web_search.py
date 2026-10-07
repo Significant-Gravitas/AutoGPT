@@ -139,7 +139,7 @@ class WebSearchTool(BaseTool):
                 message="Please provide a non-empty search query.",
                 error="missing_query",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         try:
             max_results = int(max_results)
@@ -155,7 +155,7 @@ class WebSearchTool(BaseTool):
                 ),
                 error="web_search_not_configured",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         client = AsyncOpenAI(
             api_key=_chat_config.api_key, base_url=_chat_config.base_url
@@ -181,7 +181,7 @@ class WebSearchTool(BaseTool):
                 message=f"Web search failed: {exc}",
                 error="web_search_failed",
                 session_id=session_id,
-            )
+            ).from_outside(str(exc))
 
         answer = _extract_answer(resp)
         results = _extract_results(resp, limit=max_results)
@@ -208,7 +208,7 @@ class WebSearchTool(BaseTool):
             results=results,
             search_requests=1 if results else 0,
             session_id=session_id,
-        )
+        ).from_outside(answer, results)
 
 
 def _extract_answer(resp: ChatCompletion) -> str:

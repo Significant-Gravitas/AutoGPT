@@ -1,4 +1,6 @@
 import os
+import re
+from html import unescape
 from unittest.mock import MagicMock
 
 import fastapi
@@ -57,21 +59,23 @@ def test_valid_request_sends_and_returns_204(send_mock):
     res = _post()
     assert res.status_code == 204
     send_mock.assert_called_once()
-    to, subject, body = send_mock.call_args.args
+    to, subject, body, text = send_mock.call_args.args
     assert to == "user@example.com"
     assert "Reset your AutoGPT Platform password" == subject
     assert VALID_BODY["url"] in body
+    assert VALID_BODY["url"] in text
 
 
 def test_set_password_email_says_why_it_came_and_when_it_expires(send_mock):
     res = _post({**VALID_BODY, "type": "set_password"})
 
     assert res.status_code == 204
-    _, subject, body = send_mock.call_args.args
+    _, subject, body, text = send_mock.call_args.args
     assert subject == "Set your AutoGPT Platform password"
-    assert "asked to sign up for, or verify" in body
-    assert "set a password and finish signing up" in body
-    assert "expires in 1 hour" in body
+    for part in (body, text):
+        assert "asked to sign up for, or verify" in part
+        assert "set a password and finish signing up" in part
+        assert "expires in 1 hour" in part
 
 
 def test_set_password_email_warns_an_earlier_password_no_longer_works(send_mock):
@@ -80,23 +84,26 @@ def test_set_password_email_warns_an_earlier_password_no_longer_works(send_mock)
     # first link.
     _post({**VALID_BODY, "type": "set_password"})
 
-    _, _, body = send_mock.call_args.args
+    _, _, body, text = send_mock.call_args.args
     assert "the password you chose then no longer works" in body
-    assert "&quot;Forgot password&quot;" in body
+    assert "&#34;Forgot password&#34;" in body
+    assert '"Forgot password"' in text
 
 
 def test_reset_email_carries_no_set_password_note(send_mock):
     _post(VALID_BODY)
 
-    _, _, body = send_mock.call_args.args
+    _, _, body, text = send_mock.call_args.args
     assert "no longer works" not in body
+    assert "no longer works" not in text
 
 
 def test_verify_email_states_its_24_hour_expiry(send_mock):
     _post({**VALID_BODY, "type": "verify_email"})
 
-    _, _, body = send_mock.call_args.args
+    _, _, body, text = send_mock.call_args.args
     assert "expires in 24 hours" in body
+    assert "expires in 24 hours" in text
 
 
 def test_rejects_link_on_untrusted_host(send_mock):
@@ -244,3 +251,56 @@ def test_rejects_malformed_trusted_origin_regex_at_startup():
 
     with pytest.raises(ValueError, match="cannot be empty"):
         Config(trusted_frontend_origins=["regex:"])
+
+
+@pytest.mark.parametrize(
+    "email_type,subject,button",
+    [
+        ("reset_password", "Reset your AutoGPT Platform password", "Reset password"),
+        ("verify_email", "Verify your AutoGPT Platform email", "Verify email"),
+        ("change_email", "Confirm your new AutoGPT Platform email", "Confirm email"),
+        ("set_password", "Set your AutoGPT Platform password", "Set password"),
+    ],
+)
+def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button):
+    url = 'https://platform.agpt.co/verify?token=a&callback="<script>alert(1)</script>'
+    result = _post({**VALID_BODY, "type": email_type, "url": url})
+    assert result.status_code == 204
+    to, actual_subject, body, text = send_mock.call_args.args
+    assert to == VALID_BODY["to"]
+    assert actual_subject == subject
+    assert body.count('bgcolor="#6144DF"') == 1
+    assert 'width="560"' in body
+    assert "font-family:Geist," in body
+    assert 'alt="AutoGPT"' in body
+    assert 'width="100" height="45"' in body
+    assert all(
+        'role="presentation"' in table and 'bgcolor="' in table
+        for table in re.findall(r"<table\b[^>]*>", body)
+    )
+    assert all(
+        src.startswith("https://")
+        for src in re.findall(r'<img[^>]+src="([^"]+)"', body)
+    )
+    assert "<svg" not in body and "data:image" not in body
+    assert "logo-light.png" in body
+    assert "Otto, your personal Head of AI" not in body
+    assert "autogpt-characters/" not in body
+    assert "<script>" not in body
+    assert "&amp;callback=&#34;&lt;script&gt;" in body
+    assert url in text
+    assert [unescape(href) for href in re.findall(r'href="([^"]+)"', body)].count(
+        url
+    ) == 2
+    assert all(
+        "—" not in part and "–" not in part for part in (actual_subject, body, text)
+    )
+    assert button in body and button in text
+    assert "3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK" in body
+    assert "3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK" in text
+    assert "This is a service message about an AutoGPT account." in body
+    assert "This is a service message about an AutoGPT account." in text
+    assert "Unsubscribe" not in body
+    assert "Email preferences" not in body
+    assert "didn't request this" in text
+    assert len(body.encode()) < 60_000

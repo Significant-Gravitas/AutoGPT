@@ -13,16 +13,15 @@ to our own hosts.
 """
 
 import asyncio
-import html
 import logging
 import re
-from typing import Literal
 from urllib.parse import urlparse
 
 from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
 from pydantic import BaseModel, EmailStr
 
+from backend.notifications.auth import AuthEmailType, render_auth_email
 from backend.util.clients import get_notification_manager_client
 from backend.util.settings import Settings
 
@@ -34,48 +33,9 @@ auth_email_router = APIRouter()
 # Module-level so tests can override the exact dependency instance.
 requires_auth_email_service = requires_frontend_service("auth-email:send")
 
-_SUBJECTS: dict[str, str] = {
-    "reset_password": "Reset your AutoGPT Platform password",
-    "verify_email": "Verify your AutoGPT Platform email",
-    "change_email": "Confirm your new AutoGPT Platform email",
-    "set_password": "Set your AutoGPT Platform password",
-}
-
-_ACTIONS: dict[str, str] = {
-    "reset_password": "reset your password",
-    "verify_email": "verify your email",
-    "change_email": "confirm your new email address",
-    "set_password": "set a password and finish signing up",
-}
-
-# Sent for an unverified account when a sign-up or resend can't safely send a
-# verification link, so the email has to say why it came.
-_REASONS: dict[str, str] = {
-    "set_password": (
-        "Someone asked to sign up for, or verify, an AutoGPT Platform account "
-        "with this email address."
-    ),
-}
-
-# What the recipient may not expect from following the link.
-_NOTES: dict[str, str] = {
-    "set_password": (
-        "If you already finished signing up with an earlier link, the password "
-        "you chose then no longer works: set a new one with this link, or use "
-        '"Forgot password" on the login page.'
-    ),
-}
-
-# Must match the links the frontend issues.
-_EXPIRY: dict[str, str] = {
-    "reset_password": "1 hour",
-    "verify_email": "24 hours",
-    "set_password": "1 hour",
-}
-
 
 class AuthEmailRequest(BaseModel):
-    type: Literal["reset_password", "verify_email", "change_email", "set_password"]
+    type: AuthEmailType
     to: EmailStr
     url: str
 
@@ -103,22 +63,7 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
             detail="url must point at a trusted frontend origin.",
         )
 
-    subject = _SUBJECTS[request.type]
-    action = _ACTIONS[request.type]
-    # Escape the (host-validated) URL before embedding it in HTML — a path or
-    # query on an allowed host could still carry markup-breaking characters.
-    safe_url = html.escape(request.url, quote=True)
-    reason = _REASONS.get(request.type)
-    expiry = _EXPIRY.get(request.type)
-    note = _NOTES.get(request.type)
-    body = (
-        (f"<p>{reason}</p>" if reason else "")
-        + f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
-        + f'<p><a href="{safe_url}">{safe_url}</a></p>'
-        + (f"<p>The link expires in {expiry}.</p>" if expiry else "")
-        + (f"<p>{html.escape(note)}</p>" if note else "")
-        + "<p>If you didn't request this, you can safely ignore this email.</p>"
-    )
+    email = render_auth_email(request.type, request.url)
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
@@ -126,8 +71,9 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     await asyncio.to_thread(
         get_notification_manager_client().send_email_or_raise,
         request.to,
-        subject,
-        body,
+        email.subject,
+        email.html,
+        email.text,
     )
     # Don't log the recipient address — auth emails go to arbitrary users and
     # the address is PII we don't want in application logs.
