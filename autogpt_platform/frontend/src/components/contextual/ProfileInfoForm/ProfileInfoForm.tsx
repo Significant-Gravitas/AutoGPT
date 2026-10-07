@@ -7,7 +7,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useProfileInfoForm } from "./useProfileInfoForm";
 

@@ -6,7 +6,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import {
   Sheet,
   SheetContent,

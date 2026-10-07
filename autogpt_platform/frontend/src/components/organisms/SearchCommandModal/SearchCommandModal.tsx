@@ -1,7 +1,7 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";

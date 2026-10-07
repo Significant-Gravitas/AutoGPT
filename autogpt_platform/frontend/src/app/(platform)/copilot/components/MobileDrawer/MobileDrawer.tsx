@@ -1,7 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { Text } from "@/components/atoms/Text/Text";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";

@@ -6,7 +6,7 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { PopoverPortal } from "@radix-ui/react-popover";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import Avatar, {
   AvatarFallback,
   AvatarImage,

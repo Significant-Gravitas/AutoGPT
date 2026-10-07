@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import { BlockMenuSearchBar } from "../BlockMenuSearchBar/BlockMenuSearchBar";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { BlockMenuDefault } from "../BlockMenuDefault/BlockMenuDefault";
 import { BlockMenuSearch } from "../BlockMenuSearch/BlockMenuSearch";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
