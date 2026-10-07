@@ -48,7 +48,8 @@ import { ReasoningCollapse } from "./ReasoningCollapse";
 function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   const { src, alt, ...rest } = props;
 
-  if (!src) return null;
+  // React 19 types allow a Blob here; markdown only ever produces URLs.
+  if (typeof src !== "string" || !src) return null;
 
   if (alt?.startsWith("video:")) {
     return (

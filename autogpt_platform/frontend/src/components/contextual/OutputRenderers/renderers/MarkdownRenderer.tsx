@@ -341,7 +341,7 @@ function renderMarkdown(
           // Image handling
           img: ({ src, alt, ...props }) => {
             // Check if it's a video URL pattern
-            if (src && isVideoUrl(src)) {
+            if (typeof src === "string" && isVideoUrl(src)) {
               return renderVideoEmbed(src);
             }
 
@@ -366,7 +366,10 @@ function renderMarkdown(
             // Check for video URLs in link children
             if (React.Children.count(children) === 1) {
               const child = React.Children.toArray(children)[0];
-              if (React.isValidElement(child) && child.type === "a") {
+              if (
+                React.isValidElement<{ href?: string }>(child) &&
+                child.type === "a"
+              ) {
                 const href = child.props.href;
                 if (href && isVideoUrl(href)) {
                   return renderVideoEmbed(href);

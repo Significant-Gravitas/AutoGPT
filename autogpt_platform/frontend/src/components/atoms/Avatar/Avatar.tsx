@@ -34,7 +34,7 @@ export function Avatar({
   className,
   children,
   ...props
-}: AvatarProps): JSX.Element {
+}: AvatarProps): React.JSX.Element {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [hasImage, setHasImage] = useState<boolean>(false);
 
@@ -96,10 +96,11 @@ export function AvatarImage({
   priority,
   unoptimized,
   ...rest
-}: AvatarImageProps): JSX.Element | null {
+}: AvatarImageProps): React.JSX.Element | null {
   const { setIsLoaded, setHasImage, hasImage } = useAvatarContext();
 
-  const normalizedSrc = typeof src === "string" ? src.trim() : src;
+  // React 19 types allow a Blob for img src; the avatar only takes URLs.
+  const normalizedSrc = typeof src === "string" ? src.trim() : undefined;
 
   useEffect(
     function setHasImageOnSrcChange() {
@@ -189,7 +190,7 @@ export function AvatarFallback({
   square = false,
   accessibleLabel,
   ...props
-}: AvatarFallbackProps): JSX.Element | null {
+}: AvatarFallbackProps): React.JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;

@@ -20,7 +20,9 @@ export function CredentialMentionMarkdown({
 }: Props) {
   const Image = components?.img;
   function renderImage(imageProps: React.JSX.IntrinsicElements["img"]) {
-    const provider = credentialMentionImageProvider(imageProps.src);
+    const provider = credentialMentionImageProvider(
+      typeof imageProps.src === "string" ? imageProps.src : undefined,
+    );
     if (provider !== null)
       return (
         <CredentialMentionBadge

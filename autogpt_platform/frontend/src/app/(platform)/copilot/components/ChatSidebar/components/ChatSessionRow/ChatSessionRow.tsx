@@ -31,7 +31,7 @@ interface Props {
   isNextActive: boolean;
   isEditing: boolean;
   editingTitle: string;
-  renameInputRef: RefObject<HTMLInputElement>;
+  renameInputRef: RefObject<HTMLInputElement | null>;
   isExporting: boolean;
   isDeleting: boolean;
   isPinningEnabled: boolean;

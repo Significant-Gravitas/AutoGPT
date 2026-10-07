@@ -7,7 +7,7 @@ import { RefObject } from "react";
 import { WorkflowsMovedWalkthrough } from "./WorkflowsMovedWalkthrough";
 
 interface Props {
-  titleRef: RefObject<HTMLHeadingElement>;
+  titleRef: RefObject<HTMLHeadingElement | null>;
   onDismiss: () => void;
 }
 

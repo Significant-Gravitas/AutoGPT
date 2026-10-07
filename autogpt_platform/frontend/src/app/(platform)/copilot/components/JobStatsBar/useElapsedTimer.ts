@@ -14,7 +14,9 @@ import { useEffect, useRef, useState } from "react";
 export function useElapsedTimer(isRunning: boolean, anchorIso?: string | null) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTimeRef = useRef<number | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     if (isRunning) {

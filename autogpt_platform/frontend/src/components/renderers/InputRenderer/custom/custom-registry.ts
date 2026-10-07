@@ -13,7 +13,9 @@ import { LlmModelField } from "./LlmModelField/LlmModelField";
 export interface CustomFieldDefinition {
   id: string;
   matcher: (schema: any) => boolean;
-  component: (props: FieldProps<any, RJSFSchema, any>) => JSX.Element | null;
+  component: (
+    props: FieldProps<any, RJSFSchema, any>,
+  ) => React.JSX.Element | null;
 }
 
 /** Field ID for JsonTextField - used to render nested complex types as text input */

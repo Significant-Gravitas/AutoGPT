@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils";
 
 export function BaseTrigger({ children }: PropsWithChildren) {
   const ctx = useDialogCtx();
-  const child = children as React.ReactElement;
+  const child = children as React.ReactElement<{
+    className?: string;
+    onClick?: React.MouseEventHandler;
+  }>;
 
   return React.cloneElement(child, {
     onClick: ctx.handleOpen,

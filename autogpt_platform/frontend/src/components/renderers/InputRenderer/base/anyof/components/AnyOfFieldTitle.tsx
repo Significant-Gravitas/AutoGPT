@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
 interface customFieldProps extends FieldProps {
-  selector: JSX.Element;
+  selector: React.JSX.Element;
 }
 
 export const AnyOfFieldTitle = (props: customFieldProps) => {
