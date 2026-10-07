@@ -101,6 +101,7 @@
 * [GitHub Repo Files](block-integrations/github/repo_files.md)
 * [GitHub Reviews](block-integrations/github/reviews.md)
 * [GitHub Statuses](block-integrations/github/statuses.md)
+* [GitHub Traffic](block-integrations/github/traffic.md)
 * [GitHub Triggers](block-integrations/github/triggers.md)
 * [GitHub Users](block-integrations/github/users.md)
 * [Google Calendar](block-integrations/google/calendar.md)
