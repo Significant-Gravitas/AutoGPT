@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import stream_registry
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
@@ -173,7 +174,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -209,7 +210,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -237,7 +238,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -280,7 +281,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -335,7 +336,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -398,7 +399,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -463,7 +464,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -509,14 +510,20 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_subscribe_returns_none_raises(self, api: BotBackend):
+    @pytest.mark.parametrize(
+        "unavailable",
+        [stream_registry.TurnStreamGone(), stream_registry.TurnStreamTrimmed(None)],
+    )
+    async def test_a_turn_stream_gone_or_trimmed_raises(
+        self, api: BotBackend, unavailable: Exception
+    ):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
-                new=AsyncMock(return_value=None),
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(side_effect=unavailable),
             ),
             patch(
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
