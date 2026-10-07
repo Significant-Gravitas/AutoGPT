@@ -1,6 +1,6 @@
 "use client";
 
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import {
   Form,
   FormControl,

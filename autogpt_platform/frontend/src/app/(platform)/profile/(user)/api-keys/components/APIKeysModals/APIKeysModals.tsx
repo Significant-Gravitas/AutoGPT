@@ -1,7 +1,7 @@
 "use client";
 import { Copy01Icon } from "@hugeicons/core-free-icons";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";

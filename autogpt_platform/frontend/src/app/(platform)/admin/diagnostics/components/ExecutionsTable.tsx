@@ -14,7 +14,7 @@ import {
   TableRow,
   TableCell,
 } from "@/components/__legacy__/ui/table";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   useGetV2ListRunningExecutions,

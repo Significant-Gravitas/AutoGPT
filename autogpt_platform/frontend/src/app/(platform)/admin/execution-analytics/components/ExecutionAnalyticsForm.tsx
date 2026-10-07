@@ -15,7 +15,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
