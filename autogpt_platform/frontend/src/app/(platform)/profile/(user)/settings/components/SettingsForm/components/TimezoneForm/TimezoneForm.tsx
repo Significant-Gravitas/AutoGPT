@@ -1,27 +1,15 @@
 "use client";
 
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/__legacy__/ui/card";
-import {
   Form,
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
-  FormMessage,
 } from "@/components/__legacy__/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
 import { Button } from "@/components/atoms/Button/Button";
+import { Card } from "@/components/atoms/Card/Card";
+import { Select } from "@/components/atoms/Select/Select";
+import { Text } from "@/components/atoms/Text/Text";
 import type { User } from "@/lib/auth/types";
 import * as React from "react";
 import { TIMEZONES } from "./helpers";
@@ -53,45 +41,36 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Timezone</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="timezone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Select your timezone</FormLabel>
+      <Text variant="h5" as="h3" className="mb-6">
+        Timezone
+      </Text>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <FormField
+            control={form.control}
+            name="timezone"
+            render={({ field, fieldState }) => (
+              <FormItem>
+                <FormControl>
                   <Select
+                    id="timezone"
+                    label="Select your timezone"
+                    labelVariant="body-medium"
+                    placeholder="Select a timezone"
+                    value={field.value}
                     onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a timezone" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {TIMEZONES.map((tz) => (
-                        <SelectItem key={tz.value} value={tz.value}>
-                          {tz.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" disabled={isLoading} size="small">
-              {isLoading ? "Saving..." : "Save timezone"}
-            </Button>
-          </form>
-        </Form>
-      </CardContent>
+                    options={TIMEZONES}
+                    error={fieldState.error?.message}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <Button type="submit" disabled={isLoading} size="small">
+            {isLoading ? "Saving..." : "Save timezone"}
+          </Button>
+        </form>
+      </Form>
     </Card>
   );
 }

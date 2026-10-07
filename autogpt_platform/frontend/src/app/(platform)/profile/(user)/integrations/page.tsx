@@ -1,7 +1,5 @@
 "use client";
 
-import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
-import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Table,
   TableBody,
@@ -11,16 +9,17 @@ import {
   TableRow,
 } from "@/components/__legacy__/ui/table";
 import { Button } from "@/components/atoms/Button/Button";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { providerIcons } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Key01Icon } from "@hugeicons/core-free-icons";
+import { Delete02Icon, Key01Icon, UserIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function UserIntegrationsPage() {
@@ -129,7 +128,11 @@ export default function UserIntegrationsPage() {
   }, [isUserLoading, user, router]);
 
   if (isUserLoading) {
-    return <LoadingBox className="h-[80vh]" />;
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <LoadingSpinner size="large" className="size-16" />
+      </div>
+    );
   }
 
   const allCredentials = providers
@@ -151,11 +154,11 @@ export default function UserIntegrationsPage() {
               providerName: provider.providerName,
               providerIcon: providerIcons[provider.provider] || Key01Icon,
               TypeIcon: {
-                oauth2: IconUser,
-                api_key: IconKey,
-                user_password: IconKey,
-                host_scoped: IconKey,
-                device_code: IconUser,
+                oauth2: UserIcon,
+                api_key: Key01Icon,
+                user_password: Key01Icon,
+                host_scoped: Key01Icon,
+                device_code: UserIcon,
               }[credentials.type],
             })),
         )
@@ -163,7 +166,9 @@ export default function UserIntegrationsPage() {
 
   return (
     <div className="mx-auto max-w-3xl md:py-8">
-      <h2 className="mb-4 text-lg">Connections & Credentials</h2>
+      <Text variant="h5" as="h2" className="mb-4">
+        Connections & Credentials
+      </Text>
       <Table>
         <TableHeader>
           <TableRow>
@@ -183,7 +188,7 @@ export default function UserIntegrationsPage() {
               </TableCell>
               <TableCell>
                 <div className="flex h-full items-center space-x-1.5">
-                  <cred.TypeIcon />
+                  <Icon icon={cred.TypeIcon} size={16} />
                   <span>{cred.title || cred.username}</span>
                 </div>
                 <small className="text-muted-foreground">
@@ -204,8 +209,9 @@ export default function UserIntegrationsPage() {
                   <Button
                     variant="destructive"
                     onClick={() => removeCredentials(cred.provider, cred.id)}
+                    leftIcon={<Icon icon={Delete02Icon} size={16} />}
                   >
-                    <Trash2Icon className="mr-1.5 size-4" /> Delete
+                    Delete
                   </Button>
                 )}
               </TableCell>
@@ -226,9 +232,9 @@ export default function UserIntegrationsPage() {
         styling={{ maxWidth: "32rem" }}
       >
         <Dialog.Content>
-          <p className="text-sm text-zinc-600">
+          <Text variant="body" tone="secondary" unmask={false}>
             {confirmationDialogState.open && confirmationDialogState.message}
-          </p>
+          </Text>
           <Dialog.Footer>
             <Button
               variant="secondary"

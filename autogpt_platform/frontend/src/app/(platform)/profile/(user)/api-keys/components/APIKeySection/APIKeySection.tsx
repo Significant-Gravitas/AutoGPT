@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, MoreVertical } from "lucide-react";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/__legacy__/ui/button";
 import {
   Table,
@@ -10,13 +10,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/__legacy__/ui/dropdown-menu";
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useAPISection } from "./useAPISection";
 
 export function APIKeysSection() {
@@ -26,7 +28,7 @@ export function APIKeysSection() {
     <>
       {isLoading ? (
         <div className="flex justify-center p-4">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <LoadingSpinner size="medium" />
         </div>
       ) : (
         apiKeys &&
@@ -53,14 +55,7 @@ export function APIKeysSection() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={
-                        key.status === "ACTIVE" ? "default" : "destructive"
-                      }
-                      className={
-                        key.status === "ACTIVE"
-                          ? "border-green-600 bg-green-100 text-green-800"
-                          : "border-red-600 bg-red-100 text-red-800"
-                      }
+                      variant={key.status === "ACTIVE" ? "success" : "error"}
                     >
                       {key.status}
                     </Badge>
@@ -81,7 +76,7 @@ export function APIKeysSection() {
                           variant="ghost"
                           size="sm"
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <Icon icon={MoreVerticalIcon} size={16} />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
