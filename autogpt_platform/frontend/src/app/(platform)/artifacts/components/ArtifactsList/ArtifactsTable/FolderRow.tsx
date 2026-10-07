@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -94,8 +95,10 @@ export function FolderRow({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        unmask={false}
         className={NAME_BUTTON_CLASS}
         data-testid="workspace-folder"
       >
@@ -115,7 +118,7 @@ export function FolderRow({
         >
           {name}
         </Text>
-      </button>
+      </Button>
       <Text
         variant="body"
         as="span"

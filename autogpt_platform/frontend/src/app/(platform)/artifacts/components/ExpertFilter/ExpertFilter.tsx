@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
@@ -81,13 +82,15 @@ function ExpertTab({
 }: ExpertTabProps) {
   const hasAvatar = avatarUrl !== undefined;
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      unmask={!hasAvatar}
       role="tab"
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
+        "relative flex h-auto min-w-0 max-w-48 items-center gap-2 rounded-full border-0 py-1.5 text-sm font-medium outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400",
         hasAvatar ? "pl-1.5 pr-3.5" : "px-4",
         active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
       )}
@@ -107,6 +110,6 @@ function ExpertTab({
         </span>
       ) : null}
       <span className="relative z-10 truncate">{label}</span>
-    </button>
+    </Button>
   );
 }

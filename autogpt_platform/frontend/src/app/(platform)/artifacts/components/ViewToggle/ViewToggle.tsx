@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { GridViewIcon, ListViewIcon } from "@hugeicons/core-free-icons";
@@ -33,22 +34,25 @@ export function ViewToggle({ value, onChange }: Props) {
       {OPTIONS.map((option) => {
         const active = option.value === value;
         return (
-          <button
+          <Button
             key={option.value}
             type="button"
+            variant="ghost"
+            size="icon-sm"
+            withTooltip={false}
             aria-label={option.label}
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
+              "size-9 rounded-full border-0 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
               active
-                ? "bg-zinc-100 text-zinc-900"
+                ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-100"
                 : "text-zinc-500 hover:bg-zinc-100/70 hover:text-zinc-900",
             )}
             data-testid={`artifacts-view-${option.value}`}
           >
             <Icon icon={option.icon} size={18} />
-          </button>
+          </Button>
         );
       })}
     </div>

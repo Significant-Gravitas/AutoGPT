@@ -1,6 +1,6 @@
 "use client";
 
-import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
@@ -8,7 +8,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { cn } from "@/lib/utils";
 import {
   ArrowDown01Icon,
   FolderAddIcon,
@@ -41,13 +40,12 @@ export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="small"
             disabled={isUploading}
-            className={cn(
-              extendedButtonVariants({ variant: "primary", size: "small" }),
-              "min-w-0 gap-1.5 pl-4 pr-3",
-            )}
+            className="min-w-0 gap-1.5 pl-4 pr-3"
             data-testid="artifacts-new-menu"
           >
             {isUploading ? (
@@ -55,7 +53,7 @@ export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
             ) : null}
             {isUploading ? "Uploading…" : "New"}
             <Icon icon={ArrowDown01Icon} size={16} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           <DropdownMenuItem

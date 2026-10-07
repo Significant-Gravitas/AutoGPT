@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
@@ -63,13 +64,14 @@ interface OriginTabProps {
 
 function OriginTab({ option, active, onClick }: OriginTabProps) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       role="tab"
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative rounded-full px-4 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
+        "relative h-auto min-w-0 rounded-full border-0 px-4 py-2 text-sm font-medium outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400",
         active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
       )}
       data-testid={`artifacts-origin-filter-${option.value}`}
@@ -82,6 +84,6 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
         />
       ) : null}
       <span className="relative z-10">{option.label}</span>
-    </button>
+    </Button>
   );
 }
