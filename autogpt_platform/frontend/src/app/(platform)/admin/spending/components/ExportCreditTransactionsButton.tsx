@@ -2,14 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
+import { Select } from "@/components/atoms/Select/Select";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getV2ExportCreditTransactions } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
@@ -25,6 +20,7 @@ import {
 } from "../helpers";
 import { Download04Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type TypeFilter = "ALL" | CreditTransactionType;
 
@@ -141,67 +137,57 @@ export function ExportCreditTransactionsButton() {
         <div className="flex flex-col gap-4">
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="credit-export-start" className="text-sm">
-                Start date (UTC)
-              </label>
-              <input
+              <Input
                 id="credit-export-start"
+                label="Start date (UTC)"
+                labelVariant="body"
+                size="small"
+                wrapperClassName="mb-0"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
             </div>
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="credit-export-end" className="text-sm">
-                End date (UTC)
-              </label>
-              <input
+              <Input
                 id="credit-export-end"
+                label="End date (UTC)"
+                labelVariant="body"
+                size="small"
+                wrapperClassName="mb-0"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
             </div>
           </div>
+          <Select
+            id="credit-export-type"
+            label="Transaction type"
+            labelVariant="body"
+            size="small"
+            wrapperClassName="mb-0"
+            value={typeFilter}
+            onValueChange={(v) => setTypeFilter(v as TypeFilter)}
+            options={TYPE_OPTIONS}
+          />
           <div className="flex flex-col gap-1">
-            <label className="text-sm" htmlFor="credit-export-type">
-              Transaction type
-            </label>
-            <Select
-              value={typeFilter}
-              onValueChange={(v) => setTypeFilter(v as TypeFilter)}
-            >
-              <SelectTrigger id="credit-export-type" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm" htmlFor="credit-export-user-id">
-              User ID (optional)
-            </label>
-            <input
+            <Input
               id="credit-export-user-id"
+              label="User ID (optional)"
+              labelVariant="body"
+              size="small"
+              wrapperClassName="mb-0"
               type="text"
               placeholder="Filter by a single user ID"
-              className="rounded border px-3 py-1.5 text-sm"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
             />
           </div>
-          <p className="text-xs text-muted-foreground">
+          <Text variant="small" tone="muted">
             Window is capped at 90 days and 100k rows. Narrow the range if the
             backend returns a 400.
-          </p>
+          </Text>
         </div>
         <Dialog.Footer>
           <Button

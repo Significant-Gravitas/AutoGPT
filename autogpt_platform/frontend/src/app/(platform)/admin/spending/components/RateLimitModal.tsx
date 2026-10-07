@@ -2,13 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/__legacy__/ui/dialog";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {
@@ -104,17 +99,18 @@ export function RateLimitModal({
         Rate Limits
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Rate Limits</DialogTitle>
-            <DialogDescription>
-              CoPilot rate limits for {userEmail || userId}
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog
+        title="Rate Limits"
+        variant="compact"
+        controlled={{ isOpen: open, set: setOpen }}
+      >
+        <Dialog.Content>
+          <Text variant="body" tone="muted" className="mb-4">
+            CoPilot rate limits for {userEmail || userId}
+          </Text>
 
           {isLoading && (
-            <div className="py-8 text-center text-gray-500">
+            <div className="py-8 text-center text-zinc-500">
               Loading rate limits...
             </div>
           )}
@@ -128,11 +124,11 @@ export function RateLimitModal({
           )}
 
           {!isLoading && !rateLimitData && (
-            <div className="py-8 text-center text-gray-500">
+            <div className="py-8 text-center text-zinc-500">
               No rate limit data available for this user.
             </div>
           )}
-        </DialogContent>
+        </Dialog.Content>
       </Dialog>
     </>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getV2ExportCopilotWeeklyUsageVsRateLimit } from "@/app/api/__generated__/endpoints/admin/admin";
@@ -17,6 +18,7 @@ import {
 } from "../helpers";
 import { ChartLineIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function ExportCopilotUsageButton() {
   const { toast } = useToast();
@@ -112,39 +114,39 @@ export function ExportCopilotUsageButton() {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
+          <Text variant="body" tone="muted">
             Aggregates copilot:* spend by user and ISO week and joins each row
             against the user&apos;s tier-derived weekly limit.
-          </p>
+          </Text>
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="copilot-export-start" className="text-sm">
-                Start date (UTC)
-              </label>
-              <input
+              <Input
                 id="copilot-export-start"
+                label="Start date (UTC)"
+                labelVariant="body"
+                size="small"
+                wrapperClassName="mb-0"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
             </div>
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="copilot-export-end" className="text-sm">
-                End date (UTC)
-              </label>
-              <input
+              <Input
                 id="copilot-export-end"
+                label="End date (UTC)"
+                labelVariant="body"
+                size="small"
+                wrapperClassName="mb-0"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <Text variant="small" tone="muted">
             Window is capped at 90 days and 100k rows.
-          </p>
+          </Text>
         </div>
         <Dialog.Footer>
           <Button

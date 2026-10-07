@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { AdminUserGrantHistory } from "./components/AdminUserGrantHistory";
 import { ExportCopilotUsageButton } from "./components/ExportCopilotUsageButton";
 import { ExportCreditTransactionsButton } from "./components/ExportCreditTransactionsButton";
+import { Text } from "@/components/atoms/Text/Text";
 
 type SpendingDashboardPageSearchParams = {
   page?: string;
@@ -25,8 +26,12 @@ function SpendingDashboard({
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">User Spending</h1>
-            <p className="text-gray-500">Manage user spending balances</p>
+            <Text variant="h3" as="h1">
+              User Spending
+            </Text>
+            <Text variant="large" tone="muted">
+              Manage user spending balances
+            </Text>
           </div>
           <div className="flex items-center gap-2">
             <ExportCreditTransactionsButton />

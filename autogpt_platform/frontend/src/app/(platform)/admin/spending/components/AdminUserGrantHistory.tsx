@@ -85,7 +85,7 @@ export async function AdminUserGrantHistory({
 
       <div className="rounded-md border bg-white">
         <Table>
-          <TableHeader className="bg-gray-50">
+          <TableHeader className="bg-zinc-50">
             <TableRow>
               <TableHead className="font-medium">User</TableHead>
               <TableHead className="font-medium">Type</TableHead>
@@ -104,7 +104,7 @@ export async function AdminUserGrantHistory({
               <TableRow>
                 <TableCell
                   colSpan={9}
-                  className="py-10 text-center text-gray-500"
+                  className="py-10 text-center text-zinc-500"
                 >
                   No transactions found
                 </TableCell>
@@ -113,7 +113,7 @@ export async function AdminUserGrantHistory({
               history.map((transaction) => (
                 <TableRow
                   key={`${transaction.user_id}-${transaction.transaction_time}`}
-                  className="hover:bg-gray-50"
+                  className="hover:bg-zinc-50"
                 >
                   <TableCell className="font-medium">
                     {transaction.user_email}
@@ -122,11 +122,11 @@ export async function AdminUserGrantHistory({
                   <TableCell>
                     {formatType(transaction.transaction_type)}
                   </TableCell>
-                  <TableCell className="text-gray-600">
+                  <TableCell className="text-zinc-600">
                     {formatDate(transaction.transaction_time)}
                   </TableCell>
                   <TableCell>{transaction.reason}</TableCell>
-                  <TableCell className="text-gray-600">
+                  <TableCell className="text-zinc-600">
                     {transaction.admin_email}
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
