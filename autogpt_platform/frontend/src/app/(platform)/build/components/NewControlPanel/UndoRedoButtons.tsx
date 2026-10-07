@@ -57,7 +57,7 @@ export const UndoRedoButtons = () => {
         </TooltipTrigger>
         <TooltipContent side="right">Undo</TooltipContent>
       </Tooltip>
-      <Separator className="text-[#E1E1E1]" />
+      <Separator className="text-zinc-200" />
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton

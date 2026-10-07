@@ -432,7 +432,7 @@ export function MCPToolDialog({
               <Button
                 variant="link"
                 onClick={() => setShowManualToken(true)}
-                className="self-center text-xs font-normal text-zinc-500 hover:text-zinc-700"
+                className="h-auto min-w-0 p-0 text-xs font-normal text-zinc-500 hover:text-zinc-700"
               >
                 or enter an API credential manually
               </Button>

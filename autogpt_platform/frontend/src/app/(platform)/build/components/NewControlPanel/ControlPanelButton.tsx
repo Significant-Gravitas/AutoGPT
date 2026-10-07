@@ -26,7 +26,7 @@ export const ControlPanelButton: React.FC<Props> = ({
       className={cn(
         "flex w-auto items-center justify-center whitespace-normal bg-white px-4 py-4 text-zinc-800 shadow-none hover:cursor-pointer hover:bg-zinc-100 hover:text-zinc-950 focus:ring-0",
         selected &&
-          "bg-violet-50 text-violet-700 hover:cursor-default hover:bg-violet-50 hover:text-violet-700 active:bg-violet-50 active:text-violet-700",
+          "bg-purple-50 text-purple-700 hover:cursor-default hover:bg-purple-50 hover:text-purple-700 active:bg-purple-50 active:text-purple-700",
         disabled && "cursor-not-allowed opacity-50 hover:cursor-not-allowed",
         className,
       )}

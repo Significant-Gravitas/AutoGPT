@@ -1,10 +1,10 @@
-import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
+import { Card } from "@/components/atoms/Card/Card";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import {
@@ -54,10 +54,10 @@ export const NewSaveControl = () => {
         data-id="save-control-popover-content"
         className="w-96 max-w-[400px] rounded-xlarge"
       >
-        <Card className="border-none dark:bg-slate-900">
+        <Card className="rounded-2xl p-px text-zinc-900 shadow-none">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
-              <CardContent className="p-0">
+              <div>
                 <div className="space-y-3">
                   <FormField
                     control={form.control}
@@ -71,7 +71,7 @@ export const NewSaveControl = () => {
                         data-id="save-control-name-input"
                         data-testid="save-control-name-input"
                         maxLength={100}
-                        wrapperClassName="!mb-0"
+                        wrapperClassName="mb-0"
                         {...field}
                       />
                     )}
@@ -89,7 +89,7 @@ export const NewSaveControl = () => {
                         data-id="save-control-description-input"
                         data-testid="save-control-description-input"
                         maxLength={500}
-                        wrapperClassName="!mb-0"
+                        wrapperClassName="mb-0"
                         {...field}
                       />
                     )}
@@ -105,18 +105,18 @@ export const NewSaveControl = () => {
                       data-testid="save-control-version-output"
                       data-tutorial-id="save-control-version-output"
                       label="Version"
-                      wrapperClassName="!mb-0"
+                      wrapperClassName="mb-0"
                     />
                   )}
                 </div>
-              </CardContent>
+              </div>
               {/* TODO: Add a cron schedule button */}
-              <CardFooter className="mt-3 flex flex-col items-stretch gap-2 p-0">
+              <div className="mt-3 flex flex-col items-stretch gap-2">
                 <Button
                   variant="primary"
                   type="submit"
                   size="small"
-                  className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
+                  className="w-full"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
                   disabled={isSaving}
@@ -124,7 +124,7 @@ export const NewSaveControl = () => {
                 >
                   Save Agent
                 </Button>
-              </CardFooter>
+              </div>
             </form>
           </Form>
         </Card>

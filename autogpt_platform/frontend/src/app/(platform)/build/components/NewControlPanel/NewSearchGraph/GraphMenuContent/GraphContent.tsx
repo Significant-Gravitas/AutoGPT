@@ -39,7 +39,7 @@ export function GraphSearchContent({
         onKeyDown={handleKeyDown}
       />
 
-      <Separator className="h-[1px] w-full text-zinc-300" />
+      <Separator className="h-px w-full text-zinc-300" />
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
@@ -83,7 +83,7 @@ export function GraphSearchContent({
                     aria-selected={index === selectedIndex}
                     tabIndex={index === selectedIndex ? 0 : -1}
                     className={cn(
-                      "flex h-16 w-full cursor-pointer items-center gap-3 rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem]",
+                      "flex h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-zinc-50 px-3.5 py-2.5",
                       index === selectedIndex
                         ? "bg-zinc-100 ring-1 ring-zinc-300"
                         : "hover:bg-zinc-100",
@@ -97,7 +97,7 @@ export function GraphSearchContent({
                           {nodeTitle}
                         </span>
                         {hasCustomName && (
-                          <span className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500">
+                          <span className="shrink-0 rounded-xl bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500">
                             {nodeType}
                           </span>
                         )}
@@ -108,7 +108,7 @@ export function GraphSearchContent({
                         </span>
                       )}
                     </div>
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.5rem] bg-zinc-700">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-700">
                       <Icon
                         icon={CornerUpRightIcon}
                         className="h-4 w-4 text-zinc-50"
