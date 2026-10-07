@@ -52,7 +52,7 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
   const exceeded = isOverBudget(stage);
 
   return (
-    <div className="flex flex-col gap-2 rounded-large border border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
           <Text variant="body-medium">{stage.label}</Text>

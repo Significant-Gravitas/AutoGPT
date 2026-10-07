@@ -52,7 +52,7 @@ export function ToggleChip({
           onClick={handleClick}
           aria-label={ariaLabel}
           className={cn(
-            "group inline-flex h-7 items-center justify-center gap-1 rounded-full px-2.5 text-xs font-medium text-zinc-950 transition-colors hover:bg-white",
+            "group inline-flex h-7 items-center justify-center gap-1 rounded-full px-2.5 text-xs font-medium text-black transition-colors hover:bg-white",
             locked && "cursor-not-allowed opacity-70 hover:bg-transparent",
             className,
           )}

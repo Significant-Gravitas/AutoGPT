@@ -42,14 +42,14 @@ export const ContentRenderer: React.FC<{
     !shortContent
   ) {
     return (
-      <div className="overflow-x-auto *:rounded-xlarge *:text-xs! [&_pre]:wrap-break-word [&_pre]:whitespace-pre-wrap">
+      <div className="overflow-x-auto *:rounded-2xl *:text-xs! [&_pre]:wrap-break-word [&_pre]:whitespace-pre-wrap">
         {renderer?.render(value, metadata)}
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto *:rounded-xlarge *:text-xs!">
+    <div className="overflow-x-auto *:rounded-2xl *:text-xs!">
       <TextRenderer value={value} truncateLengthLimit={200} />
     </div>
   );

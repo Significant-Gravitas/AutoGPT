@@ -216,7 +216,7 @@ export function PendingReviewsList({
   }
 
   return (
-    <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
+    <div className="space-y-7 rounded-xl border border-yellow-100 bg-yellow-50 p-6">
       <div className="space-y-6">
         <div className="flex items-start gap-2">
           <Icon
@@ -226,12 +226,12 @@ export function PendingReviewsList({
           />
           <Text
             variant="large-semibold"
-            className="overflow-hidden text-ellipsis text-textBlack"
+            className="overflow-hidden text-ellipsis text-zinc-900"
           >
             Your review is needed
           </Text>
         </div>
-        <Text variant="large" className="text-textGrey">
+        <Text variant="large" className="text-zinc-700">
           {reviews.every((review) => isGateReview(review.node_id))
             ? "Otto is waiting for your approval before the action below."
             : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
@@ -265,29 +265,29 @@ export function PendingReviewsList({
                   <Icon
                     icon={ArrowRight01Icon}
                     size={20}
-                    className="text-gray-600"
+                    className="text-zinc-600"
                   />
                 ) : (
                   <Icon
                     icon={ArrowDown01Icon}
                     size={20}
-                    className="text-gray-600"
+                    className="text-zinc-600"
                   />
                 )}
                 <div className="flex-1">
-                  <Text variant="body" className="font-semibold text-gray-900">
+                  <Text variant="body" className="font-semibold text-zinc-900">
                     {reviewTitle}
                   </Text>
                   {(workflowName ||
                     (!firstReview?.action && !isGateReview(nodeId))) && (
-                    <Text variant="small" className="text-gray-500">
+                    <Text variant="small" className="text-zinc-500">
                       {workflowName
                         ? `In workflow “${workflowName}”`
                         : `Node #${getShortenedNodeId(nodeId)}`}
                     </Text>
                   )}
                 </div>
-                <span className="text-xs text-gray-600">
+                <span className="text-xs text-zinc-600">
                   {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
                 </span>
               </button>
@@ -313,7 +313,7 @@ export function PendingReviewsList({
                           handleAutoApproveFutureToggle(nodeId, enabled)
                         }
                       />
-                      <Text variant="small" className="text-gray-700">
+                      <Text variant="small" className="text-zinc-700">
                         Auto-approve future executions of this node
                       </Text>
                     </div>
@@ -350,7 +350,7 @@ export function PendingReviewsList({
         })}
       </div>
 
-      <Text variant="small" className="text-textGrey">
+      <Text variant="small" className="text-zinc-700">
         Each decision applies only to the reviews shown above it. You can turn
         auto-approval on or off using the toggle for each node.
       </Text>

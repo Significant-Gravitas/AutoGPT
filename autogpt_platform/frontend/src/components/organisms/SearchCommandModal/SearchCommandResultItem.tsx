@@ -67,7 +67,7 @@ export function SearchCommandResultItem({
           <div
             className={cn(
               "truncate text-sm font-normal transition-colors duration-150",
-              isHighlighted ? "text-zinc-950" : "text-zinc-800",
+              isHighlighted ? "text-black" : "text-zinc-800",
             )}
           >
             {highlightMatch(item.title, query).map((part, partIndex) => (

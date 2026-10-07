@@ -108,7 +108,7 @@ const components: Components = {
   ),
   td: ({ children }) => <td className="py-1.5 pr-4 align-top">{children}</td>,
   code: ({ children }) => (
-    <code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs break-words">
+    <code className="rounded-sm bg-zinc-100 px-1 py-0.5 font-mono text-xs wrap-break-word">
       {children}
     </code>
   ),

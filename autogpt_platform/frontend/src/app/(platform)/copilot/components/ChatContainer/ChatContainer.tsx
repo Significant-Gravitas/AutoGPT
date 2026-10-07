@@ -406,7 +406,7 @@ export const ChatContainer = ({
                         <div
                           aria-hidden="true"
                           data-testid="usage-limit-backdrop"
-                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-4xl bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] mask-[linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)] backdrop-blur-lg"
+                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] mask-[linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)] backdrop-blur-lg"
                         >
                           <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
                           <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />

@@ -138,7 +138,7 @@ export function AgentInfoStep({
                   <Text
                     variant="body-medium"
                     as="h3"
-                    className="text-yellow-950"
+                    className="text-yellow-900"
                   >
                     Update note
                   </Text>

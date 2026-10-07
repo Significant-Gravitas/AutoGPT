@@ -11,7 +11,7 @@ export function RunDetailCard({ children, className, title }: Props) {
   return (
     <div
       className={cn(
-        "relative mx-4 flex min-h-20 flex-col gap-4 rounded-medium border border-zinc-100 bg-white p-6",
+        "relative mx-4 flex min-h-20 flex-col gap-4 rounded-lg border border-zinc-100 bg-white p-6",
         className,
       )}
     >

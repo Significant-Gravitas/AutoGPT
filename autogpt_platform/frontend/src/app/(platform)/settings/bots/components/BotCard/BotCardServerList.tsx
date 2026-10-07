@@ -30,7 +30,7 @@ export function BotCardServerList({
 }: Props) {
   if (serverLinks.length === 0) {
     return (
-      <div className="rounded-large border border-dashed border-zinc-200 px-4 py-3">
+      <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-3">
         <Text variant="small" as="span" className="text-zinc-500">
           No {serverNoun}s linked yet. Use &quot;Add bot to {platformName}&quot;{" "}
           to invite the bot — already added it? Run <code>/setup</code> there to
@@ -75,7 +75,7 @@ function BotCardServerRow({
   const displayLabel = link.server_name ?? link.platform_server_id;
 
   return (
-    <li className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
+    <li className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <Icon
           icon={UserMultipleIcon}

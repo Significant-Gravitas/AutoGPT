@@ -101,7 +101,7 @@ export function PendingReviewCard({
     } else if (typeof data === "boolean") {
       return (
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-zinc-500">
             {data ? "Enabled" : "Disabled"}
           </span>
           <Switch
@@ -142,14 +142,14 @@ export function PendingReviewCard({
   return (
     <div className="space-y-4">
       {nodeId && (
-        <Text variant="small" className="text-gray-500">
+        <Text variant="small" className="text-zinc-500">
           Node #{getShortenedNodeId(nodeId)}
         </Text>
       )}
 
       <div className="space-y-3">
         {instructions && (
-          <Text variant="body" className="font-semibold text-gray-900">
+          <Text variant="body" className="font-semibold text-zinc-900">
             {instructions}
           </Text>
         )}
@@ -159,8 +159,8 @@ export function PendingReviewCard({
         ) : isDataEditable && !autoApproveFuture ? (
           renderDataInput()
         ) : (
-          <div className="rounded-lg border border-gray-200 bg-white p-3">
-            <Text variant="small" className="text-gray-600">
+          <div className="rounded-lg border border-zinc-200 bg-white p-3">
+            <Text variant="small" className="text-zinc-600">
               {JSON.stringify(currentData, null, 2)}
             </Text>
           </div>
@@ -177,12 +177,12 @@ export function PendingReviewCard({
                 onAutoApproveFutureChange(review.node_exec_id, enabled)
               }
             />
-            <Text variant="small" className="text-gray-700">
+            <Text variant="small" className="text-zinc-700">
               Auto-approve future executions of this block
             </Text>
           </div>
           {autoApproveFuture && (
-            <Text variant="small" className="pl-11 text-gray-500">
+            <Text variant="small" className="pl-11 text-zinc-500">
               Original data will be used for this and all future reviews from
               this block.
             </Text>

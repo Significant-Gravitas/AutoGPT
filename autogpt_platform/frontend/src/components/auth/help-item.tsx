@@ -20,7 +20,7 @@ export function HelpItem({
 
   return (
     <div className="p-4">
-      <Text variant="body-medium" as="h3" className="mb-1 text-slate-950">
+      <Text variant="body-medium" as="h3" className="mb-1 text-black">
         {title}
       </Text>
       <Text variant="body" className="text-slate-600">
@@ -28,7 +28,7 @@ export function HelpItem({
         {linkText && (
           <Link
             href={href}
-            className="inline-flex items-center font-medium text-slate-950 hover:text-slate-700"
+            className="inline-flex items-center font-medium text-black hover:text-slate-700"
           >
             {linkText}
             {external && (

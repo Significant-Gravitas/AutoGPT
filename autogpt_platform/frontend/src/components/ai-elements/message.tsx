@@ -47,8 +47,8 @@ export const MessageContent = ({
     className={cn(
       "is-user:dark flex w-full max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm",
       "group-[.is-user]:w-fit",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-zinc-950",
-      "group-[.is-assistant]:text-zinc-950",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-black",
+      "group-[.is-assistant]:text-black",
       className,
     )}
     {...props}

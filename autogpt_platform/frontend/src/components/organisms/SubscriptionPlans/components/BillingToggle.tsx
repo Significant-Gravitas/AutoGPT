@@ -38,7 +38,7 @@ export function BillingToggle({
         >
           {cycle === "monthly" ? "Monthly billing" : "Yearly billing"}
           {cycle === "yearly" && (
-            <span className="text-xs text-emerald-600">Save 15%</span>
+            <span className="text-xs text-green-600">Save 15%</span>
           )}
         </Button>
       ))}

@@ -25,7 +25,7 @@ export const GraphLoadingBox = ({
 
   return (
     <div className="absolute top-1/2 left-1/2 z-99 -translate-x-1/2 -translate-y-1/2">
-      <div className="flex flex-col items-center gap-4 rounded-xlarge border border-zinc-200 bg-white p-8 shadow-lg">
+      <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-8 shadow-lg">
         <div className="relative h-12 w-12">
           <div className="absolute inset-0 animate-spin rounded-full border-4 border-zinc-100 border-t-zinc-400"></div>
         </div>

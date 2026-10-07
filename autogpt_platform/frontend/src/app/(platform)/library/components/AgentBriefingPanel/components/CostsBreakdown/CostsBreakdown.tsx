@@ -164,7 +164,7 @@ function StatRow({ items }: { items: StatItem[] }) {
       {items.map((item) => (
         <div
           key={item.label}
-          className="flex flex-col gap-0.5 rounded-medium border border-zinc-100 bg-white p-3"
+          className="flex flex-col gap-0.5 rounded-lg border border-zinc-100 bg-white p-3"
         >
           <Text variant="small" tone="muted">
             {item.label}

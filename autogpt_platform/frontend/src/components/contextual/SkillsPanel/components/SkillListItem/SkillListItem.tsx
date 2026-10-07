@@ -46,12 +46,12 @@ export function SkillListItem({ skill, isNew = false }: Props) {
 
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-start sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 sm:flex-row sm:items-start sm:justify-between"
       data-testid="skill-row"
       data-skill-name={skill.name}
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-large border border-slate-50 bg-purple-50">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-50 bg-purple-50">
           <Icon icon={BookOpen01Icon} size={18} className="text-purple-700" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
@@ -158,7 +158,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
             ) : (
               <>
                 <pre
-                  className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm whitespace-pre-wrap text-zinc-800"
+                  className="max-h-[60vh] overflow-auto rounded-lg bg-zinc-50 p-3 text-sm whitespace-pre-wrap text-zinc-800"
                   data-testid="skill-view-body"
                 >
                   {detail?.body || "(no body)"}

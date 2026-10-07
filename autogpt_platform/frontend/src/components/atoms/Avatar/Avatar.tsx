@@ -223,7 +223,7 @@ export function AvatarFallback({
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
         // svg stretched to fill so the marble always matches the avatar size
-        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
+        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-zinc-600",
         !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,
       )}

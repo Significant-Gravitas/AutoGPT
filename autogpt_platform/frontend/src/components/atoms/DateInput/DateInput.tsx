@@ -108,7 +108,7 @@ export const DateInput = ({
   return (
     <div className="flex flex-col gap-1">
       {label && !hideLabel && (
-        <label htmlFor={id} className="text-sm font-medium text-gray-700">
+        <label htmlFor={id} className="text-sm font-medium text-zinc-700">
           {label}
         </label>
       )}

@@ -14,7 +14,7 @@ export function BotsList() {
   if (isLoading) {
     return (
       <div className="flex w-full flex-col gap-3 px-4">
-        <Skeleton className="h-40 rounded-large" />
+        <Skeleton className="h-40 rounded-xl" />
       </div>
     );
   }

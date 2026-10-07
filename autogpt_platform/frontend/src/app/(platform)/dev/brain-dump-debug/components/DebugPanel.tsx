@@ -19,7 +19,7 @@ export function DebugPanel({
   children,
 }: Props) {
   return (
-    <section className="rounded-2xlarge border border-zinc-200 bg-white p-8">
+    <section className="rounded-3xl border border-zinc-200 bg-white p-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <Icon
@@ -50,7 +50,7 @@ interface FieldProps {
 
 export function DebugField({ label, value }: FieldProps) {
   return (
-    <div className="flex flex-col gap-1 rounded-large bg-zinc-50 px-4 py-3">
+    <div className="flex flex-col gap-1 rounded-xl bg-zinc-50 px-4 py-3">
       <Text variant="label" className="text-zinc-500">
         {label}
       </Text>

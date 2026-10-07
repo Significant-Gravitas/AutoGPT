@@ -74,7 +74,7 @@ export function RecordingStatePanel({ snapshot, onRefresh }: Props) {
       </div>
 
       {parts.length > 0 ? (
-        <div className="mt-4 overflow-hidden rounded-large border border-zinc-200">
+        <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
           <table className="w-full border-collapse text-left">
             <thead className="bg-zinc-50">
               <tr>

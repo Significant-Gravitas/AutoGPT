@@ -146,7 +146,7 @@ export function SearchCommandModal({
                   : undefined
               }
               autoComplete="off"
-              className="h-9 border-0 bg-transparent px-0 text-base text-zinc-950 shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
+              className="h-9 border-0 bg-transparent px-0 text-base text-black shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
             />
             {isLoading && isSearching ? (
               <LoadingSpinner

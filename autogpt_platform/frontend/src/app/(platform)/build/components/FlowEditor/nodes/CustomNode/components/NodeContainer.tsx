@@ -22,7 +22,7 @@ export const NodeContainer = ({
   return (
     <div
       className={cn(
-        "w-[350px] rounded-xlarge ring-1 ring-slate-200/60",
+        "w-[350px] rounded-2xl ring-1 ring-slate-200/60",
         selected && "shadow-lg ring-2 ring-slate-200",
         status && nodeStyleBasedOnStatus[status],
         hasErrors ? nodeStyleBasedOnStatus[AgentExecutionStatus.FAILED] : "",

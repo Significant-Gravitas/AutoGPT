@@ -49,7 +49,7 @@ type Story = StoryObj<typeof meta>;
 function InteractivePlans(args: SubscriptionPlansProps) {
   const [billing, setBilling] = useState(args.billing);
   return (
-    <div className="min-h-screen bg-gray-100 py-5">
+    <div className="min-h-screen bg-zinc-100 py-5">
       <SubscriptionPlans
         {...args}
         billing={billing}

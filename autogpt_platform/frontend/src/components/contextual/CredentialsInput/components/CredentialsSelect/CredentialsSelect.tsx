@@ -95,7 +95,7 @@ export function CredentialsSelect({
             </option>
           ))}
         </select>
-        <div className="rounded-medium border border-zinc-200 bg-white">
+        <div className="rounded-lg border border-zinc-200 bg-white">
           <CredentialRow
             credential={displayCredential}
             provider={provider}

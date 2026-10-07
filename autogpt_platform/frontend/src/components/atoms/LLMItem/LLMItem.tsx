@@ -33,7 +33,7 @@ export function LLMItem({ type }: Props) {
         alt={llmTypeMap[type].name}
         width={40}
         height={40}
-        className="h-5 w-5 rounded-xsmall"
+        className="h-5 w-5 rounded-sm"
       />
       <Text variant="body">{llmTypeMap[type].name}</Text>
     </div>

@@ -38,7 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
       <Link
         key={`${link.href}-${index}`}
         href={link.href}
-        className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+        className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-zinc-800 hover:bg-zinc-800 hover:text-white"
       >
         {link.icon || getDefaultIconForLink()}
         <div className="p-ui-medium text-base leading-normal font-medium">
@@ -54,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         <SheetTrigger asChild>
           <button
             aria-label="Open sidebar menu"
-            className="fixed top-4 left-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-neutral-500 bg-neutral-200 px-4 py-2 font-sans text-sm font-medium tracking-tight whitespace-nowrap text-neutral-800 transition-colors hover:bg-gray-200/50 focus-visible:ring-1 focus-visible:ring-neutral-950 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
+            className="fixed top-4 left-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-zinc-500 bg-zinc-200 px-4 py-2 font-sans text-sm font-medium tracking-tight whitespace-nowrap text-zinc-800 transition-colors hover:bg-zinc-200/50 focus-visible:ring-1 focus-visible:ring-black focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
           >
             <Menu className="h-8 w-8 stroke-black" />
             <span className="sr-only">Open sidebar menu</span>

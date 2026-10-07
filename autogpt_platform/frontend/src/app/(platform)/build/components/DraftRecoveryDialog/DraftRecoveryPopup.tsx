@@ -98,7 +98,7 @@ export function DraftRecoveryPopup({
         >
           <div
             className={cn(
-              "flex items-center gap-3 rounded-xlarge border border-yellow-200 bg-yellow-50 px-4 py-3 shadow-lg",
+              "flex items-center gap-3 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 shadow-lg",
             )}
           >
             <div className="flex items-center gap-2 text-yellow-700">

@@ -47,7 +47,7 @@ export function FollowupListItem({ followup }: Props) {
 
   const detailContent = (
     <>
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-50 bg-yellow-50">
         <Icon icon={Comment01Icon} size={18} className="text-yellow-700" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
@@ -74,7 +74,7 @@ export function FollowupListItem({ followup }: Props) {
 
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
       data-testid="followup-row"
       data-followup-id={followup.id}
     >
@@ -137,7 +137,7 @@ export function FollowupListItem({ followup }: Props) {
               {kindBadge}
             </div>
             <pre
-              className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm whitespace-pre-wrap text-zinc-800"
+              className="max-h-[60vh] overflow-auto rounded-lg bg-zinc-50 p-3 text-sm whitespace-pre-wrap text-zinc-800"
               data-testid="followup-view-body"
             >
               {fullMessage}

@@ -80,7 +80,7 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                "inline-flex h-9 min-w-22 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm leading-snug font-medium whitespace-nowrap text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:ring-1 focus-visible:ring-zinc-950 focus-visible:outline-hidden",
+                "inline-flex h-9 min-w-22 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm leading-snug font-medium whitespace-nowrap text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:ring-1 focus-visible:ring-black focus-visible:outline-hidden",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >

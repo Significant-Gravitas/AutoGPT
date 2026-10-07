@@ -36,7 +36,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
         ) : null}
 
         {agent.recommended_schedule_cron && !agent.has_external_trigger ? (
-          <div className="flex flex-col gap-4 rounded-medium border border-blue-100 bg-blue-50 p-4">
+          <div className="flex flex-col gap-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
             <Text variant="lead-semibold" className="text-blue-600">
               Tip
             </Text>
@@ -52,7 +52,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
         ) : null}
 
         {agent.instructions ? (
-          <div className="mt-4 flex flex-col gap-4 rounded-medium border border-purple-100 bg-purple-50/50 p-4">
+          <div className="mt-4 flex flex-col gap-4 rounded-lg border border-purple-100 bg-purple-50/50 p-4">
             <Text variant="lead-semibold" className="text-purple-600">
               Instructions
             </Text>

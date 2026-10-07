@@ -5,7 +5,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 export function EmptySkills() {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-3 rounded-large border border-dashed border-zinc-200 px-6 py-16 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 px-6 py-16 text-center"
       data-testid="skills-empty"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-50">

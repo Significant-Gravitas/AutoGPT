@@ -99,7 +99,7 @@ export function ChatSearchResults({
                 <div
                   className={cn(
                     "truncate text-sm font-normal transition-colors duration-150",
-                    isHighlighted ? "text-zinc-950" : "text-zinc-800",
+                    isHighlighted ? "text-black" : "text-zinc-800",
                     session.id === currentSessionId && "text-zinc-600",
                   )}
                 >

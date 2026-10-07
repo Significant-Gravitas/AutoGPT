@@ -5,7 +5,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 export function StoppedTaskCard() {
   return (
     <div className="my-2 flex animate-in items-start gap-3 rounded-xl border border-zinc-200/70 bg-white p-4 shadow-xs duration-500 fill-mode-both fade-in slide-in-from-bottom-2">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-small bg-purple-50">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-purple-50">
         <Icon icon={SquareIcon} size={16} className="text-purple-500" />
       </div>
       <div className="min-w-0 flex-1">

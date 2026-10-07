@@ -27,7 +27,7 @@ export function NodeAdvancedToggle({
     <div
       className={cn(
         "flex items-center justify-start gap-2 bg-white px-5 pb-3.5",
-        isLastSection && "rounded-b-xlarge",
+        isLastSection && "rounded-b-2xl",
       )}
     >
       <Button

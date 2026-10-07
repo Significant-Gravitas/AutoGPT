@@ -1,9 +1,8 @@
 // Common styles as Tailwind class strings
 const commonStyles = {
   title: "font-poppins text-base md:text-lg leading-none",
-  overlay:
-    "fixed inset-0 z-50 bg-stone-500/20 backdrop-blur-md animate-fade-in",
-  content: "bg-white p-6 fixed rounded-2xlarge flex flex-col z-50 w-full",
+  overlay: "fixed inset-0 z-50 bg-zinc-500/20 backdrop-blur-md animate-fade-in",
+  content: "bg-white p-6 fixed rounded-3xl flex flex-col z-50 w-full",
 };
 
 // Modal specific styles
@@ -12,7 +11,7 @@ export const modalStyles = {
   content: `${commonStyles.content} p-6 min-w-[40vw] max-w-[60vw] max-h-[95vh] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-fade-in`,
   iconWrap:
     "absolute top-2 right-3 bg-transparent p-2 rounded-full transition-colors duration-300 ease-in-out outline-hidden border-none",
-  icon: "w-4 h-4 text-stone-800",
+  icon: "w-4 h-4 text-zinc-800",
 };
 
 // Compact variant: dense neutral dialog for in-app forms — smaller radius,

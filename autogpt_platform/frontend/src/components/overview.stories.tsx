@@ -260,7 +260,7 @@ function OverviewComponent() {
                       Default Tailwind classes:
                     </Text>
                     <pre className="overflow-x-auto rounded-md bg-zinc-100 p-3 text-sm">
-                      <code className="text-red-600">{`className="text-blue-500 p-4 bg-gray-200"`}</code>
+                      <code className="text-red-600">{`className="text-blue-500 p-4 bg-zinc-200"`}</code>
                     </pre>
                   </div>
                   <div>

@@ -43,7 +43,7 @@ export function WalletCompactPanel({
         <button
           type="button"
           onClick={onAddCredits}
-          className="flex items-center justify-center gap-3 rounded-large bg-zinc-100 px-3 py-2.5 text-center transition-colors hover:bg-zinc-200"
+          className="flex items-center justify-center gap-3 rounded-xl bg-zinc-100 px-3 py-2.5 text-center transition-colors hover:bg-zinc-200"
         >
           <Icon icon={CreditCardIcon} size={20} className="text-zinc-700" />
           <Text variant="body-medium">Add credits</Text>
@@ -77,7 +77,7 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        className="flex w-full items-start justify-between gap-3 rounded-large px-3 py-1.5 text-left transition-colors hover:bg-zinc-50"
+        className="flex w-full items-start justify-between gap-3 rounded-xl px-3 py-1.5 text-left transition-colors hover:bg-zinc-50"
       >
         <span className="flex min-w-0 items-start gap-2.5">
           <StatusIcon done={group.done} />

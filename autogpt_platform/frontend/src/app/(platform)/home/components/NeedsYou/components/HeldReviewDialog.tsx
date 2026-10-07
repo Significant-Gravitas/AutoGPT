@@ -171,7 +171,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
                   aside={
                     <Link
                       href={current.item.primary_action.href}
-                      className="rounded-sm text-sm font-medium text-zinc-800 underline underline-offset-4 hover:text-zinc-950 focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden"
+                      className="rounded-sm text-sm font-medium text-zinc-800 underline underline-offset-4 hover:text-black focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden"
                     >
                       Open chat
                     </Link>

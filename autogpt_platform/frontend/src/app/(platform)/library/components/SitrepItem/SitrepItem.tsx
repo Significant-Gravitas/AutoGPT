@@ -87,7 +87,7 @@ export function SitrepItem({ item }: Props) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-medium border border-zinc-200/50 bg-transparent p-2 sm:flex-row sm:items-center sm:gap-3",
+        "flex flex-col gap-2 rounded-lg border border-zinc-200/50 bg-transparent p-2 sm:flex-row sm:items-center sm:gap-3",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">

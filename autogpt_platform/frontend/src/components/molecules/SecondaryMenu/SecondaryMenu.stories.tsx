@@ -35,7 +35,7 @@ export const ContextMenuExample: Story = {
     <div className="flex h-96 items-center justify-center">
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>
-          <div className="flex h-32 w-64 cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-gray-50">
+          <div className="flex h-32 w-64 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50">
             Right-click me
           </div>
         </ContextMenu.Trigger>

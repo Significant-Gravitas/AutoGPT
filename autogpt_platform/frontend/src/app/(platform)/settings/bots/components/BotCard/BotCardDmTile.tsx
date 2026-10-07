@@ -37,7 +37,7 @@ export function BotCardDmTile({
       : "Send the bot a direct message to start the link flow.";
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <Icon
           icon={Chatting01Icon}

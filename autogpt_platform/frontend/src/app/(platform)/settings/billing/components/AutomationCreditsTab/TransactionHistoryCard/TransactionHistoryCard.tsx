@@ -97,7 +97,7 @@ function HistorySkeleton() {
     <div
       role="status"
       aria-label="Loading transaction history"
-      className="rounded-large border border-zinc-200 bg-white p-5"
+      className="rounded-xl border border-zinc-200 bg-white p-5"
     >
       <div className="space-y-6">
         {Array.from({ length: 5 }, (_, index) => (
@@ -113,7 +113,7 @@ function HistorySkeleton() {
 
 function EmptyHistory() {
   return (
-    <div className="rounded-large border border-zinc-200 bg-white px-5 py-10 text-center">
+    <div className="rounded-xl border border-zinc-200 bg-white px-5 py-10 text-center">
       <Text variant="body-medium">No transactions yet.</Text>
       <Text variant="small" className="mt-2 text-zinc-600">
         Credit purchases and paid activity will appear here.

@@ -68,7 +68,7 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="ml-auto shrink-0 rounded p-1 hover:bg-zinc-100"
+            className="ml-auto shrink-0 rounded-sm p-1 hover:bg-zinc-100"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >

@@ -60,7 +60,7 @@ export function BriefingCard({ briefing, className }: Props) {
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-3xl bg-white smooth-shadow-ring-sm shadow-zinc-950">
+      <div className="overflow-hidden rounded-3xl bg-white smooth-shadow-ring-sm shadow-black">
         <motion.div
           // Real height, not a layout transform: the page below has to reflow
           // with the card, and a transform would scale the rows' text.
@@ -159,7 +159,7 @@ function ScrollArrow({
         aria-hidden={!isVisible}
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         className={cn(
-          "flex size-8 items-center justify-center rounded-full bg-white text-zinc-500 smooth-shadow-ring-sm shadow-zinc-950 transition-colors hover:text-zinc-900",
+          "flex size-8 items-center justify-center rounded-full bg-white text-zinc-500 smooth-shadow-ring-sm shadow-black transition-colors hover:text-zinc-900",
           isVisible && "pointer-events-auto",
         )}
       >

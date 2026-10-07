@@ -211,7 +211,7 @@ export function TaskGroups({ groups }: Props) {
               )}
               <Icon
                 icon={ArrowDown01Icon}
-                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
+                className={`h-5 w-5 text-black transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
               />
             </div>
           </div>

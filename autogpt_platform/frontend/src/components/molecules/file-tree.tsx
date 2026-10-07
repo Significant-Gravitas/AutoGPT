@@ -193,7 +193,7 @@ const TreeIndicator = forwardRef<
       dir={direction}
       ref={ref}
       className={cn(
-        "absolute left-1.5 h-full w-px rounded-md bg-neutral-400 py-3 duration-300 ease-in-out hover:bg-neutral-600 rtl:right-1.5",
+        "absolute left-1.5 h-full w-px rounded-md bg-zinc-400 py-3 duration-300 ease-in-out hover:bg-zinc-600 rtl:right-1.5",
         className,
       )}
       {...props}
@@ -247,7 +247,7 @@ const Folder = forwardRef<
             `flex items-center gap-1 rounded-md text-sm`,
             className,
             {
-              "rounded-md bg-neutral-100": isSelect && isSelectable,
+              "rounded-md bg-zinc-100": isSelect && isSelectable,
               "cursor-pointer": isSelectable,
               "cursor-not-allowed opacity-50": !isSelectable,
             },
@@ -315,7 +315,7 @@ const File = forwardRef<
         className={cn(
           "flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pr-0 rtl:pl-1",
           {
-            "bg-neutral-100": isSelected && isSelectable,
+            "bg-zinc-100": isSelected && isSelectable,
           },
           isSelectable ? "cursor-pointer" : "cursor-not-allowed opacity-50",
           direction === "rtl" ? "rtl" : "ltr",

@@ -72,7 +72,7 @@ function NotesList({
                 variant="small"
                 as="p"
                 unmask={false}
-                className="text-textBlack"
+                className="text-zinc-900"
               >
                 {fact.fact || `${fact.source} → ${fact.target}`}
               </Text>

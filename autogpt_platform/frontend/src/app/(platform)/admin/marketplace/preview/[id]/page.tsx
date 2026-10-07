@@ -160,7 +160,7 @@ export default function AdminPreviewPage() {
             <Text variant="body-medium" as="h3" tone="muted" className="mb-2">
               Recommended Schedule
             </Text>
-            <code className="rounded bg-muted px-2 py-1 text-sm">
+            <code className="rounded-sm bg-muted px-2 py-1 text-sm">
               {data.recommended_schedule_cron}
             </code>
           </div>
@@ -169,7 +169,7 @@ export default function AdminPreviewPage() {
           <Text variant="body-medium" as="h3" tone="muted" className="mb-2">
             Slug
           </Text>
-          <code className="rounded bg-muted px-2 py-1 text-sm">
+          <code className="rounded-sm bg-muted px-2 py-1 text-sm">
             {data.slug}
           </code>
         </div>

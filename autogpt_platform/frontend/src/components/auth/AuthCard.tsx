@@ -22,7 +22,7 @@ AuthCard.BottomText = function BottomText({
         "mt-4 inline-flex w-full items-center justify-center gap-1",
       )}
     >
-      <Text variant="body-medium" className="text-slate-950">
+      <Text variant="body-medium" className="text-black">
         {text}
       </Text>
       {link ? (

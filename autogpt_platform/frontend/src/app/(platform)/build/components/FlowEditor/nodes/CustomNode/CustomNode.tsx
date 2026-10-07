@@ -99,7 +99,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const node = (
       <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
-        <div className="rounded-xlarge bg-white">
+        <div className="rounded-2xl bg-white">
           <NodeHeader data={data} nodeId={nodeId} />
           {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}

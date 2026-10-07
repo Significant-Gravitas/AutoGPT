@@ -1,7 +1,10 @@
 export interface ColorOption {
   id: string;
   label: string;
-  // Written out in full so Tailwind's scanner keeps the class.
+  // Written out in full so Tailwind's scanner keeps the class. Hues outside
+  // the palette (rose, amber, lime, emerald, indigo, violet, fuchsia) are
+  // written as hex: they are user-pickable identity colours and must stay
+  // distinct from the palette's red, yellow, green and purple.
   swatchClassName: string;
   coverClassName: string;
   // Gradient stop for a surface washed in the expert's color.
@@ -25,15 +28,16 @@ export const COLOR_OPTIONS: ColorOption[] = [
   {
     id: "rose-300",
     label: "Rose",
-    swatchClassName: "bg-rose-300",
-    coverClassName: "bg-rose-200",
-    washFromClassName: "from-rose-100",
-    bubbleClassName: "border-rose-300 bg-rose-50",
-    textClassName: "text-rose-700",
-    selectedCardClassName: "border-rose-400 bg-rose-50 ring-2 ring-rose-200",
+    swatchClassName: "bg-[#fda4af]",
+    coverClassName: "bg-[#fecdd3]",
+    washFromClassName: "from-[#ffe4e6]",
+    bubbleClassName: "border-[#fda4af] bg-[#fff1f2]",
+    textClassName: "text-[#be123c]",
+    selectedCardClassName:
+      "border-[#fb7185] bg-[#fff1f2] ring-2 ring-[#fecdd3]",
     interactiveCardClassName:
-      "hover:border-rose-300 focus-within:ring-rose-200",
-    rowSelectedClassName: "bg-rose-50 ring-1 ring-inset ring-rose-300",
+      "hover:border-[#fda4af] focus-within:ring-[#fecdd3]",
+    rowSelectedClassName: "bg-[#fff1f2] ring-1 ring-inset ring-[#fda4af]",
     ditherColors: ["#fb7185", "#fda4af", "#ffe4e6", "#ffffff"],
   },
   {
@@ -67,15 +71,16 @@ export const COLOR_OPTIONS: ColorOption[] = [
   {
     id: "amber-300",
     label: "Amber",
-    swatchClassName: "bg-amber-300",
-    coverClassName: "bg-amber-200",
-    washFromClassName: "from-amber-100",
-    bubbleClassName: "border-amber-300 bg-amber-50",
-    textClassName: "text-amber-700",
-    selectedCardClassName: "border-amber-400 bg-amber-50 ring-2 ring-amber-200",
+    swatchClassName: "bg-[#fcd34d]",
+    coverClassName: "bg-[#fde68a]",
+    washFromClassName: "from-[#fef3c7]",
+    bubbleClassName: "border-[#fcd34d] bg-[#fffbeb]",
+    textClassName: "text-[#b45309]",
+    selectedCardClassName:
+      "border-[#fbbf24] bg-[#fffbeb] ring-2 ring-[#fde68a]",
     interactiveCardClassName:
-      "hover:border-amber-300 focus-within:ring-amber-200",
-    rowSelectedClassName: "bg-amber-50 ring-1 ring-inset ring-amber-300",
+      "hover:border-[#fcd34d] focus-within:ring-[#fde68a]",
+    rowSelectedClassName: "bg-[#fffbeb] ring-1 ring-inset ring-[#fcd34d]",
     ditherColors: ["#fbbf24", "#fcd34d", "#fef3c7", "#ffffff"],
   },
   {
@@ -96,15 +101,16 @@ export const COLOR_OPTIONS: ColorOption[] = [
   {
     id: "lime-300",
     label: "Lime",
-    swatchClassName: "bg-lime-300",
-    coverClassName: "bg-lime-200",
-    washFromClassName: "from-lime-100",
-    bubbleClassName: "border-lime-300 bg-lime-50",
-    textClassName: "text-lime-700",
-    selectedCardClassName: "border-lime-400 bg-lime-50 ring-2 ring-lime-200",
+    swatchClassName: "bg-[#bef264]",
+    coverClassName: "bg-[#d9f99d]",
+    washFromClassName: "from-[#ecfccb]",
+    bubbleClassName: "border-[#bef264] bg-[#f7fee7]",
+    textClassName: "text-[#4d7c0f]",
+    selectedCardClassName:
+      "border-[#a3e635] bg-[#f7fee7] ring-2 ring-[#d9f99d]",
     interactiveCardClassName:
-      "hover:border-lime-300 focus-within:ring-lime-200",
-    rowSelectedClassName: "bg-lime-50 ring-1 ring-inset ring-lime-300",
+      "hover:border-[#bef264] focus-within:ring-[#d9f99d]",
+    rowSelectedClassName: "bg-[#f7fee7] ring-1 ring-inset ring-[#bef264]",
     ditherColors: ["#a3e635", "#bef264", "#ecfccb", "#ffffff"],
   },
   {
@@ -124,16 +130,16 @@ export const COLOR_OPTIONS: ColorOption[] = [
   {
     id: "emerald-300",
     label: "Emerald",
-    swatchClassName: "bg-emerald-300",
-    coverClassName: "bg-emerald-200",
-    washFromClassName: "from-emerald-100",
-    bubbleClassName: "border-emerald-300 bg-emerald-50",
-    textClassName: "text-emerald-700",
+    swatchClassName: "bg-[#6ee7b7]",
+    coverClassName: "bg-[#a7f3d0]",
+    washFromClassName: "from-[#d1fae5]",
+    bubbleClassName: "border-[#6ee7b7] bg-[#ecfdf5]",
+    textClassName: "text-[#047857]",
     selectedCardClassName:
-      "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200",
+      "border-[#34d399] bg-[#ecfdf5] ring-2 ring-[#a7f3d0]",
     interactiveCardClassName:
-      "hover:border-emerald-300 focus-within:ring-emerald-200",
-    rowSelectedClassName: "bg-emerald-50 ring-1 ring-inset ring-emerald-300",
+      "hover:border-[#6ee7b7] focus-within:ring-[#a7f3d0]",
+    rowSelectedClassName: "bg-[#ecfdf5] ring-1 ring-inset ring-[#6ee7b7]",
     ditherColors: ["#34d399", "#6ee7b7", "#d1fae5", "#ffffff"],
   },
   {
@@ -194,46 +200,46 @@ export const COLOR_OPTIONS: ColorOption[] = [
   {
     id: "indigo-300",
     label: "Indigo",
-    swatchClassName: "bg-indigo-300",
-    coverClassName: "bg-indigo-200",
-    washFromClassName: "from-indigo-100",
-    bubbleClassName: "border-indigo-300 bg-indigo-50",
-    textClassName: "text-indigo-700",
+    swatchClassName: "bg-[#a5b4fc]",
+    coverClassName: "bg-[#c7d2fe]",
+    washFromClassName: "from-[#e0e7ff]",
+    bubbleClassName: "border-[#a5b4fc] bg-[#eef2ff]",
+    textClassName: "text-[#4338ca]",
     selectedCardClassName:
-      "border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200",
+      "border-[#818cf8] bg-[#eef2ff] ring-2 ring-[#c7d2fe]",
     interactiveCardClassName:
-      "hover:border-indigo-300 focus-within:ring-indigo-200",
-    rowSelectedClassName: "bg-indigo-50 ring-1 ring-inset ring-indigo-300",
+      "hover:border-[#a5b4fc] focus-within:ring-[#c7d2fe]",
+    rowSelectedClassName: "bg-[#eef2ff] ring-1 ring-inset ring-[#a5b4fc]",
     ditherColors: ["#818cf8", "#a5b4fc", "#e0e7ff", "#ffffff"],
   },
   {
     id: "violet-300",
     label: "Violet",
-    swatchClassName: "bg-violet-300",
-    coverClassName: "bg-violet-200",
-    washFromClassName: "from-violet-100",
-    bubbleClassName: "border-violet-300 bg-violet-50",
-    textClassName: "text-violet-700",
+    swatchClassName: "bg-[#c4b5fd]",
+    coverClassName: "bg-[#ddd6fe]",
+    washFromClassName: "from-[#ede9fe]",
+    bubbleClassName: "border-[#c4b5fd] bg-[#f5f3ff]",
+    textClassName: "text-[#6d28d9]",
     selectedCardClassName:
-      "border-violet-400 bg-violet-50 ring-2 ring-violet-200",
+      "border-[#a78bfa] bg-[#f5f3ff] ring-2 ring-[#ddd6fe]",
     interactiveCardClassName:
-      "hover:border-violet-300 focus-within:ring-violet-200",
-    rowSelectedClassName: "bg-violet-50 ring-1 ring-inset ring-violet-300",
+      "hover:border-[#c4b5fd] focus-within:ring-[#ddd6fe]",
+    rowSelectedClassName: "bg-[#f5f3ff] ring-1 ring-inset ring-[#c4b5fd]",
     ditherColors: ["#a78bfa", "#c4b5fd", "#ede9fe", "#ffffff"],
   },
   {
     id: "fuchsia-300",
     label: "Fuchsia",
-    swatchClassName: "bg-fuchsia-300",
-    coverClassName: "bg-fuchsia-200",
-    washFromClassName: "from-fuchsia-100",
-    bubbleClassName: "border-fuchsia-300 bg-fuchsia-50",
-    textClassName: "text-fuchsia-700",
+    swatchClassName: "bg-[#f0abfc]",
+    coverClassName: "bg-[#f5d0fe]",
+    washFromClassName: "from-[#fae8ff]",
+    bubbleClassName: "border-[#f0abfc] bg-[#fdf4ff]",
+    textClassName: "text-[#a21caf]",
     selectedCardClassName:
-      "border-fuchsia-400 bg-fuchsia-50 ring-2 ring-fuchsia-200",
+      "border-[#e879f9] bg-[#fdf4ff] ring-2 ring-[#f5d0fe]",
     interactiveCardClassName:
-      "hover:border-fuchsia-300 focus-within:ring-fuchsia-200",
-    rowSelectedClassName: "bg-fuchsia-50 ring-1 ring-inset ring-fuchsia-300",
+      "hover:border-[#f0abfc] focus-within:ring-[#f5d0fe]",
+    rowSelectedClassName: "bg-[#fdf4ff] ring-1 ring-inset ring-[#f0abfc]",
     ditherColors: ["#e879f9", "#f0abfc", "#fae8ff", "#ffffff"],
   },
 ];

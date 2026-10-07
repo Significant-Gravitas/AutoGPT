@@ -68,7 +68,7 @@ export function CronSchedulerDialog({
 
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
-            <div className="flex items-center gap-2 rounded-xlarge border border-yellow-200 bg-yellow-50 p-3">
+            <div className="flex items-center gap-2 rounded-2xl border border-yellow-200 bg-yellow-50 p-3">
               <Icon
                 icon={InformationCircleIcon}
                 className="h-4 w-4 text-yellow-600"
@@ -81,7 +81,7 @@ export function CronSchedulerDialog({
               </Text>
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-xlarge bg-muted/50 p-3">
+            <div className="flex items-center gap-2 rounded-2xl bg-muted/50 p-3">
               <Icon
                 icon={InformationCircleIcon}
                 className="h-4 w-4 text-muted-foreground"

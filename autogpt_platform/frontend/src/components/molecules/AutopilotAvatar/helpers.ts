@@ -6,7 +6,7 @@ export const AUTOPILOT_AVATAR_URL =
 export const AUTOPILOT_TRANSPARENT_AVATAR_URL =
   "/experts/transparent/otto.webp";
 
-export const AUTOPILOT_AVATAR_BG_CLASS = "bg-violet-50";
+export const AUTOPILOT_AVATAR_BG_CLASS = "bg-purple-50";
 
 export const AUTOPILOT_COVER_URL = "/experts/covers/otto-cover-3.png";
 

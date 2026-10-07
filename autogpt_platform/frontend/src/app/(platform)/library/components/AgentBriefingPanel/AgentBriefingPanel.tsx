@@ -19,7 +19,7 @@ export function AgentBriefingPanel({ summary, agents }: Props) {
 
   return (
     <div
-      className={`min-h-59 rounded-large bg-linear-to-br from-purple-50/30 via-white/90 to-purple-50/25 px-5 pt-4.5 pb-5 shadow-xs backdrop-blur-md`}
+      className={`min-h-59 rounded-xl bg-linear-to-br from-purple-50/30 via-white/90 to-purple-50/25 px-5 pt-4.5 pb-5 shadow-xs backdrop-blur-md`}
     >
       <Text variant="h5">Agent Briefing</Text>
       <div className="mt-4 space-y-5">

@@ -71,7 +71,7 @@ function Section({
 }) {
   return (
     <div id={slugify(title)} className="mb-10 scroll-mt-6">
-      <h2 className="mb-4 border-b border-neutral-200 pb-2 font-mono text-xl font-semibold text-neutral-800">
+      <h2 className="mb-4 border-b border-zinc-200 pb-2 font-mono text-xl font-semibold text-zinc-800">
         {title}
       </h2>
       <div className="space-y-4">{children}</div>
@@ -88,7 +88,7 @@ function SubSection({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-blue-200 p-3">
-      <p className="mb-2 text-xs font-medium tracking-wide text-neutral-500 uppercase">
+      <p className="mb-2 text-xs font-medium tracking-wide text-zinc-500 uppercase">
         {label}
       </p>
       {children}
@@ -174,8 +174,8 @@ export default function StyleguidePage() {
     <CopilotChatActionsProvider onSend={(msg) => alert(`onSend: ${msg}`)}>
       <div className="flex h-[calc(100vh-72px)] bg-[#f8f8f9]">
         {/* Sidebar */}
-        <nav className="sticky top-0 hidden h-full w-56 shrink-0 overflow-y-auto border-r border-neutral-200 bg-white px-3 py-6 lg:block">
-          <p className="mb-3 px-2 text-[11px] font-semibold tracking-wider text-neutral-400 uppercase">
+        <nav className="sticky top-0 hidden h-full w-56 shrink-0 overflow-y-auto border-r border-zinc-200 bg-white px-3 py-6 lg:block">
+          <p className="mb-3 px-2 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
             Sections
           </p>
           <ul className="space-y-0.5">
@@ -183,7 +183,7 @@ export default function StyleguidePage() {
               <li key={title}>
                 <a
                   href={`#${slugify(title)}`}
-                  className="block rounded-md px-2 py-1.5 text-[13px] text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                  className="block rounded-md px-2 py-1.5 text-[13px] text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                 >
                   {title.replace(/^Tool: /, "")}
                 </a>
@@ -196,7 +196,7 @@ export default function StyleguidePage() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-10">
             <Text variant="h1">Copilot Styleguide</Text>
-            <p className="mb-8 text-sm text-neutral-500">
+            <p className="mb-8 text-sm text-zinc-500">
               Static showcase of all chat message types, tool states &amp;
               variants.
             </p>
@@ -240,7 +240,7 @@ export default function StyleguidePage() {
               <SubSection label="Thinking state">
                 <Message from="assistant">
                   <MessageContent className="text-[1rem] leading-relaxed">
-                    <span className="inline-block animate-shimmer bg-linear-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-size-[200%_100%] bg-clip-text text-transparent">
+                    <span className="inline-block animate-shimmer bg-linear-to-r from-zinc-400 via-zinc-600 to-zinc-400 bg-size-[200%_100%] bg-clip-text text-transparent">
                       Thinking...
                     </span>
                   </MessageContent>
@@ -1839,7 +1839,7 @@ export default function StyleguidePage() {
             {/* ============================================================= */}
 
             <Section title="Reasoning Collapse: Interactive Tool Pinning">
-              <p className="mb-4 text-sm text-neutral-600">
+              <p className="mb-4 text-sm text-zinc-600">
                 When the stream finishes, intermediate tool calls are collapsed
                 behind a &quot;Show reasoning&quot; button. However, tools whose
                 output requires user interaction (credentials, inputs,

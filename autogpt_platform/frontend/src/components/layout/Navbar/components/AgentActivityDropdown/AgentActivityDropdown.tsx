@@ -46,7 +46,7 @@ export function AgentActivityDropdown() {
               {/* Running Agent Hover Hint */}
               <div
                 data-testid="agent-activity-hover-hint"
-                className="absolute -bottom-10 left-1/2 z-50 hidden -translate-x-1/2 transform rounded-small bg-white px-4 py-2 whitespace-nowrap shadow-md group-hover:block"
+                className="absolute -bottom-10 left-1/2 z-50 hidden -translate-x-1/2 transform rounded-md bg-white px-4 py-2 whitespace-nowrap shadow-md group-hover:block"
               >
                 <Text variant="body-medium">
                   {activeCount} active agent{activeCount > 1 ? "s" : ""}

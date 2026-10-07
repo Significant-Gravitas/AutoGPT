@@ -65,7 +65,7 @@ export function LibraryAgentCard({
         data-testid="library-agent-card"
         data-agent-id={id}
         className={cn(
-          "group relative inline-flex h-auto min-h-42.5 w-full max-w-100 flex-col items-start justify-start gap-2.5 rounded-medium border bg-white hover:shadow-md",
+          "group relative inline-flex h-auto min-h-42.5 w-full max-w-100 flex-col items-start justify-start gap-2.5 rounded-lg border bg-white hover:shadow-md",
           hasError ? "border-red-400" : "border-zinc-100",
         )}
         transition={{
@@ -106,7 +106,7 @@ export function LibraryAgentCard({
 
             {!showImage || !image_url ? (
               <div
-                className={`h-[3.64rem] w-[6.70rem] shrink-0 rounded-small ${
+                className={`h-[3.64rem] w-[6.70rem] shrink-0 rounded-md ${
                   [
                     "bg-linear-to-r from-green-200 to-blue-200",
                     "bg-linear-to-r from-pink-200 to-purple-200",
@@ -127,7 +127,7 @@ export function LibraryAgentCard({
                 alt={`${name} preview image`}
                 width={107}
                 height={58}
-                className="shrink-0 rounded-small object-cover"
+                className="shrink-0 rounded-md object-cover"
                 onError={handleImageError}
               />
             )}

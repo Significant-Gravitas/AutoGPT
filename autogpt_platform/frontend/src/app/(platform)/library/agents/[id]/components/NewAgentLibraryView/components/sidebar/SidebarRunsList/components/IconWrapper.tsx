@@ -9,7 +9,7 @@ export function IconWrapper({ children, className }: Props) {
   return (
     <div
       className={cn(
-        "flex h-5 w-5 items-center justify-center rounded-large border",
+        "flex h-5 w-5 items-center justify-center rounded-xl border",
         className,
       )}
     >

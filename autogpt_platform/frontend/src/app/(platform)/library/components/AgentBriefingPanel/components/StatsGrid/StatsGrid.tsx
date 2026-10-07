@@ -80,7 +80,7 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
             type="button"
             onClick={() => onTabChange(tile.filter)}
             className={cn(
-              "flex min-w-0 flex-col gap-1 rounded-medium border p-3 text-left shadow-md transition-all hover:shadow-lg",
+              "flex min-w-0 flex-col gap-1 rounded-lg border p-3 text-left shadow-md transition-all hover:shadow-lg",
               isActive
                 ? "border-zinc-900 bg-zinc-50"
                 : "border-zinc-100 bg-white",

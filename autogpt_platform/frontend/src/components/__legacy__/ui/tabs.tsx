@@ -14,7 +14,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 w-80 items-center justify-center rounded-3xl bg-gray-100 p-[5px] text-neutral-500",
+      "inline-flex h-10 w-80 items-center justify-center rounded-3xl bg-zinc-100 p-[5px] text-zinc-500",
       className,
     )}
     {...props}
@@ -29,8 +29,8 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex flex-1 items-start justify-center gap-2.5 rounded-2xl px-3 py-2 text-center font-sans text-xs leading-tight font-medium whitespace-nowrap text-gray-500 ring-offset-white transition-all",
-      "focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50",
+      "flex flex-1 items-start justify-center gap-2.5 rounded-2xl px-3 py-2 text-center font-sans text-xs leading-tight font-medium whitespace-nowrap text-zinc-500 ring-offset-white transition-all",
+      "focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50",
       "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-subtle",
       className,
     )}
@@ -46,7 +46,7 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-2 ring-offset-white focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 focus-visible:outline-hidden",
+      "mt-2 ring-offset-white focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-hidden",
       className,
     )}
     {...props}
@@ -56,7 +56,7 @@ TabsContent.displayName = TabsPrimitive.Content.displayName;
 
 export { Tabs, TabsList, TabsTrigger, TabsContent };
 
-<div className="inline-flex h-10 w-80 items-start justify-start rounded-3xl bg-gray-100 p-[5px]">
+<div className="inline-flex h-10 w-80 items-start justify-start rounded-3xl bg-zinc-100 p-[5px]">
   <div
     data-state="selected"
     className="flex flex-1 items-start justify-start gap-2.5 rounded-2xl bg-background px-3 py-1.5 shadow-subtle"
@@ -69,7 +69,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent };
     data-state="unselected"
     className="flex flex-1 items-start justify-start gap-2.5 rounded-sm px-3 py-1.5"
   >
-    <div className="flex-1 justify-start text-center font-['Geist'] text-xs leading-tight font-medium text-gray-500">
+    <div className="flex-1 justify-start text-center font-['Geist'] text-xs leading-tight font-medium text-zinc-500">
       Auto-refill
     </div>
   </div>

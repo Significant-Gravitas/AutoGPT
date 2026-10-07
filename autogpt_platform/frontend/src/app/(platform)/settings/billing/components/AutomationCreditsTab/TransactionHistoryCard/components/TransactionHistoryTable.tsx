@@ -36,7 +36,7 @@ export function TransactionHistoryTable({
       });
   }
   return (
-    <div className="overflow-hidden rounded-large border border-zinc-200 bg-white shadow-subtle">
+    <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-subtle">
       <table
         className="w-full table-fixed border-collapse text-left"
         aria-label="Automation credit transactions"

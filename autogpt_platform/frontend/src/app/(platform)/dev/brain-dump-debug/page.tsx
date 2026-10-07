@@ -28,7 +28,7 @@ export default function BrainDumpDebugPage() {
     return (
       <main className={MAIN_CLASS}>
         {[0, 1, 2].map((index) => (
-          <Skeleton key={index} className="h-48 w-full rounded-2xlarge" />
+          <Skeleton key={index} className="h-48 w-full rounded-3xl" />
         ))}
       </main>
     );

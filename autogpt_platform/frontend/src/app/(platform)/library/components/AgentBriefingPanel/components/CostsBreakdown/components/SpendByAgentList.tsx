@@ -96,7 +96,7 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
               {href ? (
                 <Link
                   href={href}
-                  className="-m-1 block rounded-small p-1 hover:bg-zinc-50"
+                  className="-m-1 block rounded-md p-1 hover:bg-zinc-50"
                 >
                   {row}
                 </Link>

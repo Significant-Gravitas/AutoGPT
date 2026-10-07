@@ -27,7 +27,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
       <Text variant="body-medium" tone="primary" className="lg:mb-2">
         Most expensive tasks
       </Text>
-      <ul className="flex flex-col divide-y divide-zinc-100 rounded-medium border border-zinc-100 bg-white">
+      <ul className="flex flex-col divide-y divide-zinc-100 rounded-lg border border-zinc-100 bg-white">
         {visible.map((run) => {
           const agent = agentLookup.get(run.graph_id);
           const label = agent?.name ?? `Agent ${run.graph_id.slice(0, 8)}`;

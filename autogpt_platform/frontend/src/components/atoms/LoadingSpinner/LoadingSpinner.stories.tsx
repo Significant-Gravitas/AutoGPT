@@ -28,7 +28,7 @@ const meta: Meta<typeof LoadingSpinner> = {
   },
   args: {
     size: "medium",
-    className: "text-indigo-500",
+    className: "text-purple-500",
     role: "status",
     "aria-label": "loading",
   },
@@ -53,7 +53,7 @@ export const Large: Story = {
 
 export const CustomColor: Story = {
   args: {
-    className: "text-emerald-500",
+    className: "text-green-500",
   },
 };
 
@@ -69,7 +69,7 @@ export const AllSizes: Story = {
 
 function renderAllSizes() {
   return (
-    <div className="flex items-center gap-8 text-indigo-500">
+    <div className="flex items-center gap-8 text-purple-500">
       <div className="flex flex-col items-center gap-2">
         <LoadingSpinner size="small" aria-label="loading-small" />
         <span className="text-xs text-zinc-500 capitalize">Small</span>

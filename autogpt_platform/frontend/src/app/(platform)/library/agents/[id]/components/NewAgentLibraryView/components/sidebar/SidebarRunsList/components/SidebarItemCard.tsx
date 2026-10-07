@@ -26,7 +26,7 @@ export function SidebarItemCard({
   return (
     <div
       className={cn(
-        "w-full cursor-pointer rounded-large border border-zinc-200 bg-white p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
+        "w-full cursor-pointer rounded-xl border border-zinc-200 bg-white p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
         selected ? "border-slate-800 ring-slate-800" : undefined,
       )}
       onClick={onClick}

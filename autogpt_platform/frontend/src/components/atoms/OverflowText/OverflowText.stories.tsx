@@ -74,7 +74,7 @@ export const LongText: Story = {
 export const CustomStyling: Story = {
   args: {
     value: "Text with custom styling",
-    className: "text-lg font-semibold text-indigo-600",
+    className: "text-lg font-semibold text-purple-600",
   },
   render: function CustomStylingStory(args) {
     return (

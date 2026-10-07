@@ -33,7 +33,7 @@ export function TransactionReceipt({
     <section
       id={receiptID}
       aria-label={`${activityName(transaction)} credit receipt`}
-      className="mx-2 mb-3 rounded-medium border border-zinc-100 bg-zinc-50 p-3 sm:mx-4 sm:p-5"
+      className="mx-2 mb-3 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:mx-4 sm:p-5"
     >
       <Text variant="body-medium" as="h3">
         {heading}

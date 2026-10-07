@@ -34,7 +34,7 @@ export function TourUpsellCard({ surface }: Props) {
   return (
     <Card className="flex flex-col gap-4 border border-zinc-200 p-4 shadow-subtle">
       <div className="flex items-center gap-2.5">
-        <span className="flex size-9 items-center justify-center rounded-medium bg-purple-100 text-purple-700">
+        <span className="flex size-9 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
           <Icon icon={SparklesIcon} size={18} aria-hidden />
         </span>
         <Text variant="eyebrow" tone="secondary">

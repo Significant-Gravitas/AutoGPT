@@ -214,7 +214,7 @@ export const DateTimeInput = ({
             <div className="mt-3 border-t pt-3">
               <label
                 htmlFor={timeInputId}
-                className="mb-2 block text-sm font-medium text-gray-700"
+                className="mb-2 block text-sm font-medium text-zinc-700"
               >
                 Time
               </label>

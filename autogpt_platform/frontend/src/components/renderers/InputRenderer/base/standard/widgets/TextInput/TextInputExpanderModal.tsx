@@ -81,7 +81,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
             id={inputId}
             value={tempValue}
             className={cn(
-              "min-h-[300px]! rounded-2xlarge",
+              "min-h-[300px]! rounded-3xl",
               inputType === "json" && "font-mono text-sm",
             )}
             onChange={(e) => setTempValue(e.target.value)}

@@ -19,8 +19,8 @@ const statusConfig: Record<
     text: "Draft",
   },
   [SubmissionStatus.PENDING]: {
-    bgColor: "bg-amber-50",
-    dotColor: "bg-amber-500",
+    bgColor: "bg-yellow-50",
+    dotColor: "bg-yellow-500",
     text: "Awaiting review",
   },
   [SubmissionStatus.APPROVED]: {
@@ -54,7 +54,7 @@ export const Status: React.FC<StatusProps> = ({ status }) => {
       className={`px-2.5 py-1 ${config.bgColor} flex items-center gap-1.5 rounded-[26px]`}
     >
       <div className={`h-3 w-3 ${config.dotColor} rounded-full`} />
-      <div className="font-sans text-sm leading-tight font-normal text-neutral-600">
+      <div className="font-sans text-sm leading-tight font-normal text-zinc-600">
         {config.text}
       </div>
     </div>

@@ -87,7 +87,7 @@ export function CredentialRow({
     <div
       ref={containerRef}
       className={cn(
-        "flex min-w-80 items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
+        "flex min-w-80 items-center gap-3 rounded-lg border border-zinc-200 bg-white p-3 transition-colors",
         asSelectTrigger && isNodeVariant
           ? "min-w-0 flex-1 overflow-hidden border-0 bg-transparent"
           : asSelectTrigger

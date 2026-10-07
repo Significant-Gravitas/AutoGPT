@@ -81,7 +81,7 @@ export function TrialCardContent({
         className="flex w-full flex-col gap-2"
       >
         <div className="flex items-center gap-2 px-4">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span" className="text-zinc-900">
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>

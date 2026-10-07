@@ -38,7 +38,7 @@ function RaiseSkeleton() {
           <Skeleton className="h-40 w-full rounded-2xl" />
         </div>
         <div className="order-1 m-2 overflow-hidden rounded-[2.5rem] bg-muted/40 p-4 sm:p-6 lg:order-2">
-          <Skeleton className="h-80 w-full rounded-4xl" />
+          <Skeleton className="h-80 w-full rounded-[2rem]" />
         </div>
       </div>
     </main>

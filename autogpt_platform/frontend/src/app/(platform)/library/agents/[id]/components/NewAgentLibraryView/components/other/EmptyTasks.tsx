@@ -136,7 +136,7 @@ export function EmptyTasks({
         </div>
       </RunDetailCard>
 
-      <div className="mt-4 flex flex-col gap-10 rounded-large border border-zinc-200 p-6 lg:mt-0 lg:w-[29.5rem]">
+      <div className="mt-4 flex flex-col gap-10 rounded-xl border border-zinc-200 p-6 lg:mt-0 lg:w-[29.5rem]">
         <Text variant="label" tone="muted">
           About this agent
         </Text>

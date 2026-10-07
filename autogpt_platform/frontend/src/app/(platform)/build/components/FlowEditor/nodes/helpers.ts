@@ -97,7 +97,7 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
-      colorClass: "text-indigo-500",
+      colorClass: "text-[#6366f1]",
       hexColor: getTypeColor("array"),
     };
   }
@@ -163,7 +163,8 @@ export const getTypeDisplayInfo = (schema: any) => {
     integer: "text-blue-500",
     boolean: "text-yellow-500",
     object: "text-purple-500",
-    array: "text-indigo-500",
+    // Same hue as getTypeColor("array"); kept apart from object's purple.
+    array: "text-[#6366f1]",
     null: "text-zinc-500",
     any: "text-zinc-500",
   };
