@@ -1,213 +1,242 @@
-"""Integration tests for append_plain_session_message."""
+"""Integration tests for briefing chat creation and delivery retries."""
 
-import logging
+import asyncio
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from prisma.errors import UniqueViolationError
-from prisma.models import ChatMessage, Expert, User
+from prisma.models import ChatMessage
+from prisma.models import ChatSession as PrismaChatSession
+from prisma.models import Expert, User
 
 from backend.copilot import db as copilot_db
 from backend.copilot.model import ChatSession, ChatSessionMetadata
 from backend.copilot.tools.expert_proposal import autopilot_session_guard
 from backend.util.test import SpinTestServer
 
-logger = logging.getLogger(__name__)
 
-
-async def _create_user(user_id: str) -> None:
+@pytest_asyncio.fixture(loop_scope="session")
+async def user_id(server: SpinTestServer):
+    user_id = f"plain-session-{uuid4()}"
+    await User.prisma().create(data={"id": user_id, "email": f"{user_id}@example.com"})
     try:
-        await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"plain-session-{user_id}@example.com",
-                "name": "Plain Session Test",
-            }
-        )
-    except UniqueViolationError:
-        pass
-
-
-async def _cleanup(user_id: str) -> None:
-    try:
-        # ChatSession -> User, ChatMessage -> ChatSession, and Expert.ownerUserId
-        # -> User are all onDelete: Cascade, so deleting the user sweeps
-        # everything created for it, including any expert + expert-scoped
-        # session set up for the discrimination check below.
+        yield user_id
+    finally:
         await User.prisma().delete_many(where={"id": user_id})
-    except Exception as exc:
-        logger.warning("cleanup for %s failed: %s", user_id, exc)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_append_plain_session_message_creates_session_and_dedupes(
-    server: SpinTestServer,
-):
-    user_id = f"plain-session-{uuid4()}"
-    await _create_user(user_id)
-    try:
-        message_id = str(uuid4())
+async def test_briefing_leaves_existing_conversations_unchanged(user_id: str):
+    existing_ids = await _seed_existing_conversations(user_id)
+    sessions_before = await PrismaChatSession.prisma().find_many(
+        where={"id": {"in": existing_ids}}, order={"id": "asc"}
+    )
+    messages_before = await ChatMessage.prisma().find_many(
+        where={"sessionId": {"in": existing_ids}}, order={"id": "asc"}
+    )
+    message_id = str(uuid4())
+    metadata = {"kind": "morning_briefing", "briefing_id": "briefing-1"}
 
-        session_id = await copilot_db.append_plain_session_message(
-            user_id=user_id,
-            content="## Briefing",
-            message_id=message_id,
-            metadata={"kind": "morning_briefing"},
+    session_id = await copilot_db.append_plain_session_message(
+        user_id=user_id,
+        content="## Briefing",
+        message_id=message_id,
+        metadata=metadata,
+    )
+
+    assert session_id is not None and session_id not in existing_ids
+    created = await PrismaChatSession.prisma().find_unique(
+        where={"id": session_id}, include={"Messages": True}
+    )
+    assert created is not None and created.expertId is None
+    assert created.userId == user_id
+    assert created.Messages is not None and len(created.Messages) == 1
+    message = created.Messages[0]
+    assert (message.id, message.role, message.sequence) == (message_id, "assistant", 0)
+    assert message.content == "## Briefing"
+    assert message.metadata == metadata
+    assert (
+        await PrismaChatSession.prisma().find_many(
+            where={"id": {"in": existing_ids}}, order={"id": "asc"}
         )
-        assert session_id is not None
+        == sessions_before
+    )
+    assert (
+        await ChatMessage.prisma().find_many(
+            where={"sessionId": {"in": existing_ids}}, order={"id": "asc"}
+        )
+        == messages_before
+    )
 
-        # Same message id -> dedup, no second message.
-        assert (
-            await copilot_db.append_plain_session_message(
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_distinct_briefings_create_separate_chats_and_retries_dedupe(
+    user_id: str,
+):
+    first_message_id = str(uuid4())
+    first = await copilot_db.append_plain_session_message(
+        user_id=user_id, content="## Briefing", message_id=first_message_id
+    )
+    second = await copilot_db.append_plain_session_message(
+        user_id=user_id, content="## Next briefing", message_id=str(uuid4())
+    )
+    assert first is not None and second is not None and first != second
+
+    assert (
+        await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing", message_id=first_message_id
+        )
+        is None
+    )
+    sessions = await PrismaChatSession.prisma().find_many(
+        where={"userId": user_id}, include={"Messages": True}
+    )
+    assert {session.id for session in sessions} == {first, second}
+    assert all(session.Messages and len(session.Messages) == 1 for session in sessions)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_briefing_chat_preserves_interactive_origin_and_default_route(
+    user_id: str, mocker
+):
+    route = mocker.patch.object(
+        copilot_db,
+        "resolve_default_chat_route",
+        AsyncMock(return_value=("codex", "user-codex-credential")),
+    )
+    session_id = await copilot_db.append_plain_session_message(
+        user_id=user_id, content="## Briefing", message_id=str(uuid4())
+    )
+    assert session_id is not None
+    created = await copilot_db.get_chat_session_metadata(session_id)
+    assert created is not None
+    assert created.metadata.origin == "interactive"
+    assert created.metadata.kind == "normal"
+    assert created.metadata.builder_graph_id is None
+    assert created.metadata.dry_run is False
+    assert created.metadata.llm_auth_provider == "codex"
+    assert created.metadata.llm_credential_id == "user-codex-credential"
+    route.assert_awaited_once_with(user_id)
+    session = ChatSession.new(user_id, dry_run=False, session_id=session_id)
+    session.metadata = created.metadata
+    assert autopilot_session_guard(user_id, session) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_briefing_chat_has_an_initial_title(user_id: str):
+    session_id = await copilot_db.append_plain_session_message(
+        user_id=user_id,
+        content="## Briefing",
+        message_id=str(uuid4()),
+        title="Morning briefing — 2026-10-07",
+    )
+    assert session_id is not None
+    created = await copilot_db.get_chat_session_metadata(session_id)
+    assert created is not None
+    assert created.title == "Morning briefing — 2026-10-07"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_deliveries_create_one_chat_without_orphans(
+    user_id: str, mocker
+):
+    existing = await copilot_db.create_chat_session(
+        session_id=str(uuid4()), user_id=user_id
+    )
+    message_actions = ChatMessage.prisma()
+    real_find_unique = message_actions.find_unique
+    barrier = asyncio.Barrier(2)
+    arrivals = 0
+
+    async def race_precheck(**kwargs):
+        nonlocal arrivals
+        arrivals += 1
+        if arrivals <= 2:
+            await asyncio.wait_for(barrier.wait(), timeout=10)
+            return None
+        return await real_find_unique(**kwargs)
+
+    mocker.patch.object(
+        type(message_actions), "find_unique", AsyncMock(side_effect=race_precheck)
+    )
+    message_id = str(uuid4())
+    results = await asyncio.gather(
+        *[
+            copilot_db.append_plain_session_message(
                 user_id=user_id, content="## Briefing", message_id=message_id
             )
-            is None
-        )
+            for _ in range(2)
+        ]
+    )
+    assert results.count(None) == 1
+    delivered = next(result for result in results if result is not None)
+    assert delivered != existing.session_id
+    sessions = await PrismaChatSession.prisma().find_many(
+        where={"userId": user_id}, include={"Messages": True}
+    )
+    assert {session.id for session in sessions} == {existing.session_id, delivered}
+    assert sum(len(session.Messages or []) for session in sessions) == 1
+    original = next(
+        session for session in sessions if session.id == existing.session_id
+    )
+    assert original.Messages == []
 
-        # Reuses the latest plain session instead of creating another.
-        second = await copilot_db.append_plain_session_message(
-            user_id=user_id, content="## Briefing 2", message_id=str(uuid4())
-        )
-        assert second == session_id
 
-        # An expert-scoped session that is the MOST RECENTLY updated session
-        # for this user must still be skipped -- the {"expertId": None}
-        # filter has to actively discriminate, not just "reuse whatever's
-        # newest." Without the filter this would wrongly post into the
-        # expert's thread.
-        expert = await Expert.prisma().create(
-            data={
-                "ownerUserId": user_id,
-                "name": "Test Expert",
-                "role": "assistant",
-                "identity": "test",
-            }
+@pytest.mark.parametrize("unique_failure", [False, True])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_chat_creation_failures_propagate_without_leaving_a_session(
+    user_id: str, mocker, unique_failure: bool
+):
+    error = (
+        UniqueViolationError(
+            {"user_facing_error": {"message": "Unique constraint: ChatSession_pkey"}}
         )
-        expert_session = await copilot_db.create_chat_session(
+        if unique_failure
+        else RuntimeError("chat creation failed")
+    )
+    session_actions = PrismaChatSession.prisma()
+    mocker.patch.object(type(session_actions), "create", AsyncMock(side_effect=error))
+
+    with pytest.raises(type(error)):
+        await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing", message_id=str(uuid4())
+        )
+    assert await PrismaChatSession.prisma().find_many(where={"userId": user_id}) == []
+
+
+async def _seed_existing_conversations(user_id: str) -> list[str]:
+    expert = await Expert.prisma().create(
+        data={
+            "ownerUserId": user_id,
+            "name": "Test Expert",
+            "role": "assistant",
+            "identity": "test",
+        }
+    )
+    sessions = [
+        await copilot_db.create_chat_session(
+            session_id=str(uuid4()), user_id=user_id, metadata=metadata
+        )
+        for metadata in (
+            ChatSessionMetadata(origin="interactive"),
+            ChatSessionMetadata(
+                origin="interactive", builder_graph_id="existing-agent"
+            ),
+            ChatSessionMetadata(kind="dream"),
+        )
+    ]
+    sessions.append(
+        await copilot_db.create_chat_session(
             session_id=str(uuid4()), user_id=user_id, expert_id=expert.id
         )
-        assert expert_session.session_id != session_id
-
-        third = await copilot_db.append_plain_session_message(
-            user_id=user_id, content="## Briefing 3", message_id=str(uuid4())
+    )
+    for session in sessions:
+        await copilot_db.add_chat_message(
+            session_id=session.session_id,
+            role="assistant",
+            sequence=0,
+            content="Existing conversation",
         )
-        assert third == session_id
-        assert third != expert_session.session_id
-
-        expert_messages = await ChatMessage.prisma().find_many(
-            where={"sessionId": expert_session.session_id}
-        )
-        assert expert_messages == []
-    finally:
-        await _cleanup(user_id)
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_append_plain_session_message_creates_an_interactive_thread(
-    server: SpinTestServer,
-):
-    """The auto-created primary thread must not be stamped as an automation.
-
-    A new user in the experts cohort gets a briefing before their first chat
-    and is dropped straight into this thread. Inheriting the unset-metadata
-    ``automation`` default would have ``autopilot_session_guard`` tell them
-    their own thread "was started by an automation" the moment they ask to
-    hire someone.
-    """
-    user_id = f"plain-session-origin-{uuid4()}"
-    await _create_user(user_id)
-    try:
-        session_id = await copilot_db.append_plain_session_message(
-            user_id=user_id, content="## Briefing", message_id=str(uuid4())
-        )
-        assert session_id is not None
-
-        created = await copilot_db.get_chat_session_metadata(session_id)
-        assert created is not None
-        assert created.metadata.origin == "interactive"
-
-        session = ChatSession.new(user_id, dry_run=False, session_id=session_id)
-        session.metadata = created.metadata
-        assert autopilot_session_guard(user_id, session) is None
-    finally:
-        await _cleanup(user_id)
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_append_plain_session_message_retries_on_sequence_collision(
-    server: SpinTestServer, mocker
-):
-    """Lock-degraded path: a sequence PK collision (not a duplicate message
-    id) must be retried once with a fresh sequence rather than propagating."""
-    user_id = f"plain-session-retry-{uuid4()}"
-    await _create_user(user_id)
-    try:
-        real_add_chat_message = copilot_db.add_chat_message
-        calls = {"n": 0}
-
-        async def collide_once(*args, **kwargs):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                # A (sessionId, sequence) collision, NOT a duplicate
-                # ChatMessage id — the branch under test.
-                raise UniqueViolationError(
-                    {
-                        "user_facing_error": {
-                            "message": "Unique constraint failed on the "
-                            "fields: (`sessionId`,`sequence`)"
-                        }
-                    }
-                )
-            return await real_add_chat_message(*args, **kwargs)
-
-        mocker.patch.object(copilot_db, "add_chat_message", side_effect=collide_once)
-
-        message_id = str(uuid4())
-        session_id = await copilot_db.append_plain_session_message(
-            user_id=user_id, content="## Briefing", message_id=message_id
-        )
-
-        assert calls["n"] == 2  # first write collided, retry succeeded
-        assert session_id is not None
-        stored = await ChatMessage.prisma().find_unique(where={"id": message_id})
-        assert stored is not None
-        assert stored.sessionId == session_id
-    finally:
-        await _cleanup(user_id)
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_append_plain_session_message_skips_dream_sessions(
-    server: SpinTestServer,
-):
-    """Dream sessions are also ``expertId IS NULL`` but are hidden from every
-    listing surface, so a briefing posted into one is invisible forever — and
-    still gets stamped delivered."""
-    user_id = f"plain-session-dream-{uuid4()}"
-    await _create_user(user_id)
-    try:
-        plain = await copilot_db.append_plain_session_message(
-            user_id=user_id, content="## Briefing", message_id=str(uuid4())
-        )
-        assert plain is not None
-
-        # Created after the plain session, so it is the most recently updated
-        # expertId-IS-NULL session for this user.
-        dream_session = await copilot_db.create_chat_session(
-            session_id=str(uuid4()),
-            user_id=user_id,
-            metadata=ChatSessionMetadata(kind="dream"),
-        )
-        assert dream_session.session_id != plain
-
-        landed = await copilot_db.append_plain_session_message(
-            user_id=user_id, content="## Briefing 2", message_id=str(uuid4())
-        )
-
-        assert landed == plain
-        dream_messages = await ChatMessage.prisma().find_many(
-            where={"sessionId": dream_session.session_id}
-        )
-        assert dream_messages == []
-    finally:
-        await _cleanup(user_id)
+    return [session.session_id for session in sessions]

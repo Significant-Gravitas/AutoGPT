@@ -428,6 +428,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         "content": render_briefing_markdown(expected_content),
         "message_id": expected_message_id,
         "metadata": {"kind": "morning_briefing", "briefing_id": "briefing-1"},
+        "title": "Morning briefing — 2026-08-07",
     }
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
 
