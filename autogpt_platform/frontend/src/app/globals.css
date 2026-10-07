@@ -83,14 +83,6 @@
   .agpt-shadow-input {
     @apply shadow-sm focus-visible:shadow-md;
   }
-
-  .agpt-rounded-card {
-    @apply rounded-2xl;
-  }
-
-  .agpt-card {
-    @apply agpt-rounded-card border border-zinc-300 bg-white p-[1px];
-  }
 }
 
 input[type="number"]::-webkit-outer-spin-button,
