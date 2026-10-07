@@ -12,8 +12,6 @@ const DialogTrigger = DialogPrimitive.Trigger;
 
 const DialogPortal = DialogPrimitive.Portal;
 
-const DialogClose = DialogPrimitive.Close;
-
 /**
  * Check if an external picker (like Google Drive) is currently open.
  */
@@ -180,7 +178,6 @@ export {
   DialogPortal,
   DialogOverlay,
   DialogTrigger,
-  DialogClose,
   DialogContent,
   DialogHeader,
   DialogFooter,
