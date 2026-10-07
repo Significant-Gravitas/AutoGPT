@@ -1,6 +1,5 @@
 import * as React from "react";
 import Link from "next/link";
-import { Button } from "./Button";
 import {
   Sheet,
   SheetContent,
@@ -53,13 +52,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
     <>
       <Sheet>
         <SheetTrigger asChild>
-          <Button
+          <button
             aria-label="Open sidebar menu"
-            className="fixed left-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50 md:block lg:hidden"
+            className="fixed left-4 top-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden whitespace-nowrap rounded-lg border border-neutral-500 bg-neutral-200 px-4 py-2 font-sans text-sm font-medium tracking-tight text-neutral-800 transition-colors hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50 md:block lg:hidden"
           >
             <Menu className="h-8 w-8 stroke-black dark:stroke-white" />
             <span className="sr-only">Open sidebar menu</span>
-          </Button>
+          </button>
         </SheetTrigger>
         <SheetContent
           side="left"
