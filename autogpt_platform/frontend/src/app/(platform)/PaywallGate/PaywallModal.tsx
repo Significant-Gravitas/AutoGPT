@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/SubscriptionPlans";
 import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
@@ -46,11 +47,11 @@ export function PaywallModal() {
               position. */}
           <div className="sticky top-0 z-10 -mb-[3.25rem] flex w-full justify-end">
             <Button
-              variant="ghost"
+              variant="floating"
               size="small"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
-              className="bg-white/90 text-zinc-500 hover:text-zinc-700"
+              className="rounded-full text-zinc-500 hover:text-zinc-700"
             >
               Log out
             </Button>
@@ -59,17 +60,17 @@ export function PaywallModal() {
 
           <div className="relative mt-2 w-full">
             {isLoading ? (
-              <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
+              <div className="grid w-full grid-cols-1 gap-4 px-4 md:grid-cols-3 md:px-0">
                 <Skeleton className="h-[26rem] rounded-2xl" />
                 <Skeleton className="h-[26rem] rounded-2xl" />
                 <Skeleton className="h-[26rem] rounded-2xl" />
               </div>
             ) : plans.length === 0 ? (
               <div className="flex flex-col items-center gap-3">
-                <p className="text-center text-sm text-zinc-500">
+                <Text variant="body" tone="muted" className="text-center">
                   Subscriptions are temporarily unavailable. Please try again
                   shortly.
-                </p>
+                </Text>
                 <Button
                   variant="secondary"
                   size="small"
