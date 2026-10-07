@@ -44,7 +44,7 @@ export function HomeTileEmpty({
   return (
     <div
       className={cn(
-        "flex min-h-[12rem] flex-1 flex-col items-center justify-center gap-5 px-4 py-8 text-center",
+        "flex min-h-48 flex-1 flex-col items-center justify-center gap-5 px-4 py-8 text-center",
         className,
       )}
     >

@@ -28,7 +28,7 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
       <span
         className={cn(
           "flex size-[18px] shrink-0 items-center justify-center rounded-md",
-          failed ? "bg-rose-50 text-rose-600" : "bg-zinc-100 text-zinc-500",
+          failed ? "bg-red-50 text-red-600" : "bg-zinc-100 text-zinc-500",
         )}
       >
         <Icon
@@ -76,7 +76,7 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
 function RunMeta({ outcome, timezone, showAgentName }: Props) {
   const parts = [
     outcome.status === "failed" ? (
-      <span key="status" className="font-medium text-rose-600">
+      <span key="status" className="font-medium text-red-600">
         Failed
       </span>
     ) : null,

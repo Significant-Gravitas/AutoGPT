@@ -55,7 +55,7 @@ export function RecentWork({ dashboard, className }: Props) {
             <Text
               variant="small"
               as="span"
-              className="tabular-nums text-rose-600"
+              className="tabular-nums text-red-600"
             >
               {failed} failed
             </Text>

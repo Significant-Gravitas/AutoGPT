@@ -4,6 +4,7 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { HeadlineText } from "@/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalHeadline";
 import type { ApprovalItem } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import type { HeldReceipt } from "../useHeldReview";
@@ -27,9 +28,15 @@ export function HeldReceiptRow({ approval, receipt, heading = false }: Props) {
     <div className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-600">
       <Icon icon={icon} size={14} className={tone} aria-hidden />
       {heading ? (
-        <h3 className="min-w-0 truncate">
+        <Text
+          variant="body"
+          as="h3"
+          tone="secondary"
+          unmask={false}
+          className="min-w-0 truncate leading-5"
+        >
           <HeadlineText item={approval} />
-        </h3>
+        </Text>
       ) : (
         <span className="min-w-0 truncate">
           <HeadlineText item={approval} />

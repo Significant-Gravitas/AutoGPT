@@ -77,13 +77,13 @@ export function HeldCallRow({
             )}
             {mode && <Tag className="bg-zinc-100 text-zinc-600">{mode}</Tag>}
             {item.priority === "high" && (
-              <Tag className="bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10">
+              <Tag className="bg-yellow-50 text-yellow-700 ring-1 ring-inset ring-yellow-600/10">
                 Waiting
               </Tag>
             )}
           </div>
           {failed ? (
-            <Text variant="body" role="alert" className="!text-red-600">
+            <Text variant="body" role="alert" tone="danger">
               Couldn&apos;t send your answer. Nothing ran. Try again.
             </Text>
           ) : reason ? (
